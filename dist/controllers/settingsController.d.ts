@@ -1,0 +1,45 @@
+import { Response } from 'express';
+import { AuthRequest } from '@/types';
+export declare class SettingsController {
+    /**
+     * Get all configuration options for ticket creation (tenant-aware)
+     */
+    static getTicketConfigurations(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get team members by project or role (tenant-aware)
+     */
+    static getTeamMembers(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get release plans by project (tenant-aware)
+     */
+    static getReleasePlansByProject(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get workflow templates by project (tenant-aware)
+     */
+    static getWorkflowTemplates(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Update project workflow template (tenant-aware)
+     */
+    static updateWorkflowTemplate(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get parent tickets for linking (tenant-aware)
+     */
+    static getParentTickets(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get system statistics for dashboard (tenant-aware)
+     */
+    static getSystemStats(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get tenant settings (tenant-aware)
+     */
+    static getTenantSettings(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Update tenant settings (admin only - tenant-aware)
+     */
+    static updateTenantSettings(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Search across entities (tenant-aware)
+     */
+    static globalSearch(req: AuthRequest, res: Response): Promise<void>;
+}
+export default SettingsController;

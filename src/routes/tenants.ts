@@ -1,0 +1,103 @@
+import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
+import { TenantController } from '@/controllers/tenantController';
+import { resolveTenant, optionalTenantContext } from '@/middleware/tenantContext';
+import { authenticateToken, requireSuperAdmin, requireAdmin } from '@/middleware/auth';
+
+const router = Router();
+
+// Rate limiting for tenant operations
+const tenantRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // 20 requests per window
+  message: {
+    success: false,
+    error: 'Too many tenant requests, please try again later.',
+    code: 'RATE_LIMIT_EXCEEDED',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Strict rate limiting for tenant registration (public endpoint)
+const registrationRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 3, // Only 3 registration attempts per hour per IP
+  message: {
+    success: false,
+    error: 'Too many registration attempts. Please try again later.',
+    code: 'REGISTRATION_RATE_LIMIT_EXCEEDED',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// ==========================================
+// PUBLIC ENDPOINTS (No authentication required)
+// ==========================================
+
+/**
+ * POST /api/tenants/register
+ * Register a new tenant with admin user
+ * Public endpoint for tenant self-registration
+ */
+router.post('/register', registrationRateLimit, TenantController.register);
+
+/**
+ * GET /api/tenants/resolve?subdomain=example
+ * Resolve tenant by subdomain - returns tenant UUID
+ * Public endpoint for frontend tenant detection
+ */
+router.get('/resolve', tenantRateLimit, TenantController.resolve);
+
+/**
+ * GET /api/tenants/check-subdomain?subdomain=example
+ * Check if subdomain is available for registration
+ * Public endpoint for registration validation
+ */
+router.get('/check-subdomain', tenantRateLimit, TenantController.checkSubdomainAvailability);
+
+// ==========================================
+// TENANT-AWARE ENDPOINTS (Require tenant context)
+// ==========================================
+
+/**
+ * GET /api/tenants/profile
+ * Get current tenant profile and statistics
+ * Requires tenant context and authentication
+ */
+router.get('/profile', tenantRateLimit, resolveTenant, authenticateToken, TenantController.getProfile);
+
+/**
+ * PUT /api/tenants/profile
+ * Update current tenant profile
+ * Requires tenant context, authentication, and admin role
+ */
+router.put('/profile', tenantRateLimit, resolveTenant, authenticateToken, requireAdmin, TenantController.updateProfile);
+
+/**
+ * GET /api/tenants/statistics
+ * Get detailed tenant statistics
+ * Requires tenant context, authentication, and admin role
+ */
+router.get('/statistics', tenantRateLimit, resolveTenant, authenticateToken, requireAdmin, TenantController.getStatistics);
+
+// ==========================================
+// SUPER ADMIN ENDPOINTS (Require super admin access)
+// ==========================================
+
+/**
+ * POST /api/tenants/:tenantId/deactivate
+ * Deactivate a tenant (suspend account)
+ * Requires super admin access
+ */
+router.post('/:tenantId/deactivate', tenantRateLimit, authenticateToken, requireSuperAdmin, TenantController.deactivate);
+
+/**
+ * POST /api/tenants/:tenantId/activate
+ * Activate a tenant (restore account)
+ * Requires super admin access
+ */
+router.post('/:tenantId/activate', tenantRateLimit, authenticateToken, requireSuperAdmin, TenantController.activate);
+
+export default router;

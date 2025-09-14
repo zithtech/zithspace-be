@@ -1,0 +1,42 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "allowJs": true,
+    "outDir": "./dist",
+    "rootDir": "./src",
+
+    /* Relaxed rules */
+    "strict": false,              // disables strict mode (no more nagging)
+    "noImplicitAny": false,       // allows untyped params/vars
+    "strictNullChecks": false,    // allows null/undefined without checks
+    "skipLibCheck": true,         // ignore type errors in node_modules
+    "forceConsistentCasingInFileNames": true,
+
+    /* Keep useful stuff */
+    "declaration": true,          // generate .d.ts files (optional but useful)
+    "sourceMap": true,            // helpful for debugging
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
+  },
+  "include": [
+    "src/**/*",
+    "prisma/seed.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ],
+  "ts-node": {
+    "require": ["tsconfig-paths/register"]
+  }
+}

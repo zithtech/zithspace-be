@@ -1,0 +1,94 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const releasePlansController_1 = require("@/controllers/releasePlansController");
+const auth_1 = require("@/middleware/auth");
+const tenantContext_1 = require("@/middleware/tenantContext");
+const router = (0, express_1.Router)();
+// Apply tenant context resolution to all routes
+router.use(tenantContext_1.resolveTenant);
+// Apply authentication to all routes
+router.use(auth_1.authenticateToken);
+router.use(auth_1.requireAuth);
+/**
+ * @route   GET /api/release-plans/active
+ * @desc    Get active release plans (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ */
+router.get('/active', releasePlansController_1.ReleasePlansController.getActiveReleasePlans);
+/**
+ * @route   GET /api/release-plans/stats
+ * @desc    Get release plan statistics (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ */
+router.get('/stats', releasePlansController_1.ReleasePlansController.getReleasePlanStats);
+/**
+ * @route   GET /api/release-plans/projects/:projectId
+ * @desc    Get release plans by project (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   projectId - Project ID
+ */
+router.get('/projects/:projectId', releasePlansController_1.ReleasePlansController.getReleasePlansByProject);
+/**
+ * @route   GET /api/release-plans/:id/available-tickets/:projectId
+ * @desc    Get tickets available for assignment to release plan (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   id - Release plan ID
+ * @param   projectId - Project ID
+ * @query   search, limit, excludeReleasePlan
+ */
+router.get('/:id/available-tickets/:projectId', releasePlansController_1.ReleasePlansController.getAvailableTickets);
+/**
+ * @route   GET /api/release-plans
+ * @desc    Get all release plans with filtering and pagination (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @query   page, limit, projectId, status, search, sortBy, sortOrder
+ */
+router.get('/', releasePlansController_1.ReleasePlansController.getReleasePlans);
+/**
+ * @route   GET /api/release-plans/:id
+ * @desc    Get release plan by ID (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   id - Release plan ID
+ */
+router.get('/:id', releasePlansController_1.ReleasePlansController.getReleasePlanById);
+/**
+ * @route   POST /api/release-plans
+ * @desc    Create new release plan (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @body    { version, description, projectId, releaseDate?, status? }
+ */
+router.post('/', releasePlansController_1.ReleasePlansController.createReleasePlan);
+/**
+ * @route   PUT /api/release-plans/:id
+ * @desc    Update release plan (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   id - Release plan ID
+ * @body    Partial release plan data
+ */
+router.put('/:id', releasePlansController_1.ReleasePlansController.updateReleasePlan);
+/**
+ * @route   DELETE /api/release-plans/:id
+ * @desc    Delete release plan (tenant-aware)
+ * @access  Private (admin only)
+ * @param   id - Release plan ID
+ */
+router.delete('/:id', auth_1.requireAdmin, releasePlansController_1.ReleasePlansController.deleteReleasePlan);
+/**
+ * @route   POST /api/release-plans/:id/tickets/assign
+ * @desc    Assign tickets to release plan (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   id - Release plan ID
+ * @body    { ticketIds: string[] }
+ */
+router.post('/:id/tickets/assign', releasePlansController_1.ReleasePlansController.assignTicketsToReleasePlan);
+/**
+ * @route   POST /api/release-plans/:id/tickets/remove
+ * @desc    Remove tickets from release plan (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   id - Release plan ID
+ * @body    { ticketIds: string[] }
+ */
+router.post('/:id/tickets/remove', releasePlansController_1.ReleasePlansController.removeTicketsFromReleasePlan);
+exports.default = router;
+//# sourceMappingURL=releasePlans.js.map

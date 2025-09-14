@@ -1,0 +1,333 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// TENANT MANAGEMENT
+// ==========================================
+
+model Tenant {
+  id          String   @id @default(uuid())
+  name        String
+  subdomain   String   @unique
+  planType    String   @default("basic") @map("plan_type")
+  maxUsers    Int      @default(10) @map("max_users")
+  isActive    Boolean  @default(true) @map("is_active")
+  settings    Json?    @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  users         User[]
+  projects      Project[]
+  clients       Client[]
+  tickets       Ticket[]
+  releasePlans  ReleasePlan[]
+  shifts        Shift[]
+  transactions  Transaction[]
+  attendance    Attendance[]
+  dropdownOptions DropdownOption[]
+
+  @@map("tenants")
+}
+
+// ==========================================
+// USER MANAGEMENT
+// ==========================================
+
+model User {
+  id            String    @id @default(uuid())
+  tenantId      String    @map("tenant_id")
+  name          String
+  workEmail     String    @map("work_email")
+  personalEmail String    @map("personal_email")
+  phone         String
+  passwordHash  String    @map("password_hash")
+  role          String    @default("user")
+  position      String
+  reportsToId   String?   @map("reports_to_id")
+  dateOfBirth   DateTime? @map("date_of_birth")
+  workDays      Int[]     @default([1, 2, 3, 4, 5]) @map("work_days")
+  assignedShiftId String? @map("assigned_shift_id")
+  shiftAssignedById String? @map("shift_assigned_by_id")
+  shiftAssignedDate DateTime? @map("shift_assigned_date")
+  isActive      Boolean   @default(true) @map("is_active")
+  lastLoginAt   DateTime? @map("last_login_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  reportsTo     User?     @relation("UserHierarchy", fields: [reportsToId], references: [id])
+  subordinates  User[]    @relation("UserHierarchy")
+  assignedShift Shift?    @relation("UserShift", fields: [assignedShiftId], references: [id])
+  shiftAssignedBy User?   @relation("ShiftAssigner", fields: [shiftAssignedById], references: [id])
+  assignedShifts User[]   @relation("ShiftAssigner")
+
+  // Project relations
+  managedProjects Project[] @relation("ProjectManager")
+  projectMemberships ProjectMember[]
+  createdProjects Project[] @relation("ProjectCreator")
+
+  // Ticket relations
+  createdTickets Ticket[] @relation("TicketCreator")
+  assignedTickets Ticket[] @relation("TicketAssignee")
+
+  // Other relations
+  createdClients Client[] @relation("ClientCreator")
+  refreshTokens RefreshToken[]
+  attendance    Attendance[]
+  transactions  Transaction[]
+  createdReleasePlans ReleasePlan[] @relation("ReleasePlanCreator")
+
+  @@unique([tenantId, workEmail])
+  @@unique([tenantId, personalEmail])
+  @@unique([tenantId, phone])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String   @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+// ==========================================
+// PROJECT MANAGEMENT
+// ==========================================
+
+model Project {
+  id                String    @id @default(uuid())
+  tenantId          String    @map("tenant_id")
+  name              String
+  code              String?   @unique
+  description       String
+  status            String    @default("active")
+  startDate         DateTime  @map("start_date")
+  endDate           DateTime? @map("end_date")
+  projectManagerId  String    @map("project_manager_id")
+  repositories      Json?     @default("[]")
+  workflowTemplate  String[]  @map("workflow_template")
+  defaultPriority   String    @default("medium") @map("default_priority")
+  totalTickets      Int       @default(0) @map("total_tickets")
+  completedTickets  Int       @default(0) @map("completed_tickets")
+  inProgressTickets Int       @default(0) @map("in_progress_tickets")
+  createdById       String    @map("created_by_id")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  projectManager  User            @relation("ProjectManager", fields: [projectManagerId], references: [id])
+  createdBy       User            @relation("ProjectCreator", fields: [createdById], references: [id])
+  members         ProjectMember[]
+  tickets         Ticket[]
+  releasePlans    ReleasePlan[]
+
+  @@unique([tenantId, code])
+  @@map("projects")
+}
+
+model ProjectMember {
+  id        String   @id @default(uuid())
+  projectId String   @map("project_id")
+  userId    String   @map("user_id")
+  role      String   @default("member")
+  joinedAt  DateTime @default(now()) @map("joined_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@map("project_members")
+}
+
+// ==========================================
+// TICKET MANAGEMENT
+// ==========================================
+
+model Ticket {
+  id            String    @id @default(uuid())
+  tenantId      String    @map("tenant_id")
+  projectId     String    @map("project_id")
+  releasePlanId String?   @map("release_plan_id")
+  title         String
+  description   String?
+  ticketNumber  String    @map("ticket_number")
+  status        String    @default("open")
+  priority      String    @default("medium")
+  type          String    @default("task")
+  assigneeId    String?   @map("assignee_id")
+  createdById   String    @map("created_by_id")
+  dueDate       DateTime? @map("due_date")
+  completedAt   DateTime? @map("completed_at")
+  tags          String[]  @default([])
+  metadata      Json?     @default("{}")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee    User?        @relation("TicketAssignee", fields: [assigneeId], references: [id])
+  createdBy   User         @relation("TicketCreator", fields: [createdById], references: [id])
+  releasePlan ReleasePlan? @relation("TicketReleasePlan", fields: [releasePlanId], references: [id])
+
+  @@unique([tenantId, ticketNumber])
+  @@map("tickets")
+}
+
+// ==========================================
+// CLIENT MANAGEMENT
+// ==========================================
+
+model Client {
+  id             String   @id @default(uuid())
+  tenantId       String   @map("tenant_id")
+  name           String
+  email          String?
+  phone          String?
+  company        String?
+  address        String?
+  contactPerson  String?  @map("contact_person")
+  isActive       Boolean  @default(true) @map("is_active")
+  notes          String?
+  createdById    String   @map("created_by_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User   @relation("ClientCreator", fields: [createdById], references: [id])
+
+  @@unique([tenantId, email])
+  @@map("clients")
+}
+
+// ==========================================
+// RELEASE PLANNING
+// ==========================================
+
+model ReleasePlan {
+  id          String    @id @default(uuid())
+  tenantId    String    @map("tenant_id")
+  projectId   String    @map("project_id")
+  version     String
+  description String?
+  status      String    @default("planned")
+  releaseDate DateTime? @map("release_date")
+  createdById String    @map("created_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User     @relation("ReleasePlanCreator", fields: [createdById], references: [id])
+  tickets   Ticket[] @relation("TicketReleasePlan")
+
+  @@unique([tenantId, projectId, version])
+  @@map("release_plans")
+}
+
+// ==========================================
+// WORKFORCE MANAGEMENT
+// ==========================================
+
+model Shift {
+  id        String    @id @default(uuid())
+  tenantId  String    @map("tenant_id")
+  name      String
+  startTime String    @map("start_time") // HH:mm format
+  endTime   String    @map("end_time")   // HH:mm format
+  isActive  Boolean   @default(true) @map("is_active")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users  User[] @relation("UserShift")
+
+  @@unique([tenantId, name])
+  @@map("shifts")
+}
+
+model Attendance {
+  id        String    @id @default(uuid())
+  tenantId  String    @map("tenant_id")
+  userId    String    @map("user_id")
+  date      DateTime
+  checkIn   DateTime? @map("check_in")
+  checkOut  DateTime? @map("check_out")
+  status    String    @default("present")
+  notes     String?
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId, date])
+  @@map("attendance")
+}
+
+// ==========================================
+// FINANCIAL TRACKING
+// ==========================================
+
+model Transaction {
+  id          String    @id @default(uuid())
+  tenantId    String    @map("tenant_id")
+  userId      String    @map("user_id")
+  type        String    // 'income', 'expense', 'bonus', 'deduction'
+  amount      Decimal   @db.Decimal(10, 2)
+  description String
+  category    String?
+  date        DateTime
+  metadata    Json?     @default("{}")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("transactions")
+}
+
+// ==========================================
+// SYSTEM CONFIGURATION
+// ==========================================
+
+model DropdownOption {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  category  String   // 'ticket_status', 'ticket_priority', 'project_status', etc.
+  value     String
+  label     String
+  order     Int      @default(0)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, category, value])
+  @@map("dropdown_options")
+}

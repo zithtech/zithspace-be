@@ -1,0 +1,42 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const userController_1 = require("@/controllers/userController");
+const auth_1 = require("@/middleware/auth");
+const tenantContext_1 = require("@/middleware/tenantContext");
+const router = (0, express_1.Router)();
+// Apply tenant context resolution to all routes
+router.use(tenantContext_1.resolveTenant);
+// Apply authentication to all routes
+router.use(auth_1.authenticateToken);
+router.use(auth_1.requireAuth);
+/**
+ * @route   GET /api/user/profile
+ * @desc    Get user profile (current user - tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ */
+router.get('/profile', userController_1.UserController.getUserProfile);
+/**
+ * @route   PUT /api/user/profile
+ * @desc    Update user profile (current user - tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @body    Partial user profile data
+ */
+router.put('/profile', userController_1.UserController.updateUserProfile);
+/**
+ * @route   POST /api/user/change-password
+ * @desc    Change password (current user - tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @body    ChangePasswordData
+ */
+router.post('/change-password', userController_1.UserController.changePassword);
+/**
+ * @route   POST /api/user/reset-password/:userId
+ * @desc    Reset user password (admin only - tenant-aware)
+ * @access  Private (admin only)
+ * @param   userId - User ID
+ * @body    { newPassword }
+ */
+router.post('/reset-password/:userId', auth_1.requireAdmin, userController_1.UserController.resetUserPassword);
+exports.default = router;
+//# sourceMappingURL=user.js.map
