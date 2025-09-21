@@ -18,28 +18,29 @@ class TenantController {
             if (!tenantData.name || !tenantData.subdomain || !tenantData.adminUser) {
                 res.status(400).json({
                     success: false,
-                    error: 'Tenant name, subdomain, and admin user information are required',
+                    error: "Tenant name, subdomain, and admin user information are required",
                 });
                 return;
             }
             const rawClient = database_1.tenantAwarePrisma.getRawClient();
             // Check if subdomain is already taken
             const existingTenant = await rawClient.tenant.findUnique({
-                where: { subdomain: tenantData.subdomain.toLowerCase() }
+                where: { subdomain: tenantData.subdomain.toLowerCase() },
             });
             if (existingTenant) {
                 res.status(409).json({
                     success: false,
-                    error: 'Subdomain is already taken',
+                    error: "Subdomain is already taken",
                 });
                 return;
             }
             // Validate subdomain format
             const subdomainRegex = /^[a-z0-9][a-z0-9-]*[a-z0-9]$/;
-            if (!subdomainRegex.test(tenantData.subdomain) || tenantData.subdomain.length < 3) {
+            if (!subdomainRegex.test(tenantData.subdomain) ||
+                tenantData.subdomain.length < 3) {
                 res.status(400).json({
                     success: false,
-                    error: 'Invalid subdomain format. Must be lowercase, alphanumeric with hyphens, minimum 3 characters',
+                    error: "Invalid subdomain format. Must be lowercase, alphanumeric with hyphens, minimum 3 characters",
                 });
                 return;
             }
@@ -52,10 +53,10 @@ class TenantController {
                     data: {
                         name: tenantData.name,
                         subdomain: tenantData.subdomain.toLowerCase(),
-                        planType: tenantData.planType || 'basic',
+                        planType: tenantData.planType || "basic",
                         maxUsers: tenantData.maxUsers || 10,
                         settings: tenantData.settings || {},
-                    }
+                    },
                 });
                 // Create admin user
                 const adminUser = await tx.user.create({
@@ -66,10 +67,10 @@ class TenantController {
                         personalEmail: tenantData.adminUser.email.toLowerCase(),
                         phone: tenantData.adminUser.phone,
                         passwordHash,
-                        role: 'admin',
-                        position: 'Administrator',
+                        role: "admin",
+                        position: "Administrator",
                         workDays: [1, 2, 3, 4, 5], // Monday to Friday
-                    }
+                    },
                 });
                 return { tenant, adminUser };
             });
@@ -86,23 +87,23 @@ class TenantController {
                         id: result.adminUser.id,
                         name: result.adminUser.name,
                         email: result.adminUser.workEmail,
-                    }
+                    },
                 },
-                message: 'Tenant registered successfully',
+                message: "Tenant registered successfully",
             });
         }
         catch (error) {
-            console.error('Tenant registration error:', error);
-            if (error.code === 'P2002') {
+            console.error("Tenant registration error:", error);
+            if (error.code === "P2002") {
                 res.status(409).json({
                     success: false,
-                    error: 'Subdomain or email already exists',
+                    error: "Subdomain or email already exists",
                 });
                 return;
             }
             res.status(500).json({
                 success: false,
-                error: 'Failed to register tenant',
+                error: "Failed to register tenant",
             });
         }
     }
@@ -112,10 +113,10 @@ class TenantController {
     static async resolve(req, res) {
         try {
             const { subdomain } = req.query;
-            if (!subdomain || typeof subdomain !== 'string') {
+            if (!subdomain || typeof subdomain !== "string") {
                 res.status(400).json({
                     success: false,
-                    error: 'Subdomain parameter is required',
+                    error: "Subdomain parameter is required",
                 });
                 return;
             }
@@ -131,12 +132,13 @@ class TenantController {
                     subdomain: true,
                     planType: true,
                     isActive: true,
-                }
+                },
             });
+            console.log("resolve", tenant);
             if (!tenant) {
                 res.status(404).json({
                     success: false,
-                    error: 'Tenant not found',
+                    error: "Tenant not found",
                 });
                 return;
             }
@@ -149,15 +151,15 @@ class TenantController {
                         subdomain: tenant.subdomain,
                         planType: tenant.planType,
                         isActive: tenant.isActive,
-                    }
+                    },
                 },
             });
         }
         catch (error) {
-            console.error('Tenant resolution error:', error);
+            console.error("Tenant resolution error:", error);
             res.status(500).json({
                 success: false,
-                error: 'Failed to resolve tenant',
+                error: "Failed to resolve tenant",
             });
         }
     }
@@ -169,7 +171,7 @@ class TenantController {
             if (!req.tenantId || !req.tenant) {
                 res.status(400).json({
                     success: false,
-                    error: 'Tenant context is required',
+                    error: "Tenant context is required",
                 });
                 return;
             }
@@ -181,12 +183,12 @@ class TenantController {
                         select: {
                             users: { where: { isActive: true } },
                             projects: true,
-                        }
-                    }
-                }
+                        },
+                    },
+                },
             });
             if (!tenant) {
-                throw new types_1.NotFoundError('Tenant not found');
+                throw new types_1.NotFoundError("Tenant not found");
             }
             res.status(200).json({
                 success: true,
@@ -208,10 +210,10 @@ class TenantController {
             });
         }
         catch (error) {
-            console.error('Get tenant profile error:', error);
+            console.error("Get tenant profile error:", error);
             res.status(500).json({
                 success: false,
-                error: 'Failed to get tenant profile',
+                error: "Failed to get tenant profile",
             });
         }
     }
@@ -223,15 +225,15 @@ class TenantController {
             if (!req.tenantId || !req.user) {
                 res.status(400).json({
                     success: false,
-                    error: 'Tenant context and authentication required',
+                    error: "Tenant context and authentication required",
                 });
                 return;
             }
             // Check if user is admin
-            if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
+            if (req.user.role !== "admin" && req.user.role !== "super_admin") {
                 res.status(403).json({
                     success: false,
-                    error: 'admin access required',
+                    error: "admin access required",
                 });
                 return;
             }
@@ -257,14 +259,14 @@ class TenantController {
                     isActive: updatedTenant.isActive,
                     settings: updatedTenant.settings,
                 },
-                message: 'Tenant profile updated successfully',
+                message: "Tenant profile updated successfully",
             });
         }
         catch (error) {
-            console.error('Update tenant profile error:', error);
+            console.error("Update tenant profile error:", error);
             res.status(500).json({
                 success: false,
-                error: 'Failed to update tenant profile',
+                error: "Failed to update tenant profile",
             });
         }
     }
@@ -276,18 +278,24 @@ class TenantController {
             if (!req.tenantId || !req.user) {
                 res.status(400).json({
                     success: false,
-                    error: 'Tenant context and authentication required',
+                    error: "Tenant context and authentication required",
                 });
                 return;
             }
             const stats = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
                 const [totalUsers, activeUsers, totalProjects, activeProjects, totalTickets, openTickets,] = await Promise.all([
                     client.user.count({ where: { tenantId: req.tenantId } }),
-                    client.user.count({ where: { tenantId: req.tenantId, isActive: true } }),
+                    client.user.count({
+                        where: { tenantId: req.tenantId, isActive: true },
+                    }),
                     client.project.count({ where: { tenantId: req.tenantId } }),
-                    client.project.count({ where: { tenantId: req.tenantId, status: 'active' } }),
+                    client.project.count({
+                        where: { tenantId: req.tenantId, status: "active" },
+                    }),
                     client.ticket.count({ where: { tenantId: req.tenantId } }),
-                    client.ticket.count({ where: { tenantId: req.tenantId, status: 'open' } }),
+                    client.ticket.count({
+                        where: { tenantId: req.tenantId, status: "open" },
+                    }),
                 ]);
                 return {
                     users: { total: totalUsers, active: activeUsers },
@@ -301,10 +309,10 @@ class TenantController {
             });
         }
         catch (error) {
-            console.error('Get tenant statistics error:', error);
+            console.error("Get tenant statistics error:", error);
             res.status(500).json({
                 success: false,
-                error: 'Failed to get tenant statistics',
+                error: "Failed to get tenant statistics",
             });
         }
     }
@@ -314,10 +322,10 @@ class TenantController {
     static async checkSubdomainAvailability(req, res) {
         try {
             const { subdomain } = req.query;
-            if (!subdomain || typeof subdomain !== 'string') {
+            if (!subdomain || typeof subdomain !== "string") {
                 res.status(400).json({
                     success: false,
-                    error: 'Subdomain parameter is required',
+                    error: "Subdomain parameter is required",
                 });
                 return;
             }
@@ -326,24 +334,32 @@ class TenantController {
             if (!subdomainRegex.test(subdomain) || subdomain.length < 3) {
                 res.status(400).json({
                     success: false,
-                    error: 'Invalid subdomain format',
-                    data: { available: false, reason: 'Invalid format' }
+                    error: "Invalid subdomain format",
+                    data: { available: false, reason: "Invalid format" },
                 });
                 return;
             }
             // Check reserved subdomains
-            const reservedSubdomains = ['www', 'api', 'admin', 'app', 'mail', 'ftp', 'cdn'];
+            const reservedSubdomains = [
+                "www",
+                "api",
+                "admin",
+                "app",
+                "mail",
+                "ftp",
+                "cdn",
+            ];
             if (reservedSubdomains.includes(subdomain.toLowerCase())) {
                 res.status(400).json({
                     success: false,
-                    error: 'Subdomain is reserved',
-                    data: { available: false, reason: 'Reserved subdomain' }
+                    error: "Subdomain is reserved",
+                    data: { available: false, reason: "Reserved subdomain" },
                 });
                 return;
             }
             const rawClient = database_1.tenantAwarePrisma.getRawClient();
             const existingTenant = await rawClient.tenant.findUnique({
-                where: { subdomain: subdomain.toLowerCase() }
+                where: { subdomain: subdomain.toLowerCase() },
             });
             res.status(200).json({
                 success: true,
@@ -354,10 +370,10 @@ class TenantController {
             });
         }
         catch (error) {
-            console.error('Check subdomain availability error:', error);
+            console.error("Check subdomain availability error:", error);
             res.status(500).json({
                 success: false,
-                error: 'Failed to check subdomain availability',
+                error: "Failed to check subdomain availability",
             });
         }
     }
@@ -366,10 +382,10 @@ class TenantController {
      */
     static async deactivate(req, res) {
         try {
-            if (!req.user || req.user.role !== 'super_admin') {
+            if (!req.user || req.user.role !== "super_admin") {
                 res.status(403).json({
                     success: false,
-                    error: 'super_admin access required',
+                    error: "super_admin access required",
                 });
                 return;
             }
@@ -377,7 +393,7 @@ class TenantController {
             if (!tenantId) {
                 res.status(400).json({
                     success: false,
-                    error: 'Tenant ID is required',
+                    error: "Tenant ID is required",
                 });
                 return;
             }
@@ -394,14 +410,14 @@ class TenantController {
                     subdomain: updatedTenant.subdomain,
                     isActive: updatedTenant.isActive,
                 },
-                message: 'Tenant deactivated successfully',
+                message: "Tenant deactivated successfully",
             });
         }
         catch (error) {
-            console.error('Deactivate tenant error:', error);
+            console.error("Deactivate tenant error:", error);
             res.status(500).json({
                 success: false,
-                error: 'Failed to deactivate tenant',
+                error: "Failed to deactivate tenant",
             });
         }
     }
@@ -410,10 +426,10 @@ class TenantController {
      */
     static async activate(req, res) {
         try {
-            if (!req.user || req.user.role !== 'super_admin') {
+            if (!req.user || req.user.role !== "super_admin") {
                 res.status(403).json({
                     success: false,
-                    error: 'super_admin access required',
+                    error: "super_admin access required",
                 });
                 return;
             }
@@ -421,7 +437,7 @@ class TenantController {
             if (!tenantId) {
                 res.status(400).json({
                     success: false,
-                    error: 'Tenant ID is required',
+                    error: "Tenant ID is required",
                 });
                 return;
             }
@@ -438,14 +454,14 @@ class TenantController {
                     subdomain: updatedTenant.subdomain,
                     isActive: updatedTenant.isActive,
                 },
-                message: 'Tenant activated successfully',
+                message: "Tenant activated successfully",
             });
         }
         catch (error) {
-            console.error('Activate tenant error:', error);
+            console.error("Activate tenant error:", error);
             res.status(500).json({
                 success: false,
-                error: 'Failed to activate tenant',
+                error: "Failed to activate tenant",
             });
         }
     }

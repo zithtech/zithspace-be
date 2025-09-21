@@ -49,6 +49,7 @@ const resolveTenant = async (req, res, next) => {
         req.tenant = tenant;
         // Set PostgreSQL session variable for Row Level Security
         await database_1.tenantAwarePrisma.setTenantContext(tenant.id);
+        console.log({ tenantIdentifier, tenant });
         next();
     }
     catch (error) {
@@ -112,12 +113,14 @@ const optionalTenantContext = async (req, res, next) => {
         }
         if (tenantIdentifier) {
             const tenant = await findTenant(tenantIdentifier);
+            console.log("optional", { tenant });
             if (tenant && tenant.isActive) {
                 req.tenantId = tenant.id;
                 req.tenant = tenant;
                 await database_1.tenantAwarePrisma.setTenantContext(tenant.id);
             }
         }
+        console.log("optional", { tenantIdentifier });
         next();
     }
     catch (error) {

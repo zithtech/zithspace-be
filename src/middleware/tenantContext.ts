@@ -142,6 +142,7 @@ export const optionalTenantContext = async (
 
     if (tenantIdentifier) {
       const tenant = await findTenant(tenantIdentifier);
+console.log("optional",{tenant})
       
       if (tenant && tenant.isActive) {
         req.tenantId = tenant.id;
@@ -149,7 +150,7 @@ export const optionalTenantContext = async (
         await tenantAwarePrisma.setTenantContext(tenant.id);
       }
     }
-console.log("optional",{})
+console.log("optional",{tenantIdentifier})
     next();
   } catch (error) {
     // Log error but don't fail the request
