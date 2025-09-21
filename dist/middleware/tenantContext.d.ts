@@ -1,5 +1,5 @@
-import { Response, NextFunction } from 'express';
-import { AuthRequest } from '@/types';
+import { Response, NextFunction } from "express";
+import { AuthRequest } from "@/types";
 /**
  * Middleware to resolve tenant context from various sources
  */
