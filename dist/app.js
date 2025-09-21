@@ -6,7 +6,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 require("module-alias/register");
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
-const helmet_1 = __importDefault(require("helmet"));
 const morgan_1 = __importDefault(require("morgan"));
 const compression_1 = __importDefault(require("compression"));
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
@@ -35,35 +34,9 @@ dotenv_1.default.config();
 const app = (0, express_1.default)();
 // Connect to PostgreSQL
 (0, database_1.connectDatabase)().catch(console.error);
-// Security middleware
-app.use((0, helmet_1.default)({
-    crossOriginResourcePolicy: { policy: "cross-origin" },
-    contentSecurityPolicy: {
-        directives: {
-            defaultSrc: ["'self'"],
-            styleSrc: ["'self'", "'unsafe-inline'"],
-            scriptSrc: ["'self'"],
-            imgSrc: ["'self'", "data:", "https:"],
-        },
-    },
-}));
-// CORS configuration
-const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [
-    'http://localhost:3000',
-    'https://z-internal-app.vercel.app',
-    ' https://zithmi.zithtech.com'
-];
 app.use((0, cors_1.default)({
     origin: "*",
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: [
-        'Content-Type',
-        'Authorization',
-        'X-Requested-With',
-        'X-Tenant-ID',
-        'X-Tenant-Subdomain'
-    ],
 }));
 // Body parsing middleware
 app.use(express_1.default.json({ limit: '10mb' }));
