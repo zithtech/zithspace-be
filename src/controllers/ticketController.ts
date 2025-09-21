@@ -625,50 +625,257 @@ export class TicketController {
   }
 
   /**
+   * Get workflow steps for a ticket (tenant-aware)
+   */
+  static async getWorkflowSteps(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: 'Tenant context and authentication required',
+        } as ApiResponse);
+        return;
+      }
+
+      const { id } = req.params;
+
+      const workflowSteps = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+        // Verify ticket exists and belongs to tenant
+        const ticket = await client.ticket.findFirst({
+          where: {
+            id,
+            tenantId: req.tenantId,
+          }
+        });
+
+        if (!ticket) {
+          throw new NotFoundError('Ticket not found');
+        }
+
+        return await client.ticketWorkflowStep.findMany({
+          where: {
+            ticketId: id,
+            tenantId: req.tenantId,
+          },
+          orderBy: { createdAt: 'asc' },
+        });
+      });
+
+      res.status(200).json({
+        success: true,
+        data: workflowSteps,
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error('Get workflow steps error:', error);
+      
+      if (error instanceof NotFoundError) {
+        res.status(404).json({
+          success: false,
+          error: error.message
+        } as ApiResponse);
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch workflow steps',
+      } as ApiResponse);
+    }
+  }
+
+  /**
    * Update workflow step (tenant-aware)
    */
   static async updateWorkflowStep(req: AuthRequest, res: Response): Promise<void> {
     try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: 'Tenant context and authentication required',
+        } as ApiResponse);
+        return;
+      }
+
       const { id } = req.params;
       const { stepName, updates } = req.body;
 
-      const ticket = await tenantAwarePrisma.withTenant(req.tenantId!, async (client) => {
-        const existingTicket = await client.ticket.findFirst({
+      if (!stepName || !updates) {
+        res.status(400).json({
+          success: false,
+          error: 'Step name and updates are required',
+        } as ApiResponse);
+        return;
+      }
+
+      const result = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+        // Verify ticket exists and belongs to tenant
+        const ticket = await client.ticket.findFirst({
           where: {
             id,
             tenantId: req.tenantId,
           },
         });
 
-        if (!existingTicket) {
+        if (!ticket) {
           throw new NotFoundError('Ticket not found');
         }
 
-        return await client.ticket.update({
-          where: { id },
+        // Find or create workflow step
+        let workflowStep = await client.ticketWorkflowStep.findFirst({
+          where: {
+            ticketId: id,
+            stepName,
+            tenantId: req.tenantId,
+          },
+        });
+
+        if (!workflowStep) {
+          // Create new workflow step
+          workflowStep = await client.ticketWorkflowStep.create({
+            data: {
+              ticketId: id,
+              tenantId: req.tenantId,
+              stepName,
+              status: updates.status || 'not_started',
+              assignedTo: updates.assignedTo || [],
+              approvers: updates.approvers || [],
+              approvalStatus: updates.approvalStatus || [],
+              documents: updates.documents || [],
+              notes: updates.notes,
+              startDate: updates.startDate ? new Date(updates.startDate) : null,
+              endDate: updates.endDate ? new Date(updates.endDate) : null,
+              completedAt: updates.status === 'completed' ? new Date() : null,
+              scheduledMeeting: updates.scheduledMeeting || null,
+              branchName: updates.branchName,
+              testResults: updates.testResults || [],
+            },
+          });
+        } else {
+          // Update existing workflow step
+          workflowStep = await client.ticketWorkflowStep.update({
+            where: { id: workflowStep.id },
+            data: {
+              ...updates,
+              completedAt: updates.status === 'completed' ? new Date() : workflowStep.completedAt,
+              updatedAt: new Date(),
+            },
+          });
+        }
+
+        // Log activity
+        await client.ticketActivityLog.create({
           data: {
-            ...updates,
-            updatedAt: new Date(),
+            ticketId: id,
+            tenantId: req.tenantId,
+            action: `Workflow Step Updated: ${stepName}`,
+            performedById: req.user!.id,
+            details: updates,
+          },
+        });
+
+        // Update ticket's current workflow step if needed
+        if (updates.status === 'completed') {
+          await client.ticket.update({
+            where: { id },
+            data: {
+              currentWorkflowStep: stepName,
+              updatedAt: new Date(),
+            },
+          });
+        }
+
+        return workflowStep;
+      });
+
+      res.status(200).json({
+        success: true,
+        data: result,
+        message: 'Workflow step updated successfully',
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error('Update workflow step error:', error);
+      
+      if (error instanceof NotFoundError) {
+        res.status(404).json({
+          success: false,
+          error: error.message
+        } as ApiResponse);
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        error: 'Failed to update workflow step',
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Get comments for a ticket (tenant-aware)
+   */
+  static async getComments(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: 'Tenant context and authentication required',
+        } as ApiResponse);
+        return;
+      }
+
+      const { id } = req.params;
+
+      const comments = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+        // Verify ticket exists and belongs to tenant
+        const ticket = await client.ticket.findFirst({
+          where: {
+            id,
+            tenantId: req.tenantId,
+          }
+        });
+
+        if (!ticket) {
+          throw new NotFoundError('Ticket not found');
+        }
+
+        return await client.ticketComment.findMany({
+          where: {
+            ticketId: id,
+            tenantId: req.tenantId,
           },
           include: {
-            project: { select: { id: true, name: true, code: true } },
-            assignee: { select: { id: true, name: true, workEmail: true } },
-            createdBy: { select: { id: true, name: true, workEmail: true } },
+            user: {
+              select: {
+                id: true,
+                name: true,
+                workEmail: true,
+                position: true,
+              }
+            }
           },
+          orderBy: { timestamp: 'asc' },
         });
       });
 
       res.status(200).json({
         success: true,
-        data: ticket,
-        message: 'Workflow step updated successfully',
-      });
-    } catch (error) {
-      console.error('Update workflow step error:', error);
+        data: comments,
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error('Get comments error:', error);
+      
+      if (error instanceof NotFoundError) {
+        res.status(404).json({
+          success: false,
+          error: error.message
+        } as ApiResponse);
+        return;
+      }
+
       res.status(500).json({
         success: false,
-        error: 'Failed to update workflow step',
-      });
+        error: 'Failed to fetch comments',
+      } as ApiResponse);
     }
   }
 
@@ -677,48 +884,93 @@ export class TicketController {
    */
   static async addComment(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const { id } = req.params;
-      const { comment, attachments } = req.body;
-
-      const ticket = await tenantAwarePrisma.withTenant(req.tenantId!, async (client) => {
-        return await client.ticket.findFirst({
-          where: {
-            id,
-            tenantId: req.tenantId,
-          },
-        });
-      });
-
-      if (!ticket) {
-        res.status(404).json({
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
           success: false,
-          error: 'Ticket not found',
-        });
+          error: 'Tenant context and authentication required',
+        } as ApiResponse);
         return;
       }
 
-      // For now, return success - full comment implementation would need a comments table
-      res.status(200).json({
-        success: true,
-        data: {
-          id: `comment_${Date.now()}`,
-          comment,
-          attachments: attachments || [],
-          userId: {
-            id: req.user!.id,
-            name: req.user?.name,
-            email: req.user?.email,
+      const { id } = req.params;
+      const { comment, attachments = [] } = req.body;
+
+      if (!comment || comment.trim() === '') {
+        res.status(400).json({
+          success: false,
+          error: 'Comment text is required',
+        } as ApiResponse);
+        return;
+      }
+
+      const result = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+        // Verify ticket exists and belongs to tenant
+        const ticket = await client.ticket.findFirst({
+          where: {
+            id,
+            tenantId: req.tenantId,
+          }
+        });
+
+        if (!ticket) {
+          throw new NotFoundError('Ticket not found');
+        }
+
+        // Create comment
+        const newComment = await client.ticketComment.create({
+          data: {
+            ticketId: id,
+            tenantId: req.tenantId,
+            userId: req.user!.id,
+            comment: comment.trim(),
+            attachments,
           },
-          timestamp: new Date().toISOString(),
-        },
-        message: 'Comment added successfully',
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                workEmail: true,
+                position: true,
+              }
+            }
+          },
+        });
+
+        // Log activity
+        await client.ticketActivityLog.create({
+          data: {
+            ticketId: id,
+            tenantId: req.tenantId,
+            action: 'Comment Added',
+            performedById: req.user!.id,
+            details: { comment },
+          },
+        });
+
+        return newComment;
       });
-    } catch (error) {
+
+      res.status(201).json({
+        success: true,
+        data: result,
+        message: 'Comment added successfully',
+      } as ApiResponse);
+    } catch (error: any) {
       console.error('Add comment error:', error);
+      
+      if (error instanceof NotFoundError) {
+        res.status(404).json({
+          success: false,
+          error: error.message
+        } as ApiResponse);
+        return;
+      }
+
       res.status(500).json({
         success: false,
         error: 'Failed to add comment',
-      });
+      } as ApiResponse);
     }
   }
 
@@ -727,36 +979,67 @@ export class TicketController {
    */
   static async getRelatedLinks(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const { id } = req.params;
-
-      const ticket = await tenantAwarePrisma.withTenant(req.tenantId!, async (client) => {
-        return await client.ticket.findFirst({
-          where: {
-            id,
-            tenantId: req.tenantId,
-          },
-        });
-      });
-
-      if (!ticket) {
-        res.status(404).json({
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
           success: false,
-          error: 'Ticket not found',
-        });
+          error: 'Tenant context and authentication required',
+        } as ApiResponse);
         return;
       }
 
-      // For now, return empty array - full implementation would need a related_links table
+      const { id } = req.params;
+
+      const relatedLinks = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+        // Verify ticket exists and belongs to tenant
+        const ticket = await client.ticket.findFirst({
+          where: {
+            id,
+            tenantId: req.tenantId,
+          }
+        });
+
+        if (!ticket) {
+          throw new NotFoundError('Ticket not found');
+        }
+
+        return await client.ticketRelatedLink.findMany({
+          where: {
+            ticketId: id,
+            tenantId: req.tenantId,
+          },
+          include: {
+            addedBy: {
+              select: {
+                id: true,
+                name: true,
+                workEmail: true,
+                position: true,
+              }
+            }
+          },
+          orderBy: { addedAt: 'desc' },
+        });
+      });
+
       res.status(200).json({
         success: true,
-        data: [],
-      });
-    } catch (error) {
+        data: relatedLinks,
+      } as ApiResponse);
+    } catch (error: any) {
       console.error('Get related links error:', error);
+      
+      if (error instanceof NotFoundError) {
+        res.status(404).json({
+          success: false,
+          error: error.message
+        } as ApiResponse);
+        return;
+      }
+
       res.status(500).json({
         success: false,
         error: 'Failed to fetch related links',
-      });
+      } as ApiResponse);
     }
   }
 
@@ -765,49 +1048,95 @@ export class TicketController {
    */
   static async addRelatedLink(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const { id } = req.params;
-      const { type, description, url } = req.body;
-
-      const ticket = await tenantAwarePrisma.withTenant(req.tenantId!, async (client) => {
-        return await client.ticket.findFirst({
-          where: {
-            id,
-            tenantId: req.tenantId,
-          },
-        });
-      });
-
-      if (!ticket) {
-        res.status(404).json({
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
           success: false,
-          error: 'Ticket not found',
-        });
+          error: 'Tenant context and authentication required',
+        } as ApiResponse);
         return;
       }
 
-      // For now, return mock data - full implementation would need a related_links table
+      const { id } = req.params;
+      const { linkType, title, description, url } = req.body;
+
+      if (!linkType || !title || !description || !url) {
+        res.status(400).json({
+          success: false,
+          error: 'Link type, title, description, and URL are required',
+        } as ApiResponse);
+        return;
+      }
+
+      const result = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+        // Verify ticket exists and belongs to tenant
+        const ticket = await client.ticket.findFirst({
+          where: {
+            id,
+            tenantId: req.tenantId,
+          }
+        });
+
+        if (!ticket) {
+          throw new NotFoundError('Ticket not found');
+        }
+
+        // Create related link
+        const newLink = await client.ticketRelatedLink.create({
+          data: {
+            ticketId: id,
+            tenantId: req.tenantId,
+            linkType,
+            title,
+            description,
+            url,
+            addedById: req.user!.id,
+          },
+          include: {
+            addedBy: {
+              select: {
+                id: true,
+                name: true,
+                workEmail: true,
+                position: true,
+              }
+            }
+          },
+        });
+
+        // Log activity
+        await client.ticketActivityLog.create({
+          data: {
+            ticketId: id,
+            tenantId: req.tenantId,
+            action: 'Related Link Added',
+            performedById: req.user!.id,
+            details: { linkType, title, url },
+          },
+        });
+
+        return newLink;
+      });
+
       res.status(201).json({
         success: true,
-        data: {
-          id: `link_${Date.now()}`,
-          type,
-          description,
-          url,
-          addedBy: {
-            id: req.user!.id,
-            name: req.user?.name,
-            email: req.user?.email,
-          },
-          addedAt: new Date().toISOString(),
-        },
+        data: result,
         message: 'Related link added successfully',
-      });
-    } catch (error) {
+      } as ApiResponse);
+    } catch (error: any) {
       console.error('Add related link error:', error);
+      
+      if (error instanceof NotFoundError) {
+        res.status(404).json({
+          success: false,
+          error: error.message
+        } as ApiResponse);
+        return;
+      }
+
       res.status(500).json({
         success: false,
         error: 'Failed to add related link',
-      });
+      } as ApiResponse);
     }
   }
 
@@ -816,48 +1145,98 @@ export class TicketController {
    */
   static async updateRelatedLink(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const { ticketId, linkId } = req.params;
-      const { description, url } = req.body;
-
-      const ticket = await tenantAwarePrisma.withTenant(req.tenantId!, async (client) => {
-        return await client.ticket.findFirst({
-          where: {
-            id: ticketId,
-            tenantId: req.tenantId,
-          },
-        });
-      });
-
-      if (!ticket) {
-        res.status(404).json({
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
           success: false,
-          error: 'Ticket not found',
-        });
+          error: 'Tenant context and authentication required',
+        } as ApiResponse);
         return;
       }
 
-      // For now, return mock data - full implementation would need a related_links table
+      const { ticketId, linkId } = req.params;
+      const { title, description, url } = req.body;
+
+      const result = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+        // Verify ticket exists and belongs to tenant
+        const ticket = await client.ticket.findFirst({
+          where: {
+            id: ticketId,
+            tenantId: req.tenantId,
+          }
+        });
+
+        if (!ticket) {
+          throw new NotFoundError('Ticket not found');
+        }
+
+        // Verify related link exists and belongs to this ticket and tenant
+        const existingLink = await client.ticketRelatedLink.findFirst({
+          where: {
+            id: linkId,
+            ticketId,
+            tenantId: req.tenantId,
+          }
+        });
+
+        if (!existingLink) {
+          throw new NotFoundError('Related link not found');
+        }
+
+        // Update related link
+        const updatedLink = await client.ticketRelatedLink.update({
+          where: { id: linkId },
+          data: {
+            title: title || existingLink.title,
+            description: description || existingLink.description,
+            url: url || existingLink.url,
+            updatedAt: new Date(),
+          },
+          include: {
+            addedBy: {
+              select: {
+                id: true,
+                name: true,
+                workEmail: true,
+                position: true,
+              }
+            }
+          },
+        });
+
+        // Log activity
+        await client.ticketActivityLog.create({
+          data: {
+            ticketId,
+            tenantId: req.tenantId,
+            action: 'Related Link Updated',
+            performedById: req.user!.id,
+            details: { linkId, title, description, url },
+          },
+        });
+
+        return updatedLink;
+      });
+
       res.status(200).json({
         success: true,
-        data: {
-          id: linkId,
-          description,
-          url,
-          addedBy: {
-            id: req.user!.id,
-            name: req.user?.name,
-            email: req.user?.email,
-          },
-          addedAt: new Date().toISOString(),
-        },
+        data: result,
         message: 'Related link updated successfully',
-      });
-    } catch (error) {
+      } as ApiResponse);
+    } catch (error: any) {
       console.error('Update related link error:', error);
+      
+      if (error instanceof NotFoundError) {
+        res.status(404).json({
+          success: false,
+          error: error.message
+        } as ApiResponse);
+        return;
+      }
+
       res.status(500).json({
         success: false,
         error: 'Failed to update related link',
-      });
+      } as ApiResponse);
     }
   }
 
@@ -866,36 +1245,147 @@ export class TicketController {
    */
   static async deleteRelatedLink(req: AuthRequest, res: Response): Promise<void> {
     try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: 'Tenant context and authentication required',
+        } as ApiResponse);
+        return;
+      }
+
       const { ticketId, linkId } = req.params;
 
-      const ticket = await tenantAwarePrisma.withTenant(req.tenantId!, async (client) => {
-        return await client.ticket.findFirst({
+      await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+        // Verify ticket exists and belongs to tenant
+        const ticket = await client.ticket.findFirst({
           where: {
             id: ticketId,
             tenantId: req.tenantId,
+          }
+        });
+
+        if (!ticket) {
+          throw new NotFoundError('Ticket not found');
+        }
+
+        // Verify related link exists and belongs to this ticket and tenant
+        const existingLink = await client.ticketRelatedLink.findFirst({
+          where: {
+            id: linkId,
+            ticketId,
+            tenantId: req.tenantId,
+          }
+        });
+
+        if (!existingLink) {
+          throw new NotFoundError('Related link not found');
+        }
+
+        // Delete related link
+        await client.ticketRelatedLink.delete({
+          where: { id: linkId }
+        });
+
+        // Log activity
+        await client.ticketActivityLog.create({
+          data: {
+            ticketId,
+            tenantId: req.tenantId,
+            action: 'Related Link Deleted',
+            performedById: req.user!.id,
+            details: { linkId, title: existingLink.title },
           },
         });
       });
 
-      if (!ticket) {
-        res.status(404).json({
-          success: false,
-          error: 'Ticket not found',
-        });
-        return;
-      }
-
-      // For now, return success - full implementation would need a related_links table
       res.status(200).json({
         success: true,
         message: 'Related link deleted successfully',
-      });
-    } catch (error) {
+      } as ApiResponse);
+    } catch (error: any) {
       console.error('Delete related link error:', error);
+      
+      if (error instanceof NotFoundError) {
+        res.status(404).json({
+          success: false,
+          error: error.message
+        } as ApiResponse);
+        return;
+      }
+
       res.status(500).json({
         success: false,
         error: 'Failed to delete related link',
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Get activity log for a ticket (tenant-aware)
+   */
+  static async getActivityLog(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: 'Tenant context and authentication required',
+        } as ApiResponse);
+        return;
+      }
+
+      const { id } = req.params;
+
+      const activityLog = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+        // Verify ticket exists and belongs to tenant
+        const ticket = await client.ticket.findFirst({
+          where: {
+            id,
+            tenantId: req.tenantId,
+          }
+        });
+
+        if (!ticket) {
+          throw new NotFoundError('Ticket not found');
+        }
+
+        return await client.ticketActivityLog.findMany({
+          where: {
+            ticketId: id,
+            tenantId: req.tenantId,
+          },
+          include: {
+            performedBy: {
+              select: {
+                id: true,
+                name: true,
+                workEmail: true,
+                position: true,
+              }
+            }
+          },
+          orderBy: { timestamp: 'desc' },
+        });
       });
+
+      res.status(200).json({
+        success: true,
+        data: activityLog,
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error('Get activity log error:', error);
+      
+      if (error instanceof NotFoundError) {
+        res.status(404).json({
+          success: false,
+          error: error.message
+        } as ApiResponse);
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch activity log',
+      } as ApiResponse);
     }
   }
 }

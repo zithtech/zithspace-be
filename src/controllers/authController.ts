@@ -445,7 +445,7 @@ export class AuthController {
               personalEmail: userData.personalEmail.toLowerCase(),
               phone: userData.phone,
               passwordHash,
-              role: userData.role || 'USER',
+              role: userData.role || 'user',
               position: userData.position,
               reportsToId: userData.reportsToId || null,
               dateOfBirth: userData.dateOfBirth || null,

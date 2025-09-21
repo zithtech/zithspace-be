@@ -134,9 +134,17 @@ export interface Attendance {
   tenantId: string;
   userId: string;
   date: Date;
-  checkIn?: Date;
-  checkOut?: Date;
+  clockIn?: Date;
+  clockOut?: Date;
   status: string;
+  shiftId?: string;
+  totalWorkMinutes: number;
+  totalBreakMinutes: number;
+  effectiveWorkMinutes: number;
+  overtimeMinutes: number;
+  lateMinutes: number;
+  isManualEntry: boolean;
+  enteredById?: string;
   notes?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -320,7 +328,7 @@ export interface TenantSettings {
 }
 
 // ==========================================
-// USER TYPES
+// user TYPES
 // ==========================================
 
 export interface CreateUserData {
@@ -334,6 +342,8 @@ export interface CreateUserData {
   reportsToId?: string;
   dateOfBirth?: Date;
   workDays?: number[];
+  assignedShiftId?: string; // ADDED: Missing shift assignment field
+  isActive?: boolean; // ADDED: Missing isActive field
 }
 
 export interface UpdateUserData {
@@ -346,6 +356,7 @@ export interface UpdateUserData {
   reportsToId?: string;
   dateOfBirth?: Date;
   workDays?: number[];
+  assignedShiftId?: string; // ADDED: Missing shift assignment field
   isActive?: boolean;
 }
 
@@ -510,8 +521,8 @@ export interface TransactionFilters {
 export interface CreateAttendanceData {
   userId: string;
   date: Date;
-  checkIn?: Date;
-  checkOut?: Date;
+  clockIn?: Date;
+  clockOut?: Date;
   status?: 'present' | 'absent' | 'late' | 'half_day';
   notes?: string;
 }

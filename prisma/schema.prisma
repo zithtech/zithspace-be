@@ -26,21 +26,26 @@ model Tenant {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   // Relations
-  users         User[]
-  projects      Project[]
-  clients       Client[]
-  tickets       Ticket[]
-  releasePlans  ReleasePlan[]
-  shifts        Shift[]
-  transactions  Transaction[]
-  attendance    Attendance[]
-  dropdownOptions DropdownOption[]
+  users               User[]
+  projects            Project[]
+  clients             Client[]
+  tickets             Ticket[]
+  ticketWorkflowSteps TicketWorkflowStep[]
+  ticketComments      TicketComment[]
+  ticketRelatedLinks  TicketRelatedLink[]
+  ticketActivityLog   TicketActivityLog[]
+  releasePlans        ReleasePlan[]
+  shifts              Shift[]
+  attendanceBreaks    AttendanceBreak[]
+  transactions        Transaction[]
+  attendance          Attendance[]
+  dropdownOptions     DropdownOption[]
 
   @@map("tenants")
 }
 
 // ==========================================
-// USER MANAGEMENT
+// user MANAGEMENT
 // ==========================================
 
 model User {
@@ -80,11 +85,16 @@ model User {
   // Ticket relations
   createdTickets Ticket[] @relation("TicketCreator")
   assignedTickets Ticket[] @relation("TicketAssignee")
+  reportToTickets Ticket[] @relation("TicketReportTo")
+  ticketComments TicketComment[]
+  addedRelatedLinks TicketRelatedLink[]
+  performedActivityLog TicketActivityLog[]
 
   // Other relations
   createdClients Client[] @relation("ClientCreator")
   refreshTokens RefreshToken[]
   attendance    Attendance[]
+  enteredAttendance Attendance[] @relation("AttendanceEnteredBy")
   transactions  Transaction[]
   createdReleasePlans ReleasePlan[] @relation("ReleasePlanCreator")
 
@@ -161,34 +171,135 @@ model ProjectMember {
 // ==========================================
 
 model Ticket {
-  id            String    @id @default(uuid())
-  tenantId      String    @map("tenant_id")
-  projectId     String    @map("project_id")
-  releasePlanId String?   @map("release_plan_id")
-  title         String
-  description   String?
-  ticketNumber  String    @map("ticket_number")
-  status        String    @default("open")
-  priority      String    @default("medium")
-  type          String    @default("task")
-  assigneeId    String?   @map("assignee_id")
-  createdById   String    @map("created_by_id")
-  dueDate       DateTime? @map("due_date")
-  completedAt   DateTime? @map("completed_at")
-  tags          String[]  @default([])
-  metadata      Json?     @default("{}")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  id                    String    @id @default(uuid())
+  tenantId              String    @map("tenant_id")
+  projectId             String    @map("project_id")
+  releasePlanId         String?   @map("release_plan_id")
+  title                 String
+  description           String?
+  ticketNumber          String    @map("ticket_number")
+  status                String    @default("not_started")
+  priority              String    @default("Medium (P2)")
+  type                  String    @default("Task")
+  platform              String    @default("Development")
+  stack                 String?   // 'Front End', 'Back End', 'Full Stack'
+  taskLevel             String    @default("Medium") @map("task_level")
+  storyPoint            Int       @default(1) @map("story_point")
+  estimateHours         Decimal   @default(0) @map("estimate_hours") @db.Decimal(5, 2)
+  assigneeId            String?   @map("assignee_id")
+  reportToId            String?   @map("report_to_id")
+  createdById           String    @map("created_by_id")
+  parentTickets         String[]  @default([]) @map("parent_tickets")
+  parentTicketNotes     String?   @map("parent_ticket_notes")
+  currentWorkflowStep   String    @default("Scope Document") @map("current_workflow_step")
+  startDate             DateTime? @map("start_date")
+  endDate               DateTime? @map("end_date")
+  dueDate               DateTime? @map("due_date")
+  completedAt           DateTime? @map("completed_at")
+  tags                  String[]  @default([])
+  metadata              Json?     @default("{}")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
 
   // Relations
-  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  assignee    User?        @relation("TicketAssignee", fields: [assigneeId], references: [id])
-  createdBy   User         @relation("TicketCreator", fields: [createdById], references: [id])
-  releasePlan ReleasePlan? @relation("TicketReleasePlan", fields: [releasePlanId], references: [id])
+  tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project         Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  assignee        User?               @relation("TicketAssignee", fields: [assigneeId], references: [id])
+  reportTo        User?               @relation("TicketReportTo", fields: [reportToId], references: [id])
+  createdBy       User                @relation("TicketCreator", fields: [createdById], references: [id])
+  releasePlan     ReleasePlan?        @relation("TicketReleasePlan", fields: [releasePlanId], references: [id])
+  workflowSteps   TicketWorkflowStep[]
+  comments        TicketComment[]
+  relatedLinks    TicketRelatedLink[]
+  activityLog     TicketActivityLog[]
 
   @@unique([tenantId, ticketNumber])
   @@map("tickets")
+}
+
+model TicketWorkflowStep {
+  id              String    @id @default(uuid())
+  tenantId        String    @map("tenant_id")
+  ticketId        String    @map("ticket_id")
+  stepName        String    @map("step_name")
+  status          String    @default("not_started") // not_started, in_progress, completed, blocked, skipped
+  assignedTo      String[]  @default([]) @map("assigned_to")
+  approvers       String[]  @default([]) @map("approvers")
+  approvalStatus  Json      @default("[]") @map("approval_status")
+  documents       Json      @default("[]")
+  notes           String?
+  startDate       DateTime? @map("start_date")
+  endDate         DateTime? @map("end_date")
+  completedAt     DateTime? @map("completed_at")
+  scheduledMeeting Json?    @map("scheduled_meeting")
+  branchName      String?   @map("branch_name")
+  testResults     Json      @default("[]") @map("test_results")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@map("ticket_workflow_steps")
+}
+
+model TicketComment {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  ticketId    String   @map("ticket_id")
+  userId      String   @map("user_id")
+  comment     String
+  attachments Json     @default("[]")
+  timestamp   DateTime @default(now())
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("ticket_comments")
+}
+
+model TicketRelatedLink {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  ticketId    String   @map("ticket_id")
+  linkType    String   @map("link_type") // ui_design, scope_doc, sample_response, dev_doc
+  title       String
+  description String
+  url         String
+  addedById   String   @map("added_by_id")
+  addedAt     DateTime @default(now()) @map("added_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant  Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ticket  Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  addedBy User   @relation(fields: [addedById], references: [id], onDelete: Cascade)
+
+  @@map("ticket_related_links")
+}
+
+model TicketActivityLog {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  ticketId     String   @map("ticket_id")
+  action       String
+  performedById String  @map("performed_by_id")
+  timestamp    DateTime @default(now())
+  details      Json     @default("{}")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // Relations
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ticket      Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  performedBy User   @relation(fields: [performedById], references: [id], onDelete: Cascade)
+
+  @@map("ticket_activity_log")
 }
 
 // ==========================================
@@ -249,41 +360,77 @@ model ReleasePlan {
 // ==========================================
 
 model Shift {
-  id        String    @id @default(uuid())
-  tenantId  String    @map("tenant_id")
-  name      String
-  startTime String    @map("start_time") // HH:mm format
-  endTime   String    @map("end_time")   // HH:mm format
-  isActive  Boolean   @default(true) @map("is_active")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+  id                 String   @id @default(uuid())
+  tenantId           String   @map("tenant_id")
+  name               String
+  startTime          String   @map("start_time") // HH:mm format
+  endTime            String   @map("end_time")   // HH:mm format
+  workingMinutes     Int      @default(480) @map("working_minutes") // 8 hours default
+  graceMinutes       Int      @default(15) @map("grace_minutes") // 15 min grace period
+  overtimeThreshold  Int      @default(60) @map("overtime_threshold") // 1 hour before overtime
+  breakMinutes       Int      @default(60) @map("break_minutes") // 1 hour break allowance
+  description        String?
+  color              String   @default("#007bff") // Hex color for UI
+  isActive           Boolean  @default(true) @map("is_active")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
 
   // Relations
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  users  User[] @relation("UserShift")
+  tenant     Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users      User[]       @relation("UserShift")
+  attendance Attendance[]
 
   @@unique([tenantId, name])
   @@map("shifts")
 }
 
 model Attendance {
-  id        String    @id @default(uuid())
-  tenantId  String    @map("tenant_id")
-  userId    String    @map("user_id")
-  date      DateTime
-  checkIn   DateTime? @map("check_in")
-  checkOut  DateTime? @map("check_out")
-  status    String    @default("present")
-  notes     String?
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+  id                    String            @id @default(uuid())
+  tenantId              String            @map("tenant_id")
+  userId                String            @map("user_id")
+  date                  DateTime
+  clockIn               DateTime?         @map("clock_in") // Renamed from checkIn
+  clockOut              DateTime?         @map("clock_out") // Renamed from checkOut
+  status                String            @default("present") // present, absent, late, half-day, wfh
+  shiftId               String?           @map("shift_id")
+  totalWorkMinutes      Int               @default(0) @map("total_work_minutes")
+  totalBreakMinutes     Int               @default(0) @map("total_break_minutes")
+  effectiveWorkMinutes  Int               @default(0) @map("effective_work_minutes")
+  overtimeMinutes       Int               @default(0) @map("overtime_minutes")
+  lateMinutes           Int               @default(0) @map("late_minutes")
+  isManualEntry         Boolean           @default(false) @map("is_manual_entry")
+  enteredById           String?           @map("entered_by_id")
+  notes                 String?
+  createdAt             DateTime          @default(now()) @map("created_at")
+  updatedAt             DateTime          @updatedAt @map("updated_at")
 
   // Relations
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  shift       Shift?            @relation(fields: [shiftId], references: [id])
+  enteredBy   User?             @relation("AttendanceEnteredBy", fields: [enteredById], references: [id])
+  breaks      AttendanceBreak[]
 
   @@unique([tenantId, userId, date])
   @@map("attendance")
+}
+
+model AttendanceBreak {
+  id             String    @id @default(uuid())
+  tenantId       String    @map("tenant_id")
+  attendanceId   String    @map("attendance_id")
+  breakType      String    @map("break_type") // lunch, tea, other
+  startTime      DateTime  @map("start_time")
+  endTime        DateTime? @map("end_time")
+  durationMinutes Int      @default(0) @map("duration_minutes")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  attendance Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
+
+  @@map("attendance_breaks")
 }
 
 // ==========================================

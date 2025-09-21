@@ -205,12 +205,12 @@ export const requireRole = (...allowedRoles: string[]) => {
 };
 
 /**
- * Middleware to check if user is super admin
+ * Middleware to check if user is super_admin
  */
 export const requireSuperAdmin = requireRole('super_admin');
 
 /**
- * Middleware to check if user is admin or super admin
+ * Middleware to check if user is admin or super_admin
  */
 export const requireAdmin = requireRole('super_admin', 'admin');
 
@@ -228,7 +228,7 @@ export const requireOwnershipOrAdmin = (resourceUserIdField: string = 'userId') 
       return;
     }
 
-    // Super admins and admins can access any resource
+    // super_admins and admins can access any resource
     if (req.user.role === 'super_admin' || req.user.role === 'admin') {
       next();
       return;

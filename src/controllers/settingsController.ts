@@ -673,7 +673,7 @@ export class SettingsController {
       // Default settings if none exist
       const defaultSettings = {
         allowUserRegistration: false,
-        defaultUserRole: 'USER',
+        defaultUserRole: 'user',
         timezone: 'UTC',
         dateFormat: 'YYYY-MM-DD',
         workingHours: {
@@ -721,10 +721,10 @@ export class SettingsController {
       }
 
       // Check if user is admin
-      if (req.user.role !== 'SUPER_ADMIN' && req.user.role !== 'ADMIN') {
+      if (req.user.role !== 'super_admin' && req.user.role !== 'admin') {
         res.status(403).json({
           success: false,
-          error: 'Access denied. Admin privileges required.'
+          error: 'Access denied. admin privileges required.'
         } as ApiResponse);
         return;
       }

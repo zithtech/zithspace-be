@@ -191,10 +191,18 @@ export class AttendanceController {
             userId,
             tenantId: req.tenantId,
             date: { gte: startOfToday, lte: endOfToday },
+          },
+          include: {
+            shift: true,
+            user: {
+              include: {
+                assignedShift: true
+              }
+            }
           }
         });
 
-        if (existingAttendance && existingAttendance.checkIn) {
+        if (existingAttendance && existingAttendance.clockIn) {
           throw new ValidationError('Already clocked in today');
         }
 
@@ -219,8 +227,8 @@ export class AttendanceController {
           attendance = await client.attendance.update({
             where: { id: existingAttendance.id },
             data: {
-              checkIn: clockInTime,
-              status: 'PRESENT',
+              clockIn: clockInTime,
+              status: 'present',
             },
             include: {
               user: {
@@ -235,8 +243,8 @@ export class AttendanceController {
               tenantId: req.tenantId,
               userId,
               date: startOfToday,
-              checkIn: clockInTime,
-              status: 'PRESENT',
+              clockIn: clockInTime,
+              status: 'present',
             },
             include: {
               user: {
@@ -302,11 +310,11 @@ export class AttendanceController {
           }
         });
 
-        if (!attendance || !attendance.checkIn) {
+        if (!attendance || !attendance.clockIn) {
           throw new ValidationError('No clock in record found for today');
         }
 
-        if (attendance.checkOut) {
+        if (attendance.clockOut) {
           throw new ValidationError('Already clocked out today');
         }
 
@@ -315,7 +323,7 @@ export class AttendanceController {
         const updatedAttendance = await client.attendance.update({
           where: { id: attendance.id },
           data: {
-            checkOut: clockOutTime,
+            clockOut: clockOutTime,
           },
           include: {
             user: {
@@ -439,7 +447,7 @@ export class AttendanceController {
               select: { id: true, name: true, workEmail: true, position: true }
             }
           },
-          orderBy: { checkIn: 'asc' }
+          orderBy: { clockIn: 'asc' }
         });
 
         // Format summary
@@ -453,19 +461,19 @@ export class AttendanceController {
 
         todaySummary.forEach((item: any) => {
           switch (item.status) {
-            case 'PRESENT':
+            case 'present':
               statusSummary.present = item._count;
               break;
-            case 'ABSENT':
+            case 'absent':
               statusSummary.absent = item._count;
               break;
-            case 'LATE':
+            case 'late':
               statusSummary.late = item._count;
               break;
-            case 'HALF_DAY':
+            case 'half-day':
               statusSummary.halfDay = item._count;
               break;
-            case 'WFH':
+            case 'wfh':
               statusSummary.wfh = item._count;
               break;
           }
@@ -515,15 +523,15 @@ export class AttendanceController {
           where: {
             tenantId: req.tenantId,
             date: { gte: startOfToday, lte: endOfToday },
-            status: { in: ['PRESENT', 'LATE', 'WFH'] },
-            checkIn: { not: null },
+            status: { in: ['present', 'late', 'wfh'] },
+            clockIn: { not: null },
           },
           include: {
             user: {
               select: { id: true, name: true, workEmail: true, position: true }
             }
           },
-          orderBy: { checkIn: 'asc' }
+          orderBy: { clockIn: 'asc' }
         });
       });
 
@@ -660,8 +668,8 @@ export class AttendanceController {
         }
 
         // Convert date strings if provided
-        if (updateData.checkIn) updateData.checkIn = new Date(updateData.checkIn);
-        if (updateData.checkOut) updateData.checkOut = new Date(updateData.checkOut);
+        if (updateData.clockIn) updateData.clockIn = new Date(updateData.clockIn);
+        if (updateData.clockOut) updateData.clockOut = new Date(updateData.clockOut);
         if (updateData.date) updateData.date = new Date(updateData.date);
 
         const attendance = await client.attendance.update({
@@ -764,9 +772,9 @@ export class AttendanceController {
             tenantId: req.tenantId,
             userId: attendanceData.userId,
             date: startOfDay,
-            checkIn: attendanceData.checkIn ? new Date(attendanceData.checkIn) : null,
-            checkOut: attendanceData.checkOut ? new Date(attendanceData.checkOut) : null,
-            status: attendanceData.status || 'PRESENT',
+            clockIn: attendanceData.clockIn ? new Date(attendanceData.clockIn) : null,
+            clockOut: attendanceData.clockOut ? new Date(attendanceData.clockOut) : null,
+            status: attendanceData.status || 'present',
             notes: attendanceData.notes,
           },
           include: {

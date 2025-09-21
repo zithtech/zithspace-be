@@ -83,20 +83,20 @@ router.put('/profile', tenantRateLimit, resolveTenant, authenticateToken, requir
 router.get('/statistics', tenantRateLimit, resolveTenant, authenticateToken, requireAdmin, TenantController.getStatistics);
 
 // ==========================================
-// SUPER ADMIN ENDPOINTS (Require super admin access)
+// super_admin ENDPOINTS (Require super_admin access)
 // ==========================================
 
 /**
  * POST /api/tenants/:tenantId/deactivate
  * Deactivate a tenant (suspend account)
- * Requires super admin access
+ * Requires super_admin access
  */
 router.post('/:tenantId/deactivate', tenantRateLimit, authenticateToken, requireSuperAdmin, TenantController.deactivate);
 
 /**
  * POST /api/tenants/:tenantId/activate
  * Activate a tenant (restore account)
- * Requires super admin access
+ * Requires super_admin access
  */
 router.post('/:tenantId/activate', tenantRateLimit, authenticateToken, requireSuperAdmin, TenantController.activate);
 
