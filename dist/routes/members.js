@@ -60,5 +60,13 @@ router.delete('/:id', auth_1.requireAdmin, userController_1.UserController.delet
  * @param   id - Member ID
  */
 router.patch('/:id/activate', auth_1.requireAdmin, userController_1.UserController.activateMember);
+/**
+ * @route   PATCH /api/members/:id/assign-shift
+ * @desc    Assign shift to member (tenant-aware) - RESTORED MISSING FUNCTIONALITY
+ * @access  Private (admin only)
+ * @param   id - Member ID
+ * @body    { shiftId: string }
+ */
+router.patch('/:id/assign-shift', auth_1.requireAdmin, userController_1.UserController.assignShift);
 exports.default = router;
 //# sourceMappingURL=members.js.map

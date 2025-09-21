@@ -73,5 +73,53 @@ router.patch('/bulk/status', ticketController_1.TicketController.bulkUpdateStatu
  * @param   projectId - Project ID
  */
 router.get('/projects/:projectId/stats', ticketController_1.TicketController.getTicketStatsByProject);
+/**
+ * @route   PUT /api/tickets/:id/workflow
+ * @desc    Update workflow step (tenant-aware)
+ * @access  Private (ticket assignee or admin)
+ * @param   id - Ticket ID
+ * @body    { stepName: string, updates: any }
+ */
+router.put('/:id/workflow', ticketController_1.TicketController.updateWorkflowStep);
+/**
+ * @route   POST /api/tickets/:id/comments
+ * @desc    Add comment to ticket (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   id - Ticket ID
+ * @body    { comment: string, attachments?: any[] }
+ */
+router.post('/:id/comments', ticketController_1.TicketController.addComment);
+/**
+ * @route   GET /api/tickets/:id/links
+ * @desc    Get related links for ticket (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   id - Ticket ID
+ */
+router.get('/:id/links', ticketController_1.TicketController.getRelatedLinks);
+/**
+ * @route   POST /api/tickets/:id/links
+ * @desc    Add related link to ticket (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   id - Ticket ID
+ * @body    { type, description, url }
+ */
+router.post('/:id/links', ticketController_1.TicketController.addRelatedLink);
+/**
+ * @route   PUT /api/tickets/:ticketId/links/:linkId
+ * @desc    Update related link (tenant-aware)
+ * @access  Private (link creator or admin)
+ * @param   ticketId - Ticket ID
+ * @param   linkId - Link ID
+ * @body    { description, url }
+ */
+router.put('/:ticketId/links/:linkId', ticketController_1.TicketController.updateRelatedLink);
+/**
+ * @route   DELETE /api/tickets/:ticketId/links/:linkId
+ * @desc    Delete related link (tenant-aware)
+ * @access  Private (link creator or admin)
+ * @param   ticketId - Ticket ID
+ * @param   linkId - Link ID
+ */
+router.delete('/:ticketId/links/:linkId', ticketController_1.TicketController.deleteRelatedLink);
 exports.default = router;
 //# sourceMappingURL=tickets.js.map

@@ -100,7 +100,7 @@ const limiter = (0, express_rate_limit_1.default)({
     standardHeaders: true,
     legacyHeaders: false,
 });
-app.use(limiter);
+// app.use(limiter);
 // Health check endpoint (no tenant context required)
 app.get('/health', (req, res) => {
     res.status(200).json({

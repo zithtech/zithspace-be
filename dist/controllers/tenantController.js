@@ -231,7 +231,7 @@ class TenantController {
             if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
                 res.status(403).json({
                     success: false,
-                    error: 'Admin access required',
+                    error: 'admin access required',
                 });
                 return;
             }
@@ -362,14 +362,14 @@ class TenantController {
         }
     }
     /**
-     * Deactivate tenant (super admin only)
+     * Deactivate tenant (super_admin only)
      */
     static async deactivate(req, res) {
         try {
             if (!req.user || req.user.role !== 'super_admin') {
                 res.status(403).json({
                     success: false,
-                    error: 'Super admin access required',
+                    error: 'super_admin access required',
                 });
                 return;
             }
@@ -406,14 +406,14 @@ class TenantController {
         }
     }
     /**
-     * Activate tenant (super admin only)
+     * Activate tenant (super_admin only)
      */
     static async activate(req, res) {
         try {
             if (!req.user || req.user.role !== 'super_admin') {
                 res.status(403).json({
                     success: false,
-                    error: 'Super admin access required',
+                    error: 'super_admin access required',
                 });
                 return;
             }

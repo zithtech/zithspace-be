@@ -164,11 +164,11 @@ const requireRole = (...allowedRoles) => {
 };
 exports.requireRole = requireRole;
 /**
- * Middleware to check if user is super admin
+ * Middleware to check if user is super_admin
  */
 exports.requireSuperAdmin = (0, exports.requireRole)('super_admin');
 /**
- * Middleware to check if user is admin or super admin
+ * Middleware to check if user is admin or super_admin
  */
 exports.requireAdmin = (0, exports.requireRole)('super_admin', 'admin');
 /**
@@ -184,7 +184,7 @@ const requireOwnershipOrAdmin = (resourceUserIdField = 'userId') => {
             });
             return;
         }
-        // Super admins and admins can access any resource
+        // super_admins and admins can access any resource
         if (req.user.role === 'super_admin' || req.user.role === 'admin') {
             next();
             return;

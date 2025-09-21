@@ -205,6 +205,19 @@ class UserController {
                 }
                 // Hash password
                 const passwordHash = await bcryptjs_1.default.hash(userData.password, 12);
+                // Validate assigned shift if provided
+                if (userData.assignedShiftId) {
+                    const shift = await client.shift.findFirst({
+                        where: {
+                            id: userData.assignedShiftId,
+                            tenantId: req.tenantId,
+                            isActive: true,
+                        }
+                    });
+                    if (!shift) {
+                        throw new types_1.ValidationError('Assigned shift not found or inactive in this tenant');
+                    }
+                }
                 // Create user
                 const newUser = await client.user.create({
                     data: {
@@ -214,12 +227,13 @@ class UserController {
                         personalEmail: userData.personalEmail?.toLowerCase(),
                         phone: userData.phone,
                         passwordHash,
-                        role: userData.role || 'USER',
+                        role: userData.role || 'user',
                         position: userData.position,
                         reportsToId: userData.reportsToId,
                         dateOfBirth: userData.dateOfBirth ? new Date(userData.dateOfBirth) : null,
                         workDays: userData.workDays || [1, 2, 3, 4, 5], // Default to weekdays
-                        isActive: true,
+                        assignedShiftId: userData.assignedShiftId, // FIXED: Process shift assignment
+                        isActive: userData.isActive !== undefined ? userData.isActive : true, // FIXED: Process isActive
                     },
                     select: {
                         id: true,
@@ -313,6 +327,19 @@ class UserController {
                         throw new types_1.ValidationError('Reports to user not found in this tenant');
                     }
                 }
+                // Validate assigned shift if provided
+                if (updates.assignedShiftId) {
+                    const shift = await client.shift.findFirst({
+                        where: {
+                            id: updates.assignedShiftId,
+                            tenantId: req.tenantId,
+                            isActive: true,
+                        }
+                    });
+                    if (!shift) {
+                        throw new types_1.ValidationError('Assigned shift not found or inactive in this tenant');
+                    }
+                }
                 // Convert dates if provided
                 if (updates.dateOfBirth)
                     updates.dateOfBirth = new Date(updates.dateOfBirth);
@@ -320,12 +347,15 @@ class UserController {
                     updates.workEmail = updates.workEmail.toLowerCase();
                 if (updates.personalEmail)
                     updates.personalEmail = updates.personalEmail.toLowerCase();
+                // Update shift assignment tracking if shift is being changed
+                const updateData = { ...updates, updatedAt: new Date() };
+                if (updates.assignedShiftId && updates.assignedShiftId !== existingUser.assignedShiftId) {
+                    updateData.shiftAssignedById = req.user.id;
+                    updateData.shiftAssignedDate = new Date();
+                }
                 const updatedUser = await client.user.update({
                     where: { id },
-                    data: {
-                        ...updates,
-                        updatedAt: new Date()
-                    },
+                    data: updateData,
                     select: {
                         id: true,
                         name: true,
@@ -334,8 +364,17 @@ class UserController {
                         phone: true,
                         role: true,
                         position: true,
+                        workDays: true,
                         isActive: true,
                         updatedAt: true,
+                        assignedShift: {
+                            select: {
+                                id: true,
+                                name: true,
+                                startTime: true,
+                                endTime: true,
+                            }
+                        },
                         reportsTo: {
                             select: { id: true, name: true, position: true }
                         }
@@ -713,10 +752,10 @@ class UserController {
                 return;
             }
             // Check if current user is admin
-            if (req.user.role !== 'SUPER_ADMIN' && req.user.role !== 'ADMIN') {
+            if (req.user.role !== 'super_admin' && req.user.role !== 'admin') {
                 res.status(403).json({
                     success: false,
-                    error: 'Access denied. Admin privileges required.'
+                    error: 'Access denied. admin privileges required.'
                 });
                 return;
             }
@@ -821,6 +860,117 @@ class UserController {
             res.status(500).json({
                 success: false,
                 error: 'Failed to fetch members'
+            });
+        }
+    }
+    /**
+     * Assign shift to member (tenant-aware) - MISSING FUNCTIONALITY RESTORED
+     */
+    static async assignShift(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: 'Tenant context and authentication required',
+                });
+                return;
+            }
+            const { id } = req.params;
+            const { shiftId } = req.body;
+            if (!shiftId) {
+                res.status(400).json({
+                    success: false,
+                    error: 'Shift ID is required'
+                });
+                return;
+            }
+            const updatedMember = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+                // Verify member exists and belongs to tenant
+                const member = await client.user.findFirst({
+                    where: {
+                        id,
+                        tenantId: req.tenantId,
+                    }
+                });
+                if (!member) {
+                    throw new types_1.NotFoundError('Member not found in this tenant');
+                }
+                // Verify shift exists and belongs to tenant
+                const shift = await client.shift.findFirst({
+                    where: {
+                        id: shiftId,
+                        tenantId: req.tenantId,
+                        isActive: true,
+                    }
+                });
+                if (!shift) {
+                    throw new types_1.ValidationError('Shift not found or inactive in this tenant');
+                }
+                // Update member with shift assignment
+                return await client.user.update({
+                    where: { id },
+                    data: {
+                        assignedShiftId: shiftId,
+                        shiftAssignedById: req.user.id,
+                        shiftAssignedDate: new Date(),
+                        updatedAt: new Date(),
+                    },
+                    select: {
+                        id: true,
+                        name: true,
+                        workEmail: true,
+                        personalEmail: true,
+                        phone: true,
+                        role: true,
+                        position: true,
+                        isActive: true,
+                        updatedAt: true,
+                        assignedShift: {
+                            select: {
+                                id: true,
+                                name: true,
+                                startTime: true,
+                                endTime: true,
+                            }
+                        },
+                        shiftAssignedBy: {
+                            select: {
+                                id: true,
+                                name: true,
+                                position: true,
+                            }
+                        },
+                        reportsTo: {
+                            select: { id: true, name: true, position: true }
+                        }
+                    }
+                });
+            });
+            res.status(200).json({
+                success: true,
+                data: updatedMember,
+                message: 'Shift assigned successfully'
+            });
+        }
+        catch (error) {
+            console.error('Assign shift error:', error);
+            if (error instanceof types_1.NotFoundError) {
+                res.status(404).json({
+                    success: false,
+                    error: error.message
+                });
+                return;
+            }
+            if (error instanceof types_1.ValidationError) {
+                res.status(400).json({
+                    success: false,
+                    error: error.message
+                });
+                return;
+            }
+            res.status(500).json({
+                success: false,
+                error: 'Failed to assign shift'
             });
         }
     }

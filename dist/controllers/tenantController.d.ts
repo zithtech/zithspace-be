@@ -26,11 +26,11 @@ export declare class TenantController {
      */
     static checkSubdomainAvailability(req: AuthRequest, res: Response): Promise<void>;
     /**
-     * Deactivate tenant (super admin only)
+     * Deactivate tenant (super_admin only)
      */
     static deactivate(req: AuthRequest, res: Response): Promise<void>;
     /**
-     * Activate tenant (super admin only)
+     * Activate tenant (super_admin only)
      */
     static activate(req: AuthRequest, res: Response): Promise<void>;
 }

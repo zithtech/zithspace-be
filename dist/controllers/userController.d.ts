@@ -45,5 +45,9 @@ export declare class UserController {
      * Get members for dropdown/select (tenant-aware)
      */
     static getMembersForSelect(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Assign shift to member (tenant-aware) - MISSING FUNCTIONALITY RESTORED
+     */
+    static assignShift(req: AuthRequest, res: Response): Promise<void>;
 }
 export default UserController;

@@ -78,5 +78,52 @@ router.put('/tenant', auth_1.requireAdmin, settingsController_1.SettingsControll
  * @query   q (search query), limit
  */
 router.get('/search', settingsController_1.SettingsController.globalSearch);
+// ==========================================
+// DROPDOWN OPTIONS MANAGEMENT (CRITICAL)
+// ==========================================
+/**
+ * @route   GET /api/settings/dropdown-options
+ * @desc    Get all dropdown options grouped by type (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @query   includeInactive
+ */
+router.get('/dropdown-options', settingsController_1.SettingsController.getDropdownOptions);
+/**
+ * @route   GET /api/settings/dropdown-options/:type
+ * @desc    Get dropdown options by specific type (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   type - Dropdown type (platform, stack, priority, taskLevel, taskType, status)
+ * @query   includeInactive
+ */
+router.get('/dropdown-options/:type', settingsController_1.SettingsController.getDropdownOptionsByType);
+/**
+ * @route   POST /api/settings/dropdown-options
+ * @desc    Create a new dropdown option (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @body    { type, value, label, color?, description? }
+ */
+router.post('/dropdown-options', settingsController_1.SettingsController.createDropdownOption);
+/**
+ * @route   PUT /api/settings/dropdown-options/:id
+ * @desc    Update an existing dropdown option (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   id - Dropdown option ID
+ * @body    { value, label, color?, description?, isActive? }
+ */
+router.put('/dropdown-options/:id', settingsController_1.SettingsController.updateDropdownOption);
+/**
+ * @route   DELETE /api/settings/dropdown-options/:id
+ * @desc    Delete a dropdown option (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   id - Dropdown option ID
+ */
+router.delete('/dropdown-options/:id', settingsController_1.SettingsController.deleteDropdownOption);
+/**
+ * @route   PUT /api/settings/dropdown-options/reorder
+ * @desc    Reorder dropdown options (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @body    { items: [{ id, order }] }
+ */
+router.put('/dropdown-options/reorder', settingsController_1.SettingsController.reorderDropdownOptions);
 exports.default = router;
 //# sourceMappingURL=settings.js.map

@@ -37,5 +37,40 @@ export declare class TicketController {
      * Get ticket statistics by project (tenant-aware)
      */
     static getTicketStatsByProject(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get workflow steps for a ticket (tenant-aware)
+     */
+    static getWorkflowSteps(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Update workflow step (tenant-aware)
+     */
+    static updateWorkflowStep(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get comments for a ticket (tenant-aware)
+     */
+    static getComments(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Add comment to ticket (tenant-aware)
+     */
+    static addComment(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get related links for ticket (tenant-aware)
+     */
+    static getRelatedLinks(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Add related link to ticket (tenant-aware)
+     */
+    static addRelatedLink(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Update related link (tenant-aware)
+     */
+    static updateRelatedLink(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Delete related link (tenant-aware)
+     */
+    static deleteRelatedLink(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get activity log for a ticket (tenant-aware)
+     */
+    static getActivityLog(req: AuthRequest, res: Response): Promise<void>;
 }
-export default TicketController;

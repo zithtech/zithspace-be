@@ -622,7 +622,7 @@ class SettingsController {
             // Default settings if none exist
             const defaultSettings = {
                 allowUserRegistration: false,
-                defaultUserRole: 'USER',
+                defaultUserRole: 'user',
                 timezone: 'UTC',
                 dateFormat: 'YYYY-MM-DD',
                 workingHours: {
@@ -667,10 +667,10 @@ class SettingsController {
                 return;
             }
             // Check if user is admin
-            if (req.user.role !== 'SUPER_ADMIN' && req.user.role !== 'ADMIN') {
+            if (req.user.role !== 'super_admin' && req.user.role !== 'admin') {
                 res.status(403).json({
                     success: false,
-                    error: 'Access denied. Admin privileges required.'
+                    error: 'Access denied. admin privileges required.'
                 });
                 return;
             }
@@ -859,6 +859,384 @@ class SettingsController {
             res.status(500).json({
                 success: false,
                 error: 'Failed to perform search'
+            });
+        }
+    }
+    // ==========================================
+    // DROPDOWN OPTIONS MANAGEMENT (CRITICAL)
+    // ==========================================
+    /**
+     * Get all dropdown options grouped by type (tenant-aware)
+     */
+    static async getDropdownOptions(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: 'Tenant context and authentication required',
+                });
+                return;
+            }
+            const { includeInactive } = req.query;
+            const activeOnly = includeInactive !== 'true';
+            const dropdownOptions = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+                const where = { tenantId: req.tenantId };
+                if (activeOnly) {
+                    where.isActive = true;
+                }
+                const options = await client.dropdownOption.findMany({
+                    where,
+                    orderBy: [
+                        { category: 'asc' },
+                        { order: 'asc' },
+                        { label: 'asc' }
+                    ]
+                });
+                // Group by category (map to type for frontend compatibility)
+                const grouped = {};
+                options.forEach(option => {
+                    // Map PostgreSQL 'category' to MongoDB 'type' for frontend compatibility
+                    const type = option.category;
+                    if (!grouped[type]) {
+                        grouped[type] = [];
+                    }
+                    grouped[type].push({
+                        id: option.id,
+                        type: option.category, // For backward compatibility
+                        value: option.value,
+                        label: option.label,
+                        order: option.order,
+                        isActive: option.isActive,
+                        createdAt: option.createdAt,
+                        updatedAt: option.updatedAt
+                    });
+                });
+                return grouped;
+            });
+            res.status(200).json({
+                success: true,
+                data: dropdownOptions
+            });
+        }
+        catch (error) {
+            console.error('Get dropdown options error:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to fetch dropdown options'
+            });
+        }
+    }
+    /**
+     * Get dropdown options by specific type (tenant-aware)
+     */
+    static async getDropdownOptionsByType(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: 'Tenant context and authentication required',
+                });
+                return;
+            }
+            const { type } = req.params;
+            const { includeInactive } = req.query;
+            // Map frontend type to backend category
+            const validTypes = ['platform', 'stack', 'priority', 'taskLevel', 'taskType', 'status'];
+            if (!type || !validTypes.includes(type)) {
+                res.status(400).json({
+                    success: false,
+                    error: 'Invalid dropdown type'
+                });
+                return;
+            }
+            const activeOnly = includeInactive !== 'true';
+            const options = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+                const where = {
+                    tenantId: req.tenantId,
+                    category: type
+                };
+                if (activeOnly) {
+                    where.isActive = true;
+                }
+                return await client.dropdownOption.findMany({
+                    where,
+                    orderBy: [
+                        { order: 'asc' },
+                        { label: 'asc' }
+                    ],
+                    select: {
+                        id: true,
+                        category: true,
+                        value: true,
+                        label: true,
+                        order: true,
+                        isActive: true,
+                        createdAt: true,
+                        updatedAt: true
+                    }
+                });
+            });
+            // Format for frontend compatibility
+            const formattedOptions = options.map(option => ({
+                id: option.id,
+                type: option.category, // Map category to type
+                value: option.value,
+                label: option.label,
+                order: option.order,
+                isActive: option.isActive,
+                createdAt: option.createdAt,
+                updatedAt: option.updatedAt
+            }));
+            res.status(200).json({
+                success: true,
+                data: formattedOptions
+            });
+        }
+        catch (error) {
+            console.error('Get dropdown options by type error:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to fetch dropdown options'
+            });
+        }
+    }
+    /**
+     * Create a new dropdown option (tenant-aware)
+     */
+    static async createDropdownOption(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: 'Tenant context and authentication required',
+                });
+                return;
+            }
+            const { type, value, label, color, description } = req.body;
+            if (!type || !value || !label) {
+                res.status(400).json({
+                    success: false,
+                    error: 'Type, value, and label are required'
+                });
+                return;
+            }
+            const validTypes = ['platform', 'stack', 'priority', 'taskLevel', 'taskType', 'status'];
+            if (!validTypes.includes(type)) {
+                res.status(400).json({
+                    success: false,
+                    error: 'Invalid dropdown type'
+                });
+                return;
+            }
+            const newOption = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+                // Get the next order number for this type
+                const lastOption = await client.dropdownOption.findFirst({
+                    where: { tenantId: req.tenantId, category: type },
+                    orderBy: { order: 'desc' }
+                });
+                const order = lastOption ? lastOption.order + 1 : 1;
+                return await client.dropdownOption.create({
+                    data: {
+                        tenantId: req.tenantId,
+                        category: type,
+                        value,
+                        label,
+                        order,
+                        isActive: true
+                    }
+                });
+            });
+            res.status(201).json({
+                success: true,
+                data: {
+                    id: newOption.id,
+                    type: newOption.category,
+                    value: newOption.value,
+                    label: newOption.label,
+                    order: newOption.order,
+                    isActive: newOption.isActive,
+                    createdAt: newOption.createdAt,
+                    updatedAt: newOption.updatedAt
+                },
+                message: 'Dropdown option created successfully'
+            });
+        }
+        catch (error) {
+            console.error('Create dropdown option error:', error);
+            if (error.code === 'P2002') {
+                res.status(400).json({
+                    success: false,
+                    error: 'A dropdown option with this value already exists for this type'
+                });
+                return;
+            }
+            res.status(500).json({
+                success: false,
+                error: 'Failed to create dropdown option'
+            });
+        }
+    }
+    /**
+     * Update an existing dropdown option (tenant-aware)
+     */
+    static async updateDropdownOption(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: 'Tenant context and authentication required',
+                });
+                return;
+            }
+            const { id } = req.params;
+            const { value, label, color, description, isActive } = req.body;
+            if (!value || !label) {
+                res.status(400).json({
+                    success: false,
+                    error: 'Value and label are required'
+                });
+                return;
+            }
+            const updatedOption = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+                // Verify option exists and belongs to tenant
+                const existingOption = await client.dropdownOption.findFirst({
+                    where: { id, tenantId: req.tenantId }
+                });
+                if (!existingOption) {
+                    throw new types_1.NotFoundError('Dropdown option not found');
+                }
+                const updateData = { value, label };
+                if (typeof isActive === 'boolean') {
+                    updateData.isActive = isActive;
+                }
+                return await client.dropdownOption.update({
+                    where: { id },
+                    data: updateData
+                });
+            });
+            res.status(200).json({
+                success: true,
+                data: {
+                    id: updatedOption.id,
+                    type: updatedOption.category,
+                    value: updatedOption.value,
+                    label: updatedOption.label,
+                    order: updatedOption.order,
+                    isActive: updatedOption.isActive,
+                    createdAt: updatedOption.createdAt,
+                    updatedAt: updatedOption.updatedAt
+                },
+                message: 'Dropdown option updated successfully'
+            });
+        }
+        catch (error) {
+            console.error('Update dropdown option error:', error);
+            if (error instanceof types_1.NotFoundError) {
+                res.status(404).json({
+                    success: false,
+                    error: error.message
+                });
+                return;
+            }
+            if (error.code === 'P2002') {
+                res.status(400).json({
+                    success: false,
+                    error: 'A dropdown option with this value already exists for this type'
+                });
+                return;
+            }
+            res.status(500).json({
+                success: false,
+                error: 'Failed to update dropdown option'
+            });
+        }
+    }
+    /**
+     * Delete a dropdown option (tenant-aware)
+     */
+    static async deleteDropdownOption(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: 'Tenant context and authentication required',
+                });
+                return;
+            }
+            const { id } = req.params;
+            await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+                // Verify option exists and belongs to tenant
+                const existingOption = await client.dropdownOption.findFirst({
+                    where: { id, tenantId: req.tenantId }
+                });
+                if (!existingOption) {
+                    throw new types_1.NotFoundError('Dropdown option not found');
+                }
+                await client.dropdownOption.delete({
+                    where: { id }
+                });
+            });
+            res.status(200).json({
+                success: true,
+                message: 'Dropdown option deleted successfully'
+            });
+        }
+        catch (error) {
+            console.error('Delete dropdown option error:', error);
+            if (error instanceof types_1.NotFoundError) {
+                res.status(404).json({
+                    success: false,
+                    error: error.message
+                });
+                return;
+            }
+            res.status(500).json({
+                success: false,
+                error: 'Failed to delete dropdown option'
+            });
+        }
+    }
+    /**
+     * Reorder dropdown options (tenant-aware)
+     */
+    static async reorderDropdownOptions(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: 'Tenant context and authentication required',
+                });
+                return;
+            }
+            const { items } = req.body;
+            if (!items || !Array.isArray(items)) {
+                res.status(400).json({
+                    success: false,
+                    error: 'Items array is required'
+                });
+                return;
+            }
+            await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+                // Update order for each item
+                const updatePromises = items.map((item) => client.dropdownOption.updateMany({
+                    where: {
+                        id: item.id,
+                        tenantId: req.tenantId
+                    },
+                    data: { order: item.order }
+                }));
+                await Promise.all(updatePromises);
+            });
+            res.status(200).json({
+                success: true,
+                message: 'Dropdown options reordered successfully'
+            });
+        }
+        catch (error) {
+            console.error('Reorder dropdown options error:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to reorder dropdown options'
             });
         }
     }

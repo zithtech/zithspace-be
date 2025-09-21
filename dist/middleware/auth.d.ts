@@ -17,11 +17,11 @@ export declare const requireAuth: (req: AuthRequest, res: Response, next: NextFu
  */
 export declare const requireRole: (...allowedRoles: string[]) => (req: AuthRequest, res: Response, next: NextFunction) => void;
 /**
- * Middleware to check if user is super admin
+ * Middleware to check if user is super_admin
  */
 export declare const requireSuperAdmin: (req: AuthRequest, res: Response, next: NextFunction) => void;
 /**
- * Middleware to check if user is admin or super admin
+ * Middleware to check if user is admin or super_admin
  */
 export declare const requireAdmin: (req: AuthRequest, res: Response, next: NextFunction) => void;
 /**

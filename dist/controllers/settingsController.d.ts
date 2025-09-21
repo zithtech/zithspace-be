@@ -41,5 +41,29 @@ export declare class SettingsController {
      * Search across entities (tenant-aware)
      */
     static globalSearch(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get all dropdown options grouped by type (tenant-aware)
+     */
+    static getDropdownOptions(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get dropdown options by specific type (tenant-aware)
+     */
+    static getDropdownOptionsByType(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Create a new dropdown option (tenant-aware)
+     */
+    static createDropdownOption(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Update an existing dropdown option (tenant-aware)
+     */
+    static updateDropdownOption(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Delete a dropdown option (tenant-aware)
+     */
+    static deleteDropdownOption(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Reorder dropdown options (tenant-aware)
+     */
+    static reorderDropdownOptions(req: AuthRequest, res: Response): Promise<void>;
 }
 export default SettingsController;

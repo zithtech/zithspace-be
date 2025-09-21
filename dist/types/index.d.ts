@@ -120,9 +120,17 @@ export interface Attendance {
     tenantId: string;
     userId: string;
     date: Date;
-    checkIn?: Date;
-    checkOut?: Date;
+    clockIn?: Date;
+    clockOut?: Date;
     status: string;
+    shiftId?: string;
+    totalWorkMinutes: number;
+    totalBreakMinutes: number;
+    effectiveWorkMinutes: number;
+    overtimeMinutes: number;
+    lateMinutes: number;
+    isManualEntry: boolean;
+    enteredById?: string;
     notes?: string;
     createdAt: Date;
     updatedAt: Date;
@@ -283,6 +291,8 @@ export interface CreateUserData {
     reportsToId?: string;
     dateOfBirth?: Date;
     workDays?: number[];
+    assignedShiftId?: string;
+    isActive?: boolean;
 }
 export interface UpdateUserData {
     name?: string;
@@ -294,6 +304,7 @@ export interface UpdateUserData {
     reportsToId?: string;
     dateOfBirth?: Date;
     workDays?: number[];
+    assignedShiftId?: string;
     isActive?: boolean;
 }
 export interface ChangePasswordData {
@@ -422,8 +433,8 @@ export interface TransactionFilters {
 export interface CreateAttendanceData {
     userId: string;
     date: Date;
-    checkIn?: Date;
-    checkOut?: Date;
+    clockIn?: Date;
+    clockOut?: Date;
     status?: 'present' | 'absent' | 'late' | 'half_day';
     notes?: string;
 }
