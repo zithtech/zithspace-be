@@ -51,21 +51,10 @@ app.use((0, helmet_1.default)({
 const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [
     'http://localhost:3000',
     'https://z-internal-app.vercel.app',
+    ' https://zithmi.zithtech.com'
 ];
 app.use((0, cors_1.default)({
-    origin: (origin, callback) => {
-        // Allow requests with no origin (mobile apps, Postman, etc.)
-        if (!origin)
-            return callback(null, true);
-        if (allowedOrigins.includes(origin)) {
-            return callback(null, true);
-        }
-        // For development, allow localhost with any port
-        if (process.env.NODE_ENV === 'development' && origin.includes('localhost')) {
-            return callback(null, true);
-        }
-        callback(new Error('Not allowed by CORS'));
-    },
+    origin: "*",
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: [
