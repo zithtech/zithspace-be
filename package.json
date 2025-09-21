@@ -14,7 +14,8 @@
     "db:studio": "prisma studio",
     "db:seed": "tsx src/scripts/seed.ts",
     "lint": "eslint src --ext .ts",
-    "test": "jest"
+    "test": "jest",
+    "postinstall": "prisma generate"
   },
   "_moduleAliases": {
     "@": "dist"
