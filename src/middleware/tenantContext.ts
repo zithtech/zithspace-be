@@ -64,6 +64,8 @@ export const resolveTenant = async (
     // Set PostgreSQL session variable for Row Level Security
     await tenantAwarePrisma.setTenantContext(tenant.id);
 
+    console.log({tenantIdentifier,tenant})
+
     next();
   } catch (error) {
     console.error('Tenant resolution error:', error);
@@ -147,7 +149,7 @@ export const optionalTenantContext = async (
         await tenantAwarePrisma.setTenantContext(tenant.id);
       }
     }
-
+console.log("optional",{})
     next();
   } catch (error) {
     // Log error but don't fail the request
