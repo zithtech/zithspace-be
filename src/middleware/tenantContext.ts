@@ -1,6 +1,7 @@
 import { Response, NextFunction } from "express";
 import { tenantAwarePrisma } from "@/config/database";
 import { AuthRequest, TenantError, NotFoundError, Tenant } from "@/types";
+import TenantLogger from "@/utils/tenantLogger";
 
 /**
  * Middleware to resolve tenant context from various sources
@@ -10,51 +11,86 @@ export const resolveTenant = async (
   res: Response,
   next: NextFunction
 ): Promise<void> => {
+  const timer = TenantLogger.startTimer();
+  const logContext = TenantLogger.logResolutionStart(req);
+  
   try {
+    TenantLogger.logMiddlewareEntry('resolveTenant', req);
     let tenantIdentifier: string | undefined;
 
-    // Strategy 1: From subdomain (primary method)
-    const host = req.get("Host");
-    if (host && !host.includes("localhost")) {
-      const subdomain = host.split(".")[0];
-      if (subdomain && subdomain !== "www" && subdomain !== "api") {
-        tenantIdentifier = subdomain;
-      }
-    }
+    // Strategy 1: From X-Tenant-ID header (prioritize for cross-domain architecture)
+    tenantIdentifier = req.headers["x-tenant-id"] as string;
+    TenantLogger.logResolutionStrategy('x-tenant-id', tenantIdentifier, logContext);
 
-    // Strategy 2: From X-Tenant-ID header (for API clients)
-    if (!tenantIdentifier) {
-      tenantIdentifier = req.headers["x-tenant-id"] as string;
-    }
-
-    // Strategy 3: From X-Tenant-Subdomain header
+    // Strategy 2: From X-Tenant-Subdomain header
     if (!tenantIdentifier) {
       tenantIdentifier = req.headers["x-tenant-subdomain"] as string;
+      TenantLogger.logResolutionStrategy('x-tenant-subdomain', tenantIdentifier, logContext);
+    }
+
+    // Strategy 3: From subdomain (only for same-domain deployments)
+    if (!tenantIdentifier) {
+      const host = req.get("Host");
+      if (host && !host.includes("localhost")) {
+        const subdomain = host.split(".")[0];
+        // Skip subdomain extraction for backend service domains
+        if (subdomain && 
+            subdomain !== "www" && 
+            subdomain !== "api" && 
+            !subdomain.includes("backend") && 
+            !subdomain.includes("be-v") &&
+            !subdomain.startsWith("z-tickets")) {
+          tenantIdentifier = subdomain;
+        }
+      }
+      TenantLogger.logResolutionStrategy('subdomain', tenantIdentifier, {
+        ...logContext,
+        metadata: { ...logContext.metadata, host, extractedSubdomain: host?.split(".")[0] }
+      });
     }
 
     // Strategy 4: From JWT token (if user is already authenticated)
     if (!tenantIdentifier && req.user) {
       tenantIdentifier = req.user.tenantId;
+      TenantLogger.logResolutionStrategy('jwt-token', tenantIdentifier, logContext);
     }
 
     // Strategy 5: From query parameter (development only)
     if (!tenantIdentifier && process.env.NODE_ENV === "development") {
       tenantIdentifier = req.query.tenant as string;
+      TenantLogger.logResolutionStrategy('query-param', tenantIdentifier, logContext);
     }
 
     if (!tenantIdentifier) {
-      throw new TenantError("Tenant identifier is required");
+      const error = new TenantError("Tenant identifier is required");
+      TenantLogger.logResolutionFailure(error, logContext);
+      throw error;
     }
 
     // Find tenant by subdomain or ID
+    TenantLogger.debug('Looking up tenant in database', {
+      ...logContext,
+      metadata: { ...logContext.metadata, tenantIdentifier }
+    });
+    
     const tenant = await findTenant(tenantIdentifier);
 
     if (!tenant) {
-      throw new NotFoundError("Tenant");
+      const error = new NotFoundError("Tenant");
+      TenantLogger.logResolutionFailure(error, {
+        ...logContext,
+        metadata: { ...logContext.metadata, tenantIdentifier, lookupResult: 'not_found' }
+      });
+      throw error;
     }
 
     if (!tenant.isActive) {
-      throw new TenantError("Tenant is not active");
+      const error = new TenantError("Tenant is not active");
+      TenantLogger.logResolutionFailure(error, {
+        ...logContext,
+        metadata: { ...logContext.metadata, tenantIdentifier, tenant: { id: tenant.id, isActive: tenant.isActive } }
+      });
+      throw error;
     }
 
     // Attach tenant info to request
@@ -62,13 +98,24 @@ export const resolveTenant = async (
     req.tenant = tenant;
 
     // Set PostgreSQL session variable for Row Level Security
+    TenantLogger.logDatabaseOperation('setTenantContext', tenant.id, logContext);
     await tenantAwarePrisma.setTenantContext(tenant.id);
 
-    console.log({ tenantIdentifier, tenant });
+    // Determine which strategy was successful
+    const resolvedBy = req.headers["x-tenant-id"] ? "x-tenant-id" : 
+                      req.headers["x-tenant-subdomain"] ? "x-tenant-subdomain" : 
+                      req.user?.tenantId ? "jwt-token" :
+                      req.query.tenant ? "query-param" : "subdomain";
 
+    TenantLogger.logResolutionSuccess(tenant, resolvedBy, logContext);
+    TenantLogger.logMiddlewareExit('resolveTenant', req, true);
+    
+    timer.end('resolveTenant', logContext);
     next();
   } catch (error) {
-    console.error("Tenant resolution error:", error);
+    TenantLogger.logTenantError(error, req, 'TENANT_RESOLUTION');
+    TenantLogger.logMiddlewareExit('resolveTenant', req, false);
+    timer.end('resolveTenant_failed', logContext);
 
     if (error instanceof TenantError || error instanceof NotFoundError) {
       res.status(error.statusCode).json({
@@ -109,36 +156,63 @@ export const optionalTenantContext = async (
   res: Response,
   next: NextFunction
 ): Promise<void> => {
+  const timer = TenantLogger.startTimer();
+  const logContext = TenantLogger.logResolutionStart(req);
+  logContext.operation = 'OPTIONAL_TENANT_RESOLUTION';
+  
   try {
+    TenantLogger.logMiddlewareEntry('optionalTenantContext', req);
     let tenantIdentifier: string | undefined;
 
-    // Same resolution strategies as above
-    const host = req.get("Host");
-    const subdomain = host.split(".")[0];
+    // Strategy 1: From X-Tenant-ID header (prioritize for cross-domain architecture)
+    tenantIdentifier = req.headers["x-tenant-id"] as string;
+    TenantLogger.logResolutionStrategy('x-tenant-id', tenantIdentifier, logContext);
 
-    if (!tenantIdentifier) {
-      tenantIdentifier = req.headers["x-tenant-id"] as string;
-    }
-
+    // Strategy 2: From X-Tenant-Subdomain header
     if (!tenantIdentifier) {
       tenantIdentifier = req.headers["x-tenant-subdomain"] as string;
+      TenantLogger.logResolutionStrategy('x-tenant-subdomain', tenantIdentifier, logContext);
     }
 
-    if (host && !host.includes("localhost")) {
-      if (subdomain && subdomain !== "www" && subdomain !== "api" && !tenantIdentifier) {
-        tenantIdentifier = subdomain;
+    // Strategy 3: From subdomain (only for same-domain deployments)
+    if (!tenantIdentifier) {
+      const host = req.get("Host");
+      if (host && !host.includes("localhost")) {
+        const subdomain = host.split(".")[0];
+        // Skip subdomain extraction for backend service domains
+        if (subdomain && 
+            subdomain !== "www" && 
+            subdomain !== "api" && 
+            !subdomain.includes("backend") && 
+            !subdomain.includes("be-v") &&
+            !subdomain.startsWith("z-tickets")) {
+          tenantIdentifier = subdomain;
+        }
       }
+      TenantLogger.logResolutionStrategy('subdomain', tenantIdentifier, {
+        ...logContext,
+        metadata: { ...logContext.metadata, host, extractedSubdomain: host?.split(".")[0] }
+      });
     }
 
+    // Strategy 4: From JWT token (if user is already authenticated)
     if (!tenantIdentifier && req.user) {
       tenantIdentifier = req.user.tenantId;
+      TenantLogger.logResolutionStrategy('jwt-token', tenantIdentifier, logContext);
     }
 
+    // Strategy 5: From query parameter (development only)
     if (!tenantIdentifier && process.env.NODE_ENV === "development") {
       tenantIdentifier = req.query.tenant as string;
+      TenantLogger.logResolutionStrategy('query-param', tenantIdentifier, logContext);
     }
 
     if (tenantIdentifier) {
+      TenantLogger.debug('Looking up tenant in database (optional)', {
+        ...logContext,
+        metadata: { ...logContext.metadata, tenantIdentifier }
+      });
+
       const rawClient = tenantAwarePrisma.getRawClient();
       const tenant = await rawClient.tenant.findFirst({
         where: {
@@ -161,22 +235,53 @@ export const optionalTenantContext = async (
         },
       });
 
-      console.log("optional tenant resolution", {
-        tenantIdentifier,
-        tenant: tenant ? { id: tenant.id, subdomain: tenant.subdomain } : null,
-      });
-
       if (tenant && tenant.isActive) {
         req.tenantId = tenant.id;
         req.tenant = tenant;
+        
+        TenantLogger.logDatabaseOperation('setTenantContext', tenant.id, logContext);
         await tenantAwarePrisma.setTenantContext(tenant.id);
+
+        // Determine which strategy was successful
+        const resolvedBy = req.headers["x-tenant-id"] ? "x-tenant-id" : 
+                          req.headers["x-tenant-subdomain"] ? "x-tenant-subdomain" : 
+                          req.user?.tenantId ? "jwt-token" :
+                          req.query.tenant ? "query-param" : "subdomain";
+
+        TenantLogger.logResolutionSuccess(tenant, resolvedBy, logContext);
+      } else {
+        TenantLogger.info('Optional tenant resolution: tenant not found or inactive', {
+          ...logContext,
+          metadata: { 
+            ...logContext.metadata, 
+            tenantIdentifier, 
+            found: !!tenant,
+            active: tenant?.isActive 
+          }
+        });
       }
+    } else {
+      TenantLogger.debug('Optional tenant resolution: no tenant identifier found', logContext);
     }
-    console.log("optional", { tenantIdentifier });
+
+    TenantLogger.logMiddlewareExit('optionalTenantContext', req, true);
+    timer.end('optionalTenantContext', logContext);
     next();
   } catch (error) {
     // Log error but don't fail the request
-    console.error("Optional tenant resolution error:", error);
+    TenantLogger.warn('Optional tenant resolution error (continuing)', {
+      ...logContext,
+      metadata: {
+        ...logContext.metadata,
+        error: {
+          message: error.message,
+          name: error.name,
+        }
+      }
+    });
+    
+    TenantLogger.logMiddlewareExit('optionalTenantContext', req, false);
+    timer.end('optionalTenantContext_error', logContext);
     next();
   }
 };

@@ -6,28 +6,69 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.TenantController = void 0;
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const database_1 = require("@/config/database");
+const tenantLogger_1 = __importDefault(require("@/utils/tenantLogger"));
 const types_1 = require("@/types");
 class TenantController {
     /**
      * Register a new tenant with admin user (public endpoint)
      */
     static async register(req, res) {
+        const timer = tenantLogger_1.default.startTimer();
         try {
+            tenantLogger_1.default.logControllerOperation(req, 'tenant', 'register', {
+                requestData: {
+                    name: req.body.name,
+                    subdomain: req.body.subdomain,
+                    planType: req.body.planType,
+                    hasAdminUser: !!req.body.adminUser
+                }
+            });
             const tenantData = req.body;
             // Validate required fields
             if (!tenantData.name || !tenantData.subdomain || !tenantData.adminUser) {
+                tenantLogger_1.default.warn('Tenant registration validation failed', {
+                    operation: 'TENANT_REGISTRATION',
+                    step: 'VALIDATION_ERROR',
+                    metadata: {
+                        hasName: !!tenantData.name,
+                        hasSubdomain: !!tenantData.subdomain,
+                        hasAdminUser: !!tenantData.adminUser
+                    }
+                });
                 res.status(400).json({
                     success: false,
                     error: "Tenant name, subdomain, and admin user information are required",
                 });
                 return;
             }
+            tenantLogger_1.default.info('Starting tenant registration process', {
+                operation: 'TENANT_REGISTRATION',
+                step: 'VALIDATION_SUCCESS',
+                metadata: {
+                    subdomain: tenantData.subdomain,
+                    planType: tenantData.planType || 'basic',
+                    adminEmail: tenantData.adminUser.email
+                }
+            });
             const rawClient = database_1.tenantAwarePrisma.getRawClient();
             // Check if subdomain is already taken
+            tenantLogger_1.default.debug('Checking subdomain availability', {
+                operation: 'TENANT_REGISTRATION',
+                step: 'SUBDOMAIN_CHECK',
+                metadata: { subdomain: tenantData.subdomain }
+            });
             const existingTenant = await rawClient.tenant.findUnique({
                 where: { subdomain: tenantData.subdomain.toLowerCase() },
             });
             if (existingTenant) {
+                tenantLogger_1.default.warn('Subdomain already exists', {
+                    operation: 'TENANT_REGISTRATION',
+                    step: 'SUBDOMAIN_CONFLICT',
+                    metadata: {
+                        subdomain: tenantData.subdomain,
+                        existingTenantId: existingTenant.id
+                    }
+                });
                 res.status(409).json({
                     success: false,
                     error: "Subdomain is already taken",
@@ -38,6 +79,14 @@ class TenantController {
             const subdomainRegex = /^[a-z0-9][a-z0-9-]*[a-z0-9]$/;
             if (!subdomainRegex.test(tenantData.subdomain) ||
                 tenantData.subdomain.length < 3) {
+                tenantLogger_1.default.warn('Invalid subdomain format', {
+                    operation: 'TENANT_REGISTRATION',
+                    step: 'SUBDOMAIN_FORMAT_ERROR',
+                    metadata: {
+                        subdomain: tenantData.subdomain,
+                        length: tenantData.subdomain.length
+                    }
+                });
                 res.status(400).json({
                     success: false,
                     error: "Invalid subdomain format. Must be lowercase, alphanumeric with hyphens, minimum 3 characters",
@@ -45,8 +94,21 @@ class TenantController {
                 return;
             }
             // Hash admin password
+            tenantLogger_1.default.debug('Hashing admin password', {
+                operation: 'TENANT_REGISTRATION',
+                step: 'PASSWORD_HASH',
+                metadata: { adminEmail: tenantData.adminUser.email }
+            });
             const passwordHash = await bcryptjs_1.default.hash(tenantData.adminUser.password, 12);
             // Create tenant and admin user in transaction
+            tenantLogger_1.default.info('Creating tenant and admin user', {
+                operation: 'TENANT_REGISTRATION',
+                step: 'DATABASE_TRANSACTION_START',
+                metadata: {
+                    subdomain: tenantData.subdomain,
+                    adminEmail: tenantData.adminUser.email
+                }
+            });
             const result = await rawClient.$transaction(async (tx) => {
                 // Create tenant
                 const tenant = await tx.tenant.create({
@@ -57,6 +119,16 @@ class TenantController {
                         maxUsers: tenantData.maxUsers || 10,
                         settings: tenantData.settings || {},
                     },
+                });
+                tenantLogger_1.default.info('Tenant created successfully', {
+                    operation: 'TENANT_REGISTRATION',
+                    step: 'TENANT_CREATED',
+                    tenantId: tenant.id,
+                    metadata: {
+                        tenantId: tenant.id,
+                        subdomain: tenant.subdomain,
+                        planType: tenant.planType
+                    }
                 });
                 // Create admin user
                 const adminUser = await tx.user.create({
@@ -72,7 +144,33 @@ class TenantController {
                         workDays: [1, 2, 3, 4, 5], // Monday to Friday
                     },
                 });
+                tenantLogger_1.default.info('Admin user created successfully', {
+                    operation: 'TENANT_REGISTRATION',
+                    step: 'ADMIN_USER_CREATED',
+                    tenantId: tenant.id,
+                    userId: adminUser.id,
+                    metadata: {
+                        tenantId: tenant.id,
+                        userId: adminUser.id,
+                        adminEmail: adminUser.workEmail
+                    }
+                });
                 return { tenant, adminUser };
+            });
+            tenantLogger_1.default.info('Tenant registration completed successfully', {
+                operation: 'TENANT_REGISTRATION',
+                step: 'REGISTRATION_SUCCESS',
+                tenantId: result.tenant.id,
+                userId: result.adminUser.id,
+                metadata: {
+                    tenantId: result.tenant.id,
+                    subdomain: result.tenant.subdomain,
+                    adminUserId: result.adminUser.id
+                }
+            });
+            timer.end('tenant_registration', {
+                tenantId: result.tenant.id,
+                metadata: { subdomain: result.tenant.subdomain }
             });
             res.status(201).json({
                 success: true,
@@ -93,7 +191,8 @@ class TenantController {
             });
         }
         catch (error) {
-            console.error("Tenant registration error:", error);
+            tenantLogger_1.default.logTenantError(error, req, 'TENANT_REGISTRATION');
+            timer.end('tenant_registration_failed');
             if (error.code === "P2002") {
                 res.status(409).json({
                     success: false,

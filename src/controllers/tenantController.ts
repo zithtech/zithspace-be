@@ -2,6 +2,7 @@ import { Response } from "express";
 import bcrypt from "bcryptjs";
 import { tenantAwarePrisma } from "@/config/database";
 import { JWTUtils } from "@/utils/jwt";
+import TenantLogger from "@/utils/tenantLogger";
 import {
   AuthRequest,
   ApiResponse,
@@ -17,7 +18,18 @@ export class TenantController {
    * Register a new tenant with admin user (public endpoint)
    */
   static async register(req: AuthRequest, res: Response): Promise<void> {
+    const timer = TenantLogger.startTimer();
+    
     try {
+      TenantLogger.logControllerOperation(req, 'tenant', 'register', {
+        requestData: {
+          name: req.body.name,
+          subdomain: req.body.subdomain,
+          planType: req.body.planType,
+          hasAdminUser: !!req.body.adminUser
+        }
+      });
+
       const tenantData: CreateTenantData & {
         adminUser: {
           name: string;
@@ -29,6 +41,16 @@ export class TenantController {
 
       // Validate required fields
       if (!tenantData.name || !tenantData.subdomain || !tenantData.adminUser) {
+        TenantLogger.warn('Tenant registration validation failed', {
+          operation: 'TENANT_REGISTRATION',
+          step: 'VALIDATION_ERROR',
+          metadata: {
+            hasName: !!tenantData.name,
+            hasSubdomain: !!tenantData.subdomain,
+            hasAdminUser: !!tenantData.adminUser
+          }
+        });
+
         res.status(400).json({
           success: false,
           error:
@@ -37,14 +59,39 @@ export class TenantController {
         return;
       }
 
+      TenantLogger.info('Starting tenant registration process', {
+        operation: 'TENANT_REGISTRATION',
+        step: 'VALIDATION_SUCCESS',
+        metadata: {
+          subdomain: tenantData.subdomain,
+          planType: tenantData.planType || 'basic',
+          adminEmail: tenantData.adminUser.email
+        }
+      });
+
       const rawClient = tenantAwarePrisma.getRawClient();
 
       // Check if subdomain is already taken
+      TenantLogger.debug('Checking subdomain availability', {
+        operation: 'TENANT_REGISTRATION',
+        step: 'SUBDOMAIN_CHECK',
+        metadata: { subdomain: tenantData.subdomain }
+      });
+
       const existingTenant = await rawClient.tenant.findUnique({
         where: { subdomain: tenantData.subdomain.toLowerCase() },
       });
 
       if (existingTenant) {
+        TenantLogger.warn('Subdomain already exists', {
+          operation: 'TENANT_REGISTRATION',
+          step: 'SUBDOMAIN_CONFLICT',
+          metadata: { 
+            subdomain: tenantData.subdomain,
+            existingTenantId: existingTenant.id
+          }
+        });
+
         res.status(409).json({
           success: false,
           error: "Subdomain is already taken",
@@ -58,6 +105,15 @@ export class TenantController {
         !subdomainRegex.test(tenantData.subdomain) ||
         tenantData.subdomain.length < 3
       ) {
+        TenantLogger.warn('Invalid subdomain format', {
+          operation: 'TENANT_REGISTRATION',
+          step: 'SUBDOMAIN_FORMAT_ERROR',
+          metadata: { 
+            subdomain: tenantData.subdomain,
+            length: tenantData.subdomain.length
+          }
+        });
+
         res.status(400).json({
           success: false,
           error:
@@ -67,9 +123,24 @@ export class TenantController {
       }
 
       // Hash admin password
+      TenantLogger.debug('Hashing admin password', {
+        operation: 'TENANT_REGISTRATION',
+        step: 'PASSWORD_HASH',
+        metadata: { adminEmail: tenantData.adminUser.email }
+      });
+
       const passwordHash = await bcrypt.hash(tenantData.adminUser.password, 12);
 
       // Create tenant and admin user in transaction
+      TenantLogger.info('Creating tenant and admin user', {
+        operation: 'TENANT_REGISTRATION',
+        step: 'DATABASE_TRANSACTION_START',
+        metadata: {
+          subdomain: tenantData.subdomain,
+          adminEmail: tenantData.adminUser.email
+        }
+      });
+
       const result = await rawClient.$transaction(async (tx) => {
         // Create tenant
         const tenant = await tx.tenant.create({
@@ -80,6 +151,17 @@ export class TenantController {
             maxUsers: tenantData.maxUsers || 10,
             settings: tenantData.settings || {},
           },
+        });
+
+        TenantLogger.info('Tenant created successfully', {
+          operation: 'TENANT_REGISTRATION',
+          step: 'TENANT_CREATED',
+          tenantId: tenant.id,
+          metadata: {
+            tenantId: tenant.id,
+            subdomain: tenant.subdomain,
+            planType: tenant.planType
+          }
         });
 
         // Create admin user
@@ -97,7 +179,36 @@ export class TenantController {
           },
         });
 
+        TenantLogger.info('Admin user created successfully', {
+          operation: 'TENANT_REGISTRATION',
+          step: 'ADMIN_USER_CREATED',
+          tenantId: tenant.id,
+          userId: adminUser.id,
+          metadata: {
+            tenantId: tenant.id,
+            userId: adminUser.id,
+            adminEmail: adminUser.workEmail
+          }
+        });
+
         return { tenant, adminUser };
+      });
+
+      TenantLogger.info('Tenant registration completed successfully', {
+        operation: 'TENANT_REGISTRATION',
+        step: 'REGISTRATION_SUCCESS',
+        tenantId: result.tenant.id,
+        userId: result.adminUser.id,
+        metadata: {
+          tenantId: result.tenant.id,
+          subdomain: result.tenant.subdomain,
+          adminUserId: result.adminUser.id
+        }
+      });
+
+      timer.end('tenant_registration', { 
+        tenantId: result.tenant.id,
+        metadata: { subdomain: result.tenant.subdomain }
       });
 
       res.status(201).json({
@@ -118,7 +229,8 @@ export class TenantController {
         message: "Tenant registered successfully",
       } as ApiResponse);
     } catch (error: any) {
-      console.error("Tenant registration error:", error);
+      TenantLogger.logTenantError(error, req, 'TENANT_REGISTRATION');
+      timer.end('tenant_registration_failed');
 
       if (error.code === "P2002") {
         res.status(409).json({
