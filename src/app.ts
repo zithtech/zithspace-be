@@ -54,6 +54,7 @@ app.use(helmet({
 const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || [
   'http://localhost:3000',
   'https://z-internal-app.vercel.app',
+ ' https://zithmi.zithtech.com'
 ];
 
 app.use(cors({
