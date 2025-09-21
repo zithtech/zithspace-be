@@ -1,16 +1,16 @@
-import { Response } from 'express';
-import bcrypt from 'bcryptjs';
-import { tenantAwarePrisma } from '@/config/database';
-import { JWTUtils } from '@/utils/jwt';
-import { 
-  AuthRequest, 
+import { Response } from "express";
+import bcrypt from "bcryptjs";
+import { tenantAwarePrisma } from "@/config/database";
+import { JWTUtils } from "@/utils/jwt";
+import {
+  AuthRequest,
   ApiResponse,
   ValidationError,
   NotFoundError,
   CreateTenantData,
   Tenant,
-  AuthUser
-} from '@/types';
+  AuthUser,
+} from "@/types";
 
 export class TenantController {
   /**
@@ -31,7 +31,8 @@ export class TenantController {
       if (!tenantData.name || !tenantData.subdomain || !tenantData.adminUser) {
         res.status(400).json({
           success: false,
-          error: 'Tenant name, subdomain, and admin user information are required',
+          error:
+            "Tenant name, subdomain, and admin user information are required",
         } as ApiResponse);
         return;
       }
@@ -40,23 +41,27 @@ export class TenantController {
 
       // Check if subdomain is already taken
       const existingTenant = await rawClient.tenant.findUnique({
-        where: { subdomain: tenantData.subdomain.toLowerCase() }
+        where: { subdomain: tenantData.subdomain.toLowerCase() },
       });
 
       if (existingTenant) {
         res.status(409).json({
           success: false,
-          error: 'Subdomain is already taken',
+          error: "Subdomain is already taken",
         } as ApiResponse);
         return;
       }
 
       // Validate subdomain format
       const subdomainRegex = /^[a-z0-9][a-z0-9-]*[a-z0-9]$/;
-      if (!subdomainRegex.test(tenantData.subdomain) || tenantData.subdomain.length < 3) {
+      if (
+        !subdomainRegex.test(tenantData.subdomain) ||
+        tenantData.subdomain.length < 3
+      ) {
         res.status(400).json({
           success: false,
-          error: 'Invalid subdomain format. Must be lowercase, alphanumeric with hyphens, minimum 3 characters',
+          error:
+            "Invalid subdomain format. Must be lowercase, alphanumeric with hyphens, minimum 3 characters",
         } as ApiResponse);
         return;
       }
@@ -71,10 +76,10 @@ export class TenantController {
           data: {
             name: tenantData.name,
             subdomain: tenantData.subdomain.toLowerCase(),
-            planType: tenantData.planType || 'basic',
+            planType: tenantData.planType || "basic",
             maxUsers: tenantData.maxUsers || 10,
             settings: tenantData.settings || {},
-          }
+          },
         });
 
         // Create admin user
@@ -86,10 +91,10 @@ export class TenantController {
             personalEmail: tenantData.adminUser.email.toLowerCase(),
             phone: tenantData.adminUser.phone,
             passwordHash,
-            role: 'admin',
-            position: 'Administrator',
+            role: "admin",
+            position: "Administrator",
             workDays: [1, 2, 3, 4, 5], // Monday to Friday
-          }
+          },
         });
 
         return { tenant, adminUser };
@@ -108,24 +113,24 @@ export class TenantController {
             id: result.adminUser.id,
             name: result.adminUser.name,
             email: result.adminUser.workEmail,
-          }
+          },
         },
-        message: 'Tenant registered successfully',
+        message: "Tenant registered successfully",
       } as ApiResponse);
     } catch (error: any) {
-      console.error('Tenant registration error:', error);
-      
-      if (error.code === 'P2002') {
+      console.error("Tenant registration error:", error);
+
+      if (error.code === "P2002") {
         res.status(409).json({
           success: false,
-          error: 'Subdomain or email already exists',
+          error: "Subdomain or email already exists",
         } as ApiResponse);
         return;
       }
 
       res.status(500).json({
         success: false,
-        error: 'Failed to register tenant',
+        error: "Failed to register tenant",
       } as ApiResponse);
     }
   }
@@ -137,10 +142,10 @@ export class TenantController {
     try {
       const { subdomain } = req.query;
 
-      if (!subdomain || typeof subdomain !== 'string') {
+      if (!subdomain || typeof subdomain !== "string") {
         res.status(400).json({
           success: false,
-          error: 'Subdomain parameter is required',
+          error: "Subdomain parameter is required",
         } as ApiResponse);
         return;
       }
@@ -157,13 +162,13 @@ export class TenantController {
           subdomain: true,
           planType: true,
           isActive: true,
-        }
+        },
       });
-
+      console.log("resolve", tenant);
       if (!tenant) {
         res.status(404).json({
           success: false,
-          error: 'Tenant not found',
+          error: "Tenant not found",
         } as ApiResponse);
         return;
       }
@@ -177,14 +182,14 @@ export class TenantController {
             subdomain: tenant.subdomain,
             planType: tenant.planType,
             isActive: tenant.isActive,
-          }
+          },
         },
       } as ApiResponse);
     } catch (error) {
-      console.error('Tenant resolution error:', error);
+      console.error("Tenant resolution error:", error);
       res.status(500).json({
         success: false,
-        error: 'Failed to resolve tenant',
+        error: "Failed to resolve tenant",
       } as ApiResponse);
     }
   }
@@ -197,7 +202,7 @@ export class TenantController {
       if (!req.tenantId || !req.tenant) {
         res.status(400).json({
           success: false,
-          error: 'Tenant context is required',
+          error: "Tenant context is required",
         } as ApiResponse);
         return;
       }
@@ -210,13 +215,13 @@ export class TenantController {
             select: {
               users: { where: { isActive: true } },
               projects: true,
-            }
-          }
-        }
+            },
+          },
+        },
       });
 
       if (!tenant) {
-        throw new NotFoundError('Tenant not found');
+        throw new NotFoundError("Tenant not found");
       }
 
       res.status(200).json({
@@ -238,10 +243,10 @@ export class TenantController {
         },
       } as ApiResponse);
     } catch (error) {
-      console.error('Get tenant profile error:', error);
+      console.error("Get tenant profile error:", error);
       res.status(500).json({
         success: false,
-        error: 'Failed to get tenant profile',
+        error: "Failed to get tenant profile",
       } as ApiResponse);
     }
   }
@@ -254,22 +259,22 @@ export class TenantController {
       if (!req.tenantId || !req.user) {
         res.status(400).json({
           success: false,
-          error: 'Tenant context and authentication required',
+          error: "Tenant context and authentication required",
         } as ApiResponse);
         return;
       }
 
       // Check if user is admin
-      if (req.user.role !== 'admin' && req.user.role !== 'super_admin') {
+      if (req.user.role !== "admin" && req.user.role !== "super_admin") {
         res.status(403).json({
           success: false,
-          error: 'admin access required',
+          error: "admin access required",
         } as ApiResponse);
         return;
       }
 
       const updateData = req.body;
-      
+
       // Remove sensitive fields that shouldn't be updated directly
       delete updateData.id;
       delete updateData.subdomain; // Subdomain changes require special handling
@@ -293,13 +298,13 @@ export class TenantController {
           isActive: updatedTenant.isActive,
           settings: updatedTenant.settings,
         },
-        message: 'Tenant profile updated successfully',
+        message: "Tenant profile updated successfully",
       } as ApiResponse);
     } catch (error) {
-      console.error('Update tenant profile error:', error);
+      console.error("Update tenant profile error:", error);
       res.status(500).json({
         success: false,
-        error: 'Failed to update tenant profile',
+        error: "Failed to update tenant profile",
       } as ApiResponse);
     }
   }
@@ -312,7 +317,7 @@ export class TenantController {
       if (!req.tenantId || !req.user) {
         res.status(400).json({
           success: false,
-          error: 'Tenant context and authentication required',
+          error: "Tenant context and authentication required",
         } as ApiResponse);
         return;
       }
@@ -329,11 +334,17 @@ export class TenantController {
             openTickets,
           ] = await Promise.all([
             client.user.count({ where: { tenantId: req.tenantId } }),
-            client.user.count({ where: { tenantId: req.tenantId, isActive: true } }),
+            client.user.count({
+              where: { tenantId: req.tenantId, isActive: true },
+            }),
             client.project.count({ where: { tenantId: req.tenantId } }),
-            client.project.count({ where: { tenantId: req.tenantId, status: 'active' } }),
+            client.project.count({
+              where: { tenantId: req.tenantId, status: "active" },
+            }),
             client.ticket.count({ where: { tenantId: req.tenantId } }),
-            client.ticket.count({ where: { tenantId: req.tenantId, status: 'open' } }),
+            client.ticket.count({
+              where: { tenantId: req.tenantId, status: "open" },
+            }),
           ]);
 
           return {
@@ -349,10 +360,10 @@ export class TenantController {
         data: stats,
       } as ApiResponse);
     } catch (error) {
-      console.error('Get tenant statistics error:', error);
+      console.error("Get tenant statistics error:", error);
       res.status(500).json({
         success: false,
-        error: 'Failed to get tenant statistics',
+        error: "Failed to get tenant statistics",
       } as ApiResponse);
     }
   }
@@ -360,14 +371,17 @@ export class TenantController {
   /**
    * Check subdomain availability (public endpoint)
    */
-  static async checkSubdomainAvailability(req: AuthRequest, res: Response): Promise<void> {
+  static async checkSubdomainAvailability(
+    req: AuthRequest,
+    res: Response
+  ): Promise<void> {
     try {
       const { subdomain } = req.query;
 
-      if (!subdomain || typeof subdomain !== 'string') {
+      if (!subdomain || typeof subdomain !== "string") {
         res.status(400).json({
           success: false,
-          error: 'Subdomain parameter is required',
+          error: "Subdomain parameter is required",
         } as ApiResponse);
         return;
       }
@@ -377,26 +391,34 @@ export class TenantController {
       if (!subdomainRegex.test(subdomain) || subdomain.length < 3) {
         res.status(400).json({
           success: false,
-          error: 'Invalid subdomain format',
-          data: { available: false, reason: 'Invalid format' }
+          error: "Invalid subdomain format",
+          data: { available: false, reason: "Invalid format" },
         } as ApiResponse);
         return;
       }
 
       // Check reserved subdomains
-      const reservedSubdomains = ['www', 'api', 'admin', 'app', 'mail', 'ftp', 'cdn'];
+      const reservedSubdomains = [
+        "www",
+        "api",
+        "admin",
+        "app",
+        "mail",
+        "ftp",
+        "cdn",
+      ];
       if (reservedSubdomains.includes(subdomain.toLowerCase())) {
         res.status(400).json({
           success: false,
-          error: 'Subdomain is reserved',
-          data: { available: false, reason: 'Reserved subdomain' }
+          error: "Subdomain is reserved",
+          data: { available: false, reason: "Reserved subdomain" },
         } as ApiResponse);
         return;
       }
 
       const rawClient = tenantAwarePrisma.getRawClient();
       const existingTenant = await rawClient.tenant.findUnique({
-        where: { subdomain: subdomain.toLowerCase() }
+        where: { subdomain: subdomain.toLowerCase() },
       });
 
       res.status(200).json({
@@ -407,10 +429,10 @@ export class TenantController {
         },
       } as ApiResponse);
     } catch (error) {
-      console.error('Check subdomain availability error:', error);
+      console.error("Check subdomain availability error:", error);
       res.status(500).json({
         success: false,
-        error: 'Failed to check subdomain availability',
+        error: "Failed to check subdomain availability",
       } as ApiResponse);
     }
   }
@@ -420,20 +442,20 @@ export class TenantController {
    */
   static async deactivate(req: AuthRequest, res: Response): Promise<void> {
     try {
-      if (!req.user || req.user.role !== 'super_admin') {
+      if (!req.user || req.user.role !== "super_admin") {
         res.status(403).json({
           success: false,
-          error: 'super_admin access required',
+          error: "super_admin access required",
         } as ApiResponse);
         return;
       }
 
       const { tenantId } = req.params;
-      
+
       if (!tenantId) {
         res.status(400).json({
           success: false,
-          error: 'Tenant ID is required',
+          error: "Tenant ID is required",
         } as ApiResponse);
         return;
       }
@@ -452,13 +474,13 @@ export class TenantController {
           subdomain: updatedTenant.subdomain,
           isActive: updatedTenant.isActive,
         },
-        message: 'Tenant deactivated successfully',
+        message: "Tenant deactivated successfully",
       } as ApiResponse);
     } catch (error) {
-      console.error('Deactivate tenant error:', error);
+      console.error("Deactivate tenant error:", error);
       res.status(500).json({
         success: false,
-        error: 'Failed to deactivate tenant',
+        error: "Failed to deactivate tenant",
       } as ApiResponse);
     }
   }
@@ -468,20 +490,20 @@ export class TenantController {
    */
   static async activate(req: AuthRequest, res: Response): Promise<void> {
     try {
-      if (!req.user || req.user.role !== 'super_admin') {
+      if (!req.user || req.user.role !== "super_admin") {
         res.status(403).json({
           success: false,
-          error: 'super_admin access required',
+          error: "super_admin access required",
         } as ApiResponse);
         return;
       }
 
       const { tenantId } = req.params;
-      
+
       if (!tenantId) {
         res.status(400).json({
           success: false,
-          error: 'Tenant ID is required',
+          error: "Tenant ID is required",
         } as ApiResponse);
         return;
       }
@@ -500,13 +522,13 @@ export class TenantController {
           subdomain: updatedTenant.subdomain,
           isActive: updatedTenant.isActive,
         },
-        message: 'Tenant activated successfully',
+        message: "Tenant activated successfully",
       } as ApiResponse);
     } catch (error) {
-      console.error('Activate tenant error:', error);
+      console.error("Activate tenant error:", error);
       res.status(500).json({
         success: false,
-        error: 'Failed to activate tenant',
+        error: "Failed to activate tenant",
       } as ApiResponse);
     }
   }
