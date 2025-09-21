@@ -115,11 +115,6 @@ export const optionalTenantContext = async (
     // Same resolution strategies as above
     const host = req.get("Host");
     const subdomain = host.split(".")[0];
-    if (host && !host.includes("localhost")) {
-      if (subdomain && subdomain !== "www" && subdomain !== "api") {
-        tenantIdentifier = subdomain;
-      }
-    }
 
     if (!tenantIdentifier) {
       tenantIdentifier = req.headers["x-tenant-id"] as string;
@@ -127,6 +122,12 @@ export const optionalTenantContext = async (
 
     if (!tenantIdentifier) {
       tenantIdentifier = req.headers["x-tenant-subdomain"] as string;
+    }
+
+    if (host && !host.includes("localhost")) {
+      if (subdomain && subdomain !== "www" && subdomain !== "api" && !tenantIdentifier) {
+        tenantIdentifier = subdomain;
+      }
     }
 
     if (!tenantIdentifier && req.user) {
@@ -137,15 +138,13 @@ export const optionalTenantContext = async (
       tenantIdentifier = req.query.tenant as string;
     }
 
-   
-
     if (tenantIdentifier) {
       const rawClient = tenantAwarePrisma.getRawClient();
       const tenant = await rawClient.tenant.findFirst({
         where: {
           OR: [
             { subdomain: tenantIdentifier.toLowerCase() },
-            { id: tenantIdentifier }
+            { id: tenantIdentifier },
           ],
           isActive: true,
         },
@@ -161,10 +160,10 @@ export const optionalTenantContext = async (
           updatedAt: true,
         },
       });
-      
-      console.log("optional tenant resolution", { 
-        tenantIdentifier, 
-        tenant: tenant ? { id: tenant.id, subdomain: tenant.subdomain } : null 
+
+      console.log("optional tenant resolution", {
+        tenantIdentifier,
+        tenant: tenant ? { id: tenant.id, subdomain: tenant.subdomain } : null,
       });
 
       if (tenant && tenant.isActive) {

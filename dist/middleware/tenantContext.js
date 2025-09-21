@@ -91,16 +91,16 @@ const optionalTenantContext = async (req, res, next) => {
         // Same resolution strategies as above
         const host = req.get("Host");
         const subdomain = host.split(".")[0];
-        if (host && !host.includes("localhost")) {
-            if (subdomain && subdomain !== "www" && subdomain !== "api") {
-                tenantIdentifier = subdomain;
-            }
-        }
         if (!tenantIdentifier) {
             tenantIdentifier = req.headers["x-tenant-id"];
         }
         if (!tenantIdentifier) {
             tenantIdentifier = req.headers["x-tenant-subdomain"];
+        }
+        if (host && !host.includes("localhost")) {
+            if (subdomain && subdomain !== "www" && subdomain !== "api" && !tenantIdentifier) {
+                tenantIdentifier = subdomain;
+            }
         }
         if (!tenantIdentifier && req.user) {
             tenantIdentifier = req.user.tenantId;
@@ -114,7 +114,7 @@ const optionalTenantContext = async (req, res, next) => {
                 where: {
                     OR: [
                         { subdomain: tenantIdentifier.toLowerCase() },
-                        { id: tenantIdentifier }
+                        { id: tenantIdentifier },
                     ],
                     isActive: true,
                 },
@@ -132,7 +132,7 @@ const optionalTenantContext = async (req, res, next) => {
             });
             console.log("optional tenant resolution", {
                 tenantIdentifier,
-                tenant: tenant ? { id: tenant.id, subdomain: tenant.subdomain } : null
+                tenant: tenant ? { id: tenant.id, subdomain: tenant.subdomain } : null,
             });
             if (tenant && tenant.isActive) {
                 req.tenantId = tenant.id;
