@@ -71,7 +71,10 @@ class TicketController {
                 });
                 return;
             }
-            const { title, description, projectId, status = 'NOT_STARTED', priority = 'MEDIUM', type = 'TASK', assigneeId, dueDate, tags = [], metadata = {} } = req.body;
+            const { title, description, 
+            // projectId,
+            status = 'NOT_STARTED', priority = 'MEDIUM', type = 'TASK', assigneeId, dueDate, tags = [], metadata = {} } = req.body;
+            const projectId = req?.body?.project || req?.body?.projectId;
             // Validate required fields
             if (!title || !projectId) {
                 res.status(400).json({

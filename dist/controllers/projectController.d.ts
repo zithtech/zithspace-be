@@ -34,6 +34,10 @@ export declare class ProjectController {
      */
     static getUserProjects(req: AuthRequest, res: Response): Promise<void>;
     /**
+     * Get projects where user is a member or project manager (for ticket creation)
+     */
+    static getUserProjectsForTickets(req: AuthRequest, res: Response): Promise<void>;
+    /**
      * Add team member to project (tenant-aware)
      */
     static addTeamMember(req: AuthRequest, res: Response): Promise<void>;

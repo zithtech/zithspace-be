@@ -32,7 +32,7 @@ router.get('/select', ProjectController.getProjectsForSelect);
  * @desc    Get projects where user is a member (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/user', ProjectController.getUserProjects);
+// router.get('/user', ProjectController.getUserProjects);
 
 /**
  * @route   GET /api/projects/user-projects
@@ -40,6 +40,13 @@ router.get('/user', ProjectController.getUserProjects);
  * @access  Private (authenticated users within tenant)
  */
 router.get('/user-projects', ProjectController.getUserProjects);
+
+/**
+ * @route   GET /api/projects/user-projects-for-tickets
+ * @desc    Get projects where user is a member or project manager (for ticket creation)
+ * @access  Private (authenticated users within tenant)
+ */
+router.get('/user-projects-for-tickets', ProjectController.getUserProjectsForTickets);
 
 /**
  * @route   GET /api/projects/:id

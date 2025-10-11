@@ -593,7 +593,7 @@ class ProjectController {
                 return await client.project.findMany({
                     where: {
                         tenantId: req.tenantId,
-                        status: 'ACTIVE'
+                        status: 'active'
                     },
                     select: {
                         id: true,
@@ -636,11 +636,49 @@ class ProjectController {
                 return;
             }
             const userId = req.user.id;
+            // const projects = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+            const ans = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+                return await client.project.findMany({});
+            });
+            // return ans
+            // });
+            const projectOptions = ans.map(project => ({
+                value: project.id,
+                label: project.name,
+                code: project.code,
+                description: project.description
+            }));
+            res.status(200).json({
+                success: true,
+                data: projectOptions
+            });
+        }
+        catch (error) {
+            console.error('Get user projects error:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to fetch user projects'
+            });
+        }
+    }
+    /**
+     * Get projects where user is a member or project manager (for ticket creation)
+     */
+    static async getUserProjectsForTickets(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: 'Tenant context and authentication required',
+                });
+                return;
+            }
+            const userId = req.user.id;
             const projects = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
                 return await client.project.findMany({
                     where: {
                         tenantId: req.tenantId,
-                        status: 'ACTIVE',
+                        status: 'active',
                         OR: [
                             { projectManagerId: userId },
                             { members: { some: { userId: userId } } }
@@ -667,10 +705,10 @@ class ProjectController {
             });
         }
         catch (error) {
-            console.error('Get user projects error:', error);
+            console.error('Get user projects for tickets error:', error);
             res.status(500).json({
                 success: false,
-                error: 'Failed to fetch user projects'
+                error: 'Failed to fetch user projects for tickets'
             });
         }
     }

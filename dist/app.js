@@ -35,6 +35,9 @@ const app = (0, express_1.default)();
 // Connect to PostgreSQL
 (0, database_1.connectDatabase)().catch(console.error);
 const allowedOrigins = [
+    "http://localhost:3000", // Local development
+    "http://localhost:3005", // Local development for internal app
+    "https://zithmi.vercel.app", // Vercel production URL
     "https://www.zithtech.com",
     /\.zithtech\.com$/, // allow any subdomain like dinesh.zithtech.com
 ];
@@ -216,7 +219,7 @@ app.use((err, req, res, next) => {
     });
 });
 // Start server
-const PORT = parseInt(process.env.PORT || "5001");
+const PORT = parseInt(process.env.PORT || "5000");
 const server = app.listen(PORT, () => {
     console.log(`Zithmi Backend V2 (Multi-Tenant) running on port ${PORT}`);
     console.log(`Environment: ${process.env.NODE_ENV}`);

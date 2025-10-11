@@ -428,6 +428,7 @@ export interface CreateTicketData {
   priority?: string;
   type?: string;
   projectId: string;
+  project?: string;
   assigneeId?: string;
   dueDate?: Date;
   tags?: string[];

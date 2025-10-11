@@ -86,7 +86,7 @@ export class TicketController {
       const {
         title,
         description,
-        projectId,
+        // projectId,
         status = 'NOT_STARTED',
         priority = 'MEDIUM',
         type = 'TASK',
@@ -96,8 +96,10 @@ export class TicketController {
         metadata = {}
       } = req.body as CreateTicketData;
 
+      const projectId = req?.body?.project || req?.body?.projectId;
+
       // Validate required fields
-      if (!title || !projectId) {
+      if (!title || !projectId ) {
         res.status(400).json({
           success: false,
           error: 'Title and projectId are required'
