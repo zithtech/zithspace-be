@@ -263,7 +263,18 @@ export class TicketController {
       if (status) where.status = status;
       if (priority) where.priority = priority;
       if (projectId) where.projectId = projectId;
-      if (assigneeId) where.assigneeId = assigneeId;
+      
+      // Handle single or multiple assignees
+      if (assigneeId) {
+        if (typeof assigneeId === 'string' && assigneeId.includes(',')) {
+          // Multiple assignees - split and use 'in' operator
+          where.assigneeId = { in: assigneeId.split(',').map(id => id.trim()) };
+        } else {
+          // Single assignee
+          where.assigneeId = assigneeId;
+        }
+      }
+      
       if (createdById) where.createdById = createdById;
 
       if (search) {
