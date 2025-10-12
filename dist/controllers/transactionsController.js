@@ -16,7 +16,7 @@ class TransactionsController {
                 });
                 return;
             }
-            const { page = 1, limit = 20, type, category, userId, startDate, endDate, search, sortBy = 'date', sortOrder = 'desc' } = req.query;
+            const { page = 1, limit = 20, type, category, userId, member, startDate, endDate, search, sortBy = 'date', sortOrder = 'desc' } = req.query;
             // Build filter query
             const where = {
                 tenantId: req.tenantId,
@@ -25,8 +25,10 @@ class TransactionsController {
                 where.type = type;
             if (category)
                 where.category = category;
-            if (userId)
-                where.userId = userId;
+            // Accept both userId and member parameters
+            const userIdParam = userId || member;
+            if (userIdParam)
+                where.userId = userIdParam;
             if (startDate && endDate) {
                 where.date = {
                     gte: new Date(startDate),
@@ -65,10 +67,16 @@ class TransactionsController {
                     return await client.transaction.count({ where });
                 })
             ]);
+            // Transform transactions to match frontend expectations
+            const transformedTransactions = transactions.map((t) => ({
+                ...t,
+                member: t.user,
+                type: (t.type === 'income' || t.type === 'bonus') ? 'credit' : 'debit'
+            }));
             const totalPages = Math.ceil(total / Number(limit));
             res.status(200).json({
                 success: true,
-                data: transactions,
+                data: transformedTransactions,
                 pagination: {
                     page: Number(page),
                     limit: Number(limit),
@@ -146,20 +154,28 @@ class TransactionsController {
                 return;
             }
             const transactionData = req.body;
+            // Accept both 'member' and 'userId' field names
+            const userId = transactionData.userId || transactionData.member;
             // Validate required fields
-            if (!transactionData.userId || !transactionData.type || !transactionData.amount || !transactionData.description) {
+            if (!userId || !transactionData.type || !transactionData.amount || !transactionData.description) {
                 res.status(400).json({
                     success: false,
                     error: 'User ID, type, amount, and description are required'
                 });
                 return;
             }
+            // Map frontend types (credit/debit) to backend types
+            const typeMapping = {
+                'credit': 'income',
+                'debit': 'expense'
+            };
+            const backendType = typeMapping[transactionData.type] || transactionData.type;
             // Validate transaction type
             const validTypes = ['income', 'expense', 'bonus', 'deduction'];
-            if (!validTypes.includes(transactionData.type)) {
+            if (!validTypes.includes(backendType)) {
                 res.status(400).json({
                     success: false,
-                    error: 'Invalid transaction type. Must be: income, expense, bonus, or deduction'
+                    error: 'Invalid transaction type. Must be: credit, debit, income, expense, bonus, or deduction'
                 });
                 return;
             }
@@ -175,7 +191,7 @@ class TransactionsController {
                 // Validate user exists and belongs to tenant
                 const user = await client.user.findFirst({
                     where: {
-                        id: transactionData.userId,
+                        id: userId,
                         tenantId: req.tenantId,
                         isActive: true,
                     }
@@ -187,8 +203,8 @@ class TransactionsController {
                 const newTransaction = await client.transaction.create({
                     data: {
                         tenantId: req.tenantId,
-                        userId: transactionData.userId,
-                        type: transactionData.type,
+                        userId: userId,
+                        type: backendType,
                         amount: transactionData.amount,
                         description: transactionData.description,
                         category: transactionData.category,
@@ -201,9 +217,15 @@ class TransactionsController {
                         }
                     }
                 });
+                // Transform response to match frontend expectations
+                const transformedTransaction = {
+                    ...newTransaction,
+                    member: newTransaction.user,
+                    type: (newTransaction.type === 'income' || newTransaction.type === 'bonus') ? 'credit' : 'debit'
+                };
                 res.status(201).json({
                     success: true,
-                    data: newTransaction,
+                    data: transformedTransaction,
                     message: 'Transaction created successfully'
                 });
             });
@@ -240,14 +262,21 @@ class TransactionsController {
             // Remove fields that shouldn't be updated directly
             delete updates.tenantId;
             delete updates.userId;
+            delete updates.member;
             delete updates.createdAt;
-            // Validate transaction type if being updated
+            // Map frontend types (credit/debit) to backend types if provided
             if (updates.type) {
+                const typeMapping = {
+                    'credit': 'income',
+                    'debit': 'expense'
+                };
+                updates.type = typeMapping[updates.type] || updates.type;
+                // Validate transaction type
                 const validTypes = ['income', 'expense', 'bonus', 'deduction'];
                 if (!validTypes.includes(updates.type)) {
                     res.status(400).json({
                         success: false,
-                        error: 'Invalid transaction type. Must be: income, expense, bonus, or deduction'
+                        error: 'Invalid transaction type. Must be: credit, debit, income, expense, bonus, or deduction'
                     });
                     return;
                 }
@@ -286,9 +315,15 @@ class TransactionsController {
                         }
                     }
                 });
+                // Transform response to match frontend expectations
+                const transformedTransaction = {
+                    ...updatedTransaction,
+                    member: updatedTransaction.user,
+                    type: (updatedTransaction.type === 'income' || updatedTransaction.type === 'bonus') ? 'credit' : 'debit'
+                };
                 res.status(200).json({
                     success: true,
-                    data: updatedTransaction,
+                    data: transformedTransaction,
                     message: 'Transaction updated successfully'
                 });
             });
@@ -722,17 +757,59 @@ class TransactionsController {
                     orderBy: { date: 'desc' },
                     take: 10
                 });
+                // Transform recent transactions to match frontend expectations
+                const transformedRecentTransactions = recentTransactions.map((t) => ({
+                    ...t,
+                    member: t.user,
+                    type: (t.type === 'income' || t.type === 'bonus') ? 'credit' : 'debit'
+                }));
+                // Calculate this month's data for monthly trend
+                const now = new Date();
+                const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+                const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+                endOfMonth.setHours(23, 59, 59, 999);
+                const thisMonthData = await client.transaction.groupBy({
+                    by: ['type'],
+                    where: {
+                        tenantId: req.tenantId,
+                        date: {
+                            gte: startOfMonth,
+                            lte: endOfMonth,
+                        }
+                    },
+                    _sum: {
+                        amount: true
+                    }
+                });
+                let monthCredits = 0;
+                let monthDebits = 0;
+                thisMonthData.forEach((item) => {
+                    const amount = item._sum.amount || 0;
+                    if (item.type === 'income' || item.type === 'bonus') {
+                        monthCredits += amount;
+                    }
+                    else {
+                        monthDebits += amount;
+                    }
+                });
                 return {
                     balance: {
-                        totalCredits,
-                        totalDebits,
-                        netBalance: totalCredits - totalDebits,
+                        credits: totalCredits, // Rename to match frontend
+                        debits: totalDebits, // Rename to match frontend
+                        net: totalCredits - totalDebits, // Rename to match frontend
                         creditCount,
                         debitCount,
-                        totalTransactions: creditCount + debitCount,
+                        totalCount: creditCount + debitCount, // Rename to match frontend
                     },
                     categoryBreakdown: formattedCategoryBreakdown,
-                    recentTransactions,
+                    monthlyTrend: [{
+                            month: now.toLocaleString('default', { month: 'long' }),
+                            year: now.getFullYear(),
+                            credits: monthCredits,
+                            debits: monthDebits,
+                            net: monthCredits - monthDebits
+                        }],
+                    recentTransactions: transformedRecentTransactions,
                 };
             });
             res.status(200).json({

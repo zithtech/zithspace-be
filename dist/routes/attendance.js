@@ -17,11 +17,11 @@ router.use(auth_1.requireAuth);
  */
 router.get('/dashboard/summary', attendanceController_1.AttendanceController.getDashboardSummary);
 /**
- * @route   GET /api/attendance/present
+ * @route   GET /api/attendance/dashboard/present
  * @desc    Get present members (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/present', attendanceController_1.AttendanceController.getPresentMembers);
+router.get('/dashboard/present', attendanceController_1.AttendanceController.getPresentMembers);
 /**
  * @route   GET /api/attendance/today
  * @desc    Get today's attendance for current user (tenant-aware)
@@ -29,12 +29,12 @@ router.get('/present', attendanceController_1.AttendanceController.getPresentMem
  */
 router.get('/today', attendanceController_1.AttendanceController.getTodayAttendance);
 /**
- * @route   GET /api/attendance/my/summary
+ * @route   GET /api/attendance/my-summary
  * @desc    Get my attendance summary (tenant-aware)
  * @access  Private (authenticated users within tenant)
  * @query   month, year
  */
-router.get('/my/summary', attendanceController_1.AttendanceController.getMyAttendanceSummary);
+router.get('/my-summary', attendanceController_1.AttendanceController.getMyAttendanceSummary);
 /**
  * @route   GET /api/attendance
  * @desc    Get all attendance records with filtering and pagination (tenant-aware)

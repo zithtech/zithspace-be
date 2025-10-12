@@ -277,10 +277,16 @@ class AttendanceController {
                     throw new types_1.ValidationError('Already clocked out today');
                 }
                 const clockOutTime = new Date();
+                // Calculate work minutes
+                const totalWorkMinutes = Math.floor((clockOutTime.getTime() - attendance.clockIn.getTime()) / 60000);
+                // Calculate effective work minutes (total - breaks)
+                const effectiveWorkMinutes = totalWorkMinutes - attendance.totalBreakMinutes;
                 const updatedAttendance = await client.attendance.update({
                     where: { id: attendance.id },
                     data: {
                         clockOut: clockOutTime,
+                        totalWorkMinutes,
+                        effectiveWorkMinutes,
                     },
                     include: {
                         user: {
@@ -328,23 +334,63 @@ class AttendanceController {
             startOfToday.setHours(0, 0, 0, 0);
             const endOfToday = new Date(today);
             endOfToday.setHours(23, 59, 59, 999);
-            const attendance = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                return await client.attendance.findFirst({
+            const result = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+                // Get user info with assigned shift
+                const user = await client.user.findUnique({
+                    where: { id: userId },
+                    include: {
+                        assignedShift: true
+                    }
+                });
+                if (!user) {
+                    throw new types_1.NotFoundError('User not found');
+                }
+                // Get attendance with shift data
+                const attendance = await client.attendance.findFirst({
                     where: {
                         userId,
                         tenantId: req.tenantId,
                         date: { gte: startOfToday, lte: endOfToday },
                     },
                     include: {
-                        user: {
-                            select: { id: true, name: true, workEmail: true, position: true }
-                        }
+                        shift: true
                     }
                 });
+                // Get shift info (from attendance or user's assigned shift)
+                const shift = attendance?.shift || user.assignedShift;
+                // Calculate work minutes if clocked in
+                let totalWorkMinutes = 0;
+                if (attendance?.clockIn) {
+                    const endTime = attendance.clockOut || new Date();
+                    totalWorkMinutes = Math.floor((endTime.getTime() - attendance.clockIn.getTime()) / 60000);
+                }
+                // Build response - always return data even if no attendance record
+                const responseData = {
+                    id: attendance?.id || null,
+                    userId: userId,
+                    date: startOfToday,
+                    clockIn: attendance?.clockIn || null,
+                    clockOut: attendance?.clockOut || null,
+                    status: attendance?.status?.toLowerCase() || 'not_clocked_in',
+                    shift: shift ? {
+                        id: shift.id,
+                        name: shift.name,
+                        startTime: shift.startTime,
+                        endTime: shift.endTime,
+                        isFlexible: false,
+                    } : null,
+                    totalWorkMinutes,
+                    isClockIn: !!attendance?.clockIn,
+                    clockInTime: attendance?.clockIn || null,
+                    clockOutTime: attendance?.clockOut || null,
+                    canClockIn: !attendance?.clockIn,
+                    canClockOut: !!attendance?.clockIn && !attendance?.clockOut,
+                };
+                return responseData;
             });
             res.status(200).json({
                 success: true,
-                data: attendance
+                data: result
             });
         }
         catch (error) {
@@ -373,6 +419,13 @@ class AttendanceController {
             const endOfToday = new Date(today);
             endOfToday.setHours(23, 59, 59, 999);
             const summary = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+                // Get total active members
+                const totalMembers = await client.user.count({
+                    where: {
+                        tenantId: req.tenantId,
+                        isActive: true,
+                    }
+                });
                 // Get today's attendance summary
                 const todaySummary = await client.attendance.groupBy({
                     by: ['status'],
@@ -382,22 +435,8 @@ class AttendanceController {
                     },
                     _count: true,
                 });
-                // Get present members today
-                const presentMembers = await client.attendance.findMany({
-                    where: {
-                        tenantId: req.tenantId,
-                        date: { gte: startOfToday, lte: endOfToday },
-                        status: { in: ['PRESENT', 'LATE'] },
-                    },
-                    include: {
-                        user: {
-                            select: { id: true, name: true, workEmail: true, position: true }
-                        }
-                    },
-                    orderBy: { clockIn: 'asc' }
-                });
-                // Format summary
-                const statusSummary = {
+                // Format summary counts
+                const statusCounts = {
                     present: 0,
                     absent: 0,
                     late: 0,
@@ -405,28 +444,40 @@ class AttendanceController {
                     wfh: 0,
                 };
                 todaySummary.forEach((item) => {
-                    switch (item.status) {
+                    const status = item.status.toLowerCase();
+                    switch (status) {
                         case 'present':
-                            statusSummary.present = item._count;
+                            statusCounts.present = item._count;
                             break;
                         case 'absent':
-                            statusSummary.absent = item._count;
+                            statusCounts.absent = item._count;
                             break;
                         case 'late':
-                            statusSummary.late = item._count;
+                            statusCounts.late = item._count;
                             break;
                         case 'half-day':
-                            statusSummary.halfDay = item._count;
+                            statusCounts.halfDay = item._count;
                             break;
                         case 'wfh':
-                            statusSummary.wfh = item._count;
+                            statusCounts.wfh = item._count;
                             break;
                     }
                 });
+                // Calculate metrics
+                const presentToday = statusCounts.present + statusCounts.late + statusCounts.wfh;
+                const absentToday = statusCounts.absent;
+                const expectedToday = totalMembers; // Could be refined based on work days
+                const attendanceRate = expectedToday > 0
+                    ? Number(((presentToday / expectedToday) * 100).toFixed(2))
+                    : 0;
                 return {
-                    summary: statusSummary,
-                    presentMembers,
-                    date: today,
+                    totalMembers,
+                    expectedToday,
+                    presentToday,
+                    absentToday,
+                    lateToday: statusCounts.late,
+                    wfhToday: statusCounts.wfh,
+                    attendanceRate,
                 };
             });
             res.status(200).json({
@@ -460,7 +511,7 @@ class AttendanceController {
             const endOfToday = new Date(today);
             endOfToday.setHours(23, 59, 59, 999);
             const presentMembers = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                return await client.attendance.findMany({
+                const records = await client.attendance.findMany({
                     where: {
                         tenantId: req.tenantId,
                         date: { gte: startOfToday, lte: endOfToday },
@@ -470,9 +521,31 @@ class AttendanceController {
                     include: {
                         user: {
                             select: { id: true, name: true, workEmail: true, position: true }
-                        }
+                        },
+                        shift: true
                     },
                     orderBy: { clockIn: 'asc' }
+                });
+                // Transform to match frontend expectations
+                return records.map(record => {
+                    // Calculate work hours
+                    const workMinutes = record.clockOut
+                        ? Math.floor((record.clockOut.getTime() - record.clockIn.getTime()) / 60000)
+                        : Math.floor((new Date().getTime() - record.clockIn.getTime()) / 60000);
+                    return {
+                        id: record.user.id,
+                        name: record.user.name,
+                        position: record.user.position,
+                        status: record.status.toLowerCase(),
+                        clockInTime: record.clockIn,
+                        clockOutTime: record.clockOut,
+                        shift: record.shift ? {
+                            name: record.shift.name,
+                            startTime: record.shift.startTime,
+                            endTime: record.shift.endTime,
+                        } : null,
+                        workHours: workMinutes,
+                    };
                 });
             });
             res.status(200).json({
