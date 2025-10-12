@@ -71,15 +71,17 @@ class TicketController {
                 });
                 return;
             }
-            const { title, description, 
-            // projectId,
-            status = 'NOT_STARTED', priority = 'MEDIUM', type = 'TASK', assigneeId, dueDate, tags = [], metadata = {} } = req.body;
-            const projectId = req?.body?.project || req?.body?.projectId;
+            // Extract and map fields from request body
+            const { title, description, status = 'NOT_STARTED', priority = 'MEDIUM', type = 'TASK', dueDate, tags = [], platform, stack, taskLevel, taskType, storyPoint, estimateHours, parentTickets = [], releasePlan } = req.body;
+            // Map frontend field names to backend field names
+            const projectId = req.body.project || req.body.projectId;
+            const assigneeId = req.body.assignee || req.body.assigneeId;
+            const reportToId = req.body.reportTo || req.body.reportToId;
             // Validate required fields
             if (!title || !projectId) {
                 res.status(400).json({
                     success: false,
-                    error: 'Title and projectId are required'
+                    error: 'Title and project are required'
                 });
                 return;
             }
@@ -94,32 +96,73 @@ class TicketController {
                 if (!project) {
                     throw new types_1.ValidationError('Project not found in this tenant');
                 }
+                // Validate assignee if provided
+                if (assigneeId) {
+                    const assignee = await client.user.findFirst({
+                        where: {
+                            id: assigneeId,
+                            tenantId: req.tenantId,
+                            isActive: true
+                        }
+                    });
+                    if (!assignee) {
+                        throw new types_1.ValidationError('Assignee not found in this tenant');
+                    }
+                }
+                // Validate reportTo if provided
+                if (reportToId) {
+                    const reportTo = await client.user.findFirst({
+                        where: {
+                            id: reportToId,
+                            tenantId: req.tenantId,
+                            isActive: true
+                        }
+                    });
+                    if (!reportTo) {
+                        throw new types_1.ValidationError('Report To user not found in this tenant');
+                    }
+                }
                 // Generate ticket number
                 const ticketCount = await client.ticket.count({
                     where: { tenantId: req.tenantId }
                 });
                 const ticketNumber = `${project.code || 'TKT'}-${(ticketCount + 1).toString().padStart(4, '0')}`;
-                // Create ticket
+                // Prepare metadata for additional fields not in schema
+                const metadata = {
+                    parentTickets,
+                    releasePlan
+                };
+                // Create ticket with fields at root level (matching Prisma schema)
                 const ticket = await client.ticket.create({
                     data: {
                         tenantId: req.tenantId,
                         title,
-                        description,
+                        description: description || '',
                         projectId,
                         status,
                         priority,
                         type,
-                        assigneeId,
+                        platform: platform || 'Development',
+                        stack: stack || null,
+                        taskLevel: taskLevel || 'Medium',
+                        storyPoint: storyPoint || 1,
+                        estimateHours: estimateHours || 0,
+                        assigneeId: assigneeId || null,
+                        reportToId: reportToId || null,
                         createdById: req.user.id,
+                        parentTickets: parentTickets || [],
+                        startDate: req.body.startDate ? new Date(req.body.startDate) : null,
+                        endDate: req.body.endDate ? new Date(req.body.endDate) : null,
                         dueDate: dueDate ? new Date(dueDate) : null,
                         tags,
                         metadata,
                         ticketNumber,
                     },
                     include: {
-                        createdBy: { select: { id: true, name: true, workEmail: true } },
-                        assignee: { select: { id: true, name: true, workEmail: true } },
-                        project: { select: { id: true, name: true, code: true } }
+                        createdBy: { select: { id: true, name: true, workEmail: true, position: true } },
+                        assignee: { select: { id: true, name: true, workEmail: true, position: true } },
+                        reportTo: { select: { id: true, name: true, workEmail: true, position: true } },
+                        project: { select: { id: true, name: true, code: true, description: true } }
                     }
                 });
                 res.status(201).json({
@@ -195,9 +238,10 @@ class TicketController {
                     return await client.ticket.findMany({
                         where,
                         include: {
-                            createdBy: { select: { name: true, workEmail: true } },
-                            assignee: { select: { name: true, workEmail: true } },
-                            project: { select: { name: true, code: true, description: true } }
+                            createdBy: { select: { id: true, name: true, workEmail: true, position: true } },
+                            assignee: { select: { id: true, name: true, workEmail: true, position: true } },
+                            reportTo: { select: { id: true, name: true, workEmail: true, position: true } },
+                            project: { select: { id: true, name: true, code: true, description: true } }
                         },
                         orderBy,
                         skip,
@@ -252,6 +296,7 @@ class TicketController {
                     include: {
                         createdBy: { select: { id: true, name: true, workEmail: true, position: true } },
                         assignee: { select: { id: true, name: true, workEmail: true, position: true } },
+                        reportTo: { select: { id: true, name: true, workEmail: true, position: true } },
                         project: {
                             select: {
                                 id: true,
@@ -260,6 +305,32 @@ class TicketController {
                                 description: true,
                                 projectManager: { select: { name: true, workEmail: true } }
                             }
+                        },
+                        comments: {
+                            include: {
+                                user: {
+                                    select: {
+                                        id: true,
+                                        name: true,
+                                        workEmail: true,
+                                        position: true,
+                                    }
+                                }
+                            },
+                            orderBy: { timestamp: 'asc' }
+                        },
+                        relatedLinks: {
+                            include: {
+                                addedBy: {
+                                    select: {
+                                        id: true,
+                                        name: true,
+                                        workEmail: true,
+                                        position: true,
+                                    }
+                                }
+                            },
+                            orderBy: { addedAt: 'desc' }
                         }
                     }
                 });

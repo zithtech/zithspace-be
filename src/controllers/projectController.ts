@@ -912,6 +912,93 @@ export class ProjectController {
   }
 
   /**
+   * Get project members for dropdown/select (tenant-aware)
+   */
+  static async getProjectMembers(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: 'Tenant context and authentication required',
+        } as ApiResponse);
+        return;
+      }
+
+      const { id } = req.params;
+
+      const members = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+        const project = await client.project.findFirst({
+          where: {
+            id,
+            tenantId: req.tenantId,
+          },
+          include: {
+            projectManager: {
+              select: { id: true, name: true, workEmail: true, position: true }
+            },
+            members: {
+              select: {
+                user: {
+                  select: { id: true, name: true, workEmail: true, position: true }
+                }
+              }
+            }
+          }
+        });
+
+        if (!project) {
+          throw new NotFoundError('Project not found in this tenant');
+        }
+
+        // Combine project manager and team members
+        const allMembers = [
+          {
+            value: project.projectManager.id,
+            label: project.projectManager.name,
+            position: project.projectManager.position,
+            workEmail: project.projectManager.workEmail,
+            isProjectManager: true
+          },
+          ...project.members.map(member => ({
+            value: member.user.id,
+            label: member.user.name,
+            position: member.user.position,
+            workEmail: member.user.workEmail,
+            isProjectManager: false
+          }))
+        ];
+
+        // Remove duplicates (in case project manager is also in members list)
+        const uniqueMembers = allMembers.filter((member, index, self) =>
+          index === self.findIndex((m) => m.value === member.value)
+        );
+
+        return uniqueMembers;
+      });
+
+      res.status(200).json({
+        success: true,
+        data: members
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error('Get project members error:', error);
+      
+      if (error instanceof NotFoundError) {
+        res.status(404).json({
+          success: false,
+          error: error.message
+        } as ApiResponse);
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch project members'
+      } as ApiResponse);
+    }
+  }
+
+  /**
    * Remove team member from project (tenant-aware)
    */
   static async removeTeamMember(req: AuthRequest, res: Response): Promise<void> {

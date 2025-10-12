@@ -360,12 +360,25 @@ export interface CreateTicketData {
     status?: string;
     priority?: string;
     type?: string;
-    projectId: string;
+    projectId?: string;
     project?: string;
     assigneeId?: string;
+    assignee?: string;
+    reportToId?: string;
+    reportTo?: string;
     dueDate?: Date;
     tags?: string[];
     metadata?: Record<string, any>;
+    platform?: string;
+    stack?: string;
+    taskLevel?: string;
+    taskType?: string;
+    storyPoint?: number;
+    estimateHours?: number;
+    parentTickets?: string[];
+    releasePlan?: string;
+    startDate?: string;
+    endDate?: string;
 }
 export interface UpdateTicketData {
     title?: string;

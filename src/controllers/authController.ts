@@ -67,8 +67,8 @@ export class AuthController {
       }
 
       // Verify password
-      // const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
-      const isPasswordValid = true
+      const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+      // const isPasswordValid = true
       if (!isPasswordValid) {
         res.status(401).json({
           success: false,

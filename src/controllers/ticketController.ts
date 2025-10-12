@@ -83,26 +83,35 @@ export class TicketController {
         return;
       }
 
+      // Extract and map fields from request body
       const {
         title,
         description,
-        // projectId,
         status = 'NOT_STARTED',
         priority = 'MEDIUM',
         type = 'TASK',
-        assigneeId,
         dueDate,
         tags = [],
-        metadata = {}
+        platform,
+        stack,
+        taskLevel,
+        taskType,
+        storyPoint,
+        estimateHours,
+        parentTickets = [],
+        releasePlan
       } = req.body as CreateTicketData;
 
-      const projectId = req?.body?.project || req?.body?.projectId;
+      // Map frontend field names to backend field names
+      const projectId = req.body.project || req.body.projectId;
+      const assigneeId = req.body.assignee || req.body.assigneeId;
+      const reportToId = req.body.reportTo || req.body.reportToId;
 
       // Validate required fields
-      if (!title || !projectId ) {
+      if (!title || !projectId) {
         res.status(400).json({
           success: false,
-          error: 'Title and projectId are required'
+          error: 'Title and project are required'
         } as ApiResponse);
         return;
       }
@@ -120,33 +129,77 @@ export class TicketController {
           throw new ValidationError('Project not found in this tenant');
         }
 
+        // Validate assignee if provided
+        if (assigneeId) {
+          const assignee = await client.user.findFirst({
+            where: {
+              id: assigneeId,
+              tenantId: req.tenantId,
+              isActive: true
+            }
+          });
+          if (!assignee) {
+            throw new ValidationError('Assignee not found in this tenant');
+          }
+        }
+
+        // Validate reportTo if provided
+        if (reportToId) {
+          const reportTo = await client.user.findFirst({
+            where: {
+              id: reportToId,
+              tenantId: req.tenantId,
+              isActive: true
+            }
+          });
+          if (!reportTo) {
+            throw new ValidationError('Report To user not found in this tenant');
+          }
+        }
+
         // Generate ticket number
         const ticketCount = await client.ticket.count({
           where: { tenantId: req.tenantId }
         });
         const ticketNumber = `${project.code || 'TKT'}-${(ticketCount + 1).toString().padStart(4, '0')}`;
 
-        // Create ticket
+        // Prepare metadata for additional fields not in schema
+        const metadata: any = {
+          parentTickets,
+          releasePlan
+        };
+
+        // Create ticket with fields at root level (matching Prisma schema)
         const ticket = await client.ticket.create({
           data: {
             tenantId: req.tenantId,
             title,
-            description,
+            description: description || '',
             projectId,
             status,
             priority,
             type,
-            assigneeId,
+            platform: platform || 'Development',
+            stack: stack || null,
+            taskLevel: taskLevel || 'Medium',
+            storyPoint: storyPoint || 1,
+            estimateHours: estimateHours || 0,
+            assigneeId: assigneeId || null,
+            reportToId: reportToId || null,
             createdById: req.user!.id,
+            parentTickets: parentTickets || [],
+            startDate: req.body.startDate ? new Date(req.body.startDate) : null,
+            endDate: req.body.endDate ? new Date(req.body.endDate) : null,
             dueDate: dueDate ? new Date(dueDate) : null,
             tags,
             metadata,
             ticketNumber,
           },
           include: {
-            createdBy: { select: { id: true, name: true, workEmail: true } },
-            assignee: { select: { id: true, name: true, workEmail: true } },
-            project: { select: { id: true, name: true, code: true } }
+            createdBy: { select: { id: true, name: true, workEmail: true, position: true } },
+            assignee: { select: { id: true, name: true, workEmail: true, position: true } },
+            reportTo: { select: { id: true, name: true, workEmail: true, position: true } },
+            project: { select: { id: true, name: true, code: true, description: true } }
           }
         });
 
@@ -239,9 +292,10 @@ export class TicketController {
           return await client.ticket.findMany({
             where,
             include: {
-              createdBy: { select: { name: true, workEmail: true } },
-              assignee: { select: { name: true, workEmail: true } },
-              project: { select: { name: true, code: true, description: true } }
+              createdBy: { select: { id: true, name: true, workEmail: true, position: true } },
+              assignee: { select: { id: true, name: true, workEmail: true, position: true } },
+              reportTo: { select: { id: true, name: true, workEmail: true, position: true } },
+              project: { select: { id: true, name: true, code: true, description: true } }
             },
             orderBy,
             skip,
@@ -300,6 +354,7 @@ export class TicketController {
           include: {
             createdBy: { select: { id: true, name: true, workEmail: true, position: true } },
             assignee: { select: { id: true, name: true, workEmail: true, position: true } },
+            reportTo: { select: { id: true, name: true, workEmail: true, position: true } },
             project: { 
               select: { 
                 id: true, 
@@ -308,6 +363,32 @@ export class TicketController {
                 description: true,
                 projectManager: { select: { name: true, workEmail: true } }
               } 
+            },
+            comments: {
+              include: {
+                user: {
+                  select: {
+                    id: true,
+                    name: true,
+                    workEmail: true,
+                    position: true,
+                  }
+                }
+              },
+              orderBy: { timestamp: 'asc' }
+            },
+            relatedLinks: {
+              include: {
+                addedBy: {
+                  select: {
+                    id: true,
+                    name: true,
+                    workEmail: true,
+                    position: true,
+                  }
+                }
+              },
+              orderBy: { addedAt: 'desc' }
             }
           }
         });
@@ -972,6 +1053,194 @@ export class TicketController {
       res.status(500).json({
         success: false,
         error: 'Failed to add comment',
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Update comment (tenant-aware)
+   */
+  static async updateComment(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: 'Tenant context and authentication required',
+        } as ApiResponse);
+        return;
+      }
+
+      const { ticketId, commentId } = req.params;
+      const { comment } = req.body;
+
+      if (!comment || comment.trim() === '') {
+        res.status(400).json({
+          success: false,
+          error: 'Comment text is required',
+        } as ApiResponse);
+        return;
+      }
+
+      const result = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+        // Verify ticket exists and belongs to tenant
+        const ticket = await client.ticket.findFirst({
+          where: {
+            id: ticketId,
+            tenantId: req.tenantId,
+          }
+        });
+
+        if (!ticket) {
+          throw new NotFoundError('Ticket not found');
+        }
+
+        // Verify comment exists and belongs to this user
+        const existingComment = await client.ticketComment.findFirst({
+          where: {
+            id: commentId,
+            ticketId,
+            tenantId: req.tenantId,
+            userId: req.user!.id, // Only owner can update
+          }
+        });
+
+        if (!existingComment) {
+          throw new NotFoundError('Comment not found or you do not have permission to edit it');
+        }
+
+        // Update comment
+        const updatedComment = await client.ticketComment.update({
+          where: { id: commentId },
+          data: {
+            comment: comment.trim(),
+            updatedAt: new Date(),
+          },
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                workEmail: true,
+                position: true,
+              }
+            }
+          },
+        });
+
+        // Log activity
+        await client.ticketActivityLog.create({
+          data: {
+            ticketId,
+            tenantId: req.tenantId,
+            action: 'Comment Updated',
+            performedById: req.user!.id,
+            details: { commentId },
+          },
+        });
+
+        return updatedComment;
+      });
+
+      res.status(200).json({
+        success: true,
+        data: result,
+        message: 'Comment updated successfully',
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error('Update comment error:', error);
+      
+      if (error instanceof NotFoundError) {
+        res.status(404).json({
+          success: false,
+          error: error.message
+        } as ApiResponse);
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        error: 'Failed to update comment',
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Delete comment (tenant-aware)
+   */
+  static async deleteComment(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: 'Tenant context and authentication required',
+        } as ApiResponse);
+        return;
+      }
+
+      const { ticketId, commentId } = req.params;
+
+      await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+        // Verify ticket exists and belongs to tenant
+        const ticket = await client.ticket.findFirst({
+          where: {
+            id: ticketId,
+            tenantId: req.tenantId,
+          }
+        });
+
+        if (!ticket) {
+          throw new NotFoundError('Ticket not found');
+        }
+
+        // Verify comment exists and belongs to this user
+        const existingComment = await client.ticketComment.findFirst({
+          where: {
+            id: commentId,
+            ticketId,
+            tenantId: req.tenantId,
+            userId: req.user!.id, // Only owner can delete
+          }
+        });
+
+        if (!existingComment) {
+          throw new NotFoundError('Comment not found or you do not have permission to delete it');
+        }
+
+        // Delete comment
+        await client.ticketComment.delete({
+          where: { id: commentId }
+        });
+
+        // Log activity
+        await client.ticketActivityLog.create({
+          data: {
+            ticketId,
+            tenantId: req.tenantId,
+            action: 'Comment Deleted',
+            performedById: req.user!.id,
+            details: { commentId, comment: existingComment.comment },
+          },
+        });
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Comment deleted successfully',
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error('Delete comment error:', error);
+      
+      if (error instanceof NotFoundError) {
+        res.status(404).json({
+          success: false,
+          error: error.message
+        } as ApiResponse);
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        error: 'Failed to delete comment',
       } as ApiResponse);
     }
   }

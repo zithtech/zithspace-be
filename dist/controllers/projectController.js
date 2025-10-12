@@ -798,6 +798,82 @@ class ProjectController {
         }
     }
     /**
+     * Get project members for dropdown/select (tenant-aware)
+     */
+    static async getProjectMembers(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: 'Tenant context and authentication required',
+                });
+                return;
+            }
+            const { id } = req.params;
+            const members = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+                const project = await client.project.findFirst({
+                    where: {
+                        id,
+                        tenantId: req.tenantId,
+                    },
+                    include: {
+                        projectManager: {
+                            select: { id: true, name: true, workEmail: true, position: true }
+                        },
+                        members: {
+                            select: {
+                                user: {
+                                    select: { id: true, name: true, workEmail: true, position: true }
+                                }
+                            }
+                        }
+                    }
+                });
+                if (!project) {
+                    throw new types_1.NotFoundError('Project not found in this tenant');
+                }
+                // Combine project manager and team members
+                const allMembers = [
+                    {
+                        value: project.projectManager.id,
+                        label: project.projectManager.name,
+                        position: project.projectManager.position,
+                        workEmail: project.projectManager.workEmail,
+                        isProjectManager: true
+                    },
+                    ...project.members.map(member => ({
+                        value: member.user.id,
+                        label: member.user.name,
+                        position: member.user.position,
+                        workEmail: member.user.workEmail,
+                        isProjectManager: false
+                    }))
+                ];
+                // Remove duplicates (in case project manager is also in members list)
+                const uniqueMembers = allMembers.filter((member, index, self) => index === self.findIndex((m) => m.value === member.value));
+                return uniqueMembers;
+            });
+            res.status(200).json({
+                success: true,
+                data: members
+            });
+        }
+        catch (error) {
+            console.error('Get project members error:', error);
+            if (error instanceof types_1.NotFoundError) {
+                res.status(404).json({
+                    success: false,
+                    error: error.message
+                });
+                return;
+            }
+            res.status(500).json({
+                success: false,
+                error: 'Failed to fetch project members'
+            });
+        }
+    }
+    /**
      * Remove team member from project (tenant-aware)
      */
     static async removeTeamMember(req, res) {

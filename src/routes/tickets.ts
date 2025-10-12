@@ -103,6 +103,25 @@ router.put('/:id/workflow', TicketController.updateWorkflowStep);
 router.post('/:id/comments', TicketController.addComment);
 
 /**
+ * @route   PUT /api/tickets/:ticketId/comments/:commentId
+ * @desc    Update comment (tenant-aware)
+ * @access  Private (comment owner only)
+ * @param   ticketId - Ticket ID
+ * @param   commentId - Comment ID
+ * @body    { comment: string }
+ */
+router.put('/:ticketId/comments/:commentId', TicketController.updateComment);
+
+/**
+ * @route   DELETE /api/tickets/:ticketId/comments/:commentId
+ * @desc    Delete comment (tenant-aware)
+ * @access  Private (comment owner only)
+ * @param   ticketId - Ticket ID
+ * @param   commentId - Comment ID
+ */
+router.delete('/:ticketId/comments/:commentId', TicketController.deleteComment);
+
+/**
  * @route   GET /api/tickets/:id/links
  * @desc    Get related links for ticket (tenant-aware)
  * @access  Private (authenticated users within tenant)

@@ -18,7 +18,7 @@ router.use(auth_1.requireAuth);
  */
 router.get('/', projectController_1.ProjectController.getProjects);
 /**
- * @route   GET /api/projects/select
+ * @route   GET /api/projects/selecty
  * @desc    Get projects for dropdown/select (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
@@ -42,12 +42,12 @@ router.get('/user-projects', projectController_1.ProjectController.getUserProjec
  */
 router.get('/user-projects-for-tickets', projectController_1.ProjectController.getUserProjectsForTickets);
 /**
- * @route   GET /api/projects/:id
- * @desc    Get project by ID (tenant-aware)
+ * @route   GET /api/projects/:id/members
+ * @desc    Get project members for dropdown/select (tenant-aware)
  * @access  Private (authenticated users within tenant)
  * @param   id - Project ID
  */
-router.get('/:id', projectController_1.ProjectController.getProjectById);
+router.get('/:id/members', projectController_1.ProjectController.getProjectMembers);
 /**
  * @route   GET /api/projects/:id/stats
  * @desc    Get project statistics (tenant-aware)
@@ -55,6 +55,13 @@ router.get('/:id', projectController_1.ProjectController.getProjectById);
  * @param   id - Project ID
  */
 router.get('/:id/stats', projectController_1.ProjectController.getProjectStats);
+/**
+ * @route   GET /api/projects/:id
+ * @desc    Get project by ID (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   id - Project ID
+ */
+router.get('/:id', projectController_1.ProjectController.getProjectById);
 /**
  * @route   POST /api/projects
  * @desc    Create a new project (tenant-aware)

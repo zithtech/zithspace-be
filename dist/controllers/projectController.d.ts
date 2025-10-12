@@ -42,6 +42,10 @@ export declare class ProjectController {
      */
     static addTeamMember(req: AuthRequest, res: Response): Promise<void>;
     /**
+     * Get project members for dropdown/select (tenant-aware)
+     */
+    static getProjectMembers(req: AuthRequest, res: Response): Promise<void>;
+    /**
      * Remove team member from project (tenant-aware)
      */
     static removeTeamMember(req: AuthRequest, res: Response): Promise<void>;
