@@ -29,6 +29,7 @@ export class TransactionsController {
         type,
         category,
         userId,
+        member,
         startDate,
         endDate,
         search,
@@ -43,7 +44,10 @@ export class TransactionsController {
 
       if (type) where.type = type;
       if (category) where.category = category;
-      if (userId) where.userId = userId;
+      
+      // Accept both userId and member parameters
+      const userIdParam = userId || member;
+      if (userIdParam) where.userId = userIdParam as string;
 
       if (startDate && endDate) {
         where.date = {
@@ -88,11 +92,18 @@ export class TransactionsController {
         })
       ]);
 
+      // Transform transactions to match frontend expectations
+      const transformedTransactions = transactions.map((t: any) => ({
+        ...t,
+        member: t.user,
+        type: (t.type === 'income' || t.type === 'bonus') ? 'credit' : 'debit'
+      }));
+
       const totalPages = Math.ceil(total / Number(limit));
 
       res.status(200).json({
         success: true,
-        data: transactions,
+        data: transformedTransactions,
         pagination: {
           page: Number(page),
           limit: Number(limit),
@@ -174,10 +185,13 @@ export class TransactionsController {
         return;
       }
 
-      const transactionData: CreateTransactionData = req.body;
+      const transactionData: any = req.body;
+
+      // Accept both 'member' and 'userId' field names
+      const userId = transactionData.userId || transactionData.member;
 
       // Validate required fields
-      if (!transactionData.userId || !transactionData.type || !transactionData.amount || !transactionData.description) {
+      if (!userId || !transactionData.type || !transactionData.amount || !transactionData.description) {
         res.status(400).json({
           success: false,
           error: 'User ID, type, amount, and description are required'
@@ -185,12 +199,19 @@ export class TransactionsController {
         return;
       }
 
+      // Map frontend types (credit/debit) to backend types
+      const typeMapping: Record<string, string> = {
+        'credit': 'income',
+        'debit': 'expense'
+      };
+      const backendType = typeMapping[transactionData.type] || transactionData.type;
+
       // Validate transaction type
       const validTypes = ['income', 'expense', 'bonus', 'deduction'];
-      if (!validTypes.includes(transactionData.type)) {
+      if (!validTypes.includes(backendType)) {
         res.status(400).json({
           success: false,
-          error: 'Invalid transaction type. Must be: income, expense, bonus, or deduction'
+          error: 'Invalid transaction type. Must be: credit, debit, income, expense, bonus, or deduction'
         } as ApiResponse);
         return;
       }
@@ -208,7 +229,7 @@ export class TransactionsController {
         // Validate user exists and belongs to tenant
         const user = await client.user.findFirst({
           where: {
-            id: transactionData.userId,
+            id: userId,
             tenantId: req.tenantId,
             isActive: true,
           }
@@ -222,8 +243,8 @@ export class TransactionsController {
         const newTransaction = await client.transaction.create({
           data: {
             tenantId: req.tenantId,
-            userId: transactionData.userId,
-            type: transactionData.type,
+            userId: userId,
+            type: backendType,
             amount: transactionData.amount,
             description: transactionData.description,
             category: transactionData.category,
@@ -237,9 +258,16 @@ export class TransactionsController {
           }
         });
 
+        // Transform response to match frontend expectations
+        const transformedTransaction = {
+          ...newTransaction,
+          member: newTransaction.user,
+          type: (newTransaction.type === 'income' || newTransaction.type === 'bonus') ? 'credit' : 'debit'
+        };
+
         res.status(201).json({
           success: true,
-          data: newTransaction,
+          data: transformedTransaction,
           message: 'Transaction created successfully'
         } as ApiResponse);
       });
@@ -275,20 +303,28 @@ export class TransactionsController {
       }
 
       const { id } = req.params;
-      const updates = req.body;
+      const updates: any = req.body;
 
       // Remove fields that shouldn't be updated directly
       delete updates.tenantId;
       delete updates.userId;
+      delete updates.member;
       delete updates.createdAt;
 
-      // Validate transaction type if being updated
+      // Map frontend types (credit/debit) to backend types if provided
       if (updates.type) {
+        const typeMapping: Record<string, string> = {
+          'credit': 'income',
+          'debit': 'expense'
+        };
+        updates.type = typeMapping[updates.type] || updates.type;
+
+        // Validate transaction type
         const validTypes = ['income', 'expense', 'bonus', 'deduction'];
         if (!validTypes.includes(updates.type)) {
           res.status(400).json({
             success: false,
-            error: 'Invalid transaction type. Must be: income, expense, bonus, or deduction'
+            error: 'Invalid transaction type. Must be: credit, debit, income, expense, bonus, or deduction'
           } as ApiResponse);
           return;
         }
@@ -332,9 +368,16 @@ export class TransactionsController {
           }
         });
 
+        // Transform response to match frontend expectations
+        const transformedTransaction = {
+          ...updatedTransaction,
+          member: updatedTransaction.user,
+          type: (updatedTransaction.type === 'income' || updatedTransaction.type === 'bonus') ? 'credit' : 'debit'
+        };
+
         res.status(200).json({
           success: true,
-          data: updatedTransaction,
+          data: transformedTransaction,
           message: 'Transaction updated successfully'
         } as ApiResponse);
       });
@@ -814,17 +857,63 @@ export class TransactionsController {
           take: 10
         });
 
+        // Transform recent transactions to match frontend expectations
+        const transformedRecentTransactions = recentTransactions.map((t: any) => ({
+          ...t,
+          member: t.user,
+          type: (t.type === 'income' || t.type === 'bonus') ? 'credit' : 'debit'
+        }));
+
+        // Calculate this month's data for monthly trend
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        endOfMonth.setHours(23, 59, 59, 999);
+
+        const thisMonthData = await client.transaction.groupBy({
+          by: ['type'],
+          where: {
+            tenantId: req.tenantId,
+            date: {
+              gte: startOfMonth,
+              lte: endOfMonth,
+            }
+          },
+          _sum: {
+            amount: true
+          }
+        });
+
+        let monthCredits = 0;
+        let monthDebits = 0;
+
+        thisMonthData.forEach((item: any) => {
+          const amount = item._sum.amount || 0;
+          if (item.type === 'income' || item.type === 'bonus') {
+            monthCredits += amount;
+          } else {
+            monthDebits += amount;
+          }
+        });
+
         return {
           balance: {
-            totalCredits,
-            totalDebits,
-            netBalance: totalCredits - totalDebits,
+            credits: totalCredits,  // Rename to match frontend
+            debits: totalDebits,    // Rename to match frontend
+            net: totalCredits - totalDebits,  // Rename to match frontend
             creditCount,
             debitCount,
-            totalTransactions: creditCount + debitCount,
+            totalCount: creditCount + debitCount,  // Rename to match frontend
           },
           categoryBreakdown: formattedCategoryBreakdown,
-          recentTransactions,
+          monthlyTrend: [{
+            month: now.toLocaleString('default', { month: 'long' }),
+            year: now.getFullYear(),
+            credits: monthCredits,
+            debits: monthDebits,
+            net: monthCredits - monthDebits
+          }],
+          recentTransactions: transformedRecentTransactions,
         };
       });
 
