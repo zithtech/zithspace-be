@@ -27,6 +27,7 @@ import transactionRoutes from "@/routes/transactions";
 import releasePlanRoutes from "@/routes/releasePlans";
 import settingRoutes from "@/routes/settings";
 import userRoutes from "@/routes/user";
+import dailyUpdateRoutes from "@/routes/dailyUpdates";
 
 // Load environment variables
 dotenv.config();
@@ -124,6 +125,7 @@ app.use("/api/transactions", transactionRoutes);
 app.use("/api/release-plans", releasePlanRoutes);
 app.use("/api/settings", settingRoutes);
 app.use("/api/user", userRoutes);
+app.use("/api/daily-updates", dailyUpdateRoutes);
 
 
 // Tenant-specific health check

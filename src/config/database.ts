@@ -193,7 +193,9 @@ export const connectDatabase = async (): Promise<void> => {
       metadata: { operation: 'connectDatabase' }
     });
 
+    
     await prisma.$connect();
+    console.log(Object.keys(prisma));
     TenantLogger.info('PostgreSQL connected successfully', {
       operation: 'DATABASE_CONNECTION',
       step: 'CONNECTED',

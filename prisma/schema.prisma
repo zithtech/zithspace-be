@@ -40,6 +40,7 @@ model Tenant {
   transactions        Transaction[]
   attendance          Attendance[]
   dropdownOptions     DropdownOption[]
+  statusUpdates       StatusUpdate[]
 
   @@map("tenants")
 }
@@ -97,6 +98,7 @@ model User {
   enteredAttendance Attendance[] @relation("AttendanceEnteredBy")
   transactions  Transaction[]
   createdReleasePlans ReleasePlan[] @relation("ReleasePlanCreator")
+  statusUpdates StatusUpdate[] @relation("UserStatusUpdates")
 
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
@@ -477,4 +479,36 @@ model DropdownOption {
 
   @@unique([tenantId, category, value])
   @@map("dropdown_options")
+}
+
+// ==========================================
+// STATUS UPDATES
+// ==========================================
+
+model StatusUpdate {
+  id                String   @id @default(uuid())
+  userId            String   @map("user_id")
+  tenantId          String   @map("tenant_id")
+  date              DateTime @db.Date
+  
+  // Project-specific updates (JSON array)
+  projectUpdates    Json     @default("[]") @map("project_updates")
+  
+  // Optional general fields
+  mood              String?  // 'happy', 'neutral', 'stressed', 'blocked'
+  totalHoursWorked  Decimal? @db.Decimal(5, 2) @map("total_hours_worked")
+  generalNotes      String?  @map("general_notes")
+  
+  submittedAt       DateTime @default(now()) @map("submitted_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user   User   @relation("UserStatusUpdates", fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date, tenantId])
+  @@index([tenantId, date])
+  @@index([userId, date])
+  @@map("status_updates")
 }

@@ -54,6 +54,14 @@ export declare class TicketController {
      */
     static addComment(req: AuthRequest, res: Response): Promise<void>;
     /**
+     * Update comment (tenant-aware)
+     */
+    static updateComment(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Delete comment (tenant-aware)
+     */
+    static deleteComment(req: AuthRequest, res: Response): Promise<void>;
+    /**
      * Get related links for ticket (tenant-aware)
      */
     static getRelatedLinks(req: AuthRequest, res: Response): Promise<void>;

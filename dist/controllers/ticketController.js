@@ -934,6 +934,172 @@ class TicketController {
         }
     }
     /**
+     * Update comment (tenant-aware)
+     */
+    static async updateComment(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: 'Tenant context and authentication required',
+                });
+                return;
+            }
+            const { ticketId, commentId } = req.params;
+            const { comment } = req.body;
+            if (!comment || comment.trim() === '') {
+                res.status(400).json({
+                    success: false,
+                    error: 'Comment text is required',
+                });
+                return;
+            }
+            const result = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+                // Verify ticket exists and belongs to tenant
+                const ticket = await client.ticket.findFirst({
+                    where: {
+                        id: ticketId,
+                        tenantId: req.tenantId,
+                    }
+                });
+                if (!ticket) {
+                    throw new types_1.NotFoundError('Ticket not found');
+                }
+                // Verify comment exists and belongs to this user
+                const existingComment = await client.ticketComment.findFirst({
+                    where: {
+                        id: commentId,
+                        ticketId,
+                        tenantId: req.tenantId,
+                        userId: req.user.id, // Only owner can update
+                    }
+                });
+                if (!existingComment) {
+                    throw new types_1.NotFoundError('Comment not found or you do not have permission to edit it');
+                }
+                // Update comment
+                const updatedComment = await client.ticketComment.update({
+                    where: { id: commentId },
+                    data: {
+                        comment: comment.trim(),
+                        updatedAt: new Date(),
+                    },
+                    include: {
+                        user: {
+                            select: {
+                                id: true,
+                                name: true,
+                                workEmail: true,
+                                position: true,
+                            }
+                        }
+                    },
+                });
+                // Log activity
+                await client.ticketActivityLog.create({
+                    data: {
+                        ticketId,
+                        tenantId: req.tenantId,
+                        action: 'Comment Updated',
+                        performedById: req.user.id,
+                        details: { commentId },
+                    },
+                });
+                return updatedComment;
+            });
+            res.status(200).json({
+                success: true,
+                data: result,
+                message: 'Comment updated successfully',
+            });
+        }
+        catch (error) {
+            console.error('Update comment error:', error);
+            if (error instanceof types_1.NotFoundError) {
+                res.status(404).json({
+                    success: false,
+                    error: error.message
+                });
+                return;
+            }
+            res.status(500).json({
+                success: false,
+                error: 'Failed to update comment',
+            });
+        }
+    }
+    /**
+     * Delete comment (tenant-aware)
+     */
+    static async deleteComment(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: 'Tenant context and authentication required',
+                });
+                return;
+            }
+            const { ticketId, commentId } = req.params;
+            await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+                // Verify ticket exists and belongs to tenant
+                const ticket = await client.ticket.findFirst({
+                    where: {
+                        id: ticketId,
+                        tenantId: req.tenantId,
+                    }
+                });
+                if (!ticket) {
+                    throw new types_1.NotFoundError('Ticket not found');
+                }
+                // Verify comment exists and belongs to this user
+                const existingComment = await client.ticketComment.findFirst({
+                    where: {
+                        id: commentId,
+                        ticketId,
+                        tenantId: req.tenantId,
+                        userId: req.user.id, // Only owner can delete
+                    }
+                });
+                if (!existingComment) {
+                    throw new types_1.NotFoundError('Comment not found or you do not have permission to delete it');
+                }
+                // Delete comment
+                await client.ticketComment.delete({
+                    where: { id: commentId }
+                });
+                // Log activity
+                await client.ticketActivityLog.create({
+                    data: {
+                        ticketId,
+                        tenantId: req.tenantId,
+                        action: 'Comment Deleted',
+                        performedById: req.user.id,
+                        details: { commentId, comment: existingComment.comment },
+                    },
+                });
+            });
+            res.status(200).json({
+                success: true,
+                message: 'Comment deleted successfully',
+            });
+        }
+        catch (error) {
+            console.error('Delete comment error:', error);
+            if (error instanceof types_1.NotFoundError) {
+                res.status(404).json({
+                    success: false,
+                    error: error.message
+                });
+                return;
+            }
+            res.status(500).json({
+                success: false,
+                error: 'Failed to delete comment',
+            });
+        }
+    }
+    /**
      * Get related links for ticket (tenant-aware)
      */
     static async getRelatedLinks(req, res) {
