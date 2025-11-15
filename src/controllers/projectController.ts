@@ -999,6 +999,74 @@ export class ProjectController {
   }
 
   /**
+   * Get tickets assigned to current user in a project (for daily updates)
+   */
+  static async getMyTicketsByProject(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: 'Tenant context and authentication required',
+        } as ApiResponse);
+        return;
+      }
+
+      const { id } = req.params; // project ID
+
+      const tickets = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+        // Verify project exists and user has access
+        const project = await client.project.findFirst({
+          where: {
+            id,
+            tenantId: req.tenantId,
+          }
+        });
+
+        if (!project) {
+          throw new NotFoundError('Project not found in this tenant');
+        }
+
+        // Get tickets assigned to current user in this project
+        return await client.ticket.findMany({
+          where: {
+            projectId: id,
+            tenantId: req.tenantId,
+            assigneeId: req.user!.id,
+          },
+          select: {
+            id: true,
+            ticketNumber: true,
+            title: true,
+            status: true,
+            priority: true,
+          },
+          orderBy: { ticketNumber: 'desc' },
+        });
+      });
+
+      res.status(200).json({
+        success: true,
+        data: tickets
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error('Get my tickets by project error:', error);
+      
+      if (error instanceof NotFoundError) {
+        res.status(404).json({
+          success: false,
+          error: error.message
+        } as ApiResponse);
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch tickets for this project'
+      } as ApiResponse);
+    }
+  }
+
+  /**
    * Remove team member from project (tenant-aware)
    */
   static async removeTeamMember(req: AuthRequest, res: Response): Promise<void> {

@@ -149,6 +149,7 @@ model Project {
   members         ProjectMember[]
   tickets         Ticket[]
   releasePlans    ReleasePlan[]
+  workEntries     WorkEntry[]     // NEW: Work entries for this project
 
   @@unique([tenantId, code])
   @@map("projects")
@@ -214,6 +215,7 @@ model Ticket {
   comments        TicketComment[]
   relatedLinks    TicketRelatedLink[]
   activityLog     TicketActivityLog[]
+  workEntries     WorkEntry[]         // NEW: Work entries for this ticket
 
   @@unique([tenantId, ticketNumber])
   @@map("tickets")
@@ -491,7 +493,7 @@ model StatusUpdate {
   tenantId          String   @map("tenant_id")
   date              DateTime @db.Date
   
-  // Project-specific updates (JSON array)
+  // Project-specific updates (JSON array) - KEPT for backward compatibility
   projectUpdates    Json     @default("[]") @map("project_updates")
   
   // Optional general fields
@@ -504,11 +506,44 @@ model StatusUpdate {
   updatedAt         DateTime @updatedAt @map("updated_at")
 
   // Relations
-  user   User   @relation("UserStatusUpdates", fields: [userId], references: [id], onDelete: Cascade)
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user        User         @relation("UserStatusUpdates", fields: [userId], references: [id], onDelete: Cascade)
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  workEntries WorkEntry[]  // NEW: Relation to work entries
 
   @@unique([userId, date, tenantId])
   @@index([tenantId, date])
   @@index([userId, date])
   @@map("status_updates")
+}
+
+// ==========================================
+// WORK ENTRIES (NEW)
+// ==========================================
+
+model WorkEntry {
+  id              String   @id @default(uuid())
+  statusUpdateId  String   @map("status_update_id")
+  projectId       String   @map("project_id")
+  ticketId        String?  @map("ticket_id")
+  
+  // Time tracking
+  startTime       DateTime @map("start_time")
+  endTime         DateTime @map("end_time")
+  hoursWorked     Decimal  @db.Decimal(5, 2) @map("hours_worked")
+  
+  // Work details
+  workSummary     String   @map("work_summary")
+  status          String   // 'pending', 'in_progress', 'dev_complete', 'in_testing', 'pushed_to_staging', 'pushed_to_production'
+  blockers        String?
+  notes           String?
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  
+  // Relations
+  statusUpdate StatusUpdate @relation(fields: [statusUpdateId], references: [id], onDelete: Cascade)
+  project      Project      @relation(fields: [projectId], references: [id])
+  ticket       Ticket?      @relation(fields: [ticketId], references: [id])
+  
+  @@map("work_entries")
 }
