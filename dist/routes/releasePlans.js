@@ -30,6 +30,14 @@ router.get('/stats', releasePlansController_1.ReleasePlansController.getReleaseP
  */
 router.get('/projects/:projectId', releasePlansController_1.ReleasePlansController.getReleasePlansByProject);
 /**
+ * @route   GET /api/release-plans/tickets/:projectId
+ * @desc    Get tickets by project for release plan assignment (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   projectId - Project ID
+ * @query   search, limit
+ */
+router.get('/tickets/:projectId', releasePlansController_1.ReleasePlansController.getProjectTickets);
+/**
  * @route   GET /api/release-plans/:id/available-tickets/:projectId
  * @desc    Get tickets available for assignment to release plan (tenant-aware)
  * @access  Private (authenticated users within tenant)

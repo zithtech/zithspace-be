@@ -57,6 +57,14 @@ router.get('/user-projects-for-tickets', ProjectController.getUserProjectsForTic
 router.get('/:id/tickets/my', ProjectController.getMyTicketsByProject);
 
 /**
+ * @route   GET /api/projects/:id/tickets
+ * @desc    Get all tickets for a project that user has access to (for daily updates)
+ * @access  Private (authenticated users within tenant)
+ * @param   id - Project ID
+ */
+router.get('/:id/tickets', ProjectController.getProjectTickets);
+
+/**
  * @route   GET /api/projects/:id/members
  * @desc    Get project members for dropdown/select (tenant-aware)
  * @access  Private (authenticated users within tenant)

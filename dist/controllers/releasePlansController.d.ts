@@ -34,6 +34,11 @@ export declare class ReleasePlansController {
      */
     static getReleasePlanStats(req: AuthRequest, res: Response): Promise<void>;
     /**
+     * Get tickets by project for release plan assignment (tenant-aware)
+     * Simpler version without release plan ID requirement
+     */
+    static getProjectTickets(req: AuthRequest, res: Response): Promise<void>;
+    /**
      * Get tickets available for assignment to release plan (tenant-aware)
      */
     static getAvailableTickets(req: AuthRequest, res: Response): Promise<void>;

@@ -46,6 +46,14 @@ export declare class ProjectController {
      */
     static getProjectMembers(req: AuthRequest, res: Response): Promise<void>;
     /**
+     * Get tickets assigned to current user in a project (for daily updates)
+     */
+    static getMyTicketsByProject(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get all tickets for a project that user has access to (for daily updates)
+     */
+    static getProjectTickets(req: AuthRequest, res: Response): Promise<void>;
+    /**
      * Remove team member from project (tenant-aware)
      */
     static removeTeamMember(req: AuthRequest, res: Response): Promise<void>;

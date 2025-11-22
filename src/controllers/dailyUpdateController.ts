@@ -28,7 +28,7 @@ export class DailyUpdateController {
         return;
       }
 
-      // Validate each project update
+      // Validate each project update (NEW STRUCTURE)
       for (const update of projectUpdates) {
         if (!update.projectId) {
           res.status(400).json({
@@ -38,24 +38,96 @@ export class DailyUpdateController {
           return;
         }
 
-        if (!update.completedTasks || !Array.isArray(update.completedTasks) || update.completedTasks.length === 0) {
+        // Validate time tracking
+        if (!update.startTime || !update.endTime) {
           res.status(400).json({
             success: false,
-            error: 'At least one completed task is required for each project',
+            error: 'Start time and end time are required for each project',
           } as ApiResponse);
           return;
         }
 
-        // Check if completed tasks have valid content
-        const hasValidTask = update.completedTasks.some((task: string) => task && task.trim() !== '');
-        if (!hasValidTask) {
+        // Validate time range
+        const startTime = new Date(update.startTime);
+        const endTime = new Date(update.endTime);
+        if (endTime <= startTime) {
           res.status(400).json({
             success: false,
-            error: 'Completed tasks cannot be empty',
+            error: 'End time must be after start time',
           } as ApiResponse);
           return;
         }
+
+        // Validate tasks array
+        if (!update.tasks || !Array.isArray(update.tasks) || update.tasks.length === 0) {
+          res.status(400).json({
+            success: false,
+            error: 'At least one task is required for each project',
+          } as ApiResponse);
+          return;
+        }
+
+        // Validate each task
+        for (let i = 0; i < update.tasks.length; i++) {
+          const task = update.tasks[i];
+          
+          // Validate task type
+          if (!task.type || !['ticket', 'manual'].includes(task.type)) {
+            res.status(400).json({
+              success: false,
+              error: `Task #${i + 1}: Invalid task type. Must be 'ticket' or 'manual'`,
+            } as ApiResponse);
+            return;
+          }
+
+          // Validate ticket-based task
+          if (task.type === 'ticket' && !task.ticketId) {
+            res.status(400).json({
+              success: false,
+              error: `Task #${i + 1}: Ticket ID is required for ticket-based tasks`,
+            } as ApiResponse);
+            return;
+          }
+
+          // Validate manual task
+          if (task.type === 'manual' && (!task.description || !task.description.trim())) {
+            res.status(400).json({
+              success: false,
+              error: `Task #${i + 1}: Description is required for manual tasks`,
+            } as ApiResponse);
+            return;
+          }
+
+          // Validate status
+          if (!task.status) {
+            res.status(400).json({
+              success: false,
+              error: `Task #${i + 1}: Status is required`,
+            } as ApiResponse);
+            return;
+          }
+
+          const validStatuses = ['pending', 'in_progress', 'dev_complete', 'in_testing', 'pushed_to_staging', 'pushed_to_production'];
+          if (!validStatuses.includes(task.status)) {
+            res.status(400).json({
+              success: false,
+              error: `Task #${i + 1}: Invalid status`,
+            } as ApiResponse);
+            return;
+          }
+        }
+
+        // Calculate hours worked if not provided
+        if (!update.hoursWorked) {
+          const diffMs = endTime.getTime() - startTime.getTime();
+          update.hoursWorked = Math.round((diffMs / (1000 * 60 * 60)) * 100) / 100;
+        }
       }
+
+      // Calculate total hours worked
+      const calculatedTotalHours = projectUpdates.reduce((sum: number, update: any) => {
+        return sum + (update.hoursWorked || 0);
+      }, 0);
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);

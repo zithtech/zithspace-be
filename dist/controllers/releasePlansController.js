@@ -612,6 +612,86 @@ class ReleasePlansController {
         }
     }
     /**
+     * Get tickets by project for release plan assignment (tenant-aware)
+     * Simpler version without release plan ID requirement
+     */
+    static async getProjectTickets(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: 'Tenant context and authentication required',
+                });
+                return;
+            }
+            const { projectId } = req.params;
+            const { search, limit = 20 } = req.query;
+            await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+                // Validate project exists and belongs to tenant
+                const project = await client.project.findFirst({
+                    where: {
+                        id: projectId,
+                        tenantId: req.tenantId,
+                    }
+                });
+                if (!project) {
+                    throw new types_1.NotFoundError('Project not found in this tenant');
+                }
+                // Build filter query
+                const where = {
+                    projectId,
+                    tenantId: req.tenantId,
+                };
+                // Add search functionality
+                if (search) {
+                    where.OR = [
+                        { ticketNumber: { contains: search, mode: 'insensitive' } },
+                        { title: { contains: search, mode: 'insensitive' } },
+                        { description: { contains: search, mode: 'insensitive' } }
+                    ];
+                }
+                const tickets = await client.ticket.findMany({
+                    where,
+                    select: {
+                        id: true,
+                        ticketNumber: true,
+                        title: true,
+                        status: true,
+                        priority: true,
+                        releasePlanId: true,
+                        createdAt: true,
+                        assignee: {
+                            select: { id: true, name: true, workEmail: true }
+                        },
+                        createdBy: {
+                            select: { id: true, name: true, workEmail: true }
+                        }
+                    },
+                    orderBy: { createdAt: 'desc' },
+                    take: Number(limit)
+                });
+                res.status(200).json({
+                    success: true,
+                    data: tickets
+                });
+            });
+        }
+        catch (error) {
+            console.error('Get project tickets error:', error);
+            if (error instanceof types_1.NotFoundError) {
+                res.status(404).json({
+                    success: false,
+                    error: error.message
+                });
+                return;
+            }
+            res.status(500).json({
+                success: false,
+                error: 'Failed to fetch project tickets'
+            });
+        }
+    }
+    /**
      * Get tickets available for assignment to release plan (tenant-aware)
      */
     static async getAvailableTickets(req, res) {

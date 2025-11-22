@@ -684,6 +684,95 @@ export class ReleasePlansController {
   }
 
   /**
+   * Get tickets by project for release plan assignment (tenant-aware)
+   * Simpler version without release plan ID requirement
+   */
+  static async getProjectTickets(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: 'Tenant context and authentication required',
+        } as ApiResponse);
+        return;
+      }
+
+      const { projectId } = req.params;
+      const { search, limit = 20 } = req.query;
+
+      await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+        // Validate project exists and belongs to tenant
+        const project = await client.project.findFirst({
+          where: {
+            id: projectId,
+            tenantId: req.tenantId,
+          }
+        });
+
+        if (!project) {
+          throw new NotFoundError('Project not found in this tenant');
+        }
+
+        // Build filter query
+        const where: any = {
+          projectId,
+          tenantId: req.tenantId,
+        };
+
+        // Add search functionality
+        if (search) {
+          where.OR = [
+            { ticketNumber: { contains: search as string, mode: 'insensitive' } },
+            { title: { contains: search as string, mode: 'insensitive' } },
+            { description: { contains: search as string, mode: 'insensitive' } }
+          ];
+        }
+
+        const tickets = await client.ticket.findMany({
+          where,
+          select: {
+            id: true,
+            ticketNumber: true,
+            title: true,
+            status: true,
+            priority: true,
+            releasePlanId: true,
+            createdAt: true,
+            assignee: {
+              select: { id: true, name: true, workEmail: true }
+            },
+            createdBy: {
+              select: { id: true, name: true, workEmail: true }
+            }
+          },
+          orderBy: { createdAt: 'desc' },
+          take: Number(limit)
+        });
+
+        res.status(200).json({
+          success: true,
+          data: tickets
+        } as ApiResponse);
+      });
+    } catch (error: any) {
+      console.error('Get project tickets error:', error);
+      
+      if (error instanceof NotFoundError) {
+        res.status(404).json({
+          success: false,
+          error: error.message
+        } as ApiResponse);
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch project tickets'
+      } as ApiResponse);
+    }
+  }
+
+  /**
    * Get tickets available for assignment to release plan (tenant-aware)
    */
   static async getAvailableTickets(req: AuthRequest, res: Response): Promise<void> {

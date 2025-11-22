@@ -732,15 +732,27 @@ export class ProjectController {
 
       const userId = req.user.id;
 
-      // const projects = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-      
-        const ans = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-          return await client.project.findMany({});
-        })
-        // return ans
-      // });
+      const projects = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+        return await client.project.findMany({
+          where: {
+            tenantId: req.tenantId,
+            status: 'active',
+            OR: [
+              { projectManagerId: userId },
+              { members: { some: { userId: userId } } }
+            ]
+          },
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            description: true,
+          },
+          orderBy: { name: 'asc' }
+        });
+      });
 
-      const projectOptions = ans.map(project => ({
+      const projectOptions = projects.map(project => ({
         value: project.id,
         label: project.name,
         code: project.code,
@@ -1062,6 +1074,94 @@ export class ProjectController {
       res.status(500).json({
         success: false,
         error: 'Failed to fetch tickets for this project'
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Get all tickets for a project that user has access to (for daily updates)
+   */
+  static async getProjectTickets(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: 'Tenant context and authentication required',
+        } as ApiResponse);
+        return;
+      }
+
+      const { id } = req.params; // project ID
+
+      const tickets = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+        // Verify project exists and user has access
+        const project = await client.project.findFirst({
+          where: {
+            id,
+            tenantId: req.tenantId,
+          },
+          include: {
+            members: {
+              where: { userId: req.user!.id }
+            }
+          }
+        });
+
+        if (!project) {
+          throw new NotFoundError('Project not found in this tenant');
+        }
+
+        // Check if user is project manager or member
+        const isProjectManager = project.projectManagerId === req.user!.id;
+        const isMember = project.members.length > 0;
+
+        if (!isProjectManager && !isMember) {
+          throw new AuthorizationError('You do not have access to this project');
+        }
+
+        // Get all tickets in this project
+        return await client.ticket.findMany({
+          where: {
+            projectId: id,
+            tenantId: req.tenantId,
+          },
+          select: {
+            id: true,
+            ticketNumber: true,
+            title: true,
+            status: true,
+            priority: true,
+          },
+          orderBy: { ticketNumber: 'desc' },
+        });
+      });
+
+      res.status(200).json({
+        success: true,
+        data: tickets
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error('Get project tickets error:', error);
+      
+      if (error instanceof NotFoundError) {
+        res.status(404).json({
+          success: false,
+          error: error.message
+        } as ApiResponse);
+        return;
+      }
+
+      if (error instanceof AuthorizationError) {
+        res.status(403).json({
+          success: false,
+          error: error.message
+        } as ApiResponse);
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch project tickets'
       } as ApiResponse);
     }
   }
