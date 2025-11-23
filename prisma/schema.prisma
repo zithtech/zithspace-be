@@ -26,6 +26,7 @@ model Tenant {
   shifts              Shift[]
   statusUpdates       StatusUpdate[]
   ticketActivityLog   TicketActivityLog[]
+  ticketAttachments   TicketAttachment[]
   ticketComments      TicketComment[]
   ticketRelatedLinks  TicketRelatedLink[]
   ticketWorkflowSteps TicketWorkflowStep[]
@@ -66,6 +67,7 @@ model User {
   createdReleasePlans  ReleasePlan[]       @relation("ReleasePlanCreator")
   statusUpdates        StatusUpdate[]      @relation("UserStatusUpdates")
   performedActivityLog TicketActivityLog[]
+  ticketAttachments    TicketAttachment[]
   ticketComments       TicketComment[]
   addedRelatedLinks    TicketRelatedLink[]
   assignedTickets      Ticket[]            @relation("TicketAssignee")
@@ -171,6 +173,7 @@ model Ticket {
   createdAt           DateTime             @default(now()) @map("created_at")
   updatedAt           DateTime             @updatedAt @map("updated_at")
   activityLog         TicketActivityLog[]
+  attachments         TicketAttachment[]
   comments            TicketComment[]
   relatedLinks        TicketRelatedLink[]
   workflowSteps       TicketWorkflowStep[]
@@ -245,6 +248,27 @@ model TicketRelatedLink {
   ticket      Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
 
   @@map("ticket_related_links")
+}
+
+model TicketAttachment {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  ticketId     String   @map("ticket_id")
+  fileName     String   @map("file_name")
+  fileUrl      String   @map("file_url")
+  fileSize     Int      @map("file_size")
+  fileType     String   @map("file_type")
+  uploadedById String   @map("uploaded_by_id")
+  uploadedAt   DateTime @default(now()) @map("uploaded_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ticket       Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+  @@index([tenantId, ticketId])
+  @@map("ticket_attachments")
 }
 
 model TicketActivityLog {

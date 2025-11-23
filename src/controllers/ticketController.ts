@@ -8,8 +8,50 @@ import {
   CreateTicketData,
   UpdateTicketData
 } from '@/types';
+import { uploadImageToR2, cleanupOrphanedImages, uploadFileToR2, deleteFileFromR2 } from '@/utils/r2Client';
+import { sanitizeHtmlContent, validateHtmlLength } from '@/utils/htmlSanitizer';
 
 export class TicketController {
+  /**
+   * Upload image to R2 for ticket description
+   */
+  static async uploadImage(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: 'Tenant context and authentication required',
+        } as ApiResponse);
+        return;
+      }
+
+      const { image, ticketId } = req.body;
+
+      if (!image) {
+        res.status(400).json({
+          success: false,
+          error: 'Image data is required',
+        } as ApiResponse);
+        return;
+      }
+
+      // Upload image to R2
+      const imageUrl = await uploadImageToR2(image, req.tenantId, ticketId);
+
+      res.status(200).json({
+        success: true,
+        data: { url: imageUrl },
+        message: 'Image uploaded successfully',
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error('Upload image error:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to upload image',
+      } as ApiResponse);
+    }
+  }
+
   /**
    * Get dashboard statistics (tenant-aware)
    */
@@ -116,6 +158,21 @@ export class TicketController {
         return;
       }
 
+      // Sanitize and validate description if provided
+      let sanitizedDescription = '';
+      if (description) {
+        try {
+          validateHtmlLength(description);
+          sanitizedDescription = sanitizeHtmlContent(description);
+        } catch (error: any) {
+          res.status(400).json({
+            success: false,
+            error: error.message || 'Invalid description content'
+          } as ApiResponse);
+          return;
+        }
+      }
+
       await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
         // Validate project exists and belongs to tenant
         const project = await client.project.findFirst({
@@ -174,7 +231,7 @@ export class TicketController {
           data: {
             tenantId: req.tenantId,
             title,
-            description: description || '',
+            description: sanitizedDescription,
             projectId,
             status,
             priority,
@@ -452,6 +509,25 @@ export class TicketController {
 
         if (!existingTicket) {
           throw new NotFoundError('Ticket not found in this tenant');
+        }
+
+        // Sanitize description if it's being updated
+        if (updates.description) {
+          try {
+            validateHtmlLength(updates.description);
+            updates.description = sanitizeHtmlContent(updates.description);
+            
+            // Clean up orphaned images if description changed
+            if (existingTicket.description) {
+              await cleanupOrphanedImages(
+                existingTicket.description,
+                updates.description,
+                req.tenantId
+              );
+            }
+          } catch (error: any) {
+            throw new ValidationError(error.message || 'Invalid description content');
+          }
         }
 
         return await client.ticket.update({
@@ -1667,6 +1743,272 @@ export class TicketController {
       res.status(500).json({
         success: false,
         error: 'Failed to fetch activity log',
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Upload attachment to ticket (tenant-aware)
+   */
+  static async uploadAttachment(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: 'Tenant context and authentication required',
+        } as ApiResponse);
+        return;
+      }
+
+      const { id } = req.params;
+      const { file, fileName } = req.body;
+
+      if (!file || !fileName) {
+        res.status(400).json({
+          success: false,
+          error: 'File data and file name are required',
+        } as ApiResponse);
+        return;
+      }
+
+      const result = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+        // Verify ticket exists and belongs to tenant
+        const ticket = await client.ticket.findFirst({
+          where: {
+            id,
+            tenantId: req.tenantId,
+          }
+        });
+
+        if (!ticket) {
+          throw new NotFoundError('Ticket not found');
+        }
+
+        // Upload file to R2
+        const { fileUrl, fileSize, fileType } = await uploadFileToR2(
+          file,
+          fileName,
+          req.tenantId,
+          id
+        );
+
+        // Create attachment record in database
+        const attachment = await client.ticketAttachment.create({
+          data: {
+            tenantId: req.tenantId,
+            ticketId: id,
+            fileName,
+            fileUrl,
+            fileSize,
+            fileType,
+            uploadedById: req.user!.id,
+          },
+          include: {
+            uploadedBy: {
+              select: {
+                id: true,
+                name: true,
+                workEmail: true,
+                position: true,
+              }
+            }
+          }
+        });
+
+        // Log activity
+        await client.ticketActivityLog.create({
+          data: {
+            ticketId: id,
+            tenantId: req.tenantId,
+            action: 'Attachment Added',
+            performedById: req.user!.id,
+            details: { fileName, fileSize, fileType },
+          },
+        });
+
+        return attachment;
+      });
+
+      res.status(201).json({
+        success: true,
+        data: result,
+        message: 'Attachment uploaded successfully',
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error('Upload attachment error:', error);
+      
+      if (error instanceof NotFoundError) {
+        res.status(404).json({
+          success: false,
+          error: error.message
+        } as ApiResponse);
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to upload attachment',
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Get attachments for a ticket (tenant-aware)
+   */
+  static async getAttachments(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: 'Tenant context and authentication required',
+        } as ApiResponse);
+        return;
+      }
+
+      const { id } = req.params;
+
+      const attachments = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+        // Verify ticket exists and belongs to tenant
+        const ticket = await client.ticket.findFirst({
+          where: {
+            id,
+            tenantId: req.tenantId,
+          }
+        });
+
+        if (!ticket) {
+          throw new NotFoundError('Ticket not found');
+        }
+
+        return await client.ticketAttachment.findMany({
+          where: {
+            ticketId: id,
+            tenantId: req.tenantId,
+          },
+          include: {
+            uploadedBy: {
+              select: {
+                id: true,
+                name: true,
+                workEmail: true,
+                position: true,
+              }
+            }
+          },
+          orderBy: { uploadedAt: 'desc' },
+        });
+      });
+
+      res.status(200).json({
+        success: true,
+        data: attachments,
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error('Get attachments error:', error);
+      
+      if (error instanceof NotFoundError) {
+        res.status(404).json({
+          success: false,
+          error: error.message
+        } as ApiResponse);
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch attachments',
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Delete attachment (tenant-aware)
+   */
+  static async deleteAttachment(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: 'Tenant context and authentication required',
+        } as ApiResponse);
+        return;
+      }
+
+      const { ticketId, attachmentId } = req.params;
+
+      await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+        // Verify ticket exists and belongs to tenant
+        const ticket = await client.ticket.findFirst({
+          where: {
+            id: ticketId,
+            tenantId: req.tenantId,
+          }
+        });
+
+        if (!ticket) {
+          throw new NotFoundError('Ticket not found');
+        }
+
+        // Verify attachment exists and belongs to this ticket and tenant
+        const attachment = await client.ticketAttachment.findFirst({
+          where: {
+            id: attachmentId,
+            ticketId,
+            tenantId: req.tenantId,
+          }
+        });
+
+        if (!attachment) {
+          throw new NotFoundError('Attachment not found');
+        }
+
+        // Delete file from R2
+        try {
+          await deleteFileFromR2(attachment.fileUrl, req.tenantId);
+        } catch (error) {
+          console.error('Failed to delete file from R2:', error);
+          // Continue with database deletion even if R2 deletion fails
+        }
+
+        // Delete attachment record from database
+        await client.ticketAttachment.delete({
+          where: { id: attachmentId }
+        });
+
+        // Log activity
+        await client.ticketActivityLog.create({
+          data: {
+            ticketId,
+            tenantId: req.tenantId,
+            action: 'Attachment Deleted',
+            performedById: req.user!.id,
+            details: { 
+              attachmentId, 
+              fileName: attachment.fileName,
+              fileSize: attachment.fileSize 
+            },
+          },
+        });
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Attachment deleted successfully',
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error('Delete attachment error:', error);
+      
+      if (error instanceof NotFoundError) {
+        res.status(404).json({
+          success: false,
+          error: error.message
+        } as ApiResponse);
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        error: 'Failed to delete attachment',
       } as ApiResponse);
     }
   }
