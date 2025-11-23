@@ -38,6 +38,13 @@ router.get('/my', ticketController_1.TicketController.getMyTickets);
  */
 router.get('/:id', ticketController_1.TicketController.getTicketById);
 /**
+ * @route   POST /api/tickets/upload-image
+ * @desc    Upload image to R2 for ticket description (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @body    { image: string (base64), ticketId?: string }
+ */
+router.post('/upload-image', ticketController_1.TicketController.uploadImage);
+/**
  * @route   POST /api/tickets
  * @desc    Create a new ticket (tenant-aware)
  * @access  Private (authenticated users within tenant)
@@ -138,5 +145,28 @@ router.put('/:ticketId/links/:linkId', ticketController_1.TicketController.updat
  * @param   linkId - Link ID
  */
 router.delete('/:ticketId/links/:linkId', ticketController_1.TicketController.deleteRelatedLink);
+/**
+ * @route   POST /api/tickets/:id/attachments
+ * @desc    Upload attachment to ticket (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   id - Ticket ID
+ * @body    { file: string (base64), fileName: string }
+ */
+router.post('/:id/attachments', ticketController_1.TicketController.uploadAttachment);
+/**
+ * @route   GET /api/tickets/:id/attachments
+ * @desc    Get attachments for a ticket (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   id - Ticket ID
+ */
+router.get('/:id/attachments', ticketController_1.TicketController.getAttachments);
+/**
+ * @route   DELETE /api/tickets/:ticketId/attachments/:attachmentId
+ * @desc    Delete attachment (tenant-aware)
+ * @access  Private (attachment uploader or admin)
+ * @param   ticketId - Ticket ID
+ * @param   attachmentId - Attachment ID
+ */
+router.delete('/:ticketId/attachments/:attachmentId', ticketController_1.TicketController.deleteAttachment);
 exports.default = router;
 //# sourceMappingURL=tickets.js.map

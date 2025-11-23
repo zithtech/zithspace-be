@@ -92,7 +92,7 @@ app.get("/health", (req, res) => {
 });
 // Tenant resolution for all API routes
 app.use("/api", tenantContext_1.optionalTenantContext);
-// API routes
+// API routes  
 app.use("/api/auth", auth_1.default);
 app.use("/api/tenants", tenants_1.default);
 app.use("/api/projects", projects_1.default);
