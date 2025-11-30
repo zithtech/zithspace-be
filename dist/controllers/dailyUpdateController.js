@@ -208,12 +208,24 @@ class DailyUpdateController {
                 });
                 return;
             }
-            const { date, limit = 30 } = req.query;
+            const { date, startDate, endDate, limit = 30 } = req.query;
             const where = {
                 userId: req.user.id,
                 tenantId: req.tenantId,
             };
-            if (date) {
+            // Date range filter (priority over single date)
+            if (startDate && endDate) {
+                const start = new Date(startDate);
+                const end = new Date(endDate);
+                start.setHours(0, 0, 0, 0);
+                end.setHours(23, 59, 59, 999);
+                where.date = {
+                    gte: start,
+                    lte: end,
+                };
+            }
+            // Single date filter (backward compatible)
+            else if (date) {
                 const targetDate = new Date(date);
                 targetDate.setHours(0, 0, 0, 0);
                 where.date = targetDate;
@@ -260,9 +272,7 @@ class DailyUpdateController {
                 });
                 return;
             }
-            const { date, projectId, userId } = req.query;
-            const targetDate = date ? new Date(date) : new Date();
-            targetDate.setHours(0, 0, 0, 0);
+            const { date, startDate, endDate, projectId, userId } = req.query;
             const updates = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
                 // Check user role and position
                 const user = await client.user.findUnique({
@@ -274,8 +284,30 @@ class DailyUpdateController {
                 }
                 let where = {
                     tenantId: req.tenantId,
-                    date: targetDate,
                 };
+                // Date range filter (priority over single date)
+                if (startDate && endDate) {
+                    const start = new Date(startDate);
+                    const end = new Date(endDate);
+                    start.setHours(0, 0, 0, 0);
+                    end.setHours(23, 59, 59, 999);
+                    where.date = {
+                        gte: start,
+                        lte: end,
+                    };
+                }
+                // Single date filter (backward compatible)
+                else if (date) {
+                    const targetDate = new Date(date);
+                    targetDate.setHours(0, 0, 0, 0);
+                    where.date = targetDate;
+                }
+                // Default to today if no date filter
+                else {
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+                    where.date = today;
+                }
                 // Super Admin - can see all updates
                 if (user.role === 'super_admin') {
                     // No additional filters needed

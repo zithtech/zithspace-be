@@ -148,6 +148,9 @@ export class TicketController {
       const projectId = req.body.project || req.body.projectId;
       const assigneeId = req.body.assignee || req.body.assigneeId;
       const reportToId = req.body.reportTo || req.body.reportToId;
+      
+      // Map taskType to type for database (frontend sends taskType, backend stores as type)
+      const ticketType = taskType || type || 'TASK';
 
       // Validate required fields
       if (!title || !projectId) {
@@ -235,7 +238,7 @@ export class TicketController {
             projectId,
             status,
             priority,
-            type,
+            type: ticketType,
             platform: platform || 'Development',
             stack: stack || null,
             taskLevel: taskLevel || 'Medium',
@@ -499,6 +502,37 @@ export class TicketController {
       const { id } = req.params;
       const updates = req.body;
 
+      // Map frontend field names to backend field names (like in createTicket)
+      const mappedUpdates: any = { ...updates };
+      
+      // Map field names
+      if (updates.project) {
+        mappedUpdates.projectId = updates.project;
+        delete mappedUpdates.project;
+      }
+      if (updates.assignee) {
+        mappedUpdates.assigneeId = updates.assignee;
+        delete mappedUpdates.assignee;
+      }
+      if (updates.reportTo) {
+        mappedUpdates.reportToId = updates.reportTo;
+        delete mappedUpdates.reportTo;
+      }
+      
+      // Map taskType to type (frontend sends taskType, backend stores as type)
+      if (updates.taskType) {
+        mappedUpdates.type = updates.taskType;
+        delete mappedUpdates.taskType;
+      }
+      
+      // Handle date conversions
+      if (mappedUpdates.startDate && typeof mappedUpdates.startDate === 'string') {
+        mappedUpdates.startDate = new Date(mappedUpdates.startDate);
+      }
+      if (mappedUpdates.endDate && typeof mappedUpdates.endDate === 'string') {
+        mappedUpdates.endDate = new Date(mappedUpdates.endDate);
+      }
+
       const ticket = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
         const existingTicket = await client.ticket.findFirst({
           where: {
@@ -512,16 +546,16 @@ export class TicketController {
         }
 
         // Sanitize description if it's being updated
-        if (updates.description) {
+        if (mappedUpdates.description) {
           try {
-            validateHtmlLength(updates.description);
-            updates.description = sanitizeHtmlContent(updates.description);
+            validateHtmlLength(mappedUpdates.description);
+            mappedUpdates.description = sanitizeHtmlContent(mappedUpdates.description);
             
             // Clean up orphaned images if description changed
             if (existingTicket.description) {
               await cleanupOrphanedImages(
                 existingTicket.description,
-                updates.description,
+                mappedUpdates.description,
                 req.tenantId
               );
             }
@@ -533,7 +567,7 @@ export class TicketController {
         return await client.ticket.update({
           where: { id },
           data: {
-            ...updates,
+            ...mappedUpdates,
             updatedAt: new Date(),
           },
           include: {

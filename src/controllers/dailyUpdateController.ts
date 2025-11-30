@@ -236,14 +236,26 @@ export class DailyUpdateController {
         return;
       }
 
-      const { date, limit = 30 } = req.query;
+      const { date, startDate, endDate, limit = 30 } = req.query;
 
       const where: any = {
         userId: req.user.id,
         tenantId: req.tenantId,
       };
 
-      if (date) {
+      // Date range filter (priority over single date)
+      if (startDate && endDate) {
+        const start = new Date(startDate as string);
+        const end = new Date(endDate as string);
+        start.setHours(0, 0, 0, 0);
+        end.setHours(23, 59, 59, 999);
+        where.date = {
+          gte: start,
+          lte: end,
+        };
+      }
+      // Single date filter (backward compatible)
+      else if (date) {
         const targetDate = new Date(date as string);
         targetDate.setHours(0, 0, 0, 0);
         where.date = targetDate;
@@ -293,10 +305,7 @@ export class DailyUpdateController {
         return;
       }
 
-      const { date, projectId, userId } = req.query;
-
-      const targetDate = date ? new Date(date as string) : new Date();
-      targetDate.setHours(0, 0, 0, 0);
+      const { date, startDate, endDate, projectId, userId } = req.query;
 
       const updates = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
         // Check user role and position
@@ -311,8 +320,31 @@ export class DailyUpdateController {
 
         let where: any = {
           tenantId: req.tenantId,
-          date: targetDate,
         };
+
+        // Date range filter (priority over single date)
+        if (startDate && endDate) {
+          const start = new Date(startDate as string);
+          const end = new Date(endDate as string);
+          start.setHours(0, 0, 0, 0);
+          end.setHours(23, 59, 59, 999);
+          where.date = {
+            gte: start,
+            lte: end,
+          };
+        }
+        // Single date filter (backward compatible)
+        else if (date) {
+          const targetDate = new Date(date as string);
+          targetDate.setHours(0, 0, 0, 0);
+          where.date = targetDate;
+        }
+        // Default to today if no date filter
+        else {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          where.date = today;
+        }
 
         // Super Admin - can see all updates
         if (user.role === 'super_admin') {

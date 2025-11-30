@@ -115,6 +115,8 @@ class TicketController {
             const projectId = req.body.project || req.body.projectId;
             const assigneeId = req.body.assignee || req.body.assigneeId;
             const reportToId = req.body.reportTo || req.body.reportToId;
+            // Map taskType to type for database (frontend sends taskType, backend stores as type)
+            const ticketType = taskType || type || 'TASK';
             // Validate required fields
             if (!title || !projectId) {
                 res.status(400).json({
@@ -194,7 +196,7 @@ class TicketController {
                         projectId,
                         status,
                         priority,
-                        type,
+                        type: ticketType,
                         platform: platform || 'Development',
                         stack: stack || null,
                         taskLevel: taskLevel || 'Medium',
@@ -431,6 +433,33 @@ class TicketController {
             }
             const { id } = req.params;
             const updates = req.body;
+            // Map frontend field names to backend field names (like in createTicket)
+            const mappedUpdates = { ...updates };
+            // Map field names
+            if (updates.project) {
+                mappedUpdates.projectId = updates.project;
+                delete mappedUpdates.project;
+            }
+            if (updates.assignee) {
+                mappedUpdates.assigneeId = updates.assignee;
+                delete mappedUpdates.assignee;
+            }
+            if (updates.reportTo) {
+                mappedUpdates.reportToId = updates.reportTo;
+                delete mappedUpdates.reportTo;
+            }
+            // Map taskType to type (frontend sends taskType, backend stores as type)
+            if (updates.taskType) {
+                mappedUpdates.type = updates.taskType;
+                delete mappedUpdates.taskType;
+            }
+            // Handle date conversions
+            if (mappedUpdates.startDate && typeof mappedUpdates.startDate === 'string') {
+                mappedUpdates.startDate = new Date(mappedUpdates.startDate);
+            }
+            if (mappedUpdates.endDate && typeof mappedUpdates.endDate === 'string') {
+                mappedUpdates.endDate = new Date(mappedUpdates.endDate);
+            }
             const ticket = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
                 const existingTicket = await client.ticket.findFirst({
                     where: {
@@ -442,13 +471,13 @@ class TicketController {
                     throw new types_1.NotFoundError('Ticket not found in this tenant');
                 }
                 // Sanitize description if it's being updated
-                if (updates.description) {
+                if (mappedUpdates.description) {
                     try {
-                        (0, htmlSanitizer_1.validateHtmlLength)(updates.description);
-                        updates.description = (0, htmlSanitizer_1.sanitizeHtmlContent)(updates.description);
+                        (0, htmlSanitizer_1.validateHtmlLength)(mappedUpdates.description);
+                        mappedUpdates.description = (0, htmlSanitizer_1.sanitizeHtmlContent)(mappedUpdates.description);
                         // Clean up orphaned images if description changed
                         if (existingTicket.description) {
-                            await (0, r2Client_1.cleanupOrphanedImages)(existingTicket.description, updates.description, req.tenantId);
+                            await (0, r2Client_1.cleanupOrphanedImages)(existingTicket.description, mappedUpdates.description, req.tenantId);
                         }
                     }
                     catch (error) {
@@ -458,7 +487,7 @@ class TicketController {
                 return await client.ticket.update({
                     where: { id },
                     data: {
-                        ...updates,
+                        ...mappedUpdates,
                         updatedAt: new Date(),
                     },
                     include: {
