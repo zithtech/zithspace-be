@@ -609,56 +609,54 @@ export class TicketController {
         mappedUpdates.endDate = new Date(mappedUpdates.endDate);
       }
 
-      const ticket =
-        (req.tenantId,
-        async () => {
-          const existingTicket = await prisma.ticket.findFirst({
-            where: {
-              id,
-              tenantId: req.tenantId,
-            },
-          });
+      // Verify ticket exists and belongs to tenant
+      const existingTicket = await prisma.ticket.findFirst({
+        where: {
+          id,
+          tenantId: req.tenantId,
+        },
+      });
 
-          if (!existingTicket) {
-            throw new NotFoundError("Ticket not found in this tenant");
+      if (!existingTicket) {
+        throw new NotFoundError("Ticket not found in this tenant");
+      }
+
+      // Sanitize description if it's being updated
+      if (mappedUpdates.description) {
+        try {
+          validateHtmlLength(mappedUpdates.description);
+          mappedUpdates.description = sanitizeHtmlContent(
+            mappedUpdates.description
+          );
+
+          // Clean up orphaned images if description changed
+          if (existingTicket.description) {
+            await cleanupOrphanedImages(
+              existingTicket.description,
+              mappedUpdates.description,
+              req.tenantId
+            );
           }
+        } catch (error: any) {
+          throw new ValidationError(
+            error.message || "Invalid description content"
+          );
+        }
+      }
 
-          // Sanitize description if it's being updated
-          if (mappedUpdates.description) {
-            try {
-              validateHtmlLength(mappedUpdates.description);
-              mappedUpdates.description = sanitizeHtmlContent(
-                mappedUpdates.description
-              );
-
-              // Clean up orphaned images if description changed
-              if (existingTicket.description) {
-                await cleanupOrphanedImages(
-                  existingTicket.description,
-                  mappedUpdates.description,
-                  req.tenantId
-                );
-              }
-            } catch (error: any) {
-              throw new ValidationError(
-                error.message || "Invalid description content"
-              );
-            }
-          }
-
-          return await prisma.ticket.update({
-            where: { id },
-            data: {
-              ...mappedUpdates,
-              updatedAt: new Date(),
-            },
-            include: {
-              createdBy: { select: { id: true, name: true, workEmail: true } },
-              assignee: { select: { id: true, name: true, workEmail: true } },
-              project: { select: { id: true, name: true, code: true } },
-            },
-          });
-        });
+      // Actually update the ticket in database
+      const ticket = await prisma.ticket.update({
+        where: { id },
+        data: {
+          ...mappedUpdates,
+          updatedAt: new Date(),
+        },
+        include: {
+          createdBy: { select: { id: true, name: true, workEmail: true } },
+          assignee: { select: { id: true, name: true, workEmail: true } },
+          project: { select: { id: true, name: true, code: true } },
+        },
+      });
 
       res.status(200).json({
         success: true,

@@ -512,44 +512,43 @@ class TicketController {
             if (mappedUpdates.endDate && typeof mappedUpdates.endDate === "string") {
                 mappedUpdates.endDate = new Date(mappedUpdates.endDate);
             }
-            const ticket = (req.tenantId,
-                async () => {
-                    const existingTicket = await database_1.prisma.ticket.findFirst({
-                        where: {
-                            id,
-                            tenantId: req.tenantId,
-                        },
-                    });
-                    if (!existingTicket) {
-                        throw new types_1.NotFoundError("Ticket not found in this tenant");
+            // Verify ticket exists and belongs to tenant
+            const existingTicket = await database_1.prisma.ticket.findFirst({
+                where: {
+                    id,
+                    tenantId: req.tenantId,
+                },
+            });
+            if (!existingTicket) {
+                throw new types_1.NotFoundError("Ticket not found in this tenant");
+            }
+            // Sanitize description if it's being updated
+            if (mappedUpdates.description) {
+                try {
+                    (0, htmlSanitizer_1.validateHtmlLength)(mappedUpdates.description);
+                    mappedUpdates.description = (0, htmlSanitizer_1.sanitizeHtmlContent)(mappedUpdates.description);
+                    // Clean up orphaned images if description changed
+                    if (existingTicket.description) {
+                        await (0, r2Client_1.cleanupOrphanedImages)(existingTicket.description, mappedUpdates.description, req.tenantId);
                     }
-                    // Sanitize description if it's being updated
-                    if (mappedUpdates.description) {
-                        try {
-                            (0, htmlSanitizer_1.validateHtmlLength)(mappedUpdates.description);
-                            mappedUpdates.description = (0, htmlSanitizer_1.sanitizeHtmlContent)(mappedUpdates.description);
-                            // Clean up orphaned images if description changed
-                            if (existingTicket.description) {
-                                await (0, r2Client_1.cleanupOrphanedImages)(existingTicket.description, mappedUpdates.description, req.tenantId);
-                            }
-                        }
-                        catch (error) {
-                            throw new types_1.ValidationError(error.message || "Invalid description content");
-                        }
-                    }
-                    return await database_1.prisma.ticket.update({
-                        where: { id },
-                        data: {
-                            ...mappedUpdates,
-                            updatedAt: new Date(),
-                        },
-                        include: {
-                            createdBy: { select: { id: true, name: true, workEmail: true } },
-                            assignee: { select: { id: true, name: true, workEmail: true } },
-                            project: { select: { id: true, name: true, code: true } },
-                        },
-                    });
-                });
+                }
+                catch (error) {
+                    throw new types_1.ValidationError(error.message || "Invalid description content");
+                }
+            }
+            // Actually update the ticket in database
+            const ticket = await database_1.prisma.ticket.update({
+                where: { id },
+                data: {
+                    ...mappedUpdates,
+                    updatedAt: new Date(),
+                },
+                include: {
+                    createdBy: { select: { id: true, name: true, workEmail: true } },
+                    assignee: { select: { id: true, name: true, workEmail: true } },
+                    project: { select: { id: true, name: true, code: true } },
+                },
+            });
             res.status(200).json({
                 success: true,
                 data: ticket,
