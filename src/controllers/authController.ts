@@ -197,7 +197,7 @@ export class AuthController {
         return;
       }
 
-      // Create auth user object for new token generation
+      // Create auth user object for new token generation //
       const authUser = {
         id: storedToken.user.id,
         tenantId: storedToken.user.tenantId,
