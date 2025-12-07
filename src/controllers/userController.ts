@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { tenantAwarePrisma } from '@/config/database';
+import { prisma } from "@/config/database";
 import { 
   AuthRequest, 
   ApiResponse, 
@@ -61,8 +61,8 @@ export class UserController {
       const skip = (Number(page) - 1) * Number(limit);
       
       const [members, total] = await Promise.all([
-        tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-          return await client.user.findMany({
+       
+          await prisma.user.findMany({
             where,
             select: {
               id: true,
@@ -83,11 +83,11 @@ export class UserController {
             orderBy,
             skip,
             take: Number(limit),
-          });
-        }),
-        tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-          return await client.user.count({ where });
-        })
+          }),
+    
+        
+           await prisma.user.count({ where })
+      
       ]);
 
       const totalPages = Math.ceil(total / Number(limit));
@@ -128,8 +128,7 @@ export class UserController {
 
       const { id } = req.params;
 
-      const member = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-        return await client.user.findFirst({
+      const member = await prisma.user.findFirst({
           where: {
             id,
             tenantId: req.tenantId,
@@ -154,7 +153,7 @@ export class UserController {
             }
           }
         });
-      });
+ 
 
       if (!member) {
         res.status(404).json({
@@ -201,9 +200,9 @@ export class UserController {
         return;
       }
 
-      await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+    
         // Check if user already exists within tenant
-        const existingUser = await client.user.findFirst({
+        const existingUser = await prisma.user.findFirst({
           where: {
             tenantId: req.tenantId,
             OR: [
@@ -220,7 +219,7 @@ export class UserController {
 
         // Validate reports to user if provided
         if (userData.reportsToId) {
-          const reportsToUser = await client.user.findFirst({
+          const reportsToUser = await prisma.user.findFirst({
             where: {
               id: userData.reportsToId,
               tenantId: req.tenantId,
@@ -238,7 +237,7 @@ export class UserController {
 
         // Validate assigned shift if provided
         if (userData.assignedShiftId) {
-          const shift = await client.shift.findFirst({
+          const shift = await prisma.shift.findFirst({
             where: {
               id: userData.assignedShiftId,
               tenantId: req.tenantId,
@@ -252,7 +251,7 @@ export class UserController {
         }
 
         // Create user
-        const newUser = await client.user.create({
+        const newUser = await prisma.user.create({
           data: {
             tenantId: req.tenantId,
             name: userData.name,
@@ -289,7 +288,7 @@ export class UserController {
           data: newUser,
           message: 'Member created successfully'
         } as ApiResponse);
-      });
+
     } catch (error: any) {
       console.error('Create member error:', error);
       
@@ -329,9 +328,9 @@ export class UserController {
       delete (updates as any).tenantId;
       delete (updates as any).createdAt;
 
-      await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+     
         // Check if user exists and belongs to tenant
-        const existingUser = await client.user.findFirst({
+        const existingUser = await prisma.user.findFirst({
           where: {
             id,
             tenantId: req.tenantId,
@@ -344,7 +343,7 @@ export class UserController {
 
         // Check for email conflicts within tenant if email is being updated
         if (updates.workEmail && updates.workEmail.toLowerCase() !== existingUser.workEmail) {
-          const duplicateUser = await client.user.findFirst({
+          const duplicateUser = await prisma.user.findFirst({
             where: {
               workEmail: updates.workEmail.toLowerCase(),
               tenantId: req.tenantId,
@@ -359,7 +358,7 @@ export class UserController {
 
         // Validate reports to user if provided
         if (updates.reportsToId) {
-          const reportsToUser = await client.user.findFirst({
+          const reportsToUser = await prisma.user.findFirst({
             where: {
               id: updates.reportsToId,
               tenantId: req.tenantId,
@@ -374,7 +373,7 @@ export class UserController {
 
         // Validate assigned shift if provided
         if (updates.assignedShiftId) {
-          const shift = await client.shift.findFirst({
+          const shift = await prisma.shift.findFirst({
             where: {
               id: updates.assignedShiftId,
               tenantId: req.tenantId,
@@ -399,7 +398,7 @@ export class UserController {
           updateData.shiftAssignedDate = new Date();
         }
 
-        const updatedUser = await client.user.update({
+        const updatedUser = await prisma.user.update({
           where: { id },
           data: updateData,
           select: {
@@ -432,7 +431,7 @@ export class UserController {
           data: updatedUser,
           message: 'Member updated successfully'
         } as ApiResponse);
-      });
+
     } catch (error: any) {
       console.error('Update member error:', error);
       
@@ -474,8 +473,8 @@ export class UserController {
 
       const { id } = req.params;
 
-      await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-        const existingUser = await client.user.findFirst({
+     
+        const existingUser = await prisma.user.findFirst({
           where: {
             id,
             tenantId: req.tenantId,
@@ -487,7 +486,7 @@ export class UserController {
         }
 
         // Soft delete
-        const updatedUser = await client.user.update({
+        const updatedUser = await prisma.user.update({
           where: { id },
           data: {
             isActive: false,
@@ -507,7 +506,7 @@ export class UserController {
           data: updatedUser,
           message: 'Member deactivated successfully'
         } as ApiResponse);
-      });
+
     } catch (error: any) {
       console.error('Delete member error:', error);
       
@@ -541,8 +540,8 @@ export class UserController {
 
       const { id } = req.params;
 
-      await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-        const existingUser = await client.user.findFirst({
+     
+        const existingUser = await prisma.user.findFirst({
           where: {
             id,
             tenantId: req.tenantId,
@@ -553,7 +552,7 @@ export class UserController {
           throw new NotFoundError('User not found in this tenant');
         }
 
-        const updatedUser = await client.user.update({
+        const updatedUser = await prisma.user.update({
           where: { id },
           data: {
             isActive: true,
@@ -573,7 +572,7 @@ export class UserController {
           data: updatedUser,
           message: 'Member activated successfully'
         } as ApiResponse);
-      });
+
     } catch (error: any) {
       console.error('Activate member error:', error);
       
@@ -607,8 +606,7 @@ export class UserController {
 
       const userId = req.user.id;
 
-      const user = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-        return await client.user.findFirst({
+     const user = await prisma.user.findFirst({
           where: {
             id: userId,
             tenantId: req.tenantId,
@@ -632,7 +630,7 @@ export class UserController {
             }
           }
         });
-      });
+
 
       if (!user) {
         res.status(404).json({
@@ -678,12 +676,12 @@ export class UserController {
       delete updateData.tenantId;
       delete updateData.createdAt;
 
-      await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+      
         // Convert dates if provided
         if (updateData.dateOfBirth) updateData.dateOfBirth = new Date(updateData.dateOfBirth);
         if (updateData.personalEmail) updateData.personalEmail = updateData.personalEmail.toLowerCase();
 
-        const updatedUser = await client.user.update({
+        const updatedUser = await prisma.user.update({
           where: { id: userId },
           data: {
             ...updateData,
@@ -710,7 +708,7 @@ export class UserController {
           data: updatedUser,
           message: 'Profile updated successfully'
         } as ApiResponse);
-      });
+    
     } catch (error: any) {
       console.error('Update user profile error:', error);
 
@@ -770,9 +768,9 @@ export class UserController {
         return;
       }
 
-      await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+     
         // Get user with password
-        const user = await client.user.findFirst({
+        const user = await prisma.user.findFirst({
           where: {
             id: userId,
             tenantId: req.tenantId,
@@ -793,7 +791,7 @@ export class UserController {
         const newPasswordHash = await bcrypt.hash(newPassword, 12);
 
         // Update password
-        await client.user.update({
+        await prisma.user.update({
           where: { id: userId },
           data: {
             passwordHash: newPasswordHash,
@@ -805,7 +803,7 @@ export class UserController {
           success: true,
           message: 'Password changed successfully'
         } as ApiResponse);
-      });
+  
     } catch (error: any) {
       console.error('Change password error:', error);
       
@@ -857,8 +855,8 @@ export class UserController {
         return;
       }
 
-      await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-        const user = await client.user.findFirst({
+      
+        const user = await prisma.user.findFirst({
           where: {
             id: userId,
             tenantId: req.tenantId,
@@ -873,7 +871,7 @@ export class UserController {
         const newPasswordHash = await bcrypt.hash(newPassword, 12);
 
         // Update password
-        await client.user.update({
+        await prisma.user.update({
           where: { id: userId },
           data: {
             passwordHash: newPasswordHash,
@@ -885,7 +883,7 @@ export class UserController {
           success: true,
           message: 'User password reset successfully'
         } as ApiResponse);
-      });
+    
     } catch (error: any) {
       console.error('Reset user password error:', error);
       
@@ -927,8 +925,7 @@ export class UserController {
       if (role) where.role = role;
       if (position) where.position = position;
 
-      const members = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-        return await client.user.findMany({
+      const members =await prisma.user.findMany({
           where,
           select: {
             id: true,
@@ -939,8 +936,7 @@ export class UserController {
           },
           orderBy: { name: 'asc' }
         });
-      });
-
+     
       const formattedMembers = members.map(member => ({
         value: member.id,
         label: member.name,
@@ -986,9 +982,9 @@ export class UserController {
         return;
       }
 
-      const updatedMember = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+ 
         // Verify member exists and belongs to tenant
-        const member = await client.user.findFirst({
+        const member = await prisma.user.findFirst({
           where: {
             id,
             tenantId: req.tenantId,
@@ -1000,7 +996,7 @@ export class UserController {
         }
 
         // Verify shift exists and belongs to tenant
-        const shift = await client.shift.findFirst({
+        const shift = await prisma.shift.findFirst({
           where: {
             id: shiftId,
             tenantId: req.tenantId,
@@ -1013,7 +1009,7 @@ export class UserController {
         }
 
         // Update member with shift assignment
-        return await client.user.update({
+             const updatedMember  = await prisma.user.update({
           where: { id },
           data: {
             assignedShiftId: shiftId,
@@ -1051,7 +1047,7 @@ export class UserController {
             }
           }
         });
-      });
+   
 
       res.status(200).json({
         success: true,

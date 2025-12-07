@@ -1,6 +1,6 @@
 import { Response, NextFunction } from 'express';
 import { JWTUtils } from '@/utils/jwt';
-import { tenantAwarePrisma } from '@/config/database';
+import { prisma } from '@/config/database';
 import TenantLogger from '@/utils/tenantLogger';
 import { 
   AuthRequest, 
@@ -16,101 +16,87 @@ export const authenticateToken = async (
   res: Response,
   next: NextFunction
 ): Promise<void> => {
-  const timer = TenantLogger.startTimer();
+  // const timer = TenantLogger.startTimer();
   
   try {
-    TenantLogger.logMiddlewareEntry('authenticateToken', req);
+    // TenantLogger.logMiddlewareEntry('authenticateToken', req);
     
     const authHeader = req.headers.authorization;
     const token = JWTUtils.extractTokenFromHeader(authHeader);
 
     if (!token) {
       const error = new AuthenticationError('Access token required');
-      TenantLogger.logAuthTenantValidation(req, false, 'No token provided');
+      // TenantLogger.logAuthTenantValidation(req, false, 'No token provided');
       throw error;
     }
 
-    TenantLogger.debug('Token extracted from header', {
-      operation: 'AUTHENTICATION',
-      step: 'TOKEN_EXTRACTED',
-      metadata: { hasToken: !!token, tokenLength: token?.length }
-    });
+    // TenantLogger.debug('Token extracted from header', {
+    //   operation: 'AUTHENTICATION',
+    //   step: 'TOKEN_EXTRACTED',
+    //   metadata: { hasToken: !!token, tokenLength: token?.length }
+    // });
 
     // Check if token is blacklisted (TODO: implement Redis)
     const isBlacklisted = await JWTUtils.isTokenBlacklisted(token);
     if (isBlacklisted) {
       const error = new AuthenticationError('Token has been revoked');
-      TenantLogger.logAuthTenantValidation(req, false, 'Token blacklisted');
+      // TenantLogger.logAuthTenantValidation(req, false, 'Token blacklisted');
       throw error;
     }
 
     // Verify the token
-    TenantLogger.debug('Verifying JWT token', {
-      operation: 'AUTHENTICATION',
-      step: 'TOKEN_VERIFICATION',
-      tenantId: req.tenantId,
-      metadata: { requestTenantId: req.tenantId }
-    });
+    // TenantLogger.debug('Verifying JWT token', {
+    //   operation: 'AUTHENTICATION',
+    //   step: 'TOKEN_VERIFICATION',
+    //   tenantId: req.tenantId,
+    //   metadata: { requestTenantId: req.tenantId }
+    // });
 
     const decoded = JWTUtils.verifyAccessToken(token, req.tenantId);
 
-    TenantLogger.info('JWT token verified successfully', {
-      operation: 'AUTHENTICATION',
-      step: 'TOKEN_VERIFIED',
-      tenantId: decoded.tenantId,
-      userId: decoded.userId,
-      metadata: { 
-        tokenTenantId: decoded.tenantId,
-        requestTenantId: req.tenantId,
-        userId: decoded.userId
-      }
-    });
+    // TenantLogger.info('JWT token verified successfully', {
+    //   operation: 'AUTHENTICATION',
+    //   step: 'TOKEN_VERIFIED',
+    //   tenantId: decoded.tenantId,
+    //   userId: decoded.userId,
+    //   metadata: { 
+    //     tokenTenantId: decoded.tenantId,
+    //     requestTenantId: req.tenantId,
+    //     userId: decoded.userId
+    //   }
+    // });
 
-    // Get fresh user data to ensure user is still active and belongs to tenant
-    TenantLogger.debug('Fetching user data from database', {
-      operation: 'AUTHENTICATION',
-      step: 'USER_LOOKUP',
-      tenantId: decoded.tenantId,
-      userId: decoded.userId,
-      metadata: { userId: decoded.userId, tenantId: decoded.tenantId }
+    // OPTIMIZED: Get fresh user data - tenant context already set by middleware
+    // No need for withTenant wrapper or tenant include
+    const user = await prisma.user.findFirst({
+      where: {
+        id: decoded.userId,
+        tenantId: decoded.tenantId,
+        isActive: true,
+      },
     });
-
-    const user = await tenantAwarePrisma.withTenant(
-      decoded.tenantId,
-      async (client) => {
-        return await client.user.findFirst({
-          where: {
-            id: decoded.userId,
-            tenantId: decoded.tenantId,
-            isActive: true,
-          },
-          include: {
-            tenant: true,
-          },
-        });
-      }
-    );
 
     if (!user) {
       const error = new AuthenticationError('User not found or inactive');
-      TenantLogger.logAuthTenantValidation(req, false, 'User not found or inactive');
+      // TenantLogger.logAuthTenantValidation(req, false, 'User not found or inactive');
       throw error;
     }
 
-    if (!user.tenant.isActive) {
+    // Use req.tenant (already fetched by tenantContext middleware)
+    if (!req.tenant || !req.tenant.isActive) {
       const error = new AuthenticationError('Tenant is not active');
-      TenantLogger.logAuthTenantValidation(req, false, 'Tenant is not active');
+      // TenantLogger.logAuthTenantValidation(req, false, 'Tenant is not active');
       throw error;
     }
 
     // Ensure user belongs to the current tenant context
     if (req.tenantId && user.tenantId !== req.tenantId) {
       const error = new AuthorizationError('Invalid tenant context');
-      TenantLogger.logAuthTenantValidation(req, false, 'Tenant context mismatch');
+      // TenantLogger.logAuthTenantValidation(req, false, 'Tenant context mismatch');
       throw error;
     }
 
-    TenantLogger.logAuthTenantValidation(req, true, 'Authentication successful');
+    // TenantLogger.logAuthTenantValidation(req, true, 'Authentication successful');
 
     // Attach user info to request
     req.user = {
@@ -123,45 +109,17 @@ export const authenticateToken = async (
       sessionId: decoded.sessionId,
     };
 
-    TenantLogger.info('User authenticated successfully', {
-      operation: 'AUTHENTICATION',
-      step: 'AUTH_SUCCESS',
-      tenantId: user.tenantId,
-      userId: user.id,
-      metadata: {
-        userId: user.id,
-        tenantId: user.tenantId,
-        role: user.role,
-        email: user.workEmail
-      }
-    });
+    // OPTIMIZED: Remove lastLoginAt update to avoid write on every request
+    // This was causing significant performance overhead
+    // Consider updating only on actual login, or use background job
 
-    // Update last login time
-    TenantLogger.debug('Updating user last login time', {
-      operation: 'AUTHENTICATION',
-      step: 'UPDATE_LOGIN_TIME',
-      tenantId: user.tenantId,
-      userId: user.id,
-      metadata: { userId: user.id }
-    });
-
-    await tenantAwarePrisma.withTenant(
-      user.tenantId,
-      async (client) => {
-        await client.user.update({
-          where: { id: user.id },
-          data: { lastLoginAt: new Date() },
-        });
-      }
-    );
-
-    TenantLogger.logMiddlewareExit('authenticateToken', req, true);
-    timer.end('authenticateToken', { tenantId: user.tenantId, userId: user.id });
+    // TenantLogger.logMiddlewareExit('authenticateToken', req, true);
+    // timer.end('authenticateToken', { tenantId: user.tenantId, userId: user.id });
     next();
   } catch (error) {
-    TenantLogger.logTenantError(error, req, 'AUTHENTICATION');
-    TenantLogger.logMiddlewareExit('authenticateToken', req, false);
-    timer.end('authenticateToken_failed');
+    // TenantLogger.logTenantError(error, req, 'AUTHENTICATION');
+    // TenantLogger.logMiddlewareExit('authenticateToken', req, false);
+    // timer.end('authenticateToken_failed');
     
     if (error instanceof AuthenticationError || error instanceof AuthorizationError) {
       res.status(error.statusCode).json({
@@ -182,6 +140,7 @@ export const authenticateToken = async (
 
 /**
  * Optional authentication middleware - doesn't fail if no token provided
+ * OPTIMIZED: Use direct prisma client
  */
 export const optionalAuth = async (
   req: AuthRequest,
@@ -201,18 +160,14 @@ export const optionalAuth = async (
     // Try to verify the token
     const decoded = JWTUtils.verifyAccessToken(token, req.tenantId);
     
-    const user = await tenantAwarePrisma.withTenant(
-      decoded.tenantId,
-      async (client) => {
-        return await client.user.findFirst({
-          where: {
-            id: decoded.userId,
-            tenantId: decoded.tenantId,
-            isActive: true,
-          },
-        });
-      }
-    );
+    // OPTIMIZED: Use direct prisma client (context already set)
+    const user = await prisma.user.findFirst({
+      where: {
+        id: decoded.userId,
+        tenantId: decoded.tenantId,
+        isActive: true,
+      },
+    });
 
     if (user && (!req.tenantId || user.tenantId === req.tenantId)) {
       req.user = {

@@ -20,9 +20,11 @@ if (process.env.NODE_ENV !== 'production') {
 
 /**
  * Tenant-aware Prisma client that sets tenant context for RLS
+ * OPTIMIZED: Reduces redundant context setting
  */
 export class TenantAwarePrisma {
   private client: PrismaClient;
+  private currentTenantId: string | null = null;
 
   constructor() {
     this.client = prisma;
@@ -30,120 +32,56 @@ export class TenantAwarePrisma {
 
   /**
    * Set tenant context for Row Level Security
+   * OPTIMIZED: Only sets if tenant has changed
    */
-  async setTenantContext(tenantId: string): Promise<void> {
-    const timer = TenantLogger.startTimer();
-    
-    try {
-      TenantLogger.logDatabaseOperation('setTenantContext', tenantId, {
-        operation: 'DATABASE_RLS',
-        step: 'SET_CONTEXT',
-        tenantId,
-        metadata: { operation: 'setTenantContext' }
-      });
+  async setTenantContext(tenantId: string, force: boolean = false): Promise<void> {
+    // Skip if already set to this tenant (unless forced)
+    if (!force && this.currentTenantId === tenantId) {
+      return;
+    }
 
+    try {
       await this.client.$executeRaw`
         SELECT set_config('app.current_tenant_id', ${tenantId}, true)
       `;
 
-      TenantLogger.info('Tenant context set successfully', {
-        operation: 'DATABASE_RLS',
-        step: 'CONTEXT_SET',
-        tenantId,
-        metadata: { tenantId }
-      });
-
-      timer.end('setTenantContext', { tenantId });
+      this.currentTenantId = tenantId;
     } catch (error) {
-      TenantLogger.error('Failed to set tenant context', {
-        operation: 'DATABASE_RLS',
-        step: 'CONTEXT_SET_ERROR',
-        tenantId,
-        metadata: {
-          error: {
-            message: error.message,
-            name: error.name,
-          },
-          tenantId
-        }
-      });
-      timer.end('setTenantContext_failed', { tenantId });
+      console.error('Failed to set tenant context:', error);
       throw error;
     }
   }
 
   /**
-   * Get Prisma client with tenant context set
+   * Get Prisma client (context should already be set by middleware)
+   * DEPRECATED: Use prisma directly instead
    */
   async getClient(tenantId: string): Promise<PrismaClient> {
-    TenantLogger.logDatabaseOperation('getClient', tenantId, {
-      operation: 'DATABASE_CLIENT',
-      step: 'GET_CLIENT',
-      tenantId,
-      metadata: { operation: 'getClient' }
-    });
-
     await this.setTenantContext(tenantId);
     return this.client;
   }
 
   /**
    * Execute a query with tenant context
+   * DEPRECATED: Context should already be set by middleware, use prisma directly
    */
   async withTenant<T>(tenantId: string, operation: (client: PrismaClient) => Promise<T>): Promise<T> {
-    const timer = TenantLogger.startTimer();
-    
-    try {
-      TenantLogger.logDatabaseOperation('withTenant', tenantId, {
-        operation: 'DATABASE_OPERATION',
-        step: 'WITH_TENANT_START',
-        tenantId,
-        metadata: { operation: 'withTenant' }
-      });
-
-      await this.setTenantContext(tenantId);
-      const result = await operation(this.client);
-
-      TenantLogger.info('Tenant-scoped operation completed successfully', {
-        operation: 'DATABASE_OPERATION',
-        step: 'WITH_TENANT_SUCCESS',
-        tenantId,
-        metadata: { tenantId }
-      });
-
-      timer.end('withTenant', { tenantId });
-      return result;
-    } catch (error) {
-      TenantLogger.error('Tenant-scoped operation failed', {
-        operation: 'DATABASE_OPERATION',
-        step: 'WITH_TENANT_ERROR',
-        tenantId,
-        metadata: {
-          error: {
-            message: error.message,
-            name: error.name,
-          },
-          tenantId
-        }
-      });
-      timer.end('withTenant_failed', { tenantId });
-      throw error;
-    }
+    // Context should already be set by middleware, just execute the operation
+    return await operation(this.client);
   }
 
   /**
    * Get raw Prisma client (use carefully - no tenant context)
    */
   getRawClient(): PrismaClient {
-    TenantLogger.warn('Raw Prisma client requested - no tenant context', {
-      operation: 'DATABASE_RAW',
-      step: 'GET_RAW_CLIENT',
-      metadata: { 
-        warning: 'Raw client bypasses tenant isolation',
-        operation: 'getRawClient'
-      }
-    });
     return this.client;
+  }
+
+  /**
+   * Reset tenant context tracking (useful for testing)
+   */
+  resetContext(): void {
+    this.currentTenantId = null;
   }
 
   /**
