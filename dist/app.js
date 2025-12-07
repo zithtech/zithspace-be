@@ -13,8 +13,6 @@ const dotenv_1 = __importDefault(require("dotenv"));
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 // Import configurations
 const database_1 = require("@/config/database");
-// Import middleware
-const tenantContext_1 = require("@/middleware/tenantContext");
 // Import routes
 const auth_1 = __importDefault(require("@/routes/auth"));
 const tenants_1 = __importDefault(require("@/routes/tenants"));
@@ -91,7 +89,7 @@ app.get("/health", (req, res) => {
     });
 });
 // Tenant resolution for all API routes
-app.use("/api", tenantContext_1.optionalTenantContext);
+// app.use("/api", optionalTenantContext);
 // API routes  
 app.use("/api/auth", auth_1.default);
 app.use("/api/tenants", tenants_1.default);

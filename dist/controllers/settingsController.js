@@ -3,9 +3,13 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SettingsController = void 0;
 const database_1 = require("@/config/database");
 const types_1 = require("@/types");
+// Simple in-memory cache for ticket configurations
+const configCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 class SettingsController {
     /**
      * Get all configuration options for ticket creation (tenant-aware)
+     * OPTIMIZED: Uses Promise.all for parallel queries + 5-minute cache
      */
     static async getTicketConfigurations(req, res) {
         try {
@@ -16,9 +20,22 @@ class SettingsController {
                 });
                 return;
             }
-            const configurations = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+            // Check cache first
+            const cacheKey = `ticket-config-${req.tenantId}`;
+            const cached = configCache.get(cacheKey);
+            const now = Date.now();
+            if (cached && (now - cached.timestamp) < CACHE_TTL) {
+                res.status(200).json({
+                    success: true,
+                    data: cached.data,
+                    cached: true
+                });
+                return;
+            }
+            // OPTIMIZED: Run all queries in parallel instead of sequential
+            const [users, projects, releasePlans] = await Promise.all([
                 // Get all users for assignee dropdowns
-                const users = await client.user.findMany({
+                await database_1.prisma.user.findMany({
                     where: {
                         tenantId: req.tenantId,
                         isActive: true
@@ -30,9 +47,9 @@ class SettingsController {
                         position: true
                     },
                     orderBy: { name: 'asc' }
-                });
+                }),
                 // Get all projects
-                const projects = await client.project.findMany({
+                await database_1.prisma.project.findMany({
                     where: {
                         tenantId: req.tenantId,
                         status: 'active'
@@ -44,9 +61,9 @@ class SettingsController {
                         description: true
                     },
                     orderBy: { name: 'asc' }
-                });
+                }),
                 // Get active release plans
-                const releasePlans = await client.releasePlan.findMany({
+                await database_1.prisma.releasePlan.findMany({
                     where: {
                         tenantId: req.tenantId,
                         status: { in: ['planning', 'active'] },
@@ -65,84 +82,85 @@ class SettingsController {
                         }
                     },
                     orderBy: { version: 'asc' }
-                });
-                // Default configuration values (can be made tenant-specific in the future)
-                const defaultConfigurations = {
-                    priorities: [
-                        { value: 'High (P1)', label: 'High (P1)', color: '#ff4d4f', description: 'Critical priority' },
-                        { value: 'Medium (P2)', label: 'Medium (P2)', color: '#fa8c16', description: 'Medium priority' },
-                        { value: 'Lite (P3)', label: 'Lite (P3)', color: '#52c41a', description: 'Low priority' }
-                    ],
-                    taskTypes: [
-                        { value: 'Bug', label: 'Bug', color: '#ff4d4f', description: 'Bug fix' },
-                        { value: 'Task', label: 'Task', color: '#1890ff', description: 'General task' },
-                        { value: 'Feature', label: 'Feature', color: '#52c41a', description: 'New feature' },
-                        { value: 'Enhancement', label: 'Enhancement', color: '#722ed1', description: 'Enhancement' }
-                    ],
-                    statuses: [
-                        { value: 'Not Started', label: 'Not Started', color: '#d9d9d9', description: 'Task not started' },
-                        { value: 'In Progress', label: 'In Progress', color: '#1890ff', description: 'Task in progress' },
-                        { value: 'In Review', label: 'In Review', color: '#722ed1', description: 'Under review' },
-                        { value: 'Testing', label: 'Testing', color: '#13c2c2', description: 'In testing phase' },
-                        { value: 'Completed', label: 'Completed', color: '#52c41a', description: 'Task completed' },
-                        { value: 'On Hold', label: 'On Hold', color: '#fa8c16', description: 'Task on hold' },
-                        { value: 'Cancelled', label: 'Cancelled', color: '#8c8c8c', description: 'Task cancelled' }
-                    ],
-                    platforms: [
-                        { value: 'Development', label: 'Development', color: '#1890ff', description: 'Software development tasks' },
-                        { value: 'UI/UX', label: 'UI/UX', color: '#722ed1', description: 'User interface and experience design' },
-                        { value: 'PM', label: 'PM', color: '#fa8c16', description: 'Project management tasks' },
-                        { value: 'Business Team', label: 'Business Team', color: '#52c41a', description: 'Business analysis and requirements' },
-                        { value: 'DevOps', label: 'DevOps', color: '#eb2f96', description: 'DevOps and infrastructure' },
-                        { value: 'Testing', label: 'Testing', color: '#13c2c2', description: 'Quality assurance and testing' }
-                    ],
-                    stacks: [
-                        { value: 'Front End', label: 'Front End', color: '#1890ff', description: 'Frontend development' },
-                        { value: 'Back End', label: 'Back End', color: '#52c41a', description: 'Backend development' },
-                        { value: 'Full Stack', label: 'Full Stack', color: '#722ed1', description: 'Full stack development' }
-                    ],
-                    taskLevels: [
-                        { value: 'Easy', label: 'Easy', color: '#52c41a', description: 'Simple task' },
-                        { value: 'Lite', label: 'Lite', color: '#1890ff', description: 'Light complexity' },
-                        { value: 'Medium', label: 'Medium', color: '#fa8c16', description: 'Medium complexity' },
-                        { value: 'Hard', label: 'Hard', color: '#ff4d4f', description: 'High complexity' }
-                    ],
-                    workflowSteps: [
-                        'Scope Document',
-                        'KT (Knowledge Transfer)',
-                        'Developer Doc',
-                        'Grooming',
-                        'Dev Code Work Effort',
-                        'Designer Approval',
-                        'Testing',
-                        'Unit Testing',
-                        'Code Review',
-                        'Push to Live',
-                        'Live Test'
-                    ]
-                };
-                return {
-                    ...defaultConfigurations,
-                    users: users.map(user => ({
-                        value: user.id,
-                        label: user.name,
-                        email: user.workEmail,
-                        position: user.position
-                    })),
-                    projects: projects.map(project => ({
-                        value: project.id,
-                        label: project.name,
-                        code: project.code,
-                        description: project.description
-                    })),
-                    releasePlans: releasePlans.map(plan => ({
-                        value: plan.id,
-                        label: `${plan.version} (${plan.project.name})`,
-                        description: plan.description,
-                        projectId: plan.projectId
-                    }))
-                };
-            });
+                })
+            ]);
+            // Default configuration values (can be made tenant-specific in the future)
+            const configurations = {
+                // Static dropdown options
+                priorities: [
+                    { value: 'High (P1)', label: 'High (P1)', color: '#ff4d4f', description: 'Critical priority' },
+                    { value: 'Medium (P2)', label: 'Medium (P2)', color: '#fa8c16', description: 'Medium priority' },
+                    { value: 'Lite (P3)', label: 'Lite (P3)', color: '#52c41a', description: 'Low priority' }
+                ],
+                taskTypes: [
+                    { value: 'Bug', label: 'Bug', color: '#ff4d4f', description: 'Bug fix' },
+                    { value: 'Task', label: 'Task', color: '#1890ff', description: 'General task' },
+                    { value: 'Feature', label: 'Feature', color: '#52c41a', description: 'New feature' },
+                    { value: 'Enhancement', label: 'Enhancement', color: '#722ed1', description: 'Enhancement' }
+                ],
+                statuses: [
+                    { value: 'Not Started', label: 'Not Started', color: '#d9d9d9', description: 'Task not started' },
+                    { value: 'In Progress', label: 'In Progress', color: '#1890ff', description: 'Task in progress' },
+                    { value: 'In Review', label: 'In Review', color: '#722ed1', description: 'Under review' },
+                    { value: 'Testing', label: 'Testing', color: '#13c2c2', description: 'In testing phase' },
+                    { value: 'Completed', label: 'Completed', color: '#52c41a', description: 'Task completed' },
+                    { value: 'On Hold', label: 'On Hold', color: '#fa8c16', description: 'Task on hold' },
+                    { value: 'Cancelled', label: 'Cancelled', color: '#8c8c8c', description: 'Task cancelled' }
+                ],
+                platforms: [
+                    { value: 'Development', label: 'Development', color: '#1890ff', description: 'Software development tasks' },
+                    { value: 'UI/UX', label: 'UI/UX', color: '#722ed1', description: 'User interface and experience design' },
+                    { value: 'PM', label: 'PM', color: '#fa8c16', description: 'Project management tasks' },
+                    { value: 'Business Team', label: 'Business Team', color: '#52c41a', description: 'Business analysis and requirements' },
+                    { value: 'DevOps', label: 'DevOps', color: '#eb2f96', description: 'DevOps and infrastructure' },
+                    { value: 'Testing', label: 'Testing', color: '#13c2c2', description: 'Quality assurance and testing' }
+                ],
+                stacks: [
+                    { value: 'Front End', label: 'Front End', color: '#1890ff', description: 'Frontend development' },
+                    { value: 'Back End', label: 'Back End', color: '#52c41a', description: 'Backend development' },
+                    { value: 'Full Stack', label: 'Full Stack', color: '#722ed1', description: 'Full stack development' }
+                ],
+                taskLevels: [
+                    { value: 'Easy', label: 'Easy', color: '#52c41a', description: 'Simple task' },
+                    { value: 'Lite', label: 'Lite', color: '#1890ff', description: 'Light complexity' },
+                    { value: 'Medium', label: 'Medium', color: '#fa8c16', description: 'Medium complexity' },
+                    { value: 'Hard', label: 'Hard', color: '#ff4d4f', description: 'High complexity' }
+                ],
+                workflowSteps: [
+                    'Scope Document',
+                    'KT (Knowledge Transfer)',
+                    'Developer Doc',
+                    'Grooming',
+                    'Dev Code Work Effort',
+                    'Designer Approval',
+                    'Testing',
+                    'Unit Testing',
+                    'Code Review',
+                    'Push to Live',
+                    'Live Test'
+                ],
+                // Dynamic data from database
+                users: users.map(user => ({
+                    value: user.id,
+                    label: user.name,
+                    email: user.workEmail,
+                    position: user.position
+                })),
+                projects: projects.map(project => ({
+                    value: project.id,
+                    label: project.name,
+                    code: project.code,
+                    description: project.description
+                })),
+                releasePlans: releasePlans.map(plan => ({
+                    value: plan.id,
+                    label: `${plan.version} (${plan.project.name})`,
+                    description: plan.description,
+                    projectId: plan.projectId
+                }))
+            };
+            // Cache the result
+            configCache.set(cacheKey, { data: configurations, timestamp: now });
             res.status(200).json({
                 success: true,
                 data: configurations
@@ -177,22 +195,20 @@ class SettingsController {
                 where.role = role;
             if (position)
                 where.position = position;
-            const teamMembers = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                let users = await client.user.findMany({
-                    where,
-                    select: {
-                        id: true,
-                        name: true,
-                        workEmail: true,
-                        position: true,
-                        role: true,
-                    },
-                    orderBy: { name: 'asc' }
-                });
-                // If project is specified, we could filter by project membership in the future
-                // For now, return all users that match the criteria
-                return users;
+            let users = await database_1.prisma.user.findMany({
+                where,
+                select: {
+                    id: true,
+                    name: true,
+                    workEmail: true,
+                    position: true,
+                    role: true,
+                },
+                orderBy: { name: 'asc' }
             });
+            // If project is specified, we could filter by project membership in the future
+            // For now, return all users that match the criteria
+            const teamMembers = users;
             const formattedMembers = teamMembers.map(member => ({
                 value: member.id,
                 label: member.name,
@@ -233,36 +249,34 @@ class SettingsController {
                 });
                 return;
             }
-            const releasePlans = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                // Validate project exists and belongs to tenant
-                const project = await client.project.findFirst({
-                    where: {
-                        id: projectId,
-                        tenantId: req.tenantId,
-                    }
-                });
-                if (!project) {
-                    throw new types_1.NotFoundError('Project not found in this tenant');
+            // Validate project exists and belongs to tenant
+            const project = await database_1.prisma.project.findFirst({
+                where: {
+                    id: projectId,
+                    tenantId: req.tenantId,
                 }
-                return await client.releasePlan.findMany({
-                    where: {
-                        projectId,
-                        tenantId: req.tenantId,
-                        status: { in: ['planning', 'active'] },
-                        OR: [
-                            { releaseDate: null },
-                            { releaseDate: { gte: new Date() } }
-                        ]
-                    },
-                    select: {
-                        id: true,
-                        version: true,
-                        description: true,
-                        status: true,
-                        releaseDate: true
-                    },
-                    orderBy: { releaseDate: 'asc' }
-                });
+            });
+            if (!project) {
+                throw new types_1.NotFoundError('Project not found in this tenant');
+            }
+            const releasePlans = await database_1.prisma.releasePlan.findMany({
+                where: {
+                    projectId,
+                    tenantId: req.tenantId,
+                    status: { in: ['planning', 'active'] },
+                    OR: [
+                        { releaseDate: null },
+                        { releaseDate: { gte: new Date() } }
+                    ]
+                },
+                select: {
+                    id: true,
+                    version: true,
+                    description: true,
+                    status: true,
+                    releaseDate: true
+                },
+                orderBy: { releaseDate: 'asc' }
             });
             const formattedPlans = releasePlans.map(plan => ({
                 value: plan.id,
@@ -319,16 +333,14 @@ class SettingsController {
             ];
             // If project is specified, get project-specific workflow template
             if (projectId) {
-                const project = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                    return await client.project.findFirst({
-                        where: {
-                            id: projectId,
-                            tenantId: req.tenantId,
-                        },
-                        select: {
-                            workflowTemplate: true
-                        }
-                    });
+                const project = await database_1.prisma.project.findFirst({
+                    where: {
+                        id: projectId,
+                        tenantId: req.tenantId,
+                    },
+                    select: {
+                        workflowTemplate: true
+                    }
                 });
                 if (project && project.workflowTemplate && project.workflowTemplate.length > 0) {
                     workflowSteps = project.workflowTemplate;
@@ -411,31 +423,29 @@ class SettingsController {
                 });
                 return;
             }
-            const updatedProject = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                // Validate project exists and belongs to tenant
-                const project = await client.project.findFirst({
-                    where: {
-                        id: projectId,
-                        tenantId: req.tenantId,
-                    }
-                });
-                if (!project) {
-                    throw new types_1.NotFoundError('Project not found in this tenant');
+            // Validate project exists and belongs to tenant
+            const project = await database_1.prisma.project.findFirst({
+                where: {
+                    id: projectId,
+                    tenantId: req.tenantId,
                 }
-                return await client.project.update({
-                    where: { id: projectId },
-                    data: {
-                        workflowTemplate: workflowSteps,
-                        updatedAt: new Date()
-                    },
-                    select: {
-                        id: true,
-                        name: true,
-                        code: true,
-                        workflowTemplate: true,
-                        updatedAt: true
-                    }
-                });
+            });
+            if (!project) {
+                throw new types_1.NotFoundError('Project not found in this tenant');
+            }
+            const updatedProject = await database_1.prisma.project.update({
+                where: { id: projectId },
+                data: {
+                    workflowTemplate: workflowSteps,
+                    updatedAt: new Date()
+                },
+                select: {
+                    id: true,
+                    name: true,
+                    code: true,
+                    workflowTemplate: true,
+                    updatedAt: true
+                }
             });
             res.status(200).json({
                 success: true,
@@ -487,21 +497,19 @@ class SettingsController {
                     { description: { contains: search, mode: 'insensitive' } }
                 ];
             }
-            const tickets = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                return await client.ticket.findMany({
-                    where,
-                    select: {
-                        id: true,
-                        title: true,
-                        status: true,
-                        priority: true,
-                        project: {
-                            select: { name: true, code: true }
-                        }
-                    },
-                    orderBy: { createdAt: 'desc' },
-                    take: 50
-                });
+            const tickets = await database_1.prisma.ticket.findMany({
+                where,
+                select: {
+                    id: true,
+                    title: true,
+                    status: true,
+                    priority: true,
+                    project: {
+                        select: { name: true, code: true }
+                    }
+                },
+                orderBy: { createdAt: 'desc' },
+                take: 50
             });
             const parentTickets = tickets.map(ticket => ({
                 value: ticket.id,
@@ -535,42 +543,40 @@ class SettingsController {
                 });
                 return;
             }
-            const stats = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                const [userCount, projectCount, ticketCount, releasePlanCount, clientCount] = await Promise.all([
-                    client.user.count({
-                        where: {
-                            tenantId: req.tenantId,
-                            isActive: true
-                        }
-                    }),
-                    client.project.count({
-                        where: {
-                            tenantId: req.tenantId,
-                            status: 'active'
-                        }
-                    }),
-                    client.ticket.count({
-                        where: { tenantId: req.tenantId }
-                    }),
-                    client.releasePlan.count({
-                        where: { tenantId: req.tenantId }
-                    }),
-                    client.client.count({
-                        where: {
-                            tenantId: req.tenantId,
-                            isActive: true
-                        }
-                    })
-                ]);
-                return {
-                    users: userCount,
-                    projects: projectCount,
-                    tickets: ticketCount,
-                    releasePlans: releasePlanCount,
-                    clients: clientCount,
-                    lastUpdated: new Date().toISOString()
-                };
-            });
+            const [userCount, projectCount, ticketCount, releasePlanCount, clientCount] = await Promise.all([
+                database_1.prisma.user.count({
+                    where: {
+                        tenantId: req.tenantId,
+                        isActive: true
+                    }
+                }),
+                database_1.prisma.project.count({
+                    where: {
+                        tenantId: req.tenantId,
+                        status: 'active'
+                    }
+                }),
+                database_1.prisma.ticket.count({
+                    where: { tenantId: req.tenantId }
+                }),
+                database_1.prisma.releasePlan.count({
+                    where: { tenantId: req.tenantId }
+                }),
+                database_1.prisma.client.count({
+                    where: {
+                        tenantId: req.tenantId,
+                        isActive: true
+                    }
+                })
+            ]);
+            const stats = {
+                users: userCount,
+                projects: projectCount,
+                tickets: ticketCount,
+                releasePlans: releasePlanCount,
+                clients: clientCount,
+                lastUpdated: new Date().toISOString()
+            };
             res.status(200).json({
                 success: true,
                 data: stats
@@ -596,21 +602,19 @@ class SettingsController {
                 });
                 return;
             }
-            const tenant = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                return await client.tenant.findFirst({
-                    where: { id: req.tenantId },
-                    select: {
-                        id: true,
-                        name: true,
-                        subdomain: true,
-                        planType: true,
-                        maxUsers: true,
-                        isActive: true,
-                        settings: true,
-                        createdAt: true,
-                        updatedAt: true
-                    }
-                });
+            const tenant = await database_1.prisma.tenant.findFirst({
+                where: { id: req.tenantId },
+                select: {
+                    id: true,
+                    name: true,
+                    subdomain: true,
+                    planType: true,
+                    maxUsers: true,
+                    isActive: true,
+                    settings: true,
+                    createdAt: true,
+                    updatedAt: true
+                }
             });
             if (!tenant) {
                 res.status(404).json({
@@ -682,20 +686,18 @@ class SettingsController {
                 });
                 return;
             }
-            const updatedTenant = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                return await client.tenant.update({
-                    where: { id: req.tenantId },
-                    data: {
-                        settings,
-                        updatedAt: new Date()
-                    },
-                    select: {
-                        id: true,
-                        name: true,
-                        settings: true,
-                        updatedAt: true
-                    }
-                });
+            const updatedTenant = await database_1.prisma.tenant.update({
+                where: { id: req.tenantId },
+                data: {
+                    settings,
+                    updatedAt: new Date()
+                },
+                select: {
+                    id: true,
+                    name: true,
+                    settings: true,
+                    updatedAt: true
+                }
             });
             res.status(200).json({
                 success: true,
@@ -733,115 +735,113 @@ class SettingsController {
             }
             const searchTerm = q.trim();
             const searchLimit = Math.min(Number(limit), 10); // Cap at 10 results per category
-            const results = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                const [projects, tickets, users, clients, releasePlans] = await Promise.all([
-                    // Search projects
-                    client.project.findMany({
-                        where: {
-                            tenantId: req.tenantId,
-                            OR: [
-                                { name: { contains: searchTerm, mode: 'insensitive' } },
-                                { code: { contains: searchTerm, mode: 'insensitive' } },
-                                { description: { contains: searchTerm, mode: 'insensitive' } }
-                            ]
-                        },
-                        select: {
-                            id: true,
-                            name: true,
-                            code: true,
-                            description: true,
-                            status: true
-                        },
-                        take: searchLimit
-                    }),
-                    // Search tickets
-                    client.ticket.findMany({
-                        where: {
-                            tenantId: req.tenantId,
-                            OR: [
-                                { title: { contains: searchTerm, mode: 'insensitive' } },
-                                { description: { contains: searchTerm, mode: 'insensitive' } }
-                            ]
-                        },
-                        select: {
-                            id: true,
-                            title: true,
-                            status: true,
-                            priority: true,
-                            project: {
-                                select: { name: true }
-                            }
-                        },
-                        take: searchLimit
-                    }),
-                    // Search users
-                    client.user.findMany({
-                        where: {
-                            tenantId: req.tenantId,
-                            isActive: true,
-                            OR: [
-                                { name: { contains: searchTerm, mode: 'insensitive' } },
-                                { workEmail: { contains: searchTerm, mode: 'insensitive' } }
-                            ]
-                        },
-                        select: {
-                            id: true,
-                            name: true,
-                            workEmail: true,
-                            position: true,
-                            role: true
-                        },
-                        take: searchLimit
-                    }),
-                    // Search clients
-                    client.client.findMany({
-                        where: {
-                            tenantId: req.tenantId,
-                            isActive: true,
-                            OR: [
-                                { name: { contains: searchTerm, mode: 'insensitive' } },
-                                { email: { contains: searchTerm, mode: 'insensitive' } },
-                                { company: { contains: searchTerm, mode: 'insensitive' } }
-                            ]
-                        },
-                        select: {
-                            id: true,
-                            name: true,
-                            email: true,
-                            company: true,
-                            contactPerson: true
-                        },
-                        take: searchLimit
-                    }),
-                    // Search release plans
-                    client.releasePlan.findMany({
-                        where: {
-                            tenantId: req.tenantId,
-                            OR: [
-                                { version: { contains: searchTerm, mode: 'insensitive' } },
-                                { description: { contains: searchTerm, mode: 'insensitive' } }
-                            ]
-                        },
-                        select: {
-                            id: true,
-                            version: true,
-                            description: true,
-                            status: true,
-                            project: {
-                                select: { name: true }
-                            }
-                        },
-                        take: searchLimit
-                    })
-                ]);
-                return {
-                    projects: projects.map(p => ({ ...p, type: 'project' })),
-                    tickets: tickets.map(t => ({ ...t, type: 'ticket' })),
-                    users: users.map(u => ({ ...u, type: 'user' })),
-                    clients: clients.map(c => ({ ...c, type: 'client' })),
-                    releasePlans: releasePlans.map(r => ({ ...r, type: 'releasePlan' }))
-                };
-            });
+            const [projects, tickets, users, clients, releasePlans] = await Promise.all([
+                // Search projects
+                database_1.prisma.project.findMany({
+                    where: {
+                        tenantId: req.tenantId,
+                        OR: [
+                            { name: { contains: searchTerm, mode: 'insensitive' } },
+                            { code: { contains: searchTerm, mode: 'insensitive' } },
+                            { description: { contains: searchTerm, mode: 'insensitive' } }
+                        ]
+                    },
+                    select: {
+                        id: true,
+                        name: true,
+                        code: true,
+                        description: true,
+                        status: true
+                    },
+                    take: searchLimit
+                }),
+                // Search tickets
+                database_1.prisma.ticket.findMany({
+                    where: {
+                        tenantId: req.tenantId,
+                        OR: [
+                            { title: { contains: searchTerm, mode: 'insensitive' } },
+                            { description: { contains: searchTerm, mode: 'insensitive' } }
+                        ]
+                    },
+                    select: {
+                        id: true,
+                        title: true,
+                        status: true,
+                        priority: true,
+                        project: {
+                            select: { name: true }
+                        }
+                    },
+                    take: searchLimit
+                }),
+                // Search users
+                database_1.prisma.user.findMany({
+                    where: {
+                        tenantId: req.tenantId,
+                        isActive: true,
+                        OR: [
+                            { name: { contains: searchTerm, mode: 'insensitive' } },
+                            { workEmail: { contains: searchTerm, mode: 'insensitive' } }
+                        ]
+                    },
+                    select: {
+                        id: true,
+                        name: true,
+                        workEmail: true,
+                        position: true,
+                        role: true
+                    },
+                    take: searchLimit
+                }),
+                // Search clients
+                database_1.prisma.client.findMany({
+                    where: {
+                        tenantId: req.tenantId,
+                        isActive: true,
+                        OR: [
+                            { name: { contains: searchTerm, mode: 'insensitive' } },
+                            { email: { contains: searchTerm, mode: 'insensitive' } },
+                            { company: { contains: searchTerm, mode: 'insensitive' } }
+                        ]
+                    },
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                        company: true,
+                        contactPerson: true
+                    },
+                    take: searchLimit
+                }),
+                // Search release plans
+                database_1.prisma.releasePlan.findMany({
+                    where: {
+                        tenantId: req.tenantId,
+                        OR: [
+                            { version: { contains: searchTerm, mode: 'insensitive' } },
+                            { description: { contains: searchTerm, mode: 'insensitive' } }
+                        ]
+                    },
+                    select: {
+                        id: true,
+                        version: true,
+                        description: true,
+                        status: true,
+                        project: {
+                            select: { name: true }
+                        }
+                    },
+                    take: searchLimit
+                })
+            ]);
+            const results = {
+                projects: projects.map(p => ({ ...p, type: 'project' })),
+                tickets: tickets.map(t => ({ ...t, type: 'ticket' })),
+                users: users.map(u => ({ ...u, type: 'user' })),
+                clients: clients.map(c => ({ ...c, type: 'client' })),
+                releasePlans: releasePlans.map(r => ({ ...r, type: 'releasePlan' }))
+            };
             const totalResults = results.projects.length + results.tickets.length +
                 results.users.length + results.clients.length +
                 results.releasePlans.length;
@@ -879,40 +879,38 @@ class SettingsController {
             }
             const { includeInactive } = req.query;
             const activeOnly = includeInactive !== 'true';
-            const dropdownOptions = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                const where = { tenantId: req.tenantId };
-                if (activeOnly) {
-                    where.isActive = true;
-                }
-                const options = await client.dropdownOption.findMany({
-                    where,
-                    orderBy: [
-                        { category: 'asc' },
-                        { order: 'asc' },
-                        { label: 'asc' }
-                    ]
-                });
-                // Group by category (map to type for frontend compatibility)
-                const grouped = {};
-                options.forEach(option => {
-                    // Map PostgreSQL 'category' to MongoDB 'type' for frontend compatibility
-                    const type = option.category;
-                    if (!grouped[type]) {
-                        grouped[type] = [];
-                    }
-                    grouped[type].push({
-                        id: option.id,
-                        type: option.category, // For backward compatibility
-                        value: option.value,
-                        label: option.label,
-                        order: option.order,
-                        isActive: option.isActive,
-                        createdAt: option.createdAt,
-                        updatedAt: option.updatedAt
-                    });
-                });
-                return grouped;
+            const where = { tenantId: req.tenantId };
+            if (activeOnly) {
+                where.isActive = true;
+            }
+            const options = await database_1.prisma.dropdownOption.findMany({
+                where,
+                orderBy: [
+                    { category: 'asc' },
+                    { order: 'asc' },
+                    { label: 'asc' }
+                ]
             });
+            // Group by category (map to type for frontend compatibility)
+            const grouped = {};
+            options.forEach(option => {
+                // Map PostgreSQL 'category' to MongoDB 'type' for frontend compatibility
+                const type = option.category;
+                if (!grouped[type]) {
+                    grouped[type] = [];
+                }
+                grouped[type].push({
+                    id: option.id,
+                    type: option.category, // For backward compatibility
+                    value: option.value,
+                    label: option.label,
+                    order: option.order,
+                    isActive: option.isActive,
+                    createdAt: option.createdAt,
+                    updatedAt: option.updatedAt
+                });
+            });
+            const dropdownOptions = grouped;
             res.status(200).json({
                 success: true,
                 data: dropdownOptions
@@ -950,31 +948,29 @@ class SettingsController {
                 return;
             }
             const activeOnly = includeInactive !== 'true';
-            const options = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                const where = {
-                    tenantId: req.tenantId,
-                    category: type
-                };
-                if (activeOnly) {
-                    where.isActive = true;
+            const where = {
+                tenantId: req.tenantId,
+                category: type
+            };
+            if (activeOnly) {
+                where.isActive = true;
+            }
+            const options = await database_1.prisma.dropdownOption.findMany({
+                where,
+                orderBy: [
+                    { order: 'asc' },
+                    { label: 'asc' }
+                ],
+                select: {
+                    id: true,
+                    category: true,
+                    value: true,
+                    label: true,
+                    order: true,
+                    isActive: true,
+                    createdAt: true,
+                    updatedAt: true
                 }
-                return await client.dropdownOption.findMany({
-                    where,
-                    orderBy: [
-                        { order: 'asc' },
-                        { label: 'asc' }
-                    ],
-                    select: {
-                        id: true,
-                        category: true,
-                        value: true,
-                        label: true,
-                        order: true,
-                        isActive: true,
-                        createdAt: true,
-                        updatedAt: true
-                    }
-                });
             });
             // Format for frontend compatibility
             const formattedOptions = options.map(option => ({
@@ -1028,23 +1024,21 @@ class SettingsController {
                 });
                 return;
             }
-            const newOption = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                // Get the next order number for this type
-                const lastOption = await client.dropdownOption.findFirst({
-                    where: { tenantId: req.tenantId, category: type },
-                    orderBy: { order: 'desc' }
-                });
-                const order = lastOption ? lastOption.order + 1 : 1;
-                return await client.dropdownOption.create({
-                    data: {
-                        tenantId: req.tenantId,
-                        category: type,
-                        value,
-                        label,
-                        order,
-                        isActive: true
-                    }
-                });
+            // Get the next order number for this type
+            const lastOption = await database_1.prisma.dropdownOption.findFirst({
+                where: { tenantId: req.tenantId, category: type },
+                orderBy: { order: 'desc' }
+            });
+            const order = lastOption ? lastOption.order + 1 : 1;
+            const newOption = await database_1.prisma.dropdownOption.create({
+                data: {
+                    tenantId: req.tenantId,
+                    category: type,
+                    value,
+                    label,
+                    order,
+                    isActive: true
+                }
             });
             res.status(201).json({
                 success: true,
@@ -1097,22 +1091,20 @@ class SettingsController {
                 });
                 return;
             }
-            const updatedOption = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                // Verify option exists and belongs to tenant
-                const existingOption = await client.dropdownOption.findFirst({
-                    where: { id, tenantId: req.tenantId }
-                });
-                if (!existingOption) {
-                    throw new types_1.NotFoundError('Dropdown option not found');
-                }
-                const updateData = { value, label };
-                if (typeof isActive === 'boolean') {
-                    updateData.isActive = isActive;
-                }
-                return await client.dropdownOption.update({
-                    where: { id },
-                    data: updateData
-                });
+            // Verify option exists and belongs to tenant
+            const existingOption = await database_1.prisma.dropdownOption.findFirst({
+                where: { id, tenantId: req.tenantId }
+            });
+            if (!existingOption) {
+                throw new types_1.NotFoundError('Dropdown option not found');
+            }
+            const updateData = { value, label };
+            if (typeof isActive === 'boolean') {
+                updateData.isActive = isActive;
+            }
+            const updatedOption = await database_1.prisma.dropdownOption.update({
+                where: { id },
+                data: updateData
             });
             res.status(200).json({
                 success: true,
@@ -1164,17 +1156,15 @@ class SettingsController {
                 return;
             }
             const { id } = req.params;
-            await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                // Verify option exists and belongs to tenant
-                const existingOption = await client.dropdownOption.findFirst({
-                    where: { id, tenantId: req.tenantId }
-                });
-                if (!existingOption) {
-                    throw new types_1.NotFoundError('Dropdown option not found');
-                }
-                await client.dropdownOption.delete({
-                    where: { id }
-                });
+            // Verify option exists and belongs to tenant
+            const existingOption = await database_1.prisma.dropdownOption.findFirst({
+                where: { id, tenantId: req.tenantId }
+            });
+            if (!existingOption) {
+                throw new types_1.NotFoundError('Dropdown option not found');
+            }
+            await database_1.prisma.dropdownOption.delete({
+                where: { id }
             });
             res.status(200).json({
                 success: true,
@@ -1216,17 +1206,15 @@ class SettingsController {
                 });
                 return;
             }
-            await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                // Update order for each item
-                const updatePromises = items.map((item) => client.dropdownOption.updateMany({
-                    where: {
-                        id: item.id,
-                        tenantId: req.tenantId
-                    },
-                    data: { order: item.order }
-                }));
-                await Promise.all(updatePromises);
-            });
+            // Update order for each item
+            const updatePromises = items.map((item) => database_1.prisma.dropdownOption.updateMany({
+                where: {
+                    id: item.id,
+                    tenantId: req.tenantId
+                },
+                data: { order: item.order }
+            }));
+            await Promise.all(updatePromises);
             res.status(200).json({
                 success: true,
                 message: 'Dropdown options reordered successfully'

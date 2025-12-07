@@ -6,6 +6,7 @@ import { AuthRequest } from '@/types';
 export declare const authenticateToken: (req: AuthRequest, res: Response, next: NextFunction) => Promise<void>;
 /**
  * Optional authentication middleware - doesn't fail if no token provided
+ * OPTIMIZED: Use direct prisma client
  */
 export declare const optionalAuth: (req: AuthRequest, res: Response, next: NextFunction) => Promise<void>;
 /**

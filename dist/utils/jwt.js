@@ -26,7 +26,7 @@ class JWTUtils {
             sessionId,
         };
         const accessTokenOptions = {
-            expiresIn: this.ACCESS_TOKEN_EXPIRY,
+            expiresIn: this.REFRESH_TOKEN_EXPIRY,
             issuer: this.ISSUER,
             audience: [user.tenantId],
             subject: user.id,

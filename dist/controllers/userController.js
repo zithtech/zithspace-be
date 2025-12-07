@@ -44,33 +44,29 @@ class UserController {
             // Execute query with pagination
             const skip = (Number(page) - 1) * Number(limit);
             const [members, total] = await Promise.all([
-                database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                    return await client.user.findMany({
-                        where,
-                        select: {
-                            id: true,
-                            name: true,
-                            workEmail: true,
-                            personalEmail: true,
-                            phone: true,
-                            role: true,
-                            position: true,
-                            isActive: true,
-                            lastLoginAt: true,
-                            createdAt: true,
-                            updatedAt: true,
-                            reportsTo: {
-                                select: { id: true, name: true, position: true }
-                            }
-                        },
-                        orderBy,
-                        skip,
-                        take: Number(limit),
-                    });
+                await database_1.prisma.user.findMany({
+                    where,
+                    select: {
+                        id: true,
+                        name: true,
+                        workEmail: true,
+                        personalEmail: true,
+                        phone: true,
+                        role: true,
+                        position: true,
+                        isActive: true,
+                        lastLoginAt: true,
+                        createdAt: true,
+                        updatedAt: true,
+                        reportsTo: {
+                            select: { id: true, name: true, position: true }
+                        }
+                    },
+                    orderBy,
+                    skip,
+                    take: Number(limit),
                 }),
-                database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                    return await client.user.count({ where });
-                })
+                await database_1.prisma.user.count({ where })
             ]);
             const totalPages = Math.ceil(total / Number(limit));
             res.status(200).json({
@@ -107,32 +103,30 @@ class UserController {
                 return;
             }
             const { id } = req.params;
-            const member = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                return await client.user.findFirst({
-                    where: {
-                        id,
-                        tenantId: req.tenantId,
-                    },
-                    select: {
-                        id: true,
-                        name: true,
-                        workEmail: true,
-                        personalEmail: true,
-                        phone: true,
-                        role: true,
-                        position: true,
-                        reportsToId: true,
-                        dateOfBirth: true,
-                        workDays: true,
-                        isActive: true,
-                        lastLoginAt: true,
-                        createdAt: true,
-                        updatedAt: true,
-                        reportsTo: {
-                            select: { id: true, name: true, position: true }
-                        }
+            const member = await database_1.prisma.user.findFirst({
+                where: {
+                    id,
+                    tenantId: req.tenantId,
+                },
+                select: {
+                    id: true,
+                    name: true,
+                    workEmail: true,
+                    personalEmail: true,
+                    phone: true,
+                    role: true,
+                    position: true,
+                    reportsToId: true,
+                    dateOfBirth: true,
+                    workDays: true,
+                    isActive: true,
+                    lastLoginAt: true,
+                    createdAt: true,
+                    updatedAt: true,
+                    reportsTo: {
+                        select: { id: true, name: true, position: true }
                     }
-                });
+                }
             });
             if (!member) {
                 res.status(404).json({
@@ -175,86 +169,84 @@ class UserController {
                 });
                 return;
             }
-            await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                // Check if user already exists within tenant
-                const existingUser = await client.user.findFirst({
+            // Check if user already exists within tenant
+            const existingUser = await database_1.prisma.user.findFirst({
+                where: {
+                    tenantId: req.tenantId,
+                    OR: [
+                        { workEmail: userData.workEmail.toLowerCase() },
+                        { personalEmail: userData.personalEmail?.toLowerCase() },
+                        { phone: userData.phone }
+                    ],
+                }
+            });
+            if (existingUser) {
+                throw new types_1.ValidationError('User with this email or phone already exists in this tenant');
+            }
+            // Validate reports to user if provided
+            if (userData.reportsToId) {
+                const reportsToUser = await database_1.prisma.user.findFirst({
                     where: {
+                        id: userData.reportsToId,
                         tenantId: req.tenantId,
-                        OR: [
-                            { workEmail: userData.workEmail.toLowerCase() },
-                            { personalEmail: userData.personalEmail?.toLowerCase() },
-                            { phone: userData.phone }
-                        ],
-                    }
-                });
-                if (existingUser) {
-                    throw new types_1.ValidationError('User with this email or phone already exists in this tenant');
-                }
-                // Validate reports to user if provided
-                if (userData.reportsToId) {
-                    const reportsToUser = await client.user.findFirst({
-                        where: {
-                            id: userData.reportsToId,
-                            tenantId: req.tenantId,
-                            isActive: true,
-                        }
-                    });
-                    if (!reportsToUser) {
-                        throw new types_1.ValidationError('Reports to user not found in this tenant');
-                    }
-                }
-                // Hash password
-                const passwordHash = await bcryptjs_1.default.hash(userData.password, 12);
-                // Validate assigned shift if provided
-                if (userData.assignedShiftId) {
-                    const shift = await client.shift.findFirst({
-                        where: {
-                            id: userData.assignedShiftId,
-                            tenantId: req.tenantId,
-                            isActive: true,
-                        }
-                    });
-                    if (!shift) {
-                        throw new types_1.ValidationError('Assigned shift not found or inactive in this tenant');
-                    }
-                }
-                // Create user
-                const newUser = await client.user.create({
-                    data: {
-                        tenantId: req.tenantId,
-                        name: userData.name,
-                        workEmail: userData.workEmail.toLowerCase(),
-                        personalEmail: userData.personalEmail?.toLowerCase(),
-                        phone: userData.phone,
-                        passwordHash,
-                        role: userData.role || 'user',
-                        position: userData.position,
-                        reportsToId: userData.reportsToId,
-                        dateOfBirth: userData.dateOfBirth ? new Date(userData.dateOfBirth) : null,
-                        workDays: userData.workDays || [1, 2, 3, 4, 5], // Default to weekdays
-                        assignedShiftId: userData.assignedShiftId, // FIXED: Process shift assignment
-                        isActive: userData.isActive !== undefined ? userData.isActive : true, // FIXED: Process isActive
-                    },
-                    select: {
-                        id: true,
-                        name: true,
-                        workEmail: true,
-                        personalEmail: true,
-                        phone: true,
-                        role: true,
-                        position: true,
                         isActive: true,
-                        createdAt: true,
-                        reportsTo: {
-                            select: { id: true, name: true, position: true }
-                        }
                     }
                 });
-                res.status(201).json({
-                    success: true,
-                    data: newUser,
-                    message: 'Member created successfully'
+                if (!reportsToUser) {
+                    throw new types_1.ValidationError('Reports to user not found in this tenant');
+                }
+            }
+            // Hash password
+            const passwordHash = await bcryptjs_1.default.hash(userData.password, 12);
+            // Validate assigned shift if provided
+            if (userData.assignedShiftId) {
+                const shift = await database_1.prisma.shift.findFirst({
+                    where: {
+                        id: userData.assignedShiftId,
+                        tenantId: req.tenantId,
+                        isActive: true,
+                    }
                 });
+                if (!shift) {
+                    throw new types_1.ValidationError('Assigned shift not found or inactive in this tenant');
+                }
+            }
+            // Create user
+            const newUser = await database_1.prisma.user.create({
+                data: {
+                    tenantId: req.tenantId,
+                    name: userData.name,
+                    workEmail: userData.workEmail.toLowerCase(),
+                    personalEmail: userData.personalEmail?.toLowerCase(),
+                    phone: userData.phone,
+                    passwordHash,
+                    role: userData.role || 'user',
+                    position: userData.position,
+                    reportsToId: userData.reportsToId,
+                    dateOfBirth: userData.dateOfBirth ? new Date(userData.dateOfBirth) : null,
+                    workDays: userData.workDays || [1, 2, 3, 4, 5], // Default to weekdays
+                    assignedShiftId: userData.assignedShiftId, // FIXED: Process shift assignment
+                    isActive: userData.isActive !== undefined ? userData.isActive : true, // FIXED: Process isActive
+                },
+                select: {
+                    id: true,
+                    name: true,
+                    workEmail: true,
+                    personalEmail: true,
+                    phone: true,
+                    role: true,
+                    position: true,
+                    isActive: true,
+                    createdAt: true,
+                    reportsTo: {
+                        select: { id: true, name: true, position: true }
+                    }
+                }
+            });
+            res.status(201).json({
+                success: true,
+                data: newUser,
+                message: 'Member created successfully'
             });
         }
         catch (error) {
@@ -290,101 +282,99 @@ class UserController {
             delete updates.passwordHash;
             delete updates.tenantId;
             delete updates.createdAt;
-            await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                // Check if user exists and belongs to tenant
-                const existingUser = await client.user.findFirst({
+            // Check if user exists and belongs to tenant
+            const existingUser = await database_1.prisma.user.findFirst({
+                where: {
+                    id,
+                    tenantId: req.tenantId,
+                }
+            });
+            if (!existingUser) {
+                throw new types_1.NotFoundError('User not found in this tenant');
+            }
+            // Check for email conflicts within tenant if email is being updated
+            if (updates.workEmail && updates.workEmail.toLowerCase() !== existingUser.workEmail) {
+                const duplicateUser = await database_1.prisma.user.findFirst({
                     where: {
-                        id,
+                        workEmail: updates.workEmail.toLowerCase(),
                         tenantId: req.tenantId,
+                        id: { not: id }
                     }
                 });
-                if (!existingUser) {
-                    throw new types_1.NotFoundError('User not found in this tenant');
+                if (duplicateUser) {
+                    throw new types_1.ValidationError('Work email already exists in this tenant');
                 }
-                // Check for email conflicts within tenant if email is being updated
-                if (updates.workEmail && updates.workEmail.toLowerCase() !== existingUser.workEmail) {
-                    const duplicateUser = await client.user.findFirst({
-                        where: {
-                            workEmail: updates.workEmail.toLowerCase(),
-                            tenantId: req.tenantId,
-                            id: { not: id }
-                        }
-                    });
-                    if (duplicateUser) {
-                        throw new types_1.ValidationError('Work email already exists in this tenant');
-                    }
-                }
-                // Validate reports to user if provided
-                if (updates.reportsToId) {
-                    const reportsToUser = await client.user.findFirst({
-                        where: {
-                            id: updates.reportsToId,
-                            tenantId: req.tenantId,
-                            isActive: true,
-                        }
-                    });
-                    if (!reportsToUser) {
-                        throw new types_1.ValidationError('Reports to user not found in this tenant');
-                    }
-                }
-                // Validate assigned shift if provided
-                if (updates.assignedShiftId) {
-                    const shift = await client.shift.findFirst({
-                        where: {
-                            id: updates.assignedShiftId,
-                            tenantId: req.tenantId,
-                            isActive: true,
-                        }
-                    });
-                    if (!shift) {
-                        throw new types_1.ValidationError('Assigned shift not found or inactive in this tenant');
-                    }
-                }
-                // Convert dates if provided
-                if (updates.dateOfBirth)
-                    updates.dateOfBirth = new Date(updates.dateOfBirth);
-                if (updates.workEmail)
-                    updates.workEmail = updates.workEmail.toLowerCase();
-                if (updates.personalEmail)
-                    updates.personalEmail = updates.personalEmail.toLowerCase();
-                // Update shift assignment tracking if shift is being changed
-                const updateData = { ...updates, updatedAt: new Date() };
-                if (updates.assignedShiftId && updates.assignedShiftId !== existingUser.assignedShiftId) {
-                    updateData.shiftAssignedById = req.user.id;
-                    updateData.shiftAssignedDate = new Date();
-                }
-                const updatedUser = await client.user.update({
-                    where: { id },
-                    data: updateData,
-                    select: {
-                        id: true,
-                        name: true,
-                        workEmail: true,
-                        personalEmail: true,
-                        phone: true,
-                        role: true,
-                        position: true,
-                        workDays: true,
+            }
+            // Validate reports to user if provided
+            if (updates.reportsToId) {
+                const reportsToUser = await database_1.prisma.user.findFirst({
+                    where: {
+                        id: updates.reportsToId,
+                        tenantId: req.tenantId,
                         isActive: true,
-                        updatedAt: true,
-                        assignedShift: {
-                            select: {
-                                id: true,
-                                name: true,
-                                startTime: true,
-                                endTime: true,
-                            }
-                        },
-                        reportsTo: {
-                            select: { id: true, name: true, position: true }
-                        }
                     }
                 });
-                res.status(200).json({
-                    success: true,
-                    data: updatedUser,
-                    message: 'Member updated successfully'
+                if (!reportsToUser) {
+                    throw new types_1.ValidationError('Reports to user not found in this tenant');
+                }
+            }
+            // Validate assigned shift if provided
+            if (updates.assignedShiftId) {
+                const shift = await database_1.prisma.shift.findFirst({
+                    where: {
+                        id: updates.assignedShiftId,
+                        tenantId: req.tenantId,
+                        isActive: true,
+                    }
                 });
+                if (!shift) {
+                    throw new types_1.ValidationError('Assigned shift not found or inactive in this tenant');
+                }
+            }
+            // Convert dates if provided
+            if (updates.dateOfBirth)
+                updates.dateOfBirth = new Date(updates.dateOfBirth);
+            if (updates.workEmail)
+                updates.workEmail = updates.workEmail.toLowerCase();
+            if (updates.personalEmail)
+                updates.personalEmail = updates.personalEmail.toLowerCase();
+            // Update shift assignment tracking if shift is being changed
+            const updateData = { ...updates, updatedAt: new Date() };
+            if (updates.assignedShiftId && updates.assignedShiftId !== existingUser.assignedShiftId) {
+                updateData.shiftAssignedById = req.user.id;
+                updateData.shiftAssignedDate = new Date();
+            }
+            const updatedUser = await database_1.prisma.user.update({
+                where: { id },
+                data: updateData,
+                select: {
+                    id: true,
+                    name: true,
+                    workEmail: true,
+                    personalEmail: true,
+                    phone: true,
+                    role: true,
+                    position: true,
+                    workDays: true,
+                    isActive: true,
+                    updatedAt: true,
+                    assignedShift: {
+                        select: {
+                            id: true,
+                            name: true,
+                            startTime: true,
+                            endTime: true,
+                        }
+                    },
+                    reportsTo: {
+                        select: { id: true, name: true, position: true }
+                    }
+                }
+            });
+            res.status(200).json({
+                success: true,
+                data: updatedUser,
+                message: 'Member updated successfully'
             });
         }
         catch (error) {
@@ -422,36 +412,34 @@ class UserController {
                 return;
             }
             const { id } = req.params;
-            await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                const existingUser = await client.user.findFirst({
-                    where: {
-                        id,
-                        tenantId: req.tenantId,
-                    }
-                });
-                if (!existingUser) {
-                    throw new types_1.NotFoundError('User not found in this tenant');
+            const existingUser = await database_1.prisma.user.findFirst({
+                where: {
+                    id,
+                    tenantId: req.tenantId,
                 }
-                // Soft delete
-                const updatedUser = await client.user.update({
-                    where: { id },
-                    data: {
-                        isActive: false,
-                        updatedAt: new Date()
-                    },
-                    select: {
-                        id: true,
-                        name: true,
-                        workEmail: true,
-                        isActive: true,
-                        updatedAt: true
-                    }
-                });
-                res.status(200).json({
-                    success: true,
-                    data: updatedUser,
-                    message: 'Member deactivated successfully'
-                });
+            });
+            if (!existingUser) {
+                throw new types_1.NotFoundError('User not found in this tenant');
+            }
+            // Soft delete
+            const updatedUser = await database_1.prisma.user.update({
+                where: { id },
+                data: {
+                    isActive: false,
+                    updatedAt: new Date()
+                },
+                select: {
+                    id: true,
+                    name: true,
+                    workEmail: true,
+                    isActive: true,
+                    updatedAt: true
+                }
+            });
+            res.status(200).json({
+                success: true,
+                data: updatedUser,
+                message: 'Member deactivated successfully'
             });
         }
         catch (error) {
@@ -482,35 +470,33 @@ class UserController {
                 return;
             }
             const { id } = req.params;
-            await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                const existingUser = await client.user.findFirst({
-                    where: {
-                        id,
-                        tenantId: req.tenantId,
-                    }
-                });
-                if (!existingUser) {
-                    throw new types_1.NotFoundError('User not found in this tenant');
+            const existingUser = await database_1.prisma.user.findFirst({
+                where: {
+                    id,
+                    tenantId: req.tenantId,
                 }
-                const updatedUser = await client.user.update({
-                    where: { id },
-                    data: {
-                        isActive: true,
-                        updatedAt: new Date()
-                    },
-                    select: {
-                        id: true,
-                        name: true,
-                        workEmail: true,
-                        isActive: true,
-                        updatedAt: true
-                    }
-                });
-                res.status(200).json({
-                    success: true,
-                    data: updatedUser,
-                    message: 'Member activated successfully'
-                });
+            });
+            if (!existingUser) {
+                throw new types_1.NotFoundError('User not found in this tenant');
+            }
+            const updatedUser = await database_1.prisma.user.update({
+                where: { id },
+                data: {
+                    isActive: true,
+                    updatedAt: new Date()
+                },
+                select: {
+                    id: true,
+                    name: true,
+                    workEmail: true,
+                    isActive: true,
+                    updatedAt: true
+                }
+            });
+            res.status(200).json({
+                success: true,
+                data: updatedUser,
+                message: 'Member activated successfully'
             });
         }
         catch (error) {
@@ -541,31 +527,29 @@ class UserController {
                 return;
             }
             const userId = req.user.id;
-            const user = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                return await client.user.findFirst({
-                    where: {
-                        id: userId,
-                        tenantId: req.tenantId,
-                    },
-                    select: {
-                        id: true,
-                        name: true,
-                        workEmail: true,
-                        personalEmail: true,
-                        phone: true,
-                        role: true,
-                        position: true,
-                        dateOfBirth: true,
-                        workDays: true,
-                        isActive: true,
-                        lastLoginAt: true,
-                        createdAt: true,
-                        updatedAt: true,
-                        reportsTo: {
-                            select: { id: true, name: true, position: true }
-                        }
+            const user = await database_1.prisma.user.findFirst({
+                where: {
+                    id: userId,
+                    tenantId: req.tenantId,
+                },
+                select: {
+                    id: true,
+                    name: true,
+                    workEmail: true,
+                    personalEmail: true,
+                    phone: true,
+                    role: true,
+                    position: true,
+                    dateOfBirth: true,
+                    workDays: true,
+                    isActive: true,
+                    lastLoginAt: true,
+                    createdAt: true,
+                    updatedAt: true,
+                    reportsTo: {
+                        select: { id: true, name: true, position: true }
                     }
-                });
+                }
             });
             if (!user) {
                 res.status(404).json({
@@ -607,38 +591,36 @@ class UserController {
             delete updateData.isActive;
             delete updateData.tenantId;
             delete updateData.createdAt;
-            await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                // Convert dates if provided
-                if (updateData.dateOfBirth)
-                    updateData.dateOfBirth = new Date(updateData.dateOfBirth);
-                if (updateData.personalEmail)
-                    updateData.personalEmail = updateData.personalEmail.toLowerCase();
-                const updatedUser = await client.user.update({
-                    where: { id: userId },
-                    data: {
-                        ...updateData,
-                        updatedAt: new Date()
-                    },
-                    select: {
-                        id: true,
-                        name: true,
-                        workEmail: true,
-                        personalEmail: true,
-                        phone: true,
-                        position: true,
-                        dateOfBirth: true,
-                        workDays: true,
-                        updatedAt: true,
-                        reportsTo: {
-                            select: { id: true, name: true, position: true }
-                        }
+            // Convert dates if provided
+            if (updateData.dateOfBirth)
+                updateData.dateOfBirth = new Date(updateData.dateOfBirth);
+            if (updateData.personalEmail)
+                updateData.personalEmail = updateData.personalEmail.toLowerCase();
+            const updatedUser = await database_1.prisma.user.update({
+                where: { id: userId },
+                data: {
+                    ...updateData,
+                    updatedAt: new Date()
+                },
+                select: {
+                    id: true,
+                    name: true,
+                    workEmail: true,
+                    personalEmail: true,
+                    phone: true,
+                    position: true,
+                    dateOfBirth: true,
+                    workDays: true,
+                    updatedAt: true,
+                    reportsTo: {
+                        select: { id: true, name: true, position: true }
                     }
-                });
-                res.status(200).json({
-                    success: true,
-                    data: updatedUser,
-                    message: 'Profile updated successfully'
-                });
+                }
+            });
+            res.status(200).json({
+                success: true,
+                data: updatedUser,
+                message: 'Profile updated successfully'
             });
         }
         catch (error) {
@@ -692,36 +674,34 @@ class UserController {
                 });
                 return;
             }
-            await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                // Get user with password
-                const user = await client.user.findFirst({
-                    where: {
-                        id: userId,
-                        tenantId: req.tenantId,
-                    }
-                });
-                if (!user) {
-                    throw new types_1.NotFoundError('User not found');
+            // Get user with password
+            const user = await database_1.prisma.user.findFirst({
+                where: {
+                    id: userId,
+                    tenantId: req.tenantId,
                 }
-                // Verify current password
-                const isCurrentPasswordValid = await bcryptjs_1.default.compare(currentPassword, user.passwordHash);
-                if (!isCurrentPasswordValid) {
-                    throw new types_1.ValidationError('Current password is incorrect');
+            });
+            if (!user) {
+                throw new types_1.NotFoundError('User not found');
+            }
+            // Verify current password
+            const isCurrentPasswordValid = await bcryptjs_1.default.compare(currentPassword, user.passwordHash);
+            if (!isCurrentPasswordValid) {
+                throw new types_1.ValidationError('Current password is incorrect');
+            }
+            // Hash new password
+            const newPasswordHash = await bcryptjs_1.default.hash(newPassword, 12);
+            // Update password
+            await database_1.prisma.user.update({
+                where: { id: userId },
+                data: {
+                    passwordHash: newPasswordHash,
+                    updatedAt: new Date()
                 }
-                // Hash new password
-                const newPasswordHash = await bcryptjs_1.default.hash(newPassword, 12);
-                // Update password
-                await client.user.update({
-                    where: { id: userId },
-                    data: {
-                        passwordHash: newPasswordHash,
-                        updatedAt: new Date()
-                    }
-                });
-                res.status(200).json({
-                    success: true,
-                    message: 'Password changed successfully'
-                });
+            });
+            res.status(200).json({
+                success: true,
+                message: 'Password changed successfully'
             });
         }
         catch (error) {
@@ -768,30 +748,28 @@ class UserController {
                 });
                 return;
             }
-            await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                const user = await client.user.findFirst({
-                    where: {
-                        id: userId,
-                        tenantId: req.tenantId,
-                    }
-                });
-                if (!user) {
-                    throw new types_1.NotFoundError('User not found in this tenant');
+            const user = await database_1.prisma.user.findFirst({
+                where: {
+                    id: userId,
+                    tenantId: req.tenantId,
                 }
-                // Hash new password
-                const newPasswordHash = await bcryptjs_1.default.hash(newPassword, 12);
-                // Update password
-                await client.user.update({
-                    where: { id: userId },
-                    data: {
-                        passwordHash: newPasswordHash,
-                        updatedAt: new Date()
-                    }
-                });
-                res.status(200).json({
-                    success: true,
-                    message: 'User password reset successfully'
-                });
+            });
+            if (!user) {
+                throw new types_1.NotFoundError('User not found in this tenant');
+            }
+            // Hash new password
+            const newPasswordHash = await bcryptjs_1.default.hash(newPassword, 12);
+            // Update password
+            await database_1.prisma.user.update({
+                where: { id: userId },
+                data: {
+                    passwordHash: newPasswordHash,
+                    updatedAt: new Date()
+                }
+            });
+            res.status(200).json({
+                success: true,
+                message: 'User password reset successfully'
             });
         }
         catch (error) {
@@ -830,18 +808,16 @@ class UserController {
                 where.role = role;
             if (position)
                 where.position = position;
-            const members = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                return await client.user.findMany({
-                    where,
-                    select: {
-                        id: true,
-                        name: true,
-                        workEmail: true,
-                        position: true,
-                        role: true,
-                    },
-                    orderBy: { name: 'asc' }
-                });
+            const members = await database_1.prisma.user.findMany({
+                where,
+                select: {
+                    id: true,
+                    name: true,
+                    workEmail: true,
+                    position: true,
+                    role: true,
+                },
+                orderBy: { name: 'asc' }
             });
             const formattedMembers = members.map(member => ({
                 value: member.id,
@@ -884,67 +860,65 @@ class UserController {
                 });
                 return;
             }
-            const updatedMember = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                // Verify member exists and belongs to tenant
-                const member = await client.user.findFirst({
-                    where: {
-                        id,
-                        tenantId: req.tenantId,
-                    }
-                });
-                if (!member) {
-                    throw new types_1.NotFoundError('Member not found in this tenant');
+            // Verify member exists and belongs to tenant
+            const member = await database_1.prisma.user.findFirst({
+                where: {
+                    id,
+                    tenantId: req.tenantId,
                 }
-                // Verify shift exists and belongs to tenant
-                const shift = await client.shift.findFirst({
-                    where: {
-                        id: shiftId,
-                        tenantId: req.tenantId,
-                        isActive: true,
-                    }
-                });
-                if (!shift) {
-                    throw new types_1.ValidationError('Shift not found or inactive in this tenant');
+            });
+            if (!member) {
+                throw new types_1.NotFoundError('Member not found in this tenant');
+            }
+            // Verify shift exists and belongs to tenant
+            const shift = await database_1.prisma.shift.findFirst({
+                where: {
+                    id: shiftId,
+                    tenantId: req.tenantId,
+                    isActive: true,
                 }
-                // Update member with shift assignment
-                return await client.user.update({
-                    where: { id },
-                    data: {
-                        assignedShiftId: shiftId,
-                        shiftAssignedById: req.user.id,
-                        shiftAssignedDate: new Date(),
-                        updatedAt: new Date(),
-                    },
-                    select: {
-                        id: true,
-                        name: true,
-                        workEmail: true,
-                        personalEmail: true,
-                        phone: true,
-                        role: true,
-                        position: true,
-                        isActive: true,
-                        updatedAt: true,
-                        assignedShift: {
-                            select: {
-                                id: true,
-                                name: true,
-                                startTime: true,
-                                endTime: true,
-                            }
-                        },
-                        shiftAssignedBy: {
-                            select: {
-                                id: true,
-                                name: true,
-                                position: true,
-                            }
-                        },
-                        reportsTo: {
-                            select: { id: true, name: true, position: true }
+            });
+            if (!shift) {
+                throw new types_1.ValidationError('Shift not found or inactive in this tenant');
+            }
+            // Update member with shift assignment
+            const updatedMember = await database_1.prisma.user.update({
+                where: { id },
+                data: {
+                    assignedShiftId: shiftId,
+                    shiftAssignedById: req.user.id,
+                    shiftAssignedDate: new Date(),
+                    updatedAt: new Date(),
+                },
+                select: {
+                    id: true,
+                    name: true,
+                    workEmail: true,
+                    personalEmail: true,
+                    phone: true,
+                    role: true,
+                    position: true,
+                    isActive: true,
+                    updatedAt: true,
+                    assignedShift: {
+                        select: {
+                            id: true,
+                            name: true,
+                            startTime: true,
+                            endTime: true,
                         }
+                    },
+                    shiftAssignedBy: {
+                        select: {
+                            id: true,
+                            name: true,
+                            position: true,
+                        }
+                    },
+                    reportsTo: {
+                        select: { id: true, name: true, position: true }
                     }
-                });
+                }
             });
             res.status(200).json({
                 success: true,

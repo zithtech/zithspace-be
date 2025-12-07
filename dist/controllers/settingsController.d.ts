@@ -3,6 +3,7 @@ import { AuthRequest } from '@/types';
 export declare class SettingsController {
     /**
      * Get all configuration options for ticket creation (tenant-aware)
+     * OPTIMIZED: Uses Promise.all for parallel queries + 5-minute cache
      */
     static getTicketConfigurations(req: AuthRequest, res: Response): Promise<void>;
     /**

@@ -1,5 +1,5 @@
-import { Response } from 'express';
-import { AuthRequest } from '@/types';
+import { Response } from "express";
+import { AuthRequest } from "@/types";
 export declare class TicketController {
     /**
      * Upload image to R2 for ticket description
@@ -19,6 +19,7 @@ export declare class TicketController {
     static getTickets(req: AuthRequest, res: Response): Promise<void>;
     /**
      * Get ticket by ID with full details (tenant-aware)
+     * OPTIMIZED: Reduced includes, paginated comments, removed nested joins
      */
     static getTicketById(req: AuthRequest, res: Response): Promise<void>;
     /**

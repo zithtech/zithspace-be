@@ -1,5 +1,5 @@
-import { Response } from 'express';
-import { AuthRequest } from '@/types';
+import { Response } from "express";
+import { AuthRequest } from "@/types";
 export declare class ProjectController {
     /**
      * Get all projects with filtering and pagination (tenant-aware)
