@@ -40,7 +40,7 @@ router.post('/refresh', authRateLimit, auth_1.optionalAuth, authController_1.Aut
 // Logout route - requires authentication
 router.post('/logout', generalAuthRateLimit, auth_1.authenticateToken, authController_1.AuthController.logout);
 // Get current user profile - requires authentication
-router.get('/me', generalAuthRateLimit, auth_1.authenticateToken, authController_1.AuthController.me);
+router.get('/me', generalAuthRateLimit, tenantContext_1.resolveTenant, auth_1.authenticateToken, authController_1.AuthController.me);
 // Authentication check - requires authentication
 router.get('/check', generalAuthRateLimit, auth_1.authenticateToken, authController_1.AuthController.check);
 // Create user route - requires tenant context (for testing/setup)
