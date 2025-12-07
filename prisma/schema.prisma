@@ -324,6 +324,9 @@ model ReleasePlan {
   tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   tickets     Ticket[]  @relation("TicketReleasePlan")
 
+  // Type of plan: sprint_plan, demo_plan, release_plan
+  type        String    @default("release_plan")
+
   @@unique([tenantId, projectId, version])
   @@map("release_plans")
 }
