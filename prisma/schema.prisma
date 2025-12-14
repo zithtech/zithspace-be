@@ -21,6 +21,7 @@ model Tenant {
   attendanceBreaks    AttendanceBreak[]
   clients             Client[]
   dropdownOptions     DropdownOption[]
+  leaves              Leave[]
   projects            Project[]
   releasePlans        ReleasePlan[]
   shifts              Shift[]
@@ -60,6 +61,8 @@ model User {
   enteredAttendance    Attendance[]        @relation("AttendanceEnteredBy")
   attendance           Attendance[]
   createdClients       Client[]            @relation("ClientCreator")
+  leaves               Leave[]             @relation("UserLeaves")
+  approvedLeaves       Leave[]             @relation("LeaveApprover")
   projectMemberships   ProjectMember[]
   createdProjects      Project[]           @relation("ProjectCreator")
   managedProjects      Project[]           @relation("ProjectManager")
@@ -475,3 +478,28 @@ model WorkEntry {
 
   @@map("work_entries")
 }
+
+model Leave {
+  id              String    @id @default(uuid())
+  tenantId        String    @map("tenant_id")
+  userId          String    @map("user_id")
+  type            String    // sick_leave, casual_leave, paid_leave, unpaid_leave, work_from_home, permission
+  startDate       DateTime  @map("start_date")
+  endDate         DateTime  @map("end_date")
+  duration        Decimal   @db.Decimal(5, 2)
+  durationType    String    @map("duration_type") // FULL_DAY, HALF_DAY, HOURS
+  reason          String
+  status          String    @default("pending") // pending, approved, rejected, cancelled
+  approvedById    String?   @map("approved_by_id")
+  approvedAt      DateTime? @map("approved_at")
+  rejectionReason String?   @map("rejection_reason")
+  attachments     Json      @default("[]")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  user            User      @relation("UserLeaves", fields: [userId], references: [id], onDelete: Cascade)
+  approvedBy      User?     @relation("LeaveApprover", fields: [approvedById], references: [id])
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("leaves")
+}
+

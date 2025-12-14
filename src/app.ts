@@ -28,6 +28,8 @@ import releasePlanRoutes from "@/routes/releasePlans";
 import settingRoutes from "@/routes/settings";
 import userRoutes from "@/routes/user";
 import dailyUpdateRoutes from "@/routes/dailyUpdates";
+import dashboardRoutes from "@/routes/dashboard";
+import leaveRoutes from "@/routes/leaves";
 
 // Load environment variables
 dotenv.config();
@@ -112,7 +114,7 @@ app.get("/health", (req, res) => {
 // Tenant resolution for all API routes
 // app.use("/api", optionalTenantContext);
 
-// API routes  
+// API routes
 app.use("/api/auth", authRoutes);
 app.use("/api/tenants", tenantRoutes);
 app.use("/api/projects", projectRoutes);
@@ -126,7 +128,8 @@ app.use("/api/release-plans", releasePlanRoutes);
 app.use("/api/settings", settingRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/daily-updates", dailyUpdateRoutes);
-
+app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/leaves", leaveRoutes);
 
 // Tenant-specific health check
 app.get("/api/health", (req: any, res) => {

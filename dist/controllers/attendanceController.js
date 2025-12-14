@@ -12,19 +12,32 @@ class AttendanceController {
             if (!req.tenantId || !req.user) {
                 res.status(400).json({
                     success: false,
-                    error: 'Tenant context and authentication required',
+                    error: "Tenant context and authentication required",
                 });
                 return;
             }
-            const { page = 1, limit = 20, userId, date, status, startDate, endDate, sortBy = 'date', sortOrder = 'desc' } = req.query;
+            const { page = 1, limit = 20, userId, member, // Alias for userId (used by frontend)
+            date, status, startDate, endDate, search, // Search by member name
+            sortBy = 'date', sortOrder = 'desc' } = req.query;
             // Build filter query
             const where = {
                 tenantId: req.tenantId,
             };
-            if (userId)
-                where.userId = userId;
+            // Handle userId or member parameter (member is alias for userId)
+            const targetUserId = userId || member;
+            if (targetUserId)
+                where.userId = targetUserId;
             if (status)
                 where.status = status;
+            // Handle search by member name
+            if (search) {
+                where.user = {
+                    name: {
+                        contains: search,
+                        mode: 'insensitive'
+                    }
+                };
+            }
             if (date) {
                 const targetDate = new Date(date);
                 const startOfDay = new Date(targetDate);
@@ -44,30 +57,37 @@ class AttendanceController {
             }
             // Build sort object
             const orderBy = {};
-            orderBy[sortBy] = sortOrder === 'desc' ? 'desc' : 'asc';
+            orderBy[sortBy] = sortOrder === "desc" ? "desc" : "asc";
             // Execute query with pagination
             const skip = (Number(page) - 1) * Number(limit);
-            const [attendance, total] = await Promise.all([
+            const [attendanceRecords, total] = await Promise.all([
                 database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
                     return await client.attendance.findMany({
                         where,
                         include: {
                             user: {
-                                select: { id: true, name: true, workEmail: true, position: true }
-                            }
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    workEmail: true,
+                                    position: true,
+                                },
+                            },
                         },
-                        orderBy: [
-                            orderBy,
-                            { createdAt: 'desc' }
-                        ],
+                        orderBy: [orderBy, { createdAt: "desc" }],
                         skip,
                         take: Number(limit),
                     });
                 }),
                 database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
                     return await client.attendance.count({ where });
-                })
+                }),
             ]);
+            const attendance = attendanceRecords.map((record) => ({
+                ...record,
+                member: record.user,
+                user: undefined,
+            }));
             const totalPages = Math.ceil(total / Number(limit));
             res.status(200).json({
                 success: true,
@@ -78,15 +98,15 @@ class AttendanceController {
                     total,
                     pages: totalPages,
                     hasNext: Number(page) < totalPages,
-                    hasPrev: Number(page) > 1
-                }
+                    hasPrev: Number(page) > 1,
+                },
             });
         }
         catch (error) {
-            console.error('Get attendance error:', error);
+            console.error("Get attendance error:", error);
             res.status(500).json({
                 success: false,
-                error: 'Failed to fetch attendance records'
+                error: "Failed to fetch attendance records",
             });
         }
     }
@@ -98,12 +118,12 @@ class AttendanceController {
             if (!req.tenantId || !req.user) {
                 res.status(400).json({
                     success: false,
-                    error: 'Tenant context and authentication required',
+                    error: "Tenant context and authentication required",
                 });
                 return;
             }
             const { id } = req.params;
-            const attendance = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+            const attendanceRecord = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
                 return await client.attendance.findFirst({
                     where: {
                         id,
@@ -111,28 +131,39 @@ class AttendanceController {
                     },
                     include: {
                         user: {
-                            select: { id: true, name: true, workEmail: true, position: true }
-                        }
-                    }
+                            select: {
+                                id: true,
+                                name: true,
+                                workEmail: true,
+                                position: true,
+                            },
+                        },
+                    },
                 });
             });
-            if (!attendance) {
+            if (!attendanceRecord) {
                 res.status(404).json({
                     success: false,
-                    error: 'Attendance record not found'
+                    error: "Attendance record not found",
                 });
                 return;
             }
+            // Transform data to use 'member' instead of 'user'
+            const attendance = {
+                ...attendanceRecord,
+                member: attendanceRecord.user,
+                user: undefined,
+            };
             res.status(200).json({
                 success: true,
-                data: attendance
+                data: attendance,
             });
         }
         catch (error) {
-            console.error('Get attendance by ID error:', error);
+            console.error("Get attendance by ID error:", error);
             res.status(500).json({
                 success: false,
-                error: 'Failed to fetch attendance record'
+                error: "Failed to fetch attendance record",
             });
         }
     }
@@ -144,7 +175,7 @@ class AttendanceController {
             if (!req.tenantId || !req.user) {
                 res.status(400).json({
                     success: false,
-                    error: 'Tenant context and authentication required',
+                    error: "Tenant context and authentication required",
                 });
                 return;
             }
@@ -167,13 +198,13 @@ class AttendanceController {
                         shift: true,
                         user: {
                             include: {
-                                assignedShift: true
-                            }
-                        }
-                    }
+                                assignedShift: true,
+                            },
+                        },
+                    },
                 });
                 if (existingAttendance && existingAttendance.clockIn) {
-                    throw new types_1.ValidationError('Already clocked in today');
+                    throw new types_1.ValidationError("Already clocked in today");
                 }
                 // Validate user exists and belongs to tenant
                 const user = await client.user.findFirst({
@@ -181,64 +212,80 @@ class AttendanceController {
                         id: userId,
                         tenantId: req.tenantId,
                         isActive: true,
-                    }
+                    },
                 });
                 if (!user) {
-                    throw new types_1.NotFoundError('User not found in this tenant');
+                    throw new types_1.NotFoundError("User not found in this tenant");
                 }
                 const clockInTime = new Date();
-                let attendance;
+                let attendanceRecord;
                 if (existingAttendance) {
                     // Update existing record
-                    attendance = await client.attendance.update({
+                    attendanceRecord = await client.attendance.update({
                         where: { id: existingAttendance.id },
                         data: {
                             clockIn: clockInTime,
-                            status: 'present',
+                            status: "present",
                         },
                         include: {
                             user: {
-                                select: { id: true, name: true, workEmail: true, position: true }
-                            }
-                        }
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    workEmail: true,
+                                    position: true,
+                                },
+                            },
+                        },
                     });
                 }
                 else {
                     // Create new attendance record
-                    attendance = await client.attendance.create({
+                    attendanceRecord = await client.attendance.create({
                         data: {
                             tenantId: req.tenantId,
                             userId,
                             date: startOfToday,
                             clockIn: clockInTime,
-                            status: 'present',
+                            status: "present",
                         },
                         include: {
                             user: {
-                                select: { id: true, name: true, workEmail: true, position: true }
-                            }
-                        }
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    workEmail: true,
+                                    position: true,
+                                },
+                            },
+                        },
                     });
                 }
+                // Transform data to use 'member' instead of 'user'
+                const attendance = {
+                    ...attendanceRecord,
+                    member: attendanceRecord.user,
+                    user: undefined,
+                };
                 res.status(200).json({
                     success: true,
                     data: attendance,
-                    message: 'Clocked in successfully'
+                    message: "Clocked in successfully",
                 });
             });
         }
         catch (error) {
-            console.error('Clock in error:', error);
+            console.error("Clock in error:", error);
             if (error instanceof types_1.ValidationError || error instanceof types_1.NotFoundError) {
                 res.status(error instanceof types_1.NotFoundError ? 404 : 400).json({
                     success: false,
-                    error: error.message
+                    error: error.message,
                 });
                 return;
             }
             res.status(500).json({
                 success: false,
-                error: 'Failed to clock in'
+                error: "Failed to clock in",
             });
         }
     }
@@ -250,7 +297,7 @@ class AttendanceController {
             if (!req.tenantId || !req.user) {
                 res.status(400).json({
                     success: false,
-                    error: 'Tenant context and authentication required',
+                    error: "Tenant context and authentication required",
                 });
                 return;
             }
@@ -268,20 +315,20 @@ class AttendanceController {
                         userId,
                         tenantId: req.tenantId,
                         date: { gte: startOfToday, lte: endOfToday },
-                    }
+                    },
                 });
                 if (!attendance || !attendance.clockIn) {
-                    throw new types_1.ValidationError('No clock in record found for today');
+                    throw new types_1.ValidationError("No clock in record found for today");
                 }
                 if (attendance.clockOut) {
-                    throw new types_1.ValidationError('Already clocked out today');
+                    throw new types_1.ValidationError("Already clocked out today");
                 }
                 const clockOutTime = new Date();
                 // Calculate work minutes
                 const totalWorkMinutes = Math.floor((clockOutTime.getTime() - attendance.clockIn.getTime()) / 60000);
                 // Calculate effective work minutes (total - breaks)
                 const effectiveWorkMinutes = totalWorkMinutes - attendance.totalBreakMinutes;
-                const updatedAttendance = await client.attendance.update({
+                const attendanceRecord = await client.attendance.update({
                     where: { id: attendance.id },
                     data: {
                         clockOut: clockOutTime,
@@ -290,29 +337,35 @@ class AttendanceController {
                     },
                     include: {
                         user: {
-                            select: { id: true, name: true, workEmail: true, position: true }
-                        }
-                    }
+                            select: { id: true, name: true, workEmail: true, position: true },
+                        },
+                    },
                 });
+                // Transform data to use 'member' instead of 'user'
+                const updatedAttendance = {
+                    ...attendanceRecord,
+                    member: attendanceRecord.user,
+                    user: undefined,
+                };
                 res.status(200).json({
                     success: true,
                     data: updatedAttendance,
-                    message: 'Clocked out successfully'
+                    message: "Clocked out successfully",
                 });
             });
         }
         catch (error) {
-            console.error('Clock out error:', error);
+            console.error("Clock out error:", error);
             if (error instanceof types_1.ValidationError || error instanceof types_1.NotFoundError) {
                 res.status(error instanceof types_1.NotFoundError ? 404 : 400).json({
                     success: false,
-                    error: error.message
+                    error: error.message,
                 });
                 return;
             }
             res.status(500).json({
                 success: false,
-                error: 'Failed to clock out'
+                error: "Failed to clock out",
             });
         }
     }
@@ -324,7 +377,7 @@ class AttendanceController {
             if (!req.tenantId || !req.user) {
                 res.status(400).json({
                     success: false,
-                    error: 'Tenant context and authentication required',
+                    error: "Tenant context and authentication required",
                 });
                 return;
             }
@@ -339,11 +392,11 @@ class AttendanceController {
                 const user = await client.user.findUnique({
                     where: { id: userId },
                     include: {
-                        assignedShift: true
-                    }
+                        assignedShift: true,
+                    },
                 });
                 if (!user) {
-                    throw new types_1.NotFoundError('User not found');
+                    throw new types_1.NotFoundError("User not found");
                 }
                 // Get attendance with shift data
                 const attendance = await client.attendance.findFirst({
@@ -353,8 +406,8 @@ class AttendanceController {
                         date: { gte: startOfToday, lte: endOfToday },
                     },
                     include: {
-                        shift: true
-                    }
+                        shift: true,
+                    },
                 });
                 // Get shift info (from attendance or user's assigned shift)
                 const shift = attendance?.shift || user.assignedShift;
@@ -371,14 +424,16 @@ class AttendanceController {
                     date: startOfToday,
                     clockIn: attendance?.clockIn || null,
                     clockOut: attendance?.clockOut || null,
-                    status: attendance?.status?.toLowerCase() || 'not_clocked_in',
-                    shift: shift ? {
-                        id: shift.id,
-                        name: shift.name,
-                        startTime: shift.startTime,
-                        endTime: shift.endTime,
-                        isFlexible: false,
-                    } : null,
+                    status: attendance?.status?.toLowerCase() || "not_clocked_in",
+                    shift: shift
+                        ? {
+                            id: shift.id,
+                            name: shift.name,
+                            startTime: shift.startTime,
+                            endTime: shift.endTime,
+                            isFlexible: false,
+                        }
+                        : null,
                     totalWorkMinutes,
                     isClockIn: !!attendance?.clockIn,
                     clockInTime: attendance?.clockIn || null,
@@ -390,14 +445,14 @@ class AttendanceController {
             });
             res.status(200).json({
                 success: true,
-                data: result
+                data: result,
             });
         }
         catch (error) {
-            console.error('Get today attendance error:', error);
+            console.error("Get today attendance error:", error);
             res.status(500).json({
                 success: false,
-                error: 'Failed to fetch today\'s attendance'
+                error: "Failed to fetch today's attendance",
             });
         }
     }
@@ -409,7 +464,7 @@ class AttendanceController {
             if (!req.tenantId || !req.user) {
                 res.status(400).json({
                     success: false,
-                    error: 'Tenant context and authentication required',
+                    error: "Tenant context and authentication required",
                 });
                 return;
             }
@@ -424,11 +479,11 @@ class AttendanceController {
                     where: {
                         tenantId: req.tenantId,
                         isActive: true,
-                    }
+                    },
                 });
                 // Get today's attendance summary
                 const todaySummary = await client.attendance.groupBy({
-                    by: ['status'],
+                    by: ["status"],
                     where: {
                         tenantId: req.tenantId,
                         date: { gte: startOfToday, lte: endOfToday },
@@ -446,19 +501,19 @@ class AttendanceController {
                 todaySummary.forEach((item) => {
                     const status = item.status.toLowerCase();
                     switch (status) {
-                        case 'present':
+                        case "present":
                             statusCounts.present = item._count;
                             break;
-                        case 'absent':
+                        case "absent":
                             statusCounts.absent = item._count;
                             break;
-                        case 'late':
+                        case "late":
                             statusCounts.late = item._count;
                             break;
-                        case 'half-day':
+                        case "half-day":
                             statusCounts.halfDay = item._count;
                             break;
-                        case 'wfh':
+                        case "wfh":
                             statusCounts.wfh = item._count;
                             break;
                     }
@@ -482,14 +537,14 @@ class AttendanceController {
             });
             res.status(200).json({
                 success: true,
-                data: summary
+                data: summary,
             });
         }
         catch (error) {
-            console.error('Get dashboard summary error:', error);
+            console.error("Get dashboard summary error:", error);
             res.status(500).json({
                 success: false,
-                error: 'Failed to fetch dashboard summary'
+                error: "Failed to fetch dashboard summary",
             });
         }
     }
@@ -501,7 +556,7 @@ class AttendanceController {
             if (!req.tenantId || !req.user) {
                 res.status(400).json({
                     success: false,
-                    error: 'Tenant context and authentication required',
+                    error: "Tenant context and authentication required",
                 });
                 return;
             }
@@ -515,22 +570,28 @@ class AttendanceController {
                     where: {
                         tenantId: req.tenantId,
                         date: { gte: startOfToday, lte: endOfToday },
-                        status: { in: ['present', 'late', 'wfh'] },
+                        status: { in: ["present", "late", "wfh"] },
                         clockIn: { not: null },
                     },
                     include: {
                         user: {
-                            select: { id: true, name: true, workEmail: true, position: true }
+                            select: {
+                                id: true,
+                                name: true,
+                                workEmail: true,
+                                position: true,
+                            },
                         },
-                        shift: true
+                        shift: true,
                     },
-                    orderBy: { clockIn: 'asc' }
+                    orderBy: { clockIn: "asc" },
                 });
                 // Transform to match frontend expectations
-                return records.map(record => {
+                return records.map((record) => {
                     // Calculate work hours
                     const workMinutes = record.clockOut
-                        ? Math.floor((record.clockOut.getTime() - record.clockIn.getTime()) / 60000)
+                        ? Math.floor((record.clockOut.getTime() - record.clockIn.getTime()) /
+                            60000)
                         : Math.floor((new Date().getTime() - record.clockIn.getTime()) / 60000);
                     return {
                         id: record.user.id,
@@ -539,25 +600,27 @@ class AttendanceController {
                         status: record.status.toLowerCase(),
                         clockInTime: record.clockIn,
                         clockOutTime: record.clockOut,
-                        shift: record.shift ? {
-                            name: record.shift.name,
-                            startTime: record.shift.startTime,
-                            endTime: record.shift.endTime,
-                        } : null,
+                        shift: record.shift
+                            ? {
+                                name: record.shift.name,
+                                startTime: record.shift.startTime,
+                                endTime: record.shift.endTime,
+                            }
+                            : null,
                         workHours: workMinutes,
                     };
                 });
             });
             res.status(200).json({
                 success: true,
-                data: presentMembers
+                data: presentMembers,
             });
         }
         catch (error) {
-            console.error('Get present members error:', error);
+            console.error("Get present members error:", error);
             res.status(500).json({
                 success: false,
-                error: 'Failed to fetch present members'
+                error: "Failed to fetch present members",
             });
         }
     }
@@ -569,7 +632,7 @@ class AttendanceController {
             if (!req.tenantId || !req.user) {
                 res.status(400).json({
                     success: false,
-                    error: 'Tenant context and authentication required',
+                    error: "Tenant context and authentication required",
                 });
                 return;
             }
@@ -586,7 +649,7 @@ class AttendanceController {
                         tenantId: req.tenantId,
                         date: { gte: startOfMonth, lte: endOfMonth },
                     },
-                    orderBy: { date: 'asc' }
+                    orderBy: { date: "asc" },
                 });
                 // Calculate summary
                 const summary = {
@@ -599,19 +662,19 @@ class AttendanceController {
                 };
                 attendanceRecords.forEach((record) => {
                     switch (record.status) {
-                        case 'PRESENT':
+                        case "PRESENT":
                             summary.present++;
                             break;
-                        case 'ABSENT':
+                        case "ABSENT":
                             summary.absent++;
                             break;
-                        case 'LATE':
+                        case "LATE":
                             summary.late++;
                             break;
-                        case 'HALF_DAY':
+                        case "HALF_DAY":
                             summary.halfDay++;
                             break;
-                        case 'WFH':
+                        case "WFH":
                             summary.wfh++;
                             break;
                     }
@@ -625,14 +688,14 @@ class AttendanceController {
             });
             res.status(200).json({
                 success: true,
-                data
+                data,
             });
         }
         catch (error) {
-            console.error('Get my attendance summary error:', error);
+            console.error("Get my attendance summary error:", error);
             res.status(500).json({
                 success: false,
-                error: 'Failed to fetch attendance summary'
+                error: "Failed to fetch attendance summary",
             });
         }
     }
@@ -644,7 +707,7 @@ class AttendanceController {
             if (!req.tenantId || !req.user) {
                 res.status(400).json({
                     success: false,
-                    error: 'Tenant context and authentication required',
+                    error: "Tenant context and authentication required",
                 });
                 return;
             }
@@ -660,10 +723,10 @@ class AttendanceController {
                     where: {
                         id,
                         tenantId: req.tenantId,
-                    }
+                    },
                 });
                 if (!existingRecord) {
-                    throw new types_1.NotFoundError('Attendance record not found in this tenant');
+                    throw new types_1.NotFoundError("Attendance record not found in this tenant");
                 }
                 // Convert date strings if provided
                 if (updateData.clockIn)
@@ -672,37 +735,43 @@ class AttendanceController {
                     updateData.clockOut = new Date(updateData.clockOut);
                 if (updateData.date)
                     updateData.date = new Date(updateData.date);
-                const attendance = await client.attendance.update({
+                const attendanceRecord = await client.attendance.update({
                     where: { id },
                     data: {
                         ...updateData,
-                        updatedAt: new Date()
+                        updatedAt: new Date(),
                     },
                     include: {
                         user: {
-                            select: { id: true, name: true, workEmail: true, position: true }
-                        }
-                    }
+                            select: { id: true, name: true, workEmail: true, position: true },
+                        },
+                    },
                 });
+                // Transform data to use 'member' instead of 'user'
+                const attendance = {
+                    ...attendanceRecord,
+                    member: attendanceRecord.user,
+                    user: undefined,
+                };
                 res.status(200).json({
                     success: true,
                     data: attendance,
-                    message: 'Attendance record updated successfully'
+                    message: "Attendance record updated successfully",
                 });
             });
         }
         catch (error) {
-            console.error('Update attendance error:', error);
+            console.error("Update attendance error:", error);
             if (error instanceof types_1.NotFoundError) {
                 res.status(404).json({
                     success: false,
-                    error: error.message
+                    error: error.message,
                 });
                 return;
             }
             res.status(500).json({
                 success: false,
-                error: 'Failed to update attendance record'
+                error: "Failed to update attendance record",
             });
         }
     }
@@ -714,7 +783,7 @@ class AttendanceController {
             if (!req.tenantId || !req.user) {
                 res.status(400).json({
                     success: false,
-                    error: 'Tenant context and authentication required',
+                    error: "Tenant context and authentication required",
                 });
                 return;
             }
@@ -723,7 +792,7 @@ class AttendanceController {
             if (!attendanceData.userId || !attendanceData.date) {
                 res.status(400).json({
                     success: false,
-                    error: 'User ID and date are required'
+                    error: "User ID and date are required",
                 });
                 return;
             }
@@ -734,10 +803,10 @@ class AttendanceController {
                         id: attendanceData.userId,
                         tenantId: req.tenantId,
                         isActive: true,
-                    }
+                    },
                 });
                 if (!user) {
-                    throw new types_1.ValidationError('User not found in this tenant');
+                    throw new types_1.ValidationError("User not found in this tenant");
                 }
                 // Check if attendance already exists for this date
                 const targetDate = new Date(attendanceData.date);
@@ -750,47 +819,57 @@ class AttendanceController {
                         userId: attendanceData.userId,
                         tenantId: req.tenantId,
                         date: { gte: startOfDay, lte: endOfDay },
-                    }
+                    },
                 });
                 if (existingAttendance) {
-                    throw new types_1.ValidationError('Attendance record already exists for this date');
+                    throw new types_1.ValidationError("Attendance record already exists for this date");
                 }
                 // Create attendance record
-                const attendance = await client.attendance.create({
+                const attendanceRecord = await client.attendance.create({
                     data: {
                         tenantId: req.tenantId,
                         userId: attendanceData.userId,
                         date: startOfDay,
-                        clockIn: attendanceData.clockIn ? new Date(attendanceData.clockIn) : null,
-                        clockOut: attendanceData.clockOut ? new Date(attendanceData.clockOut) : null,
-                        status: attendanceData.status || 'present',
+                        clockIn: attendanceData.clockIn
+                            ? new Date(attendanceData.clockIn)
+                            : null,
+                        clockOut: attendanceData.clockOut
+                            ? new Date(attendanceData.clockOut)
+                            : null,
+                        status: attendanceData.status || "present",
                         notes: attendanceData.notes,
                     },
                     include: {
                         user: {
-                            select: { id: true, name: true, workEmail: true, position: true }
-                        }
-                    }
+                            select: { id: true, name: true, workEmail: true, position: true },
+                        },
+                    },
                 });
+                // Transform data to use 'member' instead of 'user'
+                const attendance = {
+                    ...attendanceRecord,
+                    member: attendanceRecord.user,
+                    user: undefined,
+                };
                 res.status(201).json({
                     success: true,
                     data: attendance,
-                    message: 'Attendance record created successfully'
+                    message: "Attendance record created successfully",
                 });
             });
         }
         catch (error) {
-            console.error('Create attendance error:', error);
+            console.error("Create attendance error:", error);
             if (error instanceof types_1.ValidationError) {
                 res.status(400).json({
                     success: false,
-                    error: error.message
+                    error: error.message,
                 });
                 return;
             }
             res.status(500).json({
                 success: false,
-                error: 'Failed to create attendance record'
+                error: "Failed to create attendance record",
             });
         }
     }

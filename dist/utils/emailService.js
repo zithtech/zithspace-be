@@ -1,0 +1,341 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.emailService = void 0;
+const nodemailer_1 = __importDefault(require("nodemailer"));
+class EmailService {
+    constructor() {
+        this.transporter = null;
+        this.initializeTransporter();
+    }
+    initializeTransporter() {
+        const emailConfig = {
+            host: process.env.SMTP_HOST || "smtp.gmail.com",
+            port: parseInt(process.env.SMTP_PORT || "587"),
+            secure: process.env.SMTP_SECURE === "true", // true for 465, false for other ports
+            auth: {
+                user: process.env.SMTP_USER,
+                pass: process.env.SMTP_PASS,
+            },
+        };
+        // Only initialize if credentials are provided
+        if (emailConfig.auth.user && emailConfig.auth.pass) {
+            try {
+                this.transporter = nodemailer_1.default.createTransport(emailConfig);
+                console.log("✅ Email service initialized successfully");
+            }
+            catch (error) {
+                console.error("❌ Failed to initialize email service:", error);
+                this.transporter = null;
+            }
+        }
+        else {
+            console.warn("⚠️ Email credentials not configured. Email notifications will be logged to console.");
+        }
+    }
+    async sendEmail(options) {
+        try {
+            if (!this.transporter) {
+                // Log to console if transporter is not configured
+                console.log("\n📧 EMAIL NOTIFICATION (Not Sent - No SMTP Config):");
+                console.log("To:", options.to);
+                console.log("Subject:", options.subject);
+                console.log("Body:", options.text || options.html);
+                console.log("---\n");
+                return true;
+            }
+            const mailOptions = {
+                from: `"${process.env.SMTP_FROM_NAME || "Zithmi"}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER}>`,
+                to: options.to,
+                subject: options.subject,
+                html: options.html,
+                text: options.text,
+            };
+            const info = await this.transporter.sendMail(mailOptions);
+            console.log("✅ Email sent successfully:", info.messageId);
+            return true;
+        }
+        catch (error) {
+            console.error("❌ Failed to send email:", error);
+            return false;
+        }
+    }
+    formatLeaveType(type) {
+        const typeMap = {
+            sick_leave: "Sick Leave",
+            casual_leave: "Casual Leave",
+            paid_leave: "Paid Leave",
+            unpaid_leave: "Unpaid Leave",
+            work_from_home: "Work From Home",
+            permission: "Permission",
+        };
+        return typeMap[type] || type;
+    }
+    formatDate(dateString) {
+        const date = new Date(dateString);
+        return date.toLocaleDateString("en-US", {
+            weekday: "long",
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+        });
+    }
+    formatDuration(duration, durationType) {
+        if (durationType === "HOURS") {
+            return `${duration} hour${duration !== 1 ? "s" : ""}`;
+        }
+        return `${duration} day${duration !== 1 ? "s" : ""}`;
+    }
+    async sendLeaveApplicationEmail(data) {
+        const subject = `New Leave Request from ${data.employeeName}`;
+        const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background-color: #1677ff; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+          .content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; border-radius: 0 0 5px 5px; }
+          .detail-row { margin: 15px 0; padding: 10px; background-color: white; border-left: 3px solid #1677ff; }
+          .label { font-weight: bold; color: #555; }
+          .value { color: #333; margin-left: 10px; }
+          .reason-box { background-color: #fff3cd; border: 1px solid #ffc107; padding: 15px; margin: 20px 0; border-radius: 5px; }
+          .footer { text-align: center; margin-top: 20px; color: #777; font-size: 12px; }
+          .button { display: inline-block; padding: 12px 30px; background-color: #1677ff; color: white; text-decoration: none; border-radius: 5px; margin: 10px 5px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h2>🏖️ New Leave Request</h2>
+          </div>
+          <div class="content">
+            <p>Hi <strong>${data.managerName}</strong>,</p>
+            <p><strong>${data.employeeName}</strong> has submitted a new leave request that requires your approval.</p>
+            
+            <div class="detail-row">
+              <span class="label">Employee:</span>
+              <span class="value">${data.employeeName} (${data.employeeEmail})</span>
+            </div>
+            
+            <div class="detail-row">
+              <span class="label">Leave Type:</span>
+              <span class="value">${this.formatLeaveType(data.leaveType)}</span>
+            </div>
+            
+            <div class="detail-row">
+              <span class="label">Start Date:</span>
+              <span class="value">${this.formatDate(data.startDate)}</span>
+            </div>
+            
+            <div class="detail-row">
+              <span class="label">End Date:</span>
+              <span class="value">${this.formatDate(data.endDate)}</span>
+            </div>
+            
+            <div class="detail-row">
+              <span class="label">Duration:</span>
+              <span class="value">${this.formatDuration(data.duration, data.durationType)}</span>
+            </div>
+            
+            <div class="reason-box">
+              <strong>Reason:</strong><br/>
+              ${data.reason}
+            </div>
+            
+            <p style="text-align: center; margin-top: 30px;">
+              <a href="${process.env.FRONTEND_URL || "http://localhost:3000"}/leaves" class="button">Review Leave Request</a>
+            </p>
+          </div>
+          <div class="footer">
+            <p>This is an automated notification from Zithmi Leave Management System.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+        const text = `
+New Leave Request from ${data.employeeName}
+
+Hi ${data.managerName},
+
+${data.employeeName} has submitted a new leave request that requires your approval.
+
+Employee: ${data.employeeName} (${data.employeeEmail})
+Leave Type: ${this.formatLeaveType(data.leaveType)}
+Start Date: ${this.formatDate(data.startDate)}
+End Date: ${this.formatDate(data.endDate)}
+Duration: ${this.formatDuration(data.duration, data.durationType)}
+
+Reason:
+${data.reason}
+
+Please log in to review and approve/reject this request.
+    `;
+        return this.sendEmail({ to: data.to, subject, html, text });
+    }
+    async sendLeaveApprovalEmail(data) {
+        const subject = `✅ Your Leave Request has been Approved`;
+        const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background-color: #52c41a; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+          .content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; border-radius: 0 0 5px 5px; }
+          .detail-row { margin: 15px 0; padding: 10px; background-color: white; border-left: 3px solid #52c41a; }
+          .label { font-weight: bold; color: #555; }
+          .value { color: #333; margin-left: 10px; }
+          .success-box { background-color: #d4edda; border: 1px solid #c3e6cb; padding: 15px; margin: 20px 0; border-radius: 5px; text-align: center; }
+          .footer { text-align: center; margin-top: 20px; color: #777; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h2>✅ Leave Request Approved</h2>
+          </div>
+          <div class="content">
+            <p>Hi <strong>${data.employeeName}</strong>,</p>
+            
+            <div class="success-box">
+              <h3 style="margin: 0; color: #155724;">Your leave request has been approved!</h3>
+            </div>
+            
+            <p>Your leave request has been reviewed and approved by <strong>${data.approverName}</strong>.</p>
+            
+            <div class="detail-row">
+              <span class="label">Leave Type:</span>
+              <span class="value">${this.formatLeaveType(data.leaveType)}</span>
+            </div>
+            
+            <div class="detail-row">
+              <span class="label">Start Date:</span>
+              <span class="value">${this.formatDate(data.startDate)}</span>
+            </div>
+            
+            <div class="detail-row">
+              <span class="label">End Date:</span>
+              <span class="value">${this.formatDate(data.endDate)}</span>
+            </div>
+            
+            <div class="detail-row">
+              <span class="label">Duration:</span>
+              <span class="value">${this.formatDuration(data.duration, data.durationType)}</span>
+            </div>
+            
+            <p style="margin-top: 20px;">Enjoy your time off! 🎉</p>
+          </div>
+          <div class="footer">
+            <p>This is an automated notification from Zithmi Leave Management System.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+        const text = `
+Your Leave Request has been Approved
+
+Hi ${data.employeeName},
+
+Your leave request has been reviewed and approved by ${data.approverName}.
+
+Leave Type: ${this.formatLeaveType(data.leaveType)}
+Start Date: ${this.formatDate(data.startDate)}
+End Date: ${this.formatDate(data.endDate)}
+Duration: ${this.formatDuration(data.duration, data.durationType)}
+
+Enjoy your time off!
+    `;
+        return this.sendEmail({ to: data.to, subject, html, text });
+    }
+    async sendLeaveRejectionEmail(data) {
+        const subject = `❌ Your Leave Request has been Rejected`;
+        const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background-color: #ff4d4f; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+          .content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; border-radius: 0 0 5px 5px; }
+          .detail-row { margin: 15px 0; padding: 10px; background-color: white; border-left: 3px solid #ff4d4f; }
+          .label { font-weight: bold; color: #555; }
+          .value { color: #333; margin-left: 10px; }
+          .rejection-box { background-color: #f8d7da; border: 1px solid #f5c6cb; padding: 15px; margin: 20px 0; border-radius: 5px; }
+          .footer { text-align: center; margin-top: 20px; color: #777; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h2>❌ Leave Request Rejected</h2>
+          </div>
+          <div class="content">
+            <p>Hi <strong>${data.employeeName}</strong>,</p>
+            <p>Your leave request has been reviewed and rejected by <strong>${data.approverName}</strong>.</p>
+            
+            <div class="detail-row">
+              <span class="label">Leave Type:</span>
+              <span class="value">${this.formatLeaveType(data.leaveType)}</span>
+            </div>
+            
+            <div class="detail-row">
+              <span class="label">Start Date:</span>
+              <span class="value">${this.formatDate(data.startDate)}</span>
+            </div>
+            
+            <div class="detail-row">
+              <span class="label">End Date:</span>
+              <span class="value">${this.formatDate(data.endDate)}</span>
+            </div>
+            
+            <div class="detail-row">
+              <span class="label">Duration:</span>
+              <span class="value">${this.formatDuration(data.duration, data.durationType)}</span>
+            </div>
+            
+            <div class="rejection-box">
+              <strong>Reason for Rejection:</strong><br/>
+              ${data.rejectionReason}
+            </div>
+            
+            <p>If you have any questions or concerns, please contact your manager or HR department.</p>
+          </div>
+          <div class="footer">
+            <p>This is an automated notification from Zithmi Leave Management System.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+        const text = `
+Your Leave Request has been Rejected
+
+Hi ${data.employeeName},
+
+Your leave request has been reviewed and rejected by ${data.approverName}.
+
+Leave Type: ${this.formatLeaveType(data.leaveType)}
+Start Date: ${this.formatDate(data.startDate)}
+End Date: ${this.formatDate(data.endDate)}
+Duration: ${this.formatDuration(data.duration, data.durationType)}
+
+Reason for Rejection:
+${data.rejectionReason}
+
+If you have any questions or concerns, please contact your manager or HR department.
+    `;
+        return this.sendEmail({ to: data.to, subject, html, text });
+    }
+}
+// Export singleton instance
+exports.emailService = new EmailService();
+exports.default = exports.emailService;
+//# sourceMappingURL=emailService.js.map
