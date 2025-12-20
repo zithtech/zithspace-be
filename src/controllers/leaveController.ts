@@ -1,7 +1,7 @@
 import { Response } from "express";
 import { prisma } from "@/config/database";
 import { AuthRequest, ApiResponse } from "@/types";
-import emailService from "@/utils/emailService";
+// import emailService from "@/utils/emailService";
 
 class LeaveController {
   // Apply for leave
@@ -88,21 +88,21 @@ class LeaveController {
       });
 
       // Send email notification to reporting manager
-      if (user.reportsTo) {
-        await emailService.sendLeaveApplicationEmail({
-          to: user.reportsTo.workEmail,
-          managerName: user.reportsTo.name,
-          employeeName: user.name,
-          employeeEmail: user.workEmail,
-          leaveType: type,
-          startDate,
-          endDate,
-          duration: parseFloat(duration),
-          durationType,
-          reason,
-          leaveId: leave.id,
-        });
-      }
+      // if (user.reportsTo) {
+      //   await emailService.sendLeaveApplicationEmail({
+      //     to: user.reportsTo.workEmail,
+      //     managerName: user.reportsTo.name,
+      //     employeeName: user.name,
+      //     employeeEmail: user.workEmail,
+      //     leaveType: type,
+      //     startDate,
+      //     endDate,
+      //     duration: parseFloat(duration),
+      //     durationType,
+      //     reason,
+      //     leaveId: leave.id,
+      //   });
+      // }
 
       res.status(201).json({
         success: true,
@@ -457,16 +457,16 @@ class LeaveController {
       });
 
       // Send approval email to employee
-      await emailService.sendLeaveApprovalEmail({
-        to: updatedLeave.user.workEmail,
-        employeeName: updatedLeave.user.name,
-        approverName: updatedLeave.approvedBy!.name,
-        leaveType: updatedLeave.type,
-        startDate: updatedLeave.startDate.toISOString(),
-        endDate: updatedLeave.endDate.toISOString(),
-        duration: parseFloat(updatedLeave.duration.toString()),
-        durationType: updatedLeave.durationType,
-      });
+      // await emailService.sendLeaveApprovalEmail({
+      //   to: updatedLeave.user.workEmail,
+      //   employeeName: updatedLeave.user.name,
+      //   approverName: updatedLeave.approvedBy!.name,
+      //   leaveType: updatedLeave.type,
+      //   startDate: updatedLeave.startDate.toISOString(),
+      //   endDate: updatedLeave.endDate.toISOString(),
+      //   duration: parseFloat(updatedLeave.duration.toString()),
+      //   durationType: updatedLeave.durationType,
+      // });
 
       res.status(200).json({
         success: true,
@@ -570,17 +570,17 @@ class LeaveController {
       });
 
       // Send rejection email to employee
-      await emailService.sendLeaveRejectionEmail({
-        to: updatedLeave.user.workEmail,
-        employeeName: updatedLeave.user.name,
-        approverName: updatedLeave.approvedBy!.name,
-        leaveType: updatedLeave.type,
-        startDate: updatedLeave.startDate.toISOString(),
-        endDate: updatedLeave.endDate.toISOString(),
-        duration: parseFloat(updatedLeave.duration.toString()),
-        durationType: updatedLeave.durationType,
-        rejectionReason,
-      });
+      // await emailService.sendLeaveRejectionEmail({
+      //   to: updatedLeave.user.workEmail,
+      //   employeeName: updatedLeave.user.name,
+      //   approverName: updatedLeave.approvedBy!.name,
+      //   leaveType: updatedLeave.type,
+      //   startDate: updatedLeave.startDate.toISOString(),
+      //   endDate: updatedLeave.endDate.toISOString(),
+      //   duration: parseFloat(updatedLeave.duration.toString()),
+      //   durationType: updatedLeave.durationType,
+      //   rejectionReason,
+      // });
 
       res.status(200).json({
         success: true,
