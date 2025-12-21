@@ -269,6 +269,10 @@ const server = app.listen(PORT, () => {
   console.log(`Multi-tenant API: http://localhost:${PORT}/api/health`);
   console.log(`Database: PostgreSQL with Prisma`);
   console.log(`Features: Multi-tenant, RLS, Enhanced Auth, JWT`);
+
+  // Initialize Socket.io
+  const { socketService } = require("@/services/socketService");
+  socketService.initialize(server);
 });
 
 // Graceful shutdown

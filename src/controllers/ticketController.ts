@@ -15,6 +15,7 @@ import {
   deleteFileFromR2,
 } from "@/utils/r2Client";
 import { sanitizeHtmlContent, validateHtmlLength } from "@/utils/htmlSanitizer";
+import { socketService } from "@/services/socketService";
 
 export class TicketController {
   /**
@@ -294,6 +295,8 @@ export class TicketController {
           },
         },
       });
+
+      socketService.emitToTenant(req.tenantId, "ticket:created", ticket);
 
       res.status(201).json({
         success: true,
@@ -658,6 +661,8 @@ export class TicketController {
         },
       });
 
+      socketService.emitToTenant(req.tenantId, "ticket:updated", ticket);
+
       res.status(200).json({
         success: true,
         data: ticket,
@@ -710,6 +715,8 @@ export class TicketController {
       await prisma.ticket.delete({
         where: { id },
       });
+
+      socketService.emitToTenant(req.tenantId, "ticket:deleted", { id });
 
       res.status(200).json({
         success: true,
