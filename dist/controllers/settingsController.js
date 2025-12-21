@@ -88,24 +88,24 @@ class SettingsController {
             const configurations = {
                 // Static dropdown options
                 priorities: [
-                    { value: 'High (P1)', label: 'High (P1)', color: '#ff4d4f', description: 'Critical priority' },
-                    { value: 'Medium (P2)', label: 'Medium (P2)', color: '#fa8c16', description: 'Medium priority' },
-                    { value: 'Lite (P3)', label: 'Lite (P3)', color: '#52c41a', description: 'Low priority' }
+                    { value: 'P1', label: 'High (P1)', color: '#ff4d4f', description: 'Critical priority' },
+                    { value: 'P2', label: 'Medium (P2)', color: '#fa8c16', description: 'Medium priority' },
+                    { value: 'P3', label: 'Lite (P3)', color: '#52c41a', description: 'Low priority' }
                 ],
                 taskTypes: [
                     { value: 'Bug', label: 'Bug', color: '#ff4d4f', description: 'Bug fix' },
                     { value: 'Task', label: 'Task', color: '#1890ff', description: 'General task' },
-                    { value: 'Feature', label: 'Feature', color: '#52c41a', description: 'New feature' },
+                    { value: 'Feat', label: 'Feature', color: '#52c41a', description: 'New feature' },
                     { value: 'Enhancement', label: 'Enhancement', color: '#722ed1', description: 'Enhancement' }
                 ],
                 statuses: [
-                    { value: 'Not Started', label: 'Not Started', color: '#d9d9d9', description: 'Task not started' },
-                    { value: 'In Progress', label: 'In Progress', color: '#1890ff', description: 'Task in progress' },
-                    { value: 'In Review', label: 'In Review', color: '#722ed1', description: 'Under review' },
-                    { value: 'Testing', label: 'Testing', color: '#13c2c2', description: 'In testing phase' },
-                    { value: 'Completed', label: 'Completed', color: '#52c41a', description: 'Task completed' },
-                    { value: 'On Hold', label: 'On Hold', color: '#fa8c16', description: 'Task on hold' },
-                    { value: 'Cancelled', label: 'Cancelled', color: '#8c8c8c', description: 'Task cancelled' }
+                    { value: 'not_started', label: 'Not Started', color: '#d9d9d9', description: 'Task not started' },
+                    { value: 'in_progress', label: 'In Progress', color: '#1890ff', description: 'Task in progress' },
+                    // { value: 'in_review', label: 'In Review', color: '#722ed1', description: 'Under review' },
+                    { value: 'in_testing', label: 'Testing', color: '#13c2c2', description: 'In testing phase' },
+                    { value: 'completed', label: 'Completed', color: '#52c41a', description: 'Task completed' },
+                    // { value: 'on_hold', label: 'On Hold', color: '#fa8c16', description: 'Task on hold' },
+                    // { value: 'cancelled', label: 'Cancelled', color: '#8c8c8c', description: 'Task cancelled' }
                 ],
                 platforms: [
                     { value: 'Development', label: 'Development', color: '#1890ff', description: 'Software development tasks' },
