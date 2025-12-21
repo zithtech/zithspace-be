@@ -20,13 +20,21 @@ router.use(requireAuth);
 router.get('/dashboard/stats', TicketController.getDashboardStats);
 
 /**
+ * @route   GET /api/tickets/kanban
+ * @desc    Get tickets optimized for Kanban view (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @query   projectId, assigneeId, priority, search, limitPerColumn
+ */
+router.get('/kanban', TicketController.getKanbanTickets);
+
+/**
  * @route   GET /api/tickets
  * @desc    Get all tickets with filtering, sorting, and pagination (tenant-aware)
  * @access  Private (authenticated users within tenant)
  * @query   page, limit, status, priority, projectId, assigneeId, createdById, search, sortBy, sortOrder, startDate, endDate
  */
 router.get('/', TicketController.getTickets);
-//
+
 /**
  * @route   GET /api/tickets/my
  * @desc    Get tickets assigned to current user (tenant-aware)

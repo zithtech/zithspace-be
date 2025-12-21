@@ -14,6 +14,11 @@ export declare class TicketController {
      */
     static createTicket(req: AuthRequest, res: Response): Promise<void>;
     /**
+     * Get tickets optimized for Kanban view (tenant-aware)
+     * Returns tickets grouped by status with metadata
+     */
+    static getKanbanTickets(req: AuthRequest, res: Response): Promise<void>;
+    /**
      * Get all tickets with filtering, sorting, and pagination (tenant-aware)
      */
     static getTickets(req: AuthRequest, res: Response): Promise<void>;

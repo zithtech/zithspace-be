@@ -322,6 +322,131 @@ export class TicketController {
   }
 
   /**
+   * Get tickets optimized for Kanban view (tenant-aware)
+   * Returns tickets grouped by status with metadata
+   */
+  static async getKanbanTickets(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const {
+        projectId,
+        assigneeId,
+        priority,
+        search,
+        limitPerColumn = 50,
+      } = req.query;
+
+      // Build base filter
+      const baseWhere: any = {
+        tenantId: req.tenantId,
+      };
+
+      if (projectId) baseWhere.projectId = projectId;
+      if (priority) baseWhere.priority = priority;
+      if (assigneeId) {
+        if (typeof assigneeId === "string" && assigneeId.includes(",")) {
+          baseWhere.assigneeId = { in: assigneeId.split(",").map((id) => id.trim()) };
+        } else {
+          baseWhere.assigneeId = assigneeId;
+        }
+      }
+      if (search) {
+        baseWhere.OR = [
+          { title: { contains: search as string, mode: "insensitive" } },
+          { ticketNumber: { contains: search as string, mode: "insensitive" } },
+        ];
+      }
+
+      const statuses = ['not_started', 'in_progress', 'in_testing', 'completed'];
+      const limit = Number(limitPerColumn);
+
+      // Fetch tickets for each status in parallel
+      const columnsData = await Promise.all(
+        statuses.map(async (status) => {
+          const where = { ...baseWhere, status };
+          
+          const [tickets, total] = await Promise.all([
+            prisma.ticket.findMany({
+              where,
+              take: limit,
+              orderBy: [
+                { priority: 'asc' },
+                { createdAt: 'desc' }
+              ],
+              select: {
+                id: true,
+                ticketNumber: true,
+                title: true,
+                status: true,
+                priority: true,
+                type: true,
+                storyPoint: true,
+                assignee: {
+                  select: { 
+                    id: true, 
+                    name: true, 
+                    workEmail: true 
+                  }
+                },
+                project: {
+                  select: { 
+                    id: true, 
+                    name: true, 
+                    code: true 
+                  }
+                },
+                createdAt: true,
+                updatedAt: true,
+              },
+            }),
+            prisma.ticket.count({ where }),
+          ]);
+
+          return {
+            status,
+            tickets,
+            total,
+            hasMore: total > limit,
+            loaded: tickets.length,
+          };
+        })
+      );
+
+      // Transform to object for easier frontend consumption
+      const columns = columnsData.reduce((acc, col) => {
+        acc[col.status] = col;
+        return acc;
+      }, {} as Record<string, any>);
+
+      const totalTickets = columnsData.reduce((sum, col) => sum + col.total, 0);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          columns,
+          summary: {
+            total: totalTickets,
+            loaded: columnsData.reduce((sum, col) => sum + col.loaded, 0),
+          },
+        },
+      } as ApiResponse);
+    } catch (error) {
+      console.error("Get Kanban tickets error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to fetch Kanban tickets",
+      } as ApiResponse);
+    }
+  }
+
+  /**
    * Get all tickets with filtering, sorting, and pagination (tenant-aware)
    */
   static async getTickets(req: AuthRequest, res: Response): Promise<void> {

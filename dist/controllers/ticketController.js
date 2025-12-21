@@ -5,6 +5,7 @@ const database_1 = require("@/config/database");
 const types_1 = require("@/types");
 const r2Client_1 = require("@/utils/r2Client");
 const htmlSanitizer_1 = require("@/utils/htmlSanitizer");
+const socketService_1 = require("@/services/socketService");
 class TicketController {
     /**
      * Upload image to R2 for ticket description
@@ -230,6 +231,7 @@ class TicketController {
                     },
                 },
             });
+            socketService_1.socketService.emitToTenant(req.tenantId, "ticket:created", ticket);
             res.status(201).json({
                 success: true,
                 data: ticket,
@@ -248,6 +250,116 @@ class TicketController {
             res.status(500).json({
                 success: false,
                 error: "Failed to create ticket",
+            });
+        }
+    }
+    /**
+     * Get tickets optimized for Kanban view (tenant-aware)
+     * Returns tickets grouped by status with metadata
+     */
+    static async getKanbanTickets(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { projectId, assigneeId, priority, search, limitPerColumn = 50, } = req.query;
+            // Build base filter
+            const baseWhere = {
+                tenantId: req.tenantId,
+            };
+            if (projectId)
+                baseWhere.projectId = projectId;
+            if (priority)
+                baseWhere.priority = priority;
+            if (assigneeId) {
+                if (typeof assigneeId === "string" && assigneeId.includes(",")) {
+                    baseWhere.assigneeId = { in: assigneeId.split(",").map((id) => id.trim()) };
+                }
+                else {
+                    baseWhere.assigneeId = assigneeId;
+                }
+            }
+            if (search) {
+                baseWhere.OR = [
+                    { title: { contains: search, mode: "insensitive" } },
+                    { ticketNumber: { contains: search, mode: "insensitive" } },
+                ];
+            }
+            const statuses = ['not_started', 'in_progress', 'in_testing', 'completed'];
+            const limit = Number(limitPerColumn);
+            // Fetch tickets for each status in parallel
+            const columnsData = await Promise.all(statuses.map(async (status) => {
+                const where = { ...baseWhere, status };
+                const [tickets, total] = await Promise.all([
+                    database_1.prisma.ticket.findMany({
+                        where,
+                        take: limit,
+                        orderBy: [
+                            { priority: 'asc' },
+                            { createdAt: 'desc' }
+                        ],
+                        select: {
+                            id: true,
+                            ticketNumber: true,
+                            title: true,
+                            status: true,
+                            priority: true,
+                            type: true,
+                            storyPoint: true,
+                            assignee: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    workEmail: true
+                                }
+                            },
+                            project: {
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    code: true
+                                }
+                            },
+                            createdAt: true,
+                            updatedAt: true,
+                        },
+                    }),
+                    database_1.prisma.ticket.count({ where }),
+                ]);
+                return {
+                    status,
+                    tickets,
+                    total,
+                    hasMore: total > limit,
+                    loaded: tickets.length,
+                };
+            }));
+            // Transform to object for easier frontend consumption
+            const columns = columnsData.reduce((acc, col) => {
+                acc[col.status] = col;
+                return acc;
+            }, {});
+            const totalTickets = columnsData.reduce((sum, col) => sum + col.total, 0);
+            res.status(200).json({
+                success: true,
+                data: {
+                    columns,
+                    summary: {
+                        total: totalTickets,
+                        loaded: columnsData.reduce((sum, col) => sum + col.loaded, 0),
+                    },
+                },
+            });
+        }
+        catch (error) {
+            console.error("Get Kanban tickets error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to fetch Kanban tickets",
             });
         }
     }
@@ -549,6 +661,7 @@ class TicketController {
                     project: { select: { id: true, name: true, code: true } },
                 },
             });
+            socketService_1.socketService.emitToTenant(req.tenantId, "ticket:updated", ticket);
             res.status(200).json({
                 success: true,
                 data: ticket,
@@ -595,6 +708,7 @@ class TicketController {
             await database_1.prisma.ticket.delete({
                 where: { id },
             });
+            socketService_1.socketService.emitToTenant(req.tenantId, "ticket:deleted", { id });
             res.status(200).json({
                 success: true,
                 message: "Ticket deleted successfully",

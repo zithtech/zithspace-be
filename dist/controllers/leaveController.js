@@ -1,10 +1,7 @@
 "use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
 Object.defineProperty(exports, "__esModule", { value: true });
 const database_1 = require("@/config/database");
-const emailService_1 = __importDefault(require("@/utils/emailService"));
+// import emailService from "@/utils/emailService";
 class LeaveController {
     // Apply for leave
     async applyLeave(req, res) {
@@ -75,21 +72,21 @@ class LeaveController {
                 },
             });
             // Send email notification to reporting manager
-            if (user.reportsTo) {
-                await emailService_1.default.sendLeaveApplicationEmail({
-                    to: user.reportsTo.workEmail,
-                    managerName: user.reportsTo.name,
-                    employeeName: user.name,
-                    employeeEmail: user.workEmail,
-                    leaveType: type,
-                    startDate,
-                    endDate,
-                    duration: parseFloat(duration),
-                    durationType,
-                    reason,
-                    leaveId: leave.id,
-                });
-            }
+            // if (user.reportsTo) {
+            //   await emailService.sendLeaveApplicationEmail({
+            //     to: user.reportsTo.workEmail,
+            //     managerName: user.reportsTo.name,
+            //     employeeName: user.name,
+            //     employeeEmail: user.workEmail,
+            //     leaveType: type,
+            //     startDate,
+            //     endDate,
+            //     duration: parseFloat(duration),
+            //     durationType,
+            //     reason,
+            //     leaveId: leave.id,
+            //   });
+            // }
             res.status(201).json({
                 success: true,
                 message: "Leave application submitted successfully",
@@ -410,16 +407,16 @@ class LeaveController {
                 },
             });
             // Send approval email to employee
-            await emailService_1.default.sendLeaveApprovalEmail({
-                to: updatedLeave.user.workEmail,
-                employeeName: updatedLeave.user.name,
-                approverName: updatedLeave.approvedBy.name,
-                leaveType: updatedLeave.type,
-                startDate: updatedLeave.startDate.toISOString(),
-                endDate: updatedLeave.endDate.toISOString(),
-                duration: parseFloat(updatedLeave.duration.toString()),
-                durationType: updatedLeave.durationType,
-            });
+            // await emailService.sendLeaveApprovalEmail({
+            //   to: updatedLeave.user.workEmail,
+            //   employeeName: updatedLeave.user.name,
+            //   approverName: updatedLeave.approvedBy!.name,
+            //   leaveType: updatedLeave.type,
+            //   startDate: updatedLeave.startDate.toISOString(),
+            //   endDate: updatedLeave.endDate.toISOString(),
+            //   duration: parseFloat(updatedLeave.duration.toString()),
+            //   durationType: updatedLeave.durationType,
+            // });
             res.status(200).json({
                 success: true,
                 message: "Leave approved successfully",
@@ -513,17 +510,17 @@ class LeaveController {
                 },
             });
             // Send rejection email to employee
-            await emailService_1.default.sendLeaveRejectionEmail({
-                to: updatedLeave.user.workEmail,
-                employeeName: updatedLeave.user.name,
-                approverName: updatedLeave.approvedBy.name,
-                leaveType: updatedLeave.type,
-                startDate: updatedLeave.startDate.toISOString(),
-                endDate: updatedLeave.endDate.toISOString(),
-                duration: parseFloat(updatedLeave.duration.toString()),
-                durationType: updatedLeave.durationType,
-                rejectionReason,
-            });
+            // await emailService.sendLeaveRejectionEmail({
+            //   to: updatedLeave.user.workEmail,
+            //   employeeName: updatedLeave.user.name,
+            //   approverName: updatedLeave.approvedBy!.name,
+            //   leaveType: updatedLeave.type,
+            //   startDate: updatedLeave.startDate.toISOString(),
+            //   endDate: updatedLeave.endDate.toISOString(),
+            //   duration: parseFloat(updatedLeave.duration.toString()),
+            //   durationType: updatedLeave.durationType,
+            //   rejectionReason,
+            // });
             res.status(200).json({
                 success: true,
                 message: "Leave rejected",
