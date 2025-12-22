@@ -8,7 +8,7 @@ const router = Router();
 // Apply tenant context resolution to all routes
 router.use(resolveTenant);
 
-// Apply authentication to all routes
+// Apply authentication to all routes commented out for now
 router.use(authenticateToken);
 router.use(requireAuth);
 

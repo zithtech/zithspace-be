@@ -7,7 +7,7 @@ const tenantContext_1 = require("@/middleware/tenantContext");
 const router = (0, express_1.Router)();
 // Apply tenant context resolution to all routes
 router.use(tenantContext_1.resolveTenant);
-// Apply authentication to all routes
+// Apply authentication to all routes commented out for now
 router.use(auth_1.authenticateToken);
 router.use(auth_1.requireAuth);
 /**
