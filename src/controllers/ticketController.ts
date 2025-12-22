@@ -241,10 +241,23 @@ export class TicketController {
       }
 
       // Generate ticket number
-      const ticketCount = await prisma.ticket.count({
+      // Generate ticket number safely by finding the last created ticket
+      const lastTicket = await prisma.ticket.findFirst({
         where: { tenantId: req.tenantId },
+        orderBy: { createdAt: 'desc' } // Get the most recently created ticket
       });
-      const ticketNumber = `${project.code || "TKT"}-${(ticketCount + 1)
+
+      let nextTicketNumber = 1;
+      if (lastTicket && lastTicket.ticketNumber) {
+        // Extract the number part from the last ticket (e.g., "PROJ-0005" -> 5)
+        const parts = lastTicket.ticketNumber.split('-');
+        const lastSeq = parseInt(parts[parts.length - 1]);
+        if (!isNaN(lastSeq)) {
+          nextTicketNumber = lastSeq + 1;
+        }
+      }
+
+      const ticketNumber = `${project.code || "TKT"}-${nextTicketNumber
         .toString()
         .padStart(4, "0")}`;
 
