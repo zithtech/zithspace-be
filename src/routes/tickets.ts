@@ -44,6 +44,30 @@ router.get('/', TicketController.getTickets);
 router.get('/my', TicketController.getMyTickets);
 
 /**
+ * @route   GET /api/tickets/:id/comments
+ * @desc    Get comments for a ticket (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   id - Ticket ID
+ */
+router.get('/:id/comments', TicketController.getComments);
+
+/**
+ * @route   GET /api/tickets/:id/workflow
+ * @desc    Get workflow steps for a ticket (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   id - Ticket ID
+ */
+router.get('/:id/workflow', TicketController.getWorkflowSteps);
+
+/**
+ * @route   GET /api/tickets/:id/activity
+ * @desc    Get activity log for a ticket (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   id - Ticket ID
+ */
+router.get('/:id/activity', TicketController.getActivityLog);
+
+/**
  * @route   GET /api/tickets/:id
  * @desc    Get ticket by ID with full details (tenant-aware)
  * @access  Private (authenticated users within tenant)

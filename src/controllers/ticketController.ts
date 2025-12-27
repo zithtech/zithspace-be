@@ -16,6 +16,7 @@ import {
 } from "@/utils/r2Client";
 import { sanitizeHtmlContent, validateHtmlLength } from "@/utils/htmlSanitizer";
 import { socketService } from "@/services/socketService";
+import cacheService from "@/utils/cacheService";
 
 export class TicketController {
   /**
@@ -593,7 +594,7 @@ export class TicketController {
 
   /**
    * Get ticket by ID with full details (tenant-aware)
-   * OPTIMIZED: Reduced includes, paginated comments, removed nested joins
+   * OPTIMIZED: Redis caching + removed comments/links (fetched separately)
    */
   static async getTicketById(req: AuthRequest, res: Response): Promise<void> {
     try {
@@ -607,7 +608,17 @@ export class TicketController {
 
       const { id } = req.params;
 
-      // OPTIMIZED: Reduced query complexity
+      // Check cache first
+      const cached = await cacheService.getTicket(id, req.tenantId);
+      if (cached) {
+        res.status(200).json({
+          success: true,
+          data: cached,
+        } as ApiResponse);
+        return;
+      }
+
+      // OPTIMIZED: Removed comments and relatedLinks (fetched separately)
       const ticket = await prisma.ticket.findFirst({
         where: {
           id,
@@ -650,32 +661,9 @@ export class TicketController {
             select: { id: true, name: true, code: true, description: true },
             // Removed: projectManager (not needed in detail view)
           },
-          // Paginated comments - only first 10
-          comments: {
-            take: 10,
-            select: {
-              id: true,
-              comment: true,
-              timestamp: true,
-              user: {
-                select: { id: true, name: true, workEmail: true },
-              },
-            },
-            orderBy: { timestamp: "desc" },
-          },
-          // Simplified related links
-          relatedLinks: {
-            select: {
-              id: true,
-              linkType: true,
-              title: true,
-              description: true,
-              url: true,
-              addedAt: true,
-            },
-            orderBy: { addedAt: "desc" },
-            // Removed: addedBy (not displayed in UI)
-          },
+          // Comments and relatedLinks removed - fetch separately via:
+          // GET /api/tickets/:id/comments
+          // GET /api/tickets/:id/links
         },
       });
 
@@ -686,6 +674,9 @@ export class TicketController {
         } as ApiResponse);
         return;
       }
+
+      // Cache for 2 minutes
+      await cacheService.cacheTicket(id, req.tenantId, ticket);
 
       res.status(200).json({
         success: true,
@@ -798,6 +789,9 @@ export class TicketController {
           project: { select: { id: true, name: true, code: true } },
         },
       });
+
+      // Invalidate cache
+      await cacheService.invalidateTicket(id, req.tenantId);
 
       socketService.emitToTenant(req.tenantId, "ticket:updated", ticket);
 
@@ -1370,6 +1364,9 @@ export class TicketController {
         },
       });
 
+      // Invalidate comments cache
+      await cacheService.invalidateComments(id, req.tenantId);
+
       // Log activity
       await prisma.ticketActivityLog.create({
         data: {
@@ -1557,6 +1554,9 @@ export class TicketController {
         where: { id: commentId },
       });
 
+      // Invalidate comments cache
+      await cacheService.invalidateComments(ticketId, req.tenantId);
+
       // Log activity
       await prisma.ticketActivityLog.create({
         data: {
@@ -1715,6 +1715,9 @@ export class TicketController {
           },
         },
       });
+
+      // Invalidate links cache
+      await cacheService.invalidateLinks(id, req.tenantId);
 
       // Log activity
       await prisma.ticketActivityLog.create({
@@ -1896,6 +1899,9 @@ export class TicketController {
       await prisma.ticketRelatedLink.delete({
         where: { id: linkId },
       });
+
+      // Invalidate links cache
+      await cacheService.invalidateLinks(ticketId, req.tenantId);
 
       // Log activity
       await prisma.ticketActivityLog.create({

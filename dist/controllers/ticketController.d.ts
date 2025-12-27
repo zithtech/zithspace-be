@@ -24,7 +24,7 @@ export declare class TicketController {
     static getTickets(req: AuthRequest, res: Response): Promise<void>;
     /**
      * Get ticket by ID with full details (tenant-aware)
-     * OPTIMIZED: Reduced includes, paginated comments, removed nested joins
+     * OPTIMIZED: Redis caching + removed comments/links (fetched separately)
      */
     static getTicketById(req: AuthRequest, res: Response): Promise<void>;
     /**

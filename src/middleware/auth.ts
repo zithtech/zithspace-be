@@ -2,6 +2,7 @@ import { Response, NextFunction } from 'express';
 import { JWTUtils } from '@/utils/jwt';
 import { prisma } from '@/config/database';
 import TenantLogger from '@/utils/tenantLogger';
+import cacheService from '@/utils/cacheService';
 import { 
   AuthRequest, 
   AuthenticationError, 
@@ -66,15 +67,24 @@ export const authenticateToken = async (
     //   }
     // });
 
-    // OPTIMIZED: Get fresh user data - tenant context already set by middleware
-    // No need for withTenant wrapper or tenant include
-    const user = await prisma.user.findFirst({
-      where: {
-        id: decoded.userId,
-        tenantId: decoded.tenantId,
-        isActive: true,
-      },
-    });
+    // OPTIMIZED: Check cache first, then database
+    let user = await cacheService.getUser(decoded.userId, decoded.tenantId);
+    
+    if (!user) {
+      // Cache miss - fetch from database
+      user = await prisma.user.findFirst({
+        where: {
+          id: decoded.userId,
+          tenantId: decoded.tenantId,
+          isActive: true,
+        },
+      });
+      
+      // Cache for 5 minutes
+      if (user) {
+        await cacheService.cacheUser(decoded.userId, decoded.tenantId, user);
+      }
+    }
 
     if (!user) {
       const error = new AuthenticationError('User not found or inactive');

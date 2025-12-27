@@ -1,4 +1,7 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TicketController = void 0;
 const database_1 = require("@/config/database");
@@ -6,6 +9,7 @@ const types_1 = require("@/types");
 const r2Client_1 = require("@/utils/r2Client");
 const htmlSanitizer_1 = require("@/utils/htmlSanitizer");
 const socketService_1 = require("@/services/socketService");
+const cacheService_1 = __importDefault(require("@/utils/cacheService"));
 class TicketController {
     /**
      * Upload image to R2 for ticket description
@@ -490,7 +494,7 @@ class TicketController {
     }
     /**
      * Get ticket by ID with full details (tenant-aware)
-     * OPTIMIZED: Reduced includes, paginated comments, removed nested joins
+     * OPTIMIZED: Redis caching + removed comments/links (fetched separately)
      */
     static async getTicketById(req, res) {
         try {
@@ -502,7 +506,16 @@ class TicketController {
                 return;
             }
             const { id } = req.params;
-            // OPTIMIZED: Reduced query complexity
+            // Check cache first
+            const cached = await cacheService_1.default.getTicket(id, req.tenantId);
+            if (cached) {
+                res.status(200).json({
+                    success: true,
+                    data: cached,
+                });
+                return;
+            }
+            // OPTIMIZED: Removed comments and relatedLinks (fetched separately)
             const ticket = await database_1.prisma.ticket.findFirst({
                 where: {
                     id,
@@ -545,32 +558,9 @@ class TicketController {
                         select: { id: true, name: true, code: true, description: true },
                         // Removed: projectManager (not needed in detail view)
                     },
-                    // Paginated comments - only first 10
-                    comments: {
-                        take: 10,
-                        select: {
-                            id: true,
-                            comment: true,
-                            timestamp: true,
-                            user: {
-                                select: { id: true, name: true, workEmail: true },
-                            },
-                        },
-                        orderBy: { timestamp: "desc" },
-                    },
-                    // Simplified related links
-                    relatedLinks: {
-                        select: {
-                            id: true,
-                            linkType: true,
-                            title: true,
-                            description: true,
-                            url: true,
-                            addedAt: true,
-                        },
-                        orderBy: { addedAt: "desc" },
-                        // Removed: addedBy (not displayed in UI)
-                    },
+                    // Comments and relatedLinks removed - fetch separately via:
+                    // GET /api/tickets/:id/comments
+                    // GET /api/tickets/:id/links
                 },
             });
             if (!ticket) {
@@ -580,6 +570,8 @@ class TicketController {
                 });
                 return;
             }
+            // Cache for 2 minutes
+            await cacheService_1.default.cacheTicket(id, req.tenantId, ticket);
             res.status(200).json({
                 success: true,
                 data: ticket,
@@ -672,6 +664,8 @@ class TicketController {
                     project: { select: { id: true, name: true, code: true } },
                 },
             });
+            // Invalidate cache
+            await cacheService_1.default.invalidateTicket(id, req.tenantId);
             socketService_1.socketService.emitToTenant(req.tenantId, "ticket:updated", ticket);
             res.status(200).json({
                 success: true,
@@ -1172,6 +1166,8 @@ class TicketController {
                     },
                 },
             });
+            // Invalidate comments cache
+            await cacheService_1.default.invalidateComments(id, req.tenantId);
             // Log activity
             await database_1.prisma.ticketActivityLog.create({
                 data: {
@@ -1334,6 +1330,8 @@ class TicketController {
             await database_1.prisma.ticketComment.delete({
                 where: { id: commentId },
             });
+            // Invalidate comments cache
+            await cacheService_1.default.invalidateComments(ticketId, req.tenantId);
             // Log activity
             await database_1.prisma.ticketActivityLog.create({
                 data: {
@@ -1477,6 +1475,8 @@ class TicketController {
                     },
                 },
             });
+            // Invalidate links cache
+            await cacheService_1.default.invalidateLinks(id, req.tenantId);
             // Log activity
             await database_1.prisma.ticketActivityLog.create({
                 data: {
@@ -1632,6 +1632,8 @@ class TicketController {
             await database_1.prisma.ticketRelatedLink.delete({
                 where: { id: linkId },
             });
+            // Invalidate links cache
+            await cacheService_1.default.invalidateLinks(ticketId, req.tenantId);
             // Log activity
             await database_1.prisma.ticketActivityLog.create({
                 data: {

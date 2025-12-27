@@ -1,8 +1,12 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.validateSession = exports.authRateLimit = exports.extractUserInfo = exports.requireOwnershipOrAdmin = exports.requireAdmin = exports.requireSuperAdmin = exports.requireRole = exports.requireAuth = exports.optionalAuth = exports.authenticateToken = void 0;
 const jwt_1 = require("@/utils/jwt");
 const database_1 = require("@/config/database");
+const cacheService_1 = __importDefault(require("@/utils/cacheService"));
 const types_1 = require("@/types");
 /**
  * Authentication middleware to verify JWT tokens
@@ -49,15 +53,22 @@ const authenticateToken = async (req, res, next) => {
         //     userId: decoded.userId
         //   }
         // });
-        // OPTIMIZED: Get fresh user data - tenant context already set by middleware
-        // No need for withTenant wrapper or tenant include
-        const user = await database_1.prisma.user.findFirst({
-            where: {
-                id: decoded.userId,
-                tenantId: decoded.tenantId,
-                isActive: true,
-            },
-        });
+        // OPTIMIZED: Check cache first, then database
+        let user = await cacheService_1.default.getUser(decoded.userId, decoded.tenantId);
+        if (!user) {
+            // Cache miss - fetch from database
+            user = await database_1.prisma.user.findFirst({
+                where: {
+                    id: decoded.userId,
+                    tenantId: decoded.tenantId,
+                    isActive: true,
+                },
+            });
+            // Cache for 5 minutes
+            if (user) {
+                await cacheService_1.default.cacheUser(decoded.userId, decoded.tenantId, user);
+            }
+        }
         if (!user) {
             const error = new types_1.AuthenticationError('User not found or inactive');
             // TenantLogger.logAuthTenantValidation(req, false, 'User not found or inactive');

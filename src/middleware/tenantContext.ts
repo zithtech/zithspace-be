@@ -2,6 +2,7 @@ import { Response, NextFunction } from "express";
 import { tenantAwarePrisma } from "@/config/database";
 import { AuthRequest, TenantError, NotFoundError, Tenant } from "@/types";
 import TenantLogger from "@/utils/tenantLogger";
+import cacheService from "@/utils/cacheService";
 
 /**
  * Middleware to resolve tenant context from various sources
@@ -92,16 +93,35 @@ export const resolveTenant = async (
 };
 
 /**
- * Find tenant by subdomain or ID
+ * Find tenant by subdomain or ID (with caching)
  */
 async function findTenant(identifier: string): Promise<Tenant | null> {
-  const rawClient = tenantAwarePrisma.getRawClient();
-
-  return await rawClient.tenant.findFirst({
-    where: {
-      OR: [{ subdomain: identifier }, { id: identifier }],
-    },
-  });
+  // Try cache first
+  let tenant = await cacheService.getTenantBySubdomain(identifier);
+  
+  if (!tenant) {
+    tenant = await cacheService.getTenant(identifier);
+  }
+  
+  if (!tenant) {
+    // Cache miss - fetch from database
+    const rawClient = tenantAwarePrisma.getRawClient();
+    tenant = await rawClient.tenant.findFirst({
+      where: {
+        OR: [{ subdomain: identifier }, { id: identifier }],
+      },
+    });
+    
+    // Cache for 10 minutes
+    if (tenant) {
+      await cacheService.cacheTenant(tenant.id, tenant);
+      if (tenant.subdomain) {
+        await cacheService.cacheTenantBySubdomain(tenant.subdomain, tenant);
+      }
+    }
+  }
+  
+  return tenant;
 }
 
 /**

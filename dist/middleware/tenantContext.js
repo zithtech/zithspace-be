@@ -1,8 +1,12 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.validateTenantAccess = exports.checkTenantLimits = exports.requireTenant = exports.optionalTenantContext = exports.resolveTenant = void 0;
 const database_1 = require("@/config/database");
 const types_1 = require("@/types");
+const cacheService_1 = __importDefault(require("@/utils/cacheService"));
 /**
  * Middleware to resolve tenant context from various sources
  */
@@ -71,15 +75,31 @@ const resolveTenant = async (req, res, next) => {
 };
 exports.resolveTenant = resolveTenant;
 /**
- * Find tenant by subdomain or ID
+ * Find tenant by subdomain or ID (with caching)
  */
 async function findTenant(identifier) {
-    const rawClient = database_1.tenantAwarePrisma.getRawClient();
-    return await rawClient.tenant.findFirst({
-        where: {
-            OR: [{ subdomain: identifier }, { id: identifier }],
-        },
-    });
+    // Try cache first
+    let tenant = await cacheService_1.default.getTenantBySubdomain(identifier);
+    if (!tenant) {
+        tenant = await cacheService_1.default.getTenant(identifier);
+    }
+    if (!tenant) {
+        // Cache miss - fetch from database
+        const rawClient = database_1.tenantAwarePrisma.getRawClient();
+        tenant = await rawClient.tenant.findFirst({
+            where: {
+                OR: [{ subdomain: identifier }, { id: identifier }],
+            },
+        });
+        // Cache for 10 minutes
+        if (tenant) {
+            await cacheService_1.default.cacheTenant(tenant.id, tenant);
+            if (tenant.subdomain) {
+                await cacheService_1.default.cacheTenantBySubdomain(tenant.subdomain, tenant);
+            }
+        }
+    }
+    return tenant;
 }
 /**
  * Optional tenant resolution - doesn't fail if tenant not found
