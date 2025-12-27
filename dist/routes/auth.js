@@ -38,7 +38,7 @@ router.post('/login', authRateLimit, tenantContext_1.resolveTenant, authControll
 // Refresh token route - uses optional tenant context from token
 router.post('/refresh', authRateLimit, auth_1.optionalAuth, authController_1.AuthController.refresh);
 // Logout route - requires authentication
-router.post('/logout', generalAuthRateLimit, auth_1.authenticateToken, authController_1.AuthController.logout);
+router.post('/logout', generalAuthRateLimit, tenantContext_1.resolveTenant, auth_1.authenticateToken, authController_1.AuthController.logout);
 // Get current user profile - requires authentication
 router.get('/me', generalAuthRateLimit, tenantContext_1.resolveTenant, auth_1.authenticateToken, authController_1.AuthController.me);
 // Authentication check - requires authentication

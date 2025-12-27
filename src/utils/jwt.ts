@@ -38,7 +38,7 @@ export class JWTUtils {
     };
 
     const accessTokenOptions: SignOptions = {
-      expiresIn: this.REFRESH_TOKEN_EXPIRY,
+      expiresIn: this.ACCESS_TOKEN_EXPIRY,
       issuer: this.ISSUER,
       audience: [user.tenantId],
       subject: user.id,

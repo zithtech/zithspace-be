@@ -33,7 +33,7 @@ declare class CacheService {
      */
     delPattern(pattern: string): Promise<void>;
     /**
-     * Cache user session (5 minutes)
+     * Cache user session (10 minutes)
      */
     cacheUser(userId: string, tenantId: string, user: any): Promise<void>;
     /**

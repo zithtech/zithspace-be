@@ -39,7 +39,7 @@ router.post('/login', authRateLimit, resolveTenant, AuthController.login);
 router.post('/refresh', authRateLimit, optionalAuth, AuthController.refresh);
 
 // Logout route - requires authentication
-router.post('/logout', generalAuthRateLimit, authenticateToken, AuthController.logout);
+router.post('/logout', generalAuthRateLimit, resolveTenant, authenticateToken, AuthController.logout);
 
 // Get current user profile - requires authentication
 router.get('/me', generalAuthRateLimit,resolveTenant, authenticateToken, AuthController.me);

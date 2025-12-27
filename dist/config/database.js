@@ -10,7 +10,7 @@ const tenantLogger_1 = __importDefault(require("@/utils/tenantLogger"));
 dotenv_1.default.config();
 // Prevent multiple instances during development hot reloads
 exports.prisma = globalThis.__prisma || new client_1.PrismaClient({
-    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+    log: ['error'],
     errorFormat: 'pretty',
 });
 exports.db = exports.prisma;

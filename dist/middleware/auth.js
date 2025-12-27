@@ -12,51 +12,21 @@ const types_1 = require("@/types");
  * Authentication middleware to verify JWT tokens
  */
 const authenticateToken = async (req, res, next) => {
-    // const timer = TenantLogger.startTimer();
     try {
-        // TenantLogger.logMiddlewareEntry('authenticateToken', req);
         const authHeader = req.headers.authorization;
         const token = jwt_1.JWTUtils.extractTokenFromHeader(authHeader);
         if (!token) {
             const error = new types_1.AuthenticationError('Access token required');
-            // TenantLogger.logAuthTenantValidation(req, false, 'No token provided');
             throw error;
         }
-        // TenantLogger.debug('Token extracted from header', {
-        //   operation: 'AUTHENTICATION',
-        //   step: 'TOKEN_EXTRACTED',
-        //   metadata: { hasToken: !!token, tokenLength: token?.length }
-        // });
-        // Check if token is blacklisted (TODO: implement Redis)
         const isBlacklisted = await jwt_1.JWTUtils.isTokenBlacklisted(token);
         if (isBlacklisted) {
             const error = new types_1.AuthenticationError('Token has been revoked');
-            // TenantLogger.logAuthTenantValidation(req, false, 'Token blacklisted');
             throw error;
         }
-        // Verify the token
-        // TenantLogger.debug('Verifying JWT token', {
-        //   operation: 'AUTHENTICATION',
-        //   step: 'TOKEN_VERIFICATION',
-        //   tenantId: req.tenantId,
-        //   metadata: { requestTenantId: req.tenantId }
-        // });
         const decoded = jwt_1.JWTUtils.verifyAccessToken(token, req.tenantId);
-        // TenantLogger.info('JWT token verified successfully', {
-        //   operation: 'AUTHENTICATION',
-        //   step: 'TOKEN_VERIFIED',
-        //   tenantId: decoded.tenantId,
-        //   userId: decoded.userId,
-        //   metadata: { 
-        //     tokenTenantId: decoded.tenantId,
-        //     requestTenantId: req.tenantId,
-        //     userId: decoded.userId
-        //   }
-        // });
-        // OPTIMIZED: Check cache first, then database
         let user = await cacheService_1.default.getUser(decoded.userId, decoded.tenantId);
         if (!user) {
-            // Cache miss - fetch from database
             user = await database_1.prisma.user.findFirst({
                 where: {
                     id: decoded.userId,
@@ -71,23 +41,16 @@ const authenticateToken = async (req, res, next) => {
         }
         if (!user) {
             const error = new types_1.AuthenticationError('User not found or inactive');
-            // TenantLogger.logAuthTenantValidation(req, false, 'User not found or inactive');
             throw error;
         }
-        // Use req.tenant (already fetched by tenantContext middleware)
         if (!req.tenant || !req.tenant.isActive) {
-            const error = new types_1.AuthenticationError('Tenant is not active');
-            // TenantLogger.logAuthTenantValidation(req, false, 'Tenant is not active');
+            const error = new types_1.AuthenticationError('Teanant not found');
             throw error;
         }
-        // Ensure user belongs to the current tenant context
         if (req.tenantId && user.tenantId !== req.tenantId) {
             const error = new types_1.AuthorizationError('Invalid tenant context');
-            // TenantLogger.logAuthTenantValidation(req, false, 'Tenant context mismatch');
             throw error;
         }
-        // TenantLogger.logAuthTenantValidation(req, true, 'Authentication successful');
-        // Attach user info to request
         req.user = {
             id: user.id,
             tenantId: user.tenantId,
@@ -97,17 +60,9 @@ const authenticateToken = async (req, res, next) => {
             name: user.name,
             sessionId: decoded.sessionId,
         };
-        // OPTIMIZED: Remove lastLoginAt update to avoid write on every request
-        // This was causing significant performance overhead
-        // Consider updating only on actual login, or use background job
-        // TenantLogger.logMiddlewareExit('authenticateToken', req, true);
-        // timer.end('authenticateToken', { tenantId: user.tenantId, userId: user.id });
         next();
     }
     catch (error) {
-        // TenantLogger.logTenantError(error, req, 'AUTHENTICATION');
-        // TenantLogger.logMiddlewareExit('authenticateToken', req, false);
-        // timer.end('authenticateToken_failed');
         if (error instanceof types_1.AuthenticationError || error instanceof types_1.AuthorizationError) {
             res.status(error.statusCode).json({
                 success: false,

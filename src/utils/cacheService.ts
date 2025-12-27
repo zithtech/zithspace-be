@@ -89,11 +89,11 @@ class CacheService {
   // ==================== USER CACHING ====================
 
   /**
-   * Cache user session (5 minutes)
+   * Cache user session (10 minutes)
    */
   async cacheUser(userId: string, tenantId: string, user: any): Promise<void> {
     const key = `user:${tenantId}:${userId}`;
-    await this.set(key, user, 300); // 5 minutes
+    await this.set(key, user, 600); // 10 minutes
   }
 
   /**
