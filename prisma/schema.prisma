@@ -150,6 +150,8 @@ model Ticket {
   tenantId            String               @map("tenant_id")
   projectId           String               @map("project_id")
   releasePlanId       String?              @map("release_plan_id")
+  sprintPlanId        String?              @map("sprint_plan_id")
+  demoPlanId          String?              @map("demo_plan_id")
   title               String
   description         String?
   ticketNumber        String               @map("ticket_number")
@@ -175,6 +177,13 @@ model Ticket {
   metadata            Json?                @default("{}")
   createdAt           DateTime             @default(now()) @map("created_at")
   updatedAt           DateTime             @updatedAt @map("updated_at")
+  
+  // Hierarchy fields for Epic/Story/Sub-task support
+  epicId              String?              @map("epic_id")
+  parentId            String?              @map("parent_id")
+  rank                String?              // Lexicographic rank for drag-drop ordering
+  
+  // Relations
   activityLog         TicketActivityLog[]
   attachments         TicketAttachment[]
   comments            TicketComment[]
@@ -184,11 +193,24 @@ model Ticket {
   createdBy           User                 @relation("TicketCreator", fields: [createdById], references: [id])
   project             Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
   releasePlan         ReleasePlan?         @relation("TicketReleasePlan", fields: [releasePlanId], references: [id])
+  sprintPlan          ReleasePlan?         @relation("TicketSprintPlan", fields: [sprintPlanId], references: [id])
+  demoPlan            ReleasePlan?         @relation("TicketDemoPlan", fields: [demoPlanId], references: [id])
   reportTo            User?                @relation("TicketReportTo", fields: [reportToId], references: [id])
   tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   workEntries         WorkEntry[]
+  
+  // Hierarchy relations
+  epic                Ticket?              @relation("EpicStories", fields: [epicId], references: [id], onDelete: SetNull)
+  stories             Ticket[]             @relation("EpicStories")
+  parent              Ticket?              @relation("ParentSubTasks", fields: [parentId], references: [id], onDelete: SetNull)
+  subTasks            Ticket[]             @relation("ParentSubTasks")
 
   @@unique([tenantId, ticketNumber])
+  @@index([epicId])
+  @@index([parentId])
+  @@index([projectId, releasePlanId])
+  @@index([projectId, sprintPlanId])
+  @@index([projectId, demoPlanId])
   @@map("tickets")
 }
 
@@ -318,6 +340,8 @@ model ReleasePlan {
   version     String
   description String?
   status      String    @default("planned")
+  startDate   DateTime? @map("start_date")
+  endDate     DateTime? @map("end_date")
   releaseDate DateTime? @map("release_date")
   createdById String    @map("created_by_id")
   createdAt   DateTime  @default(now()) @map("created_at")
@@ -326,11 +350,21 @@ model ReleasePlan {
   project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   tickets     Ticket[]  @relation("TicketReleasePlan")
+  sprintTickets Ticket[] @relation("TicketSprintPlan")
+  demoTickets Ticket[] @relation("TicketDemoPlan")
 
   // Type of plan: sprint_plan, demo_plan, release_plan
   type        String    @default("release_plan")
+  
+  // Sprint management fields
+  goal            String?   // Sprint goal/objective
+  startedAt       DateTime? @map("started_at")
+  completedAt     DateTime? @map("completed_at")
+  committedPoints Int       @default(0) @map("committed_points")
+  completedPoints Int       @default(0) @map("completed_points")
 
   @@unique([tenantId, projectId, version])
+  @@index([projectId, type, status])
   @@map("release_plans")
 }
 
