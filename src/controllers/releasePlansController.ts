@@ -668,8 +668,15 @@ export class ReleasePlansController {
         } as ApiResponse);
         return;
       }
+      const { projectId } = req.query;
+
+      const where: any = { tenantId: req.tenantId, status: "active" };
+      if (projectId) {
+        where.projectId = projectId;
+      }
+
       const activePlans = await prisma.releasePlan.findMany({
-        where: { tenantId: req.tenantId, status: "active" },
+        where,
         include: { project: { select: { id: true, name: true, code: true } } },
         orderBy: { updatedAt: "desc" },
       });

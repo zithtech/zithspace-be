@@ -142,6 +142,7 @@ export class TicketController {
    */
   static async createTicket(req: AuthRequest, res: Response): Promise<void> {
     try {
+      console.log('createTicket body:', JSON.stringify(req.body, null, 2));
       if (!req.tenantId || !req.user) {
         res.status(400).json({
           success: false,
@@ -166,6 +167,7 @@ export class TicketController {
         storyPoint,
         estimateHours,
         parentTickets = [],
+        parentId,
         releasePlan,
       } = req.body as CreateTicketData;
 
@@ -287,6 +289,7 @@ export class TicketController {
           reportToId: reportToId || null,
           createdById: req.user!.id,
           parentTickets: parentTickets || [],
+          parentId: parentId || null,
           startDate: req.body.startDate ? new Date(req.body.startDate) : null,
           endDate: req.body.endDate ? new Date(req.body.endDate) : null,
           dueDate: dueDate ? new Date(dueDate) : null,
@@ -311,6 +314,10 @@ export class TicketController {
       });
 
       socketService.emitToTenant(req.tenantId, "ticket:created", ticket);
+
+      if (parentId) {
+        await cacheService.invalidateTicket(parentId, req.tenantId);
+      }
 
       res.status(201).json({
         success: true,
@@ -360,6 +367,7 @@ export class TicketController {
       // Build base filter
       const baseWhere: any = {
         tenantId: req.tenantId,
+        parentId: null, // Exclude subtasks from main board
       };
 
       if (projectId) baseWhere.projectId = projectId;
@@ -527,10 +535,13 @@ export class TicketController {
         endDate,
       } = req.query;
 
-      // Build filter query
-      const where: any = {
+      // Build base filter
+      const baseWhere: any = {
         tenantId: req.tenantId,
+        parentId: null, // Exclude subtasks from main board
       };
+
+      const where: any = { ...baseWhere };
 
       if (status) where.status = status;
       if (priority) where.priority = priority;
@@ -598,11 +609,6 @@ export class TicketController {
         }
       }
 
-      // if (startDate || endDate) {
-      //   where.createdAt = {};
-      //   if (startDate) where.createdAt.gte = new Date(startDate as string);
-      //   if (endDate) where.createdAt.lte = new Date(endDate as string);
-      // }
 
       // Build sort object
       const orderBy: any = {};
@@ -739,6 +745,21 @@ export class TicketController {
             select: { id: true, name: true, code: true, description: true },
             // Removed: projectManager (not needed in detail view)
           },
+          // Include subtasks for the UI
+          subTasks: {
+            select: {
+              id: true,
+              ticketNumber: true,
+              title: true,
+              status: true,
+              priority: true,
+              assignee: {
+                select: { id: true, name: true, workEmail: true }
+              },
+              type: true
+            },
+            orderBy: { createdAt: 'asc' }
+          }
           // Comments and relatedLinks removed - fetch separately via:
           // GET /api/tickets/:id/comments
           // GET /api/tickets/:id/links
@@ -793,8 +814,9 @@ export class TicketController {
         mappedUpdates.projectId = updates.project;
         delete mappedUpdates.project;
       }
-      if (updates.assignee) {
-        mappedUpdates.assigneeId = updates.assignee;
+      if (updates.assignee !== undefined) {
+        // Handle explicit null or empty string as unassigning
+        mappedUpdates.assigneeId = updates.assignee === '' ? null : updates.assignee;
         delete mappedUpdates.assignee;
       }
       if (updates.reportTo) {
@@ -902,10 +924,24 @@ export class TicketController {
         },
       });
 
-      // Invalidate cache
-      await cacheService.invalidateTicket(id, req.tenantId);
+      // Side effects (Cache & Socket)
+      try {
+        socketService.emitToTenant(req.tenantId, "ticket:updated", ticket);
 
-      socketService.emitToTenant(req.tenantId, "ticket:updated", ticket);
+        const promises: Promise<any>[] = [
+          cacheService.invalidateTicket(id, req.tenantId)
+        ];
+
+        // Invalidate parent if it exists (either from before or new)
+        const parentIdToInvalidate = ticket.parentId || existingTicket.parentId;
+        if (parentIdToInvalidate) {
+          promises.push(cacheService.invalidateTicket(parentIdToInvalidate, req.tenantId));
+        }
+
+        await Promise.allSettled(promises);
+      } catch (sideEffectError) {
+        console.error("Update ticket side-effect error (non-fatal):", sideEffectError);
+      }
 
       res.status(200).json({
         success: true,
@@ -961,6 +997,16 @@ export class TicketController {
       });
 
       socketService.emitToTenant(req.tenantId, "ticket:deleted", { id });
+
+      const invalidationPromises: Promise<any>[] = [
+        cacheService.invalidateTicket(id, req.tenantId)
+      ];
+
+      if (ticket.parentId) {
+        invalidationPromises.push(cacheService.invalidateTicket(ticket.parentId, req.tenantId));
+      }
+
+      await Promise.allSettled(invalidationPromises);
 
       res.status(200).json({
         success: true,
