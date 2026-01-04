@@ -815,8 +815,9 @@ export class TicketController {
         delete mappedUpdates.project;
       }
       if (updates.assignee !== undefined) {
+        console.log('Update Assignee Debug:', { val: updates.assignee, type: typeof updates.assignee, isNull: updates.assignee === null });
         // Handle explicit null or empty string as unassigning
-        mappedUpdates.assigneeId = updates.assignee === '' ? null : updates.assignee;
+        mappedUpdates.assigneeId = (updates.assignee === '' || updates.assignee === null) ? null : updates.assignee;
         delete mappedUpdates.assignee;
       }
       if (updates.reportTo) {
