@@ -376,6 +376,7 @@ export interface CreateTicketData {
     storyPoint?: number;
     estimateHours?: number;
     parentTickets?: string[];
+    parentId?: string;
     releasePlan?: string;
     startDate?: string;
     endDate?: string;
