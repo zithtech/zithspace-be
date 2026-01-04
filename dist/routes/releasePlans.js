@@ -83,6 +83,20 @@ router.put('/:id', releasePlansController_1.ReleasePlansController.updateRelease
  */
 router.delete('/:id', auth_1.requireAdmin, releasePlansController_1.ReleasePlansController.deleteReleasePlan);
 /**
+ * @route   POST /api/release-plans/:id/start
+ * @desc    Start a sprint (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   id - Release plan ID
+ */
+router.post('/:id/start', releasePlansController_1.ReleasePlansController.startSprint);
+/**
+ * @route   POST /api/release-plans/:id/complete
+ * @desc    Complete a sprint (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   id - Release plan ID
+ */
+router.post('/:id/complete', releasePlansController_1.ReleasePlansController.completeSprint);
+/**
  * @route   POST /api/release-plans/:id/tickets/assign
  * @desc    Assign tickets to release plan (tenant-aware)
  * @access  Private (authenticated users within tenant)

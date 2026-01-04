@@ -108,6 +108,7 @@ class TicketController {
      */
     static async createTicket(req, res) {
         try {
+            console.log('createTicket body:', JSON.stringify(req.body, null, 2));
             if (!req.tenantId || !req.user) {
                 res.status(400).json({
                     success: false,
@@ -116,7 +117,7 @@ class TicketController {
                 return;
             }
             // Extract and map fields from request body
-            const { title, description, status = "NOT_STARTED", priority = "MEDIUM", type = "TASK", dueDate, tags = [], platform, stack, taskLevel, taskType, storyPoint, estimateHours, parentTickets = [], releasePlan, } = req.body;
+            const { title, description, status = "NOT_STARTED", priority = "MEDIUM", type = "TASK", dueDate, tags = [], platform, stack, taskLevel, taskType, storyPoint, estimateHours, parentTickets = [], parentId, releasePlan, } = req.body;
             // Map frontend field names to backend field names
             const projectId = req.body.project || req.body.projectId;
             const assigneeId = req.body.assignee || req.body.assigneeId;
@@ -224,6 +225,7 @@ class TicketController {
                     reportToId: reportToId || null,
                     createdById: req.user.id,
                     parentTickets: parentTickets || [],
+                    parentId: parentId || null,
                     startDate: req.body.startDate ? new Date(req.body.startDate) : null,
                     endDate: req.body.endDate ? new Date(req.body.endDate) : null,
                     dueDate: dueDate ? new Date(dueDate) : null,
@@ -247,6 +249,9 @@ class TicketController {
                 },
             });
             socketService_1.socketService.emitToTenant(req.tenantId, "ticket:created", ticket);
+            if (parentId) {
+                await cacheService_1.default.invalidateTicket(parentId, req.tenantId);
+            }
             res.status(201).json({
                 success: true,
                 data: ticket,
@@ -285,6 +290,7 @@ class TicketController {
             // Build base filter
             const baseWhere = {
                 tenantId: req.tenantId,
+                parentId: null, // Exclude subtasks from main board
             };
             if (projectId)
                 baseWhere.projectId = projectId;
@@ -303,6 +309,47 @@ class TicketController {
                     { title: { contains: search, mode: "insensitive" } },
                     { ticketNumber: { contains: search, mode: "insensitive" } },
                 ];
+            }
+            // Handle releasePlanId, sprintId, demoId filtering
+            const { releasePlanId, sprintId, demoId } = req.query;
+            if (releasePlanId) {
+                if (releasePlanId === 'null')
+                    baseWhere.releasePlanId = null;
+                else
+                    baseWhere.releasePlanId = releasePlanId;
+            }
+            if (demoId) {
+                if (demoId === 'null')
+                    baseWhere.demoPlanId = null;
+                else
+                    baseWhere.demoPlanId = demoId;
+            }
+            if (sprintId) {
+                if (sprintId === 'null') {
+                    baseWhere.sprintPlanId = null;
+                }
+                else if (sprintId === 'active') {
+                    const activeSprintWhere = {
+                        type: 'sprint_plan',
+                        status: 'active',
+                        tenantId: req.tenantId
+                    };
+                    if (projectId)
+                        activeSprintWhere.projectId = projectId;
+                    const activeSprints = await database_1.prisma.releasePlan.findMany({
+                        where: activeSprintWhere,
+                        select: { id: true }
+                    });
+                    if (activeSprints.length > 0) {
+                        baseWhere.sprintPlanId = { in: activeSprints.map((s) => s.id) };
+                    }
+                    else {
+                        baseWhere.sprintPlanId = { in: [] };
+                    }
+                }
+                else {
+                    baseWhere.sprintPlanId = sprintId;
+                }
             }
             const statuses = ['not_started', 'in_progress', 'in_testing', 'completed'];
             const limit = Number(limitPerColumn);
@@ -391,10 +438,12 @@ class TicketController {
                 return;
             }
             const { page = 1, limit = 20, status, priority, projectId, assigneeId, createdById, search, sortBy = "createdAt", sortOrder = "desc", startDate, endDate, } = req.query;
-            // Build filter query
-            const where = {
+            // Build base filter
+            const baseWhere = {
                 tenantId: req.tenantId,
+                parentId: null, // Exclude subtasks from main board
             };
+            const where = { ...baseWhere };
             if (status)
                 where.status = status;
             if (priority)
@@ -423,12 +472,46 @@ class TicketController {
                     { ticketNumber: { contains: search, mode: "insensitive" } },
                 ];
             }
-            if (startDate || endDate) {
-                where.createdAt = {};
-                if (startDate)
-                    where.createdAt.gte = new Date(startDate);
-                if (endDate)
-                    where.createdAt.lte = new Date(endDate);
+            // Handle releasePlanId, sprintId, demoId filtering
+            const { releasePlanId, sprintId, demoId } = req.query;
+            if (releasePlanId) {
+                if (releasePlanId === 'null')
+                    where.releasePlanId = null;
+                else
+                    where.releasePlanId = releasePlanId;
+            }
+            if (demoId) {
+                if (demoId === 'null')
+                    where.demoPlanId = null;
+                else
+                    where.demoPlanId = demoId;
+            }
+            if (sprintId) {
+                if (sprintId === 'null') {
+                    where.sprintPlanId = null;
+                }
+                else if (sprintId === 'active') {
+                    const activeSprintWhere = {
+                        type: 'sprint_plan',
+                        status: 'active',
+                        tenantId: req.tenantId
+                    };
+                    if (projectId)
+                        activeSprintWhere.projectId = projectId;
+                    const activeSprints = await database_1.prisma.releasePlan.findMany({
+                        where: activeSprintWhere,
+                        select: { id: true }
+                    });
+                    if (activeSprints.length > 0) {
+                        where.sprintPlanId = { in: activeSprints.map((s) => s.id) };
+                    }
+                    else {
+                        where.sprintPlanId = { in: [] };
+                    }
+                }
+                else {
+                    where.sprintPlanId = sprintId;
+                }
             }
             // Build sort object
             const orderBy = {};
@@ -558,6 +641,21 @@ class TicketController {
                         select: { id: true, name: true, code: true, description: true },
                         // Removed: projectManager (not needed in detail view)
                     },
+                    // Include subtasks for the UI
+                    subTasks: {
+                        select: {
+                            id: true,
+                            ticketNumber: true,
+                            title: true,
+                            status: true,
+                            priority: true,
+                            assignee: {
+                                select: { id: true, name: true, workEmail: true }
+                            },
+                            type: true
+                        },
+                        orderBy: { createdAt: 'asc' }
+                    }
                     // Comments and relatedLinks removed - fetch separately via:
                     // GET /api/tickets/:id/comments
                     // GET /api/tickets/:id/links
@@ -606,8 +704,10 @@ class TicketController {
                 mappedUpdates.projectId = updates.project;
                 delete mappedUpdates.project;
             }
-            if (updates.assignee) {
-                mappedUpdates.assigneeId = updates.assignee;
+            if (updates.assignee !== undefined) {
+                console.log('Update Assignee Debug:', { val: updates.assignee, type: typeof updates.assignee, isNull: updates.assignee === null });
+                // Handle explicit null or empty string as unassigning
+                mappedUpdates.assigneeId = (updates.assignee === '' || updates.assignee === null) ? null : updates.assignee;
                 delete mappedUpdates.assignee;
             }
             if (updates.reportTo) {
@@ -618,6 +718,40 @@ class TicketController {
             if (updates.taskType) {
                 mappedUpdates.type = updates.taskType;
                 delete mappedUpdates.taskType;
+            }
+            // Handle releasePlan / sprint assignment smart mapping
+            if (updates.releasePlan !== undefined) {
+                const planId = updates.releasePlan;
+                if (planId === null) {
+                    // If null, we might be unassigning. 
+                    // Ideally we should know WHICH plan to unassign, but legacy behavior implies releasePlanId.
+                    // For Sprint assignment, frontend might send null to remove from sprint.
+                    // We'll check if we can clarify, but for now let's assume if it's explicitly null, 
+                    // we clear sprintPlanId if it was a sprint action, or we clear them all?
+                    // Safer to just clear sprintPlanId if the intention was sprint?
+                    // But let's look at TicketList. It supports Sprint Assignment.
+                    // If we can't accept explicit fields, we default to clearing sprintPlanId 
+                    // if the user is in Kanban active/backlog mode?
+                    // Actually, let's just support direct field updates from frontend if possible, 
+                    // but `updateTicketMutation` in frontend is generic.
+                    // For now, let's clear sprintPlanId as that's the most common "remove" action in the new UI.
+                    mappedUpdates.sprintPlanId = null;
+                }
+                else if (typeof planId === 'string') {
+                    const plan = await database_1.prisma.releasePlan.findUnique({ where: { id: planId } });
+                    if (plan) {
+                        if (plan.type === 'sprint_plan') {
+                            mappedUpdates.sprintPlanId = planId;
+                        }
+                        else if (plan.type === 'demo_plan') {
+                            mappedUpdates.demoPlanId = planId;
+                        }
+                        else {
+                            mappedUpdates.releasePlanId = planId;
+                        }
+                    }
+                }
+                delete mappedUpdates.releasePlan;
             }
             // Handle date conversions
             if (mappedUpdates.startDate &&
@@ -664,9 +798,22 @@ class TicketController {
                     project: { select: { id: true, name: true, code: true } },
                 },
             });
-            // Invalidate cache
-            await cacheService_1.default.invalidateTicket(id, req.tenantId);
-            socketService_1.socketService.emitToTenant(req.tenantId, "ticket:updated", ticket);
+            // Side effects (Cache & Socket)
+            try {
+                socketService_1.socketService.emitToTenant(req.tenantId, "ticket:updated", ticket);
+                const promises = [
+                    cacheService_1.default.invalidateTicket(id, req.tenantId)
+                ];
+                // Invalidate parent if it exists (either from before or new)
+                const parentIdToInvalidate = ticket.parentId || existingTicket.parentId;
+                if (parentIdToInvalidate) {
+                    promises.push(cacheService_1.default.invalidateTicket(parentIdToInvalidate, req.tenantId));
+                }
+                await Promise.allSettled(promises);
+            }
+            catch (sideEffectError) {
+                console.error("Update ticket side-effect error (non-fatal):", sideEffectError);
+            }
             res.status(200).json({
                 success: true,
                 data: ticket,
@@ -714,6 +861,13 @@ class TicketController {
                 where: { id },
             });
             socketService_1.socketService.emitToTenant(req.tenantId, "ticket:deleted", { id });
+            const invalidationPromises = [
+                cacheService_1.default.invalidateTicket(id, req.tenantId)
+            ];
+            if (ticket.parentId) {
+                invalidationPromises.push(cacheService_1.default.invalidateTicket(ticket.parentId, req.tenantId));
+            }
+            await Promise.allSettled(invalidationPromises);
             res.status(200).json({
                 success: true,
                 message: "Ticket deleted successfully",
@@ -1947,6 +2101,305 @@ class TicketController {
             res.status(500).json({
                 success: false,
                 error: "Failed to delete attachment",
+            });
+        }
+    }
+    /**
+     * Get all Epic tickets (tenant-aware)
+     * Returns epics with child story counts and progress
+     */
+    static async getEpics(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { projectId, status } = req.query;
+            // Build filter
+            const where = {
+                tenantId: req.tenantId,
+                type: "Epic",
+            };
+            if (projectId)
+                where.projectId = projectId;
+            if (status)
+                where.status = status;
+            // Get epics with story counts
+            const epics = await database_1.prisma.ticket.findMany({
+                where,
+                select: {
+                    id: true,
+                    ticketNumber: true,
+                    title: true,
+                    description: true,
+                    status: true,
+                    priority: true,
+                    storyPoint: true,
+                    dueDate: true,
+                    createdAt: true,
+                    updatedAt: true,
+                    project: {
+                        select: { id: true, name: true, code: true },
+                    },
+                    assignee: {
+                        select: { id: true, name: true, workEmail: true },
+                    },
+                    // Get child stories
+                    stories: {
+                        select: {
+                            id: true,
+                            ticketNumber: true,
+                            title: true,
+                            status: true,
+                            storyPoint: true,
+                        },
+                    },
+                },
+                orderBy: { createdAt: "desc" },
+            });
+            // Calculate progress for each epic
+            const epicsWithProgress = epics.map((epic) => {
+                const totalStories = epic.stories.length;
+                const completedStories = epic.stories.filter((story) => story.status === "completed").length;
+                const totalPoints = epic.stories.reduce((sum, story) => sum + (story.storyPoint || 0), 0);
+                const completedPoints = epic.stories
+                    .filter((story) => story.status === "completed")
+                    .reduce((sum, story) => sum + (story.storyPoint || 0), 0);
+                return {
+                    ...epic,
+                    stats: {
+                        totalStories,
+                        completedStories,
+                        totalPoints,
+                        completedPoints,
+                        progress: totalStories > 0
+                            ? Math.round((completedStories / totalStories) * 100)
+                            : 0,
+                    },
+                };
+            });
+            res.status(200).json({
+                success: true,
+                data: epicsWithProgress,
+            });
+        }
+        catch (error) {
+            console.error("Get epics error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to fetch epics",
+            });
+        }
+    }
+    /**
+     * Get Epic with detailed story progress (tenant-aware)
+     */
+    static async getEpicProgress(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { id } = req.params;
+            // Get epic with all stories
+            const epic = await database_1.prisma.ticket.findFirst({
+                where: {
+                    id,
+                    tenantId: req.tenantId,
+                    type: "Epic",
+                },
+                select: {
+                    id: true,
+                    ticketNumber: true,
+                    title: true,
+                    description: true,
+                    status: true,
+                    priority: true,
+                    storyPoint: true,
+                    dueDate: true,
+                    createdAt: true,
+                    updatedAt: true,
+                    project: {
+                        select: { id: true, name: true, code: true },
+                    },
+                    assignee: {
+                        select: { id: true, name: true, workEmail: true },
+                    },
+                    stories: {
+                        select: {
+                            id: true,
+                            ticketNumber: true,
+                            title: true,
+                            status: true,
+                            priority: true,
+                            storyPoint: true,
+                            estimateHours: true,
+                            dueDate: true,
+                            assignee: {
+                                select: { id: true, name: true, workEmail: true },
+                            },
+                            // Get sub-tasks for each story
+                            subTasks: {
+                                select: {
+                                    id: true,
+                                    ticketNumber: true,
+                                    title: true,
+                                    status: true,
+                                },
+                            },
+                        },
+                        orderBy: { createdAt: "asc" },
+                    },
+                },
+            });
+            if (!epic) {
+                res.status(404).json({
+                    success: false,
+                    error: "Epic not found",
+                });
+                return;
+            }
+            // Calculate detailed progress
+            const totalStories = epic.stories.length;
+            const completedStories = epic.stories.filter((s) => s.status === "completed").length;
+            const inProgressStories = epic.stories.filter((s) => s.status === "in_progress").length;
+            const notStartedStories = epic.stories.filter((s) => s.status === "not_started").length;
+            const totalPoints = epic.stories.reduce((sum, s) => sum + (s.storyPoint || 0), 0);
+            const completedPoints = epic.stories
+                .filter((s) => s.status === "completed")
+                .reduce((sum, s) => sum + (s.storyPoint || 0), 0);
+            const totalSubTasks = epic.stories.reduce((sum, s) => sum + s.subTasks.length, 0);
+            const completedSubTasks = epic.stories.reduce((sum, s) => sum +
+                s.subTasks.filter((st) => st.status === "completed").length, 0);
+            res.status(200).json({
+                success: true,
+                data: {
+                    ...epic,
+                    progress: {
+                        stories: {
+                            total: totalStories,
+                            completed: completedStories,
+                            inProgress: inProgressStories,
+                            notStarted: notStartedStories,
+                            percentage: totalStories > 0
+                                ? Math.round((completedStories / totalStories) * 100)
+                                : 0,
+                        },
+                        storyPoints: {
+                            total: totalPoints,
+                            completed: completedPoints,
+                            percentage: totalPoints > 0
+                                ? Math.round((completedPoints / totalPoints) * 100)
+                                : 0,
+                        },
+                        subTasks: {
+                            total: totalSubTasks,
+                            completed: completedSubTasks,
+                            percentage: totalSubTasks > 0
+                                ? Math.round((completedSubTasks / totalSubTasks) * 100)
+                                : 0,
+                        },
+                    },
+                },
+            });
+        }
+        catch (error) {
+            console.error("Get epic progress error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to fetch epic progress",
+            });
+        }
+    }
+    /**
+     * Get sub-tasks for a ticket (Story or Task) (tenant-aware)
+     */
+    static async getSubTasks(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { id } = req.params;
+            // Verify parent ticket exists
+            const parentTicket = await database_1.prisma.ticket.findFirst({
+                where: {
+                    id,
+                    tenantId: req.tenantId,
+                },
+            });
+            if (!parentTicket) {
+                res.status(404).json({
+                    success: false,
+                    error: "Parent ticket not found",
+                });
+                return;
+            }
+            // Get sub-tasks
+            const subTasks = await database_1.prisma.ticket.findMany({
+                where: {
+                    parentId: id,
+                    tenantId: req.tenantId,
+                    type: "Sub-task",
+                },
+                select: {
+                    id: true,
+                    ticketNumber: true,
+                    title: true,
+                    description: true,
+                    status: true,
+                    priority: true,
+                    storyPoint: true,
+                    estimateHours: true,
+                    dueDate: true,
+                    createdAt: true,
+                    updatedAt: true,
+                    assignee: {
+                        select: { id: true, name: true, workEmail: true },
+                    },
+                },
+                orderBy: { createdAt: "asc" },
+            });
+            // Calculate progress
+            const total = subTasks.length;
+            const completed = subTasks.filter((st) => st.status === "completed")
+                .length;
+            const inProgress = subTasks.filter((st) => st.status === "in_progress")
+                .length;
+            res.status(200).json({
+                success: true,
+                data: {
+                    parentTicket: {
+                        id: parentTicket.id,
+                        ticketNumber: parentTicket.ticketNumber,
+                        title: parentTicket.title,
+                        type: parentTicket.type,
+                    },
+                    subTasks,
+                    progress: {
+                        total,
+                        completed,
+                        inProgress,
+                        notStarted: total - completed - inProgress,
+                        percentage: total > 0 ? Math.round((completed / total) * 100) : 0,
+                    },
+                },
+            });
+        }
+        catch (error) {
+            console.error("Get sub-tasks error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to fetch sub-tasks",
             });
         }
     }

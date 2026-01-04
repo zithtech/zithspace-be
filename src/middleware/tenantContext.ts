@@ -12,12 +12,12 @@ export const resolveTenant = async (
   res: Response,
   next: NextFunction
 ): Promise<void> => {
-  
+
   try {
     let tenantIdentifier: string | undefined;
 
     tenantIdentifier = req.headers["x-tenant-id"] as string;
-    tenantIdentifier = "b85c1b5b-77a3-4281-9147-51d6bd3ee94d"
+    // tenantIdentifier = "b85c1b5b-77a3-4281-9147-51d6bd3ee94d"
 
 
     if (!tenantIdentifier) {
@@ -29,12 +29,12 @@ export const resolveTenant = async (
       const host = req.get("Host");
       if (host && !host.includes("localhost")) {
         const subdomain = host.split(".")[0];
-        if (subdomain && 
-            subdomain !== "www" && 
-            subdomain !== "api" && 
-            !subdomain.includes("backend") && 
-            !subdomain.includes("be-v") &&
-            !subdomain.startsWith("z-tickets")) {
+        if (subdomain &&
+          subdomain !== "www" &&
+          subdomain !== "api" &&
+          !subdomain.includes("backend") &&
+          !subdomain.includes("be-v") &&
+          !subdomain.startsWith("z-tickets")) {
           tenantIdentifier = subdomain;
         }
       }
@@ -101,11 +101,11 @@ export const resolveTenant = async (
 async function findTenant(identifier: string): Promise<Tenant | null> {
   // Try cache first
   let tenant = await cacheService.getTenantBySubdomain(identifier);
-  
+
   if (!tenant) {
     tenant = await cacheService.getTenant(identifier);
   }
-  
+
   if (!tenant) {
     // Cache miss - fetch from database
     const rawClient = tenantAwarePrisma.getRawClient();
@@ -114,7 +114,7 @@ async function findTenant(identifier: string): Promise<Tenant | null> {
         OR: [{ subdomain: identifier }, { id: identifier }],
       },
     });
-    
+
     // Cache for 10 minutes
     if (tenant) {
       await cacheService.cacheTenant(tenant.id, tenant);
@@ -123,7 +123,7 @@ async function findTenant(identifier: string): Promise<Tenant | null> {
       }
     }
   }
-  
+
   return tenant;
 }
 
@@ -142,7 +142,7 @@ export const optionalTenantContext = async (
 
     // Strategy 1: From X-Tenant-ID header (prioritize for cross-domain architecture)
     tenantIdentifier = req.headers["x-tenant-id"] as string;
-    tenantIdentifier = "b85c1b5b-77a3-4281-9147-51d6bd3ee94d"
+    // tenantIdentifier = "b85c1b5b-77a3-4281-9147-51d6bd3ee94d"
 
 
     // Strategy 2: From X-Tenant-Subdomain header
@@ -156,12 +156,12 @@ export const optionalTenantContext = async (
       if (host && !host.includes("localhost")) {
         const subdomain = host.split(".")[0];
         // Skip subdomain extraction for backend service domains
-        if (subdomain && 
-            subdomain !== "www" && 
-            subdomain !== "api" && 
-            !subdomain.includes("backend") && 
-            !subdomain.includes("be-v") &&
-            !subdomain.startsWith("z-tickets")) {
+        if (subdomain &&
+          subdomain !== "www" &&
+          subdomain !== "api" &&
+          !subdomain.includes("backend") &&
+          !subdomain.includes("be-v") &&
+          !subdomain.startsWith("z-tickets")) {
           tenantIdentifier = subdomain;
         }
       }
@@ -204,7 +204,7 @@ export const optionalTenantContext = async (
       if (tenant && tenant.isActive) {
         req.tenantId = tenant.id;
         req.tenant = tenant;
-        
+
         // OPTIMIZED: Set tenant context ONCE here
         await tenantAwarePrisma.setTenantContext(tenant.id);
       }
