@@ -553,7 +553,7 @@ class DailyUpdateController {
                     },
                 });
                 if (!statusUpdate) {
-                    throw new types_1.NotFoundError('Daily update not found');
+                    throw new types_1.NotFoundError('Daily update not found1');
                 }
                 // Check access permissions
                 const user = await client.user.findUnique({
@@ -631,7 +631,7 @@ class DailyUpdateController {
                     },
                 });
                 if (!existing) {
-                    throw new types_1.NotFoundError('Daily update not found');
+                    throw new types_1.NotFoundError('Daily update not found2');
                 }
                 // Only owner can update
                 if (existing.userId !== req.user.id) {
@@ -728,7 +728,7 @@ class DailyUpdateController {
                     },
                 });
                 if (!existing) {
-                    throw new types_1.NotFoundError('Daily update not found');
+                    throw new types_1.NotFoundError('Daily update not found3');
                 }
                 // Only owner can delete
                 if (existing.userId !== req.user.id) {

@@ -382,7 +382,7 @@ model Attendance {
   user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   breaks               AttendanceBreak[]
 
-  @@unique([tenantId, userId, date])
+ 
   @@map("attendance")
 }
 
@@ -398,7 +398,7 @@ model AttendanceBreak {
   updatedAt       DateTime   @updatedAt @map("updated_at")
   attendance      Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
   tenant          Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
+  
   @@map("attendance_breaks")
 }
 
@@ -451,8 +451,12 @@ model StatusUpdate {
   tenant           Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user             User        @relation("UserStatusUpdates", fields: [userId], references: [id], onDelete: Cascade)
   workEntries      WorkEntry[]
+  is_missed        Boolean   @default(false)
+  missed_updateAt DateTime?
 
-  @@unique([userId, date, tenantId])
+ 
+
+  
   @@index([tenantId, date])
   @@index([userId, date])
   @@map("status_updates")
