@@ -183,6 +183,27 @@ class TicketController {
                     throw new types_1.ValidationError("Report To user not found in this tenant");
                 }
             }
+            // Validate parentId - prevent nested subtasks
+            if (parentId) {
+                const parentTicket = await database_1.prisma.ticket.findFirst({
+                    where: {
+                        id: parentId,
+                        tenantId: req.tenantId,
+                    },
+                    select: {
+                        id: true,
+                        parentId: true,
+                        ticketNumber: true,
+                    },
+                });
+                if (!parentTicket) {
+                    throw new types_1.ValidationError("Parent ticket not found in this tenant");
+                }
+                // Prevent nested subtasks - parent cannot be a subtask itself
+                if (parentTicket.parentId) {
+                    throw new types_1.ValidationError(`Cannot create subtask of a subtask. Ticket ${parentTicket.ticketNumber} is already a subtask.`);
+                }
+            }
             // Generate ticket number
             // Generate ticket number safely by finding the last created ticket
             const lastTicket = await database_1.prisma.ticket.findFirst({
@@ -286,11 +307,12 @@ class TicketController {
                 });
                 return;
             }
-            const { projectId, assigneeId, priority, search, limitPerColumn = 50, } = req.query;
+            const { projectId, assigneeId, priority, search, limitPerColumn = 50, includeArchived = false, } = req.query;
             // Build base filter
             const baseWhere = {
                 tenantId: req.tenantId,
                 parentId: null, // Exclude subtasks from main board
+                isArchived: includeArchived === 'true' ? undefined : false, // Exclude archived tickets by default
             };
             if (projectId)
                 baseWhere.projectId = projectId;
@@ -437,11 +459,12 @@ class TicketController {
                 });
                 return;
             }
-            const { page = 1, limit = 20, status, priority, projectId, assigneeId, createdById, search, sortBy = "createdAt", sortOrder = "desc", startDate, endDate, } = req.query;
+            const { page = 1, limit = 20, status, priority, projectId, assigneeId, createdById, search, sortBy = "createdAt", sortOrder = "desc", startDate, endDate, includeArchived = false, } = req.query;
             // Build base filter
             const baseWhere = {
                 tenantId: req.tenantId,
                 parentId: null, // Exclude subtasks from main board
+                isArchived: includeArchived === 'true' ? undefined : false, // Exclude archived tickets by default
             };
             const where = { ...baseWhere };
             if (status)
@@ -625,6 +648,7 @@ class TicketController {
                     tags: true,
                     metadata: true,
                     parentTickets: true,
+                    parentId: true, // IMPORTANT: Include parentId for subtask navigation
                     createdAt: true,
                     updatedAt: true,
                     // Optimized relations - only essential fields
@@ -770,6 +794,31 @@ class TicketController {
             });
             if (!existingTicket) {
                 throw new types_1.NotFoundError("Ticket not found in this tenant");
+            }
+            // Validate parentId if being updated - prevent nested subtasks
+            if (mappedUpdates.parentId !== undefined && mappedUpdates.parentId !== null) {
+                const newParentTicket = await database_1.prisma.ticket.findFirst({
+                    where: {
+                        id: mappedUpdates.parentId,
+                        tenantId: req.tenantId,
+                    },
+                    select: {
+                        id: true,
+                        parentId: true,
+                        ticketNumber: true,
+                    },
+                });
+                if (!newParentTicket) {
+                    throw new types_1.ValidationError("Parent ticket not found in this tenant");
+                }
+                // Prevent nested subtasks - new parent cannot be a subtask itself
+                if (newParentTicket.parentId) {
+                    throw new types_1.ValidationError(`Cannot set parent to a subtask. Ticket ${newParentTicket.ticketNumber} is already a subtask.`);
+                }
+                // Prevent setting a ticket's own subtask as its parent (circular reference)
+                if (newParentTicket.id === id) {
+                    throw new types_1.ValidationError("A ticket cannot be its own parent");
+                }
             }
             // Sanitize description if it's being updated
             if (mappedUpdates.description) {

@@ -79,25 +79,54 @@ export interface Ticket {
   tenantId: string;
   projectId: string;
   releasePlanId?: string;
+  sprintPlanId?: string;
+  demoPlanId?: string;
   title: string;
   description?: string;
   ticketNumber: string;
   status: string;
   priority: string;
   type: string;
+  platform?: string;
+  stack?: string;
+  taskLevel?: string;
+  storyPoint?: number;
+  estimateHours?: number;
   assigneeId?: string;
+  reportToId?: string;
   createdById: string;
+  parentTickets?: string[];
+  parentTicketNotes?: string;
+  currentWorkflowStep?: string;
+  startDate?: Date;
+  endDate?: Date;
   dueDate?: Date;
   completedAt?: Date;
   tags: string[];
   metadata?: any;
   createdAt: Date;
   updatedAt: Date;
+  // Archive fields
+  isArchived: boolean;
+  archivedAt?: Date;
+  archivedById?: string;
+  // Hierarchy fields
+  epicId?: string;
+  parentId?: string;
+  rank?: string;
   // Relations
   project?: Project;
   assignee?: User;
   createdBy?: User;
+  reportTo?: User;
   releasePlan?: ReleasePlan;
+  sprintPlan?: ReleasePlan;
+  demoPlan?: ReleasePlan;
+  archivedBy?: User;
+  epic?: Ticket;
+  stories?: Ticket[];
+  parent?: Ticket;
+  subTasks?: Ticket[];
 }
 
 export interface Client {

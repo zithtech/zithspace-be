@@ -27,6 +27,8 @@ export declare class ReleasePlansController {
     static startSprint(req: AuthRequest, res: Response): Promise<void>;
     /**
      * Complete a Sprint (tenant-aware)
+     * - Archives completed tickets (keeps them with sprint for history)
+     * - Returns incomplete tickets to backlog
      */
     static completeSprint(req: AuthRequest, res: Response): Promise<void>;
     /**

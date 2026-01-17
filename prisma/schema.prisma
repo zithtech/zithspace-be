@@ -76,6 +76,7 @@ model User {
   assignedTickets      Ticket[]            @relation("TicketAssignee")
   createdTickets       Ticket[]            @relation("TicketCreator")
   reportToTickets      Ticket[]            @relation("TicketReportTo")
+  archivedTickets      Ticket[]            @relation("TicketArchivedBy")
   transactions         Transaction[]
   assignedShift        Shift?              @relation("UserShift", fields: [assignedShiftId], references: [id])
   reportsTo            User?               @relation("UserHierarchy", fields: [reportsToId], references: [id])
@@ -178,6 +179,11 @@ model Ticket {
   createdAt           DateTime             @default(now()) @map("created_at")
   updatedAt           DateTime             @updatedAt @map("updated_at")
   
+  // Archive fields
+  isArchived          Boolean              @default(false) @map("is_archived")
+  archivedAt          DateTime?            @map("archived_at")
+  archivedById        String?              @map("archived_by_id")
+  
   // Hierarchy fields for Epic/Story/Sub-task support
   epicId              String?              @map("epic_id")
   parentId            String?              @map("parent_id")
@@ -204,6 +210,7 @@ model Ticket {
   stories             Ticket[]             @relation("EpicStories")
   parent              Ticket?              @relation("ParentSubTasks", fields: [parentId], references: [id], onDelete: SetNull)
   subTasks            Ticket[]             @relation("ParentSubTasks")
+  archivedBy          User?                @relation("TicketArchivedBy", fields: [archivedById], references: [id])
 
   @@unique([tenantId, ticketNumber])
   @@index([epicId])
@@ -211,6 +218,9 @@ model Ticket {
   @@index([projectId, releasePlanId])
   @@index([projectId, sprintPlanId])
   @@index([projectId, demoPlanId])
+  @@index([projectId, isArchived])
+  @@index([tenantId, isArchived])
+  @@index([status, isArchived])
   @@map("tickets")
 }
 

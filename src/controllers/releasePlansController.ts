@@ -580,6 +580,8 @@ export class ReleasePlansController {
 
   /**
    * Complete a Sprint (tenant-aware)
+   * - Archives completed tickets (keeps them with sprint for history)
+   * - Returns incomplete tickets to backlog
    */
   static async completeSprint(req: AuthRequest, res: Response): Promise<void> {
     try {
@@ -617,31 +619,81 @@ export class ReleasePlansController {
         return;
       }
 
-      // Calculate completed points based on srpint tickets
+      // Fetch all sprint tickets with full details
       const tickets = await prisma.ticket.findMany({
         where: { sprintPlanId: id, tenantId: req.tenantId },
-        select: { status: true, storyPoint: true },
+        select: { id: true, status: true, storyPoint: true },
       });
 
-      const completedPoints = tickets
-        .filter((t) => t.status === "completed")
-        .reduce((sum, t) => sum + (t.storyPoint || 0), 0);
+      // Separate completed and incomplete tickets
+      const completedTickets = tickets.filter((t) => t.status === "completed");
+      const incompleteTickets = tickets.filter((t) => t.status !== "completed");
 
-      // Complete the sprint
-      const updatedSprint = await prisma.releasePlan.update({
+      const completedPoints = completedTickets.reduce(
+        (sum, t) => sum + (t.storyPoint || 0),
+        0
+      );
+
+      // Use transaction for atomicity
+      await prisma.$transaction([
+        // 1. Complete the sprint
+        prisma.releasePlan.update({
+          where: { id },
+          data: {
+            status: "completed",
+            completedAt: new Date(),
+            completedPoints,
+            updatedAt: new Date(),
+          },
+        }),
+
+        // 2. Archive completed tickets (keep sprintPlanId for historical record)
+        prisma.ticket.updateMany({
+          where: {
+            sprintPlanId: id,
+            tenantId: req.tenantId,
+            status: "completed",
+          },
+          data: {
+            isArchived: true,
+            archivedAt: new Date(),
+            archivedById: req.user!.id,
+            updatedAt: new Date(),
+            // sprintPlanId stays set for sprint history
+          },
+        }),
+
+        // 3. Return incomplete tickets to backlog
+        prisma.ticket.updateMany({
+          where: {
+            sprintPlanId: id,
+            tenantId: req.tenantId,
+            status: { notIn: ["completed"] },
+          },
+          data: {
+            sprintPlanId: null, // Remove sprint association
+            isArchived: false,  // Ensure not archived
+            updatedAt: new Date(),
+          },
+        }),
+      ]);
+
+      // Fetch updated sprint
+      const updatedSprint = await prisma.releasePlan.findUnique({
         where: { id },
-        data: {
-          status: "completed",
-          completedAt: new Date(),
-          completedPoints,
-          updatedAt: new Date(),
-        },
       });
 
       res.status(200).json({
         success: true,
         data: updatedSprint,
         message: "Sprint completed successfully",
+        summary: {
+          totalTickets: tickets.length,
+          completedTickets: completedTickets.length,
+          archivedTickets: completedTickets.length,
+          returnedToBacklog: incompleteTickets.length,
+          completedPoints,
+        },
       } as ApiResponse);
 
     } catch (error: any) {

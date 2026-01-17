@@ -512,6 +512,8 @@ class ReleasePlansController {
     }
     /**
      * Complete a Sprint (tenant-aware)
+     * - Archives completed tickets (keeps them with sprint for history)
+     * - Returns incomplete tickets to backlog
      */
     static async completeSprint(req, res) {
         try {
@@ -543,28 +545,71 @@ class ReleasePlansController {
                 });
                 return;
             }
-            // Calculate completed points based on srpint tickets
+            // Fetch all sprint tickets with full details
             const tickets = await database_1.prisma.ticket.findMany({
                 where: { sprintPlanId: id, tenantId: req.tenantId },
-                select: { status: true, storyPoint: true },
+                select: { id: true, status: true, storyPoint: true },
             });
-            const completedPoints = tickets
-                .filter((t) => t.status === "completed")
-                .reduce((sum, t) => sum + (t.storyPoint || 0), 0);
-            // Complete the sprint
-            const updatedSprint = await database_1.prisma.releasePlan.update({
+            // Separate completed and incomplete tickets
+            const completedTickets = tickets.filter((t) => t.status === "completed");
+            const incompleteTickets = tickets.filter((t) => t.status !== "completed");
+            const completedPoints = completedTickets.reduce((sum, t) => sum + (t.storyPoint || 0), 0);
+            // Use transaction for atomicity
+            await database_1.prisma.$transaction([
+                // 1. Complete the sprint
+                database_1.prisma.releasePlan.update({
+                    where: { id },
+                    data: {
+                        status: "completed",
+                        completedAt: new Date(),
+                        completedPoints,
+                        updatedAt: new Date(),
+                    },
+                }),
+                // 2. Archive completed tickets (keep sprintPlanId for historical record)
+                database_1.prisma.ticket.updateMany({
+                    where: {
+                        sprintPlanId: id,
+                        tenantId: req.tenantId,
+                        status: "completed",
+                    },
+                    data: {
+                        isArchived: true,
+                        archivedAt: new Date(),
+                        archivedById: req.user.id,
+                        updatedAt: new Date(),
+                        // sprintPlanId stays set for sprint history
+                    },
+                }),
+                // 3. Return incomplete tickets to backlog
+                database_1.prisma.ticket.updateMany({
+                    where: {
+                        sprintPlanId: id,
+                        tenantId: req.tenantId,
+                        status: { notIn: ["completed"] },
+                    },
+                    data: {
+                        sprintPlanId: null, // Remove sprint association
+                        isArchived: false, // Ensure not archived
+                        updatedAt: new Date(),
+                    },
+                }),
+            ]);
+            // Fetch updated sprint
+            const updatedSprint = await database_1.prisma.releasePlan.findUnique({
                 where: { id },
-                data: {
-                    status: "completed",
-                    completedAt: new Date(),
-                    completedPoints,
-                    updatedAt: new Date(),
-                },
             });
             res.status(200).json({
                 success: true,
                 data: updatedSprint,
                 message: "Sprint completed successfully",
+                summary: {
+                    totalTickets: tickets.length,
+                    completedTickets: completedTickets.length,
+                    archivedTickets: completedTickets.length,
+                    returnedToBacklog: incompleteTickets.length,
+                    completedPoints,
+                },
             });
         }
         catch (error) {
