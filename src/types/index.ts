@@ -4,6 +4,7 @@ import { Request } from 'express';
 // Values are now stored as strings and can be configured per tenant
 
 // Define Prisma model types manually
+//comment added
 export interface Tenant {
   id: string;
   name: string;
