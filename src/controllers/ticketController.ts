@@ -92,6 +92,7 @@ export class TicketController {
         by: ["status"],
         where: {
           tenantId: req.tenantId,
+          isDeleted: false,
           createdAt: { gte: startOfMonth, lte: endOfMonth },
         },
         _count: true,
@@ -396,6 +397,7 @@ export class TicketController {
         tenantId: req.tenantId,
         parentId: null, // Exclude subtasks from main board
         isArchived: includeArchived === 'true' ? undefined : false, // Exclude archived tickets by default
+        isDeleted: false, // Exclude soft-deleted tickets
       };
 
       if (projectId) baseWhere.projectId = projectId;
@@ -569,6 +571,7 @@ export class TicketController {
         tenantId: req.tenantId,
         parentId: null, // Exclude subtasks from main board
         isArchived: includeArchived === 'true' ? undefined : false, // Exclude archived tickets by default
+        isDeleted: false, // Exclude soft-deleted tickets
       };
 
       const where: any = { ...baseWhere };
@@ -737,6 +740,7 @@ export class TicketController {
         where: {
           id,
           tenantId: req.tenantId,
+          isDeleted: false,
         },
         select: {
           // All ticket fields
@@ -912,6 +916,7 @@ export class TicketController {
         where: {
           id,
           tenantId: req.tenantId,
+          isDeleted: false,
         },
       });
 
@@ -1111,6 +1116,7 @@ export class TicketController {
       const where: any = {
         tenantId: req.tenantId,
         assigneeId: req.user.id,
+        isDeleted: false,
       };
 
       if (status) where.status = status;
@@ -1238,12 +1244,13 @@ export class TicketController {
         where: {
           projectId,
           tenantId: req.tenantId,
+          isDeleted: false,
         },
         _count: true,
       });
 
       const totalTickets = await prisma.ticket.count({
-        where: { projectId, tenantId: req.tenantId },
+        where: { projectId, tenantId: req.tenantId, isDeleted: false },
       });
 
       // return {
@@ -1293,6 +1300,7 @@ export class TicketController {
         where: {
           id,
           tenantId: req.tenantId,
+          isDeleted: false,
         },
       });
 
@@ -1362,6 +1370,7 @@ export class TicketController {
         where: {
           id,
           tenantId: req.tenantId,
+          isDeleted: false,
         },
       });
 
@@ -1481,6 +1490,7 @@ export class TicketController {
         where: {
           id,
           tenantId: req.tenantId,
+          isDeleted: false,
         },
       });
 
@@ -1557,6 +1567,7 @@ export class TicketController {
         where: {
           id,
           tenantId: req.tenantId,
+          isDeleted: false,
         },
       });
 
@@ -1651,6 +1662,7 @@ export class TicketController {
         where: {
           id: ticketId,
           tenantId: req.tenantId,
+          isDeleted: false,
         },
       });
 
@@ -1747,6 +1759,7 @@ export class TicketController {
         where: {
           id: ticketId,
           tenantId: req.tenantId,
+          isDeleted: false,
         },
       });
 
@@ -1831,6 +1844,7 @@ export class TicketController {
         where: {
           id,
           tenantId: req.tenantId,
+          isDeleted: false,
         },
       });
 
@@ -1907,6 +1921,7 @@ export class TicketController {
         where: {
           id,
           tenantId: req.tenantId,
+          isDeleted: false,
         },
       });
 
@@ -1998,6 +2013,7 @@ export class TicketController {
         where: {
           id: ticketId,
           tenantId: req.tenantId,
+          isDeleted: false,
         },
       });
 
@@ -2096,6 +2112,7 @@ export class TicketController {
         where: {
           id: ticketId,
           tenantId: req.tenantId,
+          isDeleted: false,
         },
       });
 
@@ -2177,6 +2194,7 @@ export class TicketController {
         where: {
           id,
           tenantId: req.tenantId,
+          isDeleted: false,
         },
       });
 
@@ -2256,6 +2274,7 @@ export class TicketController {
         where: {
           id,
           tenantId: req.tenantId,
+          isDeleted: false,
         },
       });
 
@@ -2348,6 +2367,7 @@ export class TicketController {
         where: {
           id,
           tenantId: req.tenantId,
+          isDeleted: false,
         },
       });
 
@@ -2418,6 +2438,7 @@ export class TicketController {
         where: {
           id: ticketId,
           tenantId: req.tenantId,
+          isDeleted: false,
         },
       });
 
@@ -2508,6 +2529,7 @@ export class TicketController {
       const where: any = {
         tenantId: req.tenantId,
         type: "Epic",
+        isDeleted: false,
       };
 
       if (projectId) where.projectId = projectId;
@@ -2610,6 +2632,7 @@ export class TicketController {
           id,
           tenantId: req.tenantId,
           type: "Epic",
+          isDeleted: false,
         },
         select: {
           id: true,
@@ -2758,6 +2781,7 @@ export class TicketController {
         where: {
           id,
           tenantId: req.tenantId,
+          isDeleted: false,
         },
       });
 
@@ -2775,6 +2799,7 @@ export class TicketController {
           parentId: id,
           tenantId: req.tenantId,
           type: "Sub-task",
+          isDeleted: false,
         },
         select: {
           id: true,

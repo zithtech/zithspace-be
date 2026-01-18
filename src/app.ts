@@ -30,6 +30,9 @@ import userRoutes from "@/routes/user";
 import dailyUpdateRoutes from "@/routes/dailyUpdates";
 import dashboardRoutes from "@/routes/dashboard";
 import leaveRoutes from "@/routes/leaves";
+import bucketRoutes from "@/routes/buckets";
+import trashRoutes from "@/routes/trash";
+import sprintCompletionRoutes from "@/routes/sprintCompletion";
 
 // Load environment variables
 dotenv.config();
@@ -130,6 +133,9 @@ app.use("/api/user", userRoutes);
 app.use("/api/daily-updates", dailyUpdateRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/leaves", leaveRoutes);
+app.use("/api/buckets", bucketRoutes);
+app.use("/api/trash", trashRoutes);
+app.use("/api/sprint-completion", sprintCompletionRoutes);
 
 // Tenant-specific health check
 app.get("/api/health", (req: any, res) => {
@@ -273,6 +279,10 @@ const server = app.listen(PORT, () => {
   // Initialize Socket.io
   const { socketService } = require("@/services/socketService");
   socketService.initialize(server);
+
+  // Start trash auto-purge cron job
+  const { startTrashAutoPurgeJob } = require("@/jobs/trashAutoPurge");
+  startTrashAutoPurgeJob();
 });
 
 // Graceful shutdown
