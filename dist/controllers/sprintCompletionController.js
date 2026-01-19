@@ -437,7 +437,7 @@ class SprintCompletionController {
                 where: {
                     sprintPlanId: sprintId,
                     tenantId: req.tenantId,
-                    isDeleted: false,
+                    status: { not: "completed" },
                 },
             });
             if (unresolvedTickets > 0 && !force) {
