@@ -523,7 +523,7 @@ export class SprintCompletionController {
         where: {
           sprintPlanId: sprintId,
           tenantId: req.tenantId,
-          isDeleted: false,
+          status: { not: "completed" },
         },
       });
 

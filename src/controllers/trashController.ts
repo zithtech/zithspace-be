@@ -90,16 +90,32 @@ export class TrashController {
 
       const totalPages = Math.ceil(total / Number(limit));
 
+      // Calculate expiring soon count (< 2 days until auto-purge)
+      const twoDaysFromNow = new Date();
+      twoDaysFromNow.setDate(twoDaysFromNow.getDate() + 2);
+      const expiringSoon = tickets.filter(ticket => {
+        if (!ticket.deletedAt) return false;
+        const purgeDate = new Date(ticket.deletedAt);
+        purgeDate.setDate(purgeDate.getDate() + 7);
+        return purgeDate <= twoDaysFromNow;
+      }).length;
+
       res.status(200).json({
         success: true,
-        data: tickets,
-        pagination: {
-          page: Number(page),
-          limit: Number(limit),
-          total,
-          pages: totalPages,
-          hasNext: Number(page) < totalPages,
-          hasPrev: Number(page) > 1,
+        data: {
+          tickets,
+          pagination: {
+            page: Number(page),
+            limit: Number(limit),
+            total,
+            pages: totalPages,
+            hasNext: Number(page) < totalPages,
+            hasPrev: Number(page) > 1,
+          },
+          summary: {
+            total,
+            expiringSoon,
+          },
         },
       } as ApiResponse);
     } catch (error) {
