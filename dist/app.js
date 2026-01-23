@@ -32,6 +32,7 @@ const leaves_1 = __importDefault(require("@/routes/leaves"));
 const buckets_1 = __importDefault(require("@/routes/buckets"));
 const trash_1 = __importDefault(require("@/routes/trash"));
 const sprintCompletion_1 = __importDefault(require("@/routes/sprintCompletion"));
+const fixedHolidays_1 = __importDefault(require("@/routes/fixedHolidays"));
 // Load environment variables
 dotenv_1.default.config();
 // Create Express application
@@ -96,6 +97,7 @@ app.get("/health", (req, res) => {
 // Tenant resolution for all API routes
 // app.use("/api", optionalTenantContext);
 // API routes
+app.use("/api/fixed-holidays", fixedHolidays_1.default);
 app.use("/api/auth", auth_1.default);
 app.use("/api/tenants", tenants_1.default);
 app.use("/api/projects", projects_1.default);
