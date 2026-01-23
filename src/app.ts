@@ -33,6 +33,7 @@ import leaveRoutes from "@/routes/leaves";
 import bucketRoutes from "@/routes/buckets";
 import trashRoutes from "@/routes/trash";
 import sprintCompletionRoutes from "@/routes/sprintCompletion";
+import fixedHolidayRoutes from "@/routes/fixedHolidays";
 
 // Load environment variables
 dotenv.config();
@@ -118,6 +119,7 @@ app.get("/health", (req, res) => {
 // app.use("/api", optionalTenantContext);
 
 // API routes
+app.use("/api/fixed-holidays", fixedHolidayRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/tenants", tenantRoutes);
 app.use("/api/projects", projectRoutes);
