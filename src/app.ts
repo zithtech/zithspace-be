@@ -30,6 +30,7 @@ import userRoutes from "@/routes/user";
 import dailyUpdateRoutes from "@/routes/dailyUpdates";
 import dashboardRoutes from "@/routes/dashboard";
 import leaveRoutes from "@/routes/leaves";
+import customerRoutes from "@/routes/customerRoutes";
 
 // Load environment variables
 dotenv.config();
@@ -57,7 +58,7 @@ app.use(
         allowedOrigins.some(
           (o) =>
             (typeof o === "string" && o === origin) ||
-            (o instanceof RegExp && o.test(origin))
+            (o instanceof RegExp && o.test(origin)),
         )
       ) {
         return callback(null, true);
@@ -66,7 +67,7 @@ app.use(
       return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
-  })
+  }),
 );
 
 // Body parsing middleware
@@ -130,6 +131,7 @@ app.use("/api/user", userRoutes);
 app.use("/api/daily-updates", dailyUpdateRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/leaves", leaveRoutes);
+app.use("/api/customers", customerRoutes);
 
 // Tenant-specific health check
 app.get("/api/health", (req: any, res) => {
@@ -296,7 +298,7 @@ const gracefulShutdown = async (signal: string) => {
   // Force close after 30 seconds
   setTimeout(() => {
     console.error(
-      "Could not close connections in time, forcefully shutting down"
+      "Could not close connections in time, forcefully shutting down",
     );
     process.exit(1);
   }, 30000);
