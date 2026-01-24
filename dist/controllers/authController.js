@@ -96,7 +96,7 @@ class AuthController {
             res.cookie('refreshToken', refreshToken, {
                 httpOnly: true,
                 secure: process.env.NODE_ENV === 'production',
-                sameSite: process.env.NODE_ENV === 'production'? "none": 'lax',
+                sameSite: process.env.NODE_ENV === 'production' ? "none" : 'lax',
                 maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
                 path: '/', // Ensure cookie is available for all paths
             })
@@ -180,10 +180,16 @@ class AuthController {
             const { accessToken, refreshToken: newRefreshToken } = jwt_1.JWTUtils.generateTokenPair(authUser);
             // Replace old refresh token with new one
             await database_1.tenantAwarePrisma.withTenant(decoded.tenantId, async (client) => {
-                await client.refreshToken.delete({
-                    where: { id: storedToken.id },
-                });
-                await client.refreshToken.create({
+                try {
+                    await client.refreshToken.delete({
+                        where: { token: refreshToken },
+                    });
+
+                }
+                catch (error) {
+                    // Token might have been already deleted, log and continue
+                    console.error('Error deleting old refresh token:', error);
+                } await client.refreshToken.create({
                     data: {
                         token: newRefreshToken,
                         userId: storedToken.user.id,
@@ -195,7 +201,7 @@ class AuthController {
             res.cookie('refreshToken', newRefreshToken, {
                 httpOnly: true,
                 secure: process.env.NODE_ENV === 'production',
-                sameSite: process.env.NODE_ENV === 'production'? "none": 'lax',
+                sameSite: process.env.NODE_ENV === 'production' ? "none" : 'lax',
                 maxAge: 7 * 24 * 60 * 60 * 1000, // 30 days
                 path: '/', // Ensure cookie is available for all paths
             });
