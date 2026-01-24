@@ -41,8 +41,17 @@ dotenv.config();
 // Create Express application
 const app = express();
 
+
+// Body parsing middleware
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
+
+
+
+
+
 // Connect to PostgreSQL
-connectDatabase().catch(console.error);
 
 const allowedOrigins = [
   "http://localhost:3000", // Local development
@@ -73,10 +82,6 @@ app.use(
   })
 );
 
-// Body parsing middleware
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
-
 // Cookie parsing middleware
 app.use(cookieParser());
 
@@ -103,6 +108,9 @@ const limiter = rateLimit({
 });
 
 // app.use(limiter);
+
+
+connectDatabase().catch(console.error);
 
 // Health check endpoint (no tenant context required)
 app.get("/health", (req, res) => {

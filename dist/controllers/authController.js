@@ -96,10 +96,10 @@ class AuthController {
             res.cookie('refreshToken', refreshToken, {
                 httpOnly: true,
                 secure: process.env.NODE_ENV === 'production',
-                sameSite: 'lax',
+                sameSite: process.env.NODE_ENV === 'production'? "none": 'lax',
                 maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
                 path: '/', // Ensure cookie is available for all paths
-            });
+            })
             // Return user data and access token
             const loginResponse = {
                 success: true,
@@ -195,7 +195,7 @@ class AuthController {
             res.cookie('refreshToken', newRefreshToken, {
                 httpOnly: true,
                 secure: process.env.NODE_ENV === 'production',
-                sameSite: 'lax',
+                sameSite: process.env.NODE_ENV === 'production'? "none": 'lax',
                 maxAge: 7 * 24 * 60 * 60 * 1000, // 30 days
                 path: '/', // Ensure cookie is available for all paths
             });
