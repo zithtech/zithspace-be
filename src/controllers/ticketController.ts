@@ -398,6 +398,7 @@ export class TicketController {
         parentId: null, // Exclude subtasks from main board
         isArchived: includeArchived === 'true' ? undefined : false, // Exclude archived tickets by default
         isDeleted: false, // Exclude soft-deleted tickets
+        bucketId: null, // Exclude tickets in buckets (they should only show in bucket view)
       };
 
       if (projectId) baseWhere.projectId = projectId;
@@ -564,14 +565,16 @@ export class TicketController {
         startDate,
         endDate,
         includeArchived = false,
+        archivedOnly = false,
       } = req.query;
 
       // Build base filter
       const baseWhere: any = {
         tenantId: req.tenantId,
         parentId: null, // Exclude subtasks from main board
-        isArchived: includeArchived === 'true' ? undefined : false, // Exclude archived tickets by default
+        isArchived: archivedOnly === 'true' ? true : (includeArchived === 'true' ? undefined : false), // archivedOnly shows ONLY archived tickets
         isDeleted: false, // Exclude soft-deleted tickets
+        bucketId: null, // Exclude tickets in buckets (they should only show in bucket view)
       };
 
       const where: any = { ...baseWhere };

@@ -559,15 +559,35 @@ export class SprintCompletionController {
         0
       );
 
-      // Complete sprint
-      const updatedSprint = await prisma.releasePlan.update({
-        where: { id: sprintId },
-        data: {
-          status: "completed",
-          completedAt: new Date(),
-          completedPoints: totalCompletedPoints,
-          updatedAt: new Date(),
-        },
+      // Complete sprint and archive completed tickets in transaction
+      const updatedSprint = await prisma.$transaction(async (tx) => {
+        // Archive all completed tickets from this sprint
+        await tx.ticket.updateMany({
+          where: {
+            sprintPlanId: sprintId,
+            tenantId: req.tenantId,
+            status: "completed",
+            isDeleted: false,
+          },
+          data: {
+            isArchived: true,
+            archivedAt: new Date(),
+            archivedById: req.user.id,
+            sprintPlanId: null, // Remove from sprint
+            updatedAt: new Date(),
+          },
+        });
+
+        // Complete the sprint
+        return await tx.releasePlan.update({
+          where: { id: sprintId },
+          data: {
+            status: "completed",
+            completedAt: new Date(),
+            completedPoints: totalCompletedPoints,
+            updatedAt: new Date(),
+          },
+        });
       });
 
       // Emit socket event
