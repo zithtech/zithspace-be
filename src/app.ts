@@ -34,6 +34,7 @@ import bucketRoutes from "@/routes/buckets";
 import trashRoutes from "@/routes/trash";
 import sprintCompletionRoutes from "@/routes/sprintCompletion";
 import fixedHolidayRoutes from "@/routes/fixedHolidays";
+import documentHubRoutes from "@/routes/documenthub";
 
 // Load environment variables
 dotenv.config();
@@ -41,15 +42,9 @@ dotenv.config();
 // Create Express application
 const app = express();
 
-
 // Body parsing middleware
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
-
-
-
-
-
 
 // Connect to PostgreSQL
 
@@ -70,7 +65,7 @@ app.use(
         allowedOrigins.some(
           (o) =>
             (typeof o === "string" && o === origin) ||
-            (o instanceof RegExp && o.test(origin))
+            (o instanceof RegExp && o.test(origin)),
         )
       ) {
         return callback(null, true);
@@ -79,7 +74,7 @@ app.use(
       return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
-  })
+  }),
 );
 
 // Cookie parsing middleware
@@ -108,7 +103,6 @@ const limiter = rateLimit({
 });
 
 // app.use(limiter);
-
 
 connectDatabase().catch(console.error);
 
@@ -146,6 +140,7 @@ app.use("/api/leaves", leaveRoutes);
 app.use("/api/buckets", bucketRoutes);
 app.use("/api/trash", trashRoutes);
 app.use("/api/sprint-completion", sprintCompletionRoutes);
+app.use("/api/documenthub", documentHubRoutes);
 
 // Tenant-specific health check
 app.get("/api/health", (req: any, res) => {
@@ -316,7 +311,7 @@ const gracefulShutdown = async (signal: string) => {
   // Force close after 30 seconds
   setTimeout(() => {
     console.error(
-      "Could not close connections in time, forcefully shutting down"
+      "Could not close connections in time, forcefully shutting down",
     );
     process.exit(1);
   }, 30000);
