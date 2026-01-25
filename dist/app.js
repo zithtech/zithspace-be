@@ -33,6 +33,7 @@ const buckets_1 = __importDefault(require("@/routes/buckets"));
 const trash_1 = __importDefault(require("@/routes/trash"));
 const sprintCompletion_1 = __importDefault(require("@/routes/sprintCompletion"));
 const fixedHolidays_1 = __importDefault(require("@/routes/fixedHolidays"));
+const documenthub_1 = __importDefault(require("@/routes/documenthub"));
 // Load environment variables
 dotenv_1.default.config();
 // Create Express application
@@ -116,6 +117,7 @@ app.use("/api/leaves", leaves_1.default);
 app.use("/api/buckets", buckets_1.default);
 app.use("/api/trash", trash_1.default);
 app.use("/api/sprint-completion", sprintCompletion_1.default);
+app.use("/api/documenthub", documenthub_1.default);
 // Tenant-specific health check
 app.get("/api/health", (req, res) => {
     res.status(200).json({
