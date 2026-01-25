@@ -209,162 +209,204 @@ class SprintCompletionController {
             const moveToBucketActions = actions.filter((a) => a.action === "move_to_bucket");
             const moveToBacklogActions = actions.filter((a) => a.action === "move_to_backlog");
             const moveToTrashActions = actions.filter((a) => a.action === "move_to_trash");
-            // Execute all actions in a transaction
+            // VALIDATION PHASE - Do ALL validation BEFORE transaction to avoid timeout
+            // Validate destination sprints exist (if any)
+            if (moveToSprintActions.length > 0) {
+                const destinationSprintIds = [...new Set(moveToSprintActions.map(a => a.destinationId))];
+                const validSprints = await database_1.prisma.releasePlan.findMany({
+                    where: {
+                        id: { in: destinationSprintIds },
+                        tenantId: req.tenantId,
+                        type: "sprint_plan",
+                    },
+                    select: { id: true, version: true },
+                });
+                if (validSprints.length !== destinationSprintIds.length) {
+                    const foundIds = new Set(validSprints.map(s => s.id));
+                    const missingIds = destinationSprintIds.filter(id => !foundIds.has(id));
+                    throw new types_1.ValidationError(`Destination sprint(s) not found: ${missingIds.join(', ')}`);
+                }
+                // Store sprint data for metadata
+                const sprintMap = new Map(validSprints.map(s => [s.id, s]));
+                moveToSprintActions.forEach(action => {
+                    action.sprintData = sprintMap.get(action.destinationId);
+                });
+            }
+            // Validate destination buckets exist (if any)
+            if (moveToBucketActions.length > 0) {
+                const destinationBucketIds = [...new Set(moveToBucketActions.map(a => a.destinationId))];
+                const validBuckets = await database_1.prisma.bucket.findMany({
+                    where: {
+                        id: { in: destinationBucketIds },
+                        tenantId: req.tenantId,
+                    },
+                    select: { id: true, name: true },
+                });
+                if (validBuckets.length !== destinationBucketIds.length) {
+                    const foundIds = new Set(validBuckets.map(b => b.id));
+                    const missingIds = destinationBucketIds.filter(id => !foundIds.has(id));
+                    throw new types_1.ValidationError(`Destination bucket(s) not found: ${missingIds.join(', ')}`);
+                }
+                // Store bucket data for metadata
+                const bucketMap = new Map(validBuckets.map(b => [b.id, b]));
+                moveToBucketActions.forEach(action => {
+                    action.bucketData = bucketMap.get(action.destinationId);
+                });
+            }
+            // TRANSACTION PHASE - Use bulk operations for speed
             const results = await database_1.prisma.$transaction(async (tx) => {
-                const logs = [];
-                const updates = [];
-                // Process move to sprint actions
-                for (const action of moveToSprintActions) {
-                    if (!action.destinationId) {
-                        throw new types_1.ValidationError("Destination sprint ID required for move_to_sprint action");
+                const now = new Date();
+                const allLogs = [];
+                const allUpdates = [];
+                // BULK PROCESS: Move to Sprint (group by destination)
+                if (moveToSprintActions.length > 0) {
+                    // Group by destination sprint
+                    const byDestination = new Map();
+                    moveToSprintActions.forEach(action => {
+                        if (!action.destinationId) {
+                            throw new types_1.ValidationError("Destination sprint ID required");
+                        }
+                        if (!byDestination.has(action.destinationId)) {
+                            byDestination.set(action.destinationId, []);
+                        }
+                        byDestination.get(action.destinationId).push(action);
+                    });
+                    // Bulk update and log for each destination
+                    for (const [destSprintId, actionsGroup] of byDestination) {
+                        const ticketIds = actionsGroup.map(a => a.ticketId);
+                        const sprintData = actionsGroup[0].sprintData;
+                        // Bulk update tickets
+                        await tx.ticket.updateMany({
+                            where: { id: { in: ticketIds } },
+                            data: {
+                                sprintPlanId: destSprintId,
+                                updatedAt: now,
+                            },
+                        });
+                        // Bulk create logs
+                        await tx.sprintCompletionLog.createMany({
+                            data: ticketIds.map(ticketId => ({
+                                tenantId: req.tenantId,
+                                sprintPlanId: sprintId,
+                                projectId: sprint.projectId,
+                                ticketId,
+                                action: "moved_to_sprint",
+                                destinationId: destSprintId,
+                                destinationType: "sprint",
+                                performedById: req.user.id,
+                                metadata: { targetSprintVersion: sprintData?.version || '' },
+                            })),
+                        });
+                        ticketIds.forEach(ticketId => {
+                            allUpdates.push({ ticketId, action: "moved_to_sprint", status: "success" });
+                        });
                     }
-                    // Verify destination sprint exists
-                    const destSprint = await tx.releasePlan.findFirst({
-                        where: {
-                            id: action.destinationId,
-                            tenantId: req.tenantId,
-                            type: "sprint_plan",
-                        },
-                    });
-                    if (!destSprint) {
-                        throw new types_1.ValidationError(`Destination sprint ${action.destinationId} not found`);
-                    }
-                    await tx.ticket.update({
-                        where: { id: action.ticketId },
-                        data: {
-                            sprintPlanId: action.destinationId,
-                            updatedAt: new Date(),
-                        },
-                    });
-                    // Create completion log
-                    const log = await tx.sprintCompletionLog.create({
-                        data: {
-                            tenantId: req.tenantId,
-                            sprintPlanId: sprintId,
-                            projectId: sprint.projectId,
-                            ticketId: action.ticketId,
-                            action: "moved_to_sprint",
-                            destinationId: action.destinationId,
-                            destinationType: "sprint",
-                            performedById: req.user.id,
-                            metadata: { targetSprintVersion: destSprint.version },
-                        },
-                    });
-                    logs.push(log);
-                    updates.push({
-                        ticketId: action.ticketId,
-                        action: "moved_to_sprint",
-                        status: "success",
-                    });
                 }
-                // Process move to bucket actions
-                for (const action of moveToBucketActions) {
-                    if (!action.destinationId) {
-                        throw new types_1.ValidationError("Destination bucket ID required for move_to_bucket action");
+                // BULK PROCESS: Move to Bucket (group by destination)
+                if (moveToBucketActions.length > 0) {
+                    const byDestination = new Map();
+                    moveToBucketActions.forEach(action => {
+                        if (!action.destinationId) {
+                            throw new types_1.ValidationError("Destination bucket ID required");
+                        }
+                        if (!byDestination.has(action.destinationId)) {
+                            byDestination.set(action.destinationId, []);
+                        }
+                        byDestination.get(action.destinationId).push(action);
+                    });
+                    for (const [destBucketId, actionsGroup] of byDestination) {
+                        const ticketIds = actionsGroup.map(a => a.ticketId);
+                        const bucketData = actionsGroup[0].bucketData;
+                        // Bulk update tickets
+                        await tx.ticket.updateMany({
+                            where: { id: { in: ticketIds } },
+                            data: {
+                                sprintPlanId: null,
+                                bucketId: destBucketId,
+                                updatedAt: now,
+                            },
+                        });
+                        // Bulk create logs
+                        await tx.sprintCompletionLog.createMany({
+                            data: ticketIds.map(ticketId => ({
+                                tenantId: req.tenantId,
+                                sprintPlanId: sprintId,
+                                projectId: sprint.projectId,
+                                ticketId,
+                                action: "moved_to_bucket",
+                                destinationId: destBucketId,
+                                destinationType: "bucket",
+                                performedById: req.user.id,
+                                metadata: { bucketName: bucketData?.name || '' },
+                            })),
+                        });
+                        ticketIds.forEach(ticketId => {
+                            allUpdates.push({ ticketId, action: "moved_to_bucket", status: "success" });
+                        });
                     }
-                    // Verify destination bucket exists
-                    const destBucket = await tx.bucket.findFirst({
-                        where: {
-                            id: action.destinationId,
-                            tenantId: req.tenantId,
-                        },
-                    });
-                    if (!destBucket) {
-                        throw new types_1.ValidationError(`Destination bucket ${action.destinationId} not found`);
-                    }
-                    await tx.ticket.update({
-                        where: { id: action.ticketId },
-                        data: {
-                            sprintPlanId: null, // Remove from sprint
-                            bucketId: action.destinationId,
-                            updatedAt: new Date(),
-                        },
-                    });
-                    // Create completion log
-                    const log = await tx.sprintCompletionLog.create({
-                        data: {
-                            tenantId: req.tenantId,
-                            sprintPlanId: sprintId,
-                            projectId: sprint.projectId,
-                            ticketId: action.ticketId,
-                            action: "moved_to_bucket",
-                            destinationId: action.destinationId,
-                            destinationType: "bucket",
-                            performedById: req.user.id,
-                            metadata: { bucketName: destBucket.name },
-                        },
-                    });
-                    logs.push(log);
-                    updates.push({
-                        ticketId: action.ticketId,
-                        action: "moved_to_bucket",
-                        status: "success",
-                    });
                 }
-                // Process move to backlog actions
-                for (const action of moveToBacklogActions) {
-                    await tx.ticket.update({
-                        where: { id: action.ticketId },
+                // BULK PROCESS: Move to Backlog
+                if (moveToBacklogActions.length > 0) {
+                    const ticketIds = moveToBacklogActions.map(a => a.ticketId);
+                    // Bulk update tickets
+                    await tx.ticket.updateMany({
+                        where: { id: { in: ticketIds } },
                         data: {
-                            sprintPlanId: null, // Remove from sprint (moves to backlog)
-                            updatedAt: new Date(),
+                            sprintPlanId: null,
+                            updatedAt: now,
                         },
                     });
-                    // Create completion log
-                    const log = await tx.sprintCompletionLog.create({
-                        data: {
+                    // Bulk create logs
+                    await tx.sprintCompletionLog.createMany({
+                        data: ticketIds.map(ticketId => ({
                             tenantId: req.tenantId,
                             sprintPlanId: sprintId,
                             projectId: sprint.projectId,
-                            ticketId: action.ticketId,
+                            ticketId,
                             action: "moved_to_backlog",
                             destinationId: null,
                             destinationType: "backlog",
                             performedById: req.user.id,
                             metadata: {},
-                        },
+                        })),
                     });
-                    logs.push(log);
-                    updates.push({
-                        ticketId: action.ticketId,
-                        action: "moved_to_backlog",
-                        status: "success",
+                    ticketIds.forEach(ticketId => {
+                        allUpdates.push({ ticketId, action: "moved_to_backlog", status: "success" });
                     });
                 }
-                // Process move to trash actions
-                for (const action of moveToTrashActions) {
-                    await tx.ticket.update({
-                        where: { id: action.ticketId },
+                // BULK PROCESS: Move to Trash
+                if (moveToTrashActions.length > 0) {
+                    const ticketIds = moveToTrashActions.map(a => a.ticketId);
+                    // Bulk update tickets
+                    await tx.ticket.updateMany({
+                        where: { id: { in: ticketIds } },
                         data: {
                             isDeleted: true,
-                            deletedAt: new Date(),
+                            deletedAt: now,
                             deletedById: req.user.id,
-                            sprintPlanId: null, // Remove from sprint
-                            updatedAt: new Date(),
+                            sprintPlanId: null,
+                            updatedAt: now,
                         },
                     });
-                    // Create completion log
-                    const log = await tx.sprintCompletionLog.create({
-                        data: {
+                    // Bulk create logs
+                    await tx.sprintCompletionLog.createMany({
+                        data: ticketIds.map(ticketId => ({
                             tenantId: req.tenantId,
                             sprintPlanId: sprintId,
                             projectId: sprint.projectId,
-                            ticketId: action.ticketId,
+                            ticketId,
                             action: "moved_to_trash",
                             destinationId: null,
                             destinationType: "trash",
                             performedById: req.user.id,
                             metadata: {},
-                        },
+                        })),
                     });
-                    logs.push(log);
-                    updates.push({
-                        ticketId: action.ticketId,
-                        action: "moved_to_trash",
-                        status: "success",
+                    ticketIds.forEach(ticketId => {
+                        allUpdates.push({ ticketId, action: "moved_to_trash", status: "success" });
                     });
                 }
-                return { logs, updates };
+                return { logs: allLogs, updates: allUpdates };
             });
             // Invalidate caches for all affected tickets
             const cachePromises = tickets.map((ticket) => cacheService_1.default.invalidateTicket(ticket.id, req.tenantId));
@@ -466,15 +508,34 @@ class SprintCompletionController {
                 select: { storyPoint: true },
             });
             const totalCompletedPoints = completedTickets.reduce((sum, t) => sum + (t.storyPoint || 0), 0);
-            // Complete sprint
-            const updatedSprint = await database_1.prisma.releasePlan.update({
-                where: { id: sprintId },
-                data: {
-                    status: "completed",
-                    completedAt: new Date(),
-                    completedPoints: totalCompletedPoints,
-                    updatedAt: new Date(),
-                },
+            // Complete sprint and archive completed tickets in transaction
+            const updatedSprint = await database_1.prisma.$transaction(async (tx) => {
+                // Archive all completed tickets from this sprint
+                await tx.ticket.updateMany({
+                    where: {
+                        sprintPlanId: sprintId,
+                        tenantId: req.tenantId,
+                        status: "completed",
+                        isDeleted: false,
+                    },
+                    data: {
+                        isArchived: true,
+                        archivedAt: new Date(),
+                        archivedById: req.user.id,
+                        sprintPlanId: null, // Remove from sprint
+                        updatedAt: new Date(),
+                    },
+                });
+                // Complete the sprint
+                return await tx.releasePlan.update({
+                    where: { id: sprintId },
+                    data: {
+                        status: "completed",
+                        completedAt: new Date(),
+                        completedPoints: totalCompletedPoints,
+                        updatedAt: new Date(),
+                    },
+                });
             });
             // Emit socket event
             socketService_1.socketService.emitToTenant(req.tenantId, "sprint:completed", {

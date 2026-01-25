@@ -95,6 +95,130 @@ export class BucketController {
   }
 
   /**
+   * Get paginated tickets in a bucket (tenant-aware)
+   */
+  static async getBucketTickets(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { id } = req.params;
+      const { page = 1, limit = 20 } = req.query;
+
+      // Verify bucket exists and user has access
+      const bucket = await prisma.bucket.findFirst({
+        where: {
+          id,
+          tenantId: req.tenantId,
+        },
+        include: {
+          members: {
+            select: { userId: true },
+          },
+        },
+      });
+
+      if (!bucket) {
+        res.status(404).json({
+          success: false,
+          error: "Bucket not found",
+        } as ApiResponse);
+        return;
+      }
+
+      // Check access permissions
+      const isOwner = bucket.createdById === req.user.id;
+      const isMember = bucket.members.some(
+        (member) => member.userId === req.user.id
+      );
+
+      if (!isOwner && !isMember && bucket.isShared) {
+        res.status(403).json({
+          success: false,
+          error: "You do not have access to this bucket",
+        } as ApiResponse);
+        return;
+      }
+
+      if (!isOwner && !bucket.isShared) {
+        res.status(403).json({
+          success: false,
+          error: "You do not have access to this bucket",
+        } as ApiResponse);
+        return;
+      }
+
+      // Get paginated tickets
+      const skip = (Number(page) - 1) * Number(limit);
+      
+      const [tickets, total] = await Promise.all([
+        prisma.ticket.findMany({
+          where: {
+            bucketId: id,
+            tenantId: req.tenantId,
+            isDeleted: false,
+          },
+          select: {
+            id: true,
+            ticketNumber: true,
+            title: true,
+            status: true,
+            priority: true,
+            type: true,
+            storyPoint: true,
+            assignee: {
+              select: { id: true, name: true, workEmail: true },
+            },
+            project: {
+              select: { id: true, name: true, code: true },
+            },
+            createdAt: true,
+            updatedAt: true,
+          },
+          orderBy: { createdAt: "desc" },
+          skip,
+          take: Number(limit),
+        }),
+        prisma.ticket.count({
+          where: {
+            bucketId: id,
+            tenantId: req.tenantId,
+            isDeleted: false,
+          },
+        }),
+      ]);
+
+      const totalPages = Math.ceil(total / Number(limit));
+
+      res.status(200).json({
+        success: true,
+        data: {
+          tickets,
+          pagination: {
+            page: Number(page),
+            limit: Number(limit),
+            total,
+            pages: totalPages,
+            hasNext: Number(page) < totalPages,
+            hasPrev: Number(page) > 1,
+          },
+        },
+      } as ApiResponse);
+    } catch (error) {
+      console.error("Get bucket tickets error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to fetch bucket tickets",
+      } as ApiResponse);
+    }
+  }
+
+  /**
    * Get bucket by ID with detailed ticket information (tenant-aware)
    */
   static async getBucketById(req: AuthRequest, res: Response): Promise<void> {

@@ -738,6 +738,63 @@ export class ReleasePlansController {
     }
   }
 
+  /**
+   * Get available sprints (active + planning) for a project
+   * Used for sprint assignment in buckets, trash, etc.
+   */
+  static async getAvailableSprints(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { projectId } = req.query;
+      if (!projectId) {
+        res.status(400).json({
+          success: false,
+          error: "projectId is required",
+        } as ApiResponse);
+        return;
+      }
+
+      const sprints = await prisma.releasePlan.findMany({
+        where: {
+          projectId: projectId as string,
+          tenantId: req.tenantId,
+          type: 'sprint_plan',
+          status: {
+            in: ['active', 'planning']
+          }
+        },
+        select: {
+          id: true,
+          version: true,
+          status: true,
+          startDate: true,
+          endDate: true,
+          goal: true,
+          createdAt: true,
+        },
+        orderBy: [
+          { status: 'desc' }, // Active first
+          { createdAt: 'desc' }
+        ]
+      });
+
+      res.status(200).json({ success: true, data: sprints } as ApiResponse);
+    } catch (error) {
+      console.error("Get available sprints error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to fetch available sprints",
+      } as ApiResponse);
+    }
+  }
+
   static async getReleasePlanStats(req: AuthRequest, res: Response): Promise<void> {
     try {
       if (!req.tenantId) {

@@ -6,6 +6,10 @@ export declare class BucketController {
      */
     static getBuckets(req: AuthRequest, res: Response): Promise<void>;
     /**
+     * Get paginated tickets in a bucket (tenant-aware)
+     */
+    static getBucketTickets(req: AuthRequest, res: Response): Promise<void>;
+    /**
      * Get bucket by ID with detailed ticket information (tenant-aware)
      */
     static getBucketById(req: AuthRequest, res: Response): Promise<void>;
