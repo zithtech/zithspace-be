@@ -315,6 +315,7 @@ class TicketController {
                 parentId: null, // Exclude subtasks from main board
                 isArchived: includeArchived === 'true' ? undefined : false, // Exclude archived tickets by default
                 isDeleted: false, // Exclude soft-deleted tickets
+                bucketId: null, // Exclude tickets in buckets (they should only show in bucket view)
             };
             if (projectId)
                 baseWhere.projectId = projectId;
@@ -461,13 +462,14 @@ class TicketController {
                 });
                 return;
             }
-            const { page = 1, limit = 20, status, priority, projectId, assigneeId, createdById, search, sortBy = "createdAt", sortOrder = "desc", startDate, endDate, includeArchived = false, } = req.query;
+            const { page = 1, limit = 20, status, priority, projectId, assigneeId, createdById, search, sortBy = "createdAt", sortOrder = "desc", startDate, endDate, includeArchived = false, archivedOnly = false, } = req.query;
             // Build base filter
             const baseWhere = {
                 tenantId: req.tenantId,
                 parentId: null, // Exclude subtasks from main board
-                isArchived: includeArchived === 'true' ? undefined : false, // Exclude archived tickets by default
+                isArchived: archivedOnly === 'true' ? true : (includeArchived === 'true' ? undefined : false), // archivedOnly shows ONLY archived tickets
                 isDeleted: false, // Exclude soft-deleted tickets
+                bucketId: null, // Exclude tickets in buckets (they should only show in bucket view)
             };
             const where = { ...baseWhere };
             if (status)
