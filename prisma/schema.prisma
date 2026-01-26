@@ -42,6 +42,10 @@ model Tenant {
   documenttree        DocumentTree[]
   documentHistory     DocumentHistory[]
   
+  // ZithTech Calls Relations
+  channels            Channel[]
+  meetings            Meeting[]
+  
 
   @@map("tenants")
 }
@@ -101,6 +105,14 @@ model User {
   subordinates         User[]              @relation("UserHierarchy")
   shiftAssignedBy      User?               @relation("ShiftAssigner", fields: [shiftAssignedById], references: [id])
   assignedShifts       User[]              @relation("ShiftAssigner")
+  
+  // ZithTech Calls Relations
+  createdChannels      Channel[]           @relation("ChannelCreator")
+  channelMemberships   ChannelMember[]
+  channelMessages      ChannelMessage[]
+  createdMeetings      Meeting[]           @relation("MeetingCreator")
+  meetingParticipations MeetingParticipant[]
+
   tenant               Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, workEmail])
@@ -782,4 +794,111 @@ model DocumentHistory {
   @@index([documentId])
   @@index([createdById])
   @@map("document_history")
+}
+
+// --------------------------------------
+// ZithTech Calls (Chat & Meeting) Models
+// --------------------------------------
+
+model Channel {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  name        String?  // Optional for DMs
+  description String?
+  type        String   @default("CHANNEL") // CHANNEL, DM, GROUP
+  
+  isArchived  Boolean  @default(false) @map("is_archived")
+  
+  lastMessageAt DateTime? @map("last_message_at")
+  
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy   User     @relation("ChannelCreator", fields: [createdById], references: [id])
+  
+  members     ChannelMember[]
+  messages    ChannelMessage[]
+  meetings    Meeting[]
+
+  @@map("channels")
+}
+
+model ChannelMember {
+  id        String   @id @default(uuid())
+  channelId String   @map("channel_id")
+  userId    String   @map("user_id")
+  role      String   @default("member") // owner, admin, member
+  joinedAt  DateTime @default(now()) @map("joined_at")
+  lastReadAt DateTime? @map("last_read_at")
+
+  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, userId])
+  @@map("channel_members")
+}
+
+model ChannelMessage {
+  id          String   @id @default(uuid())
+  channelId   String   @map("channel_id")
+  userId      String   @map("user_id")
+  content     String   // Text content
+  type        String   @default("text") // text, system, file
+  attachments Json     @default("[]")
+  
+  isEdited    Boolean  @default(false) @map("is_edited")
+  isDeleted   Boolean  @default(false) @map("is_deleted")
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  channel     Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([channelId, createdAt])
+  @@map("channel_messages")
+}
+
+model Meeting {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  channelId   String   @map("channel_id")
+  title       String
+  
+  status      String   @default("scheduled") // scheduled, active, completed, cancelled
+  
+  startedAt   DateTime? @map("started_at")
+  endedAt     DateTime? @map("ended_at")
+  
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  channel     Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  createdBy   User     @relation("MeetingCreator", fields: [createdById], references: [id])
+  
+  participants MeetingParticipant[]
+
+  @@map("meetings")
+}
+
+model MeetingParticipant {
+  id        String   @id @default(uuid())
+  meetingId String   @map("meeting_id")
+  userId    String   @map("user_id")
+  
+  status    String   @default("joined") // joined, left
+  role      String   @default("participant") // host, presenter, participant
+  
+  joinedAt  DateTime @default(now()) @map("joined_at")
+  leftAt    DateTime? @map("left_at")
+
+  meeting   Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId])
+  @@map("meeting_participants")
 }
