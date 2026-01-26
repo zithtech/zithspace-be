@@ -14,7 +14,6 @@ import { connectDatabase, disconnectDatabase } from "@/config/database";
 // Import middleware
 import { optionalTenantContext } from "@/middleware/tenantContext";
 
-// Import routes
 import authRoutes from "@/routes/auth";
 import tenantRoutes from "@/routes/tenants";
 import projectRoutes from "@/routes/projects";
@@ -35,10 +34,10 @@ import trashRoutes from "@/routes/trash";
 import sprintCompletionRoutes from "@/routes/sprintCompletion";
 import fixedHolidayRoutes from "@/routes/fixedHolidays";
 import documentHubRoutes from "@/routes/documenthub";
-
+import channelRoutes from "@/routes/channels";
+import messageRoutes from "@/routes/messages";
 // Load environment variables
 dotenv.config();
-
 // Create Express application
 const app = express();
 
@@ -141,6 +140,8 @@ app.use("/api/buckets", bucketRoutes);
 app.use("/api/trash", trashRoutes);
 app.use("/api/sprint-completion", sprintCompletionRoutes);
 app.use("/api/documenthub", documentHubRoutes);
+app.use("/api/channels", channelRoutes);
+app.use("/api/channels/:channelId/messages", messageRoutes);
 
 // Tenant-specific health check
 app.get("/api/health", (req: any, res) => {
