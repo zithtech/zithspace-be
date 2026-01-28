@@ -4,14 +4,7 @@
   - You are about to drop the `daily_updates` table. If the table is not empty, all the data it contains will be lost.
 
 */
--- DropForeignKey
-ALTER TABLE "daily_updates" DROP CONSTRAINT "daily_updates_tenant_id_fkey";
 
--- DropForeignKey
-ALTER TABLE "daily_updates" DROP CONSTRAINT "daily_updates_user_id_fkey";
-
--- DropTable
-DROP TABLE "daily_updates";
 
 -- CreateTable
 CREATE TABLE "status_updates" (

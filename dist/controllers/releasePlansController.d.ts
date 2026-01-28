@@ -22,33 +22,29 @@ export declare class ReleasePlansController {
      */
     static deleteReleasePlan(req: AuthRequest, res: Response): Promise<void>;
     /**
-     * Get release plans by project (tenant-aware)
+     * Start a Sprint (tenant-aware)
      */
-    static getReleasePlansByProject(req: AuthRequest, res: Response): Promise<void>;
+    static startSprint(req: AuthRequest, res: Response): Promise<void>;
     /**
-     * Get active release plans (tenant-aware)
+     * Complete a Sprint (tenant-aware)
+     * - Archives completed tickets (keeps them with sprint for history)
+     * - Returns incomplete tickets to backlog
+     */
+    static completeSprint(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get active release plans
      */
     static getActiveReleasePlans(req: AuthRequest, res: Response): Promise<void>;
     /**
-     * Get release plan statistics (tenant-aware)
+     * Get available sprints (active + planning) for a project
+     * Used for sprint assignment in buckets, trash, etc.
      */
+    static getAvailableSprints(req: AuthRequest, res: Response): Promise<void>;
     static getReleasePlanStats(req: AuthRequest, res: Response): Promise<void>;
-    /**
-     * Get tickets by project for release plan assignment (tenant-aware)
-     * Simpler version without release plan ID requirement
-     */
+    static getReleasePlansByProject(req: AuthRequest, res: Response): Promise<void>;
     static getProjectTickets(req: AuthRequest, res: Response): Promise<void>;
-    /**
-     * Get tickets available for assignment to release plan (tenant-aware)
-     */
     static getAvailableTickets(req: AuthRequest, res: Response): Promise<void>;
-    /**
-     * Assign tickets to release plan (tenant-aware)
-     */
     static assignTicketsToReleasePlan(req: AuthRequest, res: Response): Promise<void>;
-    /**
-     * Remove tickets from release plan (tenant-aware)
-     */
     static removeTicketsFromReleasePlan(req: AuthRequest, res: Response): Promise<void>;
 }
 export default ReleasePlansController;

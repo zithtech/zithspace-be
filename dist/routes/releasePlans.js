@@ -17,6 +17,13 @@ router.use(auth_1.requireAuth);
  */
 router.get('/active', releasePlansController_1.ReleasePlansController.getActiveReleasePlans);
 /**
+ * @route   GET /api/release-plans/available
+ * @desc    Get available sprints (active + planning) for sprint assignment (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @query   projectId (required)
+ */
+router.get('/available', releasePlansController_1.ReleasePlansController.getAvailableSprints);
+/**
  * @route   GET /api/release-plans/stats
  * @desc    Get release plan statistics (tenant-aware)
  * @access  Private (authenticated users within tenant)
@@ -82,6 +89,20 @@ router.put('/:id', releasePlansController_1.ReleasePlansController.updateRelease
  * @param   id - Release plan ID
  */
 router.delete('/:id', auth_1.requireAdmin, releasePlansController_1.ReleasePlansController.deleteReleasePlan);
+/**
+ * @route   POST /api/release-plans/:id/start
+ * @desc    Start a sprint (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   id - Release plan ID
+ */
+router.post('/:id/start', releasePlansController_1.ReleasePlansController.startSprint);
+/**
+ * @route   POST /api/release-plans/:id/complete
+ * @desc    Complete a sprint (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   id - Release plan ID
+ */
+router.post('/:id/complete', releasePlansController_1.ReleasePlansController.completeSprint);
 /**
  * @route   POST /api/release-plans/:id/tickets/assign
  * @desc    Assign tickets to release plan (tenant-aware)

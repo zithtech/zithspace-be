@@ -20,6 +20,14 @@ router.use(requireAuth);
 router.get('/active', ReleasePlansController.getActiveReleasePlans);
 
 /**
+ * @route   GET /api/release-plans/available
+ * @desc    Get available sprints (active + planning) for sprint assignment (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @query   projectId (required)
+ */
+router.get('/available', ReleasePlansController.getAvailableSprints);
+
+/**
  * @route   GET /api/release-plans/stats
  * @desc    Get release plan statistics (tenant-aware)
  * @access  Private (authenticated users within tenant)
@@ -93,6 +101,22 @@ router.put('/:id', ReleasePlansController.updateReleasePlan);
  * @param   id - Release plan ID
  */
 router.delete('/:id', requireAdmin, ReleasePlansController.deleteReleasePlan);
+
+/**
+ * @route   POST /api/release-plans/:id/start
+ * @desc    Start a sprint (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   id - Release plan ID
+ */
+router.post('/:id/start', ReleasePlansController.startSprint);
+
+/**
+ * @route   POST /api/release-plans/:id/complete
+ * @desc    Complete a sprint (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   id - Release plan ID
+ */
+router.post('/:id/complete', ReleasePlansController.completeSprint);
 
 /**
  * @route   POST /api/release-plans/:id/tickets/assign

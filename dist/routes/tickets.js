@@ -38,6 +38,27 @@ router.get('/', ticketController_1.TicketController.getTickets);
  */
 router.get('/my', ticketController_1.TicketController.getMyTickets);
 /**
+ * @route   GET /api/tickets/epics
+ * @desc    Get all Epic tickets with progress (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @query   projectId, status
+ */
+router.get('/epics', ticketController_1.TicketController.getEpics);
+/**
+ * @route   GET /api/tickets/:id/epic-progress
+ * @desc    Get Epic with detailed story progress (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   id - Epic ticket ID
+ */
+router.get('/:id/epic-progress', ticketController_1.TicketController.getEpicProgress);
+/**
+ * @route   GET /api/tickets/:id/sub-tasks
+ * @desc    Get sub-tasks for a ticket (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   id - Parent ticket ID
+ */
+router.get('/:id/sub-tasks', ticketController_1.TicketController.getSubTasks);
+/**
  * @route   GET /api/tickets/:id/comments
  * @desc    Get comments for a ticket (tenant-aware)
  * @access  Private (authenticated users within tenant)

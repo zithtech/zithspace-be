@@ -38,8 +38,12 @@ class ReleasePlansController {
             orderBy[sortBy] = sortOrder === "desc" ? "desc" : "asc";
             // Execute query with pagination
             const skip = (Number(page) - 1) * Number(limit);
+            // Determine which relation to include based on type if specified, or include all for stats?
+            // For list view stats, we need to know ticket counts.
+            // Since a plan has ONE type, we can fetch all relations, but usually only one is populated.
+            // However, Prisma relations for tickets are named: tickets (release), sprintTickets (sprint), demoTickets (demo).
             const [releasePlans, total] = await Promise.all([
-                await database_1.prisma.releasePlan.findMany({
+                database_1.prisma.releasePlan.findMany({
                     where,
                     include: {
                         project: {
@@ -48,41 +52,42 @@ class ReleasePlansController {
                         createdBy: {
                             select: { id: true, name: true, workEmail: true },
                         },
-                        tickets: {
-                            select: {
-                                id: true,
-                                ticketNumber: true,
-                                title: true,
-                                status: true,
-                                priority: true,
-                                assignee: {
-                                    select: { id: true, name: true, workEmail: true },
-                                },
-                            },
-                            orderBy: { createdAt: "desc" },
-                        },
+                        // We include all 3 to calculate metrics correctly regardless of type
+                        tickets: { select: { status: true } },
+                        sprintTickets: { select: { status: true } },
+                        demoTickets: { select: { status: true } },
                     },
                     orderBy,
                     skip,
                     take: Number(limit),
                 }),
-                await database_1.prisma.releasePlan.count({ where }),
+                database_1.prisma.releasePlan.count({ where }),
             ]);
             const totalPages = Math.ceil(total / Number(limit));
             // Calculate progress metrics for each release plan
             const releasePlansWithMetrics = releasePlans.map((plan) => {
-                const totalTickets = plan.tickets?.length || 0;
-                const completedTickets = plan.tickets?.filter((t) => t.status === "completed").length || 0;
-                const inProgressTickets = plan.tickets?.filter((t) => t.status === "in_progress").length || 0;
-                const notStartedTickets = plan.tickets?.filter((t) => t.status === "not_started" || t.status === "open").length || 0;
+                // Determine which ticket set to use
+                let relevantTickets = [];
+                if (plan.type === 'sprint_plan')
+                    relevantTickets = plan.sprintTickets;
+                else if (plan.type === 'demo_plan')
+                    relevantTickets = plan.demoTickets;
+                else
+                    relevantTickets = plan.tickets;
+                const totalTickets = relevantTickets.length || 0;
+                const completedTickets = relevantTickets.filter((t) => t.status === "completed").length || 0;
+                const inProgressTickets = relevantTickets.filter((t) => t.status === "in_progress").length || 0;
+                const notStartedTickets = relevantTickets.filter((t) => ["not_started", "open"].includes(t.status)).length || 0;
                 const progress = totalTickets > 0
                     ? Math.round((completedTickets / totalTickets) * 100)
                     : 0;
+                // Remove the heavy arrays from response, return stats
+                const { tickets, sprintTickets, demoTickets, ...planData } = plan;
                 return {
-                    ...plan,
-                    name: plan.version, // Map version to name for frontend compatibility
-                    deadline: plan.releaseDate, // Map releaseDate to deadline for frontend compatibility
-                    priority: "Medium", // Default priority since it's not in schema
+                    ...planData,
+                    name: plan.version,
+                    deadline: plan.releaseDate,
+                    priority: "Medium",
                     totalTickets,
                     completedTickets,
                     inProgressTickets,
@@ -136,22 +141,27 @@ class ReleasePlansController {
                     createdBy: {
                         select: { id: true, name: true, workEmail: true, position: true },
                     },
-                    // Get associated tickets through the project relation
                     tickets: {
                         select: {
-                            id: true,
-                            ticketNumber: true,
-                            title: true,
-                            status: true,
-                            priority: true,
-                            assigneeId: true,
-                            createdAt: true,
-                            assignee: {
-                                select: { id: true, name: true, workEmail: true },
-                            },
+                            id: true, ticketNumber: true, title: true, status: true, priority: true, assigneeId: true, createdAt: true,
+                            assignee: { select: { id: true, name: true, workEmail: true } },
                         },
                         orderBy: { createdAt: "desc" },
                     },
+                    sprintTickets: {
+                        select: {
+                            id: true, ticketNumber: true, title: true, status: true, priority: true, assigneeId: true, createdAt: true,
+                            assignee: { select: { id: true, name: true, workEmail: true } },
+                        },
+                        orderBy: { createdAt: "desc" },
+                    },
+                    demoTickets: {
+                        select: {
+                            id: true, ticketNumber: true, title: true, status: true, priority: true, assigneeId: true, createdAt: true,
+                            assignee: { select: { id: true, name: true, workEmail: true } },
+                        },
+                        orderBy: { createdAt: "desc" },
+                    }
                 },
             });
             if (!releasePlan) {
@@ -161,30 +171,31 @@ class ReleasePlansController {
                 });
                 return;
             }
-            // Calculate progress metrics
-            const totalTickets = releasePlan.tickets?.length || 0;
-            const completedTickets = releasePlan.tickets?.filter((t) => t.status === "completed").length ||
-                0;
-            const inProgressTickets = releasePlan.tickets?.filter((t) => t.status === "in_progress").length ||
-                0;
-            const notStartedTickets = releasePlan.tickets?.filter((t) => t.status === "not_started" || t.status === "open").length || 0;
-            const progress = totalTickets > 0
-                ? Math.round((completedTickets / totalTickets) * 100)
-                : 0;
-            const releasePlanWithMetrics = {
-                ...releasePlan,
-                name: releasePlan.version, // Map version to name for frontend compatibility
-                deadline: releasePlan.releaseDate, // Map releaseDate to deadline for frontend compatibility
-                priority: "Medium", // Default priority since it's not in schema
-                totalTickets,
-                completedTickets,
-                inProgressTickets,
-                notStartedTickets,
-                progress,
-            };
+            // Consolidate tickets based on type
+            let relevantTickets = [];
+            if (releasePlan.type === 'sprint_plan')
+                relevantTickets = releasePlan.sprintTickets;
+            else if (releasePlan.type === 'demo_plan')
+                relevantTickets = releasePlan.demoTickets;
+            else
+                relevantTickets = releasePlan.tickets;
+            const totalTickets = relevantTickets.length || 0;
+            const completedTickets = relevantTickets.filter((t) => t.status === "completed").length || 0;
+            const progress = totalTickets > 0 ? Math.round((completedTickets / totalTickets) * 100) : 0;
+            // Clean up response
+            const { tickets, sprintTickets, demoTickets, ...planData } = releasePlan;
             res.status(200).json({
                 success: true,
-                data: releasePlanWithMetrics,
+                data: {
+                    ...planData,
+                    tickets: relevantTickets, // Send the correct list as 'tickets' for FE consistency
+                    name: releasePlan.version,
+                    deadline: releasePlan.releaseDate,
+                    priority: "Medium",
+                    totalTickets,
+                    completedTickets,
+                    progress
+                },
             });
         }
         catch (error) {
@@ -207,153 +218,61 @@ class ReleasePlansController {
                 });
                 return;
             }
-            const { version, description, projectId, releaseDate, status = "planning", type = "release_plan", tickets = [], } = req.body;
-            // Validate required fields
-            if (!version || !description || !projectId) {
+            const { version, description, projectId, releaseDate, startDate, endDate, goal, status = "planning", tickets, // Array of ticket IDs
+            type = "release_plan" } = req.body;
+            if (!version || !projectId) {
                 res.status(400).json({
                     success: false,
-                    error: "Version, description, and project ID are required",
+                    error: "Version/Name and Project ID are required",
                 });
                 return;
             }
-            // Validate release date if provided
-            if (releaseDate) {
-                const releaseDateObj = new Date(releaseDate);
-                if (releaseDateObj <= new Date()) {
-                    res.status(400).json({
-                        success: false,
-                        error: "Release date must be in the future",
-                    });
-                    return;
-                }
-            }
-            // Validate project exists and belongs to tenant
-            const project = await database_1.prisma.project.findFirst({
-                where: {
-                    id: projectId,
-                    tenantId: req.tenantId,
-                },
-            });
-            if (!project) {
-                throw new types_1.ValidationError("Project not found in this tenant");
-            }
-            // Check if release plan with same version already exists for this project
-            const existingReleasePlan = await database_1.prisma.releasePlan.findFirst({
-                where: {
-                    version,
-                    projectId,
-                    tenantId: req.tenantId,
-                },
-            });
-            if (existingReleasePlan) {
-                throw new types_1.ValidationError("Release plan with this version already exists for this project");
-            }
-            // Validate tickets if provided
-            if (tickets && tickets.length > 0) {
-                const ticketCount = await database_1.prisma.ticket.count({
-                    where: {
-                        id: { in: tickets },
-                        projectId,
-                        tenantId: req.tenantId,
-                    },
-                });
-                if (ticketCount !== tickets.length) {
-                    throw new types_1.ValidationError("Some tickets not found or do not belong to this project");
-                }
-            }
-            // Create release plan
+            // Create the plan
             const newReleasePlan = await database_1.prisma.releasePlan.create({
                 data: {
-                    tenantId: req.tenantId,
-                    projectId,
                     version,
                     description,
+                    projectId,
+                    releaseDate: releaseDate ? new Date(releaseDate) : null,
+                    startDate: startDate ? new Date(startDate) : null,
+                    endDate: endDate ? new Date(endDate) : null,
+                    goal,
                     status,
                     type,
-                    releaseDate: releaseDate ? new Date(releaseDate) : null,
+                    tenantId: req.tenantId,
                     createdById: req.user.id,
-                },
-                include: {
-                    project: {
-                        select: { id: true, name: true, code: true, description: true },
-                    },
-                    createdBy: {
-                        select: { id: true, name: true, workEmail: true },
-                    },
-                    tickets: {
-                        select: {
-                            id: true,
-                            ticketNumber: true,
-                            title: true,
-                            status: true,
-                            priority: true,
-                            assignee: {
-                                select: { id: true, name: true, workEmail: true },
-                            },
-                        },
-                    },
+                    updatedAt: new Date(),
                 },
             });
-            // Assign tickets to the release plan
-            if (tickets && tickets.length > 0) {
+            // Assign tickets if provided
+            if (tickets && Array.isArray(tickets) && tickets.length > 0) {
+                const ticketUpdateData = { updatedAt: new Date() };
+                if (type === "sprint_plan") {
+                    ticketUpdateData.sprintPlanId = newReleasePlan.id;
+                }
+                else if (type === "demo_plan") {
+                    ticketUpdateData.demoPlanId = newReleasePlan.id;
+                }
+                else {
+                    ticketUpdateData.releasePlanId = newReleasePlan.id;
+                }
                 await database_1.prisma.ticket.updateMany({
                     where: {
                         id: { in: tickets },
                         tenantId: req.tenantId,
+                        projectId: projectId, // Ensure tickets belong to same project
                     },
-                    data: {
-                        releasePlanId: newReleasePlan.id,
-                        updatedAt: new Date(),
-                    },
-                });
-                // Fetch the updated release plan with tickets
-                const updatedReleasePlan = await database_1.prisma.releasePlan.findUnique({
-                    where: { id: newReleasePlan.id },
-                    include: {
-                        project: {
-                            select: { id: true, name: true, code: true, description: true },
-                        },
-                        createdBy: {
-                            select: { id: true, name: true, workEmail: true },
-                        },
-                        tickets: {
-                            select: {
-                                id: true,
-                                ticketNumber: true,
-                                title: true,
-                                status: true,
-                                priority: true,
-                                assignee: {
-                                    select: { id: true, name: true, workEmail: true },
-                                },
-                            },
-                            orderBy: { createdAt: "desc" },
-                        },
-                    },
-                });
-                res.status(201).json({
-                    success: true,
-                    data: updatedReleasePlan,
-                    message: "Release plan created successfully",
+                    data: ticketUpdateData,
                 });
             }
-            else {
-                res.status(201).json({
-                    success: true,
-                    data: newReleasePlan,
-                    message: "Release plan created successfully",
-                });
-            }
+            res.status(201).json({
+                success: true,
+                data: newReleasePlan,
+                message: "Plan created successfully",
+            });
         }
         catch (error) {
             console.error("Create release plan error:", error);
-            if (error instanceof types_1.ValidationError) {
-                res.status(400).json({
-                    success: false,
-                    error: error.message,
-                });
-                return;
-            }
             res.status(500).json({
                 success: false,
                 error: "Failed to create release plan",
@@ -375,155 +294,82 @@ class ReleasePlansController {
             const { id } = req.params;
             const updates = req.body;
             const ticketsToAssign = updates.tickets;
-            // Remove fields that shouldn't be updated directly
+            // Remove fields that shouldn't be updated directly via this generic object
+            delete updates.tickets;
+            delete updates.id;
             delete updates.tenantId;
-            delete updates.createdById;
-            delete updates.createdAt;
-            delete updates.tickets; // Remove tickets from updates object as we handle it separately
-            // Validate release date if being updated
-            if (updates.releaseDate) {
-                const releaseDateObj = new Date(updates.releaseDate);
-                if (releaseDateObj <= new Date()) {
-                    res.status(400).json({
-                        success: false,
-                        error: "Release date must be in the future",
-                    });
-                    return;
-                }
-            }
-            // Check if release plan exists and belongs to tenant
-            const existingReleasePlan = await database_1.prisma.releasePlan.findFirst({
-                where: {
-                    id,
-                    tenantId: req.tenantId,
-                },
+            const existingPlan = await database_1.prisma.releasePlan.findUnique({
+                where: { id, tenantId: req.tenantId }
             });
-            if (!existingReleasePlan) {
-                throw new types_1.NotFoundError("Release plan not found in this tenant");
+            if (!existingPlan) {
+                throw new types_1.NotFoundError("Plan not found");
             }
-            // Check for version conflicts if version is being updated
-            if (updates.version && updates.version !== existingReleasePlan.version) {
-                const duplicateReleasePlan = await database_1.prisma.releasePlan.findFirst({
-                    where: {
-                        version: updates.version,
-                        projectId: existingReleasePlan.projectId,
-                        tenantId: req.tenantId,
-                        id: { not: id },
-                    },
-                });
-                if (duplicateReleasePlan) {
-                    throw new types_1.ValidationError("Release plan with this version already exists for this project");
-                }
-            }
-            // Validate tickets if provided
-            if (ticketsToAssign && ticketsToAssign.length > 0) {
-                const ticketCount = await database_1.prisma.ticket.count({
-                    where: {
-                        id: { in: ticketsToAssign },
-                        projectId: existingReleasePlan.projectId,
-                        tenantId: req.tenantId,
-                    },
-                });
-                if (ticketCount !== ticketsToAssign.length) {
-                    throw new types_1.ValidationError("Some tickets not found or do not belong to this project");
-                }
-            }
-            // Convert date if provided
-            if (updates.releaseDate)
-                updates.releaseDate = new Date(updates.releaseDate);
-            // Update release plan
-            const updatedReleasePlan = await database_1.prisma.releasePlan.update({
+            // Update basic fields
+            await database_1.prisma.releasePlan.update({
                 where: { id },
                 data: {
                     ...updates,
                     updatedAt: new Date(),
                 },
-                include: {
-                    project: {
-                        select: { id: true, name: true, code: true, description: true },
-                    },
-                    createdBy: {
-                        select: { id: true, name: true, workEmail: true },
-                    },
-                },
             });
-            // Update ticket assignments if provided
-            if (ticketsToAssign !== undefined) {
-                // First, remove all existing ticket assignments for this release plan
+            // Handle ticket re-assignment if 'tickets' array is provided
+            if (ticketsToAssign !== undefined && Array.isArray(ticketsToAssign)) {
+                const type = existingPlan.type;
+                const resetData = { updatedAt: new Date() };
+                const matchData = { tenantId: req.tenantId };
+                // 1. Reset current assignments for this plan
+                if (type === "sprint_plan") {
+                    matchData.sprintPlanId = id;
+                    resetData.sprintPlanId = null;
+                }
+                else if (type === "demo_plan") {
+                    matchData.demoPlanId = id;
+                    resetData.demoPlanId = null;
+                }
+                else {
+                    matchData.releasePlanId = id;
+                    resetData.releasePlanId = null;
+                }
                 await database_1.prisma.ticket.updateMany({
-                    where: {
-                        releasePlanId: id,
-                        tenantId: req.tenantId,
-                    },
-                    data: {
-                        releasePlanId: null,
-                        updatedAt: new Date(),
-                    },
+                    where: matchData,
+                    data: resetData
                 });
-                // Then assign new tickets
+                // 2. Assign new tickets
                 if (ticketsToAssign.length > 0) {
+                    const assignData = { updatedAt: new Date() };
+                    if (type === "sprint_plan")
+                        assignData.sprintPlanId = id;
+                    else if (type === "demo_plan")
+                        assignData.demoPlanId = id;
+                    else
+                        assignData.releasePlanId = id;
                     await database_1.prisma.ticket.updateMany({
                         where: {
                             id: { in: ticketsToAssign },
-                            tenantId: req.tenantId,
+                            tenantId: req.tenantId
                         },
-                        data: {
-                            releasePlanId: id,
-                            updatedAt: new Date(),
-                        },
+                        data: assignData
                     });
                 }
             }
-            // Fetch the updated release plan with tickets
-            const finalReleasePlan = await database_1.prisma.releasePlan.findUnique({
+            const updatedPlan = await database_1.prisma.releasePlan.findUnique({
                 where: { id },
-                include: {
-                    project: {
-                        select: { id: true, name: true, code: true, description: true },
-                    },
-                    createdBy: {
-                        select: { id: true, name: true, workEmail: true },
-                    },
-                    tickets: {
-                        select: {
-                            id: true,
-                            ticketNumber: true,
-                            title: true,
-                            status: true,
-                            priority: true,
-                            assignee: {
-                                select: { id: true, name: true, workEmail: true },
-                            },
-                        },
-                        orderBy: { createdAt: "desc" },
-                    },
-                },
             });
             res.status(200).json({
                 success: true,
-                data: finalReleasePlan,
-                message: "Release plan updated successfully",
+                data: updatedPlan,
+                message: "Plan updated successfully",
             });
         }
         catch (error) {
-            console.error("Update release plan error:", error);
+            console.error("Update plan error:", error);
             if (error instanceof types_1.NotFoundError) {
-                res.status(404).json({
-                    success: false,
-                    error: error.message,
-                });
-                return;
-            }
-            if (error instanceof types_1.ValidationError) {
-                res.status(400).json({
-                    success: false,
-                    error: error.message,
-                });
+                res.status(404).json({ success: false, error: error.message });
                 return;
             }
             res.status(500).json({
                 success: false,
-                error: "Failed to update release plan",
+                error: "Failed to update plan",
             });
         }
     }
@@ -535,67 +381,57 @@ class ReleasePlansController {
             if (!req.tenantId || !req.user) {
                 res.status(400).json({
                     success: false,
-                    error: "Tenant context and authentication required",
+                    error: "Tenant context required",
                 });
                 return;
             }
             const { id } = req.params;
-            const existingReleasePlan = await database_1.prisma.releasePlan.findFirst({
-                where: {
-                    id,
-                    tenantId: req.tenantId,
-                },
+            const plan = await database_1.prisma.releasePlan.findUnique({
+                where: { id, tenantId: req.tenantId }
             });
-            if (!existingReleasePlan) {
-                throw new types_1.NotFoundError("Release plan not found in this tenant");
+            if (!plan) {
+                res.status(404).json({ success: false, error: "Plan not found" });
+                return;
             }
-            // Check if any tickets are associated with this release plan
-            const ticketsCount = await database_1.prisma.ticket.count({
-                where: {
-                    releasePlanId: id,
-                    tenantId: req.tenantId,
-                },
+            // Unassign tickets first
+            const resetData = { updatedAt: new Date() };
+            const matchData = { tenantId: req.tenantId };
+            if (plan.type === "sprint_plan") {
+                matchData.sprintPlanId = id;
+                resetData.sprintPlanId = null;
+            }
+            else if (plan.type === "demo_plan") {
+                matchData.demoPlanId = id;
+                resetData.demoPlanId = null;
+            }
+            else {
+                matchData.releasePlanId = id;
+                resetData.releasePlanId = null;
+            }
+            await database_1.prisma.ticket.updateMany({
+                where: matchData,
+                data: resetData
             });
-            if (ticketsCount > 0) {
-                // Remove release plan reference from tickets instead of preventing deletion
-                await database_1.prisma.ticket.updateMany({
-                    where: {
-                        releasePlanId: id,
-                        tenantId: req.tenantId,
-                    },
-                    data: {
-                        releasePlanId: null,
-                        updatedAt: new Date(),
-                    },
-                });
-            }
             await database_1.prisma.releasePlan.delete({
                 where: { id },
             });
             res.status(200).json({
                 success: true,
-                message: "Release plan deleted successfully",
+                message: "Plan deleted successfully",
             });
         }
         catch (error) {
-            console.error("Delete release plan error:", error);
-            if (error instanceof types_1.NotFoundError) {
-                res.status(404).json({
-                    success: false,
-                    error: error.message,
-                });
-                return;
-            }
+            console.error("Delete plan error:", error);
             res.status(500).json({
                 success: false,
-                error: "Failed to delete release plan",
+                error: "Failed to delete plan",
             });
         }
     }
     /**
-     * Get release plans by project (tenant-aware)
+     * Start a Sprint (tenant-aware)
      */
-    static async getReleasePlansByProject(req, res) {
+    static async startSprint(req, res) {
         try {
             if (!req.tenantId || !req.user) {
                 res.status(400).json({
@@ -604,485 +440,443 @@ class ReleasePlansController {
                 });
                 return;
             }
-            const { projectId } = req.params;
-            // Validate project exists and belongs to tenant
-            const project = await database_1.prisma.project.findFirst({
+            const { id } = req.params;
+            const sprint = await database_1.prisma.releasePlan.findFirst({
+                where: { id, tenantId: req.tenantId },
+            });
+            if (!sprint) {
+                throw new types_1.NotFoundError("Sprint not found");
+            }
+            if (sprint.type !== "sprint_plan") {
+                res.status(400).json({
+                    success: false,
+                    error: "Only sprint plans can be started",
+                });
+                return;
+            }
+            if (sprint.status === "active") {
+                res.status(400).json({
+                    success: false,
+                    error: "Sprint is already active",
+                });
+                return;
+            }
+            if (sprint.status === "completed") {
+                res.status(400).json({
+                    success: false,
+                    error: "Completed sprints cannot be restarted",
+                });
+                return;
+            }
+            // Check for other active sprints in the same project
+            const activeSprint = await database_1.prisma.releasePlan.findFirst({
                 where: {
-                    id: projectId,
+                    projectId: sprint.projectId,
                     tenantId: req.tenantId,
+                    type: "sprint_plan",
+                    status: "active",
+                    id: { not: id },
                 },
             });
-            if (!project) {
-                throw new types_1.NotFoundError("Project not found in this tenant");
+            if (activeSprint) {
+                res.status(400).json({
+                    success: false,
+                    error: "Another sprint is already active in this project. Complete it first.",
+                    data: { activeSprint },
+                });
+                return;
             }
-            const releasePlans = await database_1.prisma.releasePlan.findMany({
-                where: {
-                    projectId,
-                    tenantId: req.tenantId,
+            // Start the sprint
+            const updatedSprint = await database_1.prisma.releasePlan.update({
+                where: { id },
+                data: {
+                    status: "active",
+                    startedAt: new Date(),
+                    updatedAt: new Date(),
                 },
-                include: {
-                    createdBy: {
-                        select: { id: true, name: true, workEmail: true },
-                    },
-                },
-                orderBy: { createdAt: "desc" },
             });
             res.status(200).json({
                 success: true,
-                data: {
-                    project,
-                    releasePlans,
-                    total: releasePlans.length,
+                data: updatedSprint,
+                message: "Sprint started successfully",
+            });
+        }
+        catch (error) {
+            console.error("Start sprint error:", error);
+            if (error instanceof types_1.NotFoundError) {
+                res.status(404).json({ success: false, error: error.message });
+                return;
+            }
+            res.status(500).json({ success: false, error: "Failed to start sprint" });
+        }
+    }
+    /**
+     * Complete a Sprint (tenant-aware)
+     * - Archives completed tickets (keeps them with sprint for history)
+     * - Returns incomplete tickets to backlog
+     */
+    static async completeSprint(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { id } = req.params;
+            const sprint = await database_1.prisma.releasePlan.findFirst({
+                where: { id, tenantId: req.tenantId },
+            });
+            if (!sprint) {
+                throw new types_1.NotFoundError("Sprint not found");
+            }
+            if (sprint.type !== "sprint_plan") {
+                res.status(400).json({
+                    success: false,
+                    error: "Only sprint plans can be completed",
+                });
+                return;
+            }
+            if (sprint.status !== "active") {
+                res.status(400).json({
+                    success: false,
+                    error: "Only active sprints can be completed",
+                });
+                return;
+            }
+            // Fetch all sprint tickets with full details
+            const tickets = await database_1.prisma.ticket.findMany({
+                where: { sprintPlanId: id, tenantId: req.tenantId },
+                select: { id: true, status: true, storyPoint: true },
+            });
+            // Separate completed and incomplete tickets
+            const completedTickets = tickets.filter((t) => t.status === "completed");
+            const incompleteTickets = tickets.filter((t) => t.status !== "completed");
+            const completedPoints = completedTickets.reduce((sum, t) => sum + (t.storyPoint || 0), 0);
+            // Use transaction for atomicity
+            await database_1.prisma.$transaction([
+                // 1. Complete the sprint
+                database_1.prisma.releasePlan.update({
+                    where: { id },
+                    data: {
+                        status: "completed",
+                        completedAt: new Date(),
+                        completedPoints,
+                        updatedAt: new Date(),
+                    },
+                }),
+                // 2. Archive completed tickets (keep sprintPlanId for historical record)
+                database_1.prisma.ticket.updateMany({
+                    where: {
+                        sprintPlanId: id,
+                        tenantId: req.tenantId,
+                        status: "completed",
+                    },
+                    data: {
+                        isArchived: true,
+                        archivedAt: new Date(),
+                        archivedById: req.user.id,
+                        updatedAt: new Date(),
+                        // sprintPlanId stays set for sprint history
+                    },
+                }),
+                // 3. Return incomplete tickets to backlog
+                database_1.prisma.ticket.updateMany({
+                    where: {
+                        sprintPlanId: id,
+                        tenantId: req.tenantId,
+                        status: { notIn: ["completed"] },
+                    },
+                    data: {
+                        sprintPlanId: null, // Remove sprint association
+                        isArchived: false, // Ensure not archived
+                        updatedAt: new Date(),
+                    },
+                }),
+            ]);
+            // Fetch updated sprint
+            const updatedSprint = await database_1.prisma.releasePlan.findUnique({
+                where: { id },
+            });
+            res.status(200).json({
+                success: true,
+                data: updatedSprint,
+                message: "Sprint completed successfully",
+                summary: {
+                    totalTickets: tickets.length,
+                    completedTickets: completedTickets.length,
+                    archivedTickets: completedTickets.length,
+                    returnedToBacklog: incompleteTickets.length,
+                    completedPoints,
                 },
             });
         }
         catch (error) {
-            console.error("Get release plans by project error:", error);
+            console.error("Complete sprint error:", error);
             if (error instanceof types_1.NotFoundError) {
-                res.status(404).json({
-                    success: false,
-                    error: error.message,
-                });
+                res.status(404).json({ success: false, error: error.message });
                 return;
             }
-            res.status(500).json({
-                success: false,
-                error: "Failed to fetch release plans by project",
-            });
+            res.status(500).json({ success: false, error: "Failed to complete sprint" });
         }
     }
+    // -- Auxiliary methods --
     /**
-     * Get active release plans (tenant-aware)
+     * Get active release plans
      */
     static async getActiveReleasePlans(req, res) {
         try {
             if (!req.tenantId || !req.user) {
                 res.status(400).json({
                     success: false,
-                    error: "Tenant context and authentication required",
+                    error: "Tenant context required",
                 });
                 return;
             }
-            const releasePlans = await database_1.prisma.releasePlan.findMany({
-                where: {
-                    tenantId: req.tenantId,
-                    status: { in: ["planning", "active"] },
-                    OR: [{ releaseDate: null }, { releaseDate: { gte: new Date() } }],
-                },
-                include: {
-                    project: {
-                        select: { id: true, name: true, code: true },
-                    },
-                    createdBy: {
-                        select: { id: true, name: true, workEmail: true },
-                    },
-                },
-                orderBy: [{ releaseDate: "asc" }, { createdAt: "desc" }],
+            const { projectId } = req.query;
+            const where = { tenantId: req.tenantId, status: "active" };
+            if (projectId) {
+                where.projectId = projectId;
+            }
+            const activePlans = await database_1.prisma.releasePlan.findMany({
+                where,
+                include: { project: { select: { id: true, name: true, code: true } } },
+                orderBy: { updatedAt: "desc" },
             });
-            res.status(200).json({
-                success: true,
-                data: releasePlans,
-            });
+            res.status(200).json({ success: true, data: activePlans });
         }
-        catch (error) {
-            console.error("Get active release plans error:", error);
-            res.status(500).json({
-                success: false,
-                error: "Failed to fetch active release plans",
-            });
+        catch (e) {
+            res.status(500).json({ success: false, error: "Error" });
         }
     }
     /**
-     * Get release plan statistics (tenant-aware)
+     * Get available sprints (active + planning) for a project
+     * Used for sprint assignment in buckets, trash, etc.
      */
+    static async getAvailableSprints(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context required",
+                });
+                return;
+            }
+            const { projectId } = req.query;
+            if (!projectId) {
+                res.status(400).json({
+                    success: false,
+                    error: "projectId is required",
+                });
+                return;
+            }
+            const sprints = await database_1.prisma.releasePlan.findMany({
+                where: {
+                    projectId: projectId,
+                    tenantId: req.tenantId,
+                    type: 'sprint_plan',
+                    status: {
+                        in: ['active', 'planning']
+                    }
+                },
+                select: {
+                    id: true,
+                    version: true,
+                    status: true,
+                    startDate: true,
+                    endDate: true,
+                    goal: true,
+                    createdAt: true,
+                },
+                orderBy: [
+                    { status: 'desc' }, // Active first
+                    { createdAt: 'desc' }
+                ]
+            });
+            res.status(200).json({ success: true, data: sprints });
+        }
+        catch (error) {
+            console.error("Get available sprints error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to fetch available sprints",
+            });
+        }
+    }
     static async getReleasePlanStats(req, res) {
         try {
-            if (!req.tenantId || !req.user) {
-                res.status(400).json({
-                    success: false,
-                    error: "Tenant context and authentication required",
-                });
+            if (!req.tenantId) {
+                res.status(400).json({ success: false, error: "Tenant required" });
                 return;
             }
-            // Overall statistics
-            const overallStats = await database_1.prisma.releasePlan.groupBy({
-                by: ["status"],
-                where: { tenantId: req.tenantId },
-                _count: true,
-            });
-            // Project-wise statistics - simplified to avoid circular reference
-            const projectStats = await database_1.prisma.releasePlan.findMany({
-                where: { tenantId: req.tenantId },
-                select: {
-                    projectId: true,
-                    status: true,
-                    project: {
-                        select: { name: true },
-                    },
-                },
-            });
-            // Format overall stats
-            const statusSummary = {
-                planning: 0,
-                active: 0,
-                completed: 0,
-                cancelled: 0,
-                total: 0,
-            };
-            overallStats.forEach((item) => {
-                const count = item._count || 0;
-                statusSummary.total += count;
-                switch (item.status) {
-                    case "planning":
-                        statusSummary.planning = count;
-                        break;
-                    case "active":
-                        statusSummary.active = count;
-                        break;
-                    case "completed":
-                        statusSummary.completed = count;
-                        break;
-                    case "cancelled":
-                        statusSummary.cancelled = count;
-                        break;
+            // Get counts of active plans
+            const [releasePlans, sprintPlans, demoPlans] = await Promise.all([
+                database_1.prisma.releasePlan.count({ where: { tenantId: req.tenantId, type: 'release_plan', status: 'active' } }),
+                database_1.prisma.releasePlan.count({ where: { tenantId: req.tenantId, type: 'sprint_plan', status: 'active' } }),
+                database_1.prisma.releasePlan.count({ where: { tenantId: req.tenantId, type: 'demo_plan', status: 'active' } })
+            ]);
+            res.status(200).json({
+                success: true,
+                data: {
+                    activeReleasePlans: releasePlans,
+                    activeSprintPlans: sprintPlans,
+                    activeDemoPlans: demoPlans
                 }
             });
-            // Get projects with their release plan counts
-            const projectsWithCounts = await database_1.prisma.project.findMany({
-                where: { tenantId: req.tenantId },
-                select: {
-                    id: true,
-                    name: true,
-                    code: true,
-                    _count: {
-                        select: {
-                            releasePlans: true,
-                        },
-                    },
-                },
-                orderBy: {
-                    releasePlans: {
-                        _count: "desc",
-                    },
-                },
-            });
-            const stats = {
-                overview: statusSummary,
-                projectBreakdown: projectsWithCounts,
-                rawProjectStats: projectStats,
-            };
-            res.status(200).json({
-                success: true,
-                data: stats,
-            });
         }
-        catch (error) {
-            console.error("Get release plan stats error:", error);
-            res.status(500).json({
-                success: false,
-                error: "Failed to fetch release plan statistics",
-            });
+        catch (e) {
+            console.error("Stats error", e);
+            res.status(500).json({ success: false, error: "Error fetching stats" });
         }
     }
-    /**
-     * Get tickets by project for release plan assignment (tenant-aware)
-     * Simpler version without release plan ID requirement
-     */
+    static async getReleasePlansByProject(req, res) {
+        try {
+            if (!req.tenantId)
+                return;
+            const { projectId } = req.params;
+            const plans = await database_1.prisma.releasePlan.findMany({
+                where: { projectId, tenantId: req.tenantId },
+                orderBy: { createdAt: 'desc' }
+            });
+            res.status(200).json({ success: true, data: plans });
+        }
+        catch (e) {
+            res.status(500).json({ success: false, error: "Error" });
+        }
+    }
     static async getProjectTickets(req, res) {
         try {
-            if (!req.tenantId || !req.user) {
-                res.status(400).json({
-                    success: false,
-                    error: "Tenant context and authentication required",
-                });
+            if (!req.tenantId)
                 return;
-            }
             const { projectId } = req.params;
-            const { search, limit = 20 } = req.query;
-            // Validate project exists and belongs to tenant
-            const project = await database_1.prisma.project.findFirst({
-                where: {
-                    id: projectId,
-                    tenantId: req.tenantId,
-                },
-            });
-            if (!project) {
-                throw new types_1.NotFoundError("Project not found in this tenant");
-            }
-            // Build filter query
-            const where = {
-                projectId,
-                tenantId: req.tenantId,
-            };
-            // Add search functionality
-            if (search) {
-                where.OR = [
-                    { ticketNumber: { contains: search, mode: "insensitive" } },
-                    { title: { contains: search, mode: "insensitive" } },
-                    { description: { contains: search, mode: "insensitive" } },
-                ];
-            }
+            const { search, limit = 50 } = req.query;
+            const where = { projectId, tenantId: req.tenantId };
+            if (search)
+                where.title = { contains: String(search), mode: 'insensitive' };
             const tickets = await database_1.prisma.ticket.findMany({
                 where,
-                select: {
-                    id: true,
-                    ticketNumber: true,
-                    title: true,
-                    status: true,
-                    priority: true,
-                    releasePlanId: true,
-                    createdAt: true,
-                    assignee: {
-                        select: { id: true, name: true, workEmail: true },
-                    },
-                    createdBy: {
-                        select: { id: true, name: true, workEmail: true },
-                    },
-                },
-                orderBy: { createdAt: "desc" },
                 take: Number(limit),
+                select: { id: true, ticketNumber: true, title: true, status: true, priority: true }
             });
-            res.status(200).json({
-                success: true,
-                data: tickets,
-            });
+            res.status(200).json({ success: true, data: tickets });
         }
-        catch (error) {
-            console.error("Get project tickets error:", error);
-            if (error instanceof types_1.NotFoundError) {
-                res.status(404).json({
-                    success: false,
-                    error: error.message,
-                });
-                return;
-            }
-            res.status(500).json({
-                success: false,
-                error: "Failed to fetch project tickets",
-            });
+        catch (e) {
+            res.status(500).json({ success: false, error: "Error" });
         }
     }
-    /**
-     * Get tickets available for assignment to release plan (tenant-aware)
-     */
     static async getAvailableTickets(req, res) {
         try {
-            if (!req.tenantId || !req.user) {
-                res.status(400).json({
-                    success: false,
-                    error: "Tenant context and authentication required",
-                });
+            if (!req.tenantId)
                 return;
-            }
-            const { projectId } = req.params;
-            const { search, limit = 10, excludeReleasePlan } = req.query;
-            // Validate project exists and belongs to tenant
-            const project = await database_1.prisma.project.findFirst({
-                where: {
-                    id: projectId,
-                    tenantId: req.tenantId,
-                },
-            });
-            if (!project) {
-                throw new types_1.NotFoundError("Project not found in this tenant");
-            }
-            // Build filter query
-            const where = {
-                projectId,
-                tenantId: req.tenantId,
-            };
-            // Exclude tickets already assigned to the current release plan being edited
-            if (excludeReleasePlan) {
-                where.releasePlanId = { not: excludeReleasePlan };
-            }
-            // Add search functionality
+            const { projectId } = req.params; // Make sure route expects param or query
+            const { search, limit = 50, excludeReleasePlan } = req.query;
+            const where = { projectId, tenantId: req.tenantId };
             if (search) {
                 where.OR = [
-                    { title: { contains: search, mode: "insensitive" } },
-                    { description: { contains: search, mode: "insensitive" } },
+                    { title: { contains: String(search), mode: 'insensitive' } },
+                    { ticketNumber: { contains: String(search), mode: 'insensitive' } }
                 ];
             }
+            // This is tricky. If we select "excludeReleasePlan", we usually mean "show tickets NOT in this plan".
+            // BUT, a ticket can be in Release A, Sprint B, Demo C.
+            // If I am editing Sprint B, I want to see tickets that are NOT in Sprint B (or any *other* sprint?? usually just *this* sprint).
+            // The UI usually filters out `selectedTickets` purely on frontend if they are already in list.
+            // But for backend query, we might want to exclude.
+            // Given complexity, we will return ALL project tickets for now (filtered by search) and let FE exclude the ones it already has.
+            // OR, excluding means "tickets not assigned to ANY release plan"?
+            // No, with multi-plan, a ticket can be in many.
             const tickets = await database_1.prisma.ticket.findMany({
                 where,
-                select: {
-                    id: true,
-                    title: true,
-                    status: true,
-                    priority: true,
-                    createdAt: true,
-                    assignee: {
-                        select: { id: true, name: true, workEmail: true },
-                    },
-                    createdBy: {
-                        select: { id: true, name: true, workEmail: true },
-                    },
-                },
-                orderBy: { createdAt: "desc" },
                 take: Number(limit),
+                select: {
+                    id: true, ticketNumber: true, title: true, status: true, priority: true, assignee: { select: { id: true, name: true } }
+                }
             });
-            res.status(200).json({
-                success: true,
-                data: tickets,
-            });
+            res.status(200).json({ success: true, data: tickets });
         }
-        catch (error) {
-            console.error("Get available tickets error:", error);
-            if (error instanceof types_1.NotFoundError) {
-                res.status(404).json({
-                    success: false,
-                    error: error.message,
-                });
-                return;
-            }
-            res.status(500).json({
-                success: false,
-                error: "Failed to fetch available tickets",
-            });
+        catch (e) {
+            res.status(500).json({ success: false, error: "Error" });
         }
     }
-    /**
-     * Assign tickets to release plan (tenant-aware)
-     */
     static async assignTicketsToReleasePlan(req, res) {
         try {
-            if (!req.tenantId || !req.user) {
-                res.status(400).json({
-                    success: false,
-                    error: "Tenant context and authentication required",
-                });
+            if (!req.tenantId) {
+                res.status(400).json({ success: false, error: "Tenant context required" });
                 return;
             }
             const { id } = req.params;
             const { ticketIds } = req.body;
             if (!ticketIds || !Array.isArray(ticketIds) || ticketIds.length === 0) {
-                res.status(400).json({
-                    success: false,
-                    error: "Ticket IDs are required",
-                });
+                res.status(400).json({ success: false, error: "Ticket IDs required" });
                 return;
             }
-            // Validate release plan exists and belongs to tenant
-            const releasePlan = await database_1.prisma.releasePlan.findFirst({
-                where: {
-                    id,
-                    tenantId: req.tenantId,
-                },
+            const plan = await database_1.prisma.releasePlan.findUnique({
+                where: { id, tenantId: req.tenantId }
             });
-            if (!releasePlan) {
-                throw new types_1.NotFoundError("Release plan not found in this tenant");
+            if (!plan) {
+                res.status(404).json({ success: false, error: "Plan not found" });
+                return;
             }
-            // Validate all tickets exist and belong to the same project and tenant
-            const tickets = await database_1.prisma.ticket.findMany({
+            const updateData = { updatedAt: new Date() };
+            if (plan.type === 'sprint_plan')
+                updateData.sprintPlanId = id;
+            else if (plan.type === 'demo_plan')
+                updateData.demoPlanId = id;
+            else
+                updateData.releasePlanId = id;
+            await database_1.prisma.ticket.updateMany({
                 where: {
                     id: { in: ticketIds },
-                    projectId: releasePlan.projectId,
-                    tenantId: req.tenantId,
+                    tenantId: req.tenantId
                 },
+                data: updateData
             });
-            if (tickets.length !== ticketIds.length) {
-                throw new types_1.ValidationError("Some tickets not found or do not belong to the same project");
-            }
-            // Assign tickets to release plan
-            const result = await database_1.prisma.ticket.updateMany({
-                where: {
-                    id: { in: ticketIds },
-                    tenantId: req.tenantId,
-                },
-                data: {
-                    releasePlanId: id,
-                    updatedAt: new Date(),
-                },
-            });
-            res.status(200).json({
-                success: true,
-                message: `${result.count} tickets assigned to release plan successfully`,
-                data: { assignedCount: result.count },
-            });
+            res.status(200).json({ success: true, message: "Tickets assigned successfully" });
         }
         catch (error) {
-            console.error("Assign tickets to release plan error:", error);
-            if (error instanceof types_1.NotFoundError) {
-                res.status(404).json({
-                    success: false,
-                    error: error.message,
-                });
-                return;
-            }
-            if (error instanceof types_1.ValidationError) {
-                res.status(400).json({
-                    success: false,
-                    error: error.message,
-                });
-                return;
-            }
-            res.status(500).json({
-                success: false,
-                error: "Failed to assign tickets to release plan",
-            });
+            console.error("Assign tickets error:", error);
+            res.status(500).json({ success: false, error: "Failed to assign tickets" });
         }
     }
-    /**
-     * Remove tickets from release plan (tenant-aware)
-     */
     static async removeTicketsFromReleasePlan(req, res) {
         try {
-            if (!req.tenantId || !req.user) {
-                res.status(400).json({
-                    success: false,
-                    error: "Tenant context and authentication required",
-                });
+            if (!req.tenantId) {
+                res.status(400).json({ success: false, error: "Tenant context required" });
                 return;
             }
             const { id } = req.params;
             const { ticketIds } = req.body;
             if (!ticketIds || !Array.isArray(ticketIds) || ticketIds.length === 0) {
-                res.status(400).json({
-                    success: false,
-                    error: "Ticket IDs are required",
-                });
+                res.status(400).json({ success: false, error: "Ticket IDs required" });
                 return;
             }
-            // Validate release plan exists and belongs to tenant
-            const releasePlan = await database_1.prisma.releasePlan.findFirst({
-                where: {
-                    id,
-                    tenantId: req.tenantId,
-                },
+            const plan = await database_1.prisma.releasePlan.findUnique({
+                where: { id, tenantId: req.tenantId }
             });
-            if (!releasePlan) {
-                throw new types_1.NotFoundError("Release plan not found in this tenant");
+            if (!plan) {
+                res.status(404).json({ success: false, error: "Plan not found" });
+                return;
             }
-            // Remove tickets from release plan
-            const result = await database_1.prisma.ticket.updateMany({
+            const updateData = { updatedAt: new Date() };
+            if (plan.type === 'sprint_plan')
+                updateData.sprintPlanId = null;
+            else if (plan.type === 'demo_plan')
+                updateData.demoPlanId = null;
+            else
+                updateData.releasePlanId = null;
+            await database_1.prisma.ticket.updateMany({
                 where: {
                     id: { in: ticketIds },
-                    releasePlanId: id,
-                    tenantId: req.tenantId,
+                    tenantId: req.tenantId
                 },
-                data: {
-                    releasePlanId: null,
-                    updatedAt: new Date(),
-                },
+                data: updateData
             });
-            res.status(200).json({
-                success: true,
-                message: `${result.count} tickets removed from release plan successfully`,
-                data: { removedCount: result.count },
-            });
+            res.status(200).json({ success: true, message: "Tickets removed successfully" });
         }
         catch (error) {
-            console.error("Remove tickets from release plan error:", error);
-            if (error instanceof types_1.NotFoundError) {
-                res.status(404).json({
-                    success: false,
-                    error: error.message,
-                });
-                return;
-            }
-            res.status(500).json({
-                success: false,
-                error: "Failed to remove tickets from release plan",
-            });
+            console.error("Remove tickets error:", error);
+            res.status(500).json({ success: false, error: "Failed to remove tickets" });
         }
     }
 }

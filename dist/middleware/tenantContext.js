@@ -14,6 +14,7 @@ const resolveTenant = async (req, res, next) => {
     try {
         let tenantIdentifier;
         tenantIdentifier = req.headers["x-tenant-id"];
+        // tenantIdentifier = "b85c1b5b-77a3-4281-9147-51d6bd3ee94d"
         if (!tenantIdentifier) {
             tenantIdentifier = req.headers["x-tenant-subdomain"];
         }
@@ -110,6 +111,7 @@ const optionalTenantContext = async (req, res, next) => {
         let tenantIdentifier;
         // Strategy 1: From X-Tenant-ID header (prioritize for cross-domain architecture)
         tenantIdentifier = req.headers["x-tenant-id"];
+        // tenantIdentifier = "b85c1b5b-77a3-4281-9147-51d6bd3ee94d"
         // Strategy 2: From X-Tenant-Subdomain header
         if (!tenantIdentifier) {
             tenantIdentifier = req.headers["x-tenant-subdomain"];
