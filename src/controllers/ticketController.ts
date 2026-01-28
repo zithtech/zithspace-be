@@ -1006,6 +1006,9 @@ export class TicketController {
           endDate: true,
           dueDate: true,
           parentId: true,
+          sprintPlanId: true,  // CRITICAL: Include sprint assignment
+          releasePlanId: true,
+          demoPlanId: true,
           createdAt: true,
           updatedAt: true,
           // Relations
