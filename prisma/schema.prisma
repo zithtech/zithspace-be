@@ -34,6 +34,8 @@ model Tenant {
   ticketComments      TicketComment[]
   ticketRelatedLinks  TicketRelatedLink[]
   ticketWorkflowSteps TicketWorkflowStep[]
+  ticketDevelopmentInfo TicketDevelopmentInfo[]
+  ticketPullRequests  TicketPullRequest[]
   tickets             Ticket[]
   transactions        Transaction[]
   users               User[]
@@ -235,6 +237,8 @@ model Ticket {
   relatedLinks        TicketRelatedLink[]
   workflowSteps       TicketWorkflowStep[]
   documenthub         DocumentHub[]
+  developmentInfo     TicketDevelopmentInfo?
+  pullRequests        TicketPullRequest[]
   assignee            User?                @relation("TicketAssignee", fields: [assigneeId], references: [id])
   createdBy           User                 @relation("TicketCreator", fields: [createdById], references: [id])
   project             Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -268,6 +272,45 @@ model Ticket {
   @@index([projectId, isDeleted])
   @@index([isDeleted, deletedAt])
   @@map("tickets")
+}
+
+model TicketDevelopmentInfo {
+  id             String   @id @default(uuid())
+  tenantId       String   @map("tenant_id")
+  ticketId       String   @unique @map("ticket_id")
+  repositoryName String?  @map("repository_name")
+  repositoryUrl  String?  @map("repository_url")
+  branchName     String?  @map("branch_name")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  
+  // Relations
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ticket         Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([ticketId])
+  @@map("ticket_development_info")
+}
+
+model TicketPullRequest {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  ticketId    String   @map("ticket_id")
+  title       String
+  url         String
+  prNumber    Int?     @map("pr_number")
+  status      String   @default("open") // open, merged, closed
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  // Relations
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ticket      Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([ticketId])
+  @@map("ticket_pull_requests")
 }
 
 model TicketWorkflowStep {
