@@ -1,5 +1,5 @@
-import { Response } from 'express';
-import { AuthRequest } from '@/types';
+import { Response } from "express";
+import { AuthRequest } from "@/types";
 export declare class DailyUpdateController {
     /**
      * Create new daily status update
@@ -17,17 +17,11 @@ export declare class DailyUpdateController {
      * Get today's updates (role-based)
      */
     static getTodayUpdates(req: AuthRequest, res: Response): Promise<void>;
-    /**
-     * Check if user has submitted update today
-     */
     static checkTodaySubmission(req: AuthRequest, res: Response): Promise<void>;
     /**
      * Get specific daily update by ID
      */
     static getUpdateById(req: AuthRequest, res: Response): Promise<void>;
-    /**
-     * Update daily status update (same day only)
-     */
     static updateUpdate(req: AuthRequest, res: Response): Promise<void>;
     /**
      * Delete daily status update

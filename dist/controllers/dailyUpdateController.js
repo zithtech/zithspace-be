@@ -12,16 +12,19 @@ class DailyUpdateController {
             if (!req.tenantId || !req.user) {
                 res.status(400).json({
                     success: false,
-                    error: 'Tenant context and authentication required',
+                    error: "Tenant context and authentication required",
                 });
                 return;
             }
-            const { mood, totalHoursWorked, projectUpdates, generalNotes } = req.body;
+            console.log("request checking", req.body);
+            const { mood, totalHoursWorked, projectUpdates, generalNotes, date } = req.body;
             // Validation
-            if (!projectUpdates || !Array.isArray(projectUpdates) || projectUpdates.length === 0) {
+            if (!projectUpdates ||
+                !Array.isArray(projectUpdates) ||
+                projectUpdates.length === 0) {
                 res.status(400).json({
                     success: false,
-                    error: 'At least one project update is required',
+                    error: "At least one project update is required",
                 });
                 return;
             }
@@ -30,7 +33,7 @@ class DailyUpdateController {
                 if (!update.projectId) {
                     res.status(400).json({
                         success: false,
-                        error: 'Project ID is required for each update',
+                        error: "Project ID is required for each update",
                     });
                     return;
                 }
@@ -38,7 +41,7 @@ class DailyUpdateController {
                 if (!update.startTime || !update.endTime) {
                     res.status(400).json({
                         success: false,
-                        error: 'Start time and end time are required for each project',
+                        error: "Start time and end time are required for each project",
                     });
                     return;
                 }
@@ -48,15 +51,17 @@ class DailyUpdateController {
                 if (endTime <= startTime) {
                     res.status(400).json({
                         success: false,
-                        error: 'End time must be after start time',
+                        error: "End time must be after start time",
                     });
                     return;
                 }
                 // Validate tasks array
-                if (!update.tasks || !Array.isArray(update.tasks) || update.tasks.length === 0) {
+                if (!update.tasks ||
+                    !Array.isArray(update.tasks) ||
+                    update.tasks.length === 0) {
                     res.status(400).json({
                         success: false,
-                        error: 'At least one task is required for each project',
+                        error: "At least one task is required for each project",
                     });
                     return;
                 }
@@ -64,7 +69,7 @@ class DailyUpdateController {
                 for (let i = 0; i < update.tasks.length; i++) {
                     const task = update.tasks[i];
                     // Validate task type
-                    if (!task.type || !['ticket', 'manual'].includes(task.type)) {
+                    if (!task.type || !["ticket", "manual"].includes(task.type)) {
                         res.status(400).json({
                             success: false,
                             error: `Task #${i + 1}: Invalid task type. Must be 'ticket' or 'manual'`,
@@ -72,7 +77,7 @@ class DailyUpdateController {
                         return;
                     }
                     // Validate ticket-based task
-                    if (task.type === 'ticket' && !task.ticketId) {
+                    if (task.type === "ticket" && !task.ticketId) {
                         res.status(400).json({
                             success: false,
                             error: `Task #${i + 1}: Ticket ID is required for ticket-based tasks`,
@@ -80,7 +85,8 @@ class DailyUpdateController {
                         return;
                     }
                     // Validate manual task
-                    if (task.type === 'manual' && (!task.description || !task.description.trim())) {
+                    if (task.type === "manual" &&
+                        (!task.description || !task.description.trim())) {
                         res.status(400).json({
                             success: false,
                             error: `Task #${i + 1}: Description is required for manual tasks`,
@@ -95,7 +101,14 @@ class DailyUpdateController {
                         });
                         return;
                     }
-                    const validStatuses = ['pending', 'in_progress', 'dev_complete', 'in_testing', 'pushed_to_staging', 'pushed_to_production'];
+                    const validStatuses = [
+                        "pending",
+                        "in_progress",
+                        "dev_complete",
+                        "in_testing",
+                        "pushed_to_staging",
+                        "pushed_to_production",
+                    ];
                     if (!validStatuses.includes(task.status)) {
                         res.status(400).json({
                             success: false,
@@ -107,7 +120,8 @@ class DailyUpdateController {
                 // Calculate hours worked if not provided
                 if (!update.hoursWorked) {
                     const diffMs = endTime.getTime() - startTime.getTime();
-                    update.hoursWorked = Math.round((diffMs / (1000 * 60 * 60)) * 100) / 100;
+                    update.hoursWorked =
+                        Math.round((diffMs / (1000 * 60 * 60)) * 100) / 100;
                 }
             }
             // Calculate total hours worked
@@ -118,16 +132,53 @@ class DailyUpdateController {
             today.setHours(0, 0, 0, 0);
             const result = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
                 // Check if user already submitted today
-                const existing = await client.statusUpdate.findFirst({
+                // const existing = await client.statusUpdate.findFirst({
+                //   where: {
+                //     userId: req.user!.id,
+                //     tenantId: req.tenantId,
+                //     date: today,
+                //   },
+                // });
+                // if (existing) {
+                //   throw new ValidationError('You have already submitted an update for today. Please edit the existing one.');
+                // }
+                // const start = new Date(date);
+                // start.setHours(0, 0, 0, 0);
+                // const end = new Date(date);
+                // end.setHours(23, 59, 59, 999);
+                // const updates = await client.statusUpdate.findMany({
+                //   where: {
+                //     userId: req.user!.id,
+                //     tenantId: req.tenantId,
+                //     date: {
+                //       gte: dayjs(date).startOf("day").toDate(),
+                //       lte: dayjs(date).endOf("day").toDate(),
+                //     },
+                //   },
+                //   orderBy: { submittedAt: "asc" },
+                // });
+                function startOfDay(date) {
+                    const d = new Date(date);
+                    d.setHours(0, 0, 0, 0);
+                    return d;
+                }
+                function endOfDay(date) {
+                    const d = new Date(date);
+                    d.setHours(23, 59, 59, 999);
+                    return d;
+                }
+                const today = new Date(); // this is a valid Date object
+                const updates = await client.statusUpdate.findMany({
                     where: {
                         userId: req.user.id,
                         tenantId: req.tenantId,
-                        date: today,
+                        date: {
+                            gte: startOfDay(today),
+                            lte: endOfDay(today),
+                        },
                     },
+                    orderBy: { submittedAt: "asc" },
                 });
-                if (existing) {
-                    throw new types_1.ValidationError('You have already submitted an update for today. Please edit the existing one.');
-                }
                 // Verify all projects exist and user has access
                 for (const update of projectUpdates) {
                     const project = await client.project.findFirst({
@@ -151,12 +202,31 @@ class DailyUpdateController {
                         throw new types_1.ValidationError(`You are not a member of project: ${project.name}`);
                     }
                 }
-                // Create daily status update
+                const now = new Date();
+                // // submitted working date (from frontend or today)
+                console.log("date****", date);
+                const submittedDate = date ? new Date(date) : new Date();
+                submittedDate.setHours(0, 0, 0, 0);
+                console.log("submittedDate", submittedDate);
+                console.log("date", date);
+                // // today's date
+                const todaydate = new Date();
+                todaydate.setHours(0, 0, 0, 0);
+                const tdy = new Date();
+                // // todaydate.setHours(0, 0, 0, 0);
+                const isMissed = submittedDate < todaydate;
+                console.log("isMissed", isMissed);
+                const missedUpdateAt = isMissed ? submittedDate : null;
+                console.log("missedUpdateAt ", missedUpdateAt);
+                // Working date selected by user
                 const statusUpdate = await client.statusUpdate.create({
                     data: {
                         userId: req.user.id,
                         tenantId: req.tenantId,
-                        date: today,
+                        date: submittedDate, // ✅ working day
+                        submittedAt: now, // ✅ submit time
+                        is_missed: isMissed, // ✅ FIXED
+                        missed_updateAt: missedUpdateAt,
                         mood: mood || null,
                         totalHoursWorked: totalHoursWorked || null,
                         projectUpdates: projectUpdates,
@@ -178,11 +248,11 @@ class DailyUpdateController {
             res.status(201).json({
                 success: true,
                 data: result,
-                message: 'Daily update submitted successfully',
+                message: "Daily update submitted successfully",
             });
         }
         catch (error) {
-            console.error('Create daily update error:', error);
+            console.error("Create daily update error:", error);
             if (error instanceof types_1.ValidationError) {
                 res.status(400).json({
                     success: false,
@@ -192,7 +262,7 @@ class DailyUpdateController {
             }
             res.status(500).json({
                 success: false,
-                error: 'Failed to create daily update',
+                error: "Failed to create daily update",
             });
         }
     }
@@ -204,7 +274,7 @@ class DailyUpdateController {
             if (!req.tenantId || !req.user) {
                 res.status(400).json({
                     success: false,
-                    error: 'Tenant context and authentication required',
+                    error: "Tenant context and authentication required",
                 });
                 return;
             }
@@ -213,6 +283,7 @@ class DailyUpdateController {
                 userId: req.user.id,
                 tenantId: req.tenantId,
             };
+            // console.log("reqid",req);
             // Date range filter (priority over single date)
             if (startDate && endDate) {
                 const start = new Date(startDate);
@@ -243,7 +314,7 @@ class DailyUpdateController {
                             },
                         },
                     },
-                    orderBy: { date: 'desc' },
+                    orderBy: { date: "desc" },
                     take: Number(limit),
                 });
             });
@@ -253,10 +324,10 @@ class DailyUpdateController {
             });
         }
         catch (error) {
-            console.error('Get my updates error:', error);
+            console.error("Get my updates error:", error);
             res.status(500).json({
                 success: false,
-                error: 'Failed to fetch your updates',
+                error: "Failed to fetch your updates",
             });
         }
     }
@@ -268,7 +339,7 @@ class DailyUpdateController {
             if (!req.tenantId || !req.user) {
                 res.status(400).json({
                     success: false,
-                    error: 'Tenant context and authentication required',
+                    error: "Tenant context and authentication required",
                 });
                 return;
             }
@@ -280,7 +351,7 @@ class DailyUpdateController {
                     select: { role: true, position: true },
                 });
                 if (!user) {
-                    throw new types_1.NotFoundError('User not found');
+                    throw new types_1.NotFoundError("User not found");
                 }
                 let where = {
                     tenantId: req.tenantId,
@@ -309,11 +380,11 @@ class DailyUpdateController {
                     where.date = today;
                 }
                 // Super Admin - can see all updates
-                if (user.role === 'super_admin') {
+                if (user.role === "super_admin") {
                     // No additional filters needed
                 }
                 // Project Manager - can see updates from their projects
-                else if (user.position === 'Project Manager') {
+                else if (user.position === "Project Manager") {
                     const managedProjects = await client.project.findMany({
                         where: {
                             tenantId: req.tenantId,
@@ -349,10 +420,11 @@ class DailyUpdateController {
                             },
                         },
                     },
-                    orderBy: { submittedAt: 'desc' },
+                    orderBy: { submittedAt: "desc" },
                 });
                 // Filter by project if PM and projectId specified
-                if (user.position === 'Project Manager' && user.role !== 'super_admin') {
+                if (user.position === "Project Manager" &&
+                    user.role !== "super_admin") {
                     const managedProjects = await client.project.findMany({
                         where: {
                             tenantId: req.tenantId,
@@ -381,7 +453,7 @@ class DailyUpdateController {
             });
         }
         catch (error) {
-            console.error('Get team updates error:', error);
+            console.error("Get team updates error:", error);
             if (error instanceof types_1.NotFoundError) {
                 res.status(404).json({
                     success: false,
@@ -391,7 +463,7 @@ class DailyUpdateController {
             }
             res.status(500).json({
                 success: false,
-                error: 'Failed to fetch team updates',
+                error: "Failed to fetch team updates",
             });
         }
     }
@@ -403,7 +475,7 @@ class DailyUpdateController {
             if (!req.tenantId || !req.user) {
                 res.status(400).json({
                     success: false,
-                    error: 'Tenant context and authentication required',
+                    error: "Tenant context and authentication required",
                 });
                 return;
             }
@@ -415,14 +487,15 @@ class DailyUpdateController {
                     select: { role: true, position: true },
                 });
                 if (!user) {
-                    throw new types_1.NotFoundError('User not found');
+                    throw new types_1.NotFoundError("User not found");
                 }
                 let where = {
                     tenantId: req.tenantId,
                     date: today,
                 };
                 // Regular users only see their own
-                if (user.role !== 'super_admin' && user.position !== 'Project Manager') {
+                if (user.role !== "super_admin" &&
+                    user.position !== "Project Manager") {
                     where.userId = req.user.id;
                 }
                 let allUpdates = await client.statusUpdate.findMany({
@@ -437,10 +510,11 @@ class DailyUpdateController {
                             },
                         },
                     },
-                    orderBy: { submittedAt: 'desc' },
+                    orderBy: { submittedAt: "desc" },
                 });
                 // Filter for Project Managers
-                if (user.position === 'Project Manager' && user.role !== 'super_admin') {
+                if (user.position === "Project Manager" &&
+                    user.role !== "super_admin") {
                     const managedProjects = await client.project.findMany({
                         where: {
                             tenantId: req.tenantId,
@@ -462,7 +536,7 @@ class DailyUpdateController {
             });
         }
         catch (error) {
-            console.error('Get today updates error:', error);
+            console.error("Get today updates error:", error);
             if (error instanceof types_1.NotFoundError) {
                 res.status(404).json({
                     success: false,
@@ -472,53 +546,31 @@ class DailyUpdateController {
             }
             res.status(500).json({
                 success: false,
-                error: 'Failed to fetch today\'s updates',
+                error: "Failed to fetch today's updates",
             });
         }
     }
-    /**
-     * Check if user has submitted update today
-     */
     static async checkTodaySubmission(req, res) {
         try {
             if (!req.tenantId || !req.user) {
                 res.status(400).json({
                     success: false,
-                    error: 'Tenant context and authentication required',
+                    error: "Tenant context and authentication required",
                 });
                 return;
             }
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const update = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                return await client.statusUpdate.findFirst({
-                    where: {
-                        userId: req.user.id,
-                        tenantId: req.tenantId,
-                        date: today,
-                    },
-                    include: {
-                        user: {
-                            select: {
-                                id: true,
-                                name: true,
-                                position: true,
-                            },
-                        },
-                    },
-                });
-            });
+            // 🔥 DISABLED CHECK – Always allow new submission
             res.status(200).json({
                 success: true,
-                submitted: !!update,
-                data: update || null,
+                submitted: false,
+                data: null,
             });
         }
         catch (error) {
-            console.error('Check today submission error:', error);
+            console.error("Check today submission error:", error);
             res.status(500).json({
                 success: false,
-                error: 'Failed to check submission status',
+                error: "Failed to check submission status",
             });
         }
     }
@@ -530,7 +582,7 @@ class DailyUpdateController {
             if (!req.tenantId || !req.user) {
                 res.status(400).json({
                     success: false,
-                    error: 'Tenant context and authentication required',
+                    error: "Tenant context and authentication required",
                 });
                 return;
             }
@@ -553,7 +605,7 @@ class DailyUpdateController {
                     },
                 });
                 if (!statusUpdate) {
-                    throw new types_1.NotFoundError('Daily update not found1');
+                    throw new types_1.NotFoundError("Daily update not found4");
                 }
                 // Check access permissions
                 const user = await client.user.findUnique({
@@ -561,18 +613,18 @@ class DailyUpdateController {
                     select: { role: true, position: true },
                 });
                 if (!user) {
-                    throw new types_1.NotFoundError('User not found');
+                    throw new types_1.NotFoundError("User not found");
                 }
                 // Owner can always see their own
                 if (statusUpdate.userId === req.user.id) {
                     return statusUpdate;
                 }
                 // Super admin can see all
-                if (user.role === 'super_admin') {
+                if (user.role === "super_admin") {
                     return statusUpdate;
                 }
                 // Project Manager can see if update includes their projects
-                if (user.position === 'Project Manager') {
+                if (user.position === "Project Manager") {
                     const managedProjects = await client.project.findMany({
                         where: {
                             tenantId: req.tenantId,
@@ -587,7 +639,7 @@ class DailyUpdateController {
                         return statusUpdate;
                     }
                 }
-                throw new types_1.ValidationError('You do not have permission to view this update');
+                throw new types_1.ValidationError("You do not have permission to view this update");
             });
             res.status(200).json({
                 success: true,
@@ -595,7 +647,7 @@ class DailyUpdateController {
             });
         }
         catch (error) {
-            console.error('Get update by ID error:', error);
+            console.error("Get update by ID error:", error);
             if (error instanceof types_1.NotFoundError || error instanceof types_1.ValidationError) {
                 res.status(error instanceof types_1.NotFoundError ? 404 : 403).json({
                     success: false,
@@ -605,19 +657,16 @@ class DailyUpdateController {
             }
             res.status(500).json({
                 success: false,
-                error: 'Failed to fetch update',
+                error: "Failed to fetch update",
             });
         }
     }
-    /**
-     * Update daily status update (same day only)
-     */
     static async updateUpdate(req, res) {
         try {
             if (!req.tenantId || !req.user) {
                 res.status(400).json({
                     success: false,
-                    error: 'Tenant context and authentication required',
+                    error: "Tenant context and authentication required",
                 });
                 return;
             }
@@ -631,28 +680,43 @@ class DailyUpdateController {
                     },
                 });
                 if (!existing) {
-                    throw new types_1.NotFoundError('Daily update not found2');
+                    throw new types_1.NotFoundError("Daily update not found5");
                 }
                 // Only owner can update
                 if (existing.userId !== req.user.id) {
-                    throw new types_1.ValidationError('You can only update your own daily updates');
+                    throw new types_1.ValidationError("You can only update your own daily updates");
                 }
                 // Check if it's the same day
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
-                const updateDate = new Date(existing.date);
-                updateDate.setHours(0, 0, 0, 0);
-                if (updateDate.getTime() !== today.getTime()) {
-                    throw new types_1.ValidationError('You can only edit today\'s update');
+                // const today = new Date();
+                // today.setHours(0, 0, 0, 0);
+                // const updateDate = new Date(existing.date);
+                // updateDate.setHours(0, 0, 0, 0);
+                // if (updateDate.getTime() !== today.getTime()) {
+                //   throw new ValidationError("You can only edit today's update");
+                // }
+                // ✅ 24 HOURS CHECK
+                // const diffHours = dayjs().diff(dayjs(existing.createdAt), "hour");
+                // if (diffHours >= 24) {
+                //   throw new ValidationError("Edit window expired (24 hours)");
+                // }
+                const diffMs = Date.now() - new Date(existing.createdAt).getTime();
+                const diffHours = diffMs / (1000 * 60 * 60);
+                if (diffHours >= 24) {
+                    throw new types_1.ValidationError("Edit window expired (24 hours)");
                 }
-                // Validate project updates if provided
+                // ✅ FIXED VALIDATION (IMPORTANT)
                 if (projectUpdates) {
                     if (!Array.isArray(projectUpdates) || projectUpdates.length === 0) {
-                        throw new types_1.ValidationError('At least one project update is required');
+                        throw new types_1.ValidationError("At least one project update is required");
                     }
                     for (const update of projectUpdates) {
-                        if (!update.projectId || !update.completedTasks || update.completedTasks.length === 0) {
-                            throw new types_1.ValidationError('Each project must have at least one completed task');
+                        if (!update.projectId) {
+                            throw new types_1.ValidationError("Project ID is required");
+                        }
+                        if (!update.tasks ||
+                            !Array.isArray(update.tasks) ||
+                            update.tasks.length === 0) {
+                            throw new types_1.ValidationError("Each project must have at least one task");
                         }
                     }
                 }
@@ -661,9 +725,13 @@ class DailyUpdateController {
                     where: { id },
                     data: {
                         mood: mood !== undefined ? mood : existing.mood,
-                        totalHoursWorked: totalHoursWorked !== undefined ? totalHoursWorked : existing.totalHoursWorked,
+                        totalHoursWorked: totalHoursWorked !== undefined
+                            ? totalHoursWorked
+                            : existing.totalHoursWorked,
                         projectUpdates: projectUpdates || existing.projectUpdates,
-                        generalNotes: generalNotes !== undefined ? generalNotes : existing.generalNotes,
+                        generalNotes: generalNotes !== undefined
+                            ? generalNotes
+                            : existing.generalNotes,
                         updatedAt: new Date(),
                     },
                     include: {
@@ -682,11 +750,11 @@ class DailyUpdateController {
             res.status(200).json({
                 success: true,
                 data: result,
-                message: 'Daily update updated successfully',
+                message: "Daily update updated successfully",
             });
         }
         catch (error) {
-            console.error('Update daily update error:', error);
+            console.error("Update daily update error:", error);
             if (error instanceof types_1.NotFoundError) {
                 res.status(404).json({
                     success: false,
@@ -703,7 +771,7 @@ class DailyUpdateController {
             }
             res.status(500).json({
                 success: false,
-                error: 'Failed to update daily update',
+                error: "Failed to update daily update",
             });
         }
     }
@@ -715,53 +783,46 @@ class DailyUpdateController {
             if (!req.tenantId || !req.user) {
                 res.status(400).json({
                     success: false,
-                    error: 'Tenant context and authentication required',
+                    error: "Tenant context and authentication required",
                 });
-                return;
             }
             const { id } = req.params;
             await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                const existing = await client.statusUpdate.findFirst({
-                    where: {
-                        id,
-                        tenantId: req.tenantId,
-                    },
+                console.log("Trying to delete ID:", id, "Tenant:", req.tenantId);
+                // ✅ Use findUnique if id is unique
+                const existing = await client.statusUpdate.findUnique({
+                    where: { id },
                 });
+                console.log("Existing record found:", existing);
                 if (!existing) {
-                    throw new types_1.NotFoundError('Daily update not found3');
+                    return res.status(404).json({
+                        success: false,
+                        error: "Daily update not found",
+                    });
                 }
-                // Only owner can delete
+                // ✅ Only owner can delete
                 if (existing.userId !== req.user.id) {
-                    throw new types_1.ValidationError('You can only delete your own daily updates');
+                    return res.status(403).json({
+                        success: false,
+                        error: "You can only delete your own daily updates",
+                    });
                 }
+                // ✅ Delete by unique id only
                 await client.statusUpdate.delete({
                     where: { id },
                 });
             });
+            // ✅ Success response
             res.status(200).json({
                 success: true,
-                message: 'Daily update deleted successfully',
+                message: "Daily update deleted successfully",
             });
         }
         catch (error) {
-            console.error('Delete daily update error:', error);
-            if (error instanceof types_1.NotFoundError) {
-                res.status(404).json({
-                    success: false,
-                    error: error.message,
-                });
-                return;
-            }
-            if (error instanceof types_1.ValidationError) {
-                res.status(403).json({
-                    success: false,
-                    error: error.message,
-                });
-                return;
-            }
+            console.error("Delete daily update error:", error);
             res.status(500).json({
                 success: false,
-                error: 'Failed to delete daily update',
+                error: "Failed to delete daily update",
             });
         }
     }
@@ -773,7 +834,7 @@ class DailyUpdateController {
             if (!req.tenantId || !req.user) {
                 res.status(400).json({
                     success: false,
-                    error: 'Tenant context and authentication required',
+                    error: "Tenant context and authentication required",
                 });
                 return;
             }
@@ -784,13 +845,16 @@ class DailyUpdateController {
                     select: { role: true, position: true },
                 });
                 if (!user) {
-                    throw new types_1.NotFoundError('User not found');
+                    throw new types_1.NotFoundError("User not found");
                 }
                 // Only PM or Super Admin can access stats
-                if (user.role !== 'super_admin' && user.position !== 'Project Manager') {
-                    throw new types_1.ValidationError('You do not have permission to view statistics');
+                if (user.role !== "super_admin" &&
+                    user.position !== "Project Manager") {
+                    throw new types_1.ValidationError("You do not have permission to view statistics");
                 }
-                const start = startDate ? new Date(startDate) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+                const start = startDate
+                    ? new Date(startDate)
+                    : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
                 const end = endDate ? new Date(endDate) : new Date();
                 start.setHours(0, 0, 0, 0);
                 end.setHours(23, 59, 59, 999);
@@ -821,7 +885,9 @@ class DailyUpdateController {
                 });
                 const submissionRate = totalUsers > 0 ? (uniqueUsers / totalUsers) * 100 : 0;
                 const totalHours = updates.reduce((sum, u) => {
-                    const hours = u.totalHoursWorked ? parseFloat(u.totalHoursWorked.toString()) : 0;
+                    const hours = u.totalHoursWorked
+                        ? parseFloat(u.totalHoursWorked.toString())
+                        : 0;
                     return sum + hours;
                 }, 0);
                 const avgHoursWorked = totalSubmissions > 0 ? totalHours / totalSubmissions : 0;
@@ -843,7 +909,7 @@ class DailyUpdateController {
             });
         }
         catch (error) {
-            console.error('Get submission stats error:', error);
+            console.error("Get submission stats error:", error);
             if (error instanceof types_1.NotFoundError || error instanceof types_1.ValidationError) {
                 res.status(error instanceof types_1.NotFoundError ? 404 : 403).json({
                     success: false,
@@ -853,7 +919,7 @@ class DailyUpdateController {
             }
             res.status(500).json({
                 success: false,
-                error: 'Failed to fetch statistics',
+                error: "Failed to fetch statistics",
             });
         }
     }
