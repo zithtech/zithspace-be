@@ -777,7 +777,7 @@ export class TicketController {
             select: { id: true, name: true, workEmail: true },
           },
           reportTo: {
-            select: { id: true, name: true, position: true },
+            select: { id: true, name: true, workEmail: true },
           },
           project: {
             select: { id: true, name: true, code: true, description: true },
@@ -858,7 +858,7 @@ export class TicketController {
         mappedUpdates.assigneeId = (updates.assignee === '' || updates.assignee === null) ? null : updates.assignee;
         delete mappedUpdates.assignee;
       }
-      if (updates.reportTo) {
+      if (updates.reportTo !== undefined) {
         mappedUpdates.reportToId = updates.reportTo;
         delete mappedUpdates.reportTo;
       }
@@ -988,9 +988,30 @@ export class TicketController {
           ...mappedUpdates,
           updatedAt: new Date(),
         },
-        include: {
+        select: {
+          // Core fields
+          id: true,
+          ticketNumber: true,
+          title: true,
+          description: true,
+          status: true,
+          priority: true,
+          type: true,
+          platform: true,
+          stack: true,
+          taskLevel: true,
+          storyPoint: true,
+          estimateHours: true,
+          startDate: true,
+          endDate: true,
+          dueDate: true,
+          parentId: true,
+          createdAt: true,
+          updatedAt: true,
+          // Relations
           createdBy: { select: { id: true, name: true, workEmail: true } },
           assignee: { select: { id: true, name: true, workEmail: true } },
+          reportTo: { select: { id: true, name: true, workEmail: true } },
           project: { select: { id: true, name: true, code: true } },
         },
       });
