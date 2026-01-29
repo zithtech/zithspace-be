@@ -24,6 +24,7 @@ model Tenant {
   dropdownOptions     DropdownOption[]
   leaves              Leave[]
   fixedHolidays       FixedHoliday[]
+  holidays            CompanyGovernmentHoliday[]
   projects            Project[]
   releasePlans        ReleasePlan[]
   shifts              Shift[]
@@ -98,6 +99,8 @@ model User {
   bucketMemberships    BucketMember[]
   createdFixedHolidays FixedHoliday[]      @relation("FixedHolidayCreator")
   updatedFixedHolidays FixedHoliday[]      @relation("FixedHolidayUpdater")
+  createdHolidays      CompanyGovernmentHoliday[]           @relation("CompanyGovernmentHolidayCreator")
+  updatedHolidays      CompanyGovernmentHoliday[]           @relation("CompanyGovernmentHolidayUpdater")
   sprintCompletionLogs SprintCompletionLog[]
   transactions         Transaction[]
   assignedShift        Shift?              @relation("UserShift", fields: [assignedShiftId], references: [id])
@@ -615,6 +618,44 @@ model FixedHoliday {
   @@map("fixed_holidays")
 }
 
+model CompanyGovernmentHoliday {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+
+  holidayName String   @map("holiday_name")
+  country     String
+  fromDate    DateTime @map("from_date")
+  toDate      DateTime @map("to_date")
+
+  baseLeave   Int      @map("base_leave")
+  extraLeave  Int      @map("extra_leave")
+  totalLeave  Int      @map("total_leave")
+
+  type        String 
+  isFloater   Boolean     @default(false) @map("is_floater")
+
+  rule        String?
+  status      HolidayStatus @default(ACTIVE)
+
+  createdById String   @map("created_by_id")
+  updatedById String?  @map("updated_by_id")
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy   User     @relation("CompanyGovernmentHolidayCreator", fields: [createdById], references: [id])
+  updatedBy   User?    @relation("CompanyGovernmentHolidayUpdater", fields: [updatedById], references: [id])
+
+  // Indexes
+  @@index([tenantId])
+  @@index([createdById])
+  @@index([tenantId, fromDate])
+
+  @@map("company_government_holidays")
+}
+
 model Bucket {
   id          String         @id @default(uuid())
   tenantId    String         @map("tenant_id")
@@ -683,6 +724,12 @@ model SprintCompletionLog {
   @@index([tenantId])
   @@index([performedAt])
   @@map("sprint_completion_logs")
+}
+
+
+enum HolidayStatus {
+  ACTIVE
+  INACTIVE
 }
 
 
