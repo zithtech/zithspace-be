@@ -241,6 +241,88 @@ export class TimesheetController {
       res.status(error instanceof NotFoundError ? 404 : 500).json({ success: false, error: error.message } as ApiResponse);
     }
   }
+  /**
+ * Get user projects & tasks for timesheet
+ */
+static async getTimesheetMeta(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    if (!req.user || !req.tenantId) {
+      throw new ValidationError("Unauthorized");
+    }
+
+    // 1️⃣ User projects only
+    const projects = await prisma.project.findMany({
+      where: {
+        tenantId: req.tenantId,
+        members: {
+          some: {
+            userId: req.user.id
+          }
+        }
+      },
+      select: {
+        id: true,
+        name: true
+      }
+    });
+
+    // 2️⃣ User assigned tasks only
+    const tasks = await prisma.ticket.findMany({
+      where: {
+        tenantId: req.tenantId,
+        assigneeId: req.user.id
+      },
+      select: {
+        id: true,
+        title: true,
+        projectId: true
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        projects,
+        tasks
+      }
+    });
+
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+}
+
+
+// timesheetController.ts
+static async submitTimesheet(req: AuthRequest, res: Response) {
+  const { id } = req.params;
+
+  try {
+    // 1️⃣ Find the timesheet
+    const timesheet = await prisma.timesheet.findUnique({ where: { id } });
+    if (!timesheet) return res.status(404).json({ message: "Timesheet not found" });
+
+    // 2️⃣ Only allow submitting DRAFT timesheets
+    if (timesheet.status !== 'DRAFT') {
+      return res.status(400).json({ message: "Only DRAFT timesheets can be submitted" });
+    }
+
+    // 3️⃣ Update status to SUBMITTED
+    const updated = await prisma.timesheet.update({
+      where: { id },
+      data: { status: 'SUBMITTED' },
+    });
+
+    return res.json(updated); // return updated timesheet
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Failed to submit timesheet" });
+  }
+}
+
 
 }
 

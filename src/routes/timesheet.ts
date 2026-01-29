@@ -12,6 +12,15 @@ router.use(requireAuth);
 
 /* ================== TIMESHEET ROUTES ================== */
 
+
+/**
+ * @route   GET /api/timesheets/meta
+ * @desc    Get user projects & tasks for timesheet
+ * @access  Private
+ */
+router.get("/meta", TimesheetController.getTimesheetMeta);
+
+
 /**
  * @route   GET /api/timesheets
  * @desc    Get all timesheets for current tenant (with optional pagination)
@@ -45,7 +54,10 @@ router.put("/:id", TimesheetController.updateTimesheet);
  * @desc    Submit a timesheet
  * @access  Private
  */
-router.post("/:id/submit", TimesheetController.approveTimesheet); // if submit uses approve logic, else create separate submit method
+// router.post("/:id/submit", TimesheetController.approveTimesheet);
+//  // if submit uses approve logic, else create separate submit method
+router.post("/:id/submit", TimesheetController.submitTimesheet);
+
 
 /**
  * @route   POST /api/timesheets/:id/review
@@ -60,5 +72,7 @@ router.post("/:id/review", requireAdmin, TimesheetController.approveTimesheet);
  * @access  Private
  */
 router.delete("/:id", TimesheetController.deleteTimesheet);
+
+
 
 export default router;
