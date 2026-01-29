@@ -10,6 +10,9 @@ import rateLimit from "express-rate-limit";
 
 // Import configurations
 import { connectDatabase, disconnectDatabase } from "@/config/database";
+import salaryComponentRoutes from "@/routes/salaryComponentRoutes";
+import companyRoutes from "./routes/companyRoutes";
+
 
 // Import middleware
 import { optionalTenantContext } from "@/middleware/tenantContext";
@@ -46,8 +49,13 @@ const app = express();
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
+// 👇 ADD THIS FIX HERE
+app.use((req, _res, next) => {
+  req.url = req.url.replace(/%0A|%0D/g, "");
+  next();
+});
 
-
+// then CORS, cookies, compression, routes etc
 
 
 
@@ -146,6 +154,9 @@ app.use("/api/leaves", leaveRoutes);
 app.use("/api/buckets", bucketRoutes);
 app.use("/api/trash", trashRoutes);
 app.use("/api/sprint-completion", sprintCompletionRoutes);
+app.use("/api/salary-components", salaryComponentRoutes);
+app.use("/api/companies", companyRoutes);
+
 
 // Tenant-specific health check
 app.get("/api/health", (req: any, res) => {

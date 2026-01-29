@@ -24,6 +24,9 @@ model Tenant {
   dropdownOptions     DropdownOption[]
   leaves              Leave[]
   fixedHolidays       FixedHoliday[]
+
+  salaryComponents    SalaryComponent[] 
+  companies           Company[]   
   projects            Project[]
   releasePlans        ReleasePlan[]
   shifts              Shift[]
@@ -61,6 +64,12 @@ model User {
   lastLoginAt          DateTime?           @map("last_login_at")
   createdAt            DateTime            @default(now()) @map("created_at")
   updatedAt            DateTime            @updatedAt @map("updated_at")
+
+  createdSalaryComponents SalaryComponent[] @relation("SalaryComponentCreator")
+  updatedSalaryComponents SalaryComponent[] @relation("SalaryComponentUpdater")
+  createdCompanies Company[] @relation("CompanyCreator")
+  updatedCompanies Company[] @relation("CompanyUpdater")
+
   enteredAttendance    Attendance[]        @relation("AttendanceEnteredBy")
   attendance           Attendance[]
   createdClients       Client[]            @relation("ClientCreator")
@@ -661,3 +670,82 @@ model SprintCompletionLog {
   @@index([performedAt])
   @@map("sprint_completion_logs")
 }
+
+
+model SalaryComponent {
+  key           Int           @id @default(autoincrement())
+
+  tenantId      String        @map("tenant_id")
+
+  componentName String        @map("component_name") @db.VarChar(100)
+  componentCode String        @map("component_code") @db.VarChar(50)
+
+  type          ComponentType @default(Earning)
+  status        Boolean       @default(true)
+
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt      @map("updated_at")
+  createdById   String?       @map("created_by_id")
+  updatedById   String?       @map("updated_by_id")
+
+  // Relations
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy     User?         @relation("SalaryComponentCreator", fields: [createdById], references: [id])
+  updatedBy     User?         @relation("SalaryComponentUpdater", fields: [updatedById], references: [id])
+
+  @@map("salary_components")
+  @@unique([tenantId, componentCode])
+}
+
+
+enum ComponentType {
+  Earning
+  Deduction
+
+  @@map("component_type")
+}
+
+
+model Company {
+  id            Int      @id @default(autoincrement())
+
+  tenantId      String   @map("tenant_id")
+
+  name          String
+  email         String?
+  phone         String?
+
+  // Address
+  plotNo        String?  @map("plot_no")
+  floorNo       String?  @map("floor_no")
+  buildingName  String?  @map("building_name")
+  street        String?
+  area          String?
+  city          String?
+  pincode       String?
+  country       String?
+
+  // Registration
+  cin           String?
+  gst           String?
+
+  isActive      Boolean  @default(false) @map("is_active")
+
+  logo          String?
+
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt      @map("updated_at")
+  createdById String? @map("created_by_id")
+  updatedById String? @map("updated_by_id")
+
+  // Relations
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  createdBy   User?   @relation("CompanyCreator", fields: [createdById], references: [id])
+  updatedBy   User?   @relation("CompanyUpdater", fields: [updatedById], references: [id])
+
+  @@map("companies")
+  @@unique([tenantId, name])
+}
+
+
