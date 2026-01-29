@@ -13,6 +13,8 @@ const dotenv_1 = __importDefault(require("dotenv"));
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 // Import configurations
 const database_1 = require("@/config/database");
+const salaryComponentRoutes_1 = __importDefault(require("@/routes/salaryComponentRoutes"));
+const companyRoutes_1 = __importDefault(require("./routes/companyRoutes"));
 const auth_1 = __importDefault(require("@/routes/auth"));
 const tenants_1 = __importDefault(require("@/routes/tenants"));
 const projects_1 = __importDefault(require("@/routes/projects"));
@@ -120,6 +122,8 @@ app.use("/api/leaves", leaves_1.default);
 app.use("/api/buckets", buckets_1.default);
 app.use("/api/trash", trash_1.default);
 app.use("/api/sprint-completion", sprintCompletion_1.default);
+app.use("/api/salary-components", salaryComponentRoutes_1.default);
+app.use("/api/companies", companyRoutes_1.default);
 app.use("/api/documenthub", documenthub_1.default);
 app.use("/api/channels", channels_1.default);
 app.use("/api/channels/:channelId/messages", messages_1.default);

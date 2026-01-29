@@ -10,6 +10,9 @@ import rateLimit from "express-rate-limit";
 
 // Import configurations
 import { connectDatabase, disconnectDatabase } from "@/config/database";
+import salaryComponentRoutes from "@/routes/salaryComponentRoutes";
+import companyRoutes from "./routes/companyRoutes";
+
 
 // Import middleware
 import { optionalTenantContext } from "@/middleware/tenantContext";
@@ -141,6 +144,9 @@ app.use("/api/leaves", leaveRoutes);
 app.use("/api/buckets", bucketRoutes);
 app.use("/api/trash", trashRoutes);
 app.use("/api/sprint-completion", sprintCompletionRoutes);
+app.use("/api/salary-components", salaryComponentRoutes);
+app.use("/api/companies", companyRoutes);
+
 app.use("/api/documenthub", documentHubRoutes);
 app.use("/api/channels", channelRoutes);
 app.use("/api/channels/:channelId/messages", messageRoutes);
