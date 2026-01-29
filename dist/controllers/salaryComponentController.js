@@ -7,54 +7,88 @@ class SalaryComponentController {
     /** =========================
      * GET ALL COMPONENTS
      ========================== */
-    static async getComponents(req, res) {
-        try {
-            if (!req.tenantId) {
-                throw new types_1.ValidationError("Tenant required");
-            }
-            const { search, type, status } = req.query;
-            const where = {
-                tenantId: req.tenantId,
-            };
-            if (type)
-                where.type = type;
-            if (status === "Active")
-                where.status = true;
-            if (status === "Inactive")
-                where.status = false;
-            if (search) {
-                where.OR = [
-                    {
-                        componentName: {
-                            contains: search,
-                            mode: "insensitive",
-                        },
-                    },
-                    {
-                        componentCode: {
-                            contains: search,
-                            mode: "insensitive",
-                        },
-                    },
-                ];
-            }
-            const components = await database_1.prisma.salaryComponent.findMany({
+    // static async getSalaryComponents(req: AuthRequest, res: Response): Promise<void> {
+    //   try {
+    //     if (!req.tenantId) {
+    //       throw new ValidationError("Tenant required");
+    //     }
+    //     const { search, type, status } = req.query;
+    //     const where: any = {
+    //       tenantId: req.tenantId,
+    //     };
+    //     if (type) where.type = type;
+    //     if (status === "Active") where.status = true;
+    //     if (status === "Inactive") where.status = false;
+    //     if (search) {
+    //       where.OR = [
+    //         {
+    //           componentName: {
+    //             contains: search as string,
+    //             mode: "insensitive",
+    //           },
+    //         },
+    //         {
+    //           componentCode: {
+    //             contains: search as string,
+    //             mode: "insensitive",
+    //           },
+    //         },
+    //       ];
+    //     }
+    //     const components = await prisma.salaryComponent.findMany({
+    //       where,
+    //       orderBy: { createdAt: "desc" },
+    //     });
+    //     res.json({
+    //       success: true,
+    //       data: components,
+    //     } as ApiResponse);
+    //   } catch (error) {
+    //     throw error;
+    //   }
+    // }
+    static async getSalaryComponents(req, res) {
+        const page = Number(req.query.page) || 1;
+        const limit = Number(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+        const { search, type, status } = req.query;
+        const where = { tenantId: req.tenantId };
+        if (type)
+            where.type = type;
+        if (status === "Active")
+            where.status = true;
+        if (status === "Inactive")
+            where.status = false;
+        if (search) {
+            where.OR = [
+                { componentName: { contains: search, mode: "insensitive" } },
+                { componentCode: { contains: search, mode: "insensitive" } },
+            ];
+        }
+        const [data, total] = await Promise.all([
+            database_1.prisma.salaryComponent.findMany({
                 where,
+                skip,
+                take: limit,
                 orderBy: { createdAt: "desc" },
-            });
-            res.json({
-                success: true,
-                data: components,
-            });
-        }
-        catch (error) {
-            throw error;
-        }
+            }),
+            database_1.prisma.salaryComponent.count({ where }),
+        ]);
+        res.json({
+            success: true,
+            data,
+            pagination: {
+                current: page,
+                pageSize: limit,
+                total,
+                totalPages: Math.ceil(total / limit),
+            },
+        });
     }
     /** =========================
      * GET COMPONENT BY ID
      ========================== */
-    static async getComponentById(req, res) {
+    static async getSalaryComponentById(req, res) {
         try {
             const id = Number(req.params.id);
             if (!id) {
@@ -81,7 +115,7 @@ class SalaryComponentController {
     /** =========================
      * CREATE COMPONENT
      ========================== */
-    static async createComponent(req, res) {
+    static async createSalaryComponent(req, res) {
         try {
             const { componentName, componentCode, type, status } = req.body;
             if (!componentName || !componentCode) {
@@ -119,7 +153,7 @@ class SalaryComponentController {
     /** =========================
      * UPDATE COMPONENT
      ========================== */
-    static async updateComponent(req, res) {
+    static async updateSalaryComponent(req, res) {
         try {
             const id = Number(req.params.id);
             const { componentName, componentCode, type, status } = req.body;
@@ -158,7 +192,7 @@ class SalaryComponentController {
     /** =========================
      * UPDATE STATUS ONLY
      ========================== */
-    static async updateStatus(req, res) {
+    static async updateSalaryStatus(req, res) {
         try {
             const id = Number(req.params.id);
             const { status } = req.body;
@@ -181,6 +215,38 @@ class SalaryComponentController {
                 success: true,
                 data: component,
                 message: "Status updated successfully",
+            });
+        }
+        catch (error) {
+            throw error;
+        }
+    }
+    /** =========================
+   * DELETE COMPONENT
+   ========================== */
+    static async deleteSalaryComponent(req, res) {
+        try {
+            const id = Number(req.params.id);
+            if (!id) {
+                throw new types_1.ValidationError("Invalid component id");
+            }
+            const existing = await database_1.prisma.salaryComponent.findFirst({
+                where: {
+                    key: id,
+                    tenantId: req.tenantId,
+                },
+            });
+            if (!existing) {
+                throw new types_1.NotFoundError("Salary component not found");
+            }
+            await database_1.prisma.salaryComponent.delete({
+                where: {
+                    key: id,
+                },
+            });
+            res.json({
+                success: true,
+                message: "Salary component deleted successfully",
             });
         }
         catch (error) {

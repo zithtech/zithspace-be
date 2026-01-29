@@ -11,10 +11,11 @@ router.use(auth_1.requireAuth);
 /**
  * Salary Components
  */
-router.get("/", salaryComponentController_1.SalaryComponentController.getComponents);
-router.get("/:id", salaryComponentController_1.SalaryComponentController.getComponentById);
-router.post("/", auth_1.requireAdmin, salaryComponentController_1.SalaryComponentController.createComponent);
-router.put("/:id", auth_1.requireAdmin, salaryComponentController_1.SalaryComponentController.updateComponent);
-router.patch("/:id/status", auth_1.requireAdmin, salaryComponentController_1.SalaryComponentController.updateStatus);
+router.get("/", salaryComponentController_1.SalaryComponentController.getSalaryComponents);
+router.get("/:id", salaryComponentController_1.SalaryComponentController.getSalaryComponentById);
+router.post("/", salaryComponentController_1.SalaryComponentController.createSalaryComponent);
+router.put("/:id", salaryComponentController_1.SalaryComponentController.updateSalaryComponent);
+router.patch("/:id/status", salaryComponentController_1.SalaryComponentController.updateSalaryStatus);
+router.delete("/:id", salaryComponentController_1.SalaryComponentController.deleteSalaryComponent);
 exports.default = router;
 //# sourceMappingURL=salaryComponentRoutes.js.map
