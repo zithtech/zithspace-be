@@ -17,7 +17,6 @@ import companyRoutes from "./routes/companyRoutes";
 // Import middleware
 import { optionalTenantContext } from "@/middleware/tenantContext";
 
-// Import routes
 import authRoutes from "@/routes/auth";
 import tenantRoutes from "@/routes/tenants";
 import projectRoutes from "@/routes/projects";
@@ -37,27 +36,18 @@ import bucketRoutes from "@/routes/buckets";
 import trashRoutes from "@/routes/trash";
 import sprintCompletionRoutes from "@/routes/sprintCompletion";
 import fixedHolidayRoutes from "@/routes/fixedHolidays";
-
+import documentHubRoutes from "@/routes/documenthub";
+import channelRoutes from "@/routes/channels";
+import messageRoutes from "@/routes/messages";
+import companyGovernmentHolidayRouter from './routes/companyGovernmentHoliday.routes';
 // Load environment variables
 dotenv.config();
-
 // Create Express application
 const app = express();
-
 
 // Body parsing middleware
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
-
-// 👇 ADD THIS FIX HERE
-app.use((req, _res, next) => {
-  req.url = req.url.replace(/%0A|%0D/g, "");
-  next();
-});
-
-// then CORS, cookies, compression, routes etc
-
-
 
 // Connect to PostgreSQL
 
@@ -78,7 +68,7 @@ app.use(
         allowedOrigins.some(
           (o) =>
             (typeof o === "string" && o === origin) ||
-            (o instanceof RegExp && o.test(origin))
+            (o instanceof RegExp && o.test(origin)),
         )
       ) {
         return callback(null, true);
@@ -87,7 +77,7 @@ app.use(
       return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
-  })
+  }),
 );
 
 // Cookie parsing middleware
@@ -117,7 +107,6 @@ const limiter = rateLimit({
 
 // app.use(limiter);
 
-
 connectDatabase().catch(console.error);
 
 // Health check endpoint (no tenant context required)
@@ -135,6 +124,7 @@ app.get("/health", (req, res) => {
 // app.use("/api", optionalTenantContext);
 
 // API routes
+app.use('/api/company-government-holidays', companyGovernmentHolidayRouter);
 app.use("/api/fixed-holidays", fixedHolidayRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/tenants", tenantRoutes);
@@ -157,6 +147,9 @@ app.use("/api/sprint-completion", sprintCompletionRoutes);
 app.use("/api/salary-components", salaryComponentRoutes);
 app.use("/api/companies", companyRoutes);
 
+app.use("/api/documenthub", documentHubRoutes);
+app.use("/api/channels", channelRoutes);
+app.use("/api/channels/:channelId/messages", messageRoutes);
 
 // Tenant-specific health check
 app.get("/api/health", (req: any, res) => {
@@ -327,7 +320,7 @@ const gracefulShutdown = async (signal: string) => {
   // Force close after 30 seconds
   setTimeout(() => {
     console.error(
-      "Could not close connections in time, forcefully shutting down"
+      "Could not close connections in time, forcefully shutting down",
     );
     process.exit(1);
   }, 30000);

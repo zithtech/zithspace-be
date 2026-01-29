@@ -17,6 +17,13 @@ router.use(auth_1.requireAuth);
  */
 router.get('/active', releasePlansController_1.ReleasePlansController.getActiveReleasePlans);
 /**
+ * @route   GET /api/release-plans/available
+ * @desc    Get available sprints (active + planning) for sprint assignment (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @query   projectId (required)
+ */
+router.get('/available', releasePlansController_1.ReleasePlansController.getAvailableSprints);
+/**
  * @route   GET /api/release-plans/stats
  * @desc    Get release plan statistics (tenant-aware)
  * @access  Private (authenticated users within tenant)
