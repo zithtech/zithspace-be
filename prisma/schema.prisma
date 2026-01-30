@@ -38,6 +38,12 @@ model Tenant {
   tickets                Ticket[]
   transactions           Transaction[]
   users                  User[]
+  generalSettings        GeneralSetting[]
+  invoiceSettings        InvoiceSetting[]
+  paymentSettings        PaymentSetting[]
+  settingsProfiles       SettingsProfile[]
+  invoices               Invoice[]
+  items                  InvoiceItem[]
 
   @@map("tenants")
 }
@@ -92,6 +98,21 @@ model User {
   shiftAssignedBy                      User?                    @relation("ShiftAssigner", fields: [shiftAssignedById], references: [id])
   assignedShifts                       User[]                   @relation("ShiftAssigner")
   tenant                               Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  generalSettingsCreated               GeneralSetting[]         @relation("GeneralSettingCreatedBy")
+  generalSettingsUpdated               GeneralSetting[]         @relation("GeneralSettingUpdatedBy")
+
+  invoiceSettingsCreated               InvoiceSetting[]         @relation("InvoiceSettingCreatedBy")
+  invoiceSettingsUpdated               InvoiceSetting[]         @relation("InvoiceSettingUpdatedBy")
+
+  paymentSettingsCreated               PaymentSetting[]         @relation("PaymentSettingCreatedBy")
+  paymentSettingsUpdated               PaymentSetting[]         @relation("PaymentSettingUpdatedBy")
+
+  settingsProfilesCreated              SettingsProfile[]        @relation("SettingsProfileCreatedBy")
+  settingsProfilesUpdated              SettingsProfile[]        @relation("SettingsProfileUpdatedBy")
+  invoicesCreated                      Invoice[]                @relation("InvoiceCreatedBy")
+  invoicesUpdated                      Invoice[]                @relation("InvoiceUpdatedBy")
+  invoiceItemsCreated                  InvoiceItem[]            @relation("InvoiceItemCreatedBy")
+  invoiceItemsUpdated                  InvoiceItem[]            @relation("InvoiceItemUpdatedBy")
 
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
@@ -563,20 +584,29 @@ model Customer {
   id          String   @id @default(uuid())
   tenantId    String   @map("tenant_id")
   companyName String   @map("company_name")
-  email       String?  @unique
+  email       String?
   phone       String?
   address     String?
   city        String?
   country     String?
   taxId       String?  @map("tax_id")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  invoices    Invoice[]
+
+  // Audit fields (store user IDs)
   createdBy   String   @map("created_by")
   updatedBy   String?  @map("updated_by")
-  tenants     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
+  
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Constraints
+  @@unique([tenantId, email]) // tenant-level email uniqueness
   @@map("customers")
 }
+
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model bucket_members {
@@ -658,3 +688,262 @@ model sprint_completion_logs {
   @@index([tenant_id], map: "idx_sprint_completion_logs_tenant_id")
   @@index([ticket_id], map: "idx_sprint_completion_logs_ticket_id")
 }
+
+enum Currency {
+  USD
+  INR
+  EUR
+  GBP
+  AUD
+  CAD
+  SGD
+}
+
+enum DateFormat {
+  DD_MM_YYYY
+  MM_DD_YYYY
+  YYYY_MM_DD
+}
+
+model GeneralSetting {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+
+  companyName  String   @map("company_name")
+  address      Json
+  primaryColor String   @map("primary_color")
+  currency     Currency
+  dateFormat   DateFormat  @map("date_format")
+  companyLogo  String?  @map("company_logo")
+  signature    String?
+
+  // Audit
+  createdBy    String   @map("created_by")
+  updatedBy    String?  @map("updated_by")
+
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant          Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdByUser   User   @relation("GeneralSettingCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser   User?  @relation("GeneralSettingUpdatedBy", fields: [updatedBy], references: [id])
+
+  profiles        SettingsProfile[]
+
+  @@index([tenantId])
+  @@map("general_settings")
+}
+
+model InvoiceSetting {
+  id            String   @id @default(uuid())
+  tenantId      String   @map("tenant_id")
+
+  format        String   @default("INV-{YYYY}-{###}")
+  padding       Int      @default(4)
+  nextNumber    Int      @default(1) @map("next_number")
+  resetYearly   Boolean  @default(true) @map("reset_yearly")
+  lastResetYear Int      @default(2026) @map("last_reset_year")
+
+  // Audit
+  createdBy     String   @map("created_by")
+  updatedBy     String?  @map("updated_by")
+
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant          Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdByUser   User   @relation("InvoiceSettingCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser   User?  @relation("InvoiceSettingUpdatedBy", fields: [updatedBy], references: [id])
+
+  profiles        SettingsProfile[]
+
+  @@index([tenantId])
+  @@map("invoice_settings")
+}
+
+model PaymentSetting {
+  id             String   @id @default(uuid())
+  tenantId       String   @map("tenant_id")
+
+  bankName       String   @map("bank_name")
+  accountNumber  String   @map("account_number")
+  ifscCode       String   @map("ifsc_code")
+  branchName     String   @map("branch_name")
+  qrCode         String?  @map("qr_code")
+
+  // Audit
+  createdBy      String   @map("created_by")
+  updatedBy      String?  @map("updated_by")
+
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant          Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdByUser   User   @relation("PaymentSettingCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser   User?  @relation("PaymentSettingUpdatedBy", fields: [updatedBy], references: [id])
+
+  profiles        SettingsProfile[]
+
+  @@index([tenantId])
+  @@map("payment_settings")
+}
+
+model SettingsProfile {
+  id         String     @id @default(uuid())
+  tenantId   String  @map("tenant_id")
+  name       String
+  isActive   Boolean @default(false) @map("is_active")
+
+  generalId  String  @map("general_id")
+  invoiceId  String  @map("invoice_id")
+  paymentId  String  @map("payment_id")
+  invoices   Invoice[]
+
+  // Audit
+  createdBy  String   @map("created_by")
+  updatedBy  String?  @map("updated_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant     Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  general    GeneralSetting @relation(fields: [generalId], references: [id])
+  invoice    InvoiceSetting @relation(fields: [invoiceId], references: [id])
+  payment    PaymentSetting @relation(fields: [paymentId], references: [id])
+
+  createdByUser User  @relation("SettingsProfileCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser User? @relation("SettingsProfileUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@index([tenantId])
+  @@index([generalId])
+  @@index([invoiceId])
+  @@index([paymentId])
+  @@map("settings_profiles")
+}
+
+enum InvoiceStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  SENT
+  PAID
+  OVERDUE
+  CANCELLED
+
+   @@map("invoice_status") 
+}
+
+enum InvoiceType {
+  STANDARD
+  PROFORMA
+  CREDIT
+  TAX
+  DEBIT
+  RECURRING
+
+  @@map("invoice_type") 
+}
+
+enum RecurringFrequency {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+
+   @@map("recurring_frequency")
+}
+
+model Invoice {
+  id                 String             @id @default(uuid())
+  tenantId           String             @map("tenant_id")
+  invoiceNumber      String             @unique @map("invoice_number")
+  customerId         String             @map("customer_id")
+  customerSnapshot   Json?              @map("customer_snapshot")
+  
+  invoiceDate        DateTime           @map("invoice_date")
+  dueDate            DateTime           @map("due_date")
+  invoiceType        InvoiceType        @default(STANDARD) @map("invoice_type")
+  status             InvoiceStatus      @default(DRAFT)
+  
+  currency           Currency
+  recurringFrequency RecurringFrequency? @map("recurring_frequency")
+  
+  taxInclusive       Boolean            @default(false) @map("tax_inclusive")
+  discount           Decimal            @default(0) @db.Decimal(15, 2)
+  subtotal           Decimal            @db.Decimal(15, 2)
+  taxTotal           Decimal            @map("tax_total") @db.Decimal(15, 2)
+  total              Decimal            @db.Decimal(15, 2)
+  paid               Decimal            @default(0) @db.Decimal(15, 2)
+  balanceDue         Decimal            @map("balance_due")@db.Decimal(15, 2)
+
+  notes              String?            @db.Text
+  terms              String?            @db.Text
+
+  sentAt            DateTime?           @map("sent_at")
+  paidAt            DateTime?           @map("paid_at")
+  cancelledAt       DateTime?           @map("cancelled_at")
+
+  // Audit fields
+  createdBy          String             @map("created_by")
+  updatedBy          String?            @map("updated_by")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant             Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer           Customer           @relation(fields: [customerId], references: [id])
+  settingsProfileId  String?            @map("settings_profile_id")
+  settingsProfile    SettingsProfile?   @relation(fields: [settingsProfileId], references: [id])
+  items              InvoiceItem[]
+
+  // User audit relations
+  createdByUser      User               @relation("InvoiceCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser      User?              @relation("InvoiceUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@index([tenantId])
+  @@index([customerId])
+  @@index([status])
+  @@map("invoices")
+}
+
+
+model InvoiceItem {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  invoiceId   String   @map("invoice_id")
+  
+  item        String
+  description String?  @db.Text
+  qty         Int      @default(1)
+  
+  price       Decimal  @default(0) @db.Decimal(15, 2)
+  tax         Decimal  @default(0) @db.Decimal(15, 2) // percentage
+
+  // Audit fields
+  createdBy   String   @map("created_by")
+  updatedBy   String?  @map("updated_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+
+  // User audit relations
+  createdByUser User     @relation("InvoiceItemCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser User?    @relation("InvoiceItemUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@index([invoiceId])
+  @@index([tenantId])
+  @@map("invoice_items")
+}
+
+
+
+

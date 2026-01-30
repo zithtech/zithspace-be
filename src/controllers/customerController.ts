@@ -137,16 +137,9 @@ export class CustomerController {
         }
       }
 
-      // Check if email already exists for this tenant
-      const existing = await prisma.customer.findFirst({
-        where: { tenantId: req.tenantId, email: customerData.email },
-      });
+      
 
-      if (existing) {
-        throw new ValidationError(
-          "Customer with this email already exists in this tenant",
-        );
-      }
+     
 
       // Create the customer
       const newCustomer = await prisma.customer.create({
@@ -183,86 +176,319 @@ export class CustomerController {
   /**
    * Update customer (admin only)
    */
-  static async updateCustomer(req: AuthRequest, res: Response): Promise<void> {
-    try {
-      if (!req.tenantId || !req.user) {
-        res.status(400).json({
-          success: false,
-          error: "Tenant context and authentication required",
-        } as ApiResponse);
-        return;
-      }
+  // static async updateCustomer(req: AuthRequest, res: Response): Promise<void> {
+  //   try {
+  //     if (!req.tenantId || !req.user) {
+  //       res.status(400).json({
+  //         success: false,
+  //         error: "Tenant context and authentication required",
+  //       } as ApiResponse);
+  //       return;
+  //     }
 
-      const { id } = req.params;
+  //     const { id } = req.params;
 
-      // <-- Put the UpdateCustomerData assignment here -->
-      const updates: UpdateCustomerData = req.body;
+  //     // <-- Put the UpdateCustomerData assignment here -->
+  //     const updates: UpdateCustomerData = req.body;
 
-      // Remove fields that shouldn't be updated directly
-      delete (updates as any).tenantId;
-      delete (updates as any).createdAt;
-      delete (updates as any).createdBy;
+  //     // Remove fields that shouldn't be updated directly
+  //     delete (updates as any).tenantId;
+  //     delete (updates as any).createdAt;
+  //     delete (updates as any).createdBy;
 
-      // Check if customer exists in this tenant
-      const existingCustomer = await prisma.customer.findFirst({
-        where: { id, tenantId: req.tenantId },
-      });
+  //     // Check if customer exists in this tenant
+  //     const existingCustomer = await prisma.customer.findFirst({
+  //       where: { id, tenantId: req.tenantId },
+  //     });
 
-      if (!existingCustomer) {
-        throw new NotFoundError("Customer not found in this tenant");
-      }
+  //     if (!existingCustomer) {
+  //       throw new NotFoundError("Customer not found in this tenant");
+  //     }
 
-      // If email is being updated, check for duplicates
-      if (updates.email && updates.email !== existingCustomer.email) {
-        const duplicate = await prisma.customer.findFirst({
-          where: {
-            tenantId: req.tenantId,
-            email: updates.email,
-            id: { not: id },
-          },
-        });
+  //     // Check companyName uniqueness within the tenant
+  //   const existingCompany = await prisma.customer.findFirst({
+  //     where: {
+  //       tenantId: req.tenantId,
+  //       companyName: updates.companyName,
+  //     },
+  //   });
 
-        if (duplicate) {
-          throw new ValidationError(
-            "Another customer with this email already exists",
-          );
-        }
-      }
+  //   if (existingCompany) {
+  //     throw new ValidationError(
+  //       "Customer with this company name already exists "
+  //     );
+  //   }
 
-      // Update customer
-      const updatedCustomer = await prisma.customer.update({
-        where: { id },
-        data: { ...updates, updatedBy: req.user.id, updatedAt: new Date() },
-      });
+  //     // If email is being updated, check for duplicates
+  //     if (updates.email && updates.email !== existingCustomer.email) {
+  //       const duplicate = await prisma.customer.findFirst({
+  //         where: {
+  //           tenantId: req.tenantId,
+  //           email: updates.email,
+  //           id: { not: id },
+  //         },
+  //       });
 
-      res.status(200).json({
-        success: true,
-        data: updatedCustomer,
-        message: "Customer updated successfully",
-      } as ApiResponse);
-    } catch (error: any) {
-      console.error("Update customer error:", error);
+  //       if (duplicate) {
+  //         throw new ValidationError(
+  //           "Another customer with this email already exists",
+  //         );
+  //       }
+  //     }
 
-      if (error instanceof NotFoundError) {
-        res
-          .status(404)
-          .json({ success: false, error: error.message } as ApiResponse);
-        return;
-      }
+  //     // Update customer
+  //     const updatedCustomer = await prisma.customer.update({
+  //       where: { id },
+  //       data: { ...updates, updatedBy: req.user.id, updatedAt: new Date() },
+  //     });
 
-      if (error instanceof ValidationError) {
-        res
-          .status(400)
-          .json({ success: false, error: error.message } as ApiResponse);
-        return;
-      }
+  //     res.status(200).json({
+  //       success: true,
+  //       data: updatedCustomer,
+  //       message: "Customer updated successfully",
+  //     } as ApiResponse);
+  //   } catch (error: any) {
+  //     console.error("Update customer error:", error);
 
-      res.status(500).json({
+  //     if (error instanceof NotFoundError) {
+  //       res
+  //         .status(404)
+  //         .json({ success: false, error: error.message } as ApiResponse);
+  //       return;
+  //     }
+
+  //     if (error instanceof ValidationError) {
+  //       res
+  //         .status(400)
+  //         .json({ success: false, error: error.message } as ApiResponse);
+  //       return;
+  //     }
+
+  //     res.status(500).json({
+  //       success: false,
+  //       error: "Failed to update customer",
+  //     } as ApiResponse);
+  //   }
+  // }
+
+  /**
+ * Update customer (admin only)
+ */
+// static async updateCustomer(req: AuthRequest, res: Response): Promise<void> {
+//   try {
+//     if (!req.tenantId || !req.user) {
+//       res.status(400).json({
+//         success: false,
+//         error: "Tenant context and authentication required",
+//       } as ApiResponse);
+//       return;
+//     }
+
+//     const { id } = req.params;
+//     const updates: UpdateCustomerData = req.body;
+
+//     // Prevent updating immutable fields
+//     delete (updates as any).tenantId;
+//     delete (updates as any).createdAt;
+//     delete (updates as any).createdBy;
+
+//     // Fetch existing customer
+//     const existingCustomer = await prisma.customer.findFirst({
+//       where: { id, tenantId: req.tenantId },
+//     });
+
+//     if (!existingCustomer) {
+//       throw new NotFoundError("Customer not found in this tenant");
+//     }
+
+//     // Check companyName uniqueness only if it is being changed
+//     if (updates.companyName && updates.companyName !== existingCustomer.companyName) {
+//       const existingCompany = await prisma.customer.findFirst({
+//         where: {
+//           tenantId: req.tenantId,
+//           companyName: updates.companyName,
+//           NOT: { id }, // exclude current customer
+//         },
+//       });
+
+//       if (existingCompany) {
+//         throw new ValidationError(
+//           "Another customer with this company name already exists"
+//         );
+//       }
+//     }
+
+//     // Check email uniqueness only if it is being changed
+//     if (updates.email && updates.email !== existingCustomer.email) {
+//       const duplicateEmail = await prisma.customer.findFirst({
+//         where: {
+//           tenantId: req.tenantId,
+//           email: updates.email,
+//           NOT: { id },
+//         },
+//       });
+
+//       if (duplicateEmail) {
+//         throw new ValidationError(
+//           "Another customer with this email already exists"
+//         );
+//       }
+//     }
+
+//     // Perform update
+//     const updatedCustomer = await prisma.customer.update({
+//       where: { id },
+//       data: {
+//         ...updates,
+//         updatedBy: req.user.id,
+//         updatedAt: new Date(),
+//       },
+//     });
+
+//     res.status(200).json({
+//       success: true,
+//       data: updatedCustomer,
+//       message: "Customer updated successfully",
+//     } as ApiResponse);
+//   } catch (error: any) {
+//     console.error("Update customer error:", error);
+
+//     if (error instanceof NotFoundError) {
+//       res.status(404).json({ success: false, error: error.message } as ApiResponse);
+//       return;
+//     }
+
+//     if (error instanceof ValidationError) {
+//       res.status(400).json({ success: false, error: error.message } as ApiResponse);
+//       return;
+//     }
+
+//     res.status(500).json({
+//       success: false,
+//       error: "Failed to update customer",
+//     } as ApiResponse);
+//   }
+// }
+
+
+/**
+ * Update customer (admin only)
+ */
+/**
+ * Update customer (admin only)
+ */
+static async updateCustomer(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    if (!req.tenantId || !req.user) {
+      res.status(400).json({
         success: false,
-        error: "Failed to update customer",
+        error: "Tenant context and authentication required",
       } as ApiResponse);
+      return;
     }
+
+    const { id } = req.params;
+    const updates: UpdateCustomerData = req.body;
+
+    // Prevent updating immutable fields
+    delete (updates as any).tenantId;
+    delete (updates as any).createdAt;
+    delete (updates as any).createdBy;
+
+    // Fetch existing customer
+    const existingCustomer = await prisma.customer.findFirst({
+      where: { id, tenantId: req.tenantId },
+    });
+
+    if (!existingCustomer) {
+      throw new NotFoundError("Customer not found in this tenant");
+    }
+
+    // Normalize updates: convert empty strings to null, ignore undefined
+    const normalizedUpdates: Partial<UpdateCustomerData> = {};
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value === "") {
+        normalizedUpdates[key as keyof UpdateCustomerData] = null;
+      } else if (value !== undefined) {
+        normalizedUpdates[key as keyof UpdateCustomerData] = value;
+      }
+    });
+
+    // Company name uniqueness check
+    if (
+      normalizedUpdates.companyName &&
+      normalizedUpdates.companyName !== existingCustomer.companyName
+    ) {
+      const existingCompany = await prisma.customer.findFirst({
+        where: {
+          tenantId: req.tenantId,
+          companyName: normalizedUpdates.companyName,
+          NOT: { id },
+        },
+      });
+      if (existingCompany) {
+        throw new ValidationError(
+          "Another customer with this company name already exists"
+        );
+      }
+    }
+
+    // Email uniqueness check
+    if (
+      normalizedUpdates.email &&
+      normalizedUpdates.email !== existingCustomer.email
+    ) {
+      const duplicateEmail = await prisma.customer.findFirst({
+        where: {
+          tenantId: req.tenantId,
+          email: normalizedUpdates.email,
+          NOT: { id },
+        },
+      });
+      if (duplicateEmail) {
+        throw new ValidationError(
+          "Another customer with this email already exists"
+        );
+      }
+    }
+
+    // Update the customer
+    const updatedCustomer = await prisma.customer.update({
+      where: { id },
+      data: {
+        ...normalizedUpdates,
+        updatedBy: req.user.id,
+        updatedAt: new Date(),
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      data: updatedCustomer,
+      message: "Customer updated successfully",
+    } as ApiResponse);
+  } catch (error: any) {
+    console.error("Update customer error:", error);
+
+    if (error instanceof NotFoundError) {
+      res.status(404).json({ success: false, error: error.message } as ApiResponse);
+      return;
+    }
+
+    if (error instanceof ValidationError) {
+      res.status(400).json({ success: false, error: error.message } as ApiResponse);
+      return;
+    }
+
+    res.status(500).json({
+      success: false,
+      error: "Failed to update customer",
+    } as ApiResponse);
   }
+}
+
+
+
 
   /**
    * Delete customer (admin only)
