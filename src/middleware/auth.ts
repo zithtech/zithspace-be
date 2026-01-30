@@ -79,7 +79,7 @@ export const authenticateToken = async (
       name: user.name,
       sessionId: decoded.sessionId,
     };
-
+    
     next();
   } catch (error) {
 

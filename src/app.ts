@@ -14,6 +14,7 @@ import { connectDatabase, disconnectDatabase } from "@/config/database";
 // Import middleware
 import { optionalTenantContext } from "@/middleware/tenantContext";
 
+
 // Import routes
 import authRoutes from "@/routes/auth";
 import tenantRoutes from "@/routes/tenants";
@@ -30,6 +31,8 @@ import userRoutes from "@/routes/user";
 import dailyUpdateRoutes from "@/routes/dailyUpdates";
 import dashboardRoutes from "@/routes/dashboard";
 import leaveRoutes from "@/routes/leaves";
+import reimbursementRoutes from "@/routes/reimbursement";
+//import reimbursementRequestRoutes from "@/routes/reimbursementRequest";
 
 // Load environment variables
 dotenv.config();
@@ -112,7 +115,7 @@ app.get("/health", (req, res) => {
 });
 
 // Tenant resolution for all API routes
-// app.use("/api", optionalTenantContext);
+ app.use("/api", optionalTenantContext);
 
 // API routes
 app.use("/api/auth", authRoutes);
@@ -130,6 +133,8 @@ app.use("/api/user", userRoutes);
 app.use("/api/daily-updates", dailyUpdateRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/leaves", leaveRoutes);
+app.use("/api/reimbursements", reimbursementRoutes);
+//app.use("/api/reimbursement-requests", reimbursementRequestRoutes);
 
 // Tenant-specific health check
 app.get("/api/health", (req: any, res) => {

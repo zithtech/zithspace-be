@@ -209,8 +209,6 @@ export const optionalTenantContext = async (
         await tenantAwarePrisma.setTenantContext(tenant.id);
       }
     }
-
-
     next();
   } catch (error) {
     next();
