@@ -980,6 +980,7 @@ model TimesheetRow {
   day           DateTime
   projectName   String    @map("project_name")
   taskName      String    @map("task_name")
+
   description   String?
 
   hours         Float
