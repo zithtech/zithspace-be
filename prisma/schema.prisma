@@ -8,47 +8,51 @@ datasource db {
 }
 
 model Tenant {
-  id                  String                @id @default(uuid())
-  name                String
-  subdomain           String                @unique
-  planType            String                @default("basic") @map("plan_type")
-  maxUsers            Int                   @default(10) @map("max_users")
-  isActive            Boolean               @default(true) @map("is_active")
-  settings            Json?                 @default("{}")
-  createdAt           DateTime              @default(now()) @map("created_at")
-  updatedAt           DateTime              @updatedAt @map("updated_at")
-  attendance          Attendance[]
-  attendanceBreaks    AttendanceBreak[]
-  buckets             Bucket[]
-  clients             Client[]
-  dropdownOptions     DropdownOption[]
-  leaves              Leave[]
-  fixedHolidays       FixedHoliday[]
-  projects            Project[]
-  releasePlans        ReleasePlan[]
-  shifts              Shift[]
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  subdomain   String   @unique
+  planType    String   @default("basic") @map("plan_type")
+  maxUsers    Int      @default(10) @map("max_users")
+  isActive    Boolean  @default(true) @map("is_active")
+  settings    Json?    @default("{}")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+
+  employees   Employee[]
+  employeeAddresses EmployeeAddress[]
+
+  attendance           Attendance[]
+  attendanceBreaks     AttendanceBreak[]
+  buckets              Bucket[]
+  clients              Client[]
+  dropdownOptions      DropdownOption[]
+  leaves               Leave[]
+  fixedHolidays        FixedHoliday[]
+  projects             Project[]
+  releasePlans         ReleasePlan[]
+  shifts               Shift[]
   sprintCompletionLogs SprintCompletionLog[]
-  statusUpdates       StatusUpdate[]
-  ticketActivityLog   TicketActivityLog[]
-  ticketAttachments   TicketAttachment[]
-  ticketComments      TicketComment[]
-  ticketRelatedLinks  TicketRelatedLink[]
-  ticketWorkflowSteps TicketWorkflowStep[]
-  tickets             Ticket[]
-  transactions        Transaction[]
-  users               User[]
-  documenthub         DocumentHub[]
-  documents           Document[]
-  documenttree        DocumentTree[]
-  documentHistory     DocumentHistory[]
-  
-  // ZithTech Calls Relations
-  channels            Channel[]
-  meetings            Meeting[]
-  
+  statusUpdates        StatusUpdate[]
+  ticketActivityLog    TicketActivityLog[]
+  ticketAttachments    TicketAttachment[]
+  ticketComments       TicketComment[]
+  ticketRelatedLinks   TicketRelatedLink[]
+  ticketWorkflowSteps  TicketWorkflowStep[]
+  tickets              Ticket[]
+  transactions         Transaction[]
+  users                User[]
+  documenthub          DocumentHub[]
+  documents            Document[]
+  documenttree         DocumentTree[]
+  documentHistory      DocumentHistory[]
+
+  channels             Channel[]
+  meetings             Meeting[]
 
   @@map("tenants")
 }
+
 
 model User {
   id                   String              @id @default(uuid())
@@ -102,16 +106,19 @@ model User {
   transactions         Transaction[]
   assignedShift        Shift?              @relation("UserShift", fields: [assignedShiftId], references: [id])
   reportsTo            User?               @relation("UserHierarchy", fields: [reportsToId], references: [id])
-  subordinates         User[]              @relation("UserHierarchy")
+  subordinates         User[]              @relation("UserHierarchy") 
   shiftAssignedBy      User?               @relation("ShiftAssigner", fields: [shiftAssignedById], references: [id])
   assignedShifts       User[]              @relation("ShiftAssigner")
   
+
+
   // ZithTech Calls Relations
   createdChannels      Channel[]           @relation("ChannelCreator")
   channelMemberships   ChannelMember[]
   channelMessages      ChannelMessage[]
   createdMeetings      Meeting[]           @relation("MeetingCreator")
   meetingParticipations MeetingParticipant[]
+   
 
   tenant               Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -902,3 +909,175 @@ model MeetingParticipant {
   @@index([meetingId])
   @@map("meeting_participants")
 }
+
+model Employee {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @db.Uuid @map("tenant_id")
+
+  employee_code   String   @db.VarChar(30)
+  first_name      String   @db.VarChar(100)
+  last_name       String   @db.VarChar(100)
+  gender          String   @db.VarChar(20)
+  date_of_birth   DateTime @db.Date
+  blood_group     String?  @db.VarChar(10)
+  mobile          String   @db.VarChar(15)
+  work_email      String   @db.VarChar(150)
+  personal_email  String?  @db.VarChar(150)
+  status          Boolean  @default(true)
+
+  created_by      String   @db.Uuid
+  updated_by      String?  @db.Uuid
+
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  addresses           EmployeeAddress[]
+  emergencyContacts  EmployeeEmergencyContact[]
+  employeeIdentity    EmployeeIdentity[]
+  workDetail       EmployeeWorkDetail[]
+  employeeTimeline   EmployeeTimeline[]
+
+  @@map("employees")
+}
+
+
+enum AddressType {
+  CURRENT
+  PERMANENT
+
+  @@map("address_type_enum")
+}
+
+model EmployeeAddress {
+  id            String      @id @default(uuid()) @db.Uuid
+
+  employeeId    String      @db.Uuid @map("employee_id")
+  tenantId      String      @db.Uuid @map("tenant_id")
+
+  addressType   AddressType @map("address_type")
+
+  doorNo        String?     @db.VarChar(50)  @map("door_no")
+  area          String?     @db.VarChar(150)
+  city          String?     @db.VarChar(100)
+  state         String?     @db.VarChar(100)
+  pincode       String?     @db.VarChar(10)
+  country       String?     @db.VarChar(100)
+
+  createdById   String?     @db.Uuid @map("created_by_id")
+  updatedById   String?     @db.Uuid @map("updated_by_id")
+
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  
+  employee      Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  tenant        Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("employee_addresses")
+}
+
+
+model EmployeeEmergencyContact {
+
+  id            String   @id @default(uuid()) @db.Uuid
+
+  employeeId    String   @db.Uuid @map("employee_id")
+
+  relationship  String   @db.VarChar(50)
+  name          String   @db.VarChar(150)
+  mobile        String   @db.VarChar(15)
+
+  createdById   String   @db.Uuid @map("created_by_id")
+  updatedById   String?  @db.Uuid @map("updated_by_id")
+
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  
+  employee      Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+
+  @@map("employee_emergency_contacts")
+
+}
+
+model EmployeeIdentity {
+
+  id              String   @id @default(uuid()) @db.Uuid
+
+  employeeId      String   @db.Uuid @map("employee_id")
+
+  aadhaarNumber   String   @db.VarChar(12) @map("aadhaar_number")
+  panNumber       String   @db.VarChar(10) @map("pan_number")
+  passportNumber  String?  @db.VarChar(20) @map("passport_number")
+
+  createdById     String   @db.Uuid @map("created_by_id")
+  updatedById     String?  @db.Uuid @map("updated_by_id")
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  employee      Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("employee_identities")
+}
+
+model EmployeeWorkDetail {
+
+  id             String   @id @default(uuid()) @db.Uuid
+
+  
+  employeeId     String   @db.Uuid @map("employee_id")
+ 
+  department     String   @db.VarChar(100)
+  team           String   @db.VarChar(100)
+  employeeType   String   @db.VarChar(50)  @map("employee_type")
+  workLocation   String   @db.VarChar(100) @map("work_location")
+  workShift      String   @db.VarChar(50)  @map("work_shift")
+
+  
+  createdById    String   @db.Uuid @map("created_by_id")
+  updatedById    String?  @db.Uuid @map("updated_by_id")
+
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt      @map("updated_at")
+  employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("employee_work_details")
+}
+
+model EmployeeTimeline {
+
+  id                     String   @id @default(uuid()) @db.Uuid
+
+  employeeId             String   @db.Uuid @map("employee_id")
+
+  joiningDate             DateTime @db.Date @map("joining_date")
+  trainingCompletionDate  DateTime @db.Date @map("training_completion_date")
+
+  createdById            String   @db.Uuid @map("created_by_id")
+  updatedById            String?  @db.Uuid @map("updated_by_id")
+
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt      @map("updated_at")
+
+  employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("employee_timelines")
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

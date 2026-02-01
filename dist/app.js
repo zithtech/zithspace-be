@@ -35,6 +35,10 @@ const fixedHolidays_1 = __importDefault(require("@/routes/fixedHolidays"));
 const documenthub_1 = __importDefault(require("@/routes/documenthub"));
 const channels_1 = __importDefault(require("@/routes/channels"));
 const messages_1 = __importDefault(require("@/routes/messages"));
+const employee_1 = __importDefault(require("./routes/employee"));
+// import addressRoutes from "./routes/employee_address";
+const employee_address_1 = __importDefault(require("@/routes/employee_address"));
+//import employeeRoutes from "@/routes/employee";
 // Load environment variables
 dotenv_1.default.config();
 // Create Express application
@@ -121,6 +125,9 @@ app.use("/api/sprint-completion", sprintCompletion_1.default);
 app.use("/api/documenthub", documenthub_1.default);
 app.use("/api/channels", channels_1.default);
 app.use("/api/channels/:channelId/messages", messages_1.default);
+app.use("/api/employees", employee_1.default);
+// app.use("/api/addresses", addressRoutes);
+app.use("/employee_address", employee_address_1.default);
 // Tenant-specific health check
 app.get("/api/health", (req, res) => {
     res.status(200).json({
