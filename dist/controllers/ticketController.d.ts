@@ -103,4 +103,17 @@ export declare class TicketController {
      * Delete attachment (tenant-aware)
      */
     static deleteAttachment(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get all Epic tickets (tenant-aware)
+     * Returns epics with child story counts and progress
+     */
+    static getEpics(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get Epic with detailed story progress (tenant-aware)
+     */
+    static getEpicProgress(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get sub-tasks for a ticket (Story or Task) (tenant-aware)
+     */
+    static getSubTasks(req: AuthRequest, res: Response): Promise<void>;
 }

@@ -14,7 +14,6 @@ import { connectDatabase, disconnectDatabase } from "@/config/database";
 // Import middleware
 import { optionalTenantContext } from "@/middleware/tenantContext";
 
-// Import routes
 import authRoutes from "@/routes/auth";
 import tenantRoutes from "@/routes/tenants";
 import projectRoutes from "@/routes/projects";
@@ -30,15 +29,23 @@ import userRoutes from "@/routes/user";
 import dailyUpdateRoutes from "@/routes/dailyUpdates";
 import dashboardRoutes from "@/routes/dashboard";
 import leaveRoutes from "@/routes/leaves";
-
+import bucketRoutes from "@/routes/buckets";
+import trashRoutes from "@/routes/trash";
+import sprintCompletionRoutes from "@/routes/sprintCompletion";
+import fixedHolidayRoutes from "@/routes/fixedHolidays";
+import documentHubRoutes from "@/routes/documenthub";
+import channelRoutes from "@/routes/channels";
+import messageRoutes from "@/routes/messages";
 // Load environment variables
 dotenv.config();
-
 // Create Express application
 const app = express();
 
+// Body parsing middleware
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
 // Connect to PostgreSQL
-connectDatabase().catch(console.error);
 
 const allowedOrigins = [
   "http://localhost:3000", // Local development
@@ -57,7 +64,7 @@ app.use(
         allowedOrigins.some(
           (o) =>
             (typeof o === "string" && o === origin) ||
-            (o instanceof RegExp && o.test(origin))
+            (o instanceof RegExp && o.test(origin)),
         )
       ) {
         return callback(null, true);
@@ -66,12 +73,8 @@ app.use(
       return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
-  })
+  }),
 );
-
-// Body parsing middleware
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // Cookie parsing middleware
 app.use(cookieParser());
@@ -100,6 +103,8 @@ const limiter = rateLimit({
 
 // app.use(limiter);
 
+connectDatabase().catch(console.error);
+
 // Health check endpoint (no tenant context required)
 app.get("/health", (req, res) => {
   res.status(200).json({
@@ -112,9 +117,10 @@ app.get("/health", (req, res) => {
 });
 
 // Tenant resolution for all API routes
-app.use("/api", optionalTenantContext);
+// app.use("/api", optionalTenantContext);
 
 // API routes
+app.use("/api/fixed-holidays", fixedHolidayRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/tenants", tenantRoutes);
 app.use("/api/projects", projectRoutes);
@@ -130,6 +136,12 @@ app.use("/api/user", userRoutes);
 app.use("/api/daily-updates", dailyUpdateRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/leaves", leaveRoutes);
+app.use("/api/buckets", bucketRoutes);
+app.use("/api/trash", trashRoutes);
+app.use("/api/sprint-completion", sprintCompletionRoutes);
+app.use("/api/documenthub", documentHubRoutes);
+app.use("/api/channels", channelRoutes);
+app.use("/api/channels/:channelId/messages", messageRoutes);
 
 // Tenant-specific health check
 app.get("/api/health", (req: any, res) => {
@@ -273,6 +285,10 @@ const server = app.listen(PORT, () => {
   // Initialize Socket.io
   const { socketService } = require("@/services/socketService");
   socketService.initialize(server);
+
+  // Start trash auto-purge cron job
+  const { startTrashAutoPurgeJob } = require("@/jobs/trashAutoPurge");
+  startTrashAutoPurgeJob();
 });
 
 // Graceful shutdown
@@ -296,7 +312,7 @@ const gracefulShutdown = async (signal: string) => {
   // Force close after 30 seconds
   setTimeout(() => {
     console.error(
-      "Could not close connections in time, forcefully shutting down"
+      "Could not close connections in time, forcefully shutting down",
     );
     process.exit(1);
   }, 30000);

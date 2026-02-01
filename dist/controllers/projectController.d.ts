@@ -30,7 +30,11 @@ export declare class ProjectController {
      */
     static getProjectsForSelect(req: AuthRequest, res: Response): Promise<void>;
     /**
-     * Get projects where user is a member (tenant-aware)
+     * Get rich project data for selection screen (tenant-aware + role-based)
+     */
+    static getSelectionProjects(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get projects where user is a member (tenant-aware) (LEGACY / SIMPLE)
      */
     static getUserProjects(req: AuthRequest, res: Response): Promise<void>;
     /**

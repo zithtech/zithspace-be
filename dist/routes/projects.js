@@ -18,7 +18,13 @@ router.use(auth_1.requireAuth);
  */
 router.get('/', projectController_1.ProjectController.getProjects);
 /**
- * @route   GET /api/projects/selecty
+ * @route   GET /api/projects/selection
+ * @desc    Get rich project data for selection screen (tenant-aware + role-based)
+ * @access  Private (authenticated users within tenant)
+ */
+router.get('/selection', projectController_1.ProjectController.getSelectionProjects);
+/**
+ * @route   GET /api/projects/select
  * @desc    Get projects for dropdown/select (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */

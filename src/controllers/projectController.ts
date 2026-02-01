@@ -128,32 +128,22 @@ export class ProjectController {
 
 
       const project = await prisma.project.findFirst({
-            where: {
-              id,
-              tenantId: req.tenantId,
+        where: {
+          id,
+          tenantId: req.tenantId,
+        },
+        include: {
+          projectManager: {
+            select: {
+              id: true,
+              name: true,
+              workEmail: true,
+              position: true,
             },
-            include: {
-              projectManager: {
-                select: {
-                  id: true,
-                  name: true,
-                  workEmail: true,
-                  position: true,
-                },
-              },
-              members: {
-                select: {
-                  user: {
-                    select: {
-                      id: true,
-                      name: true,
-                      workEmail: true,
-                      position: true,
-                    },
-                  },
-                },
-              },
-              createdBy: {
+          },
+          members: {
+            select: {
+              user: {
                 select: {
                   id: true,
                   name: true,
@@ -162,9 +152,19 @@ export class ProjectController {
                 },
               },
             },
-          });
-        
-      
+          },
+          createdBy: {
+            select: {
+              id: true,
+              name: true,
+              workEmail: true,
+              position: true,
+            },
+          },
+        },
+      });
+
+
 
       if (!project) {
         res.status(404).json({
@@ -235,103 +235,103 @@ export class ProjectController {
         projectCode = `${namePrefix}${timestamp}`;
       }
 
-      
-        // Validate project manager exists and belongs to tenant
-        const manager = await prisma.user.findFirst({
+
+      // Validate project manager exists and belongs to tenant
+      const manager = await prisma.user.findFirst({
+        where: {
+          id: projectManagerId,
+          tenantId: req.tenantId,
+          isActive: true,
+        },
+      });
+
+      if (!manager) {
+        throw new ValidationError("Project manager not found in this tenant");
+      }
+
+      // Validate team members exist and belong to tenant
+      if (teamMemberIds.length > 0) {
+        const members = await prisma.user.findMany({
           where: {
-            id: projectManagerId,
+            id: { in: teamMemberIds },
             tenantId: req.tenantId,
             isActive: true,
           },
         });
 
-        if (!manager) {
-          throw new ValidationError("Project manager not found in this tenant");
+        if (members.length !== teamMemberIds.length) {
+          throw new ValidationError(
+            "One or more team members not found in this tenant"
+          );
         }
+      }
 
-        // Validate team members exist and belong to tenant
-        if (teamMemberIds.length > 0) {
-          const members = await prisma.user.findMany({
-            where: {
-              id: { in: teamMemberIds },
-              tenantId: req.tenantId,
-              isActive: true,
-            },
-          });
-
-          if (members.length !== teamMemberIds.length) {
-            throw new ValidationError(
-              "One or more team members not found in this tenant"
-            );
-          }
-        }
-
-        // Check if project code already exists within tenant
-        if (projectCode) {
-          const existingProject = await prisma.project.findFirst({
-            where: {
-              code: projectCode.toUpperCase(),
-              tenantId: req.tenantId,
-            },
-          });
-
-          if (existingProject) {
-            throw new ValidationError(
-              "Project code already exists in this tenant"
-            );
-          }
-        }
-
-        // Create project with members
-        const project = await prisma.project.create({
-          data: {
+      // Check if project code already exists within tenant
+      if (projectCode) {
+        const existingProject = await prisma.project.findFirst({
+          where: {
+            code: projectCode.toUpperCase(),
             tenantId: req.tenantId,
-            name,
-            code: projectCode?.toUpperCase(),
-            description,
-            status,
-            startDate: new Date(startDate),
-            endDate: endDate ? new Date(endDate) : null,
-            projectManagerId,
-            repositories: repositories as any,
-            workflowTemplate,
-            defaultPriority,
-            createdById: req.user!.id,
-            members: {
-              create: teamMemberIds.map((userId: string) => ({
-                userId,
-                role: "member",
-              })),
-            },
-          },
-          include: {
-            projectManager: {
-              select: { id: true, name: true, workEmail: true, position: true },
-            },
-            members: {
-              select: {
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    workEmail: true,
-                    position: true,
-                  },
-                },
-              },
-            },
-            createdBy: {
-              select: { id: true, name: true, workEmail: true },
-            },
           },
         });
 
-        res.status(201).json({
-          success: true,
-          data: project,
-          message: "Project created successfully",
-        } as ApiResponse);
-   
+        if (existingProject) {
+          throw new ValidationError(
+            "Project code already exists in this tenant"
+          );
+        }
+      }
+
+      // Create project with members
+      const project = await prisma.project.create({
+        data: {
+          tenantId: req.tenantId,
+          name,
+          code: projectCode?.toUpperCase(),
+          description,
+          status,
+          startDate: new Date(startDate),
+          endDate: endDate ? new Date(endDate) : null,
+          projectManagerId,
+          repositories: repositories as any,
+          workflowTemplate,
+          defaultPriority,
+          createdById: req.user!.id,
+          members: {
+            create: teamMemberIds.map((userId: string) => ({
+              userId,
+              role: "member",
+            })),
+          },
+        },
+        include: {
+          projectManager: {
+            select: { id: true, name: true, workEmail: true, position: true },
+          },
+          members: {
+            select: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  workEmail: true,
+                  position: true,
+                },
+              },
+            },
+          },
+          createdBy: {
+            select: { id: true, name: true, workEmail: true },
+          },
+        },
+      });
+
+      res.status(201).json({
+        success: true,
+        data: project,
+        message: "Project created successfully",
+      } as ApiResponse);
+
     } catch (error: any) {
       console.error("Create project error:", error);
 
@@ -379,132 +379,132 @@ export class ProjectController {
       delete updates.createdAt;
       delete updates.tenantId;
 
-     
-        // Check if project exists and belongs to tenant
-        const existingProject = await prisma.project.findFirst({
+
+      // Check if project exists and belongs to tenant
+      const existingProject = await prisma.project.findFirst({
+        where: {
+          id,
+          tenantId: req.tenantId,
+        },
+      });
+
+      if (!existingProject) {
+        throw new NotFoundError("Project not found in this tenant");
+      }
+
+      // Validate project manager if provided
+      if (updates.projectManagerId) {
+        const manager = await prisma.user.findFirst({
           where: {
-            id,
+            id: updates.projectManagerId,
             tenantId: req.tenantId,
+            isActive: true,
           },
         });
 
-        if (!existingProject) {
-          throw new NotFoundError("Project not found in this tenant");
+        if (!manager) {
+          throw new ValidationError(
+            "Project manager not found in this tenant"
+          );
         }
+      }
 
-        // Validate project manager if provided
-        if (updates.projectManagerId) {
-          const manager = await prisma.user.findFirst({
+      // Check if project code already exists (if code is being updated)
+      if (updates.code && updates.code !== existingProject.code) {
+        const duplicateProject = await prisma.project.findFirst({
+          where: {
+            code: updates.code.toUpperCase(),
+            tenantId: req.tenantId,
+            id: { not: id },
+          },
+        });
+
+        if (duplicateProject) {
+          throw new ValidationError(
+            "Project code already exists in this tenant"
+          );
+        }
+        updates.code = updates.code.toUpperCase();
+      }
+
+      // Convert date strings to Date objects
+      if (updates.startDate) updates.startDate = new Date(updates.startDate);
+      if (updates.endDate) updates.endDate = new Date(updates.endDate);
+
+      // Handle team members update
+      let updateData: any = {
+        ...updates,
+        updatedAt: new Date(),
+      };
+
+      // If teamMemberIds is provided, handle the relationship update
+      if (updates.teamMemberIds !== undefined) {
+        // First remove all current team members
+        await prisma.projectMember.deleteMany({
+          where: { projectId: id },
+        });
+
+        // Then add the new team members if any
+        if (updates.teamMemberIds.length > 0) {
+          // Validate team members exist and belong to tenant
+          const members = await prisma.user.findMany({
             where: {
-              id: updates.projectManagerId,
+              id: { in: updates.teamMemberIds },
               tenantId: req.tenantId,
               isActive: true,
             },
           });
 
-          if (!manager) {
+          if (members.length !== updates.teamMemberIds.length) {
             throw new ValidationError(
-              "Project manager not found in this tenant"
+              "One or more team members not found in this tenant"
             );
           }
-        }
 
-        // Check if project code already exists (if code is being updated)
-        if (updates.code && updates.code !== existingProject.code) {
-          const duplicateProject = await prisma.project.findFirst({
-            where: {
-              code: updates.code.toUpperCase(),
-              tenantId: req.tenantId,
-              id: { not: id },
-            },
+          // Create new project member records
+          await prisma.projectMember.createMany({
+            data: updates.teamMemberIds.map((userId: string) => ({
+              projectId: id,
+              userId,
+              role: "member",
+            })),
           });
-
-          if (duplicateProject) {
-            throw new ValidationError(
-              "Project code already exists in this tenant"
-            );
-          }
-          updates.code = updates.code.toUpperCase();
         }
 
-        // Convert date strings to Date objects
-        if (updates.startDate) updates.startDate = new Date(updates.startDate);
-        if (updates.endDate) updates.endDate = new Date(updates.endDate);
+        delete updateData.teamMemberIds; // Remove this as it's not a direct field
+      }
 
-        // Handle team members update
-        let updateData: any = {
-          ...updates,
-          updatedAt: new Date(),
-        };
-
-        // If teamMemberIds is provided, handle the relationship update
-        if (updates.teamMemberIds !== undefined) {
-          // First remove all current team members
-          await prisma.projectMember.deleteMany({
-            where: { projectId: id },
-          });
-
-          // Then add the new team members if any
-          if (updates.teamMemberIds.length > 0) {
-            // Validate team members exist and belong to tenant
-            const members = await prisma.user.findMany({
-              where: {
-                id: { in: updates.teamMemberIds },
-                tenantId: req.tenantId,
-                isActive: true,
-              },
-            });
-
-            if (members.length !== updates.teamMemberIds.length) {
-              throw new ValidationError(
-                "One or more team members not found in this tenant"
-              );
-            }
-
-            // Create new project member records
-            await prisma.projectMember.createMany({
-              data: updates.teamMemberIds.map((userId: string) => ({
-                projectId: id,
-                userId,
-                role: "member",
-              })),
-            });
-          }
-
-          delete updateData.teamMemberIds; // Remove this as it's not a direct field
-        }
-
-        const project = await prisma.project.update({
-          where: { id },
-          data: updateData,
-          include: {
-            projectManager: {
-              select: { id: true, name: true, workEmail: true, position: true },
-            },
-            members: {
-              select: {
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    workEmail: true,
-                    position: true,
-                  },
+      const project = await prisma.project.update({
+        where: { id },
+        data: updateData,
+        include: {
+          projectManager: {
+            select: { id: true, name: true, workEmail: true, position: true },
+          },
+          members: {
+            select: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  workEmail: true,
+                  position: true,
                 },
               },
             },
-            createdBy: {
-              select: { id: true, name: true, workEmail: true },
-            },
           },
-        });
+          createdBy: {
+            select: { id: true, name: true, workEmail: true },
+          },
+        },
+      });
 
-        res.status(200).json({
-          success: true,
-          data: project,
-          message: "Project updated successfully",
-        } as ApiResponse);
-   
+      res.status(200).json({
+        success: true,
+        data: project,
+        message: "Project updated successfully",
+      } as ApiResponse);
+
     } catch (error: any) {
       console.error("Update project error:", error);
 
@@ -546,42 +546,42 @@ export class ProjectController {
 
       const { id } = req.params;
 
-     
-        const project = await prisma.project.findFirst({
-          where: {
-            id,
-            tenantId: req.tenantId,
-          },
-        });
 
-        if (!project) {
-          throw new NotFoundError("Project not found in this tenant");
-        }
+      const project = await prisma.project.findFirst({
+        where: {
+          id,
+          tenantId: req.tenantId,
+        },
+      });
 
-        // Check if project has active tickets
-        const activeTickets = await prisma.ticket.count({
-          where: {
-            projectId: id,
-            tenantId: req.tenantId,
-            status: { in: ["NOT_STARTED", "IN_PROGRESS"] },
-          },
-        });
+      if (!project) {
+        throw new NotFoundError("Project not found in this tenant");
+      }
 
-        if (activeTickets > 0) {
-          throw new ValidationError(
-            `Cannot delete project with ${activeTickets} active tickets. Please complete or reassign tickets first.`
-          );
-        }
+      // Check if project has active tickets
+      const activeTickets = await prisma.ticket.count({
+        where: {
+          projectId: id,
+          tenantId: req.tenantId,
+          status: { in: ["NOT_STARTED", "IN_PROGRESS"] },
+        },
+      });
 
-        await prisma.project.delete({
-          where: { id },
-        });
+      if (activeTickets > 0) {
+        throw new ValidationError(
+          `Cannot delete project with ${activeTickets} active tickets. Please complete or reassign tickets first.`
+        );
+      }
 
-        res.status(200).json({
-          success: true,
-          message: "Project deleted successfully",
-        } as ApiResponse);
-     
+      await prisma.project.delete({
+        where: { id },
+      });
+
+      res.status(200).json({
+        success: true,
+        message: "Project deleted successfully",
+      } as ApiResponse);
+
     } catch (error: any) {
       console.error("Delete project error:", error);
 
@@ -616,78 +616,78 @@ export class ProjectController {
       const { id } = req.params;
 
 
-          const project = await prisma.project.findFirst({
-            where: {
-              id,
-              tenantId: req.tenantId,
-            },
-            select: {
-              id: true,
-              name: true,
-              code: true,
-              status: true,
-            },
-          });
+      const project = await prisma.project.findFirst({
+        where: {
+          id,
+          tenantId: req.tenantId,
+        },
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          status: true,
+        },
+      });
 
-          if (!project) {
-            throw new NotFoundError("Project not found in this tenant");
-          }
+      if (!project) {
+        throw new NotFoundError("Project not found in this tenant");
+      }
 
-          // Get detailed ticket statistics
-          const ticketStats = await prisma.ticket.groupBy({
-            by: ["status", "priority"],
-            where: {
-              projectId: id,
-              tenantId: req.tenantId,
-            },
-            _count: true,
-          });
+      // Get detailed ticket statistics
+      const ticketStats = await prisma.ticket.groupBy({
+        by: ["status", "priority"],
+        where: {
+          projectId: id,
+          tenantId: req.tenantId,
+        },
+        _count: true,
+      });
 
-          // Get recent tickets
-          const recentTickets = await prisma.ticket.findMany({
-            where: {
-              projectId: id,
-              tenantId: req.tenantId,
-            },
-            include: {
-              assignee: { select: { name: true, workEmail: true } },
-              createdBy: { select: { name: true, workEmail: true } },
-            },
-            orderBy: { createdAt: "desc" },
-            take: 10,
-          });
+      // Get recent tickets
+      const recentTickets = await prisma.ticket.findMany({
+        where: {
+          projectId: id,
+          tenantId: req.tenantId,
+        },
+        include: {
+          assignee: { select: { name: true, workEmail: true } },
+          createdBy: { select: { name: true, workEmail: true } },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+      });
 
-          // Calculate totals
-          const totalTickets = await prisma.ticket.count({
-            where: { projectId: id, tenantId: req.tenantId },
-          });
+      // Calculate totals
+      const totalTickets = await prisma.ticket.count({
+        where: { projectId: id, tenantId: req.tenantId },
+      });
 
-          const completedTickets = await prisma.ticket.count({
-            where: {
-              projectId: id,
-              tenantId: req.tenantId,
-              status: "COMPLETED",
-            },
-          });
+      const completedTickets = await prisma.ticket.count({
+        where: {
+          projectId: id,
+          tenantId: req.tenantId,
+          status: "COMPLETED",
+        },
+      });
 
-          const inProgressTickets = await prisma.ticket.count({
-            where: {
-              projectId: id,
-              tenantId: req.tenantId,
-              status: "IN_PROGRESS",
-            },
-          });
+      const inProgressTickets = await prisma.ticket.count({
+        where: {
+          projectId: id,
+          tenantId: req.tenantId,
+          status: "IN_PROGRESS",
+        },
+      });
 
-          const stats = {
-            project: {
-              ...project,
-              totalTickets,
-              completedTickets,
-              inProgressTickets,
-            },
-            ticketStats,
-            recentTickets,
-          };
+      const stats = {
+        project: {
+          ...project,
+          totalTickets,
+          completedTickets,
+          inProgressTickets,
+        },
+        ticketStats,
+        recentTickets,
+      };
 
 
       res.status(200).json({
@@ -729,19 +729,21 @@ export class ProjectController {
       }
 
 
-          const projects =  await prisma.project.findMany({
-            where: {
-              tenantId: req.tenantId,
-              status: "active",
-            },
-            select: {
-              id: true,
-              name: true,
-              code: true,
-              description: true,
-            },
-            orderBy: { name: "asc" },
-          });
+      const projects = await prisma.project.findMany({
+        where: {
+          tenantId: req.tenantId,
+          status: "active",
+        },
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          description: true,
+        },
+        orderBy: { name: "asc" },
+      });
+
+
 
       const projectOptions = projects.map((project) => ({
         value: project.id,
@@ -764,7 +766,132 @@ export class ProjectController {
   }
 
   /**
-   * Get projects where user is a member (tenant-aware)
+   * Get rich project data for selection screen (tenant-aware + role-based)
+   */
+  static async getSelectionProjects(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({ success: false, error: "Tenant and Auth required" } as ApiResponse);
+        return;
+      }
+
+      const userId = req.user.id;
+      const tenantId = req.tenantId;
+      const userRole = req.user.role;
+      const cacheKey = `projects:selection:${userId}`;
+
+      // 1. Try Cache
+      /*
+      // Commented out until cacheService is imported/available in context or we decide to enable it
+      const cached = await cacheService.get(cacheKey);
+      if (cached) {
+         res.status(200).json({ success: true, data: cached } as ApiResponse);
+         return;
+      }
+      */
+
+      // 2. Determine Project Scope based on Role
+      let whereClause: any = {
+        tenantId,
+        status: { not: 'ARCHIVED' } // Exclude archived by default
+      };
+
+      // STRICT ROLE LOGIC:
+      // SUPER_ADMIN -> Sees ALL projects in tenant
+      // ADMIN / MEMBER -> Sees ONLY assigned projects (Member or PM)
+      if (userRole?.toUpperCase() !== 'SUPER_ADMIN') {
+        whereClause.OR = [
+          { projectManagerId: userId },
+          { members: { some: { userId } } }
+        ];
+      }
+
+      // 3. Fetch Projects
+      const projects = await prisma.project.findMany({
+        where: whereClause,
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          description: true,
+          status: true,
+          projectManagerId: true,
+          projectManager: {
+            select: { name: true, id: true }
+          },
+          members: {
+            take: 5, // Limit mostly members for UI
+            select: {
+              user: { select: { id: true, name: true, position: true } }
+            }
+          },
+          _count: {
+            select: { members: true }
+          }
+        },
+        orderBy: { updatedAt: 'desc' }
+      });
+
+      // 4. Aggregate Ticket Stats (Real Data)
+      // We do this in parallel for performance, or use a complex groupBy
+      // For generic Prisma, iterating is safest for complex counts unless we use raw query
+
+      const enrichedProjects = await Promise.all(projects.map(async (p) => {
+        const ticketStats = await prisma.ticket.groupBy({
+          by: ['status'],
+          where: {
+            projectId: p.id,
+            tenantId
+          },
+          _count: { _all: true }
+        });
+
+        let total = 0;
+        let done = 0;
+        let inProgress = 0;
+
+        ticketStats.forEach(stat => {
+          const count = stat._count._all;
+          const status = stat.status?.toLowerCase() || '';
+
+          total += count;
+
+          // broader check for done states
+          if (['completed', 'done', 'closed', 'resolved'].includes(status)) {
+            done += count;
+          }
+
+          // broader check for in-progress states
+          if (['in_progress', 'in progress', 'active', 'in_review', 'testing', 'qa', 'dev', 'development'].includes(status)) {
+            inProgress += count;
+          }
+        });
+
+        return {
+          ...p,
+          totalTickets: total,
+          completedTickets: done,
+          inProgressTickets: inProgress,
+          memberCount: p._count.members
+        };
+      }));
+
+      // 5. Cache Result (TTL 5 mins)
+      // await cacheService.set(cacheKey, enrichedProjects, 300);
+
+      res.status(200).json({
+        success: true,
+        data: enrichedProjects
+      } as ApiResponse);
+
+    } catch (error) {
+      console.error("Get selection projects error:", error);
+      res.status(500).json({ success: false, error: "Failed to fetch selection projects" } as ApiResponse);
+    }
+  }
+
+  /**
+   * Get projects where user is a member (tenant-aware) (LEGACY / SIMPLE)
    */
   static async getUserProjects(req: AuthRequest, res: Response): Promise<void> {
     try {
@@ -779,23 +906,23 @@ export class ProjectController {
       const userId = req.user.id;
 
 
-          const projects =  await prisma.project.findMany({
-            where: {
-              tenantId: req.tenantId,
-              status: "active",
-              OR: [
-                { projectManagerId: userId },
-                { members: { some: { userId: userId } } },
-              ],
-            },
-            select: {
-              id: true,
-              name: true,
-              code: true,
-              description: true,
-            },
-            orderBy: { name: "asc" },
-          });
+      const projects = await prisma.project.findMany({
+        where: {
+          tenantId: req.tenantId,
+          status: "active",
+          OR: [
+            { projectManagerId: userId },
+            { members: { some: { userId: userId } } },
+          ],
+        },
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          description: true,
+        },
+        orderBy: { name: "asc" },
+      });
 
 
       const projectOptions = projects.map((project) => ({
@@ -818,6 +945,9 @@ export class ProjectController {
     }
   }
 
+
+
+
   /**
    * Get projects where user is a member or project manager (for ticket creation)
    */
@@ -836,24 +966,24 @@ export class ProjectController {
 
       const userId = req.user.id;
 
-      const projects = 
-           await prisma.project.findMany({
-            where: {
-              tenantId: req.tenantId,
-              status: "active",
-              OR: [
-                { projectManagerId: userId },
-                { members: { some: { userId: userId } } },
-              ],
-            },
-            select: {
-              id: true,
-              name: true,
-              code: true,
-              description: true,
-            },
-            orderBy: { name: "asc" },
-          });
+      const projects =
+        await prisma.project.findMany({
+          where: {
+            tenantId: req.tenantId,
+            status: "active",
+            OR: [
+              { projectManagerId: userId },
+              { members: { some: { userId: userId } } },
+            ],
+          },
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            description: true,
+          },
+          orderBy: { name: "asc" },
+        });
 
 
       const projectOptions = projects.map((project) => ({
@@ -900,67 +1030,67 @@ export class ProjectController {
         return;
       }
 
-      
-        const [project, user] = await Promise.all([
-          prisma.project.findFirst({
-            where: { id, tenantId: req.tenantId },
-            include: { members: true },
-          }),
-          prisma.user.findFirst({
-            where: { id: userId, tenantId: req.tenantId, isActive: true },
-          }),
-        ]);
 
-        if (!project) {
-          throw new NotFoundError("Project not found in this tenant");
-        }
+      const [project, user] = await Promise.all([
+        prisma.project.findFirst({
+          where: { id, tenantId: req.tenantId },
+          include: { members: true },
+        }),
+        prisma.user.findFirst({
+          where: { id: userId, tenantId: req.tenantId, isActive: true },
+        }),
+      ]);
 
-        if (!user) {
-          throw new NotFoundError("User not found in this tenant");
-        }
+      if (!project) {
+        throw new NotFoundError("Project not found in this tenant");
+      }
 
-        // Check if user is already a team member
-        const isAlreadyMember = project.members.some(
-          (member) => member.userId === userId
-        );
-        if (isAlreadyMember) {
-          throw new ValidationError("User is already a team member");
-        }
+      if (!user) {
+        throw new NotFoundError("User not found in this tenant");
+      }
 
-        // Add the team member
-        await prisma.projectMember.create({
-          data: {
-            projectId: id,
-            userId,
-            role: "member",
-          },
-        });
+      // Check if user is already a team member
+      const isAlreadyMember = project.members.some(
+        (member) => member.userId === userId
+      );
+      if (isAlreadyMember) {
+        throw new ValidationError("User is already a team member");
+      }
 
-        // Get updated project
-        const updatedProject = await prisma.project.findFirst({
-          where: { id },
-          include: {
-            members: {
-              select: {
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    workEmail: true,
-                    position: true,
-                  },
+      // Add the team member
+      await prisma.projectMember.create({
+        data: {
+          projectId: id,
+          userId,
+          role: "member",
+        },
+      });
+
+      // Get updated project
+      const updatedProject = await prisma.project.findFirst({
+        where: { id },
+        include: {
+          members: {
+            select: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  workEmail: true,
+                  position: true,
                 },
               },
             },
           },
-        });
+        },
+      });
 
-        res.status(200).json({
-          success: true,
-          data: updatedProject,
-          message: "Team member added successfully",
-        } as ApiResponse);
- 
+      res.status(200).json({
+        success: true,
+        data: updatedProject,
+        message: "Team member added successfully",
+      } as ApiResponse);
+
     } catch (error: any) {
       console.error("Add team member error:", error);
 
@@ -997,14 +1127,24 @@ export class ProjectController {
 
       const { id } = req.params;
 
-    
-          const project = await prisma.project.findFirst({
-            where: {
-              id,
-              tenantId: req.tenantId,
+
+      const project = await prisma.project.findFirst({
+        where: {
+          id,
+          tenantId: req.tenantId,
+        },
+        include: {
+          projectManager: {
+            select: {
+              id: true,
+              name: true,
+              workEmail: true,
+              position: true,
             },
-            include: {
-              projectManager: {
+          },
+          members: {
+            select: {
+              user: {
                 select: {
                   id: true,
                   name: true,
@@ -1012,50 +1152,40 @@ export class ProjectController {
                   position: true,
                 },
               },
-              members: {
-                select: {
-                  user: {
-                    select: {
-                      id: true,
-                      name: true,
-                      workEmail: true,
-                      position: true,
-                    },
-                  },
-                },
-              },
             },
-          });
+          },
+        },
+      });
 
-          if (!project) {
-            throw new NotFoundError("Project not found in this tenant");
-          }
+      if (!project) {
+        throw new NotFoundError("Project not found in this tenant");
+      }
 
-          // Combine project manager and team members
-          const allMembers = [
-            {
-              value: project.projectManager.id,
-              label: project.projectManager.name,
-              position: project.projectManager.position,
-              workEmail: project.projectManager.workEmail,
-              isProjectManager: true,
-            },
-            ...project.members.map((member) => ({
-              value: member.user.id,
-              label: member.user.name,
-              position: member.user.position,
-              workEmail: member.user.workEmail,
-              isProjectManager: false,
-            })),
-          ];
+      // Combine project manager and team members
+      const allMembers = [
+        {
+          value: project.projectManager.id,
+          label: project.projectManager.name,
+          position: project.projectManager.position,
+          workEmail: project.projectManager.workEmail,
+          isProjectManager: true,
+        },
+        ...project.members.map((member) => ({
+          value: member.user.id,
+          label: member.user.name,
+          position: member.user.position,
+          workEmail: member.user.workEmail,
+          isProjectManager: false,
+        })),
+      ];
 
-          // Remove duplicates (in case project manager is also in members list)
-          const uniqueMembers = allMembers.filter(
-            (member, index, self) =>
-              index === self.findIndex((m) => m.value === member.value)
-          );
+      // Remove duplicates (in case project manager is also in members list)
+      const uniqueMembers = allMembers.filter(
+        (member, index, self) =>
+          index === self.findIndex((m) => m.value === member.value)
+      );
 
-            const members =  uniqueMembers;
+      const members = uniqueMembers;
 
       res.status(200).json({
         success: true,
@@ -1097,35 +1227,35 @@ export class ProjectController {
 
       const { id } = req.params; // project ID
 
-    
-          // Verify project exists and user has access
-          const project = await prisma.project.findFirst({
-            where: {
-              id,
-              tenantId: req.tenantId,
-            },
-          });
 
-          if (!project) {
-            throw new NotFoundError("Project not found in this tenant");
-          }
+      // Verify project exists and user has access
+      const project = await prisma.project.findFirst({
+        where: {
+          id,
+          tenantId: req.tenantId,
+        },
+      });
 
-          // Get tickets assigned to current user in this project
-            const tickets = await prisma.ticket.findMany({
-            where: {
-              projectId: id,
-              tenantId: req.tenantId,
-              assigneeId: req.user!.id,
-            },
-            select: {
-              id: true,
-              ticketNumber: true,
-              title: true,
-              status: true,
-              priority: true,
-            },
-            orderBy: { ticketNumber: "desc" },
-          });
+      if (!project) {
+        throw new NotFoundError("Project not found in this tenant");
+      }
+
+      // Get tickets assigned to current user in this project
+      const tickets = await prisma.ticket.findMany({
+        where: {
+          projectId: id,
+          tenantId: req.tenantId,
+          assigneeId: req.user!.id,
+        },
+        select: {
+          id: true,
+          ticketNumber: true,
+          title: true,
+          status: true,
+          priority: true,
+        },
+        orderBy: { ticketNumber: "desc" },
+      });
 
       res.status(200).json({
         success: true,
@@ -1167,49 +1297,49 @@ export class ProjectController {
 
       const { id } = req.params; // project ID
 
-      
-          // Verify project exists and user has access
-          const project = await prisma.project.findFirst({
-            where: {
-              id,
-              tenantId: req.tenantId,
-            },
-            include: {
-              members: {
-                where: { userId: req.user!.id },
-              },
-            },
-          });
 
-          if (!project) {
-            throw new NotFoundError("Project not found in this tenant");
-          }
+      // Verify project exists and user has access
+      const project = await prisma.project.findFirst({
+        where: {
+          id,
+          tenantId: req.tenantId,
+        },
+        include: {
+          members: {
+            where: { userId: req.user!.id },
+          },
+        },
+      });
 
-          // Check if user is project manager or member
-          const isProjectManager = project.projectManagerId === req.user!.id;
-          const isMember = project.members.length > 0;
+      if (!project) {
+        throw new NotFoundError("Project not found in this tenant");
+      }
 
-          if (!isProjectManager && !isMember) {
-            throw new AuthorizationError(
-              "You do not have access to this project"
-            );
-          }
+      // Check if user is project manager or member
+      const isProjectManager = project.projectManagerId === req.user!.id;
+      const isMember = project.members.length > 0;
 
-          // Get all tickets in this project
-          const tickets =  await prisma.ticket.findMany({
-            where: {
-              projectId: id,
-              tenantId: req.tenantId,
-            },
-            select: {
-              id: true,
-              ticketNumber: true,
-              title: true,
-              status: true,
-              priority: true,
-            },
-            orderBy: { ticketNumber: "desc" },
-          });
+      if (!isProjectManager && !isMember) {
+        throw new AuthorizationError(
+          "You do not have access to this project"
+        );
+      }
+
+      // Get all tickets in this project
+      const tickets = await prisma.ticket.findMany({
+        where: {
+          projectId: id,
+          tenantId: req.tenantId,
+        },
+        select: {
+          id: true,
+          ticketNumber: true,
+          title: true,
+          status: true,
+          priority: true,
+        },
+        orderBy: { ticketNumber: "desc" },
+      });
 
 
       res.status(200).json({
@@ -1260,59 +1390,59 @@ export class ProjectController {
 
       const { id, userId } = req.params;
 
-     
-        const project = await prisma.project.findFirst({
-          where: { id, tenantId: req.tenantId },
-          include: { members: true },
-        });
 
-        if (!project) {
-          throw new NotFoundError("Project not found in this tenant");
-        }
+      const project = await prisma.project.findFirst({
+        where: { id, tenantId: req.tenantId },
+        include: { members: true },
+      });
 
-        // Check if user is actually a team member
-        const isMember = project.members.some(
-          (member) => member.userId === userId
+      if (!project) {
+        throw new NotFoundError("Project not found in this tenant");
+      }
+
+      // Check if user is actually a team member
+      const isMember = project.members.some(
+        (member) => member.userId === userId
+      );
+      if (!isMember) {
+        throw new ValidationError(
+          "User is not a team member of this project"
         );
-        if (!isMember) {
-          throw new ValidationError(
-            "User is not a team member of this project"
-          );
-        }
+      }
 
-        // Remove the team member
-        await prisma.projectMember.deleteMany({
-          where: {
-            projectId: id,
-            userId: userId,
-          },
-        });
+      // Remove the team member
+      await prisma.projectMember.deleteMany({
+        where: {
+          projectId: id,
+          userId: userId,
+        },
+      });
 
-        // Get updated project
-        const updatedProject = await prisma.project.findFirst({
-          where: { id },
-          include: {
-            members: {
-              select: {
-                user: {
-                  select: {
-                    id: true,
-                    name: true,
-                    workEmail: true,
-                    position: true,
-                  },
+      // Get updated project
+      const updatedProject = await prisma.project.findFirst({
+        where: { id },
+        include: {
+          members: {
+            select: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  workEmail: true,
+                  position: true,
                 },
               },
             },
           },
-        });
+        },
+      });
 
-        res.status(200).json({
-          success: true,
-          data: updatedProject,
-          message: "Team member removed successfully",
-        } as ApiResponse);
-    
+      res.status(200).json({
+        success: true,
+        data: updatedProject,
+        message: "Team member removed successfully",
+      } as ApiResponse);
+
     } catch (error: any) {
       console.error("Remove team member error:", error);
 
