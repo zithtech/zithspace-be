@@ -8,6 +8,7 @@ import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
 
+
 // Import configurations
 import { connectDatabase, disconnectDatabase } from "@/config/database";
 
@@ -30,6 +31,8 @@ import userRoutes from "@/routes/user";
 import dailyUpdateRoutes from "@/routes/dailyUpdates";
 import dashboardRoutes from "@/routes/dashboard";
 import leaveRoutes from "@/routes/leaves";
+import reimbursement from "@/routes/reimbursementCategory"
+
 
 // Load environment variables
 dotenv.config();
@@ -130,6 +133,7 @@ app.use("/api/user", userRoutes);
 app.use("/api/daily-updates", dailyUpdateRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/leaves", leaveRoutes);
+app.use("/api/reimbursementCategory",reimbursement)
 
 // Tenant-specific health check
 app.get("/api/health", (req: any, res) => {
