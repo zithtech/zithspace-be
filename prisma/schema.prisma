@@ -23,6 +23,7 @@ model Tenant {
   clients             Client[]
   dropdownOptions     DropdownOption[]
   leaves              Leave[]
+  leaveTypes          LeaveType[]
   fixedHolidays       FixedHoliday[]
 
   salaryComponents    SalaryComponent[] 
@@ -85,6 +86,8 @@ model User {
   createdClients       Client[]            @relation("ClientCreator")
   leaves               Leave[]             @relation("UserLeaves")
   approvedLeaves       Leave[]             @relation("LeaveApprover")
+  createdLeaveTypes    LeaveType[]         @relation("LeaveTypeCreator")
+  updatedLeaveTypes    LeaveType[]         @relation("LeaveTypeUpdater")
   projectMemberships   ProjectMember[]
   createdProjects      Project[]           @relation("ProjectCreator")
   managedProjects      Project[]           @relation("ProjectManager")
@@ -608,6 +611,30 @@ model Leave {
   tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("leaves")
+}
+
+model LeaveType {
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  name             String
+  code             String
+  description      String?
+  type             String   // "Days" or "Hours"
+  days             Int?     @default(1)
+  hours            Decimal? @db.Decimal(4, 2)
+  isPaid           Boolean  @default(true) @map("is_paid")
+  requiresApproval Boolean  @default(true) @map("requires_approval")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdById      String?  @map("created_by_id")
+  updatedById      String?  @map("updated_by_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy        User?    @relation("LeaveTypeCreator", fields: [createdById], references: [id])
+  updatedBy        User?    @relation("LeaveTypeUpdater", fields: [updatedById], references: [id])
+
+  @@unique([tenantId, code])
+  @@map("leave_types")
 }
 
 model FixedHoliday {
