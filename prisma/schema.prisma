@@ -44,6 +44,7 @@ model Tenant {
   settingsProfiles       SettingsProfile[]
   invoices               Invoice[]
   items                  InvoiceItem[]
+  payments               InvoicePayment[]
 
   @@map("tenants")
 }
@@ -113,6 +114,9 @@ model User {
   invoicesUpdated                      Invoice[]                @relation("InvoiceUpdatedBy")
   invoiceItemsCreated                  InvoiceItem[]            @relation("InvoiceItemCreatedBy")
   invoiceItemsUpdated                  InvoiceItem[]            @relation("InvoiceItemUpdatedBy")
+
+  invoicePaymentsCreated               InvoicePayment[]         @relation("InvoicePaymentCreatedBy")
+  invoicePaymentsUpdated               InvoicePayment[]         @relation("InvoicePaymentUpdatedBy")
 
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
@@ -830,8 +834,10 @@ model SettingsProfile {
 enum InvoiceStatus {
   DRAFT
   PENDING
-  APPROVED
+  APPROVAL
   SENT
+  SUBMITTED
+  PARTIALLY_PAID
   PAID
   OVERDUE
   CANCELLED
@@ -870,6 +876,7 @@ model Invoice {
   dueDate            DateTime           @map("due_date")
   invoiceType        InvoiceType        @default(STANDARD) @map("invoice_type")
   status             InvoiceStatus      @default(DRAFT)
+  description        String?            @db.Text  // Add this line
   
   currency           Currency
   recurringFrequency RecurringFrequency? @map("recurring_frequency")
@@ -879,7 +886,7 @@ model Invoice {
   subtotal           Decimal            @db.Decimal(15, 2)
   taxTotal           Decimal            @map("tax_total") @db.Decimal(15, 2)
   total              Decimal            @db.Decimal(15, 2)
-  paid               Decimal            @default(0) @db.Decimal(15, 2)
+  paidAmount         Decimal            @default(0) @map("paid_amount")
   balanceDue         Decimal            @map("balance_due")@db.Decimal(15, 2)
 
   notes              String?            @db.Text
@@ -888,6 +895,10 @@ model Invoice {
   sentAt            DateTime?           @map("sent_at")
   paidAt            DateTime?           @map("paid_at")
   cancelledAt       DateTime?           @map("cancelled_at")
+
+
+  pdfUrl            String?             @map("pdf_url") @db.Text
+  payments          InvoicePayment[]
 
   // Audit fields
   createdBy          String             @map("created_by")
@@ -906,7 +917,7 @@ model Invoice {
   createdByUser      User               @relation("InvoiceCreatedBy", fields: [createdBy], references: [id])
   updatedByUser      User?              @relation("InvoiceUpdatedBy", fields: [updatedBy], references: [id])
 
-  @@index([tenantId])
+  @@index([tenantId,invoiceNumber])
   @@index([customerId])
   @@index([status])
   @@map("invoices")
@@ -943,6 +954,59 @@ model InvoiceItem {
   @@index([tenantId])
   @@map("invoice_items")
 }
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CREDIT_CARD
+  DEBIT_CARD
+  CHECK
+  PAYPAL
+  STRIPE
+  OTHER
+
+  @@map("payment_method")
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+  CANCELLED
+  @@map("payment_status")
+}
+
+
+model InvoicePayment {
+  id            String         @id @default(uuid())
+  tenantId      String         @map("tenant_id")
+  invoiceId     String         @map("invoice_id")
+  amount        Decimal        @db.Decimal(15, 2)
+  description   String?
+  paymentDate   DateTime       @map("payment_date") @default(now())
+  paymentMethod PaymentMethod? @map("payment_method")
+  status        PaymentStatus @default(PENDING)
+
+  // Audit fields
+  createdBy     String   @map("created_by")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedBy     String?  @map("updated_by")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  invoice        Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  tenant         Tenant  @relation(fields: [tenantId], references: [id])
+  createdByUser  User    @relation("InvoicePaymentCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser  User?   @relation("InvoicePaymentUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@index([invoiceId])
+  @@index([tenantId])
+  @@index([tenantId, invoiceId])
+  @@map("invoice_payments")
+}
+
+
 
 
 

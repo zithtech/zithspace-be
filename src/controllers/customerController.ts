@@ -99,281 +99,93 @@ export class CustomerController {
   /**
    * Create customer (admin only)
    */
+
+
   static async createCustomer(req: AuthRequest, res: Response): Promise<void> {
-    try {
-      if (!req.tenantId || !req.user) {
-        res.status(400).json({
-          success: false,
-          error: "Tenant context and authentication required",
-        } as ApiResponse);
-        return;
-      }
+  try {
+    if (!req.tenantId || !req.user) {
+      res.status(400).json({
+        success: false,
+        error: "Tenant context and authentication required",
+      } as ApiResponse);
+      return;
+    }
 
-      // <-- Put the validation here -->
-      const customerData: CreateCustomerData = req.body;
+    const customerData: CreateCustomerData = req.body;
 
-      // Validate required fields
-      if (!customerData.companyName) {
-        res.status(400).json({
-          success: false,
-          error: "Company name is required",
-        } as ApiResponse);
-        return;
-      }
+    // 1. Validate required fields
+    if (!customerData.companyName) {
+      res.status(400).json({
+        success: false,
+        error: "Company name is required",
+      } as ApiResponse);
+      return;
+    }
 
-      // Check email uniqueness only if email is provided
-      if (customerData.email) {
-        const existing = await prisma.customer.findFirst({
-          where: {
-            tenantId: req.tenantId,
-            email: customerData.email,
-          },
-        });
+    // 2. SANITIZE EMAIL: Convert empty strings or whitespace-only strings to undefined.
+    // This is the key fix to prevent unique constraint errors on empty strings.
+    const sanitizedEmail = customerData.email?.trim() || undefined;
 
-        if (existing) {
-          throw new ValidationError(
-            "Customer with this email already exists in this tenant",
-          );
-        }
-      }
-
-      
-
-     
-
-      // Create the customer
-      const newCustomer = await prisma.customer.create({
-        data: {
-          ...customerData,
+    // 3. Check email uniqueness only if a valid email string exists
+    if (sanitizedEmail) {
+      const existing = await prisma.customer.findFirst({
+        where: {
           tenantId: req.tenantId,
-          createdBy: req.user.id,
-          updatedBy: req.user.id,
+          email: sanitizedEmail,
         },
       });
 
-      res.status(201).json({
-        success: true,
-        data: newCustomer,
-        message: "Customer created successfully",
-      } as ApiResponse);
-    } catch (error: any) {
-      console.error("Create customer error:", error);
-
-      if (error instanceof ValidationError) {
-        res
-          .status(400)
-          .json({ success: false, error: error.message } as ApiResponse);
-        return;
+      if (existing) {
+        throw new ValidationError(
+          "Customer with this email already exists in this tenant",
+        );
       }
-
-      res.status(500).json({
-        success: false,
-        error: "Failed to create customer",
-      } as ApiResponse);
     }
+
+    // 4. Create the customer
+    const newCustomer = await prisma.customer.create({
+      data: {
+        ...customerData,
+        email: sanitizedEmail, // Use the sanitized value here
+        tenantId: req.tenantId,
+        createdBy: req.user.id,
+        updatedBy: req.user.id,
+      },
+    });
+
+    res.status(201).json({
+      success: true,
+      data: newCustomer,
+      message: "Customer created successfully",
+    } as ApiResponse);
+
+  } catch (error: any) {
+    console.error("Create customer error:", error);
+
+    // Handle Prisma Unique Constraint Errors (P2002)
+    if (error.code === 'P2002') {
+      res.status(400).json({
+        success: false,
+        error: "A customer with this email already exists in this tenant.",
+      } as ApiResponse);
+      return;
+    }
+
+    if (error instanceof ValidationError) {
+      res.status(400).json({ 
+        success: false, 
+        error: error.message 
+      } as ApiResponse);
+      return;
+    }
+
+    res.status(500).json({
+      success: false,
+      error: "Failed to create customer",
+    } as ApiResponse);
   }
+}
 
-  /**
-   * Update customer (admin only)
-   */
-  // static async updateCustomer(req: AuthRequest, res: Response): Promise<void> {
-  //   try {
-  //     if (!req.tenantId || !req.user) {
-  //       res.status(400).json({
-  //         success: false,
-  //         error: "Tenant context and authentication required",
-  //       } as ApiResponse);
-  //       return;
-  //     }
-
-  //     const { id } = req.params;
-
-  //     // <-- Put the UpdateCustomerData assignment here -->
-  //     const updates: UpdateCustomerData = req.body;
-
-  //     // Remove fields that shouldn't be updated directly
-  //     delete (updates as any).tenantId;
-  //     delete (updates as any).createdAt;
-  //     delete (updates as any).createdBy;
-
-  //     // Check if customer exists in this tenant
-  //     const existingCustomer = await prisma.customer.findFirst({
-  //       where: { id, tenantId: req.tenantId },
-  //     });
-
-  //     if (!existingCustomer) {
-  //       throw new NotFoundError("Customer not found in this tenant");
-  //     }
-
-  //     // Check companyName uniqueness within the tenant
-  //   const existingCompany = await prisma.customer.findFirst({
-  //     where: {
-  //       tenantId: req.tenantId,
-  //       companyName: updates.companyName,
-  //     },
-  //   });
-
-  //   if (existingCompany) {
-  //     throw new ValidationError(
-  //       "Customer with this company name already exists "
-  //     );
-  //   }
-
-  //     // If email is being updated, check for duplicates
-  //     if (updates.email && updates.email !== existingCustomer.email) {
-  //       const duplicate = await prisma.customer.findFirst({
-  //         where: {
-  //           tenantId: req.tenantId,
-  //           email: updates.email,
-  //           id: { not: id },
-  //         },
-  //       });
-
-  //       if (duplicate) {
-  //         throw new ValidationError(
-  //           "Another customer with this email already exists",
-  //         );
-  //       }
-  //     }
-
-  //     // Update customer
-  //     const updatedCustomer = await prisma.customer.update({
-  //       where: { id },
-  //       data: { ...updates, updatedBy: req.user.id, updatedAt: new Date() },
-  //     });
-
-  //     res.status(200).json({
-  //       success: true,
-  //       data: updatedCustomer,
-  //       message: "Customer updated successfully",
-  //     } as ApiResponse);
-  //   } catch (error: any) {
-  //     console.error("Update customer error:", error);
-
-  //     if (error instanceof NotFoundError) {
-  //       res
-  //         .status(404)
-  //         .json({ success: false, error: error.message } as ApiResponse);
-  //       return;
-  //     }
-
-  //     if (error instanceof ValidationError) {
-  //       res
-  //         .status(400)
-  //         .json({ success: false, error: error.message } as ApiResponse);
-  //       return;
-  //     }
-
-  //     res.status(500).json({
-  //       success: false,
-  //       error: "Failed to update customer",
-  //     } as ApiResponse);
-  //   }
-  // }
-
-  /**
- * Update customer (admin only)
- */
-// static async updateCustomer(req: AuthRequest, res: Response): Promise<void> {
-//   try {
-//     if (!req.tenantId || !req.user) {
-//       res.status(400).json({
-//         success: false,
-//         error: "Tenant context and authentication required",
-//       } as ApiResponse);
-//       return;
-//     }
-
-//     const { id } = req.params;
-//     const updates: UpdateCustomerData = req.body;
-
-//     // Prevent updating immutable fields
-//     delete (updates as any).tenantId;
-//     delete (updates as any).createdAt;
-//     delete (updates as any).createdBy;
-
-//     // Fetch existing customer
-//     const existingCustomer = await prisma.customer.findFirst({
-//       where: { id, tenantId: req.tenantId },
-//     });
-
-//     if (!existingCustomer) {
-//       throw new NotFoundError("Customer not found in this tenant");
-//     }
-
-//     // Check companyName uniqueness only if it is being changed
-//     if (updates.companyName && updates.companyName !== existingCustomer.companyName) {
-//       const existingCompany = await prisma.customer.findFirst({
-//         where: {
-//           tenantId: req.tenantId,
-//           companyName: updates.companyName,
-//           NOT: { id }, // exclude current customer
-//         },
-//       });
-
-//       if (existingCompany) {
-//         throw new ValidationError(
-//           "Another customer with this company name already exists"
-//         );
-//       }
-//     }
-
-//     // Check email uniqueness only if it is being changed
-//     if (updates.email && updates.email !== existingCustomer.email) {
-//       const duplicateEmail = await prisma.customer.findFirst({
-//         where: {
-//           tenantId: req.tenantId,
-//           email: updates.email,
-//           NOT: { id },
-//         },
-//       });
-
-//       if (duplicateEmail) {
-//         throw new ValidationError(
-//           "Another customer with this email already exists"
-//         );
-//       }
-//     }
-
-//     // Perform update
-//     const updatedCustomer = await prisma.customer.update({
-//       where: { id },
-//       data: {
-//         ...updates,
-//         updatedBy: req.user.id,
-//         updatedAt: new Date(),
-//       },
-//     });
-
-//     res.status(200).json({
-//       success: true,
-//       data: updatedCustomer,
-//       message: "Customer updated successfully",
-//     } as ApiResponse);
-//   } catch (error: any) {
-//     console.error("Update customer error:", error);
-
-//     if (error instanceof NotFoundError) {
-//       res.status(404).json({ success: false, error: error.message } as ApiResponse);
-//       return;
-//     }
-
-//     if (error instanceof ValidationError) {
-//       res.status(400).json({ success: false, error: error.message } as ApiResponse);
-//       return;
-//     }
-
-//     res.status(500).json({
-//       success: false,
-//       error: "Failed to update customer",
-//     } as ApiResponse);
-//   }
-// }
-
-
-/**
- * Update customer (admin only)
- */
 /**
  * Update customer (admin only)
  */

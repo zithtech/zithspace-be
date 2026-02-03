@@ -7,7 +7,30 @@ import {
   ValidationError,
 } from '@/types';
 
+const parseInvoiceFormat = (formatString: string) => {
+  // Finds the sequence of # inside curly braces (e.g., {####})
+  const paddingMatch = formatString.match(/{#+}/);
+  
+  // Calculate padding: length of match minus the 2 curly braces
+  // Default to 4 if no {#} token is found
+  const padding = paddingMatch ? paddingMatch[0].length - 2 : 4;
+
+  // Check if year tokens exist to determine auto-reset
+  const hasYearToken = formatString.includes("{YYYY}") || formatString.includes("{YY}");
+
+  return {
+    format: formatString,
+    padding: padding,
+    resetYearly: hasYearToken,
+    lastResetYear: new Date().getFullYear(),
+    nextNumber: 1, // Start sequence at 1
+  };
+};
+
 export class InvoiceSettingsController {
+
+
+  
 
   // ===================== GET ALL PROFILES =====================
   static async getProfiles(req: AuthRequest, res: Response): Promise<void> {
@@ -103,45 +126,13 @@ export class InvoiceSettingsController {
     }
   }
 
-  // ===================== CREATE PROFILE =====================
-  // static async createProfile(req: AuthRequest, res: Response): Promise<void> {
-  //   try {
-  //     if (!req.tenantId || !req.user) throw new ValidationError('Tenant context required');
+ 
 
-  //     const { name, general, invoice, payment } = req.body;
-  //     if (!name) throw new ValidationError('Profile name is required');
 
-  //     // Note: We use nested 'create' for relations because the IDs (generalId, etc) 
-  //     // are required in your schema. This creates the profile and settings in one transaction.
-  //     const newProfile = await prisma.settingsProfile.create({
-  //       data: {
-  //         name,
-  //         isActive: false,
-  //         tenant: { connect: { id: req.tenantId } },
-  //         createdByUser: { connect: { id: req.user.id } },
-  //         general: { create: general || {} },
-  //         invoice: { create: invoice || {} },
-  //         payment: { create: payment || {} },
-  //       },
-  //       include: {
-  //         general: true,
-  //         invoice: true,
-  //         payment: true
-  //       }
-  //     });
 
-  //     res.status(201).json({ success: true, data: newProfile, message: 'Profile created successfully' } as ApiResponse);
-
-  //   } catch (error: any) {
-  //     console.error('Create profile error:', error);
-  //     if (error instanceof ValidationError) {
-  //       res.status(400).json({ success: false, error: error.message });
-  //       return;
-  //     }
-  //     res.status(500).json({ success: false, error: 'Failed to create profile' });
-  //   }
-  // }
-
+  // ===================== UPDATE PROFILE =====================
+  
+  
   static async createProfile(req: AuthRequest, res: Response): Promise<void> {
   try {
     if (!req.tenantId || !req.user) throw new ValidationError('Tenant context required');
@@ -149,26 +140,31 @@ export class InvoiceSettingsController {
     const { name, general = {}, invoice = {}, payment = {} } = req.body;
     if (!name) throw new ValidationError('Profile name is required');
 
-    // Create profile with nested settings, connecting all required relations
+    // --- DYNAMIC DESTRUCTURING START ---
+    // If frontend sends { format: "INV-{###}" }, this expands it
+    const invoiceFormatString = invoice.format || "INV-{YYYY}-{###}";
+    const parsedInvoiceData = parseInvoiceFormat(invoiceFormatString);
+    // --- DYNAMIC DESTRUCTURING END ---
+
     const newProfile = await prisma.settingsProfile.create({
       data: {
         name,
         isActive: false,
-        tenant: { connect: { id: req.tenantId } }, // profile -> tenant
+        tenant: { connect: { id: req.tenantId } },
         createdByUser: { connect: { id: req.user.id } },
 
         general: {
           create: {
             ...general,
-            tenant: { connect: { id: req.tenantId } }, // general -> tenant
+            tenant: { connect: { id: req.tenantId } },
             createdByUser: { connect: { id: req.user.id } },
           }
         },
 
         invoice: {
           create: {
-            ...invoice,
-            tenant: { connect: { id: req.tenantId } }, // invoice -> tenant
+            ...parsedInvoiceData, // This now contains dynamic padding, resetYearly, etc.
+            tenant: { connect: { id: req.tenantId } },
             createdByUser: { connect: { id: req.user.id } },
           }
         },
@@ -176,7 +172,7 @@ export class InvoiceSettingsController {
         payment: {
           create: {
             ...payment,
-            tenant: { connect: { id: req.tenantId } }, // payment -> tenant
+            tenant: { connect: { id: req.tenantId } },
             createdByUser: { connect: { id: req.user.id } },
           }
         },
@@ -203,9 +199,69 @@ export class InvoiceSettingsController {
     res.status(500).json({ success: false, error: 'Failed to create profile' });
   }
 }
+  
+  
+  
+  
+  
+  
+  
+  // static async updateProfile(req: AuthRequest, res: Response): Promise<void> {
+  //   try {
+  //     if (!req.tenantId || !req.user) throw new ValidationError('Tenant context required');
+
+  //     const { id } = req.params;
+  //     const { name, general, invoice, payment } = req.body;
+
+  //     const existing = await prisma.settingsProfile.findFirst({ where: { id, tenantId: req.tenantId } });
+  //     if (!existing) throw new NotFoundError('Profile not found');
+
+  //     const updatedProfile = await prisma.settingsProfile.update({
+  //       where: { id },
+  //       data: { 
+  //         name,
+  //         updatedByUser: { connect: { id: req.user.id } },
+  //         // Using nested update to modify related tables
+  //         general: general ? { update: general } : undefined,
+  //         invoice: invoice ? { update: invoice } : undefined,
+  //         payment: payment ? { update: payment } : undefined,
+  //       },
+  //       include: {
+  //         general: true,
+  //         invoice: true,
+  //         payment: true
+  //       }
+  //     });
+
+  //     res.status(200).json({ success: true, data: updatedProfile, message: 'Profile updated successfully' } as ApiResponse);
+
+  //   } catch (error: any) {
+  //     console.error('Update profile error:', error);
+  //     if (error instanceof NotFoundError) {
+  //       res.status(404).json({ success: false, error: error.message });
+  //       return;
+  //     }
+  //     if (error instanceof ValidationError) {
+  //       res.status(400).json({ success: false, error: error.message });
+  //       return;
+  //     }
+  //     res.status(500).json({ success: false, error: 'Failed to update profile' });
+  //   }
+  // }
+
+  
 
 
-  // ===================== UPDATE PROFILE =====================
+
+
+
+
+
+
+// ===================== HARD DELETE PROFILE =====================
+
+
+// ===================== UPDATE PROFILE =====================
   static async updateProfile(req: AuthRequest, res: Response): Promise<void> {
     try {
       if (!req.tenantId || !req.user) throw new ValidationError('Tenant context required');
@@ -213,18 +269,39 @@ export class InvoiceSettingsController {
       const { id } = req.params;
       const { name, general, invoice, payment } = req.body;
 
-      const existing = await prisma.settingsProfile.findFirst({ where: { id, tenantId: req.tenantId } });
+      const existing = await prisma.settingsProfile.findFirst({ 
+        where: { id, tenantId: req.tenantId } 
+      });
+      
       if (!existing) throw new NotFoundError('Profile not found');
+
+      // --- DYNAMIC DESTRUCTURING FOR UPDATE ---
+      let invoiceUpdateData = invoice;
+      if (invoice?.format) {
+        // Recalculate padding and reset logic if format string changed
+        const parsed = parseInvoiceFormat(invoice.format);
+        invoiceUpdateData = {
+          ...invoice,
+          ...parsed,
+          // We usually don't want to reset nextNumber to 1 on update 
+          // unless you explicitly want to restart the sequence.
+          nextNumber: invoice.nextNumber ?? undefined 
+        };
+      }
 
       const updatedProfile = await prisma.settingsProfile.update({
         where: { id },
         data: { 
           name,
           updatedByUser: { connect: { id: req.user.id } },
-          // Using nested update to modify related tables
           general: general ? { update: general } : undefined,
-          invoice: invoice ? { update: invoice } : undefined,
           payment: payment ? { update: payment } : undefined,
+          invoice: invoiceUpdateData ? { 
+            update: {
+              ...invoiceUpdateData,
+              updatedByUser: { connect: { id: req.user.id } }
+            } 
+          } : undefined,
         },
         include: {
           general: true,
@@ -233,7 +310,11 @@ export class InvoiceSettingsController {
         }
       });
 
-      res.status(200).json({ success: true, data: updatedProfile, message: 'Profile updated successfully' } as ApiResponse);
+      res.status(200).json({ 
+        success: true, 
+        data: updatedProfile, 
+        message: 'Profile updated successfully' 
+      } as ApiResponse);
 
     } catch (error: any) {
       console.error('Update profile error:', error);
@@ -249,85 +330,8 @@ export class InvoiceSettingsController {
     }
   }
 
-  
 
-  // ===================== DELETE (DEACTIVATE) PROFILE =====================
-  // static async deleteProfile(req: AuthRequest, res: Response): Promise<void> {
-  //   try {
-  //     if (!req.tenantId || !req.user) throw new ValidationError('Tenant context required');
 
-  //     const { id } = req.params;
-  //     const existing = await prisma.settingsProfile.findFirst({ where: { id, tenantId: req.tenantId } });
-  //     if (!existing) throw new NotFoundError('Profile not found');
-
-  //     const deletedProfile = await prisma.settingsProfile.update({
-  //       where: { id },
-  //       data: { 
-  //         isActive: false, 
-  //         updatedByUser: { connect: { id: req.user.id } }
-  //       }
-  //     });
-
-  //     res.status(200).json({ success: true, data: deletedProfile, message: 'Profile deactivated successfully' } as ApiResponse);
-
-  //   } catch (error: any) {
-  //     console.error('Delete profile error:', error);
-  //     if (error instanceof NotFoundError) {
-  //       res.status(404).json({ success: false, error: error.message });
-  //       return;
-  //     }
-  //     res.status(500).json({ success: false, error: 'Failed to deactivate profile' });
-  //   }
-  // }
-
-  // ===================== HARD DELETE PROFILE =====================
-// static async hardDeleteProfile(req: AuthRequest, res: Response): Promise<void> {
-//   try {
-//     if (!req.tenantId || !req.user) {
-//       throw new ValidationError('Tenant context required');
-//     }
-
-//     const { id } = req.params;
-
-//     const profile = await prisma.settingsProfile.findFirst({
-//       where: { id, tenantId: req.tenantId },
-//       include: {
-//         general: true,
-//         invoice: true,
-//         payment: true,
-//       },
-//     });
-
-//     if (!profile) throw new NotFoundError('Profile not found');
-
-//     await prisma.$transaction([
-//       prisma.generalSetting.delete({ where: { id: profile.generalId } }),
-//       prisma.invoiceSetting.delete({ where: { id: profile.invoiceId } }),
-//       prisma.paymentSetting.delete({ where: { id: profile.paymentId } }),
-//       prisma.settingsProfile.delete({ where: { id } }),
-//     ]);
-
-//     res.status(200).json({
-//       success: true,
-//       message: 'Profile deleted permanently',
-//     } as ApiResponse);
-
-//   } catch (error: any) {
-//     console.error('Hard delete error:', error);
-
-//     if (error instanceof NotFoundError) {
-//       res.status(404).json({ success: false, error: error.message });
-//       return;
-//     }
-
-//     res.status(500).json({
-//       success: false,
-//       error: 'Failed to delete profile',
-//     });
-//   }
-// }
-
-// ===================== HARD DELETE PROFILE =====================
 static async hardDeleteProfile(req: AuthRequest, res: Response): Promise<void> {
   try {
     if (!req.tenantId) throw new ValidationError('Tenant context required');
@@ -360,41 +364,60 @@ static async hardDeleteProfile(req: AuthRequest, res: Response): Promise<void> {
 
 
   // ===================== ACTIVATE PROFILE =====================
+ 
+
   static async activateProfile(req: AuthRequest, res: Response): Promise<void> {
-    try {
-      if (!req.tenantId || !req.user) throw new ValidationError('Tenant context required');
+  try {
+    if (!req.tenantId || !req.user) throw new ValidationError('Tenant context required');
 
-      const { id } = req.params;
-      const profile = await prisma.settingsProfile.findFirst({ where: { id, tenantId: req.tenantId } });
-      if (!profile) throw new NotFoundError('Profile not found');
+    const { id } = req.params;
+    // 1. Read the boolean state from the body (sent from frontend)
+    const { isActive } = req.body; 
 
-      // Transaction to ensure only one profile is active at a time
-      const [activatedProfile] = await prisma.$transaction([
-        prisma.settingsProfile.update({
-          where: { id },
-          data: { isActive: true, updatedByUser: { connect: { id: req.user.id } } }
-        }),
-        prisma.settingsProfile.updateMany({
-          where: { 
-            tenantId: req.tenantId, 
-            id: { not: id }, 
-            isActive: true 
-          },
-          data: { isActive: false }
-        })
-      ]);
-
-      res.status(200).json({ success: true, data: activatedProfile, message: 'Profile activated successfully' } as ApiResponse);
-
-    } catch (error: any) {
-      console.error('Activate profile error:', error);
-      if (error instanceof NotFoundError) {
-        res.status(404).json({ success: false, error: error.message });
-        return;
+    // 2. Perform a single update ONLY on the targeted profile
+    const updatedProfile = await prisma.settingsProfile.update({
+      where: { id, tenantId: req.tenantId },
+      data: { 
+        isActive: isActive, 
+        updatedByUser: { connect: { id: req.user.id } } 
       }
-      res.status(500).json({ success: false, error: 'Failed to activate profile' });
-    }
+    });
+
+    res.status(200).json({ 
+      success: true, 
+      data: updatedProfile, 
+      message: `Profile ${isActive ? 'activated' : 'deactivated'} successfully` 
+    });
+
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: 'Failed to update status' });
   }
+}
+
+
+static async getActiveProfiles(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    if (!req.tenantId) throw new ValidationError('Tenant context required');
+
+    const activeProfiles = await prisma.settingsProfile.findMany({
+      where: {
+        tenantId: req.tenantId,
+        isActive: true // <--- The filter
+      },
+      include: {
+        general: true,
+        invoice: true,
+        payment: true
+      }
+    });
+
+    res.status(200).json({ success: true, data: activeProfiles });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: 'Failed to fetch active profiles' });
+  }
+}
+
+
 }
 
 export default InvoiceSettingsController;

@@ -25,6 +25,14 @@ router.patch('/:id/status', (req, res) => InvoiceController.updateStatus(req, re
 router.delete('/:id', (req, res) => InvoiceController.deleteInvoice(req, res));
 router.put('/:id', (req, res) => InvoiceController.updateInvoice(req, res));
 
+router.get('/:id/download', InvoiceController.downloadInvoice);
+
+router.get('/:invoiceNumber/check-pdf', InvoiceController.checkPDFStatus);
+
+
+router.get('/:invoiceId/payments', InvoiceController.getPaymentHistory);
+
+
 
 
 export default router;

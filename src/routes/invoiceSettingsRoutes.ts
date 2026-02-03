@@ -27,6 +27,8 @@ router.get('/', InvoiceSettingsController.getProfiles);
  */
 router.post('/', InvoiceSettingsController.createProfile);
 
+router.get('/active', InvoiceSettingsController.getActiveProfiles);
+
 /**
  * @route   GET /api/settings/profiles/:id
  * @desc    Get profile details including related settings
@@ -54,5 +56,6 @@ router.delete('/:id', InvoiceSettingsController.hardDeleteProfile);
  * @access  Private (Admin only)
  */
 router.patch('/:id/activate', InvoiceSettingsController.activateProfile);
+
 
 export default router;

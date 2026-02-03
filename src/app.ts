@@ -33,6 +33,7 @@ import leaveRoutes from "@/routes/leaves";
 import customerRoutes from "@/routes/customerRoutes";
 import invoiceSettingRoutes from "@/routes/invoiceSettingsRoutes"; 
 import invoice from "@/routes/invoice";
+//import invoicedownload from "@/routes/invoiceDownload"
 
 // Load environment variables
 dotenv.config();
@@ -136,6 +137,7 @@ app.use("/api/leaves", leaveRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/invoicesetting",invoiceSettingRoutes)
 app.use("/api/invoices",invoice)
+//app.use("/api/invoice",invoicedownload)
 
 // Tenant-specific health check
 app.get("/api/health", (req: any, res) => {
