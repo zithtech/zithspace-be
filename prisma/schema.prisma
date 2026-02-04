@@ -23,6 +23,7 @@ model Tenant {
   customers        Customer[]
   dropdownOptions  DropdownOption[]
   leaves           Leave[]
+  leaveTypes          LeaveType[]
   fixedHolidays    FixedHoliday[]
 
   salaryComponents SalaryComponent[]
@@ -87,11 +88,15 @@ model User {
   updatedSalaryComponents SalaryComponent[] @relation("SalaryComponentUpdater")
   createdCompanies        Company[]         @relation("CompanyCreator")
   updatedCompanies        Company[]         @relation("CompanyUpdater")
+  createdCustomers        Customer[]        @relation("CustomerCreatedBy")
+  updatedCustomers        Customer[]        @relation("CustomerUpdatedBy")
 
   enteredAttendance    Attendance[]               @relation("AttendanceEnteredBy")
   attendance           Attendance[]
   createdClients       Client[]                   @relation("ClientCreator")
   approvedLeaves       Leave[]                    @relation("LeaveApprover")
+  createdLeaveTypes    LeaveType[]         @relation("LeaveTypeCreator")
+  updatedLeaveTypes    LeaveType[]         @relation("LeaveTypeUpdater")
   leaves               Leave[]                    @relation("UserLeaves")
   projectMemberships   ProjectMember[]
   createdProjects      Project[]                  @relation("ProjectCreator")
@@ -628,25 +633,51 @@ model Leave {
   @@map("leaves")
 }
 
+model LeaveType {
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  name             String
+  code             String
+  description      String?
+  type             String   // "Days" or "Hours"
+  days             Int?     @default(1)
+  hours            Decimal? @db.Decimal(4, 2)
+  isPaid           Boolean  @default(true) @map("is_paid")
+  requiresApproval Boolean  @default(true) @map("requires_approval")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdById      String?  @map("created_by_id")
+  updatedById      String?  @map("updated_by_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy        User?    @relation("LeaveTypeCreator", fields: [createdById], references: [id])
+  updatedBy        User?    @relation("LeaveTypeUpdater", fields: [updatedById], references: [id])
+
+  @@unique([tenantId, code])
+  @@map("leave_types")
+}
+
 model Customer {
   id          String    @id @default(uuid())
   tenantId    String    @map("tenant_id")
   companyName String    @map("company_name")
-  email       String?
+  email       String
   phone       String?
   address     String?
   city        String?
   country     String?
   taxId       String?   @map("tax_id")
-  invoices    Invoice[]
-
-  // Audit fields (store user IDs)
-  createdBy String  @map("created_by")
-  updatedBy String? @map("updated_by")
-
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  isActive    Boolean   @default(true) @map("is_active")
+  createdBy   String    @map("created_by")
+  updatedBy   String?   @map("updated_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  
+  // Relations
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoices      Invoice[]
+  createdByUser User      @relation("CustomerCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser User?     @relation("CustomerUpdatedBy", fields: [updatedBy], references: [id])
 
   // Constraints
   @@unique([tenantId, email]) // tenant-level email uniqueness

@@ -32,6 +32,7 @@ import userRoutes from "@/routes/user";
 import dailyUpdateRoutes from "@/routes/dailyUpdates";
 import dashboardRoutes from "@/routes/dashboard";
 import leaveRoutes from "@/routes/leaves";
+import leaveTypeRoutes from "@/routes/leaveTypeRoutes";
 import customerRoutes from "@/routes/customerRoutes";
 import invoiceSettingRoutes from "@/routes/invoiceSettingsRoutes"; 
 import invoice from "@/routes/invoice";
@@ -145,6 +146,7 @@ app.use("/api/user", userRoutes);
 app.use("/api/daily-updates", dailyUpdateRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/leaves", leaveRoutes);
+app.use("/api/leave-types", leaveTypeRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/invoicesetting",invoiceSettingRoutes)
 app.use("/api/invoices",invoice)
