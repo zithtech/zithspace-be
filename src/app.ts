@@ -33,6 +33,10 @@ import dailyUpdateRoutes from "@/routes/dailyUpdates";
 import dashboardRoutes from "@/routes/dashboard";
 import leaveRoutes from "@/routes/leaves";
 import leaveTypeRoutes from "@/routes/leaveTypeRoutes";
+import customerRoutes from "@/routes/customerRoutes";
+import invoiceSettingRoutes from "@/routes/invoiceSettingsRoutes"; 
+import invoice from "@/routes/invoice";
+//import invoicedownload from "@/routes/invoiceDownload"
 import bucketRoutes from "@/routes/buckets";
 import trashRoutes from "@/routes/trash";
 import sprintCompletionRoutes from "@/routes/sprintCompletion";
@@ -143,6 +147,10 @@ app.use("/api/daily-updates", dailyUpdateRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/leaves", leaveRoutes);
 app.use("/api/leave-types", leaveTypeRoutes);
+app.use("/api/customers", customerRoutes);
+app.use("/api/invoicesetting",invoiceSettingRoutes)
+app.use("/api/invoices",invoice)
+//app.use("/api/invoice",invoicedownload)
 app.use("/api/buckets", bucketRoutes);
 app.use("/api/trash", trashRoutes);
 app.use("/api/sprint-completion", sprintCompletionRoutes);
@@ -153,7 +161,7 @@ app.use("/api/documenthub", documentHubRoutes);
 app.use("/api/channels", channelRoutes);
 app.use("/api/channels/:channelId/messages", messageRoutes);
 
-// Tenant-specific health check
+
 app.get("/api/health", (req: any, res) => {
   res.status(200).json({
     success: true,

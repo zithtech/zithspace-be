@@ -31,6 +31,10 @@ const dailyUpdates_1 = __importDefault(require("@/routes/dailyUpdates"));
 const dashboard_1 = __importDefault(require("@/routes/dashboard"));
 const leaves_1 = __importDefault(require("@/routes/leaves"));
 const leaveTypeRoutes_1 = __importDefault(require("@/routes/leaveTypeRoutes"));
+const customerRoutes_1 = __importDefault(require("@/routes/customerRoutes"));
+const invoiceSettingsRoutes_1 = __importDefault(require("@/routes/invoiceSettingsRoutes"));
+const invoice_1 = __importDefault(require("@/routes/invoice"));
+//import invoicedownload from "@/routes/invoiceDownload"
 const buckets_1 = __importDefault(require("@/routes/buckets"));
 const trash_1 = __importDefault(require("@/routes/trash"));
 const sprintCompletion_1 = __importDefault(require("@/routes/sprintCompletion"));
@@ -121,6 +125,10 @@ app.use("/api/daily-updates", dailyUpdates_1.default);
 app.use("/api/dashboard", dashboard_1.default);
 app.use("/api/leaves", leaves_1.default);
 app.use("/api/leave-types", leaveTypeRoutes_1.default);
+app.use("/api/customers", customerRoutes_1.default);
+app.use("/api/invoicesetting", invoiceSettingsRoutes_1.default);
+app.use("/api/invoices", invoice_1.default);
+//app.use("/api/invoice",invoicedownload)
 app.use("/api/buckets", buckets_1.default);
 app.use("/api/trash", trash_1.default);
 app.use("/api/sprint-completion", sprintCompletion_1.default);
@@ -129,7 +137,6 @@ app.use("/api/companies", companyRoutes_1.default);
 app.use("/api/documenthub", documenthub_1.default);
 app.use("/api/channels", channels_1.default);
 app.use("/api/channels/:channelId/messages", messages_1.default);
-// Tenant-specific health check
 app.get("/api/health", (req, res) => {
     res.status(200).json({
         success: true,

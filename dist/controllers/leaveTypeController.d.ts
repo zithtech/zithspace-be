@@ -1,9 +1,8 @@
-import { Response } from "express";
-import { AuthRequest } from "@/types";
+import { Request, Response } from "express";
 export declare class LeaveTypeController {
-    static createLeaveType(req: AuthRequest, res: Response): Promise<Response<any, Record<string, any>>>;
-    static getAllLeaveTypes(req: AuthRequest, res: Response): Promise<Response<any, Record<string, any>>>;
-    static getLeaveTypeById(req: AuthRequest, res: Response): Promise<Response<any, Record<string, any>>>;
-    static updateLeaveType(req: AuthRequest, res: Response): Promise<Response<any, Record<string, any>>>;
-    static deleteLeaveType(req: AuthRequest, res: Response): Promise<Response<any, Record<string, any>>>;
+    static createLeaveType(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
+    static getAllLeaveTypes(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
+    static getLeaveTypeById(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
+    static updateLeaveType(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
+    static deleteLeaveType(req: Request, res: Response): Promise<Response<any, Record<string, any>>>;
 }

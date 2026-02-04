@@ -6,7 +6,7 @@ class LeaveTypeController {
     // Create a new leave type
     static async createLeaveType(req, res) {
         try {
-            const { name, code, description, type, isPaid, requiresApproval, isActive } = req.body;
+            const { name, code, description, type, isPaid, requiresApproval, isActive, days, hours } = req.body;
             const tenantId = req.tenantId;
             const userId = req.user?.id;
             if (!tenantId) {
@@ -34,6 +34,8 @@ class LeaveTypeController {
                     isPaid,
                     requiresApproval,
                     isActive,
+                    days,
+                    hours,
                     createdById: userId,
                     updatedById: userId,
                 },
@@ -91,7 +93,7 @@ class LeaveTypeController {
             const { id } = req.params;
             const tenantId = req.tenantId;
             const userId = req.user?.id;
-            const { name, code, description, type, isPaid, requiresApproval, isActive } = req.body;
+            const { name, code, description, type, isPaid, requiresApproval, isActive, days, hours } = req.body;
             const existing = await database_1.prisma.leaveType.findFirst({
                 where: { id, tenantId },
             });
@@ -122,6 +124,8 @@ class LeaveTypeController {
                     isPaid,
                     requiresApproval,
                     isActive,
+                    days,
+                    hours,
                     updatedById: userId,
                 },
             });
