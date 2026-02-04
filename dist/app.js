@@ -43,6 +43,7 @@ const documenthub_1 = __importDefault(require("@/routes/documenthub"));
 const channels_1 = __importDefault(require("@/routes/channels"));
 const messages_1 = __importDefault(require("@/routes/messages"));
 const companyGovernmentHoliday_routes_1 = __importDefault(require("./routes/companyGovernmentHoliday.routes"));
+const leaveAdjustmentRoutes_1 = __importDefault(require("./routes/leaveAdjustmentRoutes"));
 // Load environment variables
 dotenv_1.default.config();
 // Create Express application
@@ -107,6 +108,7 @@ app.get("/health", (req, res) => {
 // Tenant resolution for all API routes
 // app.use("/api", optionalTenantContext);
 // API routes
+app.use("/api/leave-adjustments", leaveAdjustmentRoutes_1.default);
 app.use('/api/company-government-holidays', companyGovernmentHoliday_routes_1.default);
 app.use("/api/fixed-holidays", fixedHolidays_1.default);
 app.use("/api/auth", auth_1.default);
