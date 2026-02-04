@@ -650,6 +650,60 @@ class ReleasePlansController {
             res.status(500).json({ success: false, error: "Error" });
         }
     }
+    /**
+     * Get available sprints (active + planning) for a project
+     * Used for sprint assignment in buckets, trash, etc.
+     */
+    static async getAvailableSprints(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context required",
+                });
+                return;
+            }
+            const { projectId } = req.query;
+            if (!projectId) {
+                res.status(400).json({
+                    success: false,
+                    error: "projectId is required",
+                });
+                return;
+            }
+            const sprints = await database_1.prisma.releasePlan.findMany({
+                where: {
+                    projectId: projectId,
+                    tenantId: req.tenantId,
+                    type: 'sprint_plan',
+                    status: {
+                        in: ['active', 'planning']
+                    }
+                },
+                select: {
+                    id: true,
+                    version: true,
+                    status: true,
+                    startDate: true,
+                    endDate: true,
+                    goal: true,
+                    createdAt: true,
+                },
+                orderBy: [
+                    { status: 'desc' }, // Active first
+                    { createdAt: 'desc' }
+                ]
+            });
+            res.status(200).json({ success: true, data: sprints });
+        }
+        catch (error) {
+            console.error("Get available sprints error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to fetch available sprints",
+            });
+        }
+    }
     static async getReleasePlanStats(req, res) {
         try {
             if (!req.tenantId) {

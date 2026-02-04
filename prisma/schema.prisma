@@ -8,27 +8,32 @@ datasource db {
 }
 
 model Tenant {
-  id                     String                   @id @default(uuid())
+  id                     String                    @id @default(uuid())
   name                   String
-  subdomain              String                   @unique
-  planType               String                   @default("basic") @map("plan_type")
-  maxUsers               Int                      @default(10) @map("max_users")
-  isActive               Boolean                  @default(true) @map("is_active")
-  settings               Json?                    @default("{}")
-  createdAt              DateTime                 @default(now()) @map("created_at")
-  updatedAt              DateTime                 @updatedAt @map("updated_at")
+  subdomain              String                    @unique
+  planType               String                    @default("basic") @map("plan_type")
+  maxUsers               Int                       @default(10) @map("max_users")
+  isActive               Boolean                   @default(true) @map("is_active")
+  settings               Json?                     @default("{}")
+  createdAt              DateTime                  @default(now()) @map("created_at")
+  updatedAt              DateTime                  @updatedAt @map("updated_at")
   attendance             Attendance[]
   attendanceBreaks       AttendanceBreak[]
   buckets                buckets[]
-  clients                Client[]
+  buckets             Bucket[]
   customers              Customer[]
   dropdownOptions        DropdownOption[]
-  fixed_holidays         fixed_holidays[]
   leaves                 Leave[]
+  fixedHolidays       FixedHoliday[]
+
+  salaryComponents    SalaryComponent[] 
+  companies           Company[]   
+  holidays            CompanyGovernmentHoliday[]
   projects               Project[]
   releasePlans           ReleasePlan[]
   shifts                 Shift[]
-  sprint_completion_logs sprint_completion_logs[]
+  
+  sprintCompletionLogs SprintCompletionLog[]
   statusUpdates          StatusUpdate[]
   ticketActivityLog      TicketActivityLog[]
   ticketAttachments      TicketAttachment[]
@@ -45,6 +50,15 @@ model Tenant {
   invoices               Invoice[]
   items                  InvoiceItem[]
   payments               InvoicePayment[]
+  documenthub         DocumentHub[]
+  documents           Document[]
+  documenttree        DocumentTree[]
+  documentHistory     DocumentHistory[]
+  
+  // ZithTech Calls Relations
+  channels            Channel[]
+  meetings            Meeting[]
+  
 
   @@map("tenants")
 }
@@ -69,6 +83,12 @@ model User {
   lastLoginAt                          DateTime?                @map("last_login_at")
   createdAt                            DateTime                 @default(now()) @map("created_at")
   updatedAt                            DateTime                 @updatedAt @map("updated_at")
+
+  createdSalaryComponents SalaryComponent[] @relation("SalaryComponentCreator")
+  updatedSalaryComponents SalaryComponent[] @relation("SalaryComponentUpdater")
+  createdCompanies Company[] @relation("CompanyCreator")
+  updatedCompanies Company[] @relation("CompanyUpdater")
+
   enteredAttendance                    Attendance[]             @relation("AttendanceEnteredBy")
   attendance                           Attendance[]
   bucket_members                       bucket_members[]
@@ -87,17 +107,37 @@ model User {
   ticketAttachments                    TicketAttachment[]
   ticketComments                       TicketComment[]
   addedRelatedLinks                    TicketRelatedLink[]
+  documenthub          DocumentHub[]
+  documents            Document[]
+  documentHistory      DocumentHistory[]
+  documenttree         DocumentTree[]
   tickets_tickets_deleted_by_idTousers Ticket[]                 @relation("tickets_deleted_by_idTousers")
   archivedTickets                      Ticket[]                 @relation("TicketArchivedBy")
   assignedTickets                      Ticket[]                 @relation("TicketAssignee")
   createdTickets                       Ticket[]                 @relation("TicketCreator")
   reportToTickets                      Ticket[]                 @relation("TicketReportTo")
+  deletedTickets       Ticket[]            @relation("TicketDeletedBy")
+  createdBuckets       Bucket[]            @relation("BucketCreator")
+  bucketMemberships    BucketMember[]
+  createdFixedHolidays FixedHoliday[]      @relation("FixedHolidayCreator")
+  updatedFixedHolidays FixedHoliday[]      @relation("FixedHolidayUpdater")
+  createdHolidays      CompanyGovernmentHoliday[]           @relation("CompanyGovernmentHolidayCreator")
+  updatedHolidays      CompanyGovernmentHoliday[]           @relation("CompanyGovernmentHolidayUpdater")
+  sprintCompletionLogs SprintCompletionLog[]
   transactions                         Transaction[]
   assignedShift                        Shift?                   @relation("UserShift", fields: [assignedShiftId], references: [id])
   reportsTo                            User?                    @relation("UserHierarchy", fields: [reportsToId], references: [id])
   subordinates                         User[]                   @relation("UserHierarchy")
   shiftAssignedBy                      User?                    @relation("ShiftAssigner", fields: [shiftAssignedById], references: [id])
   assignedShifts                       User[]                   @relation("ShiftAssigner")
+  
+  // ZithTech Calls Relations
+  createdChannels      Channel[]           @relation("ChannelCreator")
+  channelMemberships   ChannelMember[]
+  channelMessages      ChannelMessage[]
+  createdMeetings      Meeting[]           @relation("MeetingCreator")
+  meetingParticipations MeetingParticipant[]
+
   tenant                               Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   generalSettingsCreated               GeneralSetting[]         @relation("GeneralSettingCreatedBy")
   generalSettingsUpdated               GeneralSetting[]         @relation("GeneralSettingUpdatedBy")
@@ -136,33 +176,36 @@ model RefreshToken {
 }
 
 model Project {
-  id                     String                   @id @default(uuid())
-  tenantId               String                   @map("tenant_id")
-  name                   String
-  code                   String?                  @unique
-  description            String
-  status                 String                   @default("active")
-  startDate              DateTime                 @map("start_date")
-  endDate                DateTime?                @map("end_date")
-  projectManagerId       String                   @map("project_manager_id")
-  repositories           Json?                    @default("[]")
-  workflowTemplate       String[]                 @map("workflow_template")
-  defaultPriority        String                   @default("medium") @map("default_priority")
-  totalTickets           Int                      @default(0) @map("total_tickets")
-  completedTickets       Int                      @default(0) @map("completed_tickets")
-  inProgressTickets      Int                      @default(0) @map("in_progress_tickets")
-  createdById            String                   @map("created_by_id")
-  createdAt              DateTime                 @default(now()) @map("created_at")
-  updatedAt              DateTime                 @updatedAt @map("updated_at")
+  id                        String                         @id @default(uuid())
+  tenantId                  String                         @map("tenant_id")
+  name                      String
+  code                      String?                        @unique
+  description               String
+  status                    String                         @default("active")
+  startDate                 DateTime                       @map("start_date")
+  endDate                   DateTime?                      @map("end_date")
+  projectManagerId          String                         @map("project_manager_id")
+  repositories              Json?                          @default("[]")
+  workflowTemplate          String[]                       @map("workflow_template")
+  defaultPriority           String                         @default("medium") @map("default_priority")
+  totalTickets              Int                            @default(0) @map("total_tickets")
+  completedTickets          Int                            @default(0) @map("completed_tickets")
+  inProgressTickets         Int                            @default(0) @map("in_progress_tickets")
+  createdById               String                         @map("created_by_id")
+  createdAt                 DateTime                       @default(now()) @map("created_at")
+  updatedAt                 DateTime                       @updatedAt @map("updated_at")
   buckets                buckets[]
-  members                ProjectMember[]
-  createdBy              User                     @relation("ProjectCreator", fields: [createdById], references: [id])
-  projectManager         User                     @relation("ProjectManager", fields: [projectManagerId], references: [id])
-  tenant                 Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  releasePlans           ReleasePlan[]
+  members                   ProjectMember[]
+  buckets              Bucket[]
+  createdBy                 User                           @relation("ProjectCreator", fields: [createdById], references: [id])
+  projectManager            User                           @relation("ProjectManager", fields: [projectManagerId], references: [id])
+  tenant                    Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  releasePlans              ReleasePlan[]
   sprint_completion_logs sprint_completion_logs[]
-  tickets                Ticket[]
-  workEntries            WorkEntry[]
+  sprintCompletionLogs SprintCompletionLog[]
+  tickets                   Ticket[]
+  workEntries               WorkEntry[]
+  documenthub          DocumentHub[]
 
   @@unique([tenantId, code])
   @@map("projects")
@@ -254,11 +297,15 @@ model Ticket {
   @@index([isArchived], map: "idx_tickets_archived")
   @@index([bucket_id], map: "idx_tickets_bucket_id")
   @@index([is_deleted, deleted_at], map: "idx_tickets_is_deleted_deleted_at")
+  @@index([bucketId])
   @@index([projectId, isArchived], map: "idx_tickets_project_archived")
   @@index([projectId, is_deleted], map: "idx_tickets_project_is_deleted")
   @@index([status, isArchived], map: "idx_tickets_status_archived")
   @@index([tenantId, isArchived], map: "idx_tickets_tenant_archived")
   @@index([tenantId, is_deleted], map: "idx_tickets_tenant_is_deleted")
+  @@index([tenantId, isDeleted])
+  @@index([projectId, isDeleted])
+  @@index([isDeleted, deletedAt])
   @@map("tickets")
 }
 
@@ -478,7 +525,7 @@ model AttendanceBreak {
   updatedAt       DateTime   @updatedAt @map("updated_at")
   attendance      Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
   tenant          Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
+  
   @@map("attendance_breaks")
 }
 

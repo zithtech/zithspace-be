@@ -10,11 +10,13 @@ import rateLimit from "express-rate-limit";
 
 // Import configurations
 import { connectDatabase, disconnectDatabase } from "@/config/database";
+import salaryComponentRoutes from "@/routes/salaryComponentRoutes";
+import companyRoutes from "./routes/companyRoutes";
+
 
 // Import middleware
 import { optionalTenantContext } from "@/middleware/tenantContext";
 
-// Import routes
 import authRoutes from "@/routes/auth";
 import tenantRoutes from "@/routes/tenants";
 import projectRoutes from "@/routes/projects";
@@ -34,15 +36,24 @@ import customerRoutes from "@/routes/customerRoutes";
 import invoiceSettingRoutes from "@/routes/invoiceSettingsRoutes"; 
 import invoice from "@/routes/invoice";
 //import invoicedownload from "@/routes/invoiceDownload"
-
+import bucketRoutes from "@/routes/buckets";
+import trashRoutes from "@/routes/trash";
+import sprintCompletionRoutes from "@/routes/sprintCompletion";
+import fixedHolidayRoutes from "@/routes/fixedHolidays";
+import documentHubRoutes from "@/routes/documenthub";
+import channelRoutes from "@/routes/channels";
+import messageRoutes from "@/routes/messages";
+import companyGovernmentHolidayRouter from './routes/companyGovernmentHoliday.routes';
 // Load environment variables
 dotenv.config();
-
 // Create Express application
 const app = express();
 
+// Body parsing middleware
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
 // Connect to PostgreSQL
-connectDatabase().catch(console.error);
 
 const allowedOrigins = [
   "http://localhost:3000", // Local development
@@ -73,10 +84,6 @@ app.use(
   }),
 );
 
-// Body parsing middleware
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
-
 // Cookie parsing middleware
 app.use(cookieParser());
 
@@ -104,6 +111,8 @@ const limiter = rateLimit({
 
 // app.use(limiter);
 
+connectDatabase().catch(console.error);
+
 // Health check endpoint (no tenant context required)
 app.get("/health", (req, res) => {
   res.status(200).json({
@@ -119,6 +128,8 @@ app.get("/health", (req, res) => {
 // app.use("/api", optionalTenantContext);
 
 // API routes
+app.use('/api/company-government-holidays', companyGovernmentHolidayRouter);
+app.use("/api/fixed-holidays", fixedHolidayRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/tenants", tenantRoutes);
 app.use("/api/projects", projectRoutes);
@@ -138,6 +149,15 @@ app.use("/api/customers", customerRoutes);
 app.use("/api/invoicesetting",invoiceSettingRoutes)
 app.use("/api/invoices",invoice)
 //app.use("/api/invoice",invoicedownload)
+app.use("/api/buckets", bucketRoutes);
+app.use("/api/trash", trashRoutes);
+app.use("/api/sprint-completion", sprintCompletionRoutes);
+app.use("/api/salary-components", salaryComponentRoutes);
+app.use("/api/companies", companyRoutes);
+
+app.use("/api/documenthub", documentHubRoutes);
+app.use("/api/channels", channelRoutes);
+app.use("/api/channels/:channelId/messages", messageRoutes);
 
 // Tenant-specific health check
 app.get("/api/health", (req: any, res) => {
@@ -281,6 +301,10 @@ const server = app.listen(PORT, () => {
   // Initialize Socket.io
   const { socketService } = require("@/services/socketService");
   socketService.initialize(server);
+
+  // Start trash auto-purge cron job
+  const { startTrashAutoPurgeJob } = require("@/jobs/trashAutoPurge");
+  startTrashAutoPurgeJob();
 });
 
 // Graceful shutdown

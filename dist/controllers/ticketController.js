@@ -67,6 +67,7 @@ class TicketController {
                 by: ["status"],
                 where: {
                     tenantId: req.tenantId,
+                    isDeleted: false,
                     createdAt: { gte: startOfMonth, lte: endOfMonth },
                 },
                 _count: true,
@@ -313,6 +314,8 @@ class TicketController {
                 tenantId: req.tenantId,
                 parentId: null, // Exclude subtasks from main board
                 isArchived: includeArchived === 'true' ? undefined : false, // Exclude archived tickets by default
+                isDeleted: false, // Exclude soft-deleted tickets
+                bucketId: null, // Exclude tickets in buckets (they should only show in bucket view)
             };
             if (projectId)
                 baseWhere.projectId = projectId;
@@ -459,12 +462,14 @@ class TicketController {
                 });
                 return;
             }
-            const { page = 1, limit = 20, status, priority, projectId, assigneeId, createdById, search, sortBy = "createdAt", sortOrder = "desc", startDate, endDate, includeArchived = false, } = req.query;
+            const { page = 1, limit = 20, status, priority, projectId, assigneeId, createdById, search, sortBy = "createdAt", sortOrder = "desc", startDate, endDate, includeArchived = false, archivedOnly = false, } = req.query;
             // Build base filter
             const baseWhere = {
                 tenantId: req.tenantId,
                 parentId: null, // Exclude subtasks from main board
-                isArchived: includeArchived === 'true' ? undefined : false, // Exclude archived tickets by default
+                isArchived: archivedOnly === 'true' ? true : (includeArchived === 'true' ? undefined : false), // archivedOnly shows ONLY archived tickets
+                isDeleted: false, // Exclude soft-deleted tickets
+                bucketId: null, // Exclude tickets in buckets (they should only show in bucket view)
             };
             const where = { ...baseWhere };
             if (status)
@@ -626,6 +631,7 @@ class TicketController {
                 where: {
                     id,
                     tenantId: req.tenantId,
+                    isDeleted: false,
                 },
                 select: {
                     // All ticket fields
@@ -659,7 +665,7 @@ class TicketController {
                         select: { id: true, name: true, workEmail: true },
                     },
                     reportTo: {
-                        select: { id: true, name: true, position: true },
+                        select: { id: true, name: true, workEmail: true },
                     },
                     project: {
                         select: { id: true, name: true, code: true, description: true },
@@ -734,7 +740,7 @@ class TicketController {
                 mappedUpdates.assigneeId = (updates.assignee === '' || updates.assignee === null) ? null : updates.assignee;
                 delete mappedUpdates.assignee;
             }
-            if (updates.reportTo) {
+            if (updates.reportTo !== undefined) {
                 mappedUpdates.reportToId = updates.reportTo;
                 delete mappedUpdates.reportTo;
             }
@@ -790,6 +796,7 @@ class TicketController {
                 where: {
                     id,
                     tenantId: req.tenantId,
+                    isDeleted: false,
                 },
             });
             if (!existingTicket) {
@@ -841,9 +848,33 @@ class TicketController {
                     ...mappedUpdates,
                     updatedAt: new Date(),
                 },
-                include: {
+                select: {
+                    // Core fields
+                    id: true,
+                    ticketNumber: true,
+                    title: true,
+                    description: true,
+                    status: true,
+                    priority: true,
+                    type: true,
+                    platform: true,
+                    stack: true,
+                    taskLevel: true,
+                    storyPoint: true,
+                    estimateHours: true,
+                    startDate: true,
+                    endDate: true,
+                    dueDate: true,
+                    parentId: true,
+                    sprintPlanId: true, // CRITICAL: Include sprint assignment
+                    releasePlanId: true,
+                    demoPlanId: true,
+                    createdAt: true,
+                    updatedAt: true,
+                    // Relations
                     createdBy: { select: { id: true, name: true, workEmail: true } },
                     assignee: { select: { id: true, name: true, workEmail: true } },
+                    reportTo: { select: { id: true, name: true, workEmail: true } },
                     project: { select: { id: true, name: true, code: true } },
                 },
             });
@@ -953,6 +984,7 @@ class TicketController {
             const where = {
                 tenantId: req.tenantId,
                 assigneeId: req.user.id,
+                isDeleted: false,
             };
             if (status)
                 where.status = status;
@@ -1063,11 +1095,12 @@ class TicketController {
                 where: {
                     projectId,
                     tenantId: req.tenantId,
+                    isDeleted: false,
                 },
                 _count: true,
             });
             const totalTickets = await database_1.prisma.ticket.count({
-                where: { projectId, tenantId: req.tenantId },
+                where: { projectId, tenantId: req.tenantId, isDeleted: false },
             });
             // return {
             //   projectId,
@@ -1110,6 +1143,7 @@ class TicketController {
                 where: {
                     id,
                     tenantId: req.tenantId,
+                    isDeleted: false,
                 },
             });
             if (!ticket) {
@@ -1168,6 +1202,7 @@ class TicketController {
                 where: {
                     id,
                     tenantId: req.tenantId,
+                    isDeleted: false,
                 },
             });
             if (!ticket) {
@@ -1276,6 +1311,7 @@ class TicketController {
                 where: {
                     id,
                     tenantId: req.tenantId,
+                    isDeleted: false,
                 },
             });
             if (!ticket) {
@@ -1344,6 +1380,7 @@ class TicketController {
                 where: {
                     id,
                     tenantId: req.tenantId,
+                    isDeleted: false,
                 },
             });
             if (!ticket) {
@@ -1428,6 +1465,7 @@ class TicketController {
                 where: {
                     id: ticketId,
                     tenantId: req.tenantId,
+                    isDeleted: false,
                 },
             });
             if (!ticket) {
@@ -1512,6 +1550,7 @@ class TicketController {
                 where: {
                     id: ticketId,
                     tenantId: req.tenantId,
+                    isDeleted: false,
                 },
             });
             if (!ticket) {
@@ -1583,6 +1622,7 @@ class TicketController {
                 where: {
                     id,
                     tenantId: req.tenantId,
+                    isDeleted: false,
                 },
             });
             if (!ticket) {
@@ -1651,6 +1691,7 @@ class TicketController {
                 where: {
                     id,
                     tenantId: req.tenantId,
+                    isDeleted: false,
                 },
             });
             if (!ticket) {
@@ -1730,6 +1771,7 @@ class TicketController {
                 where: {
                     id: ticketId,
                     tenantId: req.tenantId,
+                    isDeleted: false,
                 },
             });
             if (!ticket) {
@@ -1815,6 +1857,7 @@ class TicketController {
                 where: {
                     id: ticketId,
                     tenantId: req.tenantId,
+                    isDeleted: false,
                 },
             });
             if (!ticket) {
@@ -1885,6 +1928,7 @@ class TicketController {
                 where: {
                     id,
                     tenantId: req.tenantId,
+                    isDeleted: false,
                 },
             });
             if (!ticket) {
@@ -1953,6 +1997,7 @@ class TicketController {
                 where: {
                     id,
                     tenantId: req.tenantId,
+                    isDeleted: false,
                 },
             });
             if (!ticket) {
@@ -2031,6 +2076,7 @@ class TicketController {
                 where: {
                     id,
                     tenantId: req.tenantId,
+                    isDeleted: false,
                 },
             });
             if (!ticket) {
@@ -2091,6 +2137,7 @@ class TicketController {
                 where: {
                     id: ticketId,
                     tenantId: req.tenantId,
+                    isDeleted: false,
                 },
             });
             if (!ticket) {
@@ -2171,6 +2218,7 @@ class TicketController {
             const where = {
                 tenantId: req.tenantId,
                 type: "Epic",
+                isDeleted: false,
             };
             if (projectId)
                 where.projectId = projectId;
@@ -2262,6 +2310,7 @@ class TicketController {
                     id,
                     tenantId: req.tenantId,
                     type: "Epic",
+                    isDeleted: false,
                 },
                 select: {
                     id: true,
@@ -2384,6 +2433,7 @@ class TicketController {
                 where: {
                     id,
                     tenantId: req.tenantId,
+                    isDeleted: false,
                 },
             });
             if (!parentTicket) {
@@ -2399,6 +2449,7 @@ class TicketController {
                     parentId: id,
                     tenantId: req.tenantId,
                     type: "Sub-task",
+                    isDeleted: false,
                 },
                 select: {
                     id: true,
