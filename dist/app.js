@@ -135,7 +135,6 @@ app.use("/api/companies", companyRoutes_1.default);
 app.use("/api/documenthub", documenthub_1.default);
 app.use("/api/channels", channels_1.default);
 app.use("/api/channels/:channelId/messages", messages_1.default);
-// Tenant-specific health check
 app.get("/api/health", (req, res) => {
     res.status(200).json({
         success: true,
