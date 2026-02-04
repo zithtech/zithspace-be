@@ -1,3 +1,5 @@
+import { S3Client } from '@aws-sdk/client-s3';
+export declare const s3Client: S3Client;
 /**
  * Upload image to Cloudflare R2
  * @param base64Image - Base64 encoded image string (with data:image/... prefix)
