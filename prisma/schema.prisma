@@ -23,6 +23,7 @@ model Tenant {
   clients             Client[]
   dropdownOptions     DropdownOption[]
   leaves              Leave[]
+  leaveAdjustments    LeaveAdjustment[]
   fixedHolidays       FixedHoliday[]
 
   salaryComponents    SalaryComponent[] 
@@ -85,6 +86,10 @@ model User {
   createdClients       Client[]            @relation("ClientCreator")
   leaves               Leave[]             @relation("UserLeaves")
   approvedLeaves       Leave[]             @relation("LeaveApprover")
+  leaveAdjustments        LeaveAdjustment[] @relation("UserLeaveAdjustments")
+  approvedAdjustments     LeaveAdjustment[] @relation("LeaveAdjustmentApprover")
+  createdLeaveAdjustments LeaveAdjustment[] @relation("LeaveAdjustmentCreator")
+  updatedLeaveAdjustments LeaveAdjustment[] @relation("LeaveAdjustmentUpdater")
   projectMemberships   ProjectMember[]
   createdProjects      Project[]           @relation("ProjectCreator")
   managedProjects      Project[]           @relation("ProjectManager")
@@ -608,6 +613,32 @@ model Leave {
   tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("leaves")
+}
+
+model LeaveAdjustment {
+  id              String    @id @default(uuid())
+  tenantId        String    @map("tenant_id")
+  userId          String    @map("user_id")
+  leaveType       String    @map("leave_type")
+  adjustmentType  String    @map("adjustment_type")
+  amount          Decimal   @db.Decimal(5, 2)
+  unit            String    @default("Days")
+  reason          String
+  approvedById    String?   @map("approved_by_id")
+  compOffWorkDate DateTime? @map("comp_off_work_date")
+  expiryDate      DateTime? @map("expiry_date")
+  createdById     String    @map("created_by_id")
+  updatedById     String?   @map("updated_by_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  tenant     Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user       User   @relation("UserLeaveAdjustments", fields: [userId], references: [id], onDelete: Cascade)
+  approvedBy User?  @relation("LeaveAdjustmentApprover", fields: [approvedById], references: [id])
+  createdBy  User   @relation("LeaveAdjustmentCreator", fields: [createdById], references: [id])
+  updatedBy  User?  @relation("LeaveAdjustmentUpdater", fields: [updatedById], references: [id])
+
+  @@map("leave_adjustments")
 }
 
 model FixedHoliday {
