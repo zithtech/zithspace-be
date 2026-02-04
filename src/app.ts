@@ -45,6 +45,7 @@ import documentHubRoutes from "@/routes/documenthub";
 import channelRoutes from "@/routes/channels";
 import messageRoutes from "@/routes/messages";
 import companyGovernmentHolidayRouter from './routes/companyGovernmentHoliday.routes';
+import leaveAdjustmentRoutes from "./routes/leaveAdjustmentRoutes";
 // Load environment variables
 dotenv.config();
 // Create Express application
@@ -129,6 +130,7 @@ app.get("/health", (req, res) => {
 // app.use("/api", optionalTenantContext);
 
 // API routes
+app.use("/api/leave-adjustments", leaveAdjustmentRoutes);
 app.use('/api/company-government-holidays', companyGovernmentHolidayRouter);
 app.use("/api/fixed-holidays", fixedHolidayRoutes);
 app.use("/api/auth", authRoutes);

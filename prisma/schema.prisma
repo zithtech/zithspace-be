@@ -24,6 +24,7 @@ model Tenant {
   dropdownOptions  DropdownOption[]
   leaves           Leave[]
   leaveTypes          LeaveType[]
+  leaveAdjustments    LeaveAdjustment[]
   fixedHolidays    FixedHoliday[]
 
   salaryComponents SalaryComponent[]
@@ -98,6 +99,10 @@ model User {
   createdLeaveTypes    LeaveType[]         @relation("LeaveTypeCreator")
   updatedLeaveTypes    LeaveType[]         @relation("LeaveTypeUpdater")
   leaves               Leave[]                    @relation("UserLeaves")
+  leaveAdjustments        LeaveAdjustment[] @relation("UserLeaveAdjustments")
+  approvedAdjustments     LeaveAdjustment[] @relation("LeaveAdjustmentApprover")
+  createdLeaveAdjustments LeaveAdjustment[] @relation("LeaveAdjustmentCreator")
+  updatedLeaveAdjustments LeaveAdjustment[] @relation("LeaveAdjustmentUpdater")
   projectMemberships   ProjectMember[]
   createdProjects      Project[]                  @relation("ProjectCreator")
   managedProjects      Project[]                  @relation("ProjectManager")
@@ -609,6 +614,30 @@ model WorkEntry {
   @@map("work_entries")
 }
 
+model LeaveType {
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  name             String
+  code             String
+  description      String?
+  type             String   // "Days" or "Hours"
+  days             Int?     @default(1)
+  hours            Decimal? @db.Decimal(4, 2)
+  isPaid           Boolean  @default(true) @map("is_paid")
+  requiresApproval Boolean  @default(true) @map("requires_approval")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdById      String?  @map("created_by_id")
+  updatedById      String?  @map("updated_by_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy        User?    @relation("LeaveTypeCreator", fields: [createdById], references: [id])
+  updatedBy        User?    @relation("LeaveTypeUpdater", fields: [updatedById], references: [id])
+
+  @@unique([tenantId, code])
+  @@map("leave_types")
+}
+
 model Leave {
   id              String    @id @default(uuid())
   tenantId        String    @map("tenant_id")
@@ -633,28 +662,51 @@ model Leave {
   @@map("leaves")
 }
 
-model LeaveType {
-  id               String   @id @default(uuid())
-  tenantId         String   @map("tenant_id")
-  name             String
-  code             String
-  description      String?
-  type             String   // "Days" or "Hours"
-  days             Int?     @default(1)
-  hours            Decimal? @db.Decimal(4, 2)
-  isPaid           Boolean  @default(true) @map("is_paid")
-  requiresApproval Boolean  @default(true) @map("requires_approval")
-  isActive         Boolean  @default(true) @map("is_active")
-  createdById      String?  @map("created_by_id")
-  updatedById      String?  @map("updated_by_id")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
-  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdBy        User?    @relation("LeaveTypeCreator", fields: [createdById], references: [id])
-  updatedBy        User?    @relation("LeaveTypeUpdater", fields: [updatedById], references: [id])
+model LeaveAdjustment {
+  id              String    @id @default(uuid())
+  tenantId        String    @map("tenant_id")
+  userId          String    @map("user_id")
+  leaveType       String    @map("leave_type")
+  adjustmentType  String    @map("adjustment_type")
+  amount          Decimal   @db.Decimal(5, 2)
+  unit            String    @default("Days")
+  reason          String
+  approvedById    String?   @map("approved_by_id")
+  compOffWorkDate DateTime? @map("comp_off_work_date")
+  expiryDate      DateTime? @map("expiry_date")
+  createdById     String    @map("created_by_id")
+  updatedById     String?   @map("updated_by_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
 
-  @@unique([tenantId, code])
-  @@map("leave_types")
+  tenant     Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user       User   @relation("UserLeaveAdjustments", fields: [userId], references: [id], onDelete: Cascade)
+  approvedBy User?  @relation("LeaveAdjustmentApprover", fields: [approvedById], references: [id])
+  createdBy  User   @relation("LeaveAdjustmentCreator", fields: [createdById], references: [id])
+  updatedBy  User?  @relation("LeaveAdjustmentUpdater", fields: [updatedById], references: [id])
+
+  @@map("leave_adjustments")
+}
+
+model FixedHoliday {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  holidayName String   @map("holiday_name")
+  country     String
+  state       String[]
+  fromDate    DateTime @map("from_date")
+  toDate      DateTime @map("to_date")
+  type        String
+  rule        String
+  createdById String?  @map("created_by_id")
+  updatedById String?  @map("updated_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy   User?    @relation("FixedHolidayCreator", fields: [createdById], references: [id])
+  updatedBy   User?    @relation("FixedHolidayUpdater", fields: [updatedById], references: [id])
+
+  @@map("fixed_holidays")
 }
 
 model Customer {
@@ -684,26 +736,7 @@ model Customer {
   @@map("customers")
 }
 
-model FixedHoliday {
-  id          String   @id @default(uuid())
-  tenantId    String   @map("tenant_id")
-  holidayName String
-  country     String
-  state       String[]
-  fromDate    DateTime @map("from_date")
-  toDate      DateTime @map("to_date")
-  type        String
-  rule        String
-  createdById String?  @map("created_by_id")
-  updatedById String?  @map("updated_by_id")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdBy   User?    @relation("FixedHolidayCreator", fields: [createdById], references: [id])
-  updatedBy   User?    @relation("FixedHolidayUpdater", fields: [updatedById], references: [id])
 
-  @@map("fixed_holidays")
-}
 
 model Bucket {
   id          String   @id @default(uuid())
