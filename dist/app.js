@@ -13,6 +13,8 @@ const dotenv_1 = __importDefault(require("dotenv"));
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 // Import configurations
 const database_1 = require("@/config/database");
+const salaryComponentRoutes_1 = __importDefault(require("@/routes/salaryComponentRoutes"));
+const companyRoutes_1 = __importDefault(require("./routes/companyRoutes"));
 const auth_1 = __importDefault(require("@/routes/auth"));
 const tenants_1 = __importDefault(require("@/routes/tenants"));
 const projects_1 = __importDefault(require("@/routes/projects"));
@@ -32,6 +34,15 @@ const customerRoutes_1 = __importDefault(require("@/routes/customerRoutes"));
 const invoiceSettingsRoutes_1 = __importDefault(require("@/routes/invoiceSettingsRoutes"));
 const invoice_1 = __importDefault(require("@/routes/invoice"));
 //import invoicedownload from "@/routes/invoiceDownload"
+const buckets_1 = __importDefault(require("@/routes/buckets"));
+const trash_1 = __importDefault(require("@/routes/trash"));
+const sprintCompletion_1 = __importDefault(require("@/routes/sprintCompletion"));
+const fixedHolidays_1 = __importDefault(require("@/routes/fixedHolidays"));
+const documenthub_1 = __importDefault(require("@/routes/documenthub"));
+const channels_1 = __importDefault(require("@/routes/channels"));
+const messages_1 = __importDefault(require("@/routes/messages"));
+const companyGovernmentHoliday_routes_1 = __importDefault(require("./routes/companyGovernmentHoliday.routes"));
+// Load environment variables
 dotenv_1.default.config();
 // Create Express application
 const app = (0, express_1.default)();
@@ -95,8 +106,8 @@ app.get("/health", (req, res) => {
 // Tenant resolution for all API routes
 // app.use("/api", optionalTenantContext);
 // API routes
-app.use('/api/company-government-holidays', companyGovernmentHolidayRouter);
-app.use("/api/fixed-holidays", fixedHolidayRoutes);
+app.use('/api/company-government-holidays', companyGovernmentHoliday_routes_1.default);
+app.use("/api/fixed-holidays", fixedHolidays_1.default);
 app.use("/api/auth", auth_1.default);
 app.use("/api/tenants", tenants_1.default);
 app.use("/api/projects", projects_1.default);
@@ -116,6 +127,15 @@ app.use("/api/customers", customerRoutes_1.default);
 app.use("/api/invoicesetting", invoiceSettingsRoutes_1.default);
 app.use("/api/invoices", invoice_1.default);
 //app.use("/api/invoice",invoicedownload)
+app.use("/api/buckets", buckets_1.default);
+app.use("/api/trash", trash_1.default);
+app.use("/api/sprint-completion", sprintCompletion_1.default);
+app.use("/api/salary-components", salaryComponentRoutes_1.default);
+app.use("/api/companies", companyRoutes_1.default);
+app.use("/api/documenthub", documenthub_1.default);
+app.use("/api/channels", channels_1.default);
+app.use("/api/channels/:channelId/messages", messages_1.default);
+// Tenant-specific health check
 app.get("/api/health", (req, res) => {
     res.status(200).json({
         success: true,
