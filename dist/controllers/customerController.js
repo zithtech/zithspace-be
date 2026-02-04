@@ -7,101 +7,17 @@ class CustomerController {
     /**
      * Get all customers (tenant-aware, with pagination and search)
      */
-    //   static async getCustomers(req: AuthRequest, res: Response): Promise<void> {
-    //     try {
-    //       if (!req.tenantId || !req.user) {
-    //         res.status(400).json({
-    //           success: false,
-    //           error: "Tenant and authentication required",
-    //         } as ApiResponse);
-    //         return;
-    //       }
-    //       const { page = 1, limit = 20, search } = req.query;
-    //       const where: any = { tenantId: req.tenantId };
-    //       if (search) {
-    //         where.OR = [
-    //           { companyName: { contains: search as string, mode: "insensitive" } },
-    //           { email: { contains: search as string, mode: "insensitive" } },
-    //           { phone: { contains: search as string, mode: "insensitive" } },
-    //         ];
-    //       }
-    //       const skip = (Number(page) - 1) * Number(limit);
-    //       const [customers, total] = await Promise.all([
-    //         prisma.customer.findMany({
-    //           where,
-    //           skip,
-    //           take: Number(limit),
-    //           orderBy: { createdAt: "desc" },
-    //         }),
-    //         prisma.customer.count({ where }),
-    //       ]);
-    //       res.status(200).json({
-    //         success: true,
-    //         data: customers,
-    //         pagination: {
-    //           page: Number(page),
-    //           limit: Number(limit),
-    //           total,
-    //           pages: Math.ceil(total / Number(limit)),
-    //           hasNext: Number(page) * Number(limit) < total,
-    //           hasPrev: Number(page) > 1,
-    //         },
-    //       } as ApiResponse);
-    //     } catch (error) {
-    //       console.error("Get customers error:", error);
-    //       res.status(500).json({
-    //         success: false,
-    //         error: "Failed to fetch customers",
-    //       } as ApiResponse);
-    //     }
-    //   }
     static async getCustomers(req, res) {
-        // try {
-        //   // TEMP: For testing, skip auth/tenant check
-        //   // Remove or comment out this check:
-        //   // if (!req.tenantId || !req.user) { ... }
-        //   const { page = 1, limit = 20, search } = req.query;
-        //   // TEMP: Use all customers without filtering by tenant
-        //   const where: any = {}; // no tenantId required
-        //   if (search) {
-        //     where.OR = [
-        //       { companyName: { contains: search as string, mode: "insensitive" } },
-        //       { email: { contains: search as string, mode: "insensitive" } },
-        //       { phone: { contains: search as string, mode: "insensitive" } },
-        //     ];
-        //   }
-        //   const skip = (Number(page) - 1) * Number(limit);
-        //   const [customers, total] = await Promise.all([
-        //     prisma.customer.findMany({
-        //       where,
-        //       skip,
-        //       take: Number(limit),
-        //       orderBy: { createdAt: "desc" },
-        //     }),
-        //     prisma.customer.count({ where }),
-        //   ]);
-        //   res.status(200).json({
-        //     success: true,
-        //     data: customers,
-        //     pagination: {
-        //       page: Number(page),
-        //       limit: Number(limit),
-        //       total,
-        //       pages: Math.ceil(total / Number(limit)),
-        //       hasNext: Number(page) * Number(limit) < total,
-        //       hasPrev: Number(page) > 1,
-        //     },
-        //   } as ApiResponse);
-        // } catch (error) {
-        //   console.error("Get customers error:", error);
-        //   res.status(500).json({
-        //     success: false,
-        //     error: "Failed to fetch customers",
-        //   } as ApiResponse);
-        // }
         try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant and authentication required",
+                });
+                return;
+            }
             const { page = 1, limit = 20, search } = req.query;
-            const where = {}; // for testing, fetch all customers
+            const where = { tenantId: req.tenantId };
             if (search) {
                 where.OR = [
                     { companyName: { contains: search, mode: "insensitive" } },
@@ -110,8 +26,6 @@ class CustomerController {
                 ];
             }
             const skip = (Number(page) - 1) * Number(limit);
-            console.log("Prisma query where:", where);
-            console.log("Skip:", skip, "Limit:", limit);
             const [customers, total] = await Promise.all([
                 database_1.prisma.customer.findMany({
                     where,
@@ -121,7 +35,6 @@ class CustomerController {
                 }),
                 database_1.prisma.customer.count({ where }),
             ]);
-            console.log("Fetched customers:", customers);
             res.status(200).json({
                 success: true,
                 data: customers,
@@ -136,7 +49,7 @@ class CustomerController {
             });
         }
         catch (error) {
-            console.error("Get customers error:", error); // log full error
+            console.error("Get customers error:", error);
             res.status(500).json({
                 success: false,
                 error: "Failed to fetch customers",
@@ -180,27 +93,35 @@ class CustomerController {
                 });
                 return;
             }
-            // <-- Put the validation here -->
             const customerData = req.body;
-            // Validate required fields
-            if (!customerData.companyName || !customerData.email) {
+            // 1. Validate required fields
+            if (!customerData.companyName) {
                 res.status(400).json({
                     success: false,
-                    error: "Company name and email are required",
+                    error: "Company name is required",
                 });
                 return;
             }
-            // Check if email already exists for this tenant
-            const existing = await database_1.prisma.customer.findFirst({
-                where: { tenantId: req.tenantId, email: customerData.email },
-            });
-            if (existing) {
-                throw new types_1.ValidationError("Customer with this email already exists in this tenant");
+            // 2. SANITIZE EMAIL: Convert empty strings or whitespace-only strings to undefined.
+            // This is the key fix to prevent unique constraint errors on empty strings.
+            const sanitizedEmail = customerData.email?.trim() || undefined;
+            // 3. Check email uniqueness only if a valid email string exists
+            if (sanitizedEmail) {
+                const existing = await database_1.prisma.customer.findFirst({
+                    where: {
+                        tenantId: req.tenantId,
+                        email: sanitizedEmail,
+                    },
+                });
+                if (existing) {
+                    throw new types_1.ValidationError("Customer with this email already exists in this tenant");
+                }
             }
-            // Create the customer
+            // 4. Create the customer
             const newCustomer = await database_1.prisma.customer.create({
                 data: {
                     ...customerData,
+                    email: sanitizedEmail, // Use the sanitized value here
                     tenantId: req.tenantId,
                     createdBy: req.user.id,
                     updatedBy: req.user.id,
@@ -214,10 +135,19 @@ class CustomerController {
         }
         catch (error) {
             console.error("Create customer error:", error);
+            // Handle Prisma Unique Constraint Errors (P2002)
+            if (error.code === 'P2002') {
+                res.status(400).json({
+                    success: false,
+                    error: "A customer with this email already exists in this tenant.",
+                });
+                return;
+            }
             if (error instanceof types_1.ValidationError) {
-                res
-                    .status(400)
-                    .json({ success: false, error: error.message });
+                res.status(400).json({
+                    success: false,
+                    error: error.message
+                });
                 return;
             }
             res.status(500).json({
@@ -239,36 +169,64 @@ class CustomerController {
                 return;
             }
             const { id } = req.params;
-            // <-- Put the UpdateCustomerData assignment here -->
             const updates = req.body;
-            // Remove fields that shouldn't be updated directly
+            // Prevent updating immutable fields
             delete updates.tenantId;
             delete updates.createdAt;
             delete updates.createdBy;
-            // Check if customer exists in this tenant
+            // Fetch existing customer
             const existingCustomer = await database_1.prisma.customer.findFirst({
                 where: { id, tenantId: req.tenantId },
             });
             if (!existingCustomer) {
                 throw new types_1.NotFoundError("Customer not found in this tenant");
             }
-            // If email is being updated, check for duplicates
-            if (updates.email && updates.email !== existingCustomer.email) {
-                const duplicate = await database_1.prisma.customer.findFirst({
+            // Normalize updates: convert empty strings to null, ignore undefined
+            const normalizedUpdates = {};
+            Object.entries(updates).forEach(([key, value]) => {
+                if (value === "") {
+                    normalizedUpdates[key] = null;
+                }
+                else if (value !== undefined) {
+                    normalizedUpdates[key] = value;
+                }
+            });
+            // Company name uniqueness check
+            if (normalizedUpdates.companyName &&
+                normalizedUpdates.companyName !== existingCustomer.companyName) {
+                const existingCompany = await database_1.prisma.customer.findFirst({
                     where: {
                         tenantId: req.tenantId,
-                        email: updates.email,
-                        id: { not: id },
+                        companyName: normalizedUpdates.companyName,
+                        NOT: { id },
                     },
                 });
-                if (duplicate) {
+                if (existingCompany) {
+                    throw new types_1.ValidationError("Another customer with this company name already exists");
+                }
+            }
+            // Email uniqueness check
+            if (normalizedUpdates.email &&
+                normalizedUpdates.email !== existingCustomer.email) {
+                const duplicateEmail = await database_1.prisma.customer.findFirst({
+                    where: {
+                        tenantId: req.tenantId,
+                        email: normalizedUpdates.email,
+                        NOT: { id },
+                    },
+                });
+                if (duplicateEmail) {
                     throw new types_1.ValidationError("Another customer with this email already exists");
                 }
             }
-            // Update customer
+            // Update the customer
             const updatedCustomer = await database_1.prisma.customer.update({
                 where: { id },
-                data: { ...updates, updatedBy: req.user.id, updatedAt: new Date() },
+                data: {
+                    ...normalizedUpdates,
+                    updatedBy: req.user.id,
+                    updatedAt: new Date(),
+                },
             });
             res.status(200).json({
                 success: true,
@@ -279,15 +237,11 @@ class CustomerController {
         catch (error) {
             console.error("Update customer error:", error);
             if (error instanceof types_1.NotFoundError) {
-                res
-                    .status(404)
-                    .json({ success: false, error: error.message });
+                res.status(404).json({ success: false, error: error.message });
                 return;
             }
             if (error instanceof types_1.ValidationError) {
-                res
-                    .status(400)
-                    .json({ success: false, error: error.message });
+                res.status(400).json({ success: false, error: error.message });
                 return;
             }
             res.status(500).json({
