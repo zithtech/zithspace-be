@@ -159,7 +159,7 @@ app.use("/api/documenthub", documentHubRoutes);
 app.use("/api/channels", channelRoutes);
 app.use("/api/channels/:channelId/messages", messageRoutes);
 
-// Tenant-specific health check
+
 app.get("/api/health", (req: any, res) => {
   res.status(200).json({
     success: true,
