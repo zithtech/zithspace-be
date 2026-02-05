@@ -24,6 +24,10 @@ model Tenant {
   dropdownOptions     DropdownOption[]
   leaves              Leave[]
   fixedHolidays       FixedHoliday[]
+
+  salaryComponents    SalaryComponent[] 
+  companies           Company[]   
+  holidays            CompanyGovernmentHoliday[]
   projects            Project[]
   releasePlans        ReleasePlan[]
   shifts              Shift[]
@@ -37,6 +41,15 @@ model Tenant {
   tickets             Ticket[]
   transactions        Transaction[]
   users               User[]
+  documenthub         DocumentHub[]
+  documents           Document[]
+  documenttree        DocumentTree[]
+  documentHistory     DocumentHistory[]
+  
+  // ZithTech Calls Relations
+  channels            Channel[]
+  meetings            Meeting[]
+  
 
   @@map("tenants")
 }
@@ -61,6 +74,12 @@ model User {
   lastLoginAt          DateTime?           @map("last_login_at")
   createdAt            DateTime            @default(now()) @map("created_at")
   updatedAt            DateTime            @updatedAt @map("updated_at")
+
+  createdSalaryComponents SalaryComponent[] @relation("SalaryComponentCreator")
+  updatedSalaryComponents SalaryComponent[] @relation("SalaryComponentUpdater")
+  createdCompanies Company[] @relation("CompanyCreator")
+  updatedCompanies Company[] @relation("CompanyUpdater")
+
   enteredAttendance    Attendance[]        @relation("AttendanceEnteredBy")
   attendance           Attendance[]
   createdClients       Client[]            @relation("ClientCreator")
@@ -76,6 +95,10 @@ model User {
   ticketAttachments    TicketAttachment[]
   ticketComments       TicketComment[]
   addedRelatedLinks    TicketRelatedLink[]
+  documenthub          DocumentHub[]
+  documents            Document[]
+  documentHistory      DocumentHistory[]
+  documenttree         DocumentTree[]
   assignedTickets      Ticket[]            @relation("TicketAssignee")
   createdTickets       Ticket[]            @relation("TicketCreator")
   reportToTickets      Ticket[]            @relation("TicketReportTo")
@@ -85,6 +108,8 @@ model User {
   bucketMemberships    BucketMember[]
   createdFixedHolidays FixedHoliday[]      @relation("FixedHolidayCreator")
   updatedFixedHolidays FixedHoliday[]      @relation("FixedHolidayUpdater")
+  createdHolidays      CompanyGovernmentHoliday[]           @relation("CompanyGovernmentHolidayCreator")
+  updatedHolidays      CompanyGovernmentHoliday[]           @relation("CompanyGovernmentHolidayUpdater")
   sprintCompletionLogs SprintCompletionLog[]
   transactions         Transaction[]
   assignedShift        Shift?              @relation("UserShift", fields: [assignedShiftId], references: [id])
@@ -92,6 +117,14 @@ model User {
   subordinates         User[]              @relation("UserHierarchy")
   shiftAssignedBy      User?               @relation("ShiftAssigner", fields: [shiftAssignedById], references: [id])
   assignedShifts       User[]              @relation("ShiftAssigner")
+  
+  // ZithTech Calls Relations
+  createdChannels      Channel[]           @relation("ChannelCreator")
+  channelMemberships   ChannelMember[]
+  channelMessages      ChannelMessage[]
+  createdMeetings      Meeting[]           @relation("MeetingCreator")
+  meetingParticipations MeetingParticipant[]
+
   tenant               Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, workEmail])
@@ -139,6 +172,7 @@ model Project {
   sprintCompletionLogs SprintCompletionLog[]
   tickets              Ticket[]
   workEntries          WorkEntry[]
+  documenthub          DocumentHub[]
 
   @@unique([tenantId, code])
   @@map("projects")
@@ -212,6 +246,7 @@ model Ticket {
   comments            TicketComment[]
   relatedLinks        TicketRelatedLink[]
   workflowSteps       TicketWorkflowStep[]
+  documenthub         DocumentHub[]
   assignee            User?                @relation("TicketAssignee", fields: [assigneeId], references: [id])
   createdBy           User                 @relation("TicketCreator", fields: [createdById], references: [id])
   project             Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -450,7 +485,7 @@ model Attendance {
   user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   breaks               AttendanceBreak[]
 
-  @@unique([tenantId, userId, date])
+ 
   @@map("attendance")
 }
 
@@ -466,7 +501,7 @@ model AttendanceBreak {
   updatedAt       DateTime   @updatedAt @map("updated_at")
   attendance      Attendance @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
   tenant          Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
+  
   @@map("attendance_breaks")
 }
 
@@ -519,8 +554,12 @@ model StatusUpdate {
   tenant           Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user             User        @relation("UserStatusUpdates", fields: [userId], references: [id], onDelete: Cascade)
   workEntries      WorkEntry[]
+  is_missed        Boolean   @default(false)
+  missed_updateAt DateTime?
 
-  @@unique([userId, date, tenantId])
+ 
+
+  
   @@index([tenantId, date])
   @@index([userId, date])
   @@map("status_updates")
@@ -592,6 +631,44 @@ model FixedHoliday {
   @@map("fixed_holidays")
 }
 
+model CompanyGovernmentHoliday {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+
+  holidayName String   @map("holiday_name")
+  country     String
+  fromDate    DateTime @map("from_date")
+  toDate      DateTime @map("to_date")
+
+  baseLeave   Int      @map("base_leave")
+  extraLeave  Int      @map("extra_leave")
+  totalLeave  Int      @map("total_leave")
+
+  type        String 
+  isFloater   Boolean     @default(false) @map("is_floater")
+
+  rule        String?
+  status      HolidayStatus @default(ACTIVE)
+
+  createdById String   @map("created_by_id")
+  updatedById String?  @map("updated_by_id")
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy   User     @relation("CompanyGovernmentHolidayCreator", fields: [createdById], references: [id])
+  updatedBy   User?    @relation("CompanyGovernmentHolidayUpdater", fields: [updatedById], references: [id])
+
+  // Indexes
+  @@index([tenantId])
+  @@index([createdById])
+  @@index([tenantId, fromDate])
+
+  @@map("company_government_holidays")
+}
+
 model Bucket {
   id          String         @id @default(uuid())
   tenantId    String         @map("tenant_id")
@@ -660,4 +737,307 @@ model SprintCompletionLog {
   @@index([tenantId])
   @@index([performedAt])
   @@map("sprint_completion_logs")
+}
+
+
+model SalaryComponent {
+  key           Int           @id @default(autoincrement())
+
+  tenantId      String        @map("tenant_id")
+
+  componentName String        @map("component_name") @db.VarChar(100)
+  componentCode String        @map("component_code") @db.VarChar(50)
+
+  type          ComponentType @default(Earning)
+  status        Boolean       @default(true)
+
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt      @map("updated_at")
+  createdById   String?       @map("created_by_id")
+  updatedById   String?       @map("updated_by_id")
+
+  // Relations
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy     User?         @relation("SalaryComponentCreator", fields: [createdById], references: [id])
+  updatedBy     User?         @relation("SalaryComponentUpdater", fields: [updatedById], references: [id])
+
+  @@map("salary_components")
+  @@unique([tenantId, componentCode])
+}
+
+
+enum ComponentType {
+  Earning
+  Deduction
+
+  @@map("component_type")
+}
+
+
+model Company {
+  id            Int      @id @default(autoincrement())
+
+  tenantId      String   @map("tenant_id")
+
+  name          String
+  email         String?
+  phone         String?
+
+  // Address
+  plotNo        String?  @map("plot_no")
+  floorNo       String?  @map("floor_no")
+  buildingName  String?  @map("building_name")
+  street        String?
+  area          String?
+  city          String?
+  pincode       String?
+  country       String?
+
+  // Registration
+  cin           String?
+  gst           String?
+
+  isActive      Boolean  @default(false) @map("is_active")
+
+  logo          String?
+
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt      @map("updated_at")
+  createdById String? @map("created_by_id")
+  updatedById String? @map("updated_by_id")
+
+  // Relations
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  createdBy   User?   @relation("CompanyCreator", fields: [createdById], references: [id])
+  updatedBy   User?   @relation("CompanyUpdater", fields: [updatedById], references: [id])
+
+  @@map("companies")
+  @@unique([tenantId, name])
+}
+
+
+
+
+enum HolidayStatus {
+  ACTIVE
+  INACTIVE
+}
+
+
+enum DocumentNodeType {
+  section
+  folder
+  file
+}
+model DocumentHub {
+  id           String   @id @default(uuid())
+  tenantId     String
+  name         String
+
+  projectId    String?
+  ticketId     String?
+
+  createdById  String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  project      Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  ticket       Ticket?  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  createdBy    User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  documents    Document[]
+  treeNodes    DocumentTree[]
+
+  @@index([tenantId])
+  @@index([projectId])
+  @@index([ticketId])
+  @@index([createdById])
+  @@map("document_hub")
+}
+model Document {
+  id            String   @id @default(uuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  documentHubId String
+  documentHub   DocumentHub @relation(fields: [documentHubId], references: [id], onDelete: Cascade)
+
+  title         String
+  content       Json
+
+  treeNode      DocumentTree?
+
+  createdById   String
+  createdBy    User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  history       DocumentHistory[]
+
+  @@index([documentHubId])
+  @@map("documents")
+
+}
+model DocumentTree {
+  id            String   @id @default(uuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  documentHubId String
+  documentHub   DocumentHub @relation(fields: [documentHubId], references: [id], onDelete: Cascade)
+
+  title         String
+  type          DocumentNodeType
+
+  parentId      String?
+  parent        DocumentTree? @relation("TreeChildren", fields: [parentId], references: [id], onDelete: Cascade)
+  children      DocumentTree[] @relation("TreeChildren")
+
+  // Only set when type = file
+  documentId    String? @unique
+  document      Document? @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  position      Int      @default(0)
+
+  createdById   String
+  createdBy    User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+
+  createdAt     DateTime @default(now())
+
+  @@index([documentHubId])
+  @@index([parentId])
+  @@map("documenttree")
+
+}
+
+model DocumentHistory {
+  id            String   @id @default(uuid())
+  documentId    String
+  document      Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  content       Json
+  
+  createdById   String
+  createdBy     User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime @default(now())
+
+  @@index([documentId])
+  @@index([createdById])
+  @@map("document_history")
+}
+
+// --------------------------------------
+// ZithTech Calls (Chat & Meeting) Models
+// --------------------------------------
+
+model Channel {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  name        String?  // Optional for DMs
+  description String?
+  type        String   @default("CHANNEL") // CHANNEL, DM, GROUP
+  
+  isArchived  Boolean  @default(false) @map("is_archived")
+  
+  lastMessageAt DateTime? @map("last_message_at")
+  
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy   User     @relation("ChannelCreator", fields: [createdById], references: [id])
+  
+  members     ChannelMember[]
+  messages    ChannelMessage[]
+  meetings    Meeting[]
+
+  @@map("channels")
+}
+
+model ChannelMember {
+  id        String   @id @default(uuid())
+  channelId String   @map("channel_id")
+  userId    String   @map("user_id")
+  role      String   @default("member") // owner, admin, member
+  joinedAt  DateTime @default(now()) @map("joined_at")
+  lastReadAt DateTime? @map("last_read_at")
+
+  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, userId])
+  @@map("channel_members")
+}
+
+model ChannelMessage {
+  id          String   @id @default(uuid())
+  channelId   String   @map("channel_id")
+  userId      String   @map("user_id")
+  content     String   // Text content
+  type        String   @default("text") // text, system, file
+  attachments Json     @default("[]")
+  
+  isEdited    Boolean  @default(false) @map("is_edited")
+  isDeleted   Boolean  @default(false) @map("is_deleted")
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  channel     Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([channelId, createdAt])
+  @@map("channel_messages")
+}
+
+model Meeting {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  channelId   String   @map("channel_id")
+  title       String
+  
+  status      String   @default("scheduled") // scheduled, active, completed, cancelled
+  
+  startedAt   DateTime? @map("started_at")
+  endedAt     DateTime? @map("ended_at")
+  
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  channel     Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  createdBy   User     @relation("MeetingCreator", fields: [createdById], references: [id])
+  
+  participants MeetingParticipant[]
+
+  @@map("meetings")
+}
+
+model MeetingParticipant {
+  id        String   @id @default(uuid())
+  meetingId String   @map("meeting_id")
+  userId    String   @map("user_id")
+  
+  status    String   @default("joined") // joined, left
+  role      String   @default("participant") // host, presenter, participant
+  
+  joinedAt  DateTime @default(now()) @map("joined_at")
+  leftAt    DateTime? @map("left_at")
+
+  meeting   Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId])
+  @@map("meeting_participants")
 }
