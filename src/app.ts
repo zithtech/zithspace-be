@@ -37,6 +37,11 @@ import bucketRoutes from "@/routes/buckets";
 import trashRoutes from "@/routes/trash";
 import sprintCompletionRoutes from "@/routes/sprintCompletion";
 import fixedHolidayRoutes from "@/routes/fixedHolidays";
+import payslipFieldRoutes from "@/routes/payslipFieldRoutes";
+import employeeFieldRoutes from "@/routes/employeeFieldRoutes";
+import salaryStructureRoutes from "@/routes/salaryStructure.routes";
+
+
 
 // Load environment variables
 dotenv.config();
@@ -156,6 +161,9 @@ app.use("/api/trash", trashRoutes);
 app.use("/api/sprint-completion", sprintCompletionRoutes);
 app.use("/api/salary-components", salaryComponentRoutes);
 app.use("/api/companies", companyRoutes);
+app.use("/api/payslip-fields", payslipFieldRoutes);
+app.use("/api/employee-fields", employeeFieldRoutes);
+app.use("/api/salary-structures", salaryStructureRoutes);
 
 
 // Tenant-specific health check

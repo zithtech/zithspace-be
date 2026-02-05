@@ -8,100 +8,152 @@ datasource db {
 }
 
 model Tenant {
-  id                  String                @id @default(uuid())
-  name                String
-  subdomain           String                @unique
-  planType            String                @default("basic") @map("plan_type")
-  maxUsers            Int                   @default(10) @map("max_users")
-  isActive            Boolean               @default(true) @map("is_active")
-  settings            Json?                 @default("{}")
-  createdAt           DateTime              @default(now()) @map("created_at")
-  updatedAt           DateTime              @updatedAt @map("updated_at")
-  attendance          Attendance[]
-  attendanceBreaks    AttendanceBreak[]
-  buckets             Bucket[]
-  clients             Client[]
-  dropdownOptions     DropdownOption[]
-  leaves              Leave[]
-  fixedHolidays       FixedHoliday[]
-
-  salaryComponents    SalaryComponent[] 
-  companies           Company[]   
-  projects            Project[]
-  releasePlans        ReleasePlan[]
-  shifts              Shift[]
-  sprintCompletionLogs SprintCompletionLog[]
-  statusUpdates       StatusUpdate[]
-  ticketActivityLog   TicketActivityLog[]
-  ticketAttachments   TicketAttachment[]
-  ticketComments      TicketComment[]
-  ticketRelatedLinks  TicketRelatedLink[]
-  ticketWorkflowSteps TicketWorkflowStep[]
-  tickets             Ticket[]
-  transactions        Transaction[]
-  users               User[]
+  id                          String                        @id @default(uuid())
+  name                        String
+  subdomain                   String                        @unique
+  planType                    String                        @default("basic") @map("plan_type")
+  maxUsers                    Int                           @default(10) @map("max_users")
+  isActive                    Boolean                       @default(true) @map("is_active")
+  settings                    Json?                         @default("{}")
+  createdAt                   DateTime                      @default(now()) @map("created_at")
+  updatedAt                   DateTime                      @updatedAt @map("updated_at")
+  attendance                  Attendance[]
+  attendanceBreaks            AttendanceBreak[]
+  buckets                     Bucket[]
+  channels                    channels[]
+  clients                     Client[]
+  company_government_holidays company_government_holidays[]
+  customers                   customers[]
+  document_history            document_history[]
+  document_hub                document_hub[]
+  documents                   documents[]
+  documenttree                documenttree[]
+  dropdownOptions             DropdownOption[]
+  employeeFields              EmployeeField[]
+  payslipFields PayslipField[]
+  salaryStructures SalaryStructure[]
+  payslips Payslip[]  
+  fixedHolidays               FixedHoliday[]
+  general_settings            general_settings[]
+  invoice_items               invoice_items[]
+  invoice_settings            invoice_settings[]
+  invoices                    invoices[]
+  leaves                      Leave[]
+  meetings                    meetings[]
+  payment_settings            payment_settings[]
+  projects                    Project[]
+  releasePlans                ReleasePlan[]
+  salaryComponents            SalaryComponent[]
+  settings_profiles           settings_profiles[]
+  shifts                      Shift[]
+  sprintCompletionLogs        SprintCompletionLog[]
+  statusUpdates               StatusUpdate[]
+  ticketActivityLog           TicketActivityLog[]
+  ticketAttachments           TicketAttachment[]
+  ticketComments              TicketComment[]
+  ticketRelatedLinks          TicketRelatedLink[]
+  ticketWorkflowSteps         TicketWorkflowStep[]
+  tickets                     Ticket[]
+  transactions                Transaction[]
+  users                       User[]
 
   @@map("tenants")
 }
 
 model User {
-  id                   String              @id @default(uuid())
-  tenantId             String              @map("tenant_id")
-  name                 String
-  workEmail            String              @map("work_email")
-  personalEmail        String              @map("personal_email")
-  phone                String
-  passwordHash         String              @map("password_hash")
-  role                 String              @default("user")
-  position             String
-  reportsToId          String?             @map("reports_to_id")
-  dateOfBirth          DateTime?           @map("date_of_birth")
-  workDays             Int[]               @default([1, 2, 3, 4, 5]) @map("work_days")
-  assignedShiftId      String?             @map("assigned_shift_id")
-  shiftAssignedById    String?             @map("shift_assigned_by_id")
-  shiftAssignedDate    DateTime?           @map("shift_assigned_date")
-  isActive             Boolean             @default(true) @map("is_active")
-  lastLoginAt          DateTime?           @map("last_login_at")
-  createdAt            DateTime            @default(now()) @map("created_at")
-  updatedAt            DateTime            @updatedAt @map("updated_at")
+  id                                                                           String                        @id @default(uuid())
+  tenantId                                                                     String                        @map("tenant_id")
+  name                                                                         String
+  workEmail                                                                    String                        @map("work_email")
+  personalEmail                                                                String                        @map("personal_email")
+  phone                                                                        String
+  passwordHash                                                                 String                        @map("password_hash")
+  role                                                                         String                        @default("user")
+  position                                                                     String
+  reportsToId                                                                  String?                       @map("reports_to_id")
+  dateOfBirth                                                                  DateTime?                     @map("date_of_birth")
+  workDays                                                                     Int[]                         @default([1, 2, 3, 4, 5]) @map("work_days")
+  assignedShiftId                                                              String?                       @map("assigned_shift_id")
+  shiftAssignedById                                                            String?                       @map("shift_assigned_by_id")
+  shiftAssignedDate                                                            DateTime?                     @map("shift_assigned_date")
+  isActive                                                                     Boolean                       @default(true) @map("is_active")
+  lastLoginAt                                                                  DateTime?                     @map("last_login_at")
+  createdAt                                                                    DateTime                      @default(now()) @map("created_at")
+  updatedAt                                                                    DateTime                      @updatedAt @map("updated_at")
+  addresses_addresses_created_by_idTousers                                     addresses[]                   @relation("addresses_created_by_idTousers")
+  addresses_addresses_updated_by_idTousers                                     addresses[]                   @relation("addresses_updated_by_idTousers")
+  enteredAttendance                                                            Attendance[]                  @relation("AttendanceEnteredBy")
+  attendance                                                                   Attendance[]
+  bucketMemberships                                                            BucketMember[]
+  createdBuckets                                                               Bucket[]                      @relation("BucketCreator")
+  channel_members                                                              channel_members[]
+  channel_messages                                                             channel_messages[]
+  channels                                                                     channels[]
+  createdClients                                                               Client[]                      @relation("ClientCreator")
+  createdCompanies                                                             Company[]                     @relation("CompanyCreator")
+  updatedCompanies                                                             Company[]                     @relation("CompanyUpdater")
+  company_government_holidays_company_government_holidays_created_by_idTousers company_government_holidays[] @relation("company_government_holidays_created_by_idTousers")
+  company_government_holidays_company_government_holidays_updated_by_idTousers company_government_holidays[] @relation("company_government_holidays_updated_by_idTousers")
+  document_history                                                             document_history[]
+  document_hub                                                                 document_hub[]
+  documenttree                                                                 documenttree[]
+  createdEmployeeFields                                                        EmployeeField[]               @relation("EmployeeFieldCreator")
+  updatedEmployeeFields                                                        EmployeeField[]               @relation("EmployeeFieldUpdater")
+  createdFixedHolidays                                                         FixedHoliday[]                @relation("FixedHolidayCreator")
+  updatedFixedHolidays                                                         FixedHoliday[]                @relation("FixedHolidayUpdater")
+  general_settings_general_settings_created_byTousers                          general_settings[]            @relation("general_settings_created_byTousers")
+  general_settings_general_settings_updated_byTousers                          general_settings[]            @relation("general_settings_updated_byTousers")
+  invoice_items_invoice_items_created_byTousers                                invoice_items[]               @relation("invoice_items_created_byTousers")
+  invoice_items_invoice_items_updated_byTousers                                invoice_items[]               @relation("invoice_items_updated_byTousers")
+  invoice_settings_invoice_settings_created_byTousers                          invoice_settings[]            @relation("invoice_settings_created_byTousers")
+  invoice_settings_invoice_settings_updated_byTousers                          invoice_settings[]            @relation("invoice_settings_updated_byTousers")
+  invoices_invoices_created_byTousers                                          invoices[]                    @relation("invoices_created_byTousers")
+  invoices_invoices_updated_byTousers                                          invoices[]                    @relation("invoices_updated_byTousers")
+  approvedLeaves                                                               Leave[]                       @relation("LeaveApprover")
+  leaves                                                                       Leave[]                       @relation("UserLeaves")
+  meeting_participants                                                         meeting_participants[]
+  meetings                                                                     meetings[]
+  payment_settings_payment_settings_created_byTousers                          payment_settings[]            @relation("payment_settings_created_byTousers")
+  payment_settings_payment_settings_updated_byTousers                          payment_settings[]            @relation("payment_settings_updated_byTousers")
+  projectMemberships                                                           ProjectMember[]
+  createdProjects                                                              Project[]                     @relation("ProjectCreator")
+  managedProjects                                                              Project[]                     @relation("ProjectManager")
+  refreshTokens                                                                RefreshToken[]
+  createdReleasePlans                                                          ReleasePlan[]                 @relation("ReleasePlanCreator")
+  createdSalaryComponents                                                      SalaryComponent[]             @relation("SalaryComponentCreator")
+  updatedSalaryComponents                                                      SalaryComponent[]             @relation("SalaryComponentUpdater")
+  settings_profiles_settings_profiles_created_byTousers                        settings_profiles[]           @relation("settings_profiles_created_byTousers")
+  settings_profiles_settings_profiles_updated_byTousers                        settings_profiles[]           @relation("settings_profiles_updated_byTousers")
+  sprintCompletionLogs                                                         SprintCompletionLog[]
+  statusUpdates                                                                StatusUpdate[]                @relation("UserStatusUpdates")
+  performedActivityLog                                                         TicketActivityLog[]
+  ticketAttachments                                                            TicketAttachment[]
+  ticketComments                                                               TicketComment[]
+  addedRelatedLinks                                                            TicketRelatedLink[]
+   payslipsCreated  Payslip[] @relation("UserPayslips")
 
-  createdSalaryComponents SalaryComponent[] @relation("SalaryComponentCreator")
-  updatedSalaryComponents SalaryComponent[] @relation("SalaryComponentUpdater")
-  createdCompanies Company[] @relation("CompanyCreator")
-  updatedCompanies Company[] @relation("CompanyUpdater")
-
-  enteredAttendance    Attendance[]        @relation("AttendanceEnteredBy")
-  attendance           Attendance[]
-  createdClients       Client[]            @relation("ClientCreator")
-  leaves               Leave[]             @relation("UserLeaves")
-  approvedLeaves       Leave[]             @relation("LeaveApprover")
-  projectMemberships   ProjectMember[]
-  createdProjects      Project[]           @relation("ProjectCreator")
-  managedProjects      Project[]           @relation("ProjectManager")
-  refreshTokens        RefreshToken[]
-  createdReleasePlans  ReleasePlan[]       @relation("ReleasePlanCreator")
-  statusUpdates        StatusUpdate[]      @relation("UserStatusUpdates")
-  performedActivityLog TicketActivityLog[]
-  ticketAttachments    TicketAttachment[]
-  ticketComments       TicketComment[]
-  addedRelatedLinks    TicketRelatedLink[]
-  assignedTickets      Ticket[]            @relation("TicketAssignee")
-  createdTickets       Ticket[]            @relation("TicketCreator")
-  reportToTickets      Ticket[]            @relation("TicketReportTo")
-  archivedTickets      Ticket[]            @relation("TicketArchivedBy")
-  deletedTickets       Ticket[]            @relation("TicketDeletedBy")
-  createdBuckets       Bucket[]            @relation("BucketCreator")
-  bucketMemberships    BucketMember[]
-  createdFixedHolidays FixedHoliday[]      @relation("FixedHolidayCreator")
-  updatedFixedHolidays FixedHoliday[]      @relation("FixedHolidayUpdater")
-  sprintCompletionLogs SprintCompletionLog[]
-  transactions         Transaction[]
-  assignedShift        Shift?              @relation("UserShift", fields: [assignedShiftId], references: [id])
-  reportsTo            User?               @relation("UserHierarchy", fields: [reportsToId], references: [id])
-  subordinates         User[]              @relation("UserHierarchy")
-  shiftAssignedBy      User?               @relation("ShiftAssigner", fields: [shiftAssignedById], references: [id])
-  assignedShifts       User[]              @relation("ShiftAssigner")
-  tenant               Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deletedTickets                                                               Ticket[]                      @relation("TicketDeletedBy")
+  archivedTickets                                                              Ticket[]                      @relation("TicketArchivedBy")
+  assignedTickets                                                              Ticket[]                      @relation("TicketAssignee")
+  createdTickets                                                               Ticket[]                      @relation("TicketCreator")
+  reportToTickets                                                              Ticket[]                      @relation("TicketReportTo")
+  timesheet_rows_timesheet_rows_created_by_idTousers                           timesheet_rows[]              @relation("timesheet_rows_created_by_idTousers")
+  timesheet_rows_timesheet_rows_updated_by_idTousers                           timesheet_rows[]              @relation("timesheet_rows_updated_by_idTousers")
+  timesheets_timesheets_approved_by_idTousers                                  timesheets[]                  @relation("timesheets_approved_by_idTousers")
+  timesheets_timesheets_created_by_idTousers                                   timesheets[]                  @relation("timesheets_created_by_idTousers")
+  timesheets_timesheets_updated_by_idTousers                                   timesheets[]                  @relation("timesheets_updated_by_idTousers")
+  timesheets_timesheets_user_idTousers                                         timesheets[]                  @relation("timesheets_user_idTousers")
+ createdPayslipFields PayslipField[] @relation("PayslipFieldCreator")
+  updatedPayslipFields PayslipField[] @relation("PayslipFieldUpdater")
+  createdSalaryStructures SalaryStructure[] @relation("SalaryStructureCreator")
+  updatedSalaryStructures SalaryStructure[] @relation("SalaryStructureUpdater")
+  transactions                                                                 Transaction[]
+  assignedShift                                                                Shift?                        @relation("UserShift", fields: [assignedShiftId], references: [id])
+  reportsTo                                                                    User?                         @relation("UserHierarchy", fields: [reportsToId], references: [id])
+  subordinates                                                                 User[]                        @relation("UserHierarchy")
+  shiftAssignedBy                                                              User?                         @relation("ShiftAssigner", fields: [shiftAssignedById], references: [id])
+  assignedShifts                                                               User[]                        @relation("ShiftAssigner")
+  tenant                                                                       Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
@@ -139,8 +191,9 @@ model Project {
   createdById          String                @map("created_by_id")
   createdAt            DateTime              @default(now()) @map("created_at")
   updatedAt            DateTime              @updatedAt @map("updated_at")
-  members              ProjectMember[]
   buckets              Bucket[]
+  document_hub         document_hub[]
+  members              ProjectMember[]
   createdBy            User                  @relation("ProjectCreator", fields: [createdById], references: [id])
   projectManager       User                  @relation("ProjectManager", fields: [projectManagerId], references: [id])
   tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -171,9 +224,6 @@ model Ticket {
   tenantId            String               @map("tenant_id")
   projectId           String               @map("project_id")
   releasePlanId       String?              @map("release_plan_id")
-  sprintPlanId        String?              @map("sprint_plan_id")
-  demoPlanId          String?              @map("demo_plan_id")
-  bucketId            String?              @map("bucket_id")
   title               String
   description         String?
   ticketNumber        String               @map("ticket_number")
@@ -199,46 +249,40 @@ model Ticket {
   metadata            Json?                @default("{}")
   createdAt           DateTime             @default(now()) @map("created_at")
   updatedAt           DateTime             @updatedAt @map("updated_at")
-  
-  // Archive fields
-  isArchived          Boolean              @default(false) @map("is_archived")
-  archivedAt          DateTime?            @map("archived_at")
-  archivedById        String?              @map("archived_by_id")
-  
-  // Soft delete / Trash fields
-  isDeleted           Boolean              @default(false) @map("is_deleted")
-  deletedAt           DateTime?            @map("deleted_at")
-  deletedById         String?              @map("deleted_by_id")
-  
-  // Hierarchy fields for Epic/Story/Sub-task support
   epicId              String?              @map("epic_id")
   parentId            String?              @map("parent_id")
-  rank                String?              // Lexicographic rank for drag-drop ordering
-  
-  // Relations
+  rank                String?
+  demoPlanId          String?              @map("demo_plan_id")
+  sprintPlanId        String?              @map("sprint_plan_id")
+  isArchived          Boolean              @default(false) @map("is_archived")
+  archivedAt          DateTime?            @map("archived_at")
+  archivedById        String?              @map("archived_by_id") @db.VarChar(255)
+  bucketId            String?              @map("bucket_id") @db.VarChar(255)
+  isDeleted           Boolean?             @default(false) @map("is_deleted")
+  deletedAt           DateTime?            @map("deleted_at") @db.Timestamp(6)
+  deletedById         String?              @map("deleted_by_id") @db.VarChar(255)
+  document_hub        document_hub[]
   activityLog         TicketActivityLog[]
   attachments         TicketAttachment[]
   comments            TicketComment[]
   relatedLinks        TicketRelatedLink[]
   workflowSteps       TicketWorkflowStep[]
+  bucket              Bucket?              @relation(fields: [bucketId], references: [id], onUpdate: NoAction, map: "fk_tickets_bucket")
+  deletedBy           User?                @relation("TicketDeletedBy", fields: [deletedById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_tickets_deleted_by")
+  archivedBy          User?                @relation("TicketArchivedBy", fields: [archivedById], references: [id])
   assignee            User?                @relation("TicketAssignee", fields: [assigneeId], references: [id])
   createdBy           User                 @relation("TicketCreator", fields: [createdById], references: [id])
+  demoPlan            ReleasePlan?         @relation("TicketDemoPlan", fields: [demoPlanId], references: [id])
+  epic                Ticket?              @relation("EpicStories", fields: [epicId], references: [id])
+  stories             Ticket[]             @relation("EpicStories")
+  parent              Ticket?              @relation("ParentSubTasks", fields: [parentId], references: [id])
+  subTasks            Ticket[]             @relation("ParentSubTasks")
   project             Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
   releasePlan         ReleasePlan?         @relation("TicketReleasePlan", fields: [releasePlanId], references: [id])
-  sprintPlan          ReleasePlan?         @relation("TicketSprintPlan", fields: [sprintPlanId], references: [id])
-  demoPlan            ReleasePlan?         @relation("TicketDemoPlan", fields: [demoPlanId], references: [id])
-  bucket              Bucket?              @relation(fields: [bucketId], references: [id], onDelete: SetNull)
   reportTo            User?                @relation("TicketReportTo", fields: [reportToId], references: [id])
+  sprintPlan          ReleasePlan?         @relation("TicketSprintPlan", fields: [sprintPlanId], references: [id])
   tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   workEntries         WorkEntry[]
-  
-  // Hierarchy relations
-  epic                Ticket?              @relation("EpicStories", fields: [epicId], references: [id], onDelete: SetNull)
-  stories             Ticket[]             @relation("EpicStories")
-  parent              Ticket?              @relation("ParentSubTasks", fields: [parentId], references: [id], onDelete: SetNull)
-  subTasks            Ticket[]             @relation("ParentSubTasks")
-  archivedBy          User?                @relation("TicketArchivedBy", fields: [archivedById], references: [id])
-  deletedBy           User?                @relation("TicketDeletedBy", fields: [deletedById], references: [id])
 
   @@unique([tenantId, ticketNumber])
   @@index([epicId])
@@ -246,13 +290,14 @@ model Ticket {
   @@index([projectId, releasePlanId])
   @@index([projectId, sprintPlanId])
   @@index([projectId, demoPlanId])
-  @@index([bucketId])
-  @@index([projectId, isArchived])
-  @@index([tenantId, isArchived])
-  @@index([status, isArchived])
-  @@index([tenantId, isDeleted])
-  @@index([projectId, isDeleted])
-  @@index([isDeleted, deletedAt])
+  @@index([isArchived], map: "idx_tickets_archived")
+  @@index([bucketId], map: "idx_tickets_bucket_id")
+  @@index([isDeleted, deletedAt], map: "idx_tickets_is_deleted_deleted_at")
+  @@index([projectId, isArchived], map: "idx_tickets_project_archived")
+  @@index([projectId, isDeleted], map: "idx_tickets_project_is_deleted")
+  @@index([status, isArchived], map: "idx_tickets_status_archived")
+  @@index([tenantId, isArchived], map: "idx_tickets_tenant_archived")
+  @@index([tenantId, isDeleted], map: "idx_tickets_tenant_is_deleted")
   @@map("tickets")
 }
 
@@ -322,9 +367,9 @@ model TicketAttachment {
   tenantId     String   @map("tenant_id")
   ticketId     String   @map("ticket_id")
   fileName     String   @map("file_name")
-  fileUrl      String   @map("file_url")
   fileSize     Int      @map("file_size")
   fileType     String   @map("file_type")
+  fileUrl      String   @map("file_url")
   uploadedById String   @map("uploaded_by_id")
   uploadedAt   DateTime @default(now()) @map("uploaded_at")
   createdAt    DateTime @default(now()) @map("created_at")
@@ -335,6 +380,8 @@ model TicketAttachment {
 
   @@index([ticketId])
   @@index([tenantId, ticketId])
+  @@index([tenantId, ticketId], map: "idx_attachment_tenant_ticket")
+  @@index([ticketId], map: "idx_attachment_ticket")
   @@map("ticket_attachments")
 }
 
@@ -382,29 +429,25 @@ model ReleasePlan {
   version              String
   description          String?
   status               String                @default("planned")
-  startDate            DateTime?             @map("start_date")
-  endDate              DateTime?             @map("end_date")
   releaseDate          DateTime?             @map("release_date")
   createdById          String                @map("created_by_id")
   createdAt            DateTime              @default(now()) @map("created_at")
   updatedAt            DateTime              @updatedAt @map("updated_at")
+  type                 String                @default("release_plan")
+  goal                 String?
+  startedAt            DateTime?             @map("started_at")
+  completedAt          DateTime?             @map("completed_at")
+  committedPoints      Int                   @default(0) @map("committed_points")
+  completedPoints      Int                   @default(0) @map("completed_points")
+  endDate              DateTime?             @map("end_date")
+  startDate            DateTime?             @map("start_date")
   createdBy            User                  @relation("ReleasePlanCreator", fields: [createdById], references: [id])
   project              Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
   tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sprintCompletionLogs SprintCompletionLog[]
+  demoTickets          Ticket[]              @relation("TicketDemoPlan")
   tickets              Ticket[]              @relation("TicketReleasePlan")
   sprintTickets        Ticket[]              @relation("TicketSprintPlan")
-  demoTickets          Ticket[]              @relation("TicketDemoPlan")
-  sprintCompletionLogs SprintCompletionLog[]
-
-  // Type of plan: sprint_plan, demo_plan, release_plan
-  type        String    @default("release_plan")
-  
-  // Sprint management fields
-  goal            String?   // Sprint goal/objective
-  startedAt       DateTime? @map("started_at")
-  completedAt     DateTime? @map("completed_at")
-  committedPoints Int       @default(0) @map("committed_points")
-  completedPoints Int       @default(0) @map("completed_points")
 
   @@unique([tenantId, projectId, version])
   @@index([projectId, type, status])
@@ -459,7 +502,6 @@ model Attendance {
   user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   breaks               AttendanceBreak[]
 
-  @@unique([tenantId, userId, date])
   @@map("attendance")
 }
 
@@ -525,11 +567,12 @@ model StatusUpdate {
   submittedAt      DateTime    @default(now()) @map("submitted_at")
   createdAt        DateTime    @default(now()) @map("created_at")
   updatedAt        DateTime    @updatedAt @map("updated_at")
+  is_missed        Boolean     @default(false)
+  missed_updateAt  DateTime?
   tenant           Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user             User        @relation("UserStatusUpdates", fields: [userId], references: [id], onDelete: Cascade)
   workEntries      WorkEntry[]
 
-  @@unique([userId, date, tenantId])
   @@index([tenantId, date])
   @@index([userId, date])
   @@map("status_updates")
@@ -560,143 +603,612 @@ model Leave {
   id              String    @id @default(uuid())
   tenantId        String    @map("tenant_id")
   userId          String    @map("user_id")
-  type            String    // sick_leave, casual_leave, paid_leave, unpaid_leave, work_from_home, permission
+  type            String
   startDate       DateTime  @map("start_date")
   endDate         DateTime  @map("end_date")
   duration        Decimal   @db.Decimal(5, 2)
-  durationType    String    @map("duration_type") // FULL_DAY, HALF_DAY, HOURS
+  durationType    String    @map("duration_type")
   reason          String
-  status          String    @default("pending") // pending, approved, rejected, cancelled
+  status          String    @default("pending")
   approvedById    String?   @map("approved_by_id")
   approvedAt      DateTime? @map("approved_at")
   rejectionReason String?   @map("rejection_reason")
   attachments     Json      @default("[]")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
-  user            User      @relation("UserLeaves", fields: [userId], references: [id], onDelete: Cascade)
   approvedBy      User?     @relation("LeaveApprover", fields: [approvedById], references: [id])
   tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user            User      @relation("UserLeaves", fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("leaves")
 }
 
 model FixedHoliday {
-  id        String   @id @default(uuid())
-  tenantId  String   @map("tenant_id")
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
   holidayName String
-  country   String
-  state     String[]
-  fromDate  DateTime @map("from_date")
-  toDate    DateTime @map("to_date")
-  type      String
-  rule      String
+  country     String
+  state       String[]
+  fromDate    DateTime @map("from_date")
+  toDate      DateTime @map("to_date")
+  type        String
+  rule        String
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
   createdById String?  @map("created_by_id")
   updatedById String?  @map("updated_by_id")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdBy User?    @relation("FixedHolidayCreator", fields: [createdById], references: [id])
-  updatedBy User?    @relation("FixedHolidayUpdater", fields: [updatedById], references: [id])
+  createdBy   User?    @relation("FixedHolidayCreator", fields: [createdById], references: [id])
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  updatedBy   User?    @relation("FixedHolidayUpdater", fields: [updatedById], references: [id])
 
   @@map("fixed_holidays")
 }
 
 model Bucket {
-  id          String         @id @default(uuid())
-  tenantId    String         @map("tenant_id")
-  projectId   String?        @map("project_id")
-  name        String
+  id          String         @id @default(uuid()) @db.VarChar(255)
+  tenantId    String         @map("tenant_id") @db.VarChar(255)
+  projectId   String?        @map("project_id") @db.VarChar(255)
+  name        String         @db.VarChar(255)
   description String?
-  color       String?        @default("#6366f1") // Default indigo color
-  isShared    Boolean        @default(false) @map("is_shared") // Collaborative bucket
-  createdById String         @map("created_by_id")
-  createdAt   DateTime       @default(now()) @map("created_at")
-  updatedAt   DateTime       @updatedAt @map("updated_at")
-  
-  // Relations
-  tenant      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  project     Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  createdBy   User           @relation("BucketCreator", fields: [createdById], references: [id])
-  tickets     Ticket[]
+  color       String?        @default("#6366f1") @db.VarChar(50)
+  isShared    Boolean?       @default(false) @map("is_shared")
+  createdById String         @map("created_by_id") @db.VarChar(255)
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt   DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
   members     BucketMember[]
+  createdBy   User           @relation("BucketCreator", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_buckets_creator")
+  project     Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_buckets_project")
+  tenant      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_buckets_tenant")
+  tickets     Ticket[]
 
-  @@unique([tenantId, projectId, name])
-  @@index([tenantId])
-  @@index([projectId])
-  @@index([createdById])
+  @@unique([tenantId, projectId, name], map: "unique_bucket_per_project")
+  @@index([createdById], map: "idx_buckets_created_by_id")
+  @@index([projectId], map: "idx_buckets_project_id")
+  @@index([tenantId], map: "idx_buckets_tenant_id")
   @@map("buckets")
 }
 
 model BucketMember {
-  id        String   @id @default(uuid())
-  bucketId  String   @map("bucket_id")
-  userId    String   @map("user_id")
-  role      String   @default("member") // owner, editor, member
-  addedAt   DateTime @default(now()) @map("added_at")
-  
-  // Relations
-  bucket    Bucket   @relation(fields: [bucketId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id       String   @id @default(uuid()) @db.VarChar(255)
+  bucketId String   @map("bucket_id") @db.VarChar(255)
+  userId   String   @map("user_id") @db.VarChar(255)
+  role     String?  @default("member") @db.VarChar(50)
+  addedAt  DateTime @default(now()) @map("added_at") @db.Timestamp(6)
+  bucket   Bucket   @relation(fields: [bucketId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_bucket_members_bucket")
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_bucket_members_user")
 
-  @@unique([bucketId, userId])
-  @@index([bucketId])
-  @@index([userId])
+  @@unique([bucketId, userId], map: "unique_bucket_member")
+  @@index([bucketId], map: "idx_bucket_members_bucket_id")
+  @@index([userId], map: "idx_bucket_members_user_id")
   @@map("bucket_members")
 }
 
 model SprintCompletionLog {
-  id                String   @id @default(uuid())
-  tenantId          String   @map("tenant_id")
-  sprintPlanId      String   @map("sprint_plan_id")
-  projectId         String   @map("project_id")
-  ticketId          String   @map("ticket_id")
-  action            String   // moved_to_sprint, moved_to_bucket, moved_to_backlog, moved_to_trash
-  destinationId     String?  @map("destination_id") // Sprint ID, Bucket ID, or null for backlog/trash
-  destinationType   String?  @map("destination_type") // sprint, bucket, backlog, trash
-  performedById     String   @map("performed_by_id")
-  performedAt       DateTime @default(now()) @map("performed_at")
-  metadata          Json?    @default("{}") // Additional context (previous state, notes, etc.)
-  
-  // Relations
-  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  sprintPlan        ReleasePlan @relation(fields: [sprintPlanId], references: [id], onDelete: Cascade)
-  project           Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  performedBy       User        @relation(fields: [performedById], references: [id])
+  id              String      @id @default(uuid()) @db.VarChar(255)
+  tenantId        String      @map("tenant_id") @db.VarChar(255)
+  sprintPlanId    String      @map("sprint_plan_id") @db.VarChar(255)
+  projectId       String      @map("project_id") @db.VarChar(255)
+  ticketId        String      @map("ticket_id") @db.VarChar(255)
+  action          String      @db.VarChar(100)
+  destinationId   String?     @map("destination_id") @db.VarChar(255)
+  destinationType String?     @map("destination_type") @db.VarChar(50)
+  performedById   String      @map("performed_by_id") @db.VarChar(255)
+  performedAt     DateTime    @default(now()) @map("performed_at") @db.Timestamp(6)
+  metadata        Json?       @default("{}")
+  project         Project     @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_sprint_completion_logs_project")
+  sprintPlan      ReleasePlan @relation(fields: [sprintPlanId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_sprint_completion_logs_sprint")
+  tenant          Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_sprint_completion_logs_tenant")
+  performedBy     User        @relation(fields: [performedById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_sprint_completion_logs_user")
 
-  @@index([sprintPlanId])
-  @@index([projectId])
-  @@index([ticketId])
-  @@index([tenantId])
-  @@index([performedAt])
+  @@index([action, performedAt(sort: Desc)], map: "idx_sprint_completion_logs_action")
+  @@index([performedAt], map: "idx_sprint_completion_logs_performed_at")
+  @@index([projectId], map: "idx_sprint_completion_logs_project_id")
+  @@index([sprintPlanId], map: "idx_sprint_completion_logs_sprint_plan_id")
+  @@index([tenantId, sprintPlanId, performedAt(sort: Desc)], map: "idx_sprint_completion_logs_tenant_date")
+  @@index([tenantId], map: "idx_sprint_completion_logs_tenant_id")
+  @@index([ticketId], map: "idx_sprint_completion_logs_ticket_id")
   @@map("sprint_completion_logs")
 }
 
-
 model SalaryComponent {
   key           Int           @id @default(autoincrement())
-
-  tenantId      String        @map("tenant_id")
-
+  tenantId      String        @map("tenant_id") @db.VarChar(255)
   componentName String        @map("component_name") @db.VarChar(100)
   componentCode String        @map("component_code") @db.VarChar(50)
-
   type          ComponentType @default(Earning)
   status        Boolean       @default(true)
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt     DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  createdById   String?       @map("created_by_id") @db.VarChar(255)
+  updatedById   String?       @map("updated_by_id") @db.VarChar(255)
+  createdBy     User?         @relation("SalaryComponentCreator", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_salary_component_created_by")
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_salary_component_tenant")
+  updatedBy     User?         @relation("SalaryComponentUpdater", fields: [updatedById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_salary_component_updated_by")
 
-  createdAt     DateTime      @default(now()) @map("created_at")
-  updatedAt     DateTime      @updatedAt      @map("updated_at")
-  createdById   String?       @map("created_by_id")
-  updatedById   String?       @map("updated_by_id")
-
-  // Relations
-  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdBy     User?         @relation("SalaryComponentCreator", fields: [createdById], references: [id])
-  updatedBy     User?         @relation("SalaryComponentUpdater", fields: [updatedById], references: [id])
-
+  @@unique([tenantId, componentCode], map: "uq_salary_component_tenant_code")
   @@map("salary_components")
-  @@unique([tenantId, componentCode])
 }
 
+model Company {
+  id             Int             @id @default(autoincrement())
+  tenantId       String          @map("tenant_id")
+  name           String
+  email          String?
+  phone          String?
+  plotNo         String?         @map("plot_no")
+  floorNo        String?         @map("floor_no")
+  buildingName   String?         @map("building_name")
+  street         String?
+  area           String?
+  city           String?
+  pincode        String?
+  country        String?
+  cin            String?
+  gst            String?
+  isActive       Boolean         @default(false) @map("is_active")
+  logo           String?
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt      DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  createdById    String?         @map("created_by_id")
+  updatedById    String?         @map("updated_by_id")
+  createdBy      User?           @relation("CompanyCreator", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_companies_created_by")
+  updatedBy      User?           @relation("CompanyUpdater", fields: [updatedById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_companies_updated_by")
+  employeeFields EmployeeField[]
+
+  @@unique([tenantId, name], map: "uq_companies_tenant_name")
+  @@map("companies")
+}
+
+model EmployeeField {
+  id          Int      @id @default(autoincrement())
+  tenantId    String   @map("tenant_id")
+  companyId   Int      @map("company_id")
+  systemKey   String   @map("system_key")
+  displayName String   @map("display_name")
+  isVisible   Boolean  @default(true) @map("is_visible")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  createdById String?  @map("created_by_id")
+  updatedById String?  @map("updated_by_id")
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_employee_field_company")
+  createdBy   User?    @relation("EmployeeFieldCreator", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_employee_field_created_by")
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_employee_field_tenant")
+  updatedBy   User?    @relation("EmployeeFieldUpdater", fields: [updatedById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_employee_field_updated_by")
+
+  @@unique([tenantId, companyId, systemKey], map: "uq_employee_field_tenant_company_system_key")
+  @@map("employee_field_configs")
+}
+
+model addresses {
+  id                                   String            @id
+  employee_id                          String
+  address_type                         address_type_enum
+  door_no                              String?           @db.VarChar(50)
+  area                                 String?           @db.VarChar(150)
+  city                                 String?           @db.VarChar(100)
+  state                                String?           @db.VarChar(100)
+  pincode                              String?           @db.VarChar(10)
+  country                              String?           @db.VarChar(100)
+  created_by_id                        String
+  updated_by_id                        String?
+  created_at                           DateTime?         @default(now()) @db.Timestamp(6)
+  updated_at                           DateTime?         @default(now()) @db.Timestamp(6)
+  users_addresses_created_by_idTousers User              @relation("addresses_created_by_idTousers", fields: [created_by_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_address_created_by")
+  employees                            employees         @relation(fields: [employee_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_address_employee")
+  users_addresses_updated_by_idTousers User?             @relation("addresses_updated_by_idTousers", fields: [updated_by_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_address_updated_by")
+}
+
+model channel_members {
+  id           String    @id
+  channel_id   String
+  user_id      String
+  role         String    @default("member")
+  joined_at    DateTime  @default(now())
+  last_read_at DateTime?
+  channels     channels  @relation(fields: [channel_id], references: [id], onDelete: Cascade)
+  users        User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([channel_id, user_id])
+}
+
+model channel_messages {
+  id          String   @id
+  channel_id  String
+  user_id     String
+  content     String
+  type        String   @default("text")
+  attachments Json     @default("[]")
+  is_edited   Boolean  @default(false)
+  is_deleted  Boolean  @default(false)
+  created_at  DateTime @default(now())
+  updated_at  DateTime
+  channels    channels @relation(fields: [channel_id], references: [id], onDelete: Cascade)
+  users       User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([channel_id, created_at])
+}
+
+model channels {
+  id               String             @id
+  tenant_id        String
+  name             String?
+  description      String?
+  type             String             @default("CHANNEL")
+  is_archived      Boolean            @default(false)
+  last_message_at  DateTime?
+  created_by_id    String
+  created_at       DateTime           @default(now())
+  updated_at       DateTime
+  channel_members  channel_members[]
+  channel_messages channel_messages[]
+  users            User               @relation(fields: [created_by_id], references: [id])
+  tenants          Tenant             @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  meetings         meetings[]
+}
+
+model company_government_holidays {
+  id                                                     String        @id
+  tenant_id                                              String
+  holiday_name                                           String
+  country                                                String
+  from_date                                              DateTime
+  to_date                                                DateTime
+  base_leave                                             Int
+  extra_leave                                            Int
+  total_leave                                            Int
+  type                                                   String
+  is_floater                                             Boolean       @default(false)
+  rule                                                   String?
+  status                                                 HolidayStatus @default(ACTIVE)
+  created_by_id                                          String
+  updated_by_id                                          String?
+  created_at                                             DateTime      @default(now())
+  updated_at                                             DateTime
+  users_company_government_holidays_created_by_idTousers User          @relation("company_government_holidays_created_by_idTousers", fields: [created_by_id], references: [id])
+  tenants                                                Tenant        @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  users_company_government_holidays_updated_by_idTousers User?         @relation("company_government_holidays_updated_by_idTousers", fields: [updated_by_id], references: [id])
+
+  @@index([created_by_id])
+  @@index([tenant_id, from_date])
+  @@index([tenant_id])
+}
+
+model customers {
+  id           String     @id
+  tenant_id    String
+  company_name String
+  email        String?    @unique
+  phone        String?
+  address      String?
+  city         String?
+  country      String?
+  tax_id       String?
+  created_at   DateTime   @default(now())
+  updated_at   DateTime
+  created_by   String
+  updated_by   String?
+  tenants      Tenant     @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  invoices     invoices[]
+}
+
+model document_history {
+  id          String    @id
+  documentId  String
+  tenantId    String
+  content     Json
+  createdById String
+  createdAt   DateTime? @default(now())
+  users       User      @relation(fields: [createdById], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_document_history_createdby")
+  documents   documents @relation(fields: [documentId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_document_history_document")
+  tenants     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_document_history_tenant")
+
+  @@index([createdById], map: "document_history_createdbyid_idx")
+  @@index([documentId], map: "document_history_documentid_idx")
+}
+
+model document_hub {
+  id           String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String
+  name         String
+  projectId    String?
+  ticketId     String?
+  createdById  String
+  createdAt    DateTime?      @default(now()) @db.Timestamp(6)
+  updatedAt    DateTime?      @default(now()) @db.Timestamp(6)
+  users        User           @relation(fields: [createdById], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_documenthub_created_by")
+  projects     Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_documenthub_project")
+  tenants      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_documenthub_tenant")
+  tickets      Ticket?        @relation(fields: [ticketId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_documenthub_ticket")
+  documents    documents[]
+  documenttree documenttree[]
+
+  @@index([createdById], map: "idx_documenthub_created_by_id")
+  @@index([projectId], map: "idx_documenthub_project_id")
+  @@index([tenantId], map: "idx_documenthub_tenant_id")
+  @@index([ticketId], map: "idx_documenthub_ticket_id")
+}
+
+model documents {
+  id               String             @id
+  documentHubId    String             @db.Uuid
+  title            String
+  content          Json
+  createdById      String
+  createdAt        DateTime?          @default(now()) @db.Timestamp(6)
+  updatedAt        DateTime?          @default(now()) @db.Timestamp(6)
+  tenantId         String
+  document_history document_history[]
+  document_hub     document_hub       @relation(fields: [documentHubId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_documents_hub")
+  tenants          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_documents_tenant")
+  documenttree     documenttree?
+}
+
+model documenttree {
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String
+  documentHubId      String           @db.Uuid
+  title              String
+  type               DocumentNodeType
+  parentId           String?          @db.Uuid
+  documentId         String?          @unique(map: "documenttree_documentid_key")
+  position           Int              @default(0)
+  createdById        String
+  createdAt          DateTime?        @default(now()) @db.Timestamp(6)
+  users              User             @relation(fields: [createdById], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_documenttree_createdby")
+  documents          documents?       @relation(fields: [documentId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_documenttree_document")
+  document_hub       document_hub     @relation(fields: [documentHubId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_documenttree_documenthub")
+  documenttree       documenttree?    @relation("documenttreeTodocumenttree", fields: [parentId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_documenttree_parent")
+  other_documenttree documenttree[]   @relation("documenttreeTodocumenttree")
+  tenants            Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_documenttree_tenant")
+}
+
+model employees {
+  id             String      @id
+  employee_code  String      @db.VarChar(30)
+  first_name     String      @db.VarChar(100)
+  last_name      String      @db.VarChar(100)
+  gender         String      @db.VarChar(20)
+  date_of_birth  DateTime    @db.Date
+  blood_group    String?     @db.VarChar(10)
+  mobile         String      @db.VarChar(15)
+  work_email     String      @db.VarChar(150)
+  personal_email String?     @db.VarChar(150)
+  status         Boolean?    @default(true)
+  created_at     DateTime?   @default(now()) @db.Timestamp(6)
+  updated_at     DateTime?   @default(now()) @db.Timestamp(6)
+  created_by     String?     @db.Uuid
+  updated_by     String?     @db.Uuid
+  addresses      addresses[]
+}
+
+model general_settings {
+  id                                       String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id                                String
+  company_name                             String
+  address                                  Json
+  primary_color                            String
+  currency                                 Currency
+  date_format                              DateFormat
+  company_logo                             String?
+  signature                                String?
+  created_by                               String
+  updated_by                               String?
+  created_at                               DateTime?           @default(now()) @db.Timestamp(6)
+  updated_at                               DateTime?           @default(now()) @db.Timestamp(6)
+  users_general_settings_created_byTousers User                @relation("general_settings_created_byTousers", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_general_created_by")
+  tenants                                  Tenant              @relation(fields: [tenant_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_general_tenant")
+  users_general_settings_updated_byTousers User?               @relation("general_settings_updated_byTousers", fields: [updated_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_general_updated_by")
+  settings_profiles                        settings_profiles[]
+
+  @@index([tenant_id], map: "idx_general_settings_tenant_id")
+}
+
+model invoice_items {
+  id                                    String   @id
+  tenant_id                             String
+  invoice_id                            String
+  item                                  String
+  description                           String?
+  qty                                   Int      @default(1)
+  price                                 Decimal  @default(0) @db.Decimal(15, 2)
+  tax                                   Decimal  @default(0) @db.Decimal(15, 2)
+  created_by                            String
+  updated_by                            String?
+  created_at                            DateTime @default(now()) @db.Timestamp(6)
+  updated_at                            DateTime @default(now()) @db.Timestamp(6)
+  users_invoice_items_created_byTousers User     @relation("invoice_items_created_byTousers", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invoice_item_created_by")
+  invoices                              invoices @relation(fields: [invoice_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_invoice_item_invoice")
+  tenants                               Tenant   @relation(fields: [tenant_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invoice_item_tenant")
+  users_invoice_items_updated_byTousers User?    @relation("invoice_items_updated_byTousers", fields: [updated_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invoice_item_updated_by")
+
+  @@index([invoice_id], map: "idx_invoice_items_invoice_id")
+  @@index([tenant_id], map: "idx_invoice_items_tenant_id")
+}
+
+model invoice_settings {
+  id                                       String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id                                String
+  format                                   String              @default("INV-{YYYY}-{###}")
+  next_number                              Int                 @default(1)
+  reset_yearly                             Boolean             @default(true)
+  last_reset_year                          Int                 @default(2026)
+  created_by                               String
+  updated_by                               String?
+  created_at                               DateTime?           @default(now()) @db.Timestamp(6)
+  updated_at                               DateTime?           @default(now()) @db.Timestamp(6)
+  padding                                  Int                 @default(4)
+  users_invoice_settings_created_byTousers User                @relation("invoice_settings_created_byTousers", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invoice_created_by")
+  tenants                                  Tenant              @relation(fields: [tenant_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_invoice_tenant")
+  users_invoice_settings_updated_byTousers User?               @relation("invoice_settings_updated_byTousers", fields: [updated_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invoice_updated_by")
+  settings_profiles                        settings_profiles[]
+
+  @@index([tenant_id], map: "idx_invoice_settings_tenant_id")
+}
+
+model invoices {
+  id                               String               @id
+  tenant_id                        String
+  invoice_number                   String               @unique
+  customer_id                      String
+  customer_snapshot                Json?
+  invoice_date                     DateTime             @db.Timestamp(6)
+  due_date                         DateTime             @db.Timestamp(6)
+  invoice_type                     invoice_type         @default(STANDARD)
+  status                           invoice_status       @default(DRAFT)
+  currency                         String
+  recurring_frequency              recurring_frequency?
+  tax_inclusive                    Boolean              @default(false)
+  discount                         Decimal              @default(0) @db.Decimal(15, 2)
+  subtotal                         Decimal              @db.Decimal(15, 2)
+  tax_total                        Decimal              @db.Decimal(15, 2)
+  total                            Decimal              @db.Decimal(15, 2)
+  paid                             Decimal              @default(0) @db.Decimal(15, 2)
+  balance_due                      Decimal              @db.Decimal(15, 2)
+  notes                            String?
+  terms                            String?
+  created_by                       String
+  updated_by                       String?
+  created_at                       DateTime             @default(now()) @db.Timestamp(6)
+  updated_at                       DateTime             @default(now()) @db.Timestamp(6)
+  settings_profile_id              String?
+  sent_at                          DateTime?            @db.Timestamp(6)
+  paid_at                          DateTime?            @db.Timestamp(6)
+  cancelled_at                     DateTime?            @db.Timestamp(6)
+  invoice_items                    invoice_items[]
+  users_invoices_created_byTousers User                 @relation("invoices_created_byTousers", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invoice_created_by")
+  customers                        customers            @relation(fields: [customer_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invoice_customer")
+  settings_profiles                settings_profiles?   @relation(fields: [settings_profile_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invoice_settings_profile")
+  tenants                          Tenant               @relation(fields: [tenant_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_invoice_tenant")
+  users_invoices_updated_byTousers User?                @relation("invoices_updated_byTousers", fields: [updated_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invoice_updated_by")
+
+  @@index([customer_id], map: "idx_invoices_customer_id")
+  @@index([status], map: "idx_invoices_status")
+  @@index([tenant_id], map: "idx_invoices_tenant_id")
+}
+
+model meeting_participants {
+  id         String    @id
+  meeting_id String
+  user_id    String
+  status     String    @default("joined")
+  role       String    @default("participant")
+  joined_at  DateTime  @default(now())
+  left_at    DateTime?
+  meetings   meetings  @relation(fields: [meeting_id], references: [id], onDelete: Cascade)
+  users      User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([meeting_id])
+}
+
+model meetings {
+  id                   String                 @id
+  tenant_id            String
+  channel_id           String
+  title                String
+  status               String                 @default("scheduled")
+  started_at           DateTime?
+  ended_at             DateTime?
+  created_by_id        String
+  created_at           DateTime               @default(now())
+  updated_at           DateTime
+  meeting_participants meeting_participants[]
+  channels             channels               @relation(fields: [channel_id], references: [id], onDelete: Cascade)
+  users                User                   @relation(fields: [created_by_id], references: [id])
+  tenants              Tenant                 @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+}
+
+model payment_settings {
+  id                                       String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id                                String
+  bank_name                                String
+  account_number                           String
+  ifsc_code                                String
+  branch_name                              String
+  qr_code                                  String?
+  created_by                               String
+  updated_by                               String?
+  created_at                               DateTime?           @default(now()) @db.Timestamp(6)
+  updated_at                               DateTime?           @default(now()) @db.Timestamp(6)
+  users_payment_settings_created_byTousers User                @relation("payment_settings_created_byTousers", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_payment_created_by")
+  tenants                                  Tenant              @relation(fields: [tenant_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_payment_tenant")
+  users_payment_settings_updated_byTousers User?               @relation("payment_settings_updated_byTousers", fields: [updated_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_payment_updated_by")
+  settings_profiles                        settings_profiles[]
+
+  @@index([tenant_id], map: "idx_payment_settings_tenant_id")
+}
+
+model settings_profiles {
+  id                                        String           @id @default(dbgenerated("gen_random_uuid()"))
+  tenant_id                                 String
+  name                                      String
+  is_active                                 Boolean?         @default(false)
+  general_id                                String           @db.Uuid
+  invoice_id                                String           @db.Uuid
+  payment_id                                String           @db.Uuid
+  created_by                                String
+  updated_by                                String?
+  created_at                                DateTime?        @default(now()) @db.Timestamp(6)
+  updated_at                                DateTime?        @default(now()) @db.Timestamp(6)
+  invoices                                  invoices[]
+  users_settings_profiles_created_byTousers User             @relation("settings_profiles_created_byTousers", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_profile_created_by")
+  general_settings                          general_settings @relation(fields: [general_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_profile_general")
+  invoice_settings                          invoice_settings @relation(fields: [invoice_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_profile_invoice")
+  payment_settings                          payment_settings @relation(fields: [payment_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_profile_payment")
+  tenants                                   Tenant           @relation(fields: [tenant_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_profile_tenant")
+  users_settings_profiles_updated_byTousers User?            @relation("settings_profiles_updated_byTousers", fields: [updated_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_profile_updated_by")
+
+  @@index([general_id], map: "idx_settings_profiles_general_id")
+  @@index([invoice_id], map: "idx_settings_profiles_invoice_id")
+  @@index([payment_id], map: "idx_settings_profiles_payment_id")
+  @@index([tenant_id], map: "idx_settings_profiles_tenant_id")
+}
+
+model timesheet_rows {
+  id                                        String     @id
+  tenant_id                                 String
+  timesheet_id                              String
+  day                                       DateTime   @db.Date
+  project_name                              String
+  task_name                                 String
+  description                               String?
+  hours                                     Float
+  billable                                  Boolean    @default(false)
+  created_by_id                             String
+  updated_by_id                             String?
+  created_at                                DateTime   @default(now()) @db.Timestamp(6)
+  updated_at                                DateTime   @default(now()) @db.Timestamp(6)
+  users_timesheet_rows_created_by_idTousers User       @relation("timesheet_rows_created_by_idTousers", fields: [created_by_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_row_created_by")
+  timesheets                                timesheets @relation(fields: [timesheet_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_row_timesheet")
+  users_timesheet_rows_updated_by_idTousers User?      @relation("timesheet_rows_updated_by_idTousers", fields: [updated_by_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_row_updated_by")
+
+  @@index([created_by_id], map: "idx_timesheet_rows_created_by")
+  @@index([timesheet_id], map: "idx_timesheet_rows_timesheet_id")
+  @@index([updated_by_id], map: "idx_timesheet_rows_updated_by")
+}
+
+model timesheets {
+  id                                     String           @id
+  tenant_id                              String
+  user_id                                String
+  week_start                             DateTime         @db.Timestamp(6)
+  week_end                               DateTime         @db.Timestamp(6)
+  status                                 timesheet_status @default(DRAFT)
+  total_hours                            Float
+  reject_reason                          String?
+  approved_by_id                         String?
+  created_by_id                          String
+  updated_by_id                          String?
+  created_at                             DateTime         @default(now()) @db.Timestamp(6)
+  updated_at                             DateTime         @default(now()) @db.Timestamp(6)
+  timesheet_rows                         timesheet_rows[]
+  users_timesheets_approved_by_idTousers User?            @relation("timesheets_approved_by_idTousers", fields: [approved_by_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_timesheet_approved_by")
+  users_timesheets_created_by_idTousers  User             @relation("timesheets_created_by_idTousers", fields: [created_by_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_timesheet_created_by")
+  users_timesheets_updated_by_idTousers  User?            @relation("timesheets_updated_by_idTousers", fields: [updated_by_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_timesheet_updated_by")
+  users_timesheets_user_idTousers        User             @relation("timesheets_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_timesheet_user")
+
+  @@unique([user_id, week_start], map: "uq_timesheet_user_week")
+  @@index([user_id], map: "idx_timesheets_user_id")
+}
 
 enum ComponentType {
   Earning
@@ -705,47 +1217,208 @@ enum ComponentType {
   @@map("component_type")
 }
 
-
-model Company {
-  id            Int      @id @default(autoincrement())
-
-  tenantId      String   @map("tenant_id")
-
-  name          String
-  email         String?
-  phone         String?
-
-  // Address
-  plotNo        String?  @map("plot_no")
-  floorNo       String?  @map("floor_no")
-  buildingName  String?  @map("building_name")
-  street        String?
-  area          String?
-  city          String?
-  pincode       String?
-  country       String?
-
-  // Registration
-  cin           String?
-  gst           String?
-
-  isActive      Boolean  @default(false) @map("is_active")
-
-  logo          String?
-
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt      @map("updated_at")
-  createdById String? @map("created_by_id")
-  updatedById String? @map("updated_by_id")
-
-  // Relations
-  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
-  createdBy   User?   @relation("CompanyCreator", fields: [createdById], references: [id])
-  updatedBy   User?   @relation("CompanyUpdater", fields: [updatedById], references: [id])
-
-  @@map("companies")
-  @@unique([tenantId, name])
+enum Currency {
+  USD
+  INR
+  EUR
+  GBP
+  AUD
+  CAD
+  SGD
 }
 
+enum DateFormat {
+  DD_MM_YYYY
+  MM_DD_YYYY
+  YYYY_MM_DD
+}
+
+enum DocumentNodeType {
+  section
+  folder
+  file
+}
+
+enum HolidayStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum TimesheetStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+enum address_type_enum {
+  CURRENT
+  PERMANENT
+}
+
+enum invoice_status {
+  DRAFT
+  PENDING
+  APPROVED
+  SENT
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum invoice_type {
+  STANDARD
+  PROFORMA
+  CREDIT
+  TAX
+  DEBIT
+  RECURRING
+}
+
+enum recurring_frequency {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum timesheet_status {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+
+
+model PayslipField {
+  id          Int       @id @default(autoincrement())
+  tenantId    String    @map("tenant_id") @db.VarChar(255)
+
+  label       String    @map("label") @db.VarChar(100)
+  value       String?   @map("value") @db.Text
+  type        FieldType @map("type")
+  options     String?   @map("options") @db.Text
+  status      Boolean   @default(true)
+
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  createdById String?   @map("created_by_id") @db.VarChar(255)
+  updatedById String?   @map("updated_by_id") @db.VarChar(255)
+
+ 
+  createdBy   User?     @relation(name: "PayslipFieldCreator", fields: [createdById], references: [id])
+  updatedBy   User?     @relation(name: "PayslipFieldUpdater", fields: [updatedById], references: [id])
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, label])
+  @@map("payslip_fields")
+}
+
+enum FieldType {
+  text
+  number
+  date
+  dropdown
+  
+  @@map("field_type")
+}
+
+
+// -------------------------
+// ENUMS
+// -------------------------
+enum DeductionType {
+  BASIC_PERCENT
+  GROSS_PERCENT
+  FIXED
+}
+
+enum VisibilityType {
+  PUBLIC
+  PRIVATE
+}
+
+// -------------------------
+// MODELS
+// -------------------------
+
+model SalaryStructure {
+  id               Int        @id @default(autoincrement())
+  name             String
+  description      String
+  grossSalary      Int
+  deductionsEnabled Boolean   @default(false)
+  visibility       VisibilityType @default(PUBLIC)
+  companyId        Int?       // nullable if PUBLIC
+  roleId           Int?       // nullable if PUBLIC
+   tenantId          String   @map("tenant_id") 
+  createdAt        DateTime   @default(now()) @map("created_at")
+  updatedAt        DateTime   @updatedAt @map("updated_at")
+  createdById      String?    @map("created_by_id")
+  updatedById      String?    @map("updated_by_id")
+  isActive         Boolean    @default(false)
+
+  // Relations
+  earnings         Earning[]
+  deductions       Deduction[]
+
+  tenant           Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy        User?  @relation("SalaryStructureCreator", fields: [createdById], references: [id])
+  updatedBy        User?  @relation("SalaryStructureUpdater", fields: [updatedById], references: [id])
+
+  @@map("salary_structures")
+}
+
+model Earning {
+  id                Int     @id @default(autoincrement())
+  name              String
+  percentage        Float
+  description       String?
+  salaryStructureId Int
+  salaryStructure   SalaryStructure @relation(fields: [salaryStructureId], references: [id], onDelete: Cascade)
+
+  @@map("earnings")
+}
+
+model Deduction {
+  id                Int          @id @default(autoincrement())
+  name              String
+  type              DeductionType
+  value             Float
+  salaryStructureId Int
+  salaryStructure   SalaryStructure @relation(fields: [salaryStructureId], references: [id], onDelete: Cascade)
+
+  @@map("deductions")
+}
+
+
+
+model Payslip {
+  id          Int      @id @default(autoincrement())
+
+  tenantId    String   @map("tenant_id") @db.VarChar(255)
+
+  employeeId  String
+  companyId   Int
+
+  fromDate    DateTime
+  toDate      DateTime
+
+  snapshot    Json     // salary + attendance + deductions 
+  pdfUrl      String
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  createdById String?  @map("created_by_id") @db.VarChar(255)
+
+  
+  createdBy User? @relation("UserPayslips", fields: [createdById], references: [id])
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, employeeId])
+  @@index([tenantId, fromDate, toDate])
+  @@map("payslips")
+}
 
