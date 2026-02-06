@@ -174,7 +174,7 @@ app.get("/api/health", (req: any, res) => {
   });
 });
 
-// Handle Socket.io requests (to prevent 404)
+// Handle Socket.io requests (to prevent)
 app.all("/socket.io/*", (req, res) => {
   res.status(200).json({
     success: false,

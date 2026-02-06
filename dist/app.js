@@ -148,7 +148,7 @@ app.get("/api/health", (req, res) => {
         timestamp: new Date().toISOString(),
     });
 });
-// Handle Socket.io requests (to prevent 404 errors)
+// Handle Socket.io requests (to prevent)
 app.all("/socket.io/*", (req, res) => {
     res.status(200).json({
         success: false,
