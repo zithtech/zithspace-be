@@ -977,9 +977,12 @@ model TimesheetRow {
   timesheet     Timesheet @relation(fields: [timesheetId], references: [id], onDelete: Cascade)
   timesheetId   String    @map("timesheet_id")
 
-  day           DateTime
+  day           DateTime     
+ 
   projectName   String    @map("project_name")
   taskName      String    @map("task_name")
+  taskId    String?
+  projectId String? 
 
   description   String?
 
