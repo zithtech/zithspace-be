@@ -21,6 +21,15 @@ router.use(requireAuth);
 router.get('/', BucketController.getBuckets);
 
 /**
+ * @route   GET /api/buckets/:id/tickets
+ * @desc    Get paginated tickets in bucket (tenant-aware)
+ * @access  Private (bucket owner or members)
+ * @param   id - Bucket ID
+ * @query   page, limit
+ */
+router.get('/:id/tickets', BucketController.getBucketTickets);
+
+/**
  * @route   GET /api/buckets/:id
  * @desc    Get bucket by ID with detailed ticket information (tenant-aware)
  * @access  Private (bucket owner or members)

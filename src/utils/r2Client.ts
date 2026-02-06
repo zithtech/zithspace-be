@@ -15,7 +15,7 @@ if (!ACCOUNT_ID || !ACCESS_KEY_ID || !SECRET_ACCESS_KEY) {
 }
 
 // Create S3 client for R2
-const s3Client = new S3Client({
+export const s3Client = new S3Client({
   region: REGION,
   endpoint:`https://a7b954c93286b9aecbd1cd369b491aa0.r2.cloudflarestorage.com`,
   credentials: {
