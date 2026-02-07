@@ -35,6 +35,11 @@ export declare class ReleasePlansController {
      * Get active release plans
      */
     static getActiveReleasePlans(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get available sprints (active + planning) for a project
+     * Used for sprint assignment in buckets, trash, etc.
+     */
+    static getAvailableSprints(req: AuthRequest, res: Response): Promise<void>;
     static getReleasePlanStats(req: AuthRequest, res: Response): Promise<void>;
     static getReleasePlansByProject(req: AuthRequest, res: Response): Promise<void>;
     static getProjectTickets(req: AuthRequest, res: Response): Promise<void>;

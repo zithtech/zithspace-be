@@ -11,11 +11,13 @@ import rateLimit from "express-rate-limit";
 
 // Import configurations
 import { connectDatabase, disconnectDatabase } from "@/config/database";
+import salaryComponentRoutes from "@/routes/salaryComponentRoutes";
+import companyRoutes from "./routes/companyRoutes";
+
 
 // Import middleware
 import { optionalTenantContext } from "@/middleware/tenantContext";
 
-// Import routes
 import authRoutes from "@/routes/auth";
 import tenantRoutes from "@/routes/tenants";
 import projectRoutes from "@/routes/projects";
@@ -31,17 +33,32 @@ import userRoutes from "@/routes/user";
 import dailyUpdateRoutes from "@/routes/dailyUpdates";
 import dashboardRoutes from "@/routes/dashboard";
 import leaveRoutes from "@/routes/leaves";
-import reimbursement from "@/routes/reimbursementCategory"
+import leaveTypeRoutes from "@/routes/leaveTypeRoutes";
+import customerRoutes from "@/routes/customerRoutes";
+import invoiceSettingRoutes from "@/routes/invoiceSettingsRoutes"; 
+import invoice from "@/routes/invoice";
+//import invoicedownload from "@/routes/invoiceDownload"
+import bucketRoutes from "@/routes/buckets";
+import trashRoutes from "@/routes/trash";
+import sprintCompletionRoutes from "@/routes/sprintCompletion";
+import fixedHolidayRoutes from "@/routes/fixedHolidays";
+import documentHubRoutes from "@/routes/documenthub";
+import channelRoutes from "@/routes/channels";
+import messageRoutes from "@/routes/messages";
+import companyGovernmentHolidayRouter from './routes/companyGovernmentHoliday.routes';
+import leaveAdjustmentRoutes from "./routes/leaveAdjustmentRoutes";import reimbursement from "@/routes/reimbursementCategory"
 
 
 // Load environment variables
 dotenv.config();
-
 // Create Express application
 const app = express();
 
+// Body parsing middleware
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
 // Connect to PostgreSQL
-connectDatabase().catch(console.error);
 
 const allowedOrigins = [
   "http://localhost:3000", // Local development
@@ -60,7 +77,7 @@ app.use(
         allowedOrigins.some(
           (o) =>
             (typeof o === "string" && o === origin) ||
-            (o instanceof RegExp && o.test(origin))
+            (o instanceof RegExp && o.test(origin)),
         )
       ) {
         return callback(null, true);
@@ -69,12 +86,8 @@ app.use(
       return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
-  })
+  }),
 );
-
-// Body parsing middleware
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
 // Cookie parsing middleware
 app.use(cookieParser());
@@ -103,6 +116,8 @@ const limiter = rateLimit({
 
 // app.use(limiter);
 
+connectDatabase().catch(console.error);
+
 // Health check endpoint (no tenant context required)
 app.get("/health", (req, res) => {
   res.status(200).json({
@@ -118,6 +133,9 @@ app.get("/health", (req, res) => {
 // app.use("/api", optionalTenantContext);
 
 // API routes
+app.use("/api/leave-adjustments", leaveAdjustmentRoutes);
+app.use('/api/company-government-holidays', companyGovernmentHolidayRouter);
+app.use("/api/fixed-holidays", fixedHolidayRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/tenants", tenantRoutes);
 app.use("/api/projects", projectRoutes);
@@ -134,8 +152,22 @@ app.use("/api/daily-updates", dailyUpdateRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/leaves", leaveRoutes);
 app.use("/api/reimbursementCategory",reimbursement)
+app.use("/api/leave-types", leaveTypeRoutes);
+app.use("/api/customers", customerRoutes);
+app.use("/api/invoicesetting",invoiceSettingRoutes)
+app.use("/api/invoices",invoice)
+//app.use("/api/invoice",invoicedownload)
+app.use("/api/buckets", bucketRoutes);
+app.use("/api/trash", trashRoutes);
+app.use("/api/sprint-completion", sprintCompletionRoutes);
+app.use("/api/salary-components", salaryComponentRoutes);
+app.use("/api/companies", companyRoutes);
 
-// Tenant-specific health check
+app.use("/api/documenthub", documentHubRoutes);
+app.use("/api/channels", channelRoutes);
+app.use("/api/channels/:channelId/messages", messageRoutes);
+
+
 app.get("/api/health", (req: any, res) => {
   res.status(200).json({
     success: true,
@@ -146,7 +178,7 @@ app.get("/api/health", (req: any, res) => {
   });
 });
 
-// Handle Socket.io requests (to prevent 404 errors)
+// Handle Socket.io requests (to prevent)
 app.all("/socket.io/*", (req, res) => {
   res.status(200).json({
     success: false,
@@ -277,6 +309,10 @@ const server = app.listen(PORT, () => {
   // Initialize Socket.io
   const { socketService } = require("@/services/socketService");
   socketService.initialize(server);
+
+  // Start trash auto-purge cron job
+  const { startTrashAutoPurgeJob } = require("@/jobs/trashAutoPurge");
+  startTrashAutoPurgeJob();
 });
 
 // Graceful shutdown
@@ -300,7 +336,7 @@ const gracefulShutdown = async (signal: string) => {
   // Force close after 30 seconds
   setTimeout(() => {
     console.error(
-      "Could not close connections in time, forcefully shutting down"
+      "Could not close connections in time, forcefully shutting down",
     );
     process.exit(1);
   }, 30000);

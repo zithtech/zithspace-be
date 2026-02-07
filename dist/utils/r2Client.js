@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.s3Client = void 0;
 exports.uploadImageToR2 = uploadImageToR2;
 exports.uploadFileToR2 = uploadFileToR2;
 exports.deleteFileFromR2 = deleteFileFromR2;
@@ -20,7 +21,7 @@ if (!ACCOUNT_ID || !ACCESS_KEY_ID || !SECRET_ACCESS_KEY) {
     console.error('Missing required R2 environment variables');
 }
 // Create S3 client for R2
-const s3Client = new client_s3_1.S3Client({
+exports.s3Client = new client_s3_1.S3Client({
     region: REGION,
     endpoint: `https://a7b954c93286b9aecbd1cd369b491aa0.r2.cloudflarestorage.com`,
     credentials: {
@@ -71,7 +72,7 @@ async function uploadImageToR2(base64Image, tenantId, ticketId) {
             ContentType: contentType,
             CacheControl: 'public, max-age=31536000', // Cache for 1 year
         };
-        await s3Client.send(new client_s3_1.PutObjectCommand(params));
+        await exports.s3Client.send(new client_s3_1.PutObjectCommand(params));
         // Construct public URL
         const imageUrl = `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/${fileName}`;
         return imageUrl;
@@ -121,7 +122,7 @@ async function uploadFileToR2(base64File, fileName, tenantId, ticketId) {
             CacheControl: 'public, max-age=31536000', // Cache for 1 year
             ContentDisposition: `attachment; filename="${sanitizedFileName}"`, // Force download with original name
         };
-        await s3Client.send(new client_s3_1.PutObjectCommand(params));
+        await exports.s3Client.send(new client_s3_1.PutObjectCommand(params));
         // Construct public URL
         const fileUrl = `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/${storedFileName}`;
         return {
@@ -158,7 +159,7 @@ async function deleteFileFromR2(fileUrl, tenantId) {
             Bucket: BUCKET_NAME,
             Key: fileName,
         };
-        await s3Client.send(new client_s3_1.DeleteObjectCommand(params));
+        await exports.s3Client.send(new client_s3_1.DeleteObjectCommand(params));
         console.log(`Deleted file: ${fileName}`);
     }
     catch (error) {
@@ -189,7 +190,7 @@ async function deleteImageFromR2(imageUrl, tenantId) {
             Bucket: BUCKET_NAME,
             Key: fileName,
         };
-        await s3Client.send(new client_s3_1.DeleteObjectCommand(params));
+        await exports.s3Client.send(new client_s3_1.DeleteObjectCommand(params));
         console.log(`Deleted image: ${fileName}`);
     }
     catch (error) {
