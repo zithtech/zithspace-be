@@ -34,6 +34,13 @@ model Tenant {
   holidays         CompanyGovernmentHoliday[]
   projects         Project[]
   releasePlans     ReleasePlan[]
+
+   reimbursementCategories ReimbursementCategory[]
+
+
+
+
+
   shifts           Shift[]
 
   sprintCompletionLogs SprintCompletionLog[]
@@ -136,44 +143,66 @@ model User {
   updatedHolidays      CompanyGovernmentHoliday[] @relation("CompanyGovernmentHolidayUpdater")
   sprintCompletionLogs SprintCompletionLog[]
   transactions         Transaction[]
-  assignedShift        Shift?                     @relation("UserShift", fields: [assignedShiftId], references: [id])
-  reportsTo            User?                      @relation("UserHierarchy", fields: [reportsToId], references: [id])
-  subordinates         User[]                     @relation("UserHierarchy")
-  shiftAssignedBy      User?                      @relation("ShiftAssigner", fields: [shiftAssignedById], references: [id])
-  assignedShifts       User[]                     @relation("ShiftAssigner")
+  assignedShift        Shift?              @relation("UserShift", fields: [assignedShiftId], references: [id])
+  reportsTo            User?               @relation("UserHierarchy", fields: [reportsToId], references: [id])
+  subordinates         User[]              @relation("UserHierarchy")
+  shiftAssignedBy      User?               @relation("ShiftAssigner", fields: [shiftAssignedById], references: [id])
+  assignedShifts       User[]              @relation("ShiftAssigner")
+  tenant               Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  // ZithTech Calls Relations
-  createdChannels       Channel[]            @relation("ChannelCreator")
-  channelMemberships    ChannelMember[]
-  channelMessages       ChannelMessage[]
-  createdMeetings       Meeting[]            @relation("MeetingCreator")
-  meetingParticipations MeetingParticipant[]
 
-  tenant                 Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  generalSettingsCreated GeneralSetting[] @relation("GeneralSettingCreatedBy")
-  generalSettingsUpdated GeneralSetting[] @relation("GeneralSettingUpdatedBy")
 
-  invoiceSettingsCreated InvoiceSetting[] @relation("InvoiceSettingCreatedBy")
-  invoiceSettingsUpdated InvoiceSetting[] @relation("InvoiceSettingUpdatedBy")
-
-  paymentSettingsCreated PaymentSetting[] @relation("PaymentSettingCreatedBy")
-  paymentSettingsUpdated PaymentSetting[] @relation("PaymentSettingUpdatedBy")
-
-  settingsProfilesCreated SettingsProfile[] @relation("SettingsProfileCreatedBy")
-  settingsProfilesUpdated SettingsProfile[] @relation("SettingsProfileUpdatedBy")
-  invoicesCreated         Invoice[]         @relation("InvoiceCreatedBy")
-  invoicesUpdated         Invoice[]         @relation("InvoiceUpdatedBy")
-  invoiceItemsCreated     InvoiceItem[]     @relation("InvoiceItemCreatedBy")
-  invoiceItemsUpdated     InvoiceItem[]     @relation("InvoiceItemUpdatedBy")
-
-  invoicePaymentsCreated InvoicePayment[] @relation("InvoicePaymentCreatedBy")
-  invoicePaymentsUpdated InvoicePayment[] @relation("InvoicePaymentUpdatedBy")
+    // ===== Reimbursement Category =====
+  createdReimbursementCategories ReimbursementCategory[] @relation("ReimbursementCategoryCreatedBy")
+  updatedReimbursementCategories ReimbursementCategory[] @relation("ReimbursementCategoryUpdatedBy")
 
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
   @@unique([tenantId, phone])
   @@map("users")
 }
+
+
+
+
+
+model ReimbursementCategory {
+  id                        String   @id @default(uuid())
+  tenantId                  String   @map("tenant_id")
+
+  code                      String   @db.VarChar(50)
+  name                      String   @db.VarChar(100)
+  description               String?
+
+  maxRequestsPerMonth       Int?      @map("max_requests_per_month")
+  monthlyLimitAmount        Decimal?  @map("monthly_limit_amount") @db.Decimal(12, 2)
+  yearlyLimitAmount         Decimal?  @map("yearly_limit_amount")  @db.Decimal(12, 2)
+
+  allowedRoles              String[]  @map("allowed_roles")
+  approvalFlow              Json?     @map("approval_flow")
+
+  attachmentRequired        Boolean   @default(false) @map("attachment_required")
+  autoApproveUnderAmount    Decimal?  @map("auto_approve_under_amount") @db.Decimal(12, 2)
+
+  isActive                  Boolean   @default(true) @map("is_active")
+
+  createdAt                 DateTime  @default(now()) @map("created_at")
+  createdBy                 String    @map("created_by")
+
+  updatedAt                 DateTime  @updatedAt @map("updated_at")
+  updatedBy                 String?   @map("updated_by")
+
+  // Relations
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  createdByUser User     @relation("ReimbursementCategoryCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser User?    @relation("ReimbursementCategoryUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@unique([tenantId, code])
+  @@map("reimbursement_category")
+}
+
+
+
 
 model RefreshToken {
   id        String   @id @default(uuid())
