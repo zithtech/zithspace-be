@@ -130,7 +130,7 @@ app.get("/health", (req, res) => {
   });
 });
 
-// Tenant resolution for all API routes
+
 // app.use("/api", optionalTenantContext);
 
 // API routes

@@ -107,7 +107,6 @@ app.get("/health", (req, res) => {
         version: "2.0.0",
     });
 });
-// Tenant resolution for all API routes
 // app.use("/api", optionalTenantContext);
 // API routes
 app.use("/api/leave-adjustments", leaveAdjustmentRoutes_1.default);
