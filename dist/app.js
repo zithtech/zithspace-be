@@ -44,6 +44,8 @@ const channels_1 = __importDefault(require("@/routes/channels"));
 const messages_1 = __importDefault(require("@/routes/messages"));
 const companyGovernmentHoliday_routes_1 = __importDefault(require("./routes/companyGovernmentHoliday.routes"));
 const leaveAdjustmentRoutes_1 = __importDefault(require("./routes/leaveAdjustmentRoutes"));
+const reimbursementCategory_1 = __importDefault(require("@/routes/reimbursementCategory"));
+const leaveOriginRoutes_1 = __importDefault(require("@/routes/leaveOriginRoutes"));
 // Load environment variables
 dotenv_1.default.config();
 // Create Express application
@@ -110,6 +112,7 @@ app.get("/health", (req, res) => {
 // API routes
 app.use("/api/leave-adjustments", leaveAdjustmentRoutes_1.default);
 app.use('/api/company-government-holidays', companyGovernmentHoliday_routes_1.default);
+app.use("/api/leave-origins", leaveOriginRoutes_1.default);
 app.use("/api/fixed-holidays", fixedHolidays_1.default);
 app.use("/api/auth", auth_1.default);
 app.use("/api/tenants", tenants_1.default);
@@ -126,6 +129,7 @@ app.use("/api/user", user_1.default);
 app.use("/api/daily-updates", dailyUpdates_1.default);
 app.use("/api/dashboard", dashboard_1.default);
 app.use("/api/leaves", leaves_1.default);
+app.use("/api/reimbursementCategory", reimbursementCategory_1.default);
 app.use("/api/leave-types", leaveTypeRoutes_1.default);
 app.use("/api/customers", customerRoutes_1.default);
 app.use("/api/invoicesetting", invoiceSettingsRoutes_1.default);

@@ -156,6 +156,31 @@ model User {
   createdReimbursementCategories ReimbursementCategory[] @relation("ReimbursementCategoryCreatedBy")
   updatedReimbursementCategories ReimbursementCategory[] @relation("ReimbursementCategoryUpdatedBy")
 
+  // ===== Settings Relations =====
+  createdGeneralSettings GeneralSetting[] @relation("GeneralSettingCreatedBy")
+  updatedGeneralSettings GeneralSetting[] @relation("GeneralSettingUpdatedBy")
+  createdInvoiceSettings InvoiceSetting[] @relation("InvoiceSettingCreatedBy")
+  updatedInvoiceSettings InvoiceSetting[] @relation("InvoiceSettingUpdatedBy")
+  createdPaymentSettings PaymentSetting[] @relation("PaymentSettingCreatedBy")
+  updatedPaymentSettings PaymentSetting[] @relation("PaymentSettingUpdatedBy")
+  createdSettingsProfiles SettingsProfile[] @relation("SettingsProfileCreatedBy")
+  updatedSettingsProfiles SettingsProfile[] @relation("SettingsProfileUpdatedBy")
+
+  // ===== Invoice Relations =====
+  createdInvoices Invoice[] @relation("InvoiceCreatedBy")
+  updatedInvoices Invoice[] @relation("InvoiceUpdatedBy")
+  createdInvoiceItems InvoiceItem[] @relation("InvoiceItemCreatedBy")
+  updatedInvoiceItems InvoiceItem[] @relation("InvoiceItemUpdatedBy")
+  createdInvoicePayments InvoicePayment[] @relation("InvoicePaymentCreatedBy")
+  updatedInvoicePayments InvoicePayment[] @relation("InvoicePaymentUpdatedBy")
+
+  // ===== Chat & Meeting Relations =====
+  createdChannels Channel[] @relation("ChannelCreator")
+  channelMemberships ChannelMember[]
+  channelMessages ChannelMessage[]
+  createdMeetings Meeting[] @relation("MeetingCreator")
+  meetingParticipations MeetingParticipant[]
+
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
   @@unique([tenantId, phone])
