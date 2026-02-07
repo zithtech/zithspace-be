@@ -8,6 +8,7 @@ import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
 
+
 // Import configurations
 import { connectDatabase, disconnectDatabase } from "@/config/database";
 import salaryComponentRoutes from "@/routes/salaryComponentRoutes";
@@ -45,7 +46,9 @@ import documentHubRoutes from "@/routes/documenthub";
 import channelRoutes from "@/routes/channels";
 import messageRoutes from "@/routes/messages";
 import companyGovernmentHolidayRouter from './routes/companyGovernmentHoliday.routes';
-import leaveAdjustmentRoutes from "./routes/leaveAdjustmentRoutes";
+import leaveAdjustmentRoutes from "./routes/leaveAdjustmentRoutes";import reimbursement from "@/routes/reimbursementCategory"
+
+
 // Load environment variables
 dotenv.config();
 // Create Express application
@@ -148,6 +151,7 @@ app.use("/api/user", userRoutes);
 app.use("/api/daily-updates", dailyUpdateRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/leaves", leaveRoutes);
+app.use("/api/reimbursementCategory",reimbursement)
 app.use("/api/leave-types", leaveTypeRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/invoicesetting",invoiceSettingRoutes)
