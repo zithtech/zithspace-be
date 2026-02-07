@@ -587,6 +587,7 @@ model StatusUpdate {
   tenant           Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user             User        @relation("UserStatusUpdates", fields: [userId], references: [id], onDelete: Cascade)
   workEntries      WorkEntry[]
+  updateType       String   // "BOD" | "EOD"
 
   @@index([tenantId, date])
   @@index([userId, date])
