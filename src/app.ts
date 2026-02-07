@@ -49,6 +49,7 @@ import companyGovernmentHolidayRouter from './routes/companyGovernmentHoliday.ro
 import leaveAdjustmentRoutes from "./routes/leaveAdjustmentRoutes";import reimbursement from "@/routes/reimbursementCategory"
 
 
+import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
 // Load environment variables
 dotenv.config();
 // Create Express application
@@ -135,6 +136,7 @@ app.get("/health", (req, res) => {
 // API routes
 app.use("/api/leave-adjustments", leaveAdjustmentRoutes);
 app.use('/api/company-government-holidays', companyGovernmentHolidayRouter);
+app.use("/api/leave-origins", leaveOriginRoutes);
 app.use("/api/fixed-holidays", fixedHolidayRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/tenants", tenantRoutes);

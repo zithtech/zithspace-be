@@ -25,6 +25,8 @@ model Tenant {
   leaves           Leave[]
   leaveTypes          LeaveType[]
   leaveAdjustments    LeaveAdjustment[]
+  leaveOriginStructures LeaveOriginStructure[]
+  originLeaveTypes      OriginLeaveType[]
   fixedHolidays    FixedHoliday[]
 
   salaryComponents SalaryComponent[]
@@ -110,6 +112,10 @@ model User {
   approvedAdjustments     LeaveAdjustment[] @relation("LeaveAdjustmentApprover")
   createdLeaveAdjustments LeaveAdjustment[] @relation("LeaveAdjustmentCreator")
   updatedLeaveAdjustments LeaveAdjustment[] @relation("LeaveAdjustmentUpdater")
+  createdLeaveOriginStructures LeaveOriginStructure[] @relation("LeaveOriginStructureCreator")
+  updatedLeaveOriginStructures LeaveOriginStructure[] @relation("LeaveOriginStructureUpdater")
+  createdOriginLeaveTypes      OriginLeaveType[]      @relation("OriginLeaveTypeCreator")
+  updatedOriginLeaveTypes      OriginLeaveType[]      @relation("OriginLeaveTypeUpdater")
   projectMemberships   ProjectMember[]
   createdProjects      Project[]                  @relation("ProjectCreator")
   managedProjects      Project[]                  @relation("ProjectManager")
@@ -1479,4 +1485,49 @@ model MeetingParticipant {
 
   @@index([meetingId])
   @@map("meeting_participants")
+}
+
+model LeaveOriginStructure {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  origin      String
+  subOrigin   String   @map("sub_origin")
+
+  createdById String   @map("created_by_id")
+  updatedById String?  @map("updated_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy   User     @relation("LeaveOriginStructureCreator", fields: [createdById], references: [id])
+  updatedBy   User?    @relation("LeaveOriginStructureUpdater", fields: [updatedById], references: [id])
+
+  leaveTypes  OriginLeaveType[]
+
+  @@unique([tenantId, origin, subOrigin])
+  @@map("leave_origin_structures")
+}
+
+model OriginLeaveType {
+  id                  String               @id @default(uuid())
+  tenantId            String               @map("tenant_id")
+  leaveOriginId       String               @map("leave_origin_id")
+  
+  leaveType           String               @map("leave_type")
+  unit                Decimal              @db.Decimal(5, 2)
+  period              String
+  carryForward        Boolean              @default(false) @map("carry_forward")
+  status              String               @default("Active")
+
+  createdById         String               @map("created_by_id")
+  updatedById         String?              @map("updated_by_id")
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  leaveOriginStructure LeaveOriginStructure @relation(fields: [leaveOriginId], references: [id], onDelete: Cascade)
+  createdBy           User                 @relation("OriginLeaveTypeCreator", fields: [createdById], references: [id])
+  updatedBy           User?                @relation("OriginLeaveTypeUpdater", fields: [updatedById], references: [id])
+
+  @@map("origin_leave_types")
 }
