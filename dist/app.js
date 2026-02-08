@@ -60,6 +60,8 @@ const allowedOrigins = [
     "http://localhost:3005", // Local development for internal app
     "https://zithmi.vercel.app", // Vercel production URL
     "https://www.zithtech.com",
+    "https://zithspace.com",
+    "https://zithmi.zithspace.com",
     /\.zithtech\.com$/, // allow any subdomain like dinesh.zithtech.com
 ];
 app.use((0, cors_1.default)({
