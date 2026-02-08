@@ -60,6 +60,7 @@ model Tenant {
   invoices             Invoice[]
   items                InvoiceItem[]
   payments             InvoicePayment[]
+  repositories         Repository[] // Relation to Code Repositories
   documenthub          DocumentHub[]
   documents            Document[]
   documenttree         DocumentTree[]
@@ -341,6 +342,8 @@ model Ticket {
   relatedLinks  TicketRelatedLink[]
   workflowSteps TicketWorkflowStep[]
   documenthub   DocumentHub[]
+  branches      TicketBranch[]
+  pullRequests  TicketPullRequest[]
   assignee      User?                @relation("TicketAssignee", fields: [assigneeId], references: [id])
   createdBy     User                 @relation("TicketCreator", fields: [createdById], references: [id])
   project       Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -1555,4 +1558,65 @@ model OriginLeaveType {
   updatedBy           User?                @relation("OriginLeaveTypeUpdater", fields: [updatedById], references: [id])
 
   @@map("origin_leave_types")
+}
+
+// Code Integration Models
+
+model Repository {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  name        String   // e.g. "frontend-monorepo"
+  url         String   // e.g. "https://github.com/org/repo"
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  branches    TicketBranch[]
+  pullRequests TicketPullRequest[]
+
+  @@unique([tenantId, name])
+  @@map("repositories")
+}
+
+model TicketBranch {
+  id           String   @id @default(uuid())
+  ticketId     String   @map("ticket_id")
+  repositoryId String   @map("repository_id")
+  name         String   // e.g. "feat/ticket-123-login"
+  url          String?  // Optional direct link to branch tree
+  isDefault    Boolean  @default(false) @map("is_default")
+  createdAt    DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  ticket       Ticket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+  @@index([repositoryId])
+  @@map("ticket_branches")
+}
+
+model TicketPullRequest {
+  id           String   @id @default(uuid())
+  ticketId     String   @map("ticket_id")
+  repositoryId String   @map("repository_id")
+  title        String?
+  url          String
+  branchName   String?  @map("branch_name")
+  branchUrl    String?  @map("branch_url")
+  number       Int?     // PR Number e.g. 456
+  state        String   @default("open") // open, closed, merged
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  ticket       Ticket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+  @@index([repositoryId])
+  @@map("ticket_pull_requests")
 }

@@ -35,7 +35,7 @@ import dashboardRoutes from "@/routes/dashboard";
 import leaveRoutes from "@/routes/leaves";
 import leaveTypeRoutes from "@/routes/leaveTypeRoutes";
 import customerRoutes from "@/routes/customerRoutes";
-import invoiceSettingRoutes from "@/routes/invoiceSettingsRoutes"; 
+import invoiceSettingRoutes from "@/routes/invoiceSettingsRoutes";
 import invoice from "@/routes/invoice";
 //import invoicedownload from "@/routes/invoiceDownload"
 import bucketRoutes from "@/routes/buckets";
@@ -46,7 +46,9 @@ import documentHubRoutes from "@/routes/documenthub";
 import channelRoutes from "@/routes/channels";
 import messageRoutes from "@/routes/messages";
 import companyGovernmentHolidayRouter from './routes/companyGovernmentHoliday.routes';
-import leaveAdjustmentRoutes from "./routes/leaveAdjustmentRoutes";import reimbursement from "@/routes/reimbursementCategory"
+import leaveAdjustmentRoutes from "./routes/leaveAdjustmentRoutes";
+import reimbursement from "@/routes/reimbursementCategory";
+import repositoryRoutes from "@/routes/repositoryRoutes";
 
 
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
@@ -141,6 +143,9 @@ app.use("/api/fixed-holidays", fixedHolidayRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/tenants", tenantRoutes);
 app.use("/api/projects", projectRoutes);
+import publicTicketRoutes from "@/routes/publicTickets";
+
+app.use("/api/public/tickets", publicTicketRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/clients", clientRoutes);
@@ -153,11 +158,12 @@ app.use("/api/user", userRoutes);
 app.use("/api/daily-updates", dailyUpdateRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/leaves", leaveRoutes);
-app.use("/api/reimbursementCategory",reimbursement)
+app.use("/api/reimbursement-category", reimbursement);
+app.use("/api/repositories", repositoryRoutes);
 app.use("/api/leave-types", leaveTypeRoutes);
 app.use("/api/customers", customerRoutes);
-app.use("/api/invoicesetting",invoiceSettingRoutes)
-app.use("/api/invoices",invoice)
+app.use("/api/invoicesetting", invoiceSettingRoutes)
+app.use("/api/invoices", invoice)
 //app.use("/api/invoice",invoicedownload)
 app.use("/api/buckets", bucketRoutes);
 app.use("/api/trash", trashRoutes);

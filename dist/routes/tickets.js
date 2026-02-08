@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const ticketController_1 = require("@/controllers/ticketController");
+const ticketCodeController_1 = require("@/controllers/ticketCodeController");
 const auth_1 = require("@/middleware/auth");
 const tenantContext_1 = require("@/middleware/tenantContext");
 const router = (0, express_1.Router)();
@@ -86,6 +87,32 @@ router.get('/:id/activity', ticketController_1.TicketController.getActivityLog);
  * @param   id - Ticket ID
  */
 router.get('/:id', ticketController_1.TicketController.getTicketById);
+// Code Integration Routes
+/**
+ * @route   GET /api/tickets/:id/code
+ * @desc    Get all code metadata (branches, PRs)
+ */
+router.get('/:id/code', ticketCodeController_1.TicketCodeController.getTicketCodeMetadata);
+/**
+ * @route   POST /api/tickets/:id/code/branches
+ * @desc    Link a branch
+ */
+router.post('/:id/code/branches', ticketCodeController_1.TicketCodeController.addBranch);
+/**
+ * @route   DELETE /api/tickets/:id/code/branches/:branchId
+ * @desc    Unlink a branch
+ */
+router.delete('/:id/code/branches/:branchId', ticketCodeController_1.TicketCodeController.removeBranch);
+/**
+ * @route   POST /api/tickets/:id/code/pull-requests
+ * @desc    Link a PR
+ */
+router.post('/:id/code/pull-requests', ticketCodeController_1.TicketCodeController.addPullRequest);
+/**
+ * @route   DELETE /api/tickets/:id/code/pull-requests/:prId
+ * @desc    Unlink a PR
+ */
+router.delete('/:id/code/pull-requests/:prId', ticketCodeController_1.TicketCodeController.removePullRequest);
 /**
  * @route   POST /api/tickets/upload-image
  * @desc    Upload image to R2 for ticket description (tenant-aware)
