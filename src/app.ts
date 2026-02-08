@@ -40,6 +40,7 @@ import fixedHolidayRoutes from "@/routes/fixedHolidays";
 import payslipFieldRoutes from "@/routes/payslipFieldRoutes";
 import employeeFieldRoutes from "@/routes/employeeFieldRoutes";
 import salaryStructureRoutes from "@/routes/salaryStructure.routes";
+import payslipRoutes from "@/routes/payslipRoutes";
 
 
 
@@ -164,6 +165,7 @@ app.use("/api/companies", companyRoutes);
 app.use("/api/payslip-fields", payslipFieldRoutes);
 app.use("/api/employee-fields", employeeFieldRoutes);
 app.use("/api/salary-structures", salaryStructureRoutes);
+app.use("/api/payslips", payslipRoutes);
 
 
 // Tenant-specific health check
