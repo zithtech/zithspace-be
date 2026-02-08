@@ -62,6 +62,7 @@ const allowedOrigins = [
     "https://www.zithtech.com",
     "https://zithspace.com",
     "https://zithmi.zithspace.com",
+    /\.zithspace\.com$/,
     /\.zithtech\.com$/, // allow any subdomain like dinesh.zithtech.com
 ];
 app.use((0, cors_1.default)({
