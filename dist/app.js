@@ -44,6 +44,9 @@ const channels_1 = __importDefault(require("@/routes/channels"));
 const messages_1 = __importDefault(require("@/routes/messages"));
 const companyGovernmentHoliday_routes_1 = __importDefault(require("./routes/companyGovernmentHoliday.routes"));
 const leaveAdjustmentRoutes_1 = __importDefault(require("./routes/leaveAdjustmentRoutes"));
+const reimbursementCategory_1 = __importDefault(require("@/routes/reimbursementCategory"));
+const repositoryRoutes_1 = __importDefault(require("@/routes/repositoryRoutes"));
+const leaveOriginRoutes_1 = __importDefault(require("@/routes/leaveOriginRoutes"));
 // Load environment variables
 dotenv_1.default.config();
 // Create Express application
@@ -57,6 +60,9 @@ const allowedOrigins = [
     "http://localhost:3005", // Local development for internal app
     "https://zithmi.vercel.app", // Vercel production URL
     "https://www.zithtech.com",
+    "https://zithspace.com",
+    "https://zithmi.zithspace.com",
+    /\.zithspace\.com$/,
     /\.zithtech\.com$/, // allow any subdomain like dinesh.zithtech.com
 ];
 app.use((0, cors_1.default)({
@@ -105,15 +111,17 @@ app.get("/health", (req, res) => {
         version: "2.0.0",
     });
 });
-// Tenant resolution for all API routes
 // app.use("/api", optionalTenantContext);
 // API routes
 app.use("/api/leave-adjustments", leaveAdjustmentRoutes_1.default);
 app.use('/api/company-government-holidays', companyGovernmentHoliday_routes_1.default);
+app.use("/api/leave-origins", leaveOriginRoutes_1.default);
 app.use("/api/fixed-holidays", fixedHolidays_1.default);
 app.use("/api/auth", auth_1.default);
 app.use("/api/tenants", tenants_1.default);
 app.use("/api/projects", projects_1.default);
+const publicTickets_1 = __importDefault(require("@/routes/publicTickets"));
+app.use("/api/public/tickets", publicTickets_1.default);
 app.use("/api/tickets", tickets_1.default);
 app.use("/api/attendance", attendance_1.default);
 app.use("/api/clients", clients_1.default);
@@ -126,6 +134,8 @@ app.use("/api/user", user_1.default);
 app.use("/api/daily-updates", dailyUpdates_1.default);
 app.use("/api/dashboard", dashboard_1.default);
 app.use("/api/leaves", leaves_1.default);
+app.use("/api/reimbursement-category", reimbursementCategory_1.default);
+app.use("/api/repositories", repositoryRoutes_1.default);
 app.use("/api/leave-types", leaveTypeRoutes_1.default);
 app.use("/api/customers", customerRoutes_1.default);
 app.use("/api/invoicesetting", invoiceSettingsRoutes_1.default);

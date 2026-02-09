@@ -1,10 +1,14 @@
-import { Response } from "express";
+import { Request, Response } from "express";
 import { AuthRequest } from "@/types";
 export declare class TicketController {
     /**
      * Upload image to R2 for ticket description
      */
     static uploadImage(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get public ticket details by ID (no auth required)
+     */
+    static getPublicTicket(req: Request, res: Response): Promise<void>;
     /**
      * Get dashboard statistics (tenant-aware)
      */

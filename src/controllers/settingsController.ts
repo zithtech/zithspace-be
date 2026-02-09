@@ -1,9 +1,9 @@
 import { Response } from 'express';
 import { prisma } from '@/config/database';
-import { 
-  AuthRequest, 
-  ApiResponse, 
-  NotFoundError, 
+import {
+  AuthRequest,
+  ApiResponse,
+  NotFoundError,
   ValidationError
 } from '@/types';
 
@@ -112,11 +112,11 @@ export class SettingsController {
         statuses: [
           { value: 'not_started', label: 'Not Started', color: '#d9d9d9', description: 'Task not started' },
           { value: 'in_progress', label: 'In Progress', color: '#1890ff', description: 'Task in progress' },
-          // { value: 'in_review', label: 'In Review', color: '#722ed1', description: 'Under review' },
-          { value: 'in_testing', label: 'Testing', color: '#13c2c2', description: 'In testing phase' },
+          { value: 'dev_complete', label: 'Dev Complete', color: '#2db7f5', description: 'Development completed' },
+          { value: 'in_testing', label: 'Testing', color: '#fa8c16', description: 'In testing phase' },
+          { value: 'in_review', label: 'In Review', color: '#722ed1', description: 'Under review' },
           { value: 'completed', label: 'Completed', color: '#52c41a', description: 'Task completed' },
-          // { value: 'on_hold', label: 'On Hold', color: '#fa8c16', description: 'Task on hold' },
-          // { value: 'cancelled', label: 'Cancelled', color: '#8c8c8c', description: 'Task cancelled' }
+          { value: 'live', label: 'Live', color: '#0050b3', description: 'Deployed to production' },
         ],
         platforms: [
           { value: 'Development', label: 'Development', color: '#1890ff', description: 'Software development tasks' },
@@ -150,7 +150,7 @@ export class SettingsController {
           'Push to Live',
           'Live Test'
         ],
-        
+
         // Dynamic data from database
         users: users.map(user => ({
           value: user.id,
@@ -211,24 +211,24 @@ export class SettingsController {
       if (role) where.role = role;
       if (position) where.position = position;
 
-   
-        let users = await prisma.user.findMany({
-          where,
-          select: {
-            id: true,
-            name: true,
-            workEmail: true,
-            position: true,
-            role: true,
-          },
-          orderBy: { name: 'asc' }
-        });
 
-        // If project is specified, we could filter by project membership in the future
-        // For now, return all users that match the criteria
-        
-        const teamMembers=  users;
-  
+      let users = await prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          name: true,
+          workEmail: true,
+          position: true,
+          role: true,
+        },
+        orderBy: { name: 'asc' }
+      });
+
+      // If project is specified, we could filter by project membership in the future
+      // For now, return all users that match the criteria
+
+      const teamMembers = users;
+
 
       const formattedMembers = teamMembers.map(member => ({
         value: member.id,
@@ -274,38 +274,38 @@ export class SettingsController {
         return;
       }
 
-   
-        // Validate project exists and belongs to tenant
-        const project = await prisma.project.findFirst({
-          where: {
-            id: projectId,
-            tenantId: req.tenantId,
-          }
-        });
 
-        if (!project) {
-          throw new NotFoundError('Project not found in this tenant');
+      // Validate project exists and belongs to tenant
+      const project = await prisma.project.findFirst({
+        where: {
+          id: projectId,
+          tenantId: req.tenantId,
         }
+      });
 
-    const  releasePlans =  await prisma.releasePlan.findMany({
-          where: {
-            projectId,
-            tenantId: req.tenantId,
-            status: { in: ['planning', 'active'] },
-            OR: [
-              { releaseDate: null },
-              { releaseDate: { gte: new Date() } }
-            ]
-          },
-          select: {
-            id: true,
-            version: true,
-            description: true,
-            status: true,
-            releaseDate: true
-          },
-          orderBy: { releaseDate: 'asc' }
-        });
+      if (!project) {
+        throw new NotFoundError('Project not found in this tenant');
+      }
+
+      const releasePlans = await prisma.releasePlan.findMany({
+        where: {
+          projectId,
+          tenantId: req.tenantId,
+          status: { in: ['planning', 'active'] },
+          OR: [
+            { releaseDate: null },
+            { releaseDate: { gte: new Date() } }
+          ]
+        },
+        select: {
+          id: true,
+          version: true,
+          description: true,
+          status: true,
+          releaseDate: true
+        },
+        orderBy: { releaseDate: 'asc' }
+      });
 
 
       const formattedPlans = releasePlans.map(plan => ({
@@ -322,7 +322,7 @@ export class SettingsController {
       } as ApiResponse);
     } catch (error: any) {
       console.error('Get release plans by project error:', error);
-      
+
       if (error instanceof NotFoundError) {
         res.status(404).json({
           success: false,
@@ -370,15 +370,15 @@ export class SettingsController {
       // If project is specified, get project-specific workflow template
       if (projectId) {
         const project = await prisma.project.findFirst({
-            where: {
-              id: projectId as string,
-              tenantId: req.tenantId,
-            },
-            select: {
-              workflowTemplate: true
-            }
-          });
-   
+          where: {
+            id: projectId as string,
+            tenantId: req.tenantId,
+          },
+          select: {
+            workflowTemplate: true
+          }
+        });
+
 
         if (project && project.workflowTemplate && project.workflowTemplate.length > 0) {
           workflowSteps = project.workflowTemplate;
@@ -467,34 +467,34 @@ export class SettingsController {
         return;
       }
 
-      
-        // Validate project exists and belongs to tenant
-        const project = await prisma.project.findFirst({
-          where: {
-            id: projectId,
-            tenantId: req.tenantId,
-          }
-        });
 
-        if (!project) {
-          throw new NotFoundError('Project not found in this tenant');
+      // Validate project exists and belongs to tenant
+      const project = await prisma.project.findFirst({
+        where: {
+          id: projectId,
+          tenantId: req.tenantId,
         }
+      });
 
-        const updatedProject = await prisma.project.update({
-          where: { id: projectId },
-          data: {
-            workflowTemplate: workflowSteps,
-            updatedAt: new Date()
-          },
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            workflowTemplate: true,
-            updatedAt: true
-          }
-        });
- 
+      if (!project) {
+        throw new NotFoundError('Project not found in this tenant');
+      }
+
+      const updatedProject = await prisma.project.update({
+        where: { id: projectId },
+        data: {
+          workflowTemplate: workflowSteps,
+          updatedAt: new Date()
+        },
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          workflowTemplate: true,
+          updatedAt: true
+        }
+      });
+
 
       res.status(200).json({
         success: true,
@@ -506,7 +506,7 @@ export class SettingsController {
       } as ApiResponse);
     } catch (error: any) {
       console.error('Update workflow template error:', error);
-      
+
       if (error instanceof NotFoundError) {
         res.status(404).json({
           success: false,
@@ -552,20 +552,20 @@ export class SettingsController {
       }
 
       const tickets = await prisma.ticket.findMany({
-          where,
-          select: {
-            id: true,
-            title: true,
-            status: true,
-            priority: true,
-            project: {
-              select: { name: true, code: true }
-            }
-          },
-          orderBy: { createdAt: 'desc' },
-          take: 50
-        });
- 
+        where,
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          priority: true,
+          project: {
+            select: { name: true, code: true }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        take: 50
+      });
+
 
       const parentTickets = tickets.map(ticket => ({
         value: ticket.id,
@@ -601,43 +601,43 @@ export class SettingsController {
         return;
       }
 
-     
-        const [userCount, projectCount, ticketCount, releasePlanCount, clientCount] = await Promise.all([
-          prisma.user.count({
-            where: {
-              tenantId: req.tenantId,
-              isActive: true
-            }
-          }),
-          prisma.project.count({
-            where: {
-              tenantId: req.tenantId,
-              status: 'active'
-            }
-          }),
-          prisma.ticket.count({
-            where: { tenantId: req.tenantId }
-          }),
-          prisma.releasePlan.count({
-            where: { tenantId: req.tenantId }
-          }),
-          prisma.client.count({
-            where: {
-              tenantId: req.tenantId,
-              isActive: true
-            }
-          })
-        ]);
 
-       const  stats =  {
-          users: userCount,
-          projects: projectCount,
-          tickets: ticketCount,
-          releasePlans: releasePlanCount,
-          clients: clientCount,
-          lastUpdated: new Date().toISOString()
-        };
-     
+      const [userCount, projectCount, ticketCount, releasePlanCount, clientCount] = await Promise.all([
+        prisma.user.count({
+          where: {
+            tenantId: req.tenantId,
+            isActive: true
+          }
+        }),
+        prisma.project.count({
+          where: {
+            tenantId: req.tenantId,
+            status: 'active'
+          }
+        }),
+        prisma.ticket.count({
+          where: { tenantId: req.tenantId }
+        }),
+        prisma.releasePlan.count({
+          where: { tenantId: req.tenantId }
+        }),
+        prisma.client.count({
+          where: {
+            tenantId: req.tenantId,
+            isActive: true
+          }
+        })
+      ]);
+
+      const stats = {
+        users: userCount,
+        projects: projectCount,
+        tickets: ticketCount,
+        releasePlans: releasePlanCount,
+        clients: clientCount,
+        lastUpdated: new Date().toISOString()
+      };
+
 
       res.status(200).json({
         success: true,
@@ -666,19 +666,19 @@ export class SettingsController {
       }
 
       const tenant = await prisma.tenant.findFirst({
-          where: { id: req.tenantId },
-          select: {
-            id: true,
-            name: true,
-            subdomain: true,
-            planType: true,
-            maxUsers: true,
-            isActive: true,
-            settings: true,
-            createdAt: true,
-            updatedAt: true
-          }
-        });
+        where: { id: req.tenantId },
+        select: {
+          id: true,
+          name: true,
+          subdomain: true,
+          planType: true,
+          maxUsers: true,
+          isActive: true,
+          settings: true,
+          createdAt: true,
+          updatedAt: true
+        }
+      });
 
 
       if (!tenant) {
@@ -759,19 +759,19 @@ export class SettingsController {
       }
 
       const updatedTenant = await prisma.tenant.update({
-          where: { id: req.tenantId },
-          data: {
-            settings,
-            updatedAt: new Date()
-          },
-          select: {
-            id: true,
-            name: true,
-            settings: true,
-            updatedAt: true
-          }
-        });
-    
+        where: { id: req.tenantId },
+        data: {
+          settings,
+          updatedAt: new Date()
+        },
+        select: {
+          id: true,
+          name: true,
+          settings: true,
+          updatedAt: true
+        }
+      });
+
 
       res.status(200).json({
         success: true,
@@ -813,124 +813,124 @@ export class SettingsController {
       const searchTerm = q.trim();
       const searchLimit = Math.min(Number(limit), 10); // Cap at 10 results per category
 
-      
-        const [projects, tickets, users, clients, releasePlans] = await Promise.all([
-          // Search projects
-          prisma.project.findMany({
-            where: {
-              tenantId: req.tenantId,
-              OR: [
-                { name: { contains: searchTerm, mode: 'insensitive' } },
-                { code: { contains: searchTerm, mode: 'insensitive' } },
-                { description: { contains: searchTerm, mode: 'insensitive' } }
-              ]
-            },
-            select: {
-              id: true,
-              name: true,
-              code: true,
-              description: true,
-              status: true
-            },
-            take: searchLimit
-          }),
-          
-          // Search tickets
-          prisma.ticket.findMany({
-            where: {
-              tenantId: req.tenantId,
-              OR: [
-                { title: { contains: searchTerm, mode: 'insensitive' } },
-                { description: { contains: searchTerm, mode: 'insensitive' } }
-              ]
-            },
-            select: {
-              id: true,
-              title: true,
-              status: true,
-              priority: true,
-              project: {
-                select: { name: true }
-              }
-            },
-            take: searchLimit
-          }),
 
-          // Search users
-          prisma.user.findMany({
-            where: {
-              tenantId: req.tenantId,
-              isActive: true,
-              OR: [
-                { name: { contains: searchTerm, mode: 'insensitive' } },
-                { workEmail: { contains: searchTerm, mode: 'insensitive' } }
-              ]
-            },
-            select: {
-              id: true,
-              name: true,
-              workEmail: true,
-              position: true,
-              role: true
-            },
-            take: searchLimit
-          }),
+      const [projects, tickets, users, clients, releasePlans] = await Promise.all([
+        // Search projects
+        prisma.project.findMany({
+          where: {
+            tenantId: req.tenantId,
+            OR: [
+              { name: { contains: searchTerm, mode: 'insensitive' } },
+              { code: { contains: searchTerm, mode: 'insensitive' } },
+              { description: { contains: searchTerm, mode: 'insensitive' } }
+            ]
+          },
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            description: true,
+            status: true
+          },
+          take: searchLimit
+        }),
 
-          // Search clients
-          prisma.client.findMany({
-            where: {
-              tenantId: req.tenantId,
-              isActive: true,
-              OR: [
-                { name: { contains: searchTerm, mode: 'insensitive' } },
-                { email: { contains: searchTerm, mode: 'insensitive' } },
-                { company: { contains: searchTerm, mode: 'insensitive' } }
-              ]
-            },
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              company: true,
-              contactPerson: true
-            },
-            take: searchLimit
-          }),
+        // Search tickets
+        prisma.ticket.findMany({
+          where: {
+            tenantId: req.tenantId,
+            OR: [
+              { title: { contains: searchTerm, mode: 'insensitive' } },
+              { description: { contains: searchTerm, mode: 'insensitive' } }
+            ]
+          },
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            priority: true,
+            project: {
+              select: { name: true }
+            }
+          },
+          take: searchLimit
+        }),
 
-          // Search release plans
-          prisma.releasePlan.findMany({
-            where: {
-              tenantId: req.tenantId,
-              OR: [
-                { version: { contains: searchTerm, mode: 'insensitive' } },
-                { description: { contains: searchTerm, mode: 'insensitive' } }
-              ]
-            },
-            select: {
-              id: true,
-              version: true,
-              description: true,
-              status: true,
-              project: {
-                select: { name: true }
-              }
-            },
-            take: searchLimit
-          })
-        ]);
+        // Search users
+        prisma.user.findMany({
+          where: {
+            tenantId: req.tenantId,
+            isActive: true,
+            OR: [
+              { name: { contains: searchTerm, mode: 'insensitive' } },
+              { workEmail: { contains: searchTerm, mode: 'insensitive' } }
+            ]
+          },
+          select: {
+            id: true,
+            name: true,
+            workEmail: true,
+            position: true,
+            role: true
+          },
+          take: searchLimit
+        }),
 
-        const results =  {
-          projects: projects.map(p => ({ ...p, type: 'project' })),
-          tickets: tickets.map(t => ({ ...t, type: 'ticket' })),
-          users: users.map(u => ({ ...u, type: 'user' })),
-          clients: clients.map(c => ({ ...c, type: 'client' })),
-          releasePlans: releasePlans.map(r => ({ ...r, type: 'releasePlan' }))
-        };
+        // Search clients
+        prisma.client.findMany({
+          where: {
+            tenantId: req.tenantId,
+            isActive: true,
+            OR: [
+              { name: { contains: searchTerm, mode: 'insensitive' } },
+              { email: { contains: searchTerm, mode: 'insensitive' } },
+              { company: { contains: searchTerm, mode: 'insensitive' } }
+            ]
+          },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            company: true,
+            contactPerson: true
+          },
+          take: searchLimit
+        }),
+
+        // Search release plans
+        prisma.releasePlan.findMany({
+          where: {
+            tenantId: req.tenantId,
+            OR: [
+              { version: { contains: searchTerm, mode: 'insensitive' } },
+              { description: { contains: searchTerm, mode: 'insensitive' } }
+            ]
+          },
+          select: {
+            id: true,
+            version: true,
+            description: true,
+            status: true,
+            project: {
+              select: { name: true }
+            }
+          },
+          take: searchLimit
+        })
+      ]);
+
+      const results = {
+        projects: projects.map(p => ({ ...p, type: 'project' })),
+        tickets: tickets.map(t => ({ ...t, type: 'ticket' })),
+        users: users.map(u => ({ ...u, type: 'user' })),
+        clients: clients.map(c => ({ ...c, type: 'client' })),
+        releasePlans: releasePlans.map(r => ({ ...r, type: 'releasePlan' }))
+      };
 
 
-      const totalResults = results.projects.length + results.tickets.length + 
-                          results.users.length + results.clients.length + 
-                          results.releasePlans.length;
+      const totalResults = results.projects.length + results.tickets.length +
+        results.users.length + results.clients.length +
+        results.releasePlans.length;
 
       res.status(200).json({
         success: true,
@@ -969,44 +969,44 @@ export class SettingsController {
       const { includeInactive } = req.query;
       const activeOnly = includeInactive !== 'true';
 
-     
-        const where: any = { tenantId: req.tenantId };
-        if (activeOnly) {
-          where.isActive = true;
+
+      const where: any = { tenantId: req.tenantId };
+      if (activeOnly) {
+        where.isActive = true;
+      }
+
+      const options = await prisma.dropdownOption.findMany({
+        where,
+        orderBy: [
+          { category: 'asc' },
+          { order: 'asc' },
+          { label: 'asc' }
+        ]
+      });
+
+      // Group by category (map to type for frontend compatibility)
+      const grouped: Record<string, any[]> = {};
+      options.forEach(option => {
+        // Map PostgreSQL 'category' to MongoDB 'type' for frontend compatibility
+        const type = option.category;
+        if (!grouped[type]) {
+          grouped[type] = [];
         }
 
-        const options = await prisma.dropdownOption.findMany({
-          where,
-          orderBy: [
-            { category: 'asc' },
-            { order: 'asc' },
-            { label: 'asc' }
-          ]
+        grouped[type].push({
+          id: option.id,
+          type: option.category, // For backward compatibility
+          value: option.value,
+          label: option.label,
+          order: option.order,
+          isActive: option.isActive,
+          createdAt: option.createdAt,
+          updatedAt: option.updatedAt
         });
+      });
 
-        // Group by category (map to type for frontend compatibility)
-        const grouped: Record<string, any[]> = {};
-        options.forEach(option => {
-          // Map PostgreSQL 'category' to MongoDB 'type' for frontend compatibility
-          const type = option.category;
-          if (!grouped[type]) {
-            grouped[type] = [];
-          }
-          
-          grouped[type].push({
-            id: option.id,
-            type: option.category, // For backward compatibility
-            value: option.value,
-            label: option.label,
-            order: option.order,
-            isActive: option.isActive,
-            createdAt: option.createdAt,
-            updatedAt: option.updatedAt
-          });
-        });
+      const dropdownOptions = grouped;
 
-        const dropdownOptions =  grouped;
-  
       res.status(200).json({
         success: true,
         data: dropdownOptions
@@ -1048,33 +1048,33 @@ export class SettingsController {
 
       const activeOnly = includeInactive !== 'true';
 
-     
-        const where: any = { 
-          tenantId: req.tenantId,
-          category: type 
-        };
-        if (activeOnly) {
-          where.isActive = true;
-        }
 
-        const options =  await prisma.dropdownOption.findMany({
-          where,
-          orderBy: [
-            { order: 'asc' },
-            { label: 'asc' }
-          ],
-          select: {
-            id: true,
-            category: true,
-            value: true,
-            label: true,
-            order: true,
-            isActive: true,
-            createdAt: true,
-            updatedAt: true
-          }
-        });
-    
+      const where: any = {
+        tenantId: req.tenantId,
+        category: type
+      };
+      if (activeOnly) {
+        where.isActive = true;
+      }
+
+      const options = await prisma.dropdownOption.findMany({
+        where,
+        orderBy: [
+          { order: 'asc' },
+          { label: 'asc' }
+        ],
+        select: {
+          id: true,
+          category: true,
+          value: true,
+          label: true,
+          order: true,
+          isActive: true,
+          createdAt: true,
+          updatedAt: true
+        }
+      });
+
 
       // Format for frontend compatibility
       const formattedOptions = options.map(option => ({
@@ -1133,24 +1133,25 @@ export class SettingsController {
         return;
       }
 
-      
-        // Get the next order number for this type
-        const lastOption = await prisma.dropdownOption.findFirst({
-          where: { tenantId: req.tenantId, category: type },
-          orderBy: { order: 'desc' }
-        });
-        const order = lastOption ? lastOption.order + 1 : 1;
 
-        const newOption = await prisma.dropdownOption.create({
-          data: {
-            tenantId: req.tenantId,
-            category: type,
-            value,
-            label,
-            order,
-            isActive: true
-          }});
-   
+      // Get the next order number for this type
+      const lastOption = await prisma.dropdownOption.findFirst({
+        where: { tenantId: req.tenantId, category: type },
+        orderBy: { order: 'desc' }
+      });
+      const order = lastOption ? lastOption.order + 1 : 1;
+
+      const newOption = await prisma.dropdownOption.create({
+        data: {
+          tenantId: req.tenantId,
+          category: type,
+          value,
+          label,
+          order,
+          isActive: true
+        }
+      });
+
 
       res.status(201).json({
         success: true,
@@ -1168,7 +1169,7 @@ export class SettingsController {
       } as ApiResponse);
     } catch (error: any) {
       console.error('Create dropdown option error:', error);
-      
+
       if (error.code === 'P2002') {
         res.status(400).json({
           success: false,
@@ -1208,26 +1209,26 @@ export class SettingsController {
         return;
       }
 
-   
-        // Verify option exists and belongs to tenant
-        const existingOption = await prisma.dropdownOption.findFirst({
-          where: { id, tenantId: req.tenantId }
-        });
 
-        if (!existingOption) {
-          throw new NotFoundError('Dropdown option not found');
-        }
+      // Verify option exists and belongs to tenant
+      const existingOption = await prisma.dropdownOption.findFirst({
+        where: { id, tenantId: req.tenantId }
+      });
 
-        const updateData: any = { value, label };
-        if (typeof isActive === 'boolean') {
-          updateData.isActive = isActive;
-        }
+      if (!existingOption) {
+        throw new NotFoundError('Dropdown option not found');
+      }
 
-        const updatedOption =  await prisma.dropdownOption.update({
-          where: { id },
-          data: updateData
-        });
- 
+      const updateData: any = { value, label };
+      if (typeof isActive === 'boolean') {
+        updateData.isActive = isActive;
+      }
+
+      const updatedOption = await prisma.dropdownOption.update({
+        where: { id },
+        data: updateData
+      });
+
 
       res.status(200).json({
         success: true,
@@ -1245,7 +1246,7 @@ export class SettingsController {
       } as ApiResponse);
     } catch (error: any) {
       console.error('Update dropdown option error:', error);
-      
+
       if (error instanceof NotFoundError) {
         res.status(404).json({
           success: false,
@@ -1253,7 +1254,7 @@ export class SettingsController {
         } as ApiResponse);
         return;
       }
-      
+
       if (error.code === 'P2002') {
         res.status(400).json({
           success: false,
@@ -1284,20 +1285,20 @@ export class SettingsController {
 
       const { id } = req.params;
 
-      
-        // Verify option exists and belongs to tenant
-        const existingOption = await prisma.dropdownOption.findFirst({
-          where: { id, tenantId: req.tenantId }
-        });
 
-        if (!existingOption) {
-          throw new NotFoundError('Dropdown option not found');
-        }
+      // Verify option exists and belongs to tenant
+      const existingOption = await prisma.dropdownOption.findFirst({
+        where: { id, tenantId: req.tenantId }
+      });
 
-        await prisma.dropdownOption.delete({
-          where: { id }
-        });
- 
+      if (!existingOption) {
+        throw new NotFoundError('Dropdown option not found');
+      }
+
+      await prisma.dropdownOption.delete({
+        where: { id }
+      });
+
 
       res.status(200).json({
         success: true,
@@ -1305,7 +1306,7 @@ export class SettingsController {
       } as ApiResponse);
     } catch (error: any) {
       console.error('Delete dropdown option error:', error);
-      
+
       if (error instanceof NotFoundError) {
         res.status(404).json({
           success: false,
@@ -1344,20 +1345,20 @@ export class SettingsController {
         return;
       }
 
-      
-        // Update order for each item
-        const updatePromises = items.map((item: { id: string; order: number }) =>
-          prisma.dropdownOption.updateMany({
-            where: { 
-              id: item.id,
-              tenantId: req.tenantId 
-            },
-            data: { order: item.order }
-          })
-        );
 
-        await Promise.all(updatePromises);
- 
+      // Update order for each item
+      const updatePromises = items.map((item: { id: string; order: number }) =>
+        prisma.dropdownOption.updateMany({
+          where: {
+            id: item.id,
+            tenantId: req.tenantId
+          },
+          data: { order: item.order }
+        })
+      );
+
+      await Promise.all(updatePromises);
+
 
       res.status(200).json({
         success: true,

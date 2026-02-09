@@ -8,6 +8,7 @@ import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
 
+
 // Import configurations
 import { connectDatabase, disconnectDatabase } from "@/config/database";
 import salaryComponentRoutes from "@/routes/salaryComponentRoutes";
@@ -34,7 +35,7 @@ import dashboardRoutes from "@/routes/dashboard";
 import leaveRoutes from "@/routes/leaves";
 import leaveTypeRoutes from "@/routes/leaveTypeRoutes";
 import customerRoutes from "@/routes/customerRoutes";
-import invoiceSettingRoutes from "@/routes/invoiceSettingsRoutes"; 
+import invoiceSettingRoutes from "@/routes/invoiceSettingsRoutes";
 import invoice from "@/routes/invoice";
 //import invoicedownload from "@/routes/invoiceDownload"
 import bucketRoutes from "@/routes/buckets";
@@ -46,6 +47,11 @@ import channelRoutes from "@/routes/channels";
 import messageRoutes from "@/routes/messages";
 import companyGovernmentHolidayRouter from './routes/companyGovernmentHoliday.routes';
 import leaveAdjustmentRoutes from "./routes/leaveAdjustmentRoutes";
+import reimbursement from "@/routes/reimbursementCategory";
+import repositoryRoutes from "@/routes/repositoryRoutes";
+
+
+import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
 // Load environment variables
 dotenv.config();
 // Create Express application
@@ -62,6 +68,9 @@ const allowedOrigins = [
   "http://localhost:3005", // Local development for internal app
   "https://zithmi.vercel.app", // Vercel production URL
   "https://www.zithtech.com",
+  "https://zithspace.com",
+  "https://zithmi.zithspace.com",
+  /\.zithspace\.com$/,
   /\.zithtech\.com$/, // allow any subdomain like dinesh.zithtech.com
 ];
 
@@ -126,16 +135,20 @@ app.get("/health", (req, res) => {
   });
 });
 
-// Tenant resolution for all API routes
+
 // app.use("/api", optionalTenantContext);
 
 // API routes
 app.use("/api/leave-adjustments", leaveAdjustmentRoutes);
 app.use('/api/company-government-holidays', companyGovernmentHolidayRouter);
+app.use("/api/leave-origins", leaveOriginRoutes);
 app.use("/api/fixed-holidays", fixedHolidayRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/tenants", tenantRoutes);
 app.use("/api/projects", projectRoutes);
+import publicTicketRoutes from "@/routes/publicTickets";
+
+app.use("/api/public/tickets", publicTicketRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/clients", clientRoutes);
@@ -148,10 +161,12 @@ app.use("/api/user", userRoutes);
 app.use("/api/daily-updates", dailyUpdateRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/leaves", leaveRoutes);
+app.use("/api/reimbursement-category", reimbursement);
+app.use("/api/repositories", repositoryRoutes);
 app.use("/api/leave-types", leaveTypeRoutes);
 app.use("/api/customers", customerRoutes);
-app.use("/api/invoicesetting",invoiceSettingRoutes)
-app.use("/api/invoices",invoice)
+app.use("/api/invoicesetting", invoiceSettingRoutes)
+app.use("/api/invoices", invoice)
 //app.use("/api/invoice",invoicedownload)
 app.use("/api/buckets", bucketRoutes);
 app.use("/api/trash", trashRoutes);

@@ -43,7 +43,128 @@ class TicketController {
             console.error("Upload image error:", error);
             res.status(500).json({
                 success: false,
-                error: error.message || "Failed to upload image",
+                error: "Failed to upload image",
+            });
+        }
+    }
+    /**
+     * Get public ticket details by ID (no auth required)
+     */
+    static async getPublicTicket(req, res) {
+        try {
+            const { id } = req.params;
+            const ticket = await database_1.prisma.ticket.findUnique({
+                where: { id },
+                include: {
+                    project: {
+                        select: {
+                            name: true,
+                            code: true,
+                        },
+                    },
+                    assignee: {
+                        select: {
+                            name: true,
+                            position: true,
+                        },
+                    },
+                    createdBy: {
+                        select: {
+                            name: true,
+                        },
+                    },
+                    comments: {
+                        include: {
+                            user: {
+                                select: {
+                                    name: true,
+                                    position: true,
+                                },
+                            },
+                        },
+                        orderBy: { timestamp: "desc" },
+                    },
+                    relatedLinks: {
+                        include: {
+                            addedBy: {
+                                select: {
+                                    name: true,
+                                },
+                            },
+                        },
+                    },
+                    attachments: true,
+                    subTasks: {
+                        where: { isDeleted: false },
+                        select: {
+                            id: true,
+                            ticketNumber: true,
+                            title: true,
+                            status: true,
+                            priority: true,
+                            type: true,
+                        },
+                    },
+                    activityLog: {
+                        orderBy: { timestamp: "desc" },
+                        include: {
+                            performedBy: {
+                                select: {
+                                    name: true,
+                                },
+                            },
+                        },
+                    },
+                },
+            });
+            if (!ticket) {
+                res.status(404).json({
+                    success: false,
+                    error: "Ticket not found",
+                });
+                return;
+            }
+            // Return only necessary fields for public view
+            const publicData = {
+                id: ticket.id,
+                title: ticket.title,
+                description: ticket.description,
+                status: ticket.status,
+                priority: ticket.priority,
+                type: ticket.type,
+                ticketNumber: ticket.ticketNumber,
+                createdAt: ticket.createdAt,
+                updatedAt: ticket.updatedAt,
+                project: ticket.project,
+                assignee: ticket.assignee,
+                createdBy: ticket.createdBy,
+                comments: ticket.comments.map(c => ({
+                    id: c.id,
+                    comment: c.comment,
+                    timestamp: c.timestamp,
+                    user: c.user,
+                })),
+                relatedLinks: ticket.relatedLinks,
+                attachments: ticket.attachments,
+                subTasks: ticket.subTasks,
+                activityLogs: ticket.activityLog.map(log => ({
+                    id: log.id,
+                    action: log.action,
+                    details: log.details,
+                    timestamp: log.timestamp,
+                    performedBy: log.performedBy,
+                })),
+            };
+            res.status(200).json({
+                success: true,
+                data: publicData,
+            });
+        }
+        catch (error) {
+            console.error("Get public ticket error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to fetch ticket details",
             });
         }
     }
@@ -75,10 +196,14 @@ class TicketController {
             const totalTickets = generalStats.reduce((sum, stat) => sum + stat._count, 0);
             const statusCounts = {
                 total: totalTickets,
-                in_progress: generalStats.find((s) => s.status === "IN_PROGRESS")?._count || 0,
-                not_started: generalStats.find((s) => s.status === "NOT_STARTED")?._count || 0,
-                completed: generalStats.find((s) => s.status === "COMPLETED")?._count || 0,
-                blocked: generalStats.find((s) => s.status === "BLOCKED")?._count || 0,
+                in_progress: generalStats.find((s) => s.status === "in_progress")?._count || 0,
+                dev_complete: generalStats.find((s) => s.status === "dev_complete")?._count || 0,
+                in_testing: generalStats.find((s) => s.status === "in_testing")?._count || 0,
+                in_review: generalStats.find((s) => s.status === "in_review")?._count || 0,
+                not_started: generalStats.find((s) => s.status === "not_started")?._count || 0,
+                completed: generalStats.find((s) => s.status === "completed")?._count || 0,
+                live: generalStats.find((s) => s.status === "live")?._count || 0,
+                blocked: generalStats.find((s) => s.status === "blocked")?._count || 0,
             };
             const stats = {
                 generalStats: statusCounts,
@@ -271,6 +396,22 @@ class TicketController {
                 },
             });
             socketService_1.socketService.emitToTenant(req.tenantId, "ticket:created", ticket);
+            // Log activity
+            await database_1.prisma.ticketActivityLog.create({
+                data: {
+                    ticketId: ticket.id,
+                    tenantId: req.tenantId,
+                    action: "Ticket Created",
+                    performedById: req.user.id,
+                    details: {
+                        ticketNumber,
+                        title,
+                        priority,
+                        type: ticketType,
+                        status,
+                    },
+                },
+            });
             if (parentId) {
                 await cacheService_1.default.invalidateTicket(parentId, req.tenantId);
             }
@@ -376,7 +517,7 @@ class TicketController {
                     baseWhere.sprintPlanId = sprintId;
                 }
             }
-            const statuses = ['not_started', 'in_progress', 'in_testing', 'completed'];
+            const statuses = ['not_started', 'in_progress', 'dev_complete', 'in_testing', 'in_review', 'completed', 'live'];
             const limit = Number(limitPerColumn);
             // Fetch tickets for each status in parallel
             const columnsData = await Promise.all(statuses.map(async (status) => {
@@ -878,6 +1019,46 @@ class TicketController {
                     project: { select: { id: true, name: true, code: true } },
                 },
             });
+            // Log significant changes
+            try {
+                const changes = [];
+                const details = {};
+                if (mappedUpdates.status && mappedUpdates.status !== existingTicket.status) {
+                    changes.push(`Status changed from ${existingTicket.status} to ${mappedUpdates.status}`);
+                    details.oldStatus = existingTicket.status;
+                    details.newStatus = mappedUpdates.status;
+                }
+                if (mappedUpdates.priority && mappedUpdates.priority !== existingTicket.priority) {
+                    changes.push(`Priority changed from ${existingTicket.priority} to ${mappedUpdates.priority}`);
+                    details.oldPriority = existingTicket.priority;
+                    details.newPriority = mappedUpdates.priority;
+                }
+                if (mappedUpdates.assigneeId !== undefined && mappedUpdates.assigneeId !== existingTicket.assigneeId) {
+                    changes.push(`Assignee updated`);
+                    details.oldAssigneeId = existingTicket.assigneeId;
+                    details.newAssigneeId = mappedUpdates.assigneeId;
+                }
+                if (mappedUpdates.storyPoint !== undefined && mappedUpdates.storyPoint !== existingTicket.storyPoint) {
+                    changes.push(`Story Points changed from ${existingTicket.storyPoint} to ${mappedUpdates.storyPoint}`);
+                }
+                if (changes.length > 0) {
+                    await database_1.prisma.ticketActivityLog.create({
+                        data: {
+                            ticketId: id,
+                            tenantId: req.tenantId,
+                            action: "Ticket Updated",
+                            performedById: req.user.id,
+                            details: {
+                                changes,
+                                ...details
+                            },
+                        },
+                    });
+                }
+            }
+            catch (logError) {
+                console.error("Failed to log ticket update activity:", logError);
+            }
             // Side effects (Cache & Socket)
             try {
                 socketService_1.socketService.emitToTenant(req.tenantId, "ticket:updated", ticket);
@@ -1415,7 +1596,10 @@ class TicketController {
                     tenantId: req.tenantId,
                     action: "Comment Added",
                     performedById: req.user.id,
-                    details: { comment },
+                    details: {
+                        commentId: newComment.id,
+                        contentPreview: comment.trim().substring(0, 50) + (comment.trim().length > 50 ? "..." : "")
+                    },
                 },
             });
             res.status(201).json({
