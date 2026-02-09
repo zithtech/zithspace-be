@@ -17,8 +17,14 @@ class DailyUpdateController {
         return;
       }
       console.log("request checking", req.body);
-      const { mood, totalHoursWorked, projectUpdates, generalNotes, date ,updateType} =
-        req.body;
+      const {
+        mood,
+        totalHoursWorked,
+        projectUpdates,
+        generalNotes,
+        date,
+        updateType,
+      } = req.body;
       // Validation
       if (
         !projectUpdates ||
@@ -140,7 +146,6 @@ class DailyUpdateController {
       const result = await database_1.tenantAwarePrisma.withTenant(
         req.tenantId,
         async (client) => {
-     
           function startOfDay(date) {
             const d = new Date(date);
             d.setHours(0, 0, 0, 0);
@@ -206,6 +211,7 @@ class DailyUpdateController {
           console.log("isMissed", isMissed);
           const missedUpdateAt = isMissed ? submittedDate : null;
           console.log("missedUpdateAt ", missedUpdateAt);
+
           // Working date selected by user
           const statusUpdate = await client.statusUpdate.create({
             data: {
@@ -219,7 +225,10 @@ class DailyUpdateController {
               totalHoursWorked: totalHoursWorked || null,
               projectUpdates: projectUpdates,
               generalNotes: generalNotes || null,
-              updateType: updateType || "BOD",
+            //updateType: updateType || "BOD",
+              updateType: updateType?? null,
+
+
             },
             include: {
               user: {
@@ -267,11 +276,14 @@ class DailyUpdateController {
         });
         return;
       }
-      const { date, startDate, endDate, limit = 30 } = req.query;
+      const { date, startDate, endDate, limit = 30, updateType } = req.query;
       const where = {
         userId: req.user.id,
         tenantId: req.tenantId,
       };
+      if (updateType) {
+        where.updateType = updateType; // 🔥 REQUIRED
+      }
       // console.log("reqid",req);
       // Date range filter (priority over single date)
       if (startDate && endDate) {
@@ -334,7 +346,8 @@ class DailyUpdateController {
         });
         return;
       }
-      const { date, startDate, endDate, projectId, userId } = req.query;
+      const { date, startDate, endDate, projectId, userId, updateType } =
+        req.query;
       const updates = await database_1.tenantAwarePrisma.withTenant(
         req.tenantId,
         async (client) => {
@@ -349,6 +362,9 @@ class DailyUpdateController {
           let where = {
             tenantId: req.tenantId,
           };
+          if (updateType) {
+            where.updateType = updateType; // 🔥 REQUIRED
+          }
           // Date range filter (priority over single date)
           if (startDate && endDate) {
             const start = new Date(startDate);
