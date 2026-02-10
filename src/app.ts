@@ -32,6 +32,7 @@ import userRoutes from "@/routes/user";
 import dailyUpdateRoutes from "@/routes/dailyUpdates";
 import dashboardRoutes from "@/routes/dashboard";
 import leaveRoutes from "@/routes/leaves";
+import reimbursementCategoryRoutes from "@/routes/reimbursementCategories";
 import leaveTypeRoutes from "@/routes/leaveTypeRoutes";
 import customerRoutes from "@/routes/customerRoutes";
 import invoiceSettingRoutes from "@/routes/invoiceSettingsRoutes"; 
@@ -46,6 +47,7 @@ import channelRoutes from "@/routes/channels";
 import messageRoutes from "@/routes/messages";
 import companyGovernmentHolidayRouter from './routes/companyGovernmentHoliday.routes';
 import leaveAdjustmentRoutes from "./routes/leaveAdjustmentRoutes";
+import fileDownloadRoutes from "./routes/fileDownload";
 // Load environment variables
 dotenv.config();
 // Create Express application
@@ -148,6 +150,7 @@ app.use("/api/user", userRoutes);
 app.use("/api/daily-updates", dailyUpdateRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/leaves", leaveRoutes);
+app.use("/api/reimbursement-categories", reimbursementCategoryRoutes);
 app.use("/api/leave-types", leaveTypeRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/invoicesetting",invoiceSettingRoutes)
@@ -162,6 +165,7 @@ app.use("/api/companies", companyRoutes);
 app.use("/api/documenthub", documentHubRoutes);
 app.use("/api/channels", channelRoutes);
 app.use("/api/channels/:channelId/messages", messageRoutes);
+app.use("/api/files", fileDownloadRoutes);
 
 
 app.get("/api/health", (req: any, res) => {

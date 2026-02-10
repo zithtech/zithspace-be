@@ -32,6 +32,10 @@ model Tenant {
   holidays         CompanyGovernmentHoliday[]
   projects         Project[]
   releasePlans     ReleasePlan[]
+  reimbursementCategories ReimbursementCategory[]
+  reimbursementRequests ReimbursementRequest[]
+  reimbursementItems    ReimbursementItem[]
+  reimbursementApprovals ReimbursementApproval[]
   shifts           Shift[]
 
   sprintCompletionLogs SprintCompletionLog[]
@@ -70,6 +74,7 @@ model User {
   name              String
   workEmail         String    @map("work_email")
   personalEmail     String    @map("personal_email")
+  department           String?     
   phone             String
   passwordHash      String    @map("password_hash")
   role              String    @default("user")
@@ -107,8 +112,15 @@ model User {
   createdProjects      Project[]                  @relation("ProjectCreator")
   managedProjects      Project[]                  @relation("ProjectManager")
   refreshTokens        RefreshToken[]
-  createdReleasePlans  ReleasePlan[]              @relation("ReleasePlanCreator")
-  statusUpdates        StatusUpdate[]             @relation("UserStatusUpdates")
+  createdReleasePlans  ReleasePlan[]       @relation("ReleasePlanCreator")
+
+  createdReimbursementCategories ReimbursementCategory[] @relation("CategoryCreator")
+  updatedReimbursementCategories ReimbursementCategory[] @relation("CategoryUpdater")
+
+  reimbursementRequests ReimbursementRequest[]
+  reimbursementApprovals ReimbursementApproval[]
+  
+  statusUpdates        StatusUpdate[]      @relation("UserStatusUpdates")
   performedActivityLog TicketActivityLog[]
   ticketAttachments    TicketAttachment[]
   ticketComments       TicketComment[]
@@ -380,7 +392,7 @@ model TicketRelatedLink {
 model TicketAttachment {
   id           String   @id @default(uuid())
   tenantId     String   @map("tenant_id")
-  ticketId     String   @map("ticket_id")
+  ticketId     String?  @map("ticket_id")
   fileName     String   @map("file_name")
   fileSize     Int      @map("file_size")
   fileType     String   @map("file_type")
@@ -390,15 +402,32 @@ model TicketAttachment {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
   tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  ticket       Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticket       Ticket?  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   uploadedBy   User     @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+
+  reimbursementRequestId  String? @map("reimbursement_request_id")
+  reimbursementRequest    ReimbursementRequest? @relation(fields: [reimbursementRequestId], references: [id], onDelete: Cascade)
+
+  reimbursementItemId     String? @map("reimbursement_item_id")
+  reimbursementItem       ReimbursementItem? @relation(fields: [reimbursementItemId], references: [id], onDelete: Cascade)
+
+  reimbursementCategoryId String? @map("reimbursement_category_id")
+  reimbursementCategory   ReimbursementCategory? @relation(fields: [reimbursementCategoryId], references: [id], onDelete: Cascade)
+
+  reimbursementApprovalId String? @map("reimbursement_approval_id")
+  reimbursementApproval   ReimbursementApproval? @relation(fields: [reimbursementApprovalId], references: [id], onDelete: Cascade)
 
   @@index([ticketId])
   @@index([tenantId, ticketId])
   @@index([tenantId, ticketId], map: "idx_attachment_tenant_ticket")
   @@index([ticketId], map: "idx_attachment_ticket")
+  @@index([reimbursementRequestId])
+  @@index([reimbursementItemId])
+  @@index([reimbursementCategoryId])
+  @@index([reimbursementApprovalId])
   @@map("ticket_attachments")
 }
+
 
 model TicketActivityLog {
   id            String   @id @default(uuid())
@@ -1450,4 +1479,104 @@ model MeetingParticipant {
 
   @@index([meetingId])
   @@map("meeting_participants")
+}
+model ReimbursementCategory {
+  id                 String   @id @default(uuid())
+  tenantId           String   @map("tenant_id")
+  name               String
+  maxPerRequest      Decimal? @map("max_per_request") @db.Decimal(10, 2)
+  monthlyLimit       Decimal? @map("monthly_limit") @db.Decimal(10, 2)
+  yearlyLimit        Decimal? @map("yearly_limit") @db.Decimal(10, 2)
+  eligibleRoles      String[] @default([]) @map("eligible_roles")
+  approvalRoles      String[] @default([]) @map("approval_roles")
+  accept             String[] @default([]) @map("accept_roles")
+  attachmentRequired Boolean  @default(false) @map("attachment_required")
+  isActive           Boolean  @default(true) @map("is_active")
+
+  createdById String?  @map("created_by_id")
+  updatedById String?  @map("updated_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User?  @relation("CategoryCreator", fields: [createdById], references: [id])
+  updatedBy User?  @relation("CategoryUpdater", fields: [updatedById], references: [id])
+
+  ticketAttachments TicketAttachment[]
+
+  @@unique([tenantId, name])
+  @@map("reimbursement_categories")
+}
+
+model ReimbursementRequest {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  requestId       String   @map("request_id")
+  userId          String   @map("user_id")
+  category        String
+  department      String?
+  policy          String?
+  amount          Decimal  @db.Decimal(10, 2)
+  status          String   @default("DRAFT")
+  financeStatus   String?  @map("finance_status")
+  submittedAt     DateTime? @map("submitted_at")
+  
+  activityLog     Json     @default("[]") @map("activity_log")
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items           ReimbursementItem[]
+  approvals       ReimbursementApproval[]
+  ticketAttachments    TicketAttachment[]
+
+  @@unique([tenantId, requestId])
+  @@map("reimbursement_requests")
+}
+
+model ReimbursementItem {
+  id                    String              @id @default(uuid())
+  tenantId              String              @map("tenant_id")
+  reimbursementRequestId String             @map("reimbursement_request_id")
+
+  title                 String?
+  date                  DateTime
+  amount                Decimal             @db.Decimal(10, 2)
+  billNo                String?             @map("bill_no")
+  description           String?
+  attachments           String[]            @default([])
+  status                String?
+  
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  reimbursementRequest  ReimbursementRequest @relation(fields: [reimbursementRequestId], references: [id], onDelete: Cascade)
+  tenant                Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ticketAttachments     TicketAttachment[]
+
+  @@map("reimbursement_item")
+}
+
+model ReimbursementApproval {
+  id                     String               @id @default(uuid())
+  tenantId               String               @map("tenant_id")
+  reimbursementRequestId String               @map("reimbursement_request_id")
+  approverId             String               @map("approver_id")
+  
+  role                   String               // MANAGER, FINANCE
+  status                 String               // APPROVED, REJECTED, CLARIFY, PAID, ON_HOLD
+  comments               String?
+  
+  createdAt              DateTime             @default(now()) @map("created_at")
+  updatedAt              DateTime             @updatedAt @map("updated_at")
+
+  reimbursementRequest   ReimbursementRequest @relation(fields: [reimbursementRequestId], references: [id], onDelete: Cascade)
+  approver               User                 @relation(fields: [approverId], references: [id], onDelete: Cascade)
+  tenant                 Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  ticketAttachments      TicketAttachment[]
+
+  @@map("reimbursement_approval")
 }

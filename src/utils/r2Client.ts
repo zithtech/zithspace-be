@@ -17,7 +17,7 @@ if (!ACCOUNT_ID || !ACCESS_KEY_ID || !SECRET_ACCESS_KEY) {
 // Create S3 client for R2
 export const s3Client = new S3Client({
   region: REGION,
-  endpoint:`https://a7b954c93286b9aecbd1cd369b491aa0.r2.cloudflarestorage.com`,
+  endpoint: `https://a7b954c93286b9aecbd1cd369b491aa0.r2.cloudflarestorage.com`,
   credentials: {
     accessKeyId: ACCESS_KEY_ID!,
     secretAccessKey: SECRET_ACCESS_KEY!,
@@ -62,12 +62,12 @@ export async function uploadImageToR2(
     // Generate unique file name
     const fileExt = contentType.split('/')[1];
     const uniqueId = nanoid(12);
-    
+
     // Organize by tenant and optionally by ticket
-    const folderPath = ticketId 
+    const folderPath = ticketId
       ? `${tenantId}/tickets/${ticketId}/images`
       : `${tenantId}/tickets/images`;
-    
+
     const fileName = `${folderPath}/${uniqueId}.${fileExt}`;
 
     // Upload to R2
@@ -82,7 +82,7 @@ export async function uploadImageToR2(
     await s3Client.send(new PutObjectCommand(params));
 
     // Construct public URL
-    const imageUrl =`https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/${fileName}`;
+    const imageUrl = `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/${fileName}`;
 
     return imageUrl;
   } catch (error: any) {
@@ -103,7 +103,7 @@ export async function uploadFileToR2(
   base64File: string,
   fileName: string,
   tenantId: string,
-  ticketId: string
+  ticketId?: string
 ): Promise<{ fileUrl: string; fileSize: number; fileType: string }> {
   try {
     // Extract content type and base64 data
@@ -127,9 +127,11 @@ export async function uploadFileToR2(
     const fileExtension = fileName.split('.').pop() || 'bin';
     const uniqueId = nanoid(12);
     const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
-    
+
     // Organize by tenant and ticket in attachments folder
-    const folderPath = `${tenantId}/tickets/${ticketId}/attachments`;
+    const folderPath = ticketId
+      ? `${tenantId}/tickets/${ticketId}/attachments`
+      : `${tenantId}/reimbursements/attachments`;
     const storedFileName = `${folderPath}/${uniqueId}_${sanitizedFileName}`;
 
     // Upload to R2
@@ -171,7 +173,7 @@ export async function deleteFileFromR2(
     // Extract file key from URL
     const urlParts = fileUrl.split('/');
     const publicUrlIndex = urlParts.findIndex(part => part.includes('r2.dev'));
-    
+
     if (publicUrlIndex === -1) {
       throw new Error('Invalid file URL');
     }
@@ -210,7 +212,7 @@ export async function deleteImageFromR2(
     // Extract file key from URL
     const urlParts = imageUrl.split('/');
     const bucketIndex = urlParts.indexOf(BUCKET_NAME);
-    
+
     if (bucketIndex === -1) {
       throw new Error('Invalid image URL');
     }
