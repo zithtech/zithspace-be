@@ -15,7 +15,6 @@ export class DailyUpdateController {
    */
   static async createUpdate(req: AuthRequest, res: Response): Promise<void> {
     try {
-    
       if (!req.tenantId || !req.user) {
         res.status(400).json({
           success: false,
@@ -23,10 +22,15 @@ export class DailyUpdateController {
         } as ApiResponse);
         return;
       }
-  console.log("request checking",req.body);
-      const { mood, totalHoursWorked, projectUpdates, generalNotes, date} =
-        req.body;
-
+      console.log("request checking", req.body);
+      const {
+        mood,
+        totalHoursWorked,
+        projectUpdates,
+        generalNotes,
+        date,
+        updateType,
+      } = req.body;
 
       // Validation
       if (
@@ -161,7 +165,7 @@ export class DailyUpdateController {
         (sum: number, update: any) => {
           return sum + (update.hoursWorked || 0);
         },
-        0
+        0,
       );
 
       const today = new Date();
@@ -235,7 +239,7 @@ export class DailyUpdateController {
 
             if (!project) {
               throw new ValidationError(
-                `Project not found: ${update.projectId}`
+                `Project not found: ${update.projectId}`,
               );
             }
 
@@ -251,39 +255,36 @@ export class DailyUpdateController {
 
             if (!isMember && !isProjectManager) {
               throw new ValidationError(
-                `You are not a member of project: ${project.name}`
+                `You are not a member of project: ${project.name}`,
               );
             }
           }
-          
 
           const now = new Date();
 
           // // submitted working date (from frontend or today)
-          console.log("date****",date);
+          console.log("date****", date);
 
-           const submittedDate = date ? new Date(date) : new Date();
-           submittedDate.setHours(0, 0, 0, 0);
-          console.log("submittedDate",submittedDate);
-           console.log("date",date);
-
+          const submittedDate = date ? new Date(date) : new Date();
+          submittedDate.setHours(0, 0, 0, 0);
+          console.log("submittedDate", submittedDate);
+          console.log("date", date);
 
           // // today's date
-           const todaydate = new Date();
-           todaydate.setHours(0, 0, 0, 0);
+          const todaydate = new Date();
+          todaydate.setHours(0, 0, 0, 0);
 
-            const tdy = new Date();
+          const tdy = new Date();
 
           // // todaydate.setHours(0, 0, 0, 0);
-            
-            const isMissed = submittedDate < todaydate;
-            console.log("isMissed",isMissed)
-            
-            const missedUpdateAt = isMissed ? submittedDate : null;
-            console.log("missedUpdateAt ",missedUpdateAt )
+
+          const isMissed = submittedDate < todaydate;
+          console.log("isMissed", isMissed);
+
+          const missedUpdateAt = isMissed ? submittedDate : null;
+          console.log("missedUpdateAt ", missedUpdateAt);
 
           // Working date selected by user
-         
 
           const statusUpdate = await client.statusUpdate.create({
             data: {
@@ -299,6 +300,7 @@ export class DailyUpdateController {
               totalHoursWorked: totalHoursWorked || null,
               projectUpdates: projectUpdates,
               generalNotes: generalNotes || null,
+              updateType: updateType ?? null,
             },
 
             include: {
@@ -314,7 +316,7 @@ export class DailyUpdateController {
           });
 
           return statusUpdate;
-        }
+        },
       );
 
       res.status(201).json({
@@ -345,7 +347,6 @@ export class DailyUpdateController {
    */
   static async getMyUpdates(req: AuthRequest, res: Response): Promise<void> {
     try {
-     
       if (!req.tenantId || !req.user) {
         res.status(400).json({
           success: false,
@@ -398,7 +399,7 @@ export class DailyUpdateController {
             orderBy: { date: "desc" },
             take: Number(limit),
           });
-        }
+        },
       );
 
       res.status(200).json({
@@ -427,7 +428,10 @@ export class DailyUpdateController {
         return;
       }
 
-      const { date, startDate, endDate, projectId, userId } = req.query;
+      const { date, startDate, endDate, projectId, userId, updateType } =
+        req.query;
+        console.log("updateType from URL:", req.query.updateType);
+
 
       const updates = await tenantAwarePrisma.withTenant(
         req.tenantId,
@@ -468,6 +472,9 @@ export class DailyUpdateController {
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             where.date = today;
+          }
+          if (updateType) {
+            where.updateType = updateType;
           }
 
           // Super Admin - can see all updates
@@ -537,7 +544,7 @@ export class DailyUpdateController {
             allUpdates = allUpdates.filter((update) => {
               const projectUpdates = update.projectUpdates as any[];
               return projectUpdates.some((pu) =>
-                projectIds.includes(pu.projectId)
+                projectIds.includes(pu.projectId),
               );
             });
           }
@@ -551,7 +558,7 @@ export class DailyUpdateController {
           }
 
           return allUpdates;
-        }
+        },
       );
 
       res.status(200).json({
@@ -650,13 +657,13 @@ export class DailyUpdateController {
             allUpdates = allUpdates.filter((update) => {
               const projectUpdates = update.projectUpdates as any[];
               return projectUpdates.some((pu) =>
-                projectIds.includes(pu.projectId)
+                projectIds.includes(pu.projectId),
               );
             });
           }
 
           return allUpdates;
-        }
+        },
       );
 
       res.status(200).json({
@@ -683,7 +690,7 @@ export class DailyUpdateController {
 
   static async checkTodaySubmission(
     req: AuthRequest,
-    res: Response
+    res: Response,
   ): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
@@ -781,7 +788,7 @@ export class DailyUpdateController {
             const projectIds = managedProjects.map((p) => p.id);
             const projectUpdates = statusUpdate.projectUpdates as any[];
             const hasAccess = projectUpdates.some((pu) =>
-              projectIds.includes(pu.projectId)
+              projectIds.includes(pu.projectId),
             );
 
             if (hasAccess) {
@@ -790,9 +797,9 @@ export class DailyUpdateController {
           }
 
           throw new ValidationError(
-            "You do not have permission to view this update"
+            "You do not have permission to view this update",
           );
-        }
+        },
       );
 
       res.status(200).json({
@@ -846,7 +853,7 @@ export class DailyUpdateController {
           // Only owner can update
           if (existing.userId !== req.user!.id) {
             throw new ValidationError(
-              "You can only update your own daily updates"
+              "You can only update your own daily updates",
             );
           }
 
@@ -877,7 +884,7 @@ export class DailyUpdateController {
           if (projectUpdates) {
             if (!Array.isArray(projectUpdates) || projectUpdates.length === 0) {
               throw new ValidationError(
-                "At least one project update is required"
+                "At least one project update is required",
               );
             }
 
@@ -892,7 +899,7 @@ export class DailyUpdateController {
                 update.tasks.length === 0
               ) {
                 throw new ValidationError(
-                  "Each project must have at least one task"
+                  "Each project must have at least one task",
                 );
               }
             }
@@ -927,7 +934,7 @@ export class DailyUpdateController {
           });
 
           return updated;
-        }
+        },
       );
 
       res.status(200).json({
@@ -964,69 +971,68 @@ export class DailyUpdateController {
   /**
    * Delete daily status update
    */
- static async deleteUpdate(req: AuthRequest, res: Response): Promise<void> {
-  try {
-    if (!req.tenantId || !req.user) {
-       res.status(400).json({
+  static async deleteUpdate(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+      }
+
+      const { id } = req.params;
+
+      await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+        console.log("Trying to delete ID:", id, "Tenant:", req.tenantId);
+
+        // ✅ Use findUnique if id is unique
+        const existing = await client.statusUpdate.findUnique({
+          where: { id },
+        });
+
+        console.log("Existing record found:", existing);
+
+        if (!existing) {
+          return res.status(404).json({
+            success: false,
+            error: "Daily update not found",
+          } as ApiResponse);
+        }
+
+        // ✅ Only owner can delete
+        if (existing.userId !== req.user.id) {
+          return res.status(403).json({
+            success: false,
+            error: "You can only delete your own daily updates",
+          } as ApiResponse);
+        }
+
+        // ✅ Delete by unique id only
+        await client.statusUpdate.delete({
+          where: { id },
+        });
+      });
+
+      // ✅ Success response
+      res.status(200).json({
+        success: true,
+        message: "Daily update deleted successfully",
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Delete daily update error:", error);
+      res.status(500).json({
         success: false,
-        error: "Tenant context and authentication required",
+        error: "Failed to delete daily update",
       } as ApiResponse);
     }
-
-    const { id } = req.params;
-
-    await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-      console.log("Trying to delete ID:", id, "Tenant:", req.tenantId);
-
-      // ✅ Use findUnique if id is unique
-      const existing = await client.statusUpdate.findUnique({
-        where: { id },
-      });
-
-      console.log("Existing record found:", existing);
-
-      if (!existing) {
-        return res.status(404).json({
-          success: false,
-          error: "Daily update not found",
-        } as ApiResponse);
-      }
-
-      // ✅ Only owner can delete
-      if (existing.userId !== req.user.id) {
-        return res.status(403).json({
-          success: false,
-          error: "You can only delete your own daily updates",
-        } as ApiResponse);
-      }
-
-      // ✅ Delete by unique id only
-      await client.statusUpdate.delete({
-        where: { id },
-      });
-    });
-
-    // ✅ Success response
-     res.status(200).json({
-      success: true,
-      message: "Daily update deleted successfully",
-    } as ApiResponse);
-
-  } catch (error: any) {
-    console.error("Delete daily update error:", error);
-     res.status(500).json({
-      success: false,
-      error: "Failed to delete daily update",
-    } as ApiResponse);
   }
-}
 
   /**
    * Get submission statistics (PM/Admin only)
    */
   static async getSubmissionStats(
     req: AuthRequest,
-    res: Response
+    res: Response,
   ): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
@@ -1057,7 +1063,7 @@ export class DailyUpdateController {
             user.position !== "Project Manager"
           ) {
             throw new ValidationError(
-              "You do not have permission to view statistics"
+              "You do not have permission to view statistics",
             );
           }
 
@@ -1121,7 +1127,7 @@ export class DailyUpdateController {
               end: end.toISOString(),
             },
           };
-        }
+        },
       );
 
       res.status(200).json({
