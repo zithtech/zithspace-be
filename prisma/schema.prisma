@@ -8,79 +8,121 @@ datasource db {
 }
 
 model Tenant {
-  id                  String                @id @default(uuid())
-  name                String
-  subdomain           String                @unique
-  planType            String                @default("basic") @map("plan_type")
-  maxUsers            Int                   @default(10) @map("max_users")
-  isActive            Boolean               @default(true) @map("is_active")
-  settings            Json?                 @default("{}")
-  createdAt           DateTime              @default(now()) @map("created_at")
-  updatedAt           DateTime              @updatedAt @map("updated_at")
-  attendance          Attendance[]
-  attendanceBreaks    AttendanceBreak[]
-  buckets             Bucket[]
-  clients             Client[]
-  dropdownOptions     DropdownOption[]
-  leaves              Leave[]
-  fixedHolidays       FixedHoliday[]
-  projects            Project[]
-  releasePlans        ReleasePlan[]
-  shifts              Shift[]
+  id               String            @id @default(uuid())
+  name             String
+  subdomain        String            @unique
+  planType         String            @default("basic") @map("plan_type")
+  maxUsers         Int               @default(10) @map("max_users")
+  isActive         Boolean           @default(true) @map("is_active")
+  settings         Json?             @default("{}")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  attendance       Attendance[]
+  attendanceBreaks AttendanceBreak[]
+  buckets          Bucket[]
+  customers        Customer[]
+  dropdownOptions  DropdownOption[]
+  leaves           Leave[]
+  leaveTypes          LeaveType[]
+  leaveAdjustments    LeaveAdjustment[]
+  leaveOriginStructures LeaveOriginStructure[]
+  originLeaveTypes      OriginLeaveType[]
+  fixedHolidays    FixedHoliday[]
+
+  salaryComponents SalaryComponent[]
+  companies        Company[]
+  holidays         CompanyGovernmentHoliday[]
+  projects         Project[]
+  releasePlans     ReleasePlan[]
+
+   reimbursementCategories ReimbursementCategory[]
+
+
+
+
+
+  shifts           Shift[]
+
   sprintCompletionLogs SprintCompletionLog[]
-  statusUpdates       StatusUpdate[]
-  ticketActivityLog   TicketActivityLog[]
-  ticketAttachments   TicketAttachment[]
-  ticketComments      TicketComment[]
-  ticketRelatedLinks  TicketRelatedLink[]
-  ticketWorkflowSteps TicketWorkflowStep[]
-  tickets             Ticket[]
-  transactions        Transaction[]
-  users               User[]
-  documenthub         DocumentHub[]
-  documents           Document[]
-  documenttree        DocumentTree[]
-  documentHistory     DocumentHistory[]
-  
+  statusUpdates        StatusUpdate[]
+  ticketActivityLog    TicketActivityLog[]
+  ticketAttachments    TicketAttachment[]
+  ticketComments       TicketComment[]
+  ticketRelatedLinks   TicketRelatedLink[]
+  ticketWorkflowSteps  TicketWorkflowStep[]
+  tickets              Ticket[]
+  transactions         Transaction[]
+  users                User[]
+  generalSettings      GeneralSetting[]
+  invoiceSettings      InvoiceSetting[]
+  paymentSettings      PaymentSetting[]
+  settingsProfiles     SettingsProfile[]
+  invoices             Invoice[]
+  items                InvoiceItem[]
+  payments             InvoicePayment[]
+  repositories         Repository[] // Relation to Code Repositories
+  documenthub          DocumentHub[]
+  documents            Document[]
+  documenttree         DocumentTree[]
+  documentHistory      DocumentHistory[]
+
   // ZithTech Calls Relations
-  channels            Channel[]
-  meetings            Meeting[]
-  
+  channels Channel[]
+  meetings Meeting[]
+  Client   Client[]
 
   @@map("tenants")
 }
 
 model User {
-  id                   String              @id @default(uuid())
-  tenantId             String              @map("tenant_id")
-  name                 String
-  workEmail            String              @map("work_email")
-  personalEmail        String              @map("personal_email")
-  phone                String
-  passwordHash         String              @map("password_hash")
-  role                 String              @default("user")
-  position             String
-  reportsToId          String?             @map("reports_to_id")
-  dateOfBirth          DateTime?           @map("date_of_birth")
-  workDays             Int[]               @default([1, 2, 3, 4, 5]) @map("work_days")
-  assignedShiftId      String?             @map("assigned_shift_id")
-  shiftAssignedById    String?             @map("shift_assigned_by_id")
-  shiftAssignedDate    DateTime?           @map("shift_assigned_date")
-  isActive             Boolean             @default(true) @map("is_active")
-  lastLoginAt          DateTime?           @map("last_login_at")
-  createdAt            DateTime            @default(now()) @map("created_at")
-  updatedAt            DateTime            @updatedAt @map("updated_at")
-  enteredAttendance    Attendance[]        @relation("AttendanceEnteredBy")
+  id                String    @id @default(uuid())
+  tenantId          String    @map("tenant_id")
+  name              String
+  workEmail         String    @map("work_email")
+  personalEmail     String    @map("personal_email")
+  phone             String
+  passwordHash      String    @map("password_hash")
+  role              String    @default("user")
+  position          String
+  reportsToId       String?   @map("reports_to_id")
+  dateOfBirth       DateTime? @map("date_of_birth")
+  workDays          Int[]     @default([1, 2, 3, 4, 5]) @map("work_days")
+  assignedShiftId   String?   @map("assigned_shift_id")
+  shiftAssignedById String?   @map("shift_assigned_by_id")
+  shiftAssignedDate DateTime? @map("shift_assigned_date")
+  isActive          Boolean   @default(true) @map("is_active")
+  lastLoginAt       DateTime? @map("last_login_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  createdSalaryComponents SalaryComponent[] @relation("SalaryComponentCreator")
+  updatedSalaryComponents SalaryComponent[] @relation("SalaryComponentUpdater")
+  createdCompanies        Company[]         @relation("CompanyCreator")
+  updatedCompanies        Company[]         @relation("CompanyUpdater")
+  createdCustomers        Customer[]        @relation("CustomerCreatedBy")
+  updatedCustomers        Customer[]        @relation("CustomerUpdatedBy")
+
+  enteredAttendance    Attendance[]               @relation("AttendanceEnteredBy")
   attendance           Attendance[]
-  createdClients       Client[]            @relation("ClientCreator")
-  leaves               Leave[]             @relation("UserLeaves")
-  approvedLeaves       Leave[]             @relation("LeaveApprover")
+  createdClients       Client[]                   @relation("ClientCreator")
+  approvedLeaves       Leave[]                    @relation("LeaveApprover")
+  createdLeaveTypes    LeaveType[]         @relation("LeaveTypeCreator")
+  updatedLeaveTypes    LeaveType[]         @relation("LeaveTypeUpdater")
+  leaves               Leave[]                    @relation("UserLeaves")
+  leaveAdjustments        LeaveAdjustment[] @relation("UserLeaveAdjustments")
+  approvedAdjustments     LeaveAdjustment[] @relation("LeaveAdjustmentApprover")
+  createdLeaveAdjustments LeaveAdjustment[] @relation("LeaveAdjustmentCreator")
+  updatedLeaveAdjustments LeaveAdjustment[] @relation("LeaveAdjustmentUpdater")
+  createdLeaveOriginStructures LeaveOriginStructure[] @relation("LeaveOriginStructureCreator")
+  updatedLeaveOriginStructures LeaveOriginStructure[] @relation("LeaveOriginStructureUpdater")
+  createdOriginLeaveTypes      OriginLeaveType[]      @relation("OriginLeaveTypeCreator")
+  updatedOriginLeaveTypes      OriginLeaveType[]      @relation("OriginLeaveTypeUpdater")
   projectMemberships   ProjectMember[]
-  createdProjects      Project[]           @relation("ProjectCreator")
-  managedProjects      Project[]           @relation("ProjectManager")
+  createdProjects      Project[]                  @relation("ProjectCreator")
+  managedProjects      Project[]                  @relation("ProjectManager")
   refreshTokens        RefreshToken[]
-  createdReleasePlans  ReleasePlan[]       @relation("ReleasePlanCreator")
-  statusUpdates        StatusUpdate[]      @relation("UserStatusUpdates")
+  createdReleasePlans  ReleasePlan[]              @relation("ReleasePlanCreator")
+  statusUpdates        StatusUpdate[]             @relation("UserStatusUpdates")
   performedActivityLog TicketActivityLog[]
   ticketAttachments    TicketAttachment[]
   ticketComments       TicketComment[]
@@ -89,15 +131,17 @@ model User {
   documents            Document[]
   documentHistory      DocumentHistory[]
   documenttree         DocumentTree[]
-  assignedTickets      Ticket[]            @relation("TicketAssignee")
-  createdTickets       Ticket[]            @relation("TicketCreator")
-  reportToTickets      Ticket[]            @relation("TicketReportTo")
-  archivedTickets      Ticket[]            @relation("TicketArchivedBy")
-  deletedTickets       Ticket[]            @relation("TicketDeletedBy")
-  createdBuckets       Bucket[]            @relation("BucketCreator")
+  assignedTickets      Ticket[]                   @relation("TicketAssignee")
+  createdTickets       Ticket[]                   @relation("TicketCreator")
+  reportToTickets      Ticket[]                   @relation("TicketReportTo")
+  archivedTickets      Ticket[]                   @relation("TicketArchivedBy")
+  deletedTickets       Ticket[]                   @relation("TicketDeletedBy")
+  createdBuckets       Bucket[]                   @relation("BucketCreator")
   bucketMemberships    BucketMember[]
-  createdFixedHolidays FixedHoliday[]      @relation("FixedHolidayCreator")
-  updatedFixedHolidays FixedHoliday[]      @relation("FixedHolidayUpdater")
+  createdFixedHolidays FixedHoliday[]             @relation("FixedHolidayCreator")
+  updatedFixedHolidays FixedHoliday[]             @relation("FixedHolidayUpdater")
+  createdHolidays      CompanyGovernmentHoliday[] @relation("CompanyGovernmentHolidayCreator")
+  updatedHolidays      CompanyGovernmentHoliday[] @relation("CompanyGovernmentHolidayUpdater")
   sprintCompletionLogs SprintCompletionLog[]
   transactions         Transaction[]
   assignedShift        Shift?              @relation("UserShift", fields: [assignedShiftId], references: [id])
@@ -105,14 +149,6 @@ model User {
   subordinates         User[]              @relation("UserHierarchy")
   shiftAssignedBy      User?               @relation("ShiftAssigner", fields: [shiftAssignedById], references: [id])
   assignedShifts       User[]              @relation("ShiftAssigner")
-  
-  // ZithTech Calls Relations
-  createdChannels      Channel[]           @relation("ChannelCreator")
-  channelMemberships   ChannelMember[]
-  channelMessages      ChannelMessage[]
-  createdMeetings      Meeting[]           @relation("MeetingCreator")
-  meetingParticipations MeetingParticipant[]
-
   tenant               Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 // ---------------- TIMESHEETS ----------------
 
@@ -135,11 +171,84 @@ model User {
 
  
 
+
+
+    // ===== Reimbursement Category =====
+  createdReimbursementCategories ReimbursementCategory[] @relation("ReimbursementCategoryCreatedBy")
+  updatedReimbursementCategories ReimbursementCategory[] @relation("ReimbursementCategoryUpdatedBy")
+
+  // ===== Settings Relations =====
+  createdGeneralSettings GeneralSetting[] @relation("GeneralSettingCreatedBy")
+  updatedGeneralSettings GeneralSetting[] @relation("GeneralSettingUpdatedBy")
+  createdInvoiceSettings InvoiceSetting[] @relation("InvoiceSettingCreatedBy")
+  updatedInvoiceSettings InvoiceSetting[] @relation("InvoiceSettingUpdatedBy")
+  createdPaymentSettings PaymentSetting[] @relation("PaymentSettingCreatedBy")
+  updatedPaymentSettings PaymentSetting[] @relation("PaymentSettingUpdatedBy")
+  createdSettingsProfiles SettingsProfile[] @relation("SettingsProfileCreatedBy")
+  updatedSettingsProfiles SettingsProfile[] @relation("SettingsProfileUpdatedBy")
+
+  // ===== Invoice Relations =====
+  createdInvoices Invoice[] @relation("InvoiceCreatedBy")
+  updatedInvoices Invoice[] @relation("InvoiceUpdatedBy")
+  createdInvoiceItems InvoiceItem[] @relation("InvoiceItemCreatedBy")
+  updatedInvoiceItems InvoiceItem[] @relation("InvoiceItemUpdatedBy")
+  createdInvoicePayments InvoicePayment[] @relation("InvoicePaymentCreatedBy")
+  updatedInvoicePayments InvoicePayment[] @relation("InvoicePaymentUpdatedBy")
+
+  // ===== Chat & Meeting Relations =====
+  createdChannels Channel[] @relation("ChannelCreator")
+  channelMemberships ChannelMember[]
+  channelMessages ChannelMessage[]
+  createdMeetings Meeting[] @relation("MeetingCreator")
+  meetingParticipations MeetingParticipant[]
+
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
   @@unique([tenantId, phone])
   @@map("users")
 }
+
+
+
+
+
+model ReimbursementCategory {
+  id                        String   @id @default(uuid())
+  tenantId                  String   @map("tenant_id")
+
+  code                      String   @db.VarChar(50)
+  name                      String   @db.VarChar(100)
+  description               String?
+
+  maxRequestsPerMonth       Int?      @map("max_requests_per_month")
+  monthlyLimitAmount        Decimal?  @map("monthly_limit_amount") @db.Decimal(12, 2)
+  yearlyLimitAmount         Decimal?  @map("yearly_limit_amount")  @db.Decimal(12, 2)
+
+  allowedRoles              String[]  @map("allowed_roles")
+  approvalFlow              Json?     @map("approval_flow")
+
+  attachmentRequired        Boolean   @default(false) @map("attachment_required")
+  autoApproveUnderAmount    Decimal?  @map("auto_approve_under_amount") @db.Decimal(12, 2)
+
+  isActive                  Boolean   @default(true) @map("is_active")
+
+  createdAt                 DateTime  @default(now()) @map("created_at")
+  createdBy                 String    @map("created_by")
+
+  updatedAt                 DateTime  @updatedAt @map("updated_at")
+  updatedBy                 String?   @map("updated_by")
+
+  // Relations
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  createdByUser User     @relation("ReimbursementCategoryCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser User?    @relation("ReimbursementCategoryUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@unique([tenantId, code])
+  @@map("reimbursement_category")
+}
+
+
+
 
 model RefreshToken {
   id        String   @id @default(uuid())
@@ -200,79 +309,79 @@ model ProjectMember {
 }
 
 model Ticket {
-  id                  String               @id @default(uuid())
-  tenantId            String               @map("tenant_id")
-  projectId           String               @map("project_id")
-  releasePlanId       String?              @map("release_plan_id")
-  sprintPlanId        String?              @map("sprint_plan_id")
-  demoPlanId          String?              @map("demo_plan_id")
-  bucketId            String?              @map("bucket_id")
+  id                  String    @id @default(uuid())
+  tenantId            String    @map("tenant_id")
+  projectId           String    @map("project_id")
+  releasePlanId       String?   @map("release_plan_id")
   title               String
   description         String?
-  ticketNumber        String               @map("ticket_number")
-  status              String               @default("not_started")
-  priority            String               @default("Medium (P2)")
-  type                String               @default("Task")
-  platform            String               @default("Development")
+  ticketNumber        String    @map("ticket_number")
+  status              String    @default("not_started")
+  priority            String    @default("Medium (P2)")
+  type                String    @default("Task")
+  platform            String    @default("Development")
   stack               String?
-  taskLevel           String               @default("Medium") @map("task_level")
-  storyPoint          Int                  @default(1) @map("story_point")
-  estimateHours       Decimal              @default(0) @map("estimate_hours") @db.Decimal(5, 2)
-  assigneeId          String?              @map("assignee_id")
-  reportToId          String?              @map("report_to_id")
-  createdById         String               @map("created_by_id")
-  parentTickets       String[]             @default([]) @map("parent_tickets")
-  parentTicketNotes   String?              @map("parent_ticket_notes")
-  currentWorkflowStep String               @default("Scope Document") @map("current_workflow_step")
-  startDate           DateTime?            @map("start_date")
-  endDate             DateTime?            @map("end_date")
-  dueDate             DateTime?            @map("due_date")
-  completedAt         DateTime?            @map("completed_at")
-  tags                String[]             @default([])
-  metadata            Json?                @default("{}")
-  createdAt           DateTime             @default(now()) @map("created_at")
-  updatedAt           DateTime             @updatedAt @map("updated_at")
-  
+  taskLevel           String    @default("Medium") @map("task_level")
+  storyPoint          Int       @default(1) @map("story_point")
+  estimateHours       Decimal   @default(0) @map("estimate_hours") @db.Decimal(5, 2)
+  assigneeId          String?   @map("assignee_id")
+  reportToId          String?   @map("report_to_id")
+  createdById         String    @map("created_by_id")
+  parentTickets       String[]  @default([]) @map("parent_tickets")
+  parentTicketNotes   String?   @map("parent_ticket_notes")
+  currentWorkflowStep String    @default("Scope Document") @map("current_workflow_step")
+  startDate           DateTime? @map("start_date")
+  endDate             DateTime? @map("end_date")
+  dueDate             DateTime? @map("due_date")
+  completedAt         DateTime? @map("completed_at")
+  tags                String[]  @default([])
+  metadata            Json?     @default("{}")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+  epicId              String?   @map("epic_id")
+  parentId            String?   @map("parent_id")
+  rank                String?
+  demoPlanId          String?   @map("demo_plan_id")
+  sprintPlanId        String?   @map("sprint_plan_id")
+  bucketId            String?   @map("bucket_id")
+
   // Archive fields
-  isArchived          Boolean              @default(false) @map("is_archived")
-  archivedAt          DateTime?            @map("archived_at")
-  archivedById        String?              @map("archived_by_id")
-  
+  isArchived   Boolean   @default(false) @map("is_archived")
+  archivedAt   DateTime? @map("archived_at")
+  archivedById String?   @map("archived_by_id")
+
   // Soft delete / Trash fields
-  isDeleted           Boolean              @default(false) @map("is_deleted")
-  deletedAt           DateTime?            @map("deleted_at")
-  deletedById         String?              @map("deleted_by_id")
-  
-  // Hierarchy fields for Epic/Story/Sub-task support
-  epicId              String?              @map("epic_id")
-  parentId            String?              @map("parent_id")
-  rank                String?              // Lexicographic rank for drag-drop ordering
-  
+  isDeleted   Boolean   @default(false) @map("is_deleted")
+  deletedAt   DateTime? @map("deleted_at")
+  deletedById String?   @map("deleted_by_id")
+
   // Relations
-  activityLog         TicketActivityLog[]
-  attachments         TicketAttachment[]
-  comments            TicketComment[]
-  relatedLinks        TicketRelatedLink[]
-  workflowSteps       TicketWorkflowStep[]
-  documenthub         DocumentHub[]
-  assignee            User?                @relation("TicketAssignee", fields: [assigneeId], references: [id])
-  createdBy           User                 @relation("TicketCreator", fields: [createdById], references: [id])
-  project             Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  releasePlan         ReleasePlan?         @relation("TicketReleasePlan", fields: [releasePlanId], references: [id])
-  sprintPlan          ReleasePlan?         @relation("TicketSprintPlan", fields: [sprintPlanId], references: [id])
-  demoPlan            ReleasePlan?         @relation("TicketDemoPlan", fields: [demoPlanId], references: [id])
-  bucket              Bucket?              @relation(fields: [bucketId], references: [id], onDelete: SetNull)
-  reportTo            User?                @relation("TicketReportTo", fields: [reportToId], references: [id])
-  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  workEntries         WorkEntry[]
-  
+  activityLog   TicketActivityLog[]
+  attachments   TicketAttachment[]
+  comments      TicketComment[]
+  relatedLinks  TicketRelatedLink[]
+  workflowSteps TicketWorkflowStep[]
+  documenthub   DocumentHub[]
+  branches      TicketBranch[]
+  pullRequests  TicketPullRequest[]
+  assignee      User?                @relation("TicketAssignee", fields: [assigneeId], references: [id])
+  createdBy     User                 @relation("TicketCreator", fields: [createdById], references: [id])
+  project       Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  releasePlan   ReleasePlan?         @relation("TicketReleasePlan", fields: [releasePlanId], references: [id])
+  sprintPlan    ReleasePlan?         @relation("TicketSprintPlan", fields: [sprintPlanId], references: [id])
+  demoPlan      ReleasePlan?         @relation("TicketDemoPlan", fields: [demoPlanId], references: [id])
+  bucket        Bucket?              @relation(fields: [bucketId], references: [id], onDelete: SetNull)
+  reportTo      User?                @relation("TicketReportTo", fields: [reportToId], references: [id])
+  tenant        Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  workEntries   WorkEntry[]
+
   // Hierarchy relations
-  epic                Ticket?              @relation("EpicStories", fields: [epicId], references: [id], onDelete: SetNull)
-  stories             Ticket[]             @relation("EpicStories")
-  parent              Ticket?              @relation("ParentSubTasks", fields: [parentId], references: [id], onDelete: SetNull)
-  subTasks            Ticket[]             @relation("ParentSubTasks")
-  archivedBy          User?                @relation("TicketArchivedBy", fields: [archivedById], references: [id])
-  deletedBy           User?                @relation("TicketDeletedBy", fields: [deletedById], references: [id])
+  epic       Ticket?  @relation("EpicStories", fields: [epicId], references: [id], onDelete: SetNull)
+  stories    Ticket[] @relation("EpicStories")
+  parent     Ticket?  @relation("ParentSubTasks", fields: [parentId], references: [id], onDelete: SetNull)
+  subTasks   Ticket[] @relation("ParentSubTasks")
+  archivedBy User?    @relation("TicketArchivedBy", fields: [archivedById], references: [id])
+  deletedBy  User?    @relation("TicketDeletedBy", fields: [deletedById], references: [id])
 
   @@unique([tenantId, ticketNumber])
   @@index([epicId])
@@ -356,9 +465,9 @@ model TicketAttachment {
   tenantId     String   @map("tenant_id")
   ticketId     String   @map("ticket_id")
   fileName     String   @map("file_name")
-  fileUrl      String   @map("file_url")
   fileSize     Int      @map("file_size")
   fileType     String   @map("file_type")
+  fileUrl      String   @map("file_url")
   uploadedById String   @map("uploaded_by_id")
   uploadedAt   DateTime @default(now()) @map("uploaded_at")
   createdAt    DateTime @default(now()) @map("created_at")
@@ -369,6 +478,8 @@ model TicketAttachment {
 
   @@index([ticketId])
   @@index([tenantId, ticketId])
+  @@index([tenantId, ticketId], map: "idx_attachment_tenant_ticket")
+  @@index([ticketId], map: "idx_attachment_ticket")
   @@map("ticket_attachments")
 }
 
@@ -416,12 +527,18 @@ model ReleasePlan {
   version              String
   description          String?
   status               String                @default("planned")
-  startDate            DateTime?             @map("start_date")
-  endDate              DateTime?             @map("end_date")
   releaseDate          DateTime?             @map("release_date")
   createdById          String                @map("created_by_id")
   createdAt            DateTime              @default(now()) @map("created_at")
   updatedAt            DateTime              @updatedAt @map("updated_at")
+  type                 String                @default("release_plan")
+  goal                 String?
+  startedAt            DateTime?             @map("started_at")
+  completedAt          DateTime?             @map("completed_at")
+  committedPoints      Int                   @default(0) @map("committed_points")
+  completedPoints      Int                   @default(0) @map("completed_points")
+  endDate              DateTime?             @map("end_date")
+  startDate            DateTime?             @map("start_date")
   createdBy            User                  @relation("ReleasePlanCreator", fields: [createdById], references: [id])
   project              Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
   tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -429,16 +546,6 @@ model ReleasePlan {
   sprintTickets        Ticket[]              @relation("TicketSprintPlan")
   demoTickets          Ticket[]              @relation("TicketDemoPlan")
   sprintCompletionLogs SprintCompletionLog[]
-
-  // Type of plan: sprint_plan, demo_plan, release_plan
-  type        String    @default("release_plan")
-  
-  // Sprint management fields
-  goal            String?   // Sprint goal/objective
-  startedAt       DateTime? @map("started_at")
-  completedAt     DateTime? @map("completed_at")
-  committedPoints Int       @default(0) @map("committed_points")
-  completedPoints Int       @default(0) @map("completed_points")
 
   @@unique([tenantId, projectId, version])
   @@index([projectId, type, status])
@@ -493,7 +600,6 @@ model Attendance {
   user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   breaks               AttendanceBreak[]
 
-  @@unique([tenantId, userId, date])
   @@map("attendance")
 }
 
@@ -559,11 +665,13 @@ model StatusUpdate {
   submittedAt      DateTime    @default(now()) @map("submitted_at")
   createdAt        DateTime    @default(now()) @map("created_at")
   updatedAt        DateTime    @updatedAt @map("updated_at")
+  is_missed        Boolean     @default(false)
+  missed_updateAt  DateTime?
   tenant           Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user             User        @relation("UserStatusUpdates", fields: [userId], references: [id], onDelete: Cascade)
   workEntries      WorkEntry[]
+  updateType       String?   // "BOD" | "EOD"
 
-  @@unique([userId, date, tenantId])
   @@index([tenantId, date])
   @@index([userId, date])
   @@map("status_updates")
@@ -590,69 +698,148 @@ model WorkEntry {
   @@map("work_entries")
 }
 
+model LeaveType {
+  id               String   @id @default(uuid())
+  tenantId         String   @map("tenant_id")
+  name             String
+  code             String
+  description      String?
+  type             String   // "Days" or "Hours"
+  days             Int?     @default(1)
+  hours            Decimal? @db.Decimal(4, 2)
+  isPaid           Boolean  @default(true) @map("is_paid")
+  requiresApproval Boolean  @default(true) @map("requires_approval")
+  isActive         Boolean  @default(true) @map("is_active")
+  createdById      String?  @map("created_by_id")
+  updatedById      String?  @map("updated_by_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy        User?    @relation("LeaveTypeCreator", fields: [createdById], references: [id])
+  updatedBy        User?    @relation("LeaveTypeUpdater", fields: [updatedById], references: [id])
+
+  @@unique([tenantId, code])
+  @@map("leave_types")
+}
+
 model Leave {
   id              String    @id @default(uuid())
   tenantId        String    @map("tenant_id")
   userId          String    @map("user_id")
-  type            String    // sick_leave, casual_leave, paid_leave, unpaid_leave, work_from_home, permission
+  type            String
   startDate       DateTime  @map("start_date")
   endDate         DateTime  @map("end_date")
   duration        Decimal   @db.Decimal(5, 2)
-  durationType    String    @map("duration_type") // FULL_DAY, HALF_DAY, HOURS
+  durationType    String    @map("duration_type")
   reason          String
-  status          String    @default("pending") // pending, approved, rejected, cancelled
+  status          String    @default("pending")
   approvedById    String?   @map("approved_by_id")
   approvedAt      DateTime? @map("approved_at")
   rejectionReason String?   @map("rejection_reason")
   attachments     Json      @default("[]")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
-  user            User      @relation("UserLeaves", fields: [userId], references: [id], onDelete: Cascade)
   approvedBy      User?     @relation("LeaveApprover", fields: [approvedById], references: [id])
   tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user            User      @relation("UserLeaves", fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("leaves")
 }
 
+model LeaveAdjustment {
+  id              String    @id @default(uuid())
+  tenantId        String    @map("tenant_id")
+  userId          String    @map("user_id")
+  leaveType       String    @map("leave_type")
+  adjustmentType  String    @map("adjustment_type")
+  amount          Decimal   @db.Decimal(5, 2)
+  unit            String    @default("Days")
+  reason          String
+  approvedById    String?   @map("approved_by_id")
+  compOffWorkDate DateTime? @map("comp_off_work_date")
+  expiryDate      DateTime? @map("expiry_date")
+  createdById     String    @map("created_by_id")
+  updatedById     String?   @map("updated_by_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  tenant     Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user       User   @relation("UserLeaveAdjustments", fields: [userId], references: [id], onDelete: Cascade)
+  approvedBy User?  @relation("LeaveAdjustmentApprover", fields: [approvedById], references: [id])
+  createdBy  User   @relation("LeaveAdjustmentCreator", fields: [createdById], references: [id])
+  updatedBy  User?  @relation("LeaveAdjustmentUpdater", fields: [updatedById], references: [id])
+
+  @@map("leave_adjustments")
+}
+
 model FixedHoliday {
-  id        String   @id @default(uuid())
-  tenantId  String   @map("tenant_id")
-  holidayName String
-  country   String
-  state     String[]
-  fromDate  DateTime @map("from_date")
-  toDate    DateTime @map("to_date")
-  type      String
-  rule      String
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  holidayName String   @map("holiday_name")
+  country     String
+  state       String[]
+  fromDate    DateTime @map("from_date")
+  toDate      DateTime @map("to_date")
+  type        String
+  rule        String
   createdById String?  @map("created_by_id")
   updatedById String?  @map("updated_by_id")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdBy User?    @relation("FixedHolidayCreator", fields: [createdById], references: [id])
-  updatedBy User?    @relation("FixedHolidayUpdater", fields: [updatedById], references: [id])
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy   User?    @relation("FixedHolidayCreator", fields: [createdById], references: [id])
+  updatedBy   User?    @relation("FixedHolidayUpdater", fields: [updatedById], references: [id])
 
   @@map("fixed_holidays")
 }
 
-model Bucket {
-  id          String         @id @default(uuid())
-  tenantId    String         @map("tenant_id")
-  projectId   String?        @map("project_id")
-  name        String
-  description String?
-  color       String?        @default("#6366f1") // Default indigo color
-  isShared    Boolean        @default(false) @map("is_shared") // Collaborative bucket
-  createdById String         @map("created_by_id")
-  createdAt   DateTime       @default(now()) @map("created_at")
-  updatedAt   DateTime       @updatedAt @map("updated_at")
+model Customer {
+  id          String    @id @default(uuid())
+  tenantId    String    @map("tenant_id")
+  companyName String    @map("company_name")
+  email       String
+  phone       String?
+  address     String?
+  city        String?
+  country     String?
+  taxId       String?   @map("tax_id")
+  isActive    Boolean   @default(true) @map("is_active")
+  createdBy   String    @map("created_by")
+  updatedBy   String?   @map("updated_by")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
   
   // Relations
-  tenant      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  project     Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  createdBy   User           @relation("BucketCreator", fields: [createdById], references: [id])
-  tickets     Ticket[]
-  members     BucketMember[]
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoices      Invoice[]
+  createdByUser User      @relation("CustomerCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser User?     @relation("CustomerUpdatedBy", fields: [updatedBy], references: [id])
+
+  // Constraints
+  @@unique([tenantId, email]) // tenant-level email uniqueness
+  @@map("customers")
+}
+
+
+
+model Bucket {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  projectId   String?  @map("project_id")
+  name        String
+  description String?
+  color       String?  @default("#6366f1") // Default indigo color
+  isShared    Boolean  @default(false) @map("is_shared") // Collaborative bucket
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant    Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project   Project?       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User           @relation("BucketCreator", fields: [createdById], references: [id])
+  tickets   Ticket[]
+  members   BucketMember[]
 
   @@unique([tenantId, projectId, name])
   @@index([tenantId])
@@ -662,15 +849,15 @@ model Bucket {
 }
 
 model BucketMember {
-  id        String   @id @default(uuid())
-  bucketId  String   @map("bucket_id")
-  userId    String   @map("user_id")
-  role      String   @default("member") // owner, editor, member
-  addedAt   DateTime @default(now()) @map("added_at")
-  
+  id       String   @id @default(uuid())
+  bucketId String   @map("bucket_id")
+  userId   String   @map("user_id")
+  role     String   @default("member") // owner, editor, member
+  addedAt  DateTime @default(now()) @map("added_at")
+
   // Relations
-  bucket    Bucket   @relation(fields: [bucketId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bucket Bucket @relation(fields: [bucketId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([bucketId, userId])
   @@index([bucketId])
@@ -679,23 +866,23 @@ model BucketMember {
 }
 
 model SprintCompletionLog {
-  id                String   @id @default(uuid())
-  tenantId          String   @map("tenant_id")
-  sprintPlanId      String   @map("sprint_plan_id")
-  projectId         String   @map("project_id")
-  ticketId          String   @map("ticket_id")
-  action            String   // moved_to_sprint, moved_to_bucket, moved_to_backlog, moved_to_trash
-  destinationId     String?  @map("destination_id") // Sprint ID, Bucket ID, or null for backlog/trash
-  destinationType   String?  @map("destination_type") // sprint, bucket, backlog, trash
-  performedById     String   @map("performed_by_id")
-  performedAt       DateTime @default(now()) @map("performed_at")
-  metadata          Json?    @default("{}") // Additional context (previous state, notes, etc.)
-  
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  sprintPlanId    String   @map("sprint_plan_id")
+  projectId       String   @map("project_id")
+  ticketId        String   @map("ticket_id")
+  action          String // moved_to_sprint, moved_to_bucket, moved_to_backlog, moved_to_trash
+  destinationId   String?  @map("destination_id") // Sprint ID, Bucket ID, or null for backlog/trash
+  destinationType String?  @map("destination_type") // sprint, bucket, backlog, trash
+  performedById   String   @map("performed_by_id")
+  performedAt     DateTime @default(now()) @map("performed_at")
+  metadata        Json?    @default("{}") // Additional context (previous state, notes, etc.)
+
   // Relations
-  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  sprintPlan        ReleasePlan @relation(fields: [sprintPlanId], references: [id], onDelete: Cascade)
-  project           Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  performedBy       User        @relation(fields: [performedById], references: [id])
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sprintPlan  ReleasePlan @relation(fields: [sprintPlanId], references: [id], onDelete: Cascade)
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  performedBy User        @relation(fields: [performedById], references: [id])
 
   @@index([sprintPlanId])
   @@index([projectId])
@@ -705,32 +892,459 @@ model SprintCompletionLog {
   @@map("sprint_completion_logs")
 }
 
+enum Currency {
+  USD
+  INR
+  EUR
+  GBP
+  AUD
+  CAD
+  SGD
+}
+
+enum DateFormat {
+  DD_MM_YYYY
+  MM_DD_YYYY
+  YYYY_MM_DD
+}
+
+model GeneralSetting {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  companyName  String     @map("company_name")
+  address      Json
+  primaryColor String     @map("primary_color")
+  currency     Currency
+  dateFormat   DateFormat @map("date_format")
+  companyLogo  String?    @map("company_logo")
+  signature    String?
+
+  // Audit
+  createdBy String  @map("created_by")
+  updatedBy String? @map("updated_by")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdByUser User  @relation("GeneralSettingCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser User? @relation("GeneralSettingUpdatedBy", fields: [updatedBy], references: [id])
+
+  profiles SettingsProfile[]
+
+  @@index([tenantId])
+  @@map("general_settings")
+}
+
+model InvoiceSetting {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  format        String  @default("INV-{YYYY}-{###}")
+  padding       Int     @default(4)
+  nextNumber    Int     @default(1) @map("next_number")
+  resetYearly   Boolean @default(true) @map("reset_yearly")
+  lastResetYear Int     @default(2026) @map("last_reset_year")
+
+  // Audit
+  createdBy String  @map("created_by")
+  updatedBy String? @map("updated_by")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdByUser User  @relation("InvoiceSettingCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser User? @relation("InvoiceSettingUpdatedBy", fields: [updatedBy], references: [id])
+
+  profiles SettingsProfile[]
+
+  @@index([tenantId])
+  @@map("invoice_settings")
+}
+
+model PaymentSetting {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  bankName      String  @map("bank_name")
+  accountNumber String  @map("account_number")
+  ifscCode      String  @map("ifsc_code")
+  branchName    String  @map("branch_name")
+  qrCode        String? @map("qr_code")
+
+  // Audit
+  createdBy String  @map("created_by")
+  updatedBy String? @map("updated_by")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdByUser User  @relation("PaymentSettingCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser User? @relation("PaymentSettingUpdatedBy", fields: [updatedBy], references: [id])
+
+  profiles SettingsProfile[]
+
+  @@index([tenantId])
+  @@map("payment_settings")
+}
+
+model SettingsProfile {
+  id       String  @id @default(uuid())
+  tenantId String  @map("tenant_id")
+  name     String
+  isActive Boolean @default(false) @map("is_active")
+
+  generalId String    @map("general_id")
+  invoiceId String    @map("invoice_id")
+  paymentId String    @map("payment_id")
+  invoices  Invoice[]
+
+  // Audit
+  createdBy String   @map("created_by")
+  updatedBy String?  @map("updated_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant  Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  general GeneralSetting @relation(fields: [generalId], references: [id])
+  invoice InvoiceSetting @relation(fields: [invoiceId], references: [id])
+  payment PaymentSetting @relation(fields: [paymentId], references: [id])
+
+  createdByUser User  @relation("SettingsProfileCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser User? @relation("SettingsProfileUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@index([tenantId])
+  @@index([generalId])
+  @@index([invoiceId])
+  @@index([paymentId])
+  @@map("settings_profiles")
+}
+
+enum InvoiceStatus {
+  DRAFT
+  PENDING
+  APPROVAL
+  SENT
+  SUBMITTED
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+
+  @@map("invoice_status")
+}
+
+enum InvoiceType {
+  STANDARD
+  PROFORMA
+  CREDIT
+  TAX
+  DEBIT
+  RECURRING
+
+  @@map("invoice_type")
+}
+
+enum RecurringFrequency {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+
+  @@map("recurring_frequency")
+}
+
+model Invoice {
+  id               String @id @default(uuid())
+  tenantId         String @map("tenant_id")
+  invoiceNumber    String @unique @map("invoice_number")
+  customerId       String @map("customer_id")
+  customerSnapshot Json?  @map("customer_snapshot")
+
+  invoiceDate DateTime      @map("invoice_date")
+  dueDate     DateTime      @map("due_date")
+  invoiceType InvoiceType   @default(STANDARD) @map("invoice_type")
+  status      InvoiceStatus @default(DRAFT)
+  description String?       @db.Text // Add this line
+
+  currency           Currency
+  recurringFrequency RecurringFrequency? @map("recurring_frequency")
+
+  taxInclusive Boolean @default(false) @map("tax_inclusive")
+  discount     Decimal @default(0) @db.Decimal(15, 2)
+  subtotal     Decimal @db.Decimal(15, 2)
+  taxTotal     Decimal @map("tax_total") @db.Decimal(15, 2)
+  total        Decimal @db.Decimal(15, 2)
+  paidAmount   Decimal @default(0) @map("paid_amount")
+  balanceDue   Decimal @map("balance_due") @db.Decimal(15, 2)
+
+  notes String? @db.Text
+  terms String? @db.Text
+
+  sentAt      DateTime? @map("sent_at")
+  paidAt      DateTime? @map("paid_at")
+  cancelledAt DateTime? @map("cancelled_at")
+
+  pdfUrl   String?          @map("pdf_url") @db.Text
+  payments InvoicePayment[]
+
+  // Audit fields
+  createdBy String   @map("created_by")
+  updatedBy String?  @map("updated_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant            Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer          Customer         @relation(fields: [customerId], references: [id])
+  settingsProfileId String?          @map("settings_profile_id")
+  settingsProfile   SettingsProfile? @relation(fields: [settingsProfileId], references: [id])
+  items             InvoiceItem[]
+
+  // User audit relations
+  createdByUser User  @relation("InvoiceCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser User? @relation("InvoiceUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@index([tenantId, invoiceNumber])
+  @@index([customerId])
+  @@index([status])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id        String @id @default(uuid())
+  tenantId  String @map("tenant_id")
+  invoiceId String @map("invoice_id")
+
+  item        String
+  description String? @db.Text
+  qty         Int     @default(1)
+
+  price Decimal @default(0) @db.Decimal(15, 2)
+  tax   Decimal @default(0) @db.Decimal(15, 2) // percentage
+
+  // Audit fields
+  createdBy String   @map("created_by")
+  updatedBy String?  @map("updated_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  tenant  Tenant  @relation(fields: [tenantId], references: [id])
+
+  // User audit relations
+  createdByUser User  @relation("InvoiceItemCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser User? @relation("InvoiceItemUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@index([invoiceId])
+  @@index([tenantId])
+  @@map("invoice_items")
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CREDIT_CARD
+  DEBIT_CARD
+  CHECK
+  PAYPAL
+  STRIPE
+  OTHER
+
+  @@map("payment_method")
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+  CANCELLED
+
+  @@map("payment_status")
+}
+
+model InvoicePayment {
+  id            String         @id @default(uuid())
+  tenantId      String         @map("tenant_id")
+  invoiceId     String         @map("invoice_id")
+  amount        Decimal        @db.Decimal(15, 2)
+  description   String?
+  paymentDate   DateTime       @default(now()) @map("payment_date")
+  paymentMethod PaymentMethod? @map("payment_method")
+  status        PaymentStatus  @default(PENDING)
+
+  // Audit fields
+  createdBy String   @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedBy String?  @map("updated_by")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  invoice       Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  tenant        Tenant  @relation(fields: [tenantId], references: [id])
+  createdByUser User    @relation("InvoicePaymentCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser User?   @relation("InvoicePaymentUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@index([invoiceId])
+  @@index([tenantId])
+  @@index([tenantId, invoiceId])
+  @@map("invoice_payments")
+}
+
+model SalaryComponent {
+  key Int @id @default(autoincrement())
+
+  tenantId String @map("tenant_id")
+
+  componentName String @map("component_name") @db.VarChar(100)
+  componentCode String @map("component_code") @db.VarChar(50)
+
+  type   ComponentType @default(Earning)
+  status Boolean       @default(true)
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdById String?  @map("created_by_id")
+  updatedById String?  @map("updated_by_id")
+
+  // Relations
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User?  @relation("SalaryComponentCreator", fields: [createdById], references: [id])
+  updatedBy User?  @relation("SalaryComponentUpdater", fields: [updatedById], references: [id])
+
+  @@unique([tenantId, componentCode])
+  @@map("salary_components")
+}
+
+enum ComponentType {
+  Earning
+  Deduction
+
+  @@map("component_type")
+}
+
+model Company {
+  id Int @id @default(autoincrement())
+
+  tenantId String @map("tenant_id")
+
+  name  String
+  email String?
+  phone String?
+
+  // Address
+  plotNo       String? @map("plot_no")
+  floorNo      String? @map("floor_no")
+  buildingName String? @map("building_name")
+  street       String?
+  area         String?
+  city         String?
+  pincode      String?
+  country      String?
+
+  // Registration
+  cin String?
+  gst String?
+
+  isActive Boolean @default(false) @map("is_active")
+
+  logo String?
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdById String?  @map("created_by_id")
+  updatedById String?  @map("updated_by_id")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdBy User? @relation("CompanyCreator", fields: [createdById], references: [id])
+  updatedBy User? @relation("CompanyUpdater", fields: [updatedById], references: [id])
+
+  @@unique([tenantId, name])
+  @@map("companies")
+}
+
+enum HolidayStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model CompanyGovernmentHoliday {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  holidayName String   @map("holiday_name")
+  country     String
+  fromDate    DateTime @map("from_date")
+  toDate      DateTime @map("to_date")
+
+  baseLeave  Int @map("base_leave")
+  extraLeave Int @map("extra_leave")
+  totalLeave Int @map("total_leave")
+
+  type      String
+  isFloater Boolean @default(false) @map("is_floater")
+
+  rule   String?
+  status HolidayStatus @default(ACTIVE)
+
+  createdById String  @map("created_by_id")
+  updatedById String? @map("updated_by_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User   @relation("CompanyGovernmentHolidayCreator", fields: [createdById], references: [id])
+  updatedBy User?  @relation("CompanyGovernmentHolidayUpdater", fields: [updatedById], references: [id])
+
+  // Indexes
+  @@index([tenantId])
+  @@index([createdById])
+  @@index([tenantId, fromDate])
+  @@map("company_government_holidays")
+}
 
 enum DocumentNodeType {
   section
   folder
   file
 }
+
 model DocumentHub {
-  id           String   @id @default(uuid())
-  tenantId     String
-  name         String
+  id       String @id @default(uuid())
+  tenantId String
+  name     String
 
-  projectId    String?
-  ticketId     String?
+  projectId String?
+  ticketId  String?
 
-  createdById  String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   // Relations
-  project      Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  ticket       Ticket?  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  createdBy    User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  ticket    Ticket?  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  createdBy User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  documents    Document[]
-  treeNodes    DocumentTree[]
+  documents Document[]
+  treeNodes DocumentTree[]
 
   @@index([tenantId])
   @@index([projectId])
@@ -738,78 +1352,77 @@ model DocumentHub {
   @@index([createdById])
   @@map("document_hub")
 }
+
 model Document {
-  id            String   @id @default(uuid())
-  tenantId     String
-  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   documentHubId String
   documentHub   DocumentHub @relation(fields: [documentHubId], references: [id], onDelete: Cascade)
 
-  title         String
-  content       Json
+  title   String
+  content Json
 
-  treeNode      DocumentTree?
+  treeNode DocumentTree?
 
-  createdById   String
-  createdBy    User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdById String
+  createdBy   User   @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  history       DocumentHistory[]
+  history DocumentHistory[]
 
   @@index([documentHubId])
   @@map("documents")
-
 }
+
 model DocumentTree {
-  id            String   @id @default(uuid())
-  tenantId     String
-  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id       String @id @default(uuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   documentHubId String
   documentHub   DocumentHub @relation(fields: [documentHubId], references: [id], onDelete: Cascade)
 
-  title         String
-  type          DocumentNodeType
+  title String
+  type  DocumentNodeType
 
-  parentId      String?
-  parent        DocumentTree? @relation("TreeChildren", fields: [parentId], references: [id], onDelete: Cascade)
-  children      DocumentTree[] @relation("TreeChildren")
+  parentId String?
+  parent   DocumentTree?  @relation("TreeChildren", fields: [parentId], references: [id], onDelete: Cascade)
+  children DocumentTree[] @relation("TreeChildren")
 
   // Only set when type = file
-  documentId    String? @unique
-  document      Document? @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  documentId String?   @unique
+  document   Document? @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
-  position      Int      @default(0)
+  position Int @default(0)
 
-  createdById   String
-  createdBy    User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdById String
+  createdBy   User   @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
-
-  createdAt     DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([documentHubId])
   @@index([parentId])
   @@map("documenttree")
-
 }
 
 model DocumentHistory {
-  id            String   @id @default(uuid())
-  documentId    String
-  document      Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  id         String   @id @default(uuid())
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
-  tenantId      String
-  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  content       Json
-  
-  createdById   String
-  createdBy     User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  content Json
 
-  createdAt     DateTime @default(now())
+  createdById String
+  createdBy   User   @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
 
   @@index([documentId])
   @@index([createdById])
@@ -821,103 +1434,103 @@ model DocumentHistory {
 // --------------------------------------
 
 model Channel {
-  id          String   @id @default(uuid())
-  tenantId    String   @map("tenant_id")
-  name        String?  // Optional for DMs
+  id          String  @id @default(uuid())
+  tenantId    String  @map("tenant_id")
+  name        String? // Optional for DMs
   description String?
-  type        String   @default("CHANNEL") // CHANNEL, DM, GROUP
-  
-  isArchived  Boolean  @default(false) @map("is_archived")
-  
+  type        String  @default("CHANNEL") // CHANNEL, DM, GROUP
+
+  isArchived Boolean @default(false) @map("is_archived")
+
   lastMessageAt DateTime? @map("last_message_at")
-  
+
   createdById String   @map("created_by_id")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdBy   User     @relation("ChannelCreator", fields: [createdById], references: [id])
-  
-  members     ChannelMember[]
-  messages    ChannelMessage[]
-  meetings    Meeting[]
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User   @relation("ChannelCreator", fields: [createdById], references: [id])
+
+  members  ChannelMember[]
+  messages ChannelMessage[]
+  meetings Meeting[]
 
   @@map("channels")
 }
 
 model ChannelMember {
-  id        String   @id @default(uuid())
-  channelId String   @map("channel_id")
-  userId    String   @map("user_id")
-  role      String   @default("member") // owner, admin, member
-  joinedAt  DateTime @default(now()) @map("joined_at")
+  id         String    @id @default(uuid())
+  channelId  String    @map("channel_id")
+  userId     String    @map("user_id")
+  role       String    @default("member") // owner, admin, member
+  joinedAt   DateTime  @default(now()) @map("joined_at")
   lastReadAt DateTime? @map("last_read_at")
 
-  channel   Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([channelId, userId])
   @@map("channel_members")
 }
 
 model ChannelMessage {
-  id          String   @id @default(uuid())
-  channelId   String   @map("channel_id")
-  userId      String   @map("user_id")
-  content     String   // Text content
-  type        String   @default("text") // text, system, file
-  attachments Json     @default("[]")
-  
-  isEdited    Boolean  @default(false) @map("is_edited")
-  isDeleted   Boolean  @default(false) @map("is_deleted")
-  
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id          String @id @default(uuid())
+  channelId   String @map("channel_id")
+  userId      String @map("user_id")
+  content     String // Text content
+  type        String @default("text") // text, system, file
+  attachments Json   @default("[]")
 
-  channel     Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isEdited  Boolean @default(false) @map("is_edited")
+  isDeleted Boolean @default(false) @map("is_deleted")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([channelId, createdAt])
   @@map("channel_messages")
 }
 
 model Meeting {
-  id          String   @id @default(uuid())
-  tenantId    String   @map("tenant_id")
-  channelId   String   @map("channel_id")
-  title       String
-  
-  status      String   @default("scheduled") // scheduled, active, completed, cancelled
-  
-  startedAt   DateTime? @map("started_at")
-  endedAt     DateTime? @map("ended_at")
-  
+  id        String @id @default(uuid())
+  tenantId  String @map("tenant_id")
+  channelId String @map("channel_id")
+  title     String
+
+  status String @default("scheduled") // scheduled, active, completed, cancelled
+
+  startedAt DateTime? @map("started_at")
+  endedAt   DateTime? @map("ended_at")
+
   createdById String   @map("created_by_id")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  channel     Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  createdBy   User     @relation("MeetingCreator", fields: [createdById], references: [id])
-  
+  tenant    Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  channel   Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  createdBy User    @relation("MeetingCreator", fields: [createdById], references: [id])
+
   participants MeetingParticipant[]
 
   @@map("meetings")
 }
 
 model MeetingParticipant {
-  id        String   @id @default(uuid())
-  meetingId String   @map("meeting_id")
-  userId    String   @map("user_id")
-  
-  status    String   @default("joined") // joined, left
-  role      String   @default("participant") // host, presenter, participant
-  
-  joinedAt  DateTime @default(now()) @map("joined_at")
-  leftAt    DateTime? @map("left_at")
+  id        String @id @default(uuid())
+  meetingId String @map("meeting_id")
+  userId    String @map("user_id")
 
-  meeting   Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status String @default("joined") // joined, left
+  role   String @default("participant") // host, presenter, participant
+
+  joinedAt DateTime  @default(now()) @map("joined_at")
+  leftAt   DateTime? @map("left_at")
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([meetingId])
   @@map("meeting_participants")
@@ -1003,4 +1616,109 @@ model TimesheetRow {
   @@index([createdById])
   @@index([updatedById])
   @@map("timesheet_rows")
+}
+model LeaveOriginStructure {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  origin      String
+  subOrigin   String   @map("sub_origin")
+
+  createdById String   @map("created_by_id")
+  updatedById String?  @map("updated_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy   User     @relation("LeaveOriginStructureCreator", fields: [createdById], references: [id])
+  updatedBy   User?    @relation("LeaveOriginStructureUpdater", fields: [updatedById], references: [id])
+
+  leaveTypes  OriginLeaveType[]
+
+  @@unique([tenantId, origin, subOrigin])
+  @@map("leave_origin_structures")
+}
+
+model OriginLeaveType {
+  id                  String               @id @default(uuid())
+  tenantId            String               @map("tenant_id")
+  leaveOriginId       String               @map("leave_origin_id")
+  
+  leaveType           String               @map("leave_type")
+  unit                Decimal              @db.Decimal(5, 2)
+  period              String
+  carryForward        Boolean              @default(false) @map("carry_forward")
+  status              String               @default("Active")
+
+  createdById         String               @map("created_by_id")
+  updatedById         String?              @map("updated_by_id")
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  leaveOriginStructure LeaveOriginStructure @relation(fields: [leaveOriginId], references: [id], onDelete: Cascade)
+  createdBy           User                 @relation("OriginLeaveTypeCreator", fields: [createdById], references: [id])
+  updatedBy           User?                @relation("OriginLeaveTypeUpdater", fields: [updatedById], references: [id])
+
+  @@map("origin_leave_types")
+}
+
+// Code Integration Models
+
+model Repository {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  name        String   // e.g. "frontend-monorepo"
+  url         String   // e.g. "https://github.com/org/repo"
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  branches    TicketBranch[]
+  pullRequests TicketPullRequest[]
+
+  @@unique([tenantId, name])
+  @@map("repositories")
+}
+
+model TicketBranch {
+  id           String   @id @default(uuid())
+  ticketId     String   @map("ticket_id")
+  repositoryId String   @map("repository_id")
+  name         String   // e.g. "feat/ticket-123-login"
+  url          String?  // Optional direct link to branch tree
+  isDefault    Boolean  @default(false) @map("is_default")
+  createdAt    DateTime @default(now()) @map("created_at")
+  
+  // Relations
+  ticket       Ticket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+  @@index([repositoryId])
+  @@map("ticket_branches")
+}
+
+model TicketPullRequest {
+  id           String   @id @default(uuid())
+  ticketId     String   @map("ticket_id")
+  repositoryId String   @map("repository_id")
+  title        String?
+  url          String
+  branchName   String?  @map("branch_name")
+  branchUrl    String?  @map("branch_url")
+  number       Int?     // PR Number e.g. 456
+  state        String   @default("open") // open, closed, merged
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  ticket       Ticket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+  @@index([repositoryId])
+  @@map("ticket_pull_requests")
 }
