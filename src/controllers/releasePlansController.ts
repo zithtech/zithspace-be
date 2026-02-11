@@ -93,8 +93,8 @@ export class ReleasePlansController {
         else relevantTickets = plan.tickets;
 
         const totalTickets = relevantTickets.length || 0;
-        const completedTickets = relevantTickets.filter((t) => t.status === "completed").length || 0;
-        const inProgressTickets = relevantTickets.filter((t) => t.status === "in_progress").length || 0;
+        const completedTickets = relevantTickets.filter((t) => ["completed", "dev_complete"].includes(t.status)).length || 0;
+        const inProgressTickets = relevantTickets.filter((t) => ["in_testing", "in_progress"].includes(t.status)).length || 0;
         const notStartedTickets = relevantTickets.filter((t) => ["not_started", "open"].includes(t.status)).length || 0;
 
         const progress = totalTickets > 0
@@ -204,7 +204,7 @@ export class ReleasePlansController {
       else relevantTickets = releasePlan.tickets;
 
       const totalTickets = relevantTickets.length || 0;
-      const completedTickets = relevantTickets.filter((t) => t.status === "completed").length || 0;
+      const completedTickets = relevantTickets.filter((t) => ["completed", "dev_complete"].includes(t.status)).length || 0;
 
       const progress = totalTickets > 0 ? Math.round((completedTickets / totalTickets) * 100) : 0;
 

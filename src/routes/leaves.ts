@@ -49,7 +49,7 @@ router.get("/:id", LeaveController.getLeaveById);
  * @desc    Get all leaves (admin only)
  * @access  Private (admin only)
  */
-router.get("/", requireAdmin, LeaveController.getAllLeaves);
+router.get("/", LeaveController.getAllLeaves);
 
 /**
  * @route   PUT /api/leaves/:id/approve

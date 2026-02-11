@@ -280,4 +280,5 @@ router.get('/:id/attachments', TicketController.getAttachments);
  */
 router.delete('/:ticketId/attachments/:attachmentId', TicketController.deleteAttachment);
 
+
 export default router;

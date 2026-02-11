@@ -2985,7 +2985,6 @@ export class TicketController {
       } as ApiResponse);
     }
   }
-
   /**
    * Get sub-tasks for a ticket (Story or Task) (tenant-aware)
    */

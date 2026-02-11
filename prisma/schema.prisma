@@ -569,6 +569,7 @@ model Attendance {
   effectiveWorkMinutes Int               @default(0) @map("effective_work_minutes")
   overtimeMinutes      Int               @default(0) @map("overtime_minutes")
   lateMinutes          Int               @default(0) @map("late_minutes")
+  earlyLogoutMinutes   Int               @default(0) @map("early_logout_minutes")
   isManualEntry        Boolean           @default(false) @map("is_manual_entry")
   enteredById          String?           @map("entered_by_id")
   notes                String?
