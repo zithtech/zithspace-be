@@ -53,7 +53,7 @@ router.post("/:id/submit", timesheetController_1.TimesheetController.submitTimes
  * @desc    Approve or reject a timesheet
  * @access  Private (admin or manager)
  */
-router.post("/:id/review", auth_1.requireAdmin, timesheetController_1.TimesheetController.approveTimesheet);
+router.post("/:id/review", timesheetController_1.TimesheetController.approveTimesheet);
 /**
  * @route   DELETE /api/timesheets/:id
  * @desc    Delete a timesheet

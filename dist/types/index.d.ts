@@ -594,6 +594,8 @@ export type UpdateTimesheetRowData = {
     description?: string;
     hours?: number;
     billable?: boolean;
+    taskId?: string;
+    projectId?: string;
 };
 export type UpdateTimesheetData = {
     weekStart?: string;

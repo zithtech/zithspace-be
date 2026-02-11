@@ -25,9 +25,6 @@ export declare class TimesheetController {
      * Delete timesheet (soft delete or permanent)
      */
     static deleteTimesheet(req: AuthRequest, res: Response): Promise<void>;
-    /**
-     * Get user projects & tasks for timesheet
-     */
     static getTimesheetMeta(req: AuthRequest, res: Response): Promise<void>;
     static submitTimesheet(req: AuthRequest, res: Response): Promise<Response<any, Record<string, any>>>;
 }
