@@ -17,7 +17,7 @@ class DailyUpdateController {
                 return;
             }
             console.log("request checking", req.body);
-            const { mood, totalHoursWorked, projectUpdates, generalNotes, date } = req.body;
+            const { mood, totalHoursWorked, projectUpdates, generalNotes, date, updateType, } = req.body;
             // Validation
             if (!projectUpdates ||
                 !Array.isArray(projectUpdates) ||
@@ -219,6 +219,12 @@ class DailyUpdateController {
                 const missedUpdateAt = isMissed ? submittedDate : null;
                 console.log("missedUpdateAt ", missedUpdateAt);
                 // Working date selected by user
+                // ✅ AUTO DETERMINE BOD / EOD BASED ON IST TIME
+                const nowTime = new Date();
+                const istTime = new Date(nowTime.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
+                const hours = istTime.getHours();
+                const calculatedUpdateType = hours >= 14 ? "EOD" : "BOD";
+                console.log("Auto calculated updateType:", calculatedUpdateType);
                 const statusUpdate = await client.statusUpdate.create({
                     data: {
                         userId: req.user.id,
@@ -231,6 +237,8 @@ class DailyUpdateController {
                         totalHoursWorked: totalHoursWorked || null,
                         projectUpdates: projectUpdates,
                         generalNotes: generalNotes || null,
+                        updateType: updateType ?? null,
+                        //updateType: calculatedUpdateType,
                     },
                     include: {
                         user: {
@@ -343,7 +351,8 @@ class DailyUpdateController {
                 });
                 return;
             }
-            const { date, startDate, endDate, projectId, userId } = req.query;
+            const { date, startDate, endDate, projectId, userId, updateType } = req.query;
+            console.log("updateType from URL:", req.query.updateType);
             const updates = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
                 // Check user role and position
                 const user = await client.user.findUnique({
@@ -378,6 +387,9 @@ class DailyUpdateController {
                     const today = new Date();
                     today.setHours(0, 0, 0, 0);
                     where.date = today;
+                }
+                if (updateType) {
+                    where.updateType = updateType;
                 }
                 // Super Admin - can see all updates
                 if (user.role === "super_admin") {
