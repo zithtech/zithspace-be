@@ -48,6 +48,9 @@ const leaveAdjustmentRoutes_1 = __importDefault(require("./routes/leaveAdjustmen
 const reimbursementCategory_1 = __importDefault(require("@/routes/reimbursementCategory"));
 const employmentTypeRoutes_1 = __importDefault(require("@/routes/employmentTypeRoutes"));
 const repositoryRoutes_1 = __importDefault(require("@/routes/repositoryRoutes"));
+const departmentRoutes_1 = __importDefault(require("@/routes/departmentRoutes"));
+const subDepartmentRoutes_1 = __importDefault(require("@/routes/subDepartmentRoutes"));
+const positionRoutes_1 = __importDefault(require("@/routes/positionRoutes"));
 const leaveOriginRoutes_1 = __importDefault(require("@/routes/leaveOriginRoutes"));
 // Load environment variables
 dotenv_1.default.config();
@@ -149,6 +152,9 @@ app.use("/api/sprint-completion", sprintCompletion_1.default);
 app.use("/api/salary-components", salaryComponentRoutes_1.default);
 app.use("/api/companies", companyRoutes_1.default);
 app.use("/api/grades", gradeRoutes_1.default);
+app.use("/api/departments", departmentRoutes_1.default);
+app.use("/api/sub-departments", subDepartmentRoutes_1.default);
+app.use("/api/positions", positionRoutes_1.default);
 app.use("/api/employment-types", employmentTypeRoutes_1.default);
 app.use("/api/documenthub", documenthub_1.default);
 app.use("/api/channels", channels_1.default);
