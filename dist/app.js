@@ -14,6 +14,7 @@ const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 // Import configurations
 const database_1 = require("@/config/database");
 const salaryComponentRoutes_1 = __importDefault(require("@/routes/salaryComponentRoutes"));
+const gradeRoutes_1 = __importDefault(require("@/routes/gradeRoutes"));
 const companyRoutes_1 = __importDefault(require("./routes/companyRoutes"));
 const auth_1 = __importDefault(require("@/routes/auth"));
 const tenants_1 = __importDefault(require("@/routes/tenants"));
@@ -45,6 +46,7 @@ const messages_1 = __importDefault(require("@/routes/messages"));
 const companyGovernmentHoliday_routes_1 = __importDefault(require("./routes/companyGovernmentHoliday.routes"));
 const leaveAdjustmentRoutes_1 = __importDefault(require("./routes/leaveAdjustmentRoutes"));
 const reimbursementCategory_1 = __importDefault(require("@/routes/reimbursementCategory"));
+const employmentTypeRoutes_1 = __importDefault(require("@/routes/employmentTypeRoutes"));
 const repositoryRoutes_1 = __importDefault(require("@/routes/repositoryRoutes"));
 const leaveOriginRoutes_1 = __importDefault(require("@/routes/leaveOriginRoutes"));
 // Load environment variables
@@ -146,6 +148,8 @@ app.use("/api/trash", trash_1.default);
 app.use("/api/sprint-completion", sprintCompletion_1.default);
 app.use("/api/salary-components", salaryComponentRoutes_1.default);
 app.use("/api/companies", companyRoutes_1.default);
+app.use("/api/grades", gradeRoutes_1.default);
+app.use("/api/employment-types", employmentTypeRoutes_1.default);
 app.use("/api/documenthub", documenthub_1.default);
 app.use("/api/channels", channels_1.default);
 app.use("/api/channels/:channelId/messages", messages_1.default);
