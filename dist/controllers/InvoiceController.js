@@ -39,6 +39,7 @@ const database_1 = require("@/config/database");
 const types_1 = require("@/types");
 const pdfService_1 = require("@/services/pdfService");
 const r2Client_1 = require("@/utils/r2Client");
+const emailLoggerService_1 = require("@/services/emailLoggerService");
 class InvoiceController {
     /** ====================
      *  Helper: Calculate totals with tax inclusive support
@@ -747,14 +748,16 @@ class InvoiceController {
      * Send Invoice Email
      * ==================== */
     static async sendEmail(req, res) {
+        // Declare invoice variable OUTSIDE try block
+        let invoice = null;
         try {
             if (!req.tenantId || !req.user) {
                 throw new types_1.ValidationError('Tenant context and authentication required');
             }
             const { id } = req.params;
-            const { to, subject, message } = req.body;
-            // 1. Fetch invoice with customer and profile info
-            const invoice = await database_1.prisma.invoice.findFirst({
+            const { to, subject, message, pdfUrl } = req.body;
+            // 1. Fetch invoice
+            invoice = await database_1.prisma.invoice.findFirst({
                 where: {
                     id,
                     tenantId: req.tenantId,
@@ -774,51 +777,152 @@ class InvoiceController {
             if (!recipientEmail) {
                 throw new types_1.ValidationError("No recipient email address found for this customer.");
             }
-            // 3. Import and call the EmailService
-            // Note: ensure your emailService is imported at the top of the file
+            // 3. Format amount and due date
+            const amount = `${invoice.currency} ${Number(invoice.total).toLocaleString()}`;
+            const dueDate = new Date(invoice.dueDate).toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+            // 4. Send email - GET HTML FROM EMAIL SERVICE
             const emailService = (await Promise.resolve().then(() => __importStar(require('@/utils/emailService')))).default;
-            const emailSuccess = await emailService.sendInvoiceEmail({
+            const { success: emailSuccess, html: emailHtml } = await emailService.sendInvoiceEmail({
                 to: recipientEmail,
                 subject: subject || `Invoice ${invoice.invoiceNumber} from Zithtech`,
                 customerName: customerName,
                 invoiceNumber: invoice.invoiceNumber,
-                amount: `${invoice.currency} ${Number(invoice.total).toLocaleString()}`,
-                dueDate: new Date(invoice.dueDate).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                }),
-                customMessage: message, // Text from the Drawer
-                pdfUrl: invoice.pdfUrl // From your Prisma schema
+                amount: amount,
+                dueDate: dueDate,
+                customMessage: message,
+                pdfUrl: pdfUrl || invoice.pdfUrl
             });
             if (!emailSuccess) {
                 throw new Error("Failed to send email via SMTP provider");
             }
-            // 4. Update Database: Status to SENT and capture timestamp
-            const updatedInvoice = await database_1.prisma.invoice.update({
-                where: { id },
-                data: {
-                    status: 'SENT',
-                    sentAt: invoice.sentAt || new Date(), // Only update if not already sent
-                    updatedBy: req.user.id,
-                    updatedAt: new Date()
+            // ✅ 5. LOG THE SUCCESSFUL EMAIL - USING HTML FROM EMAIL SERVICE
+            await emailLoggerService_1.EmailLoggerService.logEmail({
+                tenantId: req.tenantId,
+                // Module information
+                module: 'INVOICE',
+                moduleId: invoice.id,
+                moduleNumber: invoice.invoiceNumber,
+                // Email content - USE THE HTML RETURNED FROM EMAIL SERVICE
+                to: recipientEmail,
+                from: process.env.SMTP_FROM_EMAIL || 'noreply@zithtech.com',
+                fromName: 'Zithtech',
+                subject: subject || `Invoice ${invoice.invoiceNumber} from Zithtech`,
+                html: emailHtml, // ✅ EXACT HTML THAT WAS SENT - NO DUPLICATION
+                plainText: message || "Please find your invoice details below.",
+                // Customer information
+                customerId: invoice.customerId,
+                customerName: customerName,
+                customerEmail: recipientEmail,
+                // Invoice specific fields
+                amount: amount,
+                dueDate: dueDate,
+                currency: invoice.currency,
+                // Attachment
+                hasAttachment: !!(pdfUrl || invoice.pdfUrl),
+                attachmentUrl: pdfUrl || invoice.pdfUrl,
+                attachmentName: `Invoice_${invoice.invoiceNumber}.pdf`,
+                // Status
+                status: 'SENT',
+                // User who sent
+                sentBy: req.user.id,
+                sentByUser: req.user.email || req.user.name,
+                // Optional metadata
+                metadata: {
+                    invoiceDate: invoice.invoiceDate,
+                    total: invoice.total,
+                    description: invoice.description
                 }
             });
+            // 6. Update Database
+            const updateData = {
+                // updatedBy: req.user.id,
+                updatedAt: new Date(),
+                sentAt: invoice.sentAt || new Date(),
+                // lastEmailSentAt: new Date()
+            };
+            const statusesThatCanBeSent = ['DRAFT', 'PENDING', 'APPROVED'];
+            if (statusesThatCanBeSent.includes(invoice.status)) {
+                updateData.status = 'SENT';
+            }
+            await database_1.prisma.invoice.update({
+                where: { id },
+                data: updateData
+            });
+            // 7. Success message
+            let successMessage = '';
+            if (invoice.status === 'PAID') {
+                successMessage = `✅ Invoice ${invoice.invoiceNumber} email resent successfully to ${recipientEmail} (Status: PAID)`;
+            }
+            else if (invoice.status === 'PARTIALLY_PAID') {
+                successMessage = `✅ Invoice ${invoice.invoiceNumber} email resent successfully to ${recipientEmail} (Status: PARTIALLY PAID)`;
+            }
+            else if (invoice.status === 'CANCELLED') {
+                successMessage = `✅ Invoice ${invoice.invoiceNumber} email resent successfully to ${recipientEmail} (Status: CANCELLED)`;
+            }
+            else {
+                successMessage = `✅ Invoice ${invoice.invoiceNumber} sent successfully to ${recipientEmail} (Status: SENT)`;
+            }
             res.status(200).json({
                 success: true,
-                message: `Invoice successfully sent to ${recipientEmail}`,
-                data: { sentAt: updatedInvoice.sentAt }
+                message: successMessage,
+                data: {
+                    sentAt: new Date(),
+                    status: updateData.status || invoice.status,
+                    emailSent: true,
+                    recipient: recipientEmail,
+                    invoiceNumber: invoice.invoiceNumber
+                }
             });
         }
         catch (error) {
             console.error('Send invoice email error:', error);
+            // ❌ 8. LOG THE FAILED EMAIL ATTEMPT
+            if (req.tenantId && req.user && invoice) {
+                try {
+                    const failedRecipient = req.body.to || invoice.customer?.email || 'unknown';
+                    const failedSubject = req.body.subject || `Invoice ${invoice.invoiceNumber} from Zithtech`;
+                    // For failed emails, we don't have HTML, so pass empty string
+                    await emailLoggerService_1.EmailLoggerService.logEmail({
+                        tenantId: req.tenantId,
+                        module: 'INVOICE',
+                        moduleId: invoice.id,
+                        moduleNumber: invoice.invoiceNumber,
+                        to: failedRecipient,
+                        from: process.env.SMTP_FROM_EMAIL || 'noreply@zithtech.com',
+                        fromName: 'Zithtech',
+                        subject: failedSubject,
+                        html: '', // No HTML for failed emails
+                        plainText: req.body.message,
+                        customerId: invoice.customerId,
+                        customerName: invoice.customerSnapshot?.companyName || invoice.customer?.companyName || 'Unknown',
+                        customerEmail: failedRecipient,
+                        amount: `${invoice.currency} ${Number(invoice.total).toLocaleString()}`,
+                        dueDate: new Date(invoice.dueDate).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric'
+                        }),
+                        currency: invoice.currency,
+                        status: 'FAILED',
+                        errorMessage: error.message,
+                        sentBy: req.user.id,
+                        sentByUser: req.user.email || req.user.name
+                    });
+                }
+                catch (logError) {
+                    console.error('Failed to log email error:', logError);
+                }
+            }
             res.status(error instanceof types_1.NotFoundError ? 404 : 500).json({
                 success: false,
                 error: error.message || 'Failed to send invoice email'
             });
         }
     }
-    // Add this method to your InvoiceController class
     static async updateStatus(req, res) {
         try {
             if (!req.tenantId || !req.user) {

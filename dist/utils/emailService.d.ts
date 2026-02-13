@@ -52,7 +52,10 @@ declare class EmailService {
         dueDate: string;
         customMessage?: string;
         pdfUrl?: string | null;
-    }): Promise<boolean>;
+    }): Promise<{
+        success: boolean;
+        html: string;
+    }>;
 }
 export declare const emailService: EmailService;
 export default emailService;

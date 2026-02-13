@@ -47,6 +47,7 @@ const companyGovernmentHoliday_routes_1 = __importDefault(require("./routes/comp
 const leaveAdjustmentRoutes_1 = __importDefault(require("./routes/leaveAdjustmentRoutes"));
 const reimbursementCategory_1 = __importDefault(require("@/routes/reimbursementCategory"));
 const repositoryRoutes_1 = __importDefault(require("@/routes/repositoryRoutes"));
+const emailHistoryRoutes_1 = __importDefault(require("@/routes/emailHistoryRoutes"));
 const leaveOriginRoutes_1 = __importDefault(require("@/routes/leaveOriginRoutes"));
 // Load environment variables
 dotenv_1.default.config();
@@ -150,6 +151,7 @@ app.use("/api/companies", companyRoutes_1.default);
 app.use("/api/documenthub", documenthub_1.default);
 app.use("/api/channels", channels_1.default);
 app.use("/api/channels/:channelId/messages", messages_1.default);
+app.use('/api/email-history', emailHistoryRoutes_1.default);
 app.use("/api/timesheets", timesheet_1.default);
 app.get("/api/health", (req, res) => {
     res.status(200).json({
