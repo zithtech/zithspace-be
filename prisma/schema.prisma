@@ -155,6 +155,26 @@ model User {
   shiftAssignedBy      User?               @relation("ShiftAssigner", fields: [shiftAssignedById], references: [id])
   assignedShifts       User[]              @relation("ShiftAssigner")
   tenant               Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+// ---------------- TIMESHEETS ----------------
+
+  // Owner of timesheets
+  timesheets Timesheet[]
+
+  // Approved timesheets
+  approvedTimesheets Timesheet[] @relation("TimesheetApprover")
+
+  // Created timesheets
+  createdTimesheets Timesheet[] @relation("TimesheetCreator")
+
+  // Updated timesheets
+  updatedTimesheets Timesheet[] @relation("TimesheetUpdater")
+
+  // ---------------- TIMESHEET ROWS ----------------
+
+  createdTimesheetRows TimesheetRow[] @relation("TimesheetRowCreator")
+  updatedTimesheetRows TimesheetRow[] @relation("TimesheetRowUpdater")
+
+ 
 
 
 
@@ -1654,6 +1674,87 @@ model MeetingParticipant {
   @@map("meeting_participants")
 }
 
+
+enum timesheet_status {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+
+
+model Timesheet {
+  id            String          @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+
+  // Owner of the timesheet (employee)
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String          @map("user_id")
+
+  weekStart     DateTime        @map("week_start")
+  weekEnd       DateTime        @map("week_end")
+
+  status        timesheet_status @default(DRAFT)
+  totalHours    Float           @map("total_hours")
+
+  // Approval
+  rejectReason  String?         @map("reject_reason")
+  approvedById  String?         @map("approved_by_id")
+  approvedBy    User?           @relation("TimesheetApprover",fields: [approvedById],references: [id])
+
+  // Audit fields
+  createdById   String          @map("created_by_id")
+  createdBy     User            @relation("TimesheetCreator", fields: [createdById], references: [id])
+
+  updatedById   String?         @map("updated_by_id")
+  updatedBy     User?           @relation("TimesheetUpdater",fields: [updatedById],references: [id])
+
+  rows          TimesheetRow[]
+
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt      @map("updated_at")
+
+  @@unique([userId, weekStart])
+  @@index([userId])
+  @@map("timesheets")
+}
+
+model TimesheetRow {
+  id            String     @id @default(cuid())
+  tenantId    String   @map("tenant_id")
+
+  // Parent timesheet
+  timesheet     Timesheet @relation(fields: [timesheetId], references: [id], onDelete: Cascade)
+  timesheetId   String    @map("timesheet_id")
+
+  day           DateTime     
+ 
+  projectName   String    @map("project_name")
+  taskName      String    @map("task_name")
+  taskId    String?
+  projectId String? 
+
+  description   String?
+
+  hours         Float
+  billable      Boolean   @default(false)
+
+  // Audit fields
+  createdById   String    @map("created_by_id")
+  createdBy     User      @relation("TimesheetRowCreator",fields: [createdById],references: [id])
+
+  updatedById   String?   @map("updated_by_id")
+  updatedBy     User?     @relation( "TimesheetRowUpdater", fields: [updatedById], references: [id] )
+
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt      @map("updated_at")
+
+  @@index([timesheetId])
+  @@index([createdById])
+  @@index([updatedById])
+  @@map("timesheet_rows")
+}
 model LeaveOriginStructure {
   id          String   @id @default(uuid())
   tenantId    String   @map("tenant_id")
