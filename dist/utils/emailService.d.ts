@@ -43,6 +43,16 @@ declare class EmailService {
     sendLeaveApplicationEmail(data: LeaveApplicationEmailData): Promise<boolean>;
     sendLeaveApprovalEmail(data: LeaveApprovalEmailData): Promise<boolean>;
     sendLeaveRejectionEmail(data: LeaveRejectionEmailData): Promise<boolean>;
+    sendInvoiceEmail(data: {
+        to: string;
+        subject: string;
+        customerName: string;
+        invoiceNumber: string;
+        amount: string;
+        dueDate: string;
+        customMessage?: string;
+        pdfUrl?: string | null;
+    }): Promise<boolean>;
 }
 export declare const emailService: EmailService;
 export default emailService;

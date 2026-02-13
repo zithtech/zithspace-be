@@ -49,6 +49,7 @@ import companyGovernmentHolidayRouter from './routes/companyGovernmentHoliday.ro
 import leaveAdjustmentRoutes from "./routes/leaveAdjustmentRoutes";
 import reimbursement from "@/routes/reimbursementCategory";
 import repositoryRoutes from "@/routes/repositoryRoutes";
+import emailHistoryRoutes from '@/routes/emailHistoryRoutes';
 
 
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
@@ -177,6 +178,8 @@ app.use("/api/companies", companyRoutes);
 app.use("/api/documenthub", documentHubRoutes);
 app.use("/api/channels", channelRoutes);
 app.use("/api/channels/:channelId/messages", messageRoutes);
+app.use('/api/email-history', emailHistoryRoutes);
+
 
 
 app.get("/api/health", (req: any, res) => {

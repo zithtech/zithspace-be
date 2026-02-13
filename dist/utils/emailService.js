@@ -334,6 +334,57 @@ If you have any questions or concerns, please contact your manager or HR departm
     `;
         return this.sendEmail({ to: data.to, subject, html, text });
     }
+    // Add this method inside your EmailService class in src/utils/emailService.ts
+    async sendInvoiceEmail(data) {
+        const subject = `Invoice ${data.invoiceNumber} from Zithtech`;
+        // Professional HTML Template (mimicking a mail client style)
+        const html = `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e1e1e1; border-radius: 8px;">
+      <div style="background-color: #1677ff; color: white; padding: 24px; text-align: center;">
+        <h1 style="margin: 0; font-size: 20px;">Invoice ${data.invoiceNumber}</h1>
+      </div>
+      <div style="padding: 24px; color: #333;">
+        <p>Dear <strong>${data.customerName}</strong>,</p>
+        <p style="line-height: 1.6; color: #555;">${data.customMessage || "Please find your invoice details below."}</p>
+        <div style="margin: 20px 0; padding: 20px; background-color: #f0f5ff; border-radius: 4px; text-align: center;">
+          <div style="font-size: 12px; color: #666; text-transform: uppercase;">Amount Due</div>
+          <div style="font-size: 28px; font-weight: bold; color: #1677ff;">${data.amount}</div>
+          <div style="margin-top: 5px; color: #666;">Due by: ${data.dueDate}</div>
+        </div>
+      </div>
+    </div>
+  `;
+        const options = { to: data.to, subject, html };
+        // Attach PDF if the URL exists in your Prisma model
+        // if (data.pdfUrl) {
+        //   options.attachments = [{
+        //     filename: `Invoice_${data.invoiceNumber}.pdf`,
+        //     path: data.pdfUrl,
+        //     contentType: 'application/pdf'
+        //   }];
+        // }
+        if (data.pdfUrl) {
+            try {
+                const response = await fetch(data.pdfUrl);
+                if (!response.ok)
+                    throw new Error(`Failed to fetch PDF: ${response.statusText}`);
+                const arrayBuffer = await response.arrayBuffer();
+                const buffer = Buffer.from(arrayBuffer);
+                options.attachments = [{
+                        filename: `Invoice_${data.invoiceNumber}.pdf`,
+                        content: buffer, // Use 'content' instead of 'path'
+                        contentType: 'application/pdf'
+                    }];
+                console.log("✅ PDF successfully buffered for attachment");
+            }
+            catch (error) {
+                console.error("❌ Failed to attach PDF from R2:", error);
+                // Fallback: Add the link to the email text so they still get the file
+                options.html += `<p style="font-size: 12px; color: #666;">Note: You can also download your PDF here: <a href="${data.pdfUrl}">${data.pdfUrl}</a></p>`;
+            }
+        }
+        return this.sendEmail(options);
+    }
 }
 // Export singleton instance
 exports.emailService = new EmailService();

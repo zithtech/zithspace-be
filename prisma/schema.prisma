@@ -36,6 +36,7 @@ model Tenant {
   releasePlans     ReleasePlan[]
 
    reimbursementCategories ReimbursementCategory[]
+    emailLogs EmailLog[]
 
 
 
@@ -170,10 +171,13 @@ model User {
   // ===== Invoice Relations =====
   createdInvoices Invoice[] @relation("InvoiceCreatedBy")
   updatedInvoices Invoice[] @relation("InvoiceUpdatedBy")
+  deletedInvoices Invoice[] @relation("InvoiceDeletedBy")
   createdInvoiceItems InvoiceItem[] @relation("InvoiceItemCreatedBy")
   updatedInvoiceItems InvoiceItem[] @relation("InvoiceItemUpdatedBy")
+  deletedInvoiceItems InvoiceItem[] @relation("InvoiceItemDeletedBy")
   createdInvoicePayments InvoicePayment[] @relation("InvoicePaymentCreatedBy")
   updatedInvoicePayments InvoicePayment[] @relation("InvoicePaymentUpdatedBy")
+  sentEmails EmailLog[] @relation("EmailSentBy")
 
   // ===== Chat & Meeting Relations =====
   createdChannels Channel[] @relation("ChannelCreator")
@@ -777,13 +781,14 @@ model Customer {
   id          String    @id @default(uuid())
   tenantId    String    @map("tenant_id")
   companyName String    @map("company_name")
-  email       String
+  email       String?
   phone       String?
   address     String?
   city        String?
   country     String?
   taxId       String?   @map("tax_id")
-  isActive    Boolean   @default(true) @map("is_active")
+  emailLogs EmailLog[]
+  
   createdBy   String    @map("created_by")
   updatedBy   String?   @map("updated_by")
   createdAt   DateTime  @default(now()) @map("created_at")
@@ -1056,6 +1061,9 @@ model Invoice {
   invoiceType InvoiceType   @default(STANDARD) @map("invoice_type")
   status      InvoiceStatus @default(DRAFT)
   description String?       @db.Text // Add this line
+  deletedAt DateTime?       @map("deleted_at")
+   deletedBy String?   @map("deleted_by")
+   deletedByUser User? @relation("InvoiceDeletedBy", fields: [deletedBy], references: [id])
 
   currency           Currency
   recurringFrequency RecurringFrequency? @map("recurring_frequency")
@@ -1067,6 +1075,10 @@ model Invoice {
   total        Decimal @db.Decimal(15, 2)
   paidAmount   Decimal @default(0) @map("paid_amount")
   balanceDue   Decimal @map("balance_due") @db.Decimal(15, 2)
+  firstPaymentDate DateTime? @map("first_payment_date")
+  lastPaymentDate  DateTime? @map("last_payment_date")
+  fullyPaidDate    DateTime? @map("fully_paid_date")
+
 
   notes String? @db.Text
   terms String? @db.Text
@@ -1098,6 +1110,9 @@ model Invoice {
   @@index([tenantId, invoiceNumber])
   @@index([customerId])
   @@index([status])
+  @@index([firstPaymentDate])
+  @@index([lastPaymentDate])
+  @@index([deletedAt])
   @@map("invoices")
 }
 
@@ -1112,6 +1127,8 @@ model InvoiceItem {
 
   price Decimal @default(0) @db.Decimal(15, 2)
   tax   Decimal @default(0) @db.Decimal(15, 2) // percentage
+  deletedAt DateTime? @map("deleted_at")
+  deletedBy String?   @map("deleted_by")
 
   // Audit fields
   createdBy String   @map("created_by")
@@ -1126,6 +1143,7 @@ model InvoiceItem {
   // User audit relations
   createdByUser User  @relation("InvoiceItemCreatedBy", fields: [createdBy], references: [id])
   updatedByUser User? @relation("InvoiceItemUpdatedBy", fields: [updatedBy], references: [id])
+  deletedByUser User? @relation("InvoiceItemDeletedBy", fields: [deletedBy], references: [id])
 
   @@index([invoiceId])
   @@index([tenantId])
@@ -1164,6 +1182,9 @@ model InvoicePayment {
   paymentDate   DateTime       @default(now()) @map("payment_date")
   paymentMethod PaymentMethod? @map("payment_method")
   status        PaymentStatus  @default(PENDING)
+  referenceId   String?        @map("reference_id") // Transaction ID, Check No, etc.
+  balanceBefore Decimal?       @map("balance_before") @db.Decimal(15, 2)
+  balanceAfter  Decimal?       @map("balance_after") @db.Decimal(15, 2)
 
   // Audit fields
   createdBy String   @map("created_by")
@@ -1180,6 +1201,7 @@ model InvoicePayment {
   @@index([invoiceId])
   @@index([tenantId])
   @@index([tenantId, invoiceId])
+  @@index([paymentDate])
   @@map("invoice_payments")
 }
 
@@ -1620,4 +1642,72 @@ model TicketPullRequest {
   @@index([ticketId])
   @@index([repositoryId])
   @@map("ticket_pull_requests")
+}
+
+
+
+
+model EmailLog {
+  id            String   @id @default(uuid())
+  tenantId      String   @map("tenant_id")
+  
+  // Module information - identifies which module the email belongs to
+  module        String   // INVOICE, ESTIMATE, RECEIPT, CONTRACT, etc.
+  moduleId      String   @map("module_id") // ID of the related record
+  moduleNumber  String?  @map("module_number") 
+  
+  // Email details
+  to            String   @map("to_email")
+  from          String   @map("from_email")
+  fromName      String?  @map("from_name")
+  subject       String
+  html          String   @db.Text // Full email HTML - exactly as sent
+  plainText     String?  @db.Text @map("plain_text")
+  
+  // Customer/Recipient info (denormalized - snapshot at time of sending)
+  customerId    String?  @map("customer_id")
+  customerName  String?  @map("customer_name")
+  customerEmail String?  @map("customer_email")
+  
+  // Invoice specific fields (denormalized)
+  amount        String?  // Formatted amount: "$1,250.00"
+  dueDate       String?  @map("due_date") // Formatted date: "May 15, 2024"
+  currency      String?  @default("USD")
+  
+  // Attachment info
+  hasAttachment Boolean  @default(false) @map("has_attachment")
+  attachmentUrl String?  @map("attachment_url") @db.Text
+  attachmentName String? @map("attachment_name")
+  
+  // Status tracking
+  status        String   @default("SENT") // SENT, FAILED, OPENED, CLICKED, BOUNCED
+  errorMessage  String?  @map("error_message") @db.Text
+  
+  // Tracking timestamps
+  sentAt        DateTime @map("sent_at") @default(now())
+  openedAt      DateTime? @map("opened_at")
+  clickedAt     DateTime? @map("clicked_at")
+  
+  // User who sent the email
+  sentBy        String   @map("sent_by") // User ID
+  sentByUser    String?  @map("sent_by_user") // User name/email
+  
+  // Metadata - store any additional module-specific data
+  metadata      Json?    // Flexible field for future needs
+  
+  // Relations
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer      Customer? @relation(fields: [customerId], references: [id])
+  sentByUserRel User     @relation("EmailSentBy", fields: [sentBy], references: [id])
+
+  // Indexes for fast queries
+  @@index([tenantId, sentAt])
+  @@index([module, moduleId])
+  @@index([module, sentAt])
+  @@index([customerId])
+  @@index([to])
+  @@index([status])
+  @@index([sentAt])
+  
+  @@map("email_logs")
 }
