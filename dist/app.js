@@ -42,6 +42,7 @@ const fixedHolidays_1 = __importDefault(require("@/routes/fixedHolidays"));
 const documenthub_1 = __importDefault(require("@/routes/documenthub"));
 const channels_1 = __importDefault(require("@/routes/channels"));
 const messages_1 = __importDefault(require("@/routes/messages"));
+const timesheet_1 = __importDefault(require("@/routes/timesheet"));
 const companyGovernmentHoliday_routes_1 = __importDefault(require("./routes/companyGovernmentHoliday.routes"));
 const leaveAdjustmentRoutes_1 = __importDefault(require("./routes/leaveAdjustmentRoutes"));
 const reimbursementCategory_1 = __importDefault(require("@/routes/reimbursementCategory"));
@@ -149,6 +150,7 @@ app.use("/api/companies", companyRoutes_1.default);
 app.use("/api/documenthub", documenthub_1.default);
 app.use("/api/channels", channels_1.default);
 app.use("/api/channels/:channelId/messages", messages_1.default);
+app.use("/api/timesheets", timesheet_1.default);
 app.get("/api/health", (req, res) => {
     res.status(200).json({
         success: true,
