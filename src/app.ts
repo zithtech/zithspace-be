@@ -37,12 +37,19 @@ import documentHubRoutes from "@/routes/documenthub";
 import channelRoutes from "@/routes/channels";
 import messageRoutes from "@/routes/messages";
 // Onboarding
-import employeeRoutes from "@/routes/employeeRoutes";
-import employeeAddressRoutes from "@/routes/employeeAddress";
-import employeeEmergencyContactRoutes from "@/routes/emergencyContact";
-import employeeIdentityRoutes from "@/routes/employeeIdentity";
+// import employeeRoutes from "@/routes/employeeRoutes";
+// import employeeAddressRoutes from "@/routes/employeeAddress";
+// import employeeEmergencyContactRoutes from "@/routes/emergencyContact";
+// import employeeIdentityRoutes from "@/routes/employeeIdentity";
 import employeeWorkDetailRoutes from "@/routes/employeeWorkDetailes";
 import employeeTimelineRoutes from "@/routes/employeeTimeline";
+// personal Detailes
+//import employeeDetailsRoutes from "@/routes/createEmployeeRoutes";
+import employeeEmploymentDetailsRoutes from "@/routes/employeeEmploymentDetailes";
+
+// main
+import employeeOnboardingRoutes from "@/routes/onboardingRoutes";
+
 // Load environment variables
 dotenv.config();
 // Create Express application
@@ -150,12 +157,16 @@ app.use("/api/documenthub", documentHubRoutes);
 app.use("/api/channels", channelRoutes);
 app.use("/api/channels/:channelId/messages", messageRoutes);
 // onboarding
-app.use("/api/employees", employeeRoutes);
-app.use("/api/employee-addresses", employeeAddressRoutes);
-app.use("/api/employee-emergency-contacts", employeeEmergencyContactRoutes);
-app.use("/api/employee-identities", employeeIdentityRoutes);
+// app.use("/api/employees", employeeRoutes);
+// app.use("/api/employee-addresses", employeeAddressRoutes);
+// app.use("/api/employee-emergency-contacts", employeeEmergencyContactRoutes);
+// app.use("/api/employee-identities", employeeIdentityRoutes);
 app.use("/api/employee-work-details", employeeWorkDetailRoutes);
 app.use("/api/employee-timelines", employeeTimelineRoutes);
+//app.use("/api/employee-details", employeeDetailsRoutes);
+app.use("/api/employee-employment-details", employeeEmploymentDetailsRoutes);
+// main
+app.use("/api/onboarding", employeeOnboardingRoutes);
 
 // app.use("/api/addresses", addressRoutes);
 //app.use("/api/employee_address", addressRoutes);

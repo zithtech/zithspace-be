@@ -1,33 +1,33 @@
-import express from "express";
-import { EmployeeIdentityController } from "@/controllers/employeeIdentityController";
-import { authenticateToken, requireAuth } from "@/middleware/auth";
-import { resolveTenant } from "@/middleware/tenantContext";
+// import express from "express";
+// import { EmployeeIdentityController } from "@/controllers/employeeIdentityController";
+// import { authenticateToken, requireAuth } from "@/middleware/auth";
+// import { resolveTenant } from "@/middleware/tenantContext";
 
-const router = express.Router();
+// const router = express.Router();
 
-// ================= GLOBAL MIDDLEWARE =================
-router.use(resolveTenant);
-router.use(authenticateToken);
-router.use(requireAuth);
+// // ================= GLOBAL MIDDLEWARE =================
+// router.use(resolveTenant);
+// router.use(authenticateToken);
+// router.use(requireAuth);
 
-// ================= EMPLOYEE IDENTITY ROUTES =================
+// // ================= EMPLOYEE IDENTITY ROUTES =================
 
-// Create employee identity
-router.post("/", EmployeeIdentityController.createIdentity);
+// // Create employee identity
+// router.post("/", EmployeeIdentityController.createIdentity);
 
-// Get identity by employeeId
-router.get(
-  "/employee/:employeeId",
-  EmployeeIdentityController.getIdentityByEmployee,
-);
+// // Get identity by employeeId
+// router.get(
+//   "/employee/:employeeId",
+//   EmployeeIdentityController.getIdentityByEmployee,
+// );
 
-// Get identity by id
-router.get("/:id", EmployeeIdentityController.getIdentityById);
+// // Get identity by id
+// router.get("/:id", EmployeeIdentityController.getIdentityById);
 
-// Update employee identity
-router.put("/:id", EmployeeIdentityController.updateIdentity);
+// // Update employee identity
+// router.put("/:id", EmployeeIdentityController.updateIdentity);
 
-// Delete employee identity
-router.delete("/:id", EmployeeIdentityController.deleteIdentity);
+// // Delete employee identity
+// router.delete("/:id", EmployeeIdentityController.deleteIdentity);
 
-export default router;
+// export default router;
