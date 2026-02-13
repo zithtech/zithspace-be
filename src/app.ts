@@ -63,7 +63,7 @@ import positionRoutes from "@/routes/positionRoutes";
 
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
 import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
-// Load environment variables
+// Load environment
 dotenv.config();
 // Create Express application
 const app = express();
