@@ -28,6 +28,11 @@ model Tenant {
   leaveOriginStructures LeaveOriginStructure[]
   originLeaveTypes      OriginLeaveType[]
   fixedHolidays    FixedHoliday[]
+  employmentTypes  EmploymentType[]
+  grades           Grade[]
+  departments      Department[]
+  subDepartments   SubDepartment[]
+  positions        Position[]
 
   salaryComponents SalaryComponent[]
   companies        Company[]
@@ -177,6 +182,25 @@ model User {
   createdReimbursementCategories ReimbursementCategory[] @relation("ReimbursementCategoryCreatedBy")
   updatedReimbursementCategories ReimbursementCategory[] @relation("ReimbursementCategoryUpdatedBy")
 
+  // ===== Grade Relations =====
+  createdGrades Grade[] @relation("GradeCreator")
+  updatedGrades Grade[] @relation("GradeUpdater")
+
+  // ===== Employment Type Relations =====
+  createdEmploymentTypes EmploymentType[] @relation("EmploymentTypeCreator")
+  updatedEmploymentTypes EmploymentType[] @relation("EmploymentTypeUpdater")
+
+  // ===== Department Relations =====
+  managedDepartments     Department[]     @relation("DepartmentHead")
+  createdDepartments     Department[]     @relation("DepartmentCreator")
+  updatedDepartments     Department[]     @relation("DepartmentUpdater")
+  createdSubDepartments  SubDepartment[]  @relation("SubDepartmentCreator")
+  updatedSubDepartments  SubDepartment[]  @relation("SubDepartmentUpdater")
+
+  // ===== Position Relations =====
+  createdPositions       Position[]       @relation("PositionCreator")
+  updatedPositions       Position[]       @relation("PositionUpdater")
+
   // ===== Settings Relations =====
   createdGeneralSettings GeneralSetting[] @relation("GeneralSettingCreatedBy")
   updatedGeneralSettings GeneralSetting[] @relation("GeneralSettingUpdatedBy")
@@ -247,9 +271,123 @@ model ReimbursementCategory {
   @@map("reimbursement_category")
 }
 
+model Grade {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  code        String
+  name        String
+  levelOrder  Int      @map("level_order")
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdById String   @map("created_by_id")
+  updatedById String?  @map("updated_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User   @relation("GradeCreator", fields: [createdById], references: [id])
+  updatedBy User?  @relation("GradeUpdater", fields: [updatedById], references: [id])
+  positions Position[]
 
+  @@unique([tenantId, code])
+  @@map("grades")
+}
 
+model EmploymentType {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  code        String
+  name        String
+  description String?
+  isActive    Boolean  @default(true) @map("is_active")
+  createdById String   @map("created_by_id")
+  updatedById String?  @map("updated_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User   @relation("EmploymentTypeCreator", fields: [createdById], references: [id])
+  updatedBy User?  @relation("EmploymentTypeUpdater", fields: [updatedById], references: [id])
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, name])
+  @@map("employment_types")
+}
+
+model Department {
+  id             String   @id @default(uuid())
+  tenantId       String   @map("tenant_id")
+  code           String
+  name           String
+  employmentType String?  @map("employment_type")
+  description    String?
+  headId         String?  @map("head_id")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdById    String   @map("created_by_id")
+  updatedById    String?  @map("updated_by_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  head      User?  @relation("DepartmentHead", fields: [headId], references: [id], onDelete: SetNull)
+  createdBy User   @relation("DepartmentCreator", fields: [createdById], references: [id])
+  updatedBy User?  @relation("DepartmentUpdater", fields: [updatedById], references: [id])
+  subDepartments SubDepartment[]
+  positions      Position[]
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, name])
+  @@map("departments")
+}
+
+model SubDepartment {
+  id             String   @id @default(uuid())
+  tenantId       String   @map("tenant_id")
+  parentDepartmentId String @map("parent_department_id")
+  code           String
+  name           String
+  description    String?
+  isActive       Boolean  @default(true) @map("is_active")
+  createdById    String   @map("created_by_id")
+  updatedById    String?  @map("updated_by_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  tenant           Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parentDepartment Department @relation(fields: [parentDepartmentId], references: [id], onDelete: Cascade)
+  createdBy   User       @relation("SubDepartmentCreator", fields: [createdById], references: [id])
+  updatedBy   User?      @relation("SubDepartmentUpdater", fields: [updatedById], references: [id])
+  positions   Position[]
+
+  @@unique([tenantId, code])
+  @@map("sub_departments")
+}
+
+model Position {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  code            String
+  title           String
+  departmentId    String   @map("department_id")
+  subDepartmentId String?  @map("sub_department_id")
+  gradeId         String   @map("grade_id")
+  description     String?
+  isActive        Boolean  @default(true) @map("is_active")
+  createdById     String   @map("created_by_id")
+  updatedById     String?  @map("updated_by_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  department      Department    @relation(fields: [departmentId], references: [id])
+  subDepartment   SubDepartment? @relation(fields: [subDepartmentId], references: [id])
+  grade           Grade         @relation(fields: [gradeId], references: [id])
+  createdBy       User          @relation("PositionCreator", fields: [createdById], references: [id])
+  updatedBy       User?         @relation("PositionUpdater", fields: [updatedById], references: [id])
+
+  @@unique([tenantId, code])
+  @@map("positions")
+}
 model RefreshToken {
   id        String   @id @default(uuid())
   token     String   @unique
