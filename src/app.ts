@@ -1,4 +1,4 @@
-import "module-alias/register";
+ import "module-alias/register";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -45,6 +45,11 @@ import fixedHolidayRoutes from "@/routes/fixedHolidays";
 import documentHubRoutes from "@/routes/documenthub";
 import channelRoutes from "@/routes/channels";
 import messageRoutes from "@/routes/messages";
+import timesheetRoutes from "@/routes/timesheet";
+
+
+
+
 import companyGovernmentHolidayRouter from './routes/companyGovernmentHoliday.routes';
 import leaveAdjustmentRoutes from "./routes/leaveAdjustmentRoutes";
 import reimbursement from "@/routes/reimbursementCategory";
@@ -177,6 +182,8 @@ app.use("/api/companies", companyRoutes);
 app.use("/api/documenthub", documentHubRoutes);
 app.use("/api/channels", channelRoutes);
 app.use("/api/channels/:channelId/messages", messageRoutes);
+app.use("/api/timesheets", timesheetRoutes);
+
 
 
 app.get("/api/health", (req: any, res) => {
