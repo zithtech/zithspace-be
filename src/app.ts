@@ -62,6 +62,7 @@ import positionRoutes from "@/routes/positionRoutes";
 
 
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
+import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
 // Load environment variables
 dotenv.config();
 // Create Express application
@@ -192,6 +193,7 @@ app.use("/api/employment-types", employmentTypeRoutes);
 app.use("/api/documenthub", documentHubRoutes);
 app.use("/api/channels", channelRoutes);
 app.use("/api/channels/:channelId/messages", messageRoutes);
+app.use('/api/email-history', emailHistoryRoutes);
 app.use("/api/timesheets", timesheetRoutes);
 
 

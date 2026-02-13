@@ -220,7 +220,7 @@ static async updateCustomer(req: AuthRequest, res: Response): Promise<void> {
     const normalizedUpdates: Partial<UpdateCustomerData> = {};
     Object.entries(updates).forEach(([key, value]) => {
       if (value === "") {
-        normalizedUpdates[key as keyof UpdateCustomerData] = null;
+        normalizedUpdates[key as keyof UpdateCustomerData] = undefined;
       } else if (value !== undefined) {
         normalizedUpdates[key as keyof UpdateCustomerData] = value;
       }
