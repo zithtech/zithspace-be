@@ -53,6 +53,7 @@ const departmentRoutes_1 = __importDefault(require("@/routes/departmentRoutes"))
 const subDepartmentRoutes_1 = __importDefault(require("@/routes/subDepartmentRoutes"));
 const positionRoutes_1 = __importDefault(require("@/routes/positionRoutes"));
 const leaveOriginRoutes_1 = __importDefault(require("@/routes/leaveOriginRoutes"));
+const emailHistoryRoutes_1 = __importDefault(require("@/routes/emailHistoryRoutes"));
 // Load environment variables
 dotenv_1.default.config();
 // Create Express application
