@@ -127,8 +127,8 @@ model User {
   refreshTokens        RefreshToken[]
   createdReleasePlans  ReleasePlan[]       @relation("ReleasePlanCreator")
 
-  createdReimbursementCategories ReimbursementCategory[] @relation("CategoryCreator")
-  updatedReimbursementCategories ReimbursementCategory[] @relation("CategoryUpdater")
+  createdReimbursementCategories ReimbursementCategory[] @relation("ReimbursementCategoryCreatedBy")
+  updatedReimbursementCategories ReimbursementCategory[] @relation("ReimbursementCategoryUpdatedBy")
 
   reimbursementRequests ReimbursementRequest[]
   reimbursementApprovals ReimbursementApproval[]
@@ -179,14 +179,6 @@ model User {
 
   createdTimesheetRows TimesheetRow[] @relation("TimesheetRowCreator")
   updatedTimesheetRows TimesheetRow[] @relation("TimesheetRowUpdater")
-
- 
-
-
-
-    // ===== Reimbursement Category =====
-  createdReimbursementCategories ReimbursementCategory[] @relation("ReimbursementCategoryCreatedBy")
-  updatedReimbursementCategories ReimbursementCategory[] @relation("ReimbursementCategoryUpdatedBy")
 
   // ===== Grade Relations =====
   createdGrades Grade[] @relation("GradeCreator")
@@ -242,9 +234,6 @@ model User {
 }
 
 
-
-
-
 model ReimbursementCategory {
   id                        String   @id @default(uuid())
   tenantId                  String   @map("tenant_id")
@@ -275,6 +264,8 @@ model ReimbursementCategory {
   tenant        Tenant   @relation(fields: [tenantId], references: [id])
   createdByUser User     @relation("ReimbursementCategoryCreatedBy", fields: [createdBy], references: [id])
   updatedByUser User?    @relation("ReimbursementCategoryUpdatedBy", fields: [updatedBy], references: [id])
+
+  ticketAttachments TicketAttachment[]
 
   @@unique([tenantId, code])
   @@map("reimbursement_category")
@@ -1717,33 +1708,7 @@ model MeetingParticipant {
   @@index([meetingId])
   @@map("meeting_participants")
 }
-model ReimbursementCategory {
-  id                 String   @id @default(uuid())
-  tenantId           String   @map("tenant_id")
-  name               String
-  maxPerRequest      Decimal? @map("max_per_request") @db.Decimal(10, 2)
-  monthlyLimit       Decimal? @map("monthly_limit") @db.Decimal(10, 2)
-  yearlyLimit        Decimal? @map("yearly_limit") @db.Decimal(10, 2)
-  eligibleRoles      String[] @default([]) @map("eligible_roles")
-  approvalRoles      String[] @default([]) @map("approval_roles")
-  accept             String[] @default([]) @map("accept_roles")
-  attachmentRequired Boolean  @default(false) @map("attachment_required")
-  isActive           Boolean  @default(true) @map("is_active")
 
-  createdById String?  @map("created_by_id")
-  updatedById String?  @map("updated_by_id")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdBy User?  @relation("CategoryCreator", fields: [createdById], references: [id])
-  updatedBy User?  @relation("CategoryUpdater", fields: [updatedById], references: [id])
-
-  ticketAttachments TicketAttachment[]
-
-  @@unique([tenantId, name])
-  @@map("reimbursement_categories")
-}
 
 model ReimbursementRequest {
   id              String   @id @default(uuid())

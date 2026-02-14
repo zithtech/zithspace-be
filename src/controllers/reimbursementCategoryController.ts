@@ -7,7 +7,7 @@ import {
   ApiResponse,
   NotFoundError,
   ValidationError
-  
+
 } from '@/types';
 import { uploadFileToR2, deleteFileFromR2 } from "@/utils/r2Client";
 
@@ -58,7 +58,7 @@ export class ReimbursementCategoryController {
       if (roles) {
         const roleList = (roles as string).split(',').filter(Boolean);
         if (roleList.length > 0) {
-          where.eligibleRoles = { hasSome: roleList };
+          where.allowedRoles = { hasSome: roleList };
         }
       }
 
@@ -72,10 +72,10 @@ export class ReimbursementCategoryController {
           return await client.reimbursementCategory.findMany({
             where,
             include: {
-              createdBy: {
+              createdByUser: {
                 select: { id: true, name: true }
               },
-              updatedBy: {
+              updatedByUser: {
                 select: { id: true, name: true }
               }
             },
@@ -128,8 +128,8 @@ export class ReimbursementCategoryController {
         return await client.reimbursementCategory.findFirst({
           where: { id, tenantId: req.tenantId },
           include: {
-            createdBy: { select: { id: true, name: true } },
-            updatedBy: { select: { id: true, name: true } }
+            createdByUser: { select: { id: true, name: true } },
+            updatedByUser: { select: { id: true, name: true } }
           }
         });
       });
@@ -164,6 +164,7 @@ export class ReimbursementCategoryController {
 
       const {
         name,
+        code,
         maxPerRequest,
         monthlyLimit,
         yearlyLimit,
@@ -195,16 +196,14 @@ export class ReimbursementCategoryController {
           data: {
             tenantId: req.tenantId,
             name,
-            maxPerRequest: maxPerRequest || null,
-            monthlyLimit: monthlyLimit || null,
-            yearlyLimit: yearlyLimit || null,
-            eligibleRoles: eligibleRoles || [],
-            approvalRoles: approvalRoles || [],
-            accept: accept || [],
+            code: code || name.toUpperCase().replace(/\s+/g, '_'),
+            monthlyLimitAmount: monthlyLimit ? new Prisma.Decimal(monthlyLimit) : null,
+            yearlyLimitAmount: yearlyLimit ? new Prisma.Decimal(yearlyLimit) : null,
+            allowedRoles: eligibleRoles || [],
             attachmentRequired: attachmentRequired ?? false,
             isActive: isActive ?? true,
-            createdById: req.user!.id,
-            updatedById: req.user!.id
+            createdBy: req.user!.id,
+            updatedBy: req.user!.id
           }
         });
 
@@ -241,7 +240,7 @@ export class ReimbursementCategoryController {
       delete updates.id;
       delete updates.tenantId;
       delete updates.createdAt;
-      delete updates.createdById;
+      delete updates.createdBy;
 
       await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
         const existing = await client.reimbursementCategory.findFirst({
@@ -271,7 +270,7 @@ export class ReimbursementCategoryController {
           where: { id },
           data: {
             ...updates,
-            updatedById: req.user!.id,
+            updatedBy: req.user!.id,
             updatedAt: new Date()
           }
         });
@@ -447,7 +446,7 @@ export class ReimbursementRequestController {
                 return fileUrl;
               } catch (e) {
                 console.error("Failed to upload base64 attachment", e);
-                return ""; 
+                return "";
               }
             }
             return url || name || "";
