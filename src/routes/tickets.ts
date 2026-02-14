@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { TicketController } from '@/controllers/ticketController';
+import { TicketCodeController } from '@/controllers/ticketCodeController';
 import { authenticateToken, requireAuth, requireAdmin } from '@/middleware/auth';
 import { resolveTenant } from '@/middleware/tenantContext';
 
@@ -98,6 +99,38 @@ router.get('/:id/activity', TicketController.getActivityLog);
  * @param   id - Ticket ID
  */
 router.get('/:id', TicketController.getTicketById);
+
+// Code Integration Routes
+
+/**
+ * @route   GET /api/tickets/:id/code
+ * @desc    Get all code metadata (branches, PRs)
+ */
+router.get('/:id/code', TicketCodeController.getTicketCodeMetadata);
+
+/**
+ * @route   POST /api/tickets/:id/code/branches
+ * @desc    Link a branch
+ */
+router.post('/:id/code/branches', TicketCodeController.addBranch);
+
+/**
+ * @route   DELETE /api/tickets/:id/code/branches/:branchId
+ * @desc    Unlink a branch
+ */
+router.delete('/:id/code/branches/:branchId', TicketCodeController.removeBranch);
+
+/**
+ * @route   POST /api/tickets/:id/code/pull-requests
+ * @desc    Link a PR
+ */
+router.post('/:id/code/pull-requests', TicketCodeController.addPullRequest);
+
+/**
+ * @route   DELETE /api/tickets/:id/code/pull-requests/:prId
+ * @desc    Unlink a PR
+ */
+router.delete('/:id/code/pull-requests/:prId', TicketCodeController.removePullRequest);
 
 /**
  * @route   POST /api/tickets/upload-image

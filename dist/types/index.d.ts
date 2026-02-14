@@ -573,3 +573,34 @@ export declare class TenantError extends AppError {
 export declare class NotFoundError extends AppError {
     constructor(resource?: string);
 }
+export type CreateTimesheetRowData = {
+    day: string;
+    projectName: string;
+    taskName: string;
+    description?: string;
+    hours: number;
+    billable?: boolean;
+};
+export type CreateTimesheetData = {
+    weekStart: string;
+    weekEnd: string;
+    rows: CreateTimesheetRowData[];
+};
+export type UpdateTimesheetRowData = {
+    id?: string;
+    day?: string;
+    projectName?: string;
+    taskName?: string;
+    description?: string;
+    hours?: number;
+    billable?: boolean;
+    taskId?: string;
+    projectId?: string;
+};
+export type UpdateTimesheetData = {
+    weekStart?: string;
+    weekEnd?: string;
+    status?: "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED";
+    rejectReason?: string;
+    rows?: UpdateTimesheetRowData[];
+};
