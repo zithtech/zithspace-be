@@ -12,6 +12,7 @@ import rateLimit from "express-rate-limit";
 // Import configurations
 import { connectDatabase, disconnectDatabase } from "@/config/database";
 import salaryComponentRoutes from "@/routes/salaryComponentRoutes";
+import gradeRoutes from "@/routes/gradeRoutes";
 import companyRoutes from "./routes/companyRoutes";
 
 
@@ -55,11 +56,16 @@ import companyGovernmentHolidayRouter from './routes/companyGovernmentHoliday.ro
 import leaveAdjustmentRoutes from "./routes/leaveAdjustmentRoutes";
 import fileDownloadRoutes from "./routes/fileDownload";
 import reimbursement from "@/routes/reimbursementCategory";
+import employmentTypeRoutes from "@/routes/employmentTypeRoutes";
 import repositoryRoutes from "@/routes/repositoryRoutes";
+import departmentRoutes from "@/routes/departmentRoutes";
+import subDepartmentRoutes from "@/routes/subDepartmentRoutes";
+import positionRoutes from "@/routes/positionRoutes";
 
 
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
-// Load environment variables
+import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
+// Load environment
 dotenv.config();
 // Create Express application
 const app = express();
@@ -181,11 +187,17 @@ app.use("/api/trash", trashRoutes);
 app.use("/api/sprint-completion", sprintCompletionRoutes);
 app.use("/api/salary-components", salaryComponentRoutes);
 app.use("/api/companies", companyRoutes);
+app.use("/api/grades", gradeRoutes);
 
+app.use("/api/departments", departmentRoutes);
+app.use("/api/sub-departments", subDepartmentRoutes);
+app.use("/api/positions", positionRoutes);
+app.use("/api/employment-types", employmentTypeRoutes);
 app.use("/api/documenthub", documentHubRoutes);
 app.use("/api/channels", channelRoutes);
 app.use("/api/channels/:channelId/messages", messageRoutes);
 app.use("/api/files", fileDownloadRoutes);
+app.use('/api/email-history', emailHistoryRoutes);
 app.use("/api/timesheets", timesheetRoutes);
 
 

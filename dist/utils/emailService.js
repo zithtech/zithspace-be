@@ -334,6 +334,58 @@ If you have any questions or concerns, please contact your manager or HR departm
     `;
         return this.sendEmail({ to: data.to, subject, html, text });
     }
+    async sendInvoiceEmail(data) {
+        const subject = `Invoice ${data.invoiceNumber} from Zithtech`;
+        // HTML Template
+        const html = `
+    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e1e1e1; border-radius: 8px;">
+      <div style="background-color: #1677ff; color: white; padding: 24px; text-align: center;">
+        <h1 style="margin: 0; font-size: 20px;">Invoice ${data.invoiceNumber}</h1>
+      </div>
+      <div style="padding: 24px; color: #333;">
+        <p>Dear <strong>${data.customerName}</strong>,</p>
+        <p style="line-height: 1.6; color: #555;">${data.customMessage || "Please find your invoice details below."}</p>
+        <div style="margin: 20px 0; padding: 20px; background-color: #f0f5ff; border-radius: 4px; text-align: center;">
+          <div style="font-size: 12px; color: #666; text-transform: uppercase;">Amount Due</div>
+          <div style="font-size: 28px; font-weight: bold; color: #1677ff;">${data.amount}</div>
+          <div style="margin-top: 5px; color: #666;">Due by: ${data.dueDate}</div>
+        </div>
+        <p style="margin-top: 20px; font-size: 14px;">
+          📎 <a href="${data.pdfUrl}" style="color: #1677ff;">Download Invoice PDF</a>
+        </p>
+      </div>
+    </div>
+  `;
+        const options = {
+            from: process.env.SMTP_FROM_EMAIL || 'noreply@zithtech.com',
+            to: data.to,
+            subject,
+            html
+        };
+        // Attach PDF
+        if (data.pdfUrl) {
+            options.attachments = [{
+                    filename: `Invoice_${data.invoiceNumber}.pdf`,
+                    path: data.pdfUrl,
+                    contentType: 'application/pdf'
+                }];
+        }
+        // Send email
+        try {
+            const result = await this.sendEmail(options);
+            return {
+                success: result,
+                html // ✅ RETURN THE HTML THAT WAS SENT
+            };
+        }
+        catch (error) {
+            console.error("❌ Send failed:", error);
+            return {
+                success: false,
+                html // Still return HTML even on failure for logging
+            };
+        }
+    }
 }
 // Export singleton instance
 exports.emailService = new EmailService();
