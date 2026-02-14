@@ -37,7 +37,7 @@ class ReimbursementCategoryController {
             if (roles) {
                 const roleList = roles.split(',').filter(Boolean);
                 if (roleList.length > 0) {
-                    where.allowedRoles = { hasSome: roleList };
+                    where.eligibleRoles = { hasSome: roleList };
                 }
             }
             const orderBy = {};
@@ -131,7 +131,7 @@ class ReimbursementCategoryController {
                 res.status(400).json({ success: false, error: 'Tenant context required' });
                 return;
             }
-            const { name, code, maxPerRequest, monthlyLimit, yearlyLimit, eligibleRoles, approvalRoles, accept, attachmentRequired, isActive } = req.body;
+            const { name, maxPerRequest, monthlyLimit, yearlyLimit, eligibleRoles, approvalRoles, accept, attachmentRequired, isActive } = req.body;
             if (!name) {
                 throw new types_1.ValidationError('Category name is required');
             }
@@ -148,16 +148,18 @@ class ReimbursementCategoryController {
                 }
                 const category = await client.reimbursementCategory.create({
                     data: {
-                        tenantId: req.tenantId,
+                        tenant: { connect: { id: req.tenantId } },
                         name,
-                        code: code || name.toUpperCase().replace(/\s+/g, '_'),
-                        monthlyLimitAmount: monthlyLimit ? new client_1.Prisma.Decimal(monthlyLimit) : null,
-                        yearlyLimitAmount: yearlyLimit ? new client_1.Prisma.Decimal(yearlyLimit) : null,
-                        allowedRoles: eligibleRoles || [],
+                        monthlyLimit: monthlyLimit ? new client_1.Prisma.Decimal(monthlyLimit) : null,
+                        yearlyLimit: yearlyLimit ? new client_1.Prisma.Decimal(yearlyLimit) : null,
+                        maxRequestsPerMonth: maxPerRequest ? Number(maxPerRequest) : null,
+                        eligibleRoles: eligibleRoles || [],
+                        acceptRoles: accept || [],
+                        approvalRoles: approvalRoles || [],
                         attachmentRequired: attachmentRequired ?? false,
                         isActive: isActive ?? true,
-                        createdBy: req.user.id,
-                        updatedBy: req.user.id
+                        createdByUser: { connect: { id: req.user.id } },
+                        updatedByUser: { connect: { id: req.user.id } }
                     }
                 });
                 res.status(201).json({
@@ -212,13 +214,32 @@ class ReimbursementCategoryController {
                         throw new types_1.ValidationError('A category with this name already exists');
                     }
                 }
+                const { name, maxPerRequest, monthlyLimit, yearlyLimit, eligibleRoles, approvalRoles, accept, attachmentRequired, isActive } = updates;
+                const updateData = {
+                    updatedByUser: { connect: { id: req.user.id } },
+                    updatedAt: new Date()
+                };
+                if (name !== undefined)
+                    updateData.name = name;
+                if (maxPerRequest !== undefined)
+                    updateData.maxRequestsPerMonth = maxPerRequest ? Number(maxPerRequest) : null;
+                if (monthlyLimit !== undefined)
+                    updateData.monthlyLimit = monthlyLimit ? new client_1.Prisma.Decimal(monthlyLimit) : null;
+                if (yearlyLimit !== undefined)
+                    updateData.yearlyLimit = yearlyLimit ? new client_1.Prisma.Decimal(yearlyLimit) : null;
+                if (eligibleRoles !== undefined)
+                    updateData.eligibleRoles = eligibleRoles;
+                if (approvalRoles !== undefined)
+                    updateData.approvalRoles = approvalRoles;
+                if (accept !== undefined)
+                    updateData.acceptRoles = accept;
+                if (attachmentRequired !== undefined)
+                    updateData.attachmentRequired = attachmentRequired;
+                if (isActive !== undefined)
+                    updateData.isActive = isActive;
                 const category = await client.reimbursementCategory.update({
                     where: { id },
-                    data: {
-                        ...updates,
-                        updatedBy: req.user.id,
-                        updatedAt: new Date()
-                    }
+                    data: updateData
                 });
                 res.status(200).json({
                     success: true,

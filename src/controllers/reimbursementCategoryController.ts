@@ -58,7 +58,7 @@ export class ReimbursementCategoryController {
       if (roles) {
         const roleList = (roles as string).split(',').filter(Boolean);
         if (roleList.length > 0) {
-          where.allowedRoles = { hasSome: roleList };
+          where.eligibleRoles = { hasSome: roleList };
         }
       }
 
@@ -164,7 +164,6 @@ export class ReimbursementCategoryController {
 
       const {
         name,
-        code,
         maxPerRequest,
         monthlyLimit,
         yearlyLimit,
@@ -194,16 +193,18 @@ export class ReimbursementCategoryController {
 
         const category = await client.reimbursementCategory.create({
           data: {
-            tenantId: req.tenantId,
+            tenant: { connect: { id: req.tenantId } },
             name,
-            code: code || name.toUpperCase().replace(/\s+/g, '_'),
-            monthlyLimitAmount: monthlyLimit ? new Prisma.Decimal(monthlyLimit) : null,
-            yearlyLimitAmount: yearlyLimit ? new Prisma.Decimal(yearlyLimit) : null,
-            allowedRoles: eligibleRoles || [],
+            monthlyLimit: monthlyLimit ? new Prisma.Decimal(monthlyLimit) : null,
+            yearlyLimit: yearlyLimit ? new Prisma.Decimal(yearlyLimit) : null,
+            maxRequestsPerMonth: maxPerRequest ? Number(maxPerRequest) : null,
+            eligibleRoles: eligibleRoles || [],
+            acceptRoles: accept || [],
+            approvalRoles: approvalRoles || [],
             attachmentRequired: attachmentRequired ?? false,
             isActive: isActive ?? true,
-            createdBy: req.user!.id,
-            updatedBy: req.user!.id
+            createdByUser: { connect: { id: req.user!.id } },
+            updatedByUser: { connect: { id: req.user!.id } }
           }
         });
 
@@ -266,13 +267,37 @@ export class ReimbursementCategoryController {
           }
         }
 
+
+        const {
+          name,
+          maxPerRequest,
+          monthlyLimit,
+          yearlyLimit,
+          eligibleRoles,
+          approvalRoles,
+          accept,
+          attachmentRequired,
+          isActive
+        } = updates;
+
+        const updateData: any = {
+          updatedByUser: { connect: { id: req.user!.id } },
+          updatedAt: new Date()
+        };
+
+        if (name !== undefined) updateData.name = name;
+        if (maxPerRequest !== undefined) updateData.maxRequestsPerMonth = maxPerRequest ? Number(maxPerRequest) : null;
+        if (monthlyLimit !== undefined) updateData.monthlyLimit = monthlyLimit ? new Prisma.Decimal(monthlyLimit) : null;
+        if (yearlyLimit !== undefined) updateData.yearlyLimit = yearlyLimit ? new Prisma.Decimal(yearlyLimit) : null;
+        if (eligibleRoles !== undefined) updateData.eligibleRoles = eligibleRoles;
+        if (approvalRoles !== undefined) updateData.approvalRoles = approvalRoles;
+        if (accept !== undefined) updateData.acceptRoles = accept;
+        if (attachmentRequired !== undefined) updateData.attachmentRequired = attachmentRequired;
+        if (isActive !== undefined) updateData.isActive = isActive;
+
         const category = await client.reimbursementCategory.update({
           where: { id },
-          data: {
-            ...updates,
-            updatedBy: req.user!.id,
-            updatedAt: new Date()
-          }
+          data: updateData
         });
 
         res.status(200).json({
