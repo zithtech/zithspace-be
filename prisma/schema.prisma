@@ -140,8 +140,11 @@ model User {
   addedRelatedLinks    TicketRelatedLink[]
   documenthub          DocumentHub[]
   documents            Document[]
+  deletedDocuments     Document[]                 @relation("DocumentDeletedBy")
   documentHistory      DocumentHistory[]
   documenttree         DocumentTree[]
+  deletedDocumentTrees DocumentTree[]             @relation("DocumentTreeDeletedBy")
+  deletedDocumentHubs  DocumentHub[]              @relation("DocumentHubDeletedBy")
   assignedTickets      Ticket[]                   @relation("TicketAssignee")
   createdTickets       Ticket[]                   @relation("TicketCreator")
   reportToTickets      Ticket[]                   @relation("TicketReportTo")
@@ -226,6 +229,9 @@ model User {
   channelMessages ChannelMessage[]
   createdMeetings Meeting[] @relation("MeetingCreator")
   meetingParticipations MeetingParticipant[]
+
+  // ===== Document Sharing Relations =====
+  sharedDocuments Document[] @relation("DocumentSharedBy")
 
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
@@ -1508,10 +1514,16 @@ model DocumentHub {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  // Soft Delete
+  isDeleted   Boolean   @default(false) @map("is_deleted")
+  deletedAt   DateTime? @map("deleted_at")
+  deletedById String?   @map("deleted_by_id")
+
   // Relations
   project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   ticket    Ticket?  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   createdBy User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  deletedBy User?    @relation("DocumentHubDeletedBy", fields: [deletedById], references: [id])
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   documents Document[]
@@ -1521,6 +1533,7 @@ model DocumentHub {
   @@index([projectId])
   @@index([ticketId])
   @@index([createdById])
+  @@index([isDeleted])
   @@map("document_hub")
 }
 
@@ -1544,8 +1557,24 @@ model Document {
   updatedAt DateTime @updatedAt
 
   history DocumentHistory[]
+  
+  // Soft Delete
+  isDeleted   Boolean   @default(false) @map("is_deleted")
+  deletedAt   DateTime? @map("deleted_at")
+  deletedById String?   @map("deleted_by_id")
+  deletedBy   User?     @relation("DocumentDeletedBy", fields: [deletedById], references: [id])
+
+  // Sharing
+  visibility  String    @default("private") @map("visibility")
+  shareToken  String?   @unique @map("share_token")
+  sharedById  String?   @map("shared_by_id")
+  sharedBy    User?     @relation("DocumentSharedBy", fields: [sharedById], references: [id])
+  sharedAt    DateTime? @map("shared_at")
 
   @@index([documentHubId])
+  @@index([isDeleted])
+  @@index([visibility])
+  @@index([shareToken])
   @@map("documents")
 }
 
@@ -1574,6 +1603,12 @@ model DocumentTree {
   createdBy   User   @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
+
+  // Soft Delete
+  isDeleted   Boolean   @default(false) @map("is_deleted")
+  deletedAt   DateTime? @map("deleted_at")
+  deletedById String?   @map("deleted_by_id")
+  deletedBy   User?     @relation("DocumentTreeDeletedBy", fields: [deletedById], references: [id])
 
   @@index([documentHubId])
   @@index([parentId])
