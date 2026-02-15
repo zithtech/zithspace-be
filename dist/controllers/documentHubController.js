@@ -468,6 +468,10 @@ class DocumentHubController {
                     createdBy: {
                         select: { id: true, name: true, workEmail: true },
                     },
+                    treeNodes: {
+                        where: { isDeleted: false },
+                        select: { id: true, type: true, title: true },
+                    },
                 },
                 orderBy: {
                     createdAt: "desc",
