@@ -725,5 +725,43 @@ export class NotFoundError extends AppError {
   }
 }
 
+
+export type CreateTimesheetRowData = {
+  day: string; // ISO string
+  projectName: string;
+  taskName: string;
+  description?: string;
+  hours: number;
+  billable?: boolean;
+};
+
+export type CreateTimesheetData = {
+  weekStart: string; // ISO date
+  weekEnd: string;   // ISO date
+  rows: CreateTimesheetRowData[];
+};
+
+export type UpdateTimesheetRowData = {
+  id?: string;   
+  day?: string;
+  projectName?: string;
+  taskName?: string;
+  description?: string;
+  hours?: number;
+  billable?: boolean;
+  taskId ?: string;
+  projectId?: string;
+};
+
+export type UpdateTimesheetData = {
+ 
+  weekStart?: string;
+  weekEnd?: string;
+  status?: "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED";
+  rejectReason?: string;
+  rows?: UpdateTimesheetRowData[];
+};
+
+
 // Note: Prisma types will be available after running 'npx prisma generate'
 // For now, we use the temporary interfaces and enums defined above

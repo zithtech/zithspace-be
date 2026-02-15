@@ -185,7 +185,7 @@ class CustomerController {
             const normalizedUpdates = {};
             Object.entries(updates).forEach(([key, value]) => {
                 if (value === "") {
-                    normalizedUpdates[key] = null;
+                    normalizedUpdates[key] = undefined;
                 }
                 else if (value !== undefined) {
                     normalizedUpdates[key] = value;

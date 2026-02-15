@@ -20,6 +20,13 @@ router.use(requireAuth);
 router.get("/", DocumentHubController.getAllDocumentHubs);
 
 /**
+ * @route   GET /api/documenthub/trash
+ * @desc    Get trash items (hubs and documents)
+ * @access  Public (all users)
+ */
+router.get("/trash", DocumentHubController.getTrash);
+
+/**
  * @route   POST /api/documenthub
  * @desc    Create documenthub (tenant-aware)
  * @access  Public (all users)
@@ -33,6 +40,20 @@ router.post("/", DocumentHubController.createDocumentHub);
  * @access  Public (all users)
  */
 router.get("/:id", DocumentHubController.getDocumentHubById);
+
+/**
+ * @route   DELETE /api/documenthub/:id
+ * @desc    Soft delete documenthub
+ * @access  Public (all users)
+ */
+router.delete("/:id", DocumentHubController.deleteDocumentHub);
+
+/**
+ * @route   POST /api/documenthub/:id/restore
+ * @desc    Restore documenthub
+ * @access  Public (all users)
+ */
+router.post("/:id/restore", DocumentHubController.restoreDocumentHub);
 
 /**
  * @route   POST /api/documenthub/node
@@ -63,10 +84,38 @@ router.get("/document/:id", DocumentHubController.getDocument);
 router.put("/document/:id", DocumentHubController.updateDocument);
 
 /**
+ * @route   DELETE /api/documenthub/document/:id
+ * @desc    Soft delete document
+ * @access  Public (all users)
+ */
+router.delete("/document/:id", DocumentHubController.deleteDocument);
+
+/**
+ * @route   POST /api/documenthub/document/:id/restore
+ * @desc    Restore document
+ * @access  Public (all users)
+ */
+router.post("/document/:id/restore", DocumentHubController.restoreDocument);
+
+/**
  * @route   GET /api/documenthub/document/:id/history
  * @desc    Get document history
  * @access  Public (all users)
  */
 router.get("/document/:id/history", DocumentHubController.getDocumentHistory);
+
+/**
+ * @route   PUT /api/documenthub/document/:id/share
+ * @desc    Set document visibility (private/internal/public)
+ * @access  Authenticated users
+ */
+router.put("/document/:id/share", DocumentHubController.shareDocument);
+
+/**
+ * @route   DELETE /api/documenthub/document/:id/share
+ * @desc    Revoke document sharing (set to private)
+ * @access  Authenticated users
+ */
+router.delete("/document/:id/share", DocumentHubController.revokeShare);
 
 export default router;
