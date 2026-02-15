@@ -188,59 +188,8 @@ export class EnviromentsController {
   }
 
   /**
-   * Delete environment (soft delete via status)
+   * Delete environment (hard delete via status)
    */
-//   static async deleteEnviroment(req: AuthRequest, res: Response): Promise<void> {
-//     try {
-//       if (!req.tenantId || !req.user) {
-//         res.status(400).json({
-//           success: false,
-//           error: "Tenant context and authentication required",
-//         } as ApiResponse);
-//         return;
-//       }
-
-//       const { id } = req.params;
-
-//       const existing = await prisma.enviroments.findFirst({
-//         where: { id, tenantId: req.tenantId },
-//       });
-
-//       if (!existing) {
-//         throw new NotFoundError("Environment not found");
-//       }
-
-//       await prisma.enviroments.update({
-//         where: { id },
-//         data: {
-//           status: "INACTIVE",
-//           updatedBy: req.user.id,
-//           updatedAt: new Date(),
-//         },
-//       });
-
-//       res.status(200).json({
-//         success: true,
-//         message: "Environment deactivated successfully",
-//       } as ApiResponse);
-
-//     } catch (error: any) {
-//       console.error("Delete environment error:", error);
-
-//       if (error instanceof NotFoundError) {
-//         res.status(404).json({
-//           success: false,
-//           error: error.message,
-//         } as ApiResponse);
-//         return;
-//       }
-
-//       res.status(500).json({
-//         success: false,
-//         error: "Failed to delete environment",
-//       } as ApiResponse);
-//     }
-//   }
 static async deleteEnviroment(req: AuthRequest, res: Response): Promise<void> {
   try {
     if (!req.tenantId || !req.user) {
