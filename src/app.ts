@@ -1,4 +1,4 @@
- import "module-alias/register";
+import "module-alias/register";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -199,6 +199,10 @@ app.use("/api/channels/:channelId/messages", messageRoutes);
 app.use("/api/files", fileDownloadRoutes);
 app.use('/api/email-history', emailHistoryRoutes);
 app.use("/api/timesheets", timesheetRoutes);
+
+// Public document access (no auth required)
+import { DocumentHubController } from "@/controllers/documentHubController";
+app.get("/api/public/document/:shareToken", DocumentHubController.getPublicDocument);
 
 
 
