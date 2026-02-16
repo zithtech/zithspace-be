@@ -44,158 +44,35 @@ export declare class EmailLoggerService {
         page: number;
         limit: number;
     }): Promise<{
-        data: ({
-            customer: {
-                id: string;
-                email: string;
-                companyName: string;
-            };
-            sentByUserRel: {
-                name: string;
-                id: string;
-            };
-        } & {
-            tenantId: string;
-            status: string;
-            id: string;
-            dueDate: string | null;
-            metadata: import("@prisma/client/runtime/library").JsonValue | null;
-            amount: string | null;
-            currency: string | null;
-            module: string;
-            moduleId: string;
-            moduleNumber: string | null;
-            to: string;
-            from: string;
-            fromName: string | null;
-            subject: string;
-            html: string;
-            plainText: string | null;
-            customerName: string | null;
-            customerEmail: string | null;
-            hasAttachment: boolean;
-            attachmentUrl: string | null;
-            attachmentName: string | null;
-            errorMessage: string | null;
-            sentAt: Date;
-            openedAt: Date | null;
-            clickedAt: Date | null;
-            sentByUser: string | null;
-            customerId: string | null;
-            sentBy: string;
-        })[];
+        data: any;
         pagination: {
             page: number;
             limit: number;
-            total: number;
+            total: any;
             pages: number;
         };
     }>;
     /**
      * Get a single email log by ID
      */
-    static getEmailById(id: string, tenantId: string): Promise<{
-        customer: {
-            tenantId: string;
-            createdAt: Date;
-            updatedAt: Date;
-            createdBy: string;
-            updatedBy: string | null;
-            id: string;
-            email: string | null;
-            phone: string | null;
-            city: string | null;
-            country: string | null;
-            address: string | null;
-            companyName: string;
-            taxId: string | null;
-        };
-        sentByUserRel: {
-            name: string;
-            id: string;
-        };
-    } & {
-        tenantId: string;
-        status: string;
-        id: string;
-        dueDate: string | null;
-        metadata: import("@prisma/client/runtime/library").JsonValue | null;
-        amount: string | null;
-        currency: string | null;
-        module: string;
-        moduleId: string;
-        moduleNumber: string | null;
-        to: string;
-        from: string;
-        fromName: string | null;
-        subject: string;
-        html: string;
-        plainText: string | null;
-        customerName: string | null;
-        customerEmail: string | null;
-        hasAttachment: boolean;
-        attachmentUrl: string | null;
-        attachmentName: string | null;
-        errorMessage: string | null;
-        sentAt: Date;
-        openedAt: Date | null;
-        clickedAt: Date | null;
-        sentByUser: string | null;
-        customerId: string | null;
-        sentBy: string;
-    }>;
+    static getEmailById(id: string, tenantId: string): Promise<any>;
     /**
      * Get all unique modules that have sent emails
      */
-    static getModules(tenantId: string): Promise<string[]>;
+    static getModules(tenantId: string): Promise<any>;
     /**
      * Get email statistics
      */
     static getStats(tenantId: string): Promise<{
-        total: number;
-        sentToday: number;
-        sentThisWeek: number;
-        sentThisMonth: number;
-        byModule: {
-            module: string;
-            count: number;
-        }[];
-        byStatus: {
-            status: string;
-            count: number;
-        }[];
+        total: any;
+        sentToday: any;
+        sentThisWeek: any;
+        sentThisMonth: any;
+        byModule: any;
+        byStatus: any;
     }>;
     /**
      * Update email status (for tracking opens/clicks)
      */
-    static updateStatus(id: string, tenantId: string, status: 'OPENED' | 'CLICKED', metadata?: any): Promise<{
-        tenantId: string;
-        status: string;
-        id: string;
-        dueDate: string | null;
-        metadata: import("@prisma/client/runtime/library").JsonValue | null;
-        amount: string | null;
-        currency: string | null;
-        module: string;
-        moduleId: string;
-        moduleNumber: string | null;
-        to: string;
-        from: string;
-        fromName: string | null;
-        subject: string;
-        html: string;
-        plainText: string | null;
-        customerName: string | null;
-        customerEmail: string | null;
-        hasAttachment: boolean;
-        attachmentUrl: string | null;
-        attachmentName: string | null;
-        errorMessage: string | null;
-        sentAt: Date;
-        openedAt: Date | null;
-        clickedAt: Date | null;
-        sentByUser: string | null;
-        customerId: string | null;
-        sentBy: string;
-    }>;
+    static updateStatus(id: string, tenantId: string, status: 'OPENED' | 'CLICKED', metadata?: any): Promise<any>;
 }
