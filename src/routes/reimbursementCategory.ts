@@ -1,7 +1,6 @@
 import { Router } from 'express';
 import { authenticateToken, requireAuth, requireAdmin } from '@/middleware/auth';
 import { resolveTenant } from '@/middleware/tenantContext';
-
 const router = Router();
 
 // Apply tenant context resolution to all routes
