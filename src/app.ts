@@ -16,9 +16,6 @@ import gradeRoutes from "@/routes/gradeRoutes";
 import companyRoutes from "./routes/companyRoutes";
 
 
-// Import middleware
-import { optionalTenantContext } from "@/middleware/tenantContext";
-
 import authRoutes from "@/routes/auth";
 import tenantRoutes from "@/routes/tenants";
 import projectRoutes from "@/routes/projects";
