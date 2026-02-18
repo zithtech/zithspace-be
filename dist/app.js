@@ -31,6 +31,7 @@ const user_1 = __importDefault(require("@/routes/user"));
 const dailyUpdates_1 = __importDefault(require("@/routes/dailyUpdates"));
 const dashboard_1 = __importDefault(require("@/routes/dashboard"));
 const leaves_1 = __importDefault(require("@/routes/leaves"));
+const reimbursementCategories_1 = __importDefault(require("@/routes/reimbursementCategories"));
 const leaveTypeRoutes_1 = __importDefault(require("@/routes/leaveTypeRoutes"));
 const customerRoutes_1 = __importDefault(require("@/routes/customerRoutes"));
 const invoiceSettingsRoutes_1 = __importDefault(require("@/routes/invoiceSettingsRoutes"));
@@ -46,9 +47,12 @@ const messages_1 = __importDefault(require("@/routes/messages"));
 const timesheet_1 = __importDefault(require("@/routes/timesheet"));
 const companyGovernmentHoliday_routes_1 = __importDefault(require("./routes/companyGovernmentHoliday.routes"));
 const leaveAdjustmentRoutes_1 = __importDefault(require("./routes/leaveAdjustmentRoutes"));
+const fileDownload_1 = __importDefault(require("./routes/fileDownload"));
 const reimbursementCategory_1 = __importDefault(require("@/routes/reimbursementCategory"));
 const employmentTypeRoutes_1 = __importDefault(require("@/routes/employmentTypeRoutes"));
 const repositoryRoutes_1 = __importDefault(require("@/routes/repositoryRoutes"));
+const releasenotes_1 = __importDefault(require("@/routes/releasenotes"));
+const enviroments_1 = __importDefault(require("@/routes/enviroments"));
 const departmentRoutes_1 = __importDefault(require("@/routes/departmentRoutes"));
 const subDepartmentRoutes_1 = __importDefault(require("@/routes/subDepartmentRoutes"));
 const positionRoutes_1 = __importDefault(require("@/routes/positionRoutes"));
@@ -141,6 +145,7 @@ app.use("/api/user", user_1.default);
 app.use("/api/daily-updates", dailyUpdates_1.default);
 app.use("/api/dashboard", dashboard_1.default);
 app.use("/api/leaves", leaves_1.default);
+app.use("/api/reimbursement-categories", reimbursementCategories_1.default);
 app.use("/api/reimbursement-category", reimbursementCategory_1.default);
 app.use("/api/repositories", repositoryRoutes_1.default);
 app.use("/api/leave-types", leaveTypeRoutes_1.default);
@@ -161,8 +166,14 @@ app.use("/api/employment-types", employmentTypeRoutes_1.default);
 app.use("/api/documenthub", documenthub_1.default);
 app.use("/api/channels", channels_1.default);
 app.use("/api/channels/:channelId/messages", messages_1.default);
+app.use("/api/releasenotes", releasenotes_1.default);
+app.use("/api/enviroments", enviroments_1.default);
+app.use("/api/files", fileDownload_1.default);
 app.use('/api/email-history', emailHistoryRoutes_1.default);
 app.use("/api/timesheets", timesheet_1.default);
+// Public document access (no auth required)
+const documentHubController_1 = require("@/controllers/documentHubController");
+app.get("/api/public/document/:shareToken", documentHubController_1.DocumentHubController.getPublicDocument);
 app.get("/api/health", (req, res) => {
     res.status(200).json({
         success: true,

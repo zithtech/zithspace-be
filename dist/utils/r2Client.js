@@ -111,7 +111,9 @@ async function uploadFileToR2(base64File, fileName, tenantId, ticketId) {
         const uniqueId = (0, nanoid_1.nanoid)(12);
         const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
         // Organize by tenant and ticket in attachments folder
-        const folderPath = `${tenantId}/tickets/${ticketId}/attachments`;
+        const folderPath = ticketId
+            ? `${tenantId}/tickets/${ticketId}/attachments`
+            : `${tenantId}/reimbursements/attachments`;
         const storedFileName = `${folderPath}/${uniqueId}_${sanitizedFileName}`;
         // Upload to R2
         const params = {

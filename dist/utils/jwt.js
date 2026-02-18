@@ -250,7 +250,7 @@ exports.JWTUtils = JWTUtils;
 JWTUtils.ACCESS_TOKEN_SECRET = process.env.JWT_ACCESS_SECRET;
 JWTUtils.REFRESH_TOKEN_SECRET = process.env.JWT_REFRESH_SECRET;
 JWTUtils.ACCESS_TOKEN_EXPIRY = process.env.JWT_ACCESS_EXPIRES_IN ||
-    "15m";
+    "1d";
 JWTUtils.REFRESH_TOKEN_EXPIRY = process.env.JWT_REFRESH_EXPIRES_IN ||
     "30d";
 JWTUtils.ISSUER = "zithmi-backend-v2";
