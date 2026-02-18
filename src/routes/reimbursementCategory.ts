@@ -10,7 +10,7 @@ router.use(resolveTenant);
 // Apply authentication to all routes
 router.use(authenticateToken);
 router.use(requireAuth);
-import { ReimbursementCategoryController } from "@/controllers/reimbursementCategoryController";
+import ReimbursementCategoryController from "@/controllers/reimbursementCategoryController";
 
 
 // ==============================

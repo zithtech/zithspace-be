@@ -1,367 +1,128 @@
-import { Response } from 'express';
-import { Prisma } from '@prisma/client';
-import { tenantAwarePrisma } from '@/config/database';
 
-import {
-  AuthRequest,
-  ApiResponse,
-  NotFoundError,
-  ValidationError
+import { Response } from "express";
+import { prisma } from "@/config/database";
+import { AuthRequest } from "@/types";
 
-} from '@/types';
-import { uploadFileToR2, deleteFileFromR2 } from "@/utils/r2Client";
+class ReimbursementCategoryController {
 
-export class ReimbursementCategoryController {
-  /**
-   * Get all reimbursement categories with filtering and pagination
-   */
-  static async getCategories(req: AuthRequest, res: Response): Promise<void> {
+  // ==============================
+  // CREATE CATEGORY
+  // ==============================
+  async createCategory(req: AuthRequest, res: Response): Promise<void> {
     try {
-      if (!req.tenantId || !req.user) {
+      const tenantId = req.tenantId!;
+      const userId = req.user!.id;
+
+      const {
+        code,
+        name,
+        description,
+        maxRequestsPerMonth,
+        monthlyLimitAmount,
+        yearlyLimitAmount,
+        allowedRoles,
+        approvalFlow,
+        attachmentRequired,
+        autoApproveUnderAmount,
+        isActive,
+      } = req.body;
+
+      if (!code || !name || !allowedRoles || !approvalFlow) {
         res.status(400).json({
           success: false,
-          error: 'Tenant context and authentication required',
-        } as ApiResponse);
+          error: "Missing required fields",
+        });
         return;
       }
 
-      const {
-        page = 1,
-        limit = 20,
-        search,
-        isActive,
-        sortBy = 'name',
-        sortOrder = 'asc',
-        names,
-        roles
-      } = req.query;
+      const category = await prisma.reimbursementCategory.create({
+        data: {
+          tenantId,
+          code,
+          name,
+          description,
 
-      const where: any = {
-        tenantId: req.tenantId,
-      };
+          maxRequestsPerMonth,
+          monthlyLimitAmount,
+          yearlyLimitAmount,
 
-      if (isActive !== undefined && isActive !== 'all') {
-        where.isActive = isActive === 'true';
-      }
+          allowedRoles,
+          approvalFlow,
 
-      if (search) {
-        where.name = { contains: search as string, mode: 'insensitive' };
-      }
+          attachmentRequired: attachmentRequired ?? false,
+          autoApproveUnderAmount,
 
-      if (names) {
-        const nameList = (names as string).split(',').filter(Boolean);
-        if (nameList.length > 0) {
-          where.name = { in: nameList };
-        }
-      }
+          isActive: isActive ?? true,
 
-      if (roles) {
-        const roleList = (roles as string).split(',').filter(Boolean);
-        if (roleList.length > 0) {
-          where.eligibleRoles = { hasSome: roleList };
-        }
-      }
+          createdBy: userId,
+          updatedBy: userId,
+        },
+      });
 
-      const orderBy: any = {};
-      orderBy[sortBy as string] = sortOrder === 'desc' ? 'desc' : 'asc';
+      res.status(201).json({
+        success: true,
+        message: "Reimbursement category created successfully",
+        data: category,
+      });
+    } catch (error: any) {
+      console.error("Create reimbursement category error:", error);
+      res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+  }
 
-      const skip = (Number(page) - 1) * Number(limit);
+  // ==============================
+  // GET ALL CATEGORIES
+  // ==============================
+  async getCategories(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const tenantId = req.tenantId!;
 
-      const [categories, total] = await Promise.all([
-        tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-          return await client.reimbursementCategory.findMany({
-            where,
-            include: {
-              createdByUser: {
-                select: { id: true, name: true }
-              },
-              updatedByUser: {
-                select: { id: true, name: true }
-              }
-            },
-            orderBy,
-            skip,
-            take: Number(limit),
-          });
-        }),
-        tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-          return await client.reimbursementCategory.count({ where });
-        })
-      ]);
-
-      const totalPages = Math.ceil(total / Number(limit));
+      const categories = await prisma.reimbursementCategory.findMany({
+        where: {
+          tenantId,
+          isActive: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
 
       res.status(200).json({
         success: true,
         data: categories,
-        pagination: {
-          page: Number(page),
-          limit: Number(limit),
-          total,
-          pages: totalPages,
-          hasNext: Number(page) < totalPages,
-          hasPrev: Number(page) > 1
-        }
-      } as ApiResponse);
-    } catch (error) {
-      console.error('Get reimbursement categories error:', error);
+      });
+    } catch (error: any) {
+      console.error("Get reimbursement categories error:", error);
       res.status(500).json({
         success: false,
-        error: 'Failed to fetch reimbursement categories'
-      } as ApiResponse);
+        error: error.message,
+      });
     }
   }
 
-  /**
-   * Get category by ID
-   */
-  static async getCategoryById(req: AuthRequest, res: Response): Promise<void> {
+  // ==============================
+  // GET CATEGORY BY ID
+  // ==============================
+  async getCategoryById(req: AuthRequest, res: Response): Promise<void> {
     try {
-      if (!req.tenantId) {
-        res.status(400).json({ success: false, error: 'Tenant context required' } as ApiResponse);
-        return;
-      }
-
+      const tenantId = req.tenantId!;
       const { id } = req.params;
 
-      const category = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-        return await client.reimbursementCategory.findFirst({
-          where: { id, tenantId: req.tenantId },
-          include: {
-            createdByUser: { select: { id: true, name: true } },
-            updatedByUser: { select: { id: true, name: true } }
-          }
-        });
+      const category = await prisma.reimbursementCategory.findFirst({
+        where: {
+          id,
+          tenantId,
+        },
       });
 
       if (!category) {
-        throw new NotFoundError('Reimbursement category not found');
-      }
-
-      res.status(200).json({
-        success: true,
-        data: category
-      } as ApiResponse);
-    } catch (error: any) {
-      console.error('Get category by ID error:', error);
-      if (error instanceof NotFoundError) {
-        res.status(404).json({ success: false, error: error.message } as ApiResponse);
-        return;
-      }
-      res.status(500).json({ success: false, error: 'Failed to fetch category' } as ApiResponse);
-    }
-  }
-
-  /**
-   * Create new reimbursement category
-   */
-  static async createCategory(req: AuthRequest, res: Response): Promise<void> {
-    try {
-      if (!req.tenantId || !req.user) {
-        res.status(400).json({ success: false, error: 'Tenant context required' } as ApiResponse);
-        return;
-      }
-
-      const {
-        name,
-        maxPerRequest,
-        monthlyLimit,
-        yearlyLimit,
-        eligibleRoles,
-        approvalRoles,
-        accept,
-        attachmentRequired,
-        isActive
-      } = req.body;
-
-      if (!name) {
-        throw new ValidationError('Category name is required');
-      }
-
-      await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-        // Check for duplicate name
-        const existing = await client.reimbursementCategory.findFirst({
-          where: {
-            tenantId: req.tenantId,
-            name: { equals: name, mode: 'insensitive' }
-          }
-        });
-
-        if (existing) {
-          throw new ValidationError('A category with this name already exists');
-        }
-
-        const category = await client.reimbursementCategory.create({
-          data: {
-            tenant: { connect: { id: req.tenantId } },
-            name,
-            monthlyLimit: monthlyLimit ? new Prisma.Decimal(monthlyLimit) : null,
-            yearlyLimit: yearlyLimit ? new Prisma.Decimal(yearlyLimit) : null,
-            maxRequestsPerMonth: maxPerRequest ? Number(maxPerRequest) : null,
-            eligibleRoles: eligibleRoles || [],
-            acceptRoles: accept || [],
-            approvalRoles: approvalRoles || [],
-            attachmentRequired: attachmentRequired ?? false,
-            isActive: isActive ?? true,
-            createdByUser: { connect: { id: req.user!.id } },
-            updatedByUser: { connect: { id: req.user!.id } }
-          }
-        });
-
-        res.status(201).json({
-          success: true,
-          data: category,
-          message: 'Reimbursement category created successfully'
-        } as ApiResponse);
-      });
-    } catch (error: any) {
-      console.error('Create category error:', error);
-      if (error instanceof ValidationError) {
-        res.status(400).json({ success: false, error: error.message } as ApiResponse);
-        return;
-      }
-      res.status(500).json({ success: false, error: 'Failed to create category' } as ApiResponse);
-    }
-  }
-
-  /**
-   * Update reimbursement category
-   */
-  static async updateCategory(req: AuthRequest, res: Response): Promise<void> {
-    try {
-      if (!req.tenantId || !req.user) {
-        res.status(400).json({ success: false, error: 'Tenant context required' } as ApiResponse);
-        return;
-      }
-
-      const { id } = req.params;
-      const updates = req.body;
-
-      // Prevent updating immutable fields
-      delete updates.id;
-      delete updates.tenantId;
-      delete updates.createdAt;
-      delete updates.createdBy;
-
-      await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-        const existing = await client.reimbursementCategory.findFirst({
-          where: { id, tenantId: req.tenantId }
-        });
-
-        if (!existing) {
-          throw new NotFoundError('Category not found');
-        }
-
-        // Check name uniqueness if name is changing
-        if (updates.name && updates.name.toLowerCase() !== existing.name.toLowerCase()) {
-          const duplicate = await client.reimbursementCategory.findFirst({
-            where: {
-              tenantId: req.tenantId,
-              name: { equals: updates.name, mode: 'insensitive' },
-              id: { not: id }
-            }
-          });
-
-          if (duplicate) {
-            throw new ValidationError('A category with this name already exists');
-          }
-        }
-
-
-        const {
-          name,
-          maxPerRequest,
-          monthlyLimit,
-          yearlyLimit,
-          eligibleRoles,
-          approvalRoles,
-          accept,
-          attachmentRequired,
-          isActive
-        } = updates;
-
-        const updateData: any = {
-          updatedByUser: { connect: { id: req.user!.id } },
-          updatedAt: new Date()
-        };
-
-        if (name !== undefined) updateData.name = name;
-        if (maxPerRequest !== undefined) updateData.maxRequestsPerMonth = maxPerRequest ? Number(maxPerRequest) : null;
-        if (monthlyLimit !== undefined) updateData.monthlyLimit = monthlyLimit ? new Prisma.Decimal(monthlyLimit) : null;
-        if (yearlyLimit !== undefined) updateData.yearlyLimit = yearlyLimit ? new Prisma.Decimal(yearlyLimit) : null;
-        if (eligibleRoles !== undefined) updateData.eligibleRoles = eligibleRoles;
-        if (approvalRoles !== undefined) updateData.approvalRoles = approvalRoles;
-        if (accept !== undefined) updateData.acceptRoles = accept;
-        if (attachmentRequired !== undefined) updateData.attachmentRequired = attachmentRequired;
-        if (isActive !== undefined) updateData.isActive = isActive;
-
-        const category = await client.reimbursementCategory.update({
-          where: { id },
-          data: updateData
-        });
-
-        res.status(200).json({
-          success: true,
-          data: category,
-          message: 'Reimbursement category updated successfully'
-        } as ApiResponse);
-      });
-    } catch (error: any) {
-      console.error('Update category error:', error);
-      if (error instanceof NotFoundError) {
-        res.status(404).json({ success: false, error: error.message } as ApiResponse);
-        return;
-      }
-      if (error instanceof ValidationError) {
-        res.status(400).json({ success: false, error: error.message } as ApiResponse);
-        return;
-      }
-      res.status(500).json({ success: false, error: 'Failed to update category' } as ApiResponse);
-    }
-  }
-
-  /**
-   * Delete reimbursement category
-   */
-  static async deleteCategory(req: AuthRequest, res: Response): Promise<void> {
-    try {
-      if (!req.tenantId) {
-        res.status(400).json({ success: false, error: 'Tenant context required' } as ApiResponse);
-        return;
-      }
-
-      const { id } = req.params;
-
-      await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-        const existing = await client.reimbursementCategory.findFirst({
-          where: { id, tenantId: req.tenantId }
-        });
-
-        if (!existing) {
-          throw new NotFoundError('Category not found');
-        }
-
-        await client.reimbursementCategory.delete({
-          where: { id }
-        });
-
-        res.status(200).json({
-          success: true,
-          message: 'Reimbursement category deleted successfully'
-        } as ApiResponse);
-      });
-    } catch (error: any) {
-      console.error('Delete category error:', error);
-      if (error instanceof NotFoundError) {
-        res.status(404).json({ success: false, error: error.message } as ApiResponse);
-        return;
-      }
-      // Handle foreign key constraints (if any items use this category)
-      if (error.code === 'P2003') {
-        res.status(400).json({
+        res.status(404).json({
           success: false,
-          error: 'Cannot delete category because it is being used by existing reimbursement requests'
-        } as ApiResponse);
+          error: "Category not found",
+        });
         return;
       }
       res.status(500).json({ success: false, error: 'Failed to delete category' } as ApiResponse);
@@ -601,13 +362,23 @@ export class ReimbursementRequestController {
         stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
         details: error
       } as ApiResponse);
+
+      res.status(200).json({
+        success: true,
+        data: category,
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        error: error.message,
+      });
     }
   }
 
-  /**
-   * Get requests (My Requests, Manager Approvals, Finance View)
-   */
-  static async getRequests(req: AuthRequest, res: Response): Promise<void> {
+  // ==============================
+  // UPDATE CATEGORY
+  // ==============================
+  async updateCategory(req: AuthRequest, res: Response): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
         res.status(400).json({ success: false, error: 'Tenant context required' } as ApiResponse);
@@ -728,31 +499,55 @@ export class ReimbursementRequestController {
         });
       });
 
-      if (!request) {
-        throw new NotFoundError('Request not found');
+      if (!existing) {
+        res.status(404).json({
+          success: false,
+          error: "Category not found",
+        });
+        return;
       }
+
+      const updated = await prisma.reimbursementCategory.update({
+        where: { id },
+        data: {
+          code: req.body.code,
+          name: req.body.name,
+          description: req.body.description,
+
+          maxRequestsPerMonth: req.body.maxRequestsPerMonth,
+          monthlyLimitAmount: req.body.monthlyLimitAmount,
+          yearlyLimitAmount: req.body.yearlyLimitAmount,
+
+          allowedRoles: req.body.allowedRoles,
+          approvalFlow: req.body.approvalFlow,
+
+          attachmentRequired: req.body.attachmentRequired,
+          autoApproveUnderAmount: req.body.autoApproveUnderAmount,
+
+          isActive: req.body.isActive,
+
+          updatedBy: userId,
+        },
+      });
 
       res.status(200).json({
         success: true,
-        data: {
-          ...request,
-          employee: request.user,
-          expenseItems: request.items
-        }
-      } as ApiResponse);
+        message: "Category updated successfully",
+        data: updated,
+      });
     } catch (error: any) {
-      if (error instanceof NotFoundError) {
-        res.status(404).json({ success: false, error: error.message } as ApiResponse);
-        return;
-      }
-      res.status(500).json({ success: false, error: 'Failed to fetch request' } as ApiResponse);
+      console.error("Update reimbursement category error:", error);
+      res.status(500).json({
+        success: false,
+        error: error.message,
+      });
     }
   }
 
-  /**
-   * Update request (Edit)
-   */
-  static async updateRequest(req: AuthRequest, res: Response): Promise<void> {
+  // ==============================
+  // DELETE (SOFT DELETE)
+  // ==============================
+  async deleteCategory(req: AuthRequest, res: Response): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
         res.status(400).json({ success: false, error: 'Tenant context required' } as ApiResponse);
@@ -926,22 +721,29 @@ export class ReimbursementRequestController {
 
       const { id } = req.params;
 
-      await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-        const existing = await client.reimbursementRequest.findFirst({
-          where: { id, tenantId: req.tenantId }
+      const category = await prisma.reimbursementCategory.findFirst({
+        where: { id, tenantId },
+      });
+
+      if (!category) {
+        res.status(404).json({
+          success: false,
+          error: "Category not found",
         });
+        return;
+      }
 
-        if (!existing) throw new NotFoundError('Request not found');
-        if (existing.status !== 'DRAFT' && existing.status !== 'PENDING_APPROVAL') {
-          throw new ValidationError('Only DRAFT or PENDING requests can be deleted');
-        }
+      await prisma.reimbursementCategory.update({
+        where: { id },
+        data: {
+          isActive: false,
+          updatedBy: userId,
+        },
+      });
 
-        await client.reimbursementRequest.delete({ where: { id } });
-
-        res.status(200).json({
-          success: true,
-          message: 'Request deleted successfully'
-        } as ApiResponse);
+      res.status(200).json({
+        success: true,
+        message: "Category deactivated successfully",
       });
     } catch (error: any) {
       if (error instanceof NotFoundError) {
@@ -1130,9 +932,7 @@ export class ReimbursementRequestController {
   }
 }
 
-// ==========================================
-// REIMBURSEMENT ITEM CONTROLLER
-// ==========================================
+export default new ReimbursementCategoryController();
 
 export class ReimbursementItemController {
   /**

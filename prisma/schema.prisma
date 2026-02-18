@@ -39,12 +39,18 @@ model Tenant {
   holidays         CompanyGovernmentHoliday[]
   projects         Project[]
   releasePlans     ReleasePlan[]
-  reimbursementCategories ReimbursementCategory[]
+
+   reimbursementCategories ReimbursementCategory[]
     emailLogs EmailLog[]
   reimbursementRequests ReimbursementRequest[]
   reimbursementItems    ReimbursementItem[]
   reimbursementApprovals ReimbursementApproval[]
   reimbursementAttachments ReimbursementAttachment[]
+
+
+
+
+
   shifts           Shift[]
 
   sprintCompletionLogs SprintCompletionLog[]
@@ -84,7 +90,6 @@ model User {
   name              String
   workEmail         String    @map("work_email")
   personalEmail     String    @map("personal_email")
-  department           String?     
   phone             String
   passwordHash      String    @map("password_hash")
   role              String    @default("user")
@@ -126,7 +131,7 @@ model User {
   createdProjects      Project[]                  @relation("ProjectCreator")
   managedProjects      Project[]                  @relation("ProjectManager")
   refreshTokens        RefreshToken[]
-  createdReleasePlans  ReleasePlan[]       @relation("ReleasePlanCreator")
+
 
   createdReimbursementCategories ReimbursementCategory[] @relation("ReimbursementCategoryCreatedBy")
   updatedReimbursementCategories ReimbursementCategory[] @relation("ReimbursementCategoryUpdatedBy")
@@ -135,18 +140,17 @@ model User {
   reimbursementApprovals ReimbursementApproval[]
   reimbursementAttachments ReimbursementAttachment[]
   
-  statusUpdates        StatusUpdate[]      @relation("UserStatusUpdates")
+
+  createdReleasePlans  ReleasePlan[]              @relation("ReleasePlanCreator")
+  statusUpdates        StatusUpdate[]             @relation("UserStatusUpdates")
   performedActivityLog TicketActivityLog[]
   ticketAttachments    TicketAttachment[]
   ticketComments       TicketComment[]
   addedRelatedLinks    TicketRelatedLink[]
   documenthub          DocumentHub[]
   documents            Document[]
-  deletedDocuments     Document[]                 @relation("DocumentDeletedBy")
   documentHistory      DocumentHistory[]
   documenttree         DocumentTree[]
-  deletedDocumentTrees DocumentTree[]             @relation("DocumentTreeDeletedBy")
-  deletedDocumentHubs  DocumentHub[]              @relation("DocumentHubDeletedBy")
   assignedTickets      Ticket[]                   @relation("TicketAssignee")
   createdTickets       Ticket[]                   @relation("TicketCreator")
   reportToTickets      Ticket[]                   @relation("TicketReportTo")
@@ -184,6 +188,14 @@ model User {
 
   createdTimesheetRows TimesheetRow[] @relation("TimesheetRowCreator")
   updatedTimesheetRows TimesheetRow[] @relation("TimesheetRowUpdater")
+
+ 
+
+
+
+    // ===== Reimbursement Category =====
+  createdReimbursementCategories ReimbursementCategory[] @relation("ReimbursementCategoryCreatedBy")
+  updatedReimbursementCategories ReimbursementCategory[] @relation("ReimbursementCategoryUpdatedBy")
 
   // ===== Grade Relations =====
   createdGrades Grade[] @relation("GradeCreator")
@@ -225,19 +237,12 @@ model User {
   updatedInvoicePayments InvoicePayment[] @relation("InvoicePaymentUpdatedBy")
   sentEmails EmailLog[] @relation("EmailSentBy")
 
-  
-  //environmentsCreated  ReleaseSettings[] @relation("EnvironmentCreatedBy")
-  //environmentsUpdated  ReleaseSettings[] @relation("EnvironmentUpdatedBy")
-
   // ===== Chat & Meeting Relations =====
   createdChannels Channel[] @relation("ChannelCreator")
   channelMemberships ChannelMember[]
   channelMessages ChannelMessage[]
   createdMeetings Meeting[] @relation("MeetingCreator")
   meetingParticipations MeetingParticipant[]
-
-  // ===== Document Sharing Relations =====
-  sharedDocuments Document[] @relation("DocumentSharedBy")
 
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
@@ -246,6 +251,43 @@ model User {
 }
 
 
+
+
+
+model ReimbursementCategory {
+  id                        String   @id @default(uuid())
+  tenantId                  String   @map("tenant_id")
+
+  code                      String   @db.VarChar(50)
+  name                      String   @db.VarChar(100)
+  description               String?
+
+  maxRequestsPerMonth       Int?      @map("max_requests_per_month")
+  monthlyLimitAmount        Decimal?  @map("monthly_limit_amount") @db.Decimal(12, 2)
+  yearlyLimitAmount         Decimal?  @map("yearly_limit_amount")  @db.Decimal(12, 2)
+
+  allowedRoles              String[]  @map("allowed_roles")
+  approvalFlow              Json?     @map("approval_flow")
+
+  attachmentRequired        Boolean   @default(false) @map("attachment_required")
+  autoApproveUnderAmount    Decimal?  @map("auto_approve_under_amount") @db.Decimal(12, 2)
+
+  isActive                  Boolean   @default(true) @map("is_active")
+
+  createdAt                 DateTime  @default(now()) @map("created_at")
+  createdBy                 String    @map("created_by")
+
+  updatedAt                 DateTime  @updatedAt @map("updated_at")
+  updatedBy                 String?   @map("updated_by")
+
+  // Relations
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  createdByUser User     @relation("ReimbursementCategoryCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser User?    @relation("ReimbursementCategoryUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@unique([tenantId, code])
+  @@map("reimbursement_category")
+}
 
 model Grade {
   id          String   @id @default(uuid())
@@ -404,7 +446,6 @@ model Project {
   tickets              Ticket[]
   workEntries          WorkEntry[]
   documenthub          DocumentHub[]
-  releaseNotes         ReleaseNote[]  // ✅ add this line
 
   @@unique([tenantId, code])
   @@map("projects")
@@ -578,7 +619,7 @@ model TicketRelatedLink {
 model TicketAttachment {
   id           String   @id @default(uuid())
   tenantId     String   @map("tenant_id")
-  ticketId     String?  @map("ticket_id")
+  ticketId     String   @map("ticket_id")
   fileName     String   @map("file_name")
   fileSize     Int      @map("file_size")
   fileType     String   @map("file_type")
@@ -588,7 +629,7 @@ model TicketAttachment {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
   tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  ticket       Ticket?  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticket       Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   uploadedBy   User     @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
 
   @@index([ticketId])
@@ -597,7 +638,6 @@ model TicketAttachment {
   @@index([ticketId], map: "idx_attachment_ticket")
   @@map("ticket_attachments")
 }
-
 
 model TicketActivityLog {
   id            String   @id @default(uuid())
@@ -1471,16 +1511,10 @@ model DocumentHub {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  // Soft Delete
-  isDeleted   Boolean   @default(false) @map("is_deleted")
-  deletedAt   DateTime? @map("deleted_at")
-  deletedById String?   @map("deleted_by_id")
-
   // Relations
   project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
   ticket    Ticket?  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   createdBy User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  deletedBy User?    @relation("DocumentHubDeletedBy", fields: [deletedById], references: [id])
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   documents Document[]
@@ -1490,7 +1524,6 @@ model DocumentHub {
   @@index([projectId])
   @@index([ticketId])
   @@index([createdById])
-  @@index([isDeleted])
   @@map("document_hub")
 }
 
@@ -1514,24 +1547,8 @@ model Document {
   updatedAt DateTime @updatedAt
 
   history DocumentHistory[]
-  
-  // Soft Delete
-  isDeleted   Boolean   @default(false) @map("is_deleted")
-  deletedAt   DateTime? @map("deleted_at")
-  deletedById String?   @map("deleted_by_id")
-  deletedBy   User?     @relation("DocumentDeletedBy", fields: [deletedById], references: [id])
-
-  // Sharing
-  visibility  String    @default("private") @map("visibility")
-  shareToken  String?   @unique @map("share_token")
-  sharedById  String?   @map("shared_by_id")
-  sharedBy    User?     @relation("DocumentSharedBy", fields: [sharedById], references: [id])
-  sharedAt    DateTime? @map("shared_at")
 
   @@index([documentHubId])
-  @@index([isDeleted])
-  @@index([visibility])
-  @@index([shareToken])
   @@map("documents")
 }
 
@@ -1560,12 +1577,6 @@ model DocumentTree {
   createdBy   User   @relation(fields: [createdById], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
-
-  // Soft Delete
-  isDeleted   Boolean   @default(false) @map("is_deleted")
-  deletedAt   DateTime? @map("deleted_at")
-  deletedById String?   @map("deleted_by_id")
-  deletedBy   User?     @relation("DocumentTreeDeletedBy", fields: [deletedById], references: [id])
 
   @@index([documentHubId])
   @@index([parentId])
@@ -2022,91 +2033,6 @@ model TicketPullRequest {
 }
 
 
-model ReleaseNote {
-  id          String    @id @default(uuid())
-  tenantId    String    @map("tenant_id")
-
-  // 🔹 Basic Info
-  projectId   String    @map("project_id")
-  project     Project   @relation(fields: [projectId], references: [id]) // ✅ link to Project
-  version     String
-  title       String
-  releaseDate DateTime  @map("release_date")
-  environment String
-
-  // 🔹 Editors (BlockNote JSON)
-  summary         Json
-  keyInsights     Json @map("key_insights")
-  newFeatures     Json @map("new_features")
-  improvements    Json 
-  bugFixes        Json @map("bug_fixes")
-  breakingChanges Json @map("breaking_changes")
-  apiChanges      Json @map("api_changes")
-  databaseChanges Json @map("database_changes")
-  knownIssues     Json @map("known_issues")
-
-  // 🔹 Linked Items
-  linkedTickets   String[] @map("linked_tickets")
-  repositories    String[] // Manual entry
-  pullRequests    String[]@map("pull_requests")
-
-  // 🔹 Visibility
-  visibility      Visibility[]
-
-  // 🔹 Status
-  status          ReleaseStatus @default(DRAFT)
-  //environmentId String
-  //environment   ReleaseSettings @relation(fields: [environmentId], references: [id])
-
-
-  // 🔹 Timestamps
-  createdAt       DateTime @default(now())  @map("created_at")
-  updatedAt       DateTime @updatedAt       @map("updated_at")
-  updatedBy       String?   @map("updated_by")
-  createdBy      String    @map("created_by")
-  @@map("release_notes")
-      
-}
-enum ReleaseStatus {
-  DRAFT
-  RELEASED
-  @@map("release_status")
-
-}
-
-//enum Environment {
-  //DEV
-  //QA
-  //PROD
-  //@@map("environment")
-//}
-
-enum Visibility {
-  INTERNAL  // only project members
-  CLIENT    // selected clients
-  PUBLIC    // everyone
-  @@map("visibility")
-}
-// ==================== ENVIRONMENT MODEL ====================
-
-model Enviroments {
-  id            String   @id @default(uuid())
-  tenantId      String   @map("tenant_id")
-
-  name          String
-  code          String
-  status        String   @default("ACTIVE")
-
-  createdBy     String    @map("created_by")
-  updatedBy     String?   @map("updated_by")
-
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt    @map("updated_at")
-
-  @@index([tenantId])
-  @@unique([tenantId, code])
-   @@map("environments")
-}
 
 
 model EmailLog {

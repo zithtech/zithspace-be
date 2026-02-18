@@ -16,7 +16,7 @@ export declare function uploadImageToR2(base64Image: string, tenantId: string, t
  * @param ticketId - Ticket ID for organization
  * @returns Object with file URL and metadata
  */
-export declare function uploadFileToR2(base64File: string, fileName: string, tenantId: string, ticketId?: string): Promise<{
+export declare function uploadFileToR2(base64File: string, fileName: string, tenantId: string, ticketId: string): Promise<{
     fileUrl: string;
     fileSize: number;
     fileType: string;
