@@ -1,4 +1,4 @@
-import "module-alias/register";
+ import "module-alias/register";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -34,7 +34,6 @@ import userRoutes from "@/routes/user";
 import dailyUpdateRoutes from "@/routes/dailyUpdates";
 import dashboardRoutes from "@/routes/dashboard";
 import leaveRoutes from "@/routes/leaves";
-import reimbursementCategoryRoutes from "@/routes/reimbursementCategories";
 import leaveTypeRoutes from "@/routes/leaveTypeRoutes";
 import customerRoutes from "@/routes/customerRoutes";
 import invoiceSettingRoutes from "@/routes/invoiceSettingsRoutes";
@@ -54,12 +53,9 @@ import timesheetRoutes from "@/routes/timesheet";
 
 import companyGovernmentHolidayRouter from './routes/companyGovernmentHoliday.routes';
 import leaveAdjustmentRoutes from "./routes/leaveAdjustmentRoutes";
-import fileDownloadRoutes from "./routes/fileDownload";
 import reimbursement from "@/routes/reimbursementCategory";
 import employmentTypeRoutes from "@/routes/employmentTypeRoutes";
 import repositoryRoutes from "@/routes/repositoryRoutes";
-import releaseNotesRouter from "@/routes/releasenotes";
-import enviromentsRoutes from "@/routes/enviroments";
 import departmentRoutes from "@/routes/departmentRoutes";
 import subDepartmentRoutes from "@/routes/subDepartmentRoutes";
 import positionRoutes from "@/routes/positionRoutes";
@@ -176,7 +172,6 @@ app.use("/api/user", userRoutes);
 app.use("/api/daily-updates", dailyUpdateRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/leaves", leaveRoutes);
-app.use("/api/reimbursement-categories", reimbursementCategoryRoutes);
 app.use("/api/reimbursement-category", reimbursement);
 app.use("/api/repositories", repositoryRoutes);
 app.use("/api/leave-types", leaveTypeRoutes);
@@ -198,15 +193,8 @@ app.use("/api/employment-types", employmentTypeRoutes);
 app.use("/api/documenthub", documentHubRoutes);
 app.use("/api/channels", channelRoutes);
 app.use("/api/channels/:channelId/messages", messageRoutes);
-app.use("/api/releasenotes", releaseNotesRouter);
-app.use("/api/enviroments", enviromentsRoutes);
-app.use("/api/files", fileDownloadRoutes);
 app.use('/api/email-history', emailHistoryRoutes);
 app.use("/api/timesheets", timesheetRoutes);
-
-// Public document access (no auth required)
-import { DocumentHubController } from "@/controllers/documentHubController";
-app.get("/api/public/document/:shareToken", DocumentHubController.getPublicDocument);
 
 
 
