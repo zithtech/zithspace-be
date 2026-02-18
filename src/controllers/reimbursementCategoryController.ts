@@ -392,7 +392,7 @@ export class ReimbursementCategoryController {
       const mimeType = file.mimetype;
       const dataUri = `data:${mimeType};base64,${base64Data}`;
 
-      const { fileUrl } = await uploadFileToR2(
+      const { fileUrl, fileSize, fileType } = await uploadFileToR2(
         dataUri,
         file.originalname,
         req.tenantId
@@ -408,7 +408,9 @@ export class ReimbursementCategoryController {
       res.status(200).json({
         success: true,
         filename: file.originalname,
-        url: fileUrl
+        url: fileUrl,
+        fileSize: fileSize,
+        fileType: fileType
       } as ApiResponse);
     } catch (error: any) {
       console.error('Upload file error:', error);
@@ -467,60 +469,125 @@ export class ReimbursementRequestController {
 
             if (url && url.startsWith('data:')) {
               try {
-                const { fileUrl } = await uploadFileToR2(url, name, tenantId);
-                return fileUrl;
+                const { fileUrl, fileSize, fileType } = await uploadFileToR2(url, name, tenantId);
+                return { url: fileUrl, name, size: fileSize, type: fileType };
               } catch (e) {
                 console.error("Failed to upload base64 attachment", e);
-                return "";
+                return null;
               }
             }
-            return url || name || "";
+            return { url, name, size: f.size || f.fileSize || 0, type: f.type || f.fileType || 'unknown' };
           }));
+
+          const validAttachments = processedAttachments.filter((a: any) => a && a.url);
 
           return {
             ...item,
-            attachments: processedAttachments.filter((a: string) => a !== "")
+            processedAttachments: validAttachments,
+            attachments: validAttachments.map(a => a.url) // Legacy compatibility
           };
         }));
 
-        // Generate Request ID
-        const count = await client.reimbursementRequest.count({ where: { tenantId } });
-        const requestId = `EXP-${String(count + 1).padStart(5, '0')}`;
-
-        const request = await client.reimbursementRequest.create({
-          data: {
-            tenantId,
-            requestId,
-            userId: req.user!.id,
-            category,
-            department: department,
-            policy,
-            amount: new Prisma.Decimal(amount),
-            status: status || 'DRAFT',
-            submittedAt: status === 'PENDING_APPROVAL' ? new Date() : null,
-            activityLog,
-            items: {
-              create: processedItems.map((item: any) => ({
-                tenantId,
-                title: item.title || "Expense Item",
-                date: new Date(item.date),
-                amount: new Prisma.Decimal(Number(item.amount)),
-                billNo: item.billNo,
-                description: item.description,
-                attachments: item.attachments
-              }))
-            }
-          },
-          include: {
-            items: true
-          }
+        // Generate Request ID more robustly to avoid collisions
+        const lastRequest = await client.reimbursementRequest.findFirst({
+          where: { tenantId },
+          orderBy: { requestId: 'desc' },
+          select: { requestId: true }
         });
 
-        res.status(201).json({
-          success: true,
-          data: request,
-          message: 'Reimbursement request created successfully'
-        } as ApiResponse);
+        let nextNum = 1;
+        if (lastRequest && lastRequest.requestId.startsWith('EXP-')) {
+          const lastNumStr = lastRequest.requestId.split('-')[1];
+          if (!isNaN(parseInt(lastNumStr))) {
+            nextNum = parseInt(lastNumStr) + 1;
+          }
+        }
+        const requestId = `EXP-${String(nextNum).padStart(5, '0')}`;
+
+        console.log("🚀 Creating Request with RequestID:", requestId);
+        console.log("📦 Body Items Count:", items.length);
+        console.log("📦 Processed Items Count:", processedItems.length);
+
+        try {
+          // STEP 1: Create Request and Items (without nested attachments)
+          const request = await client.reimbursementRequest.create({
+            data: {
+              tenantId,
+              requestId,
+              userId: req.user!.id,
+              category,
+              department: department,
+              policy,
+              amount: new Prisma.Decimal(Number(amount)),
+              status: status || 'DRAFT',
+              submittedAt: status === 'PENDING_APPROVAL' ? new Date() : null,
+              activityLog,
+              items: {
+                create: processedItems.map((item: any) => ({
+                  tenantId,
+                  title: item.title || "Expense Item",
+                  date: item.date ? new Date(item.date) : new Date(),
+                  amount: new Prisma.Decimal(Number(item.amount) || 0),
+                  billNo: item.billNo,
+                  description: item.description
+                }))
+              }
+            },
+            include: {
+              items: true
+            }
+          });
+
+          // STEP 2: Create Attachments for each item explicitly
+          // We iterate through processedItems and find the matching created item by index or unique property
+          // Since create: [] preserves order, we can map by index
+          const attachmentPromises: any[] = [];
+
+          processedItems.forEach((processedItem, index) => {
+            const createdItem = request.items[index];
+            if (createdItem && processedItem.processedAttachments) {
+              processedItem.processedAttachments.forEach((att: any) => {
+                attachmentPromises.push(
+                  client.reimbursementAttachment.create({
+                    data: {
+                      tenantId,
+                      fileName: att.name || 'attachment',
+                      fileUrl: att.url,
+                      fileSize: att.size || 0,
+                      fileType: att.type || 'unknown',
+                      uploadedById: req.user!.id,
+                      reimbursementRequestId: request.id,
+                      reimbursementItemId: createdItem.id
+                    }
+                  })
+                );
+              });
+            }
+          });
+
+          if (attachmentPromises.length > 0) {
+            await Promise.all(attachmentPromises);
+          }
+
+          // Fetch the final request with all relations to return to frontend
+          const finalRequest = await client.reimbursementRequest.findUnique({
+            where: { id: request.id },
+            include: {
+              items: {
+                include: { reimbursementAttachments: true }
+              }
+            }
+          });
+
+          res.status(201).json({
+            success: true,
+            data: finalRequest,
+            message: 'Reimbursement request created successfully'
+          } as ApiResponse);
+        } catch (dbError: any) {
+          console.error("Prisma Create Error:", dbError);
+          throw dbError; // Rethrow to be caught by outer catch
+        }
       });
     } catch (error: any) {
       console.error('Create request error:', error);
@@ -528,7 +595,12 @@ export class ReimbursementRequestController {
         res.status(400).json({ success: false, error: error.message } as ApiResponse);
         return;
       }
-      res.status(500).json({ success: false, error: error.message || 'Failed to create request' } as ApiResponse);
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to create request',
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+        details: error
+      } as ApiResponse);
     }
   }
 
@@ -584,7 +656,11 @@ export class ReimbursementRequestController {
             where,
             include: {
               user: { select: { id: true, name: true, workEmail: true, department: true } },
-              items: true
+              items: {
+                include: {
+                  reimbursementAttachments: true
+                }
+              }
             },
             orderBy: { createdAt: 'desc' },
             skip,
@@ -639,7 +715,11 @@ export class ReimbursementRequestController {
           where: { id, tenantId: req.tenantId },
           include: {
             user: { select: { id: true, name: true, workEmail: true, department: true } },
-            items: true,
+            items: {
+              include: {
+                reimbursementAttachments: true
+              }
+            },
             approvals: {
               include: { approver: { select: { name: true } } },
               orderBy: { createdAt: 'desc' }
@@ -718,51 +798,100 @@ export class ReimbursementRequestController {
 
             if (url && url.startsWith('data:')) {
               try {
-                const { fileUrl } = await uploadFileToR2(url, name, tenantId);
-                return fileUrl;
+                const { fileUrl, fileSize, fileType } = await uploadFileToR2(url, name, tenantId);
+                return { url: fileUrl, name, size: fileSize, type: fileType };
               } catch (e) {
                 console.error("Failed to upload base64 attachment", e);
-                return "";
+                return null;
               }
             }
-            return url || name || "";
+            return { url, name, size: f.size || f.fileSize || 0, type: f.type || f.fileType || 'unknown' };
           }));
+
+          const validAttachments = processedAttachments.filter((a: any) => a && a.url);
 
           return {
             ...item,
-            attachments: processedAttachments.filter((a: string) => a !== "")
+            processedAttachments: validAttachments
           };
         }));
 
+        console.log("🚀 Updating Request:", id);
+        console.log("📦 Items to update:", processedItems.length);
+
         // Transaction to update request and replace items
         const updated = await client.$transaction(async (tx) => {
-          // Delete old items
-          await tx.reimbursementItem.deleteMany({ where: { reimbursementRequestId: id } });
+          try {
+            // Delete old items and their attachments (Prisma cascade or manual)
+            await tx.reimbursementItem.deleteMany({ where: { reimbursementRequestId: id } });
 
-          // Update request and create new items
-          return await tx.reimbursementRequest.update({
-            where: { id },
-            data: {
-              category,
-              department,
-              amount,
-              status: status || existing.status, // Can submit while updating
-              submittedAt: status === 'PENDING_APPROVAL' ? new Date() : existing.submittedAt,
-              activityLog,
-              items: {
-                create: processedItems.map((item: any) => ({
-                  tenantId,
-                  title: item.title,
-                  date: new Date(item.date),
-                  amount: item.amount,
-                  billNo: item.billNo,
-                  description: item.description,
-                  attachments: item.attachments
-                }))
+            // STEP 1: Update request and create new items (without nested attachments)
+            const request = await tx.reimbursementRequest.update({
+              where: { id },
+              data: {
+                category,
+                department,
+                amount: new Prisma.Decimal(Number(amount)),
+                status: status || existing.status, // Can submit while updating
+                submittedAt: status === 'PENDING_APPROVAL' ? new Date() : existing.submittedAt,
+                activityLog,
+                items: {
+                  create: processedItems.map((item: any) => ({
+                    tenantId,
+                    title: item.title,
+                    date: item.date ? new Date(item.date) : new Date(),
+                    amount: new Prisma.Decimal(Number(item.amount) || 0),
+                    billNo: item.billNo,
+                    description: item.description
+                  }))
+                }
+              },
+              include: {
+                items: true
               }
-            },
-            include: { items: true }
-          });
+            });
+
+            // STEP 2: Create new attachments explicitly linked to both Request and Item
+            const attachmentPromises: any[] = [];
+            processedItems.forEach((processedItem, index) => {
+              const createdItem = request.items[index];
+              if (createdItem && processedItem.processedAttachments) {
+                processedItem.processedAttachments.forEach((att: any) => {
+                  attachmentPromises.push(
+                    tx.reimbursementAttachment.create({
+                      data: {
+                        tenantId,
+                        fileName: att.name || 'attachment',
+                        fileUrl: att.url,
+                        fileSize: att.size || 0,
+                        fileType: att.type || 'unknown',
+                        uploadedById: req.user!.id,
+                        reimbursementRequestId: id, // request ID
+                        reimbursementItemId: createdItem.id
+                      }
+                    })
+                  );
+                });
+              }
+            });
+
+            if (attachmentPromises.length > 0) {
+              await Promise.all(attachmentPromises);
+            }
+
+            // Fetch final state
+            return await tx.reimbursementRequest.findUnique({
+              where: { id },
+              include: {
+                items: {
+                  include: { reimbursementAttachments: true }
+                }
+              }
+            });
+          } catch (txError: any) {
+            console.error("❌ Prisma Update Transaction Error:", txError);
+            throw txError;
+          }
         });
 
         res.status(200).json({
@@ -839,14 +968,17 @@ export class ReimbursementRequestController {
 
       const { id } = req.params;
       const { action, comments } = req.body; // action: APPROVE, REJECT, CLARIFY
+      const tenantId = req.tenantId!;
+      const userId = req.user!.id;
+      const userName = req.user!.name;
 
       if (!['APPROVE', 'REJECT', 'CLARIFY'].includes(action)) {
         throw new ValidationError('Invalid action');
       }
 
-      await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+      await tenantAwarePrisma.withTenant(tenantId, async (client) => {
         const request = await client.reimbursementRequest.findFirst({
-          where: { id, tenantId: req.tenantId },
+          where: { id, tenantId },
           include: { user: true }
         });
 
@@ -860,11 +992,11 @@ export class ReimbursementRequestController {
         else if (action === 'REJECT') newStatus = 'REJECTED';
         else if (action === 'CLARIFY') newStatus = 'CLARIFY';
 
-        const activityLog = request.activityLog as any[];
+        const activityLog = (request.activityLog as any[]) || [];
         activityLog.push({
           action: `MANAGER_${action}`,
           date: new Date().toISOString(),
-          user: req.user!.name,
+          user: userName,
           note: comments
         });
 
@@ -872,12 +1004,12 @@ export class ReimbursementRequestController {
         const updated = await client.$transaction(async (tx) => {
           await tx.reimbursementApproval.create({
             data: {
-              tenantId: req.tenantId,
+              tenantId,
               reimbursementRequestId: id,
-              approverId: req.user!.id,
+              approverId: userId,
               role: 'MANAGER',
               status: action,
-              comments
+              comments: comments || ''
             }
           });
 
@@ -918,6 +1050,9 @@ export class ReimbursementRequestController {
 
       const { id } = req.params;
       const { action, comments } = req.body; // action: PAID, REJECT, ON_HOLD
+      const tenantId = req.tenantId!;
+      const userId = req.user!.id;
+      const userName = req.user!.name;
 
       if (!['PAID', 'REJECT', 'ON_HOLD'].includes(action)) {
         throw new ValidationError('Invalid action');
@@ -930,9 +1065,9 @@ export class ReimbursementRequestController {
         // For now allowing admin
       }
 
-      await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+      await tenantAwarePrisma.withTenant(tenantId, async (client) => {
         const request = await client.reimbursementRequest.findFirst({
-          where: { id, tenantId: req.tenantId }
+          where: { id, tenantId }
         });
 
         if (!request) throw new NotFoundError('Request not found');
@@ -952,23 +1087,23 @@ export class ReimbursementRequestController {
           newStatus = 'ON_HOLD';
         }
 
-        const activityLog = request.activityLog as any[];
+        const activityLog = (request.activityLog as any[]) || [];
         activityLog.push({
           action: `FINANCE_${action}`,
           date: new Date().toISOString(),
-          user: req.user!.name,
+          user: userName,
           note: comments
         });
 
         const updated = await client.$transaction(async (tx) => {
           await tx.reimbursementApproval.create({
             data: {
-              tenantId: req.tenantId,
+              tenantId,
               reimbursementRequestId: id,
-              approverId: req.user!.id,
+              approverId: userId,
               role: 'FINANCE',
               status: action,
-              comments
+              comments: comments || ''
             }
           });
 
@@ -1238,7 +1373,7 @@ export class ReimbursementAttachmentController {
 
         const { fileUrl, fileSize, fileType } = await uploadFileToR2(file, fileName, req.tenantId!, requestId);
 
-        const attachment = await client.ticketAttachment.create({
+        const attachment = await client.reimbursementAttachment.create({
           data: {
             tenantId: req.tenantId!,
             reimbursementRequestId: requestId,
@@ -1282,7 +1417,7 @@ export class ReimbursementAttachmentController {
       const { attachmentId } = req.params;
 
       await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-        const attachment = await client.ticketAttachment.findFirst({
+        const attachment = await client.reimbursementAttachment.findFirst({
           where: { id: attachmentId, tenantId: req.tenantId }
         });
 
@@ -1294,7 +1429,7 @@ export class ReimbursementAttachmentController {
           console.error("Failed to delete file from R2", e);
         }
 
-        await client.ticketAttachment.delete({ where: { id: attachmentId } });
+        await client.reimbursementAttachment.delete({ where: { id: attachmentId } });
       });
 
       res.status(200).json({ success: true, message: 'Attachment deleted' } as ApiResponse);
@@ -1316,7 +1451,7 @@ export class ReimbursementAttachmentController {
       const { requestId } = req.params;
 
       const attachments = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-        return await client.ticketAttachment.findMany({
+        return await client.reimbursementAttachment.findMany({
           where: { reimbursementRequestId: requestId, tenantId: req.tenantId },
           include: {
             uploadedBy: {
