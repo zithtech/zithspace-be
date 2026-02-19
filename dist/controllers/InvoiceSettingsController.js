@@ -162,106 +162,70 @@ class InvoiceSettingsController {
             res.status(500).json({ success: false, error: 'Failed to create profile' });
         }
     }
-    // static async updateProfile(req: AuthRequest, res: Response): Promise<void> {
-    //   try {
-    //     if (!req.tenantId || !req.user) throw new ValidationError('Tenant context required');
-    //     const { id } = req.params;
-    //     const { name, general, invoice, payment } = req.body;
-    //     const existing = await prisma.settingsProfile.findFirst({ where: { id, tenantId: req.tenantId } });
-    //     if (!existing) throw new NotFoundError('Profile not found');
-    //     const updatedProfile = await prisma.settingsProfile.update({
-    //       where: { id },
-    //       data: { 
-    //         name,
-    //         updatedByUser: { connect: { id: req.user.id } },
-    //         // Using nested update to modify related tables
-    //         general: general ? { update: general } : undefined,
-    //         invoice: invoice ? { update: invoice } : undefined,
-    //         payment: payment ? { update: payment } : undefined,
-    //       },
-    //       include: {
-    //         general: true,
-    //         invoice: true,
-    //         payment: true
-    //       }
-    //     });
-    //     res.status(200).json({ success: true, data: updatedProfile, message: 'Profile updated successfully' } as ApiResponse);
-    //   } catch (error: any) {
-    //     console.error('Update profile error:', error);
-    //     if (error instanceof NotFoundError) {
-    //       res.status(404).json({ success: false, error: error.message });
-    //       return;
-    //     }
-    //     if (error instanceof ValidationError) {
-    //       res.status(400).json({ success: false, error: error.message });
-    //       return;
-    //     }
-    //     res.status(500).json({ success: false, error: 'Failed to update profile' });
-    //   }
-    // }
-    // ===================== HARD DELETE PROFILE =====================
-    // ===================== UPDATE PROFILE =====================
     static async updateProfile(req, res) {
         try {
             if (!req.tenantId || !req.user)
-                throw new types_1.ValidationError('Tenant context required');
+                throw new Error('Auth required');
             const { id } = req.params;
             const { name, general, invoice, payment } = req.body;
+            // 1. Fetch existing profile to get foreign keys (generalId, invoiceId, etc.)
             const existing = await database_1.prisma.settingsProfile.findFirst({
                 where: { id, tenantId: req.tenantId }
             });
-            if (!existing)
-                throw new types_1.NotFoundError('Profile not found');
-            // --- DYNAMIC DESTRUCTURING FOR UPDATE ---
-            let invoiceUpdateData = invoice;
-            if (invoice?.format) {
-                // Recalculate padding and reset logic if format string changed
-                const parsed = parseInvoiceFormat(invoice.format);
-                invoiceUpdateData = {
-                    ...invoice,
-                    ...parsed,
-                    // We usually don't want to reset nextNumber to 1 on update 
-                    // unless you explicitly want to restart the sequence.
-                    nextNumber: invoice.nextNumber ?? undefined
-                };
+            if (!existing) {
+                res.status(404).json({ success: false, error: 'Profile not found' });
+                return;
             }
+            // 2. Perform the update with explicit 'where' for children
             const updatedProfile = await database_1.prisma.settingsProfile.update({
                 where: { id },
                 data: {
                     name,
                     updatedByUser: { connect: { id: req.user.id } },
-                    general: general ? { update: general } : undefined,
-                    payment: payment ? { update: payment } : undefined,
-                    invoice: invoiceUpdateData ? {
+                    // Update General Settings
+                    general: general ? {
                         update: {
-                            ...invoiceUpdateData,
-                            updatedByUser: { connect: { id: req.user.id } }
+                            where: { id: existing.generalId },
+                            data: {
+                                ...general,
+                                id: undefined, // Strip ID so Prisma doesn't try to overwrite PK
+                                tenantId: undefined,
+                                updatedByUser: { connect: { id: req.user.id } }
+                            }
+                        }
+                    } : undefined,
+                    // Update Invoice Settings
+                    invoice: invoice ? {
+                        update: {
+                            where: { id: existing.invoiceId },
+                            data: {
+                                ...invoice,
+                                id: undefined,
+                                tenantId: undefined,
+                                updatedByUser: { connect: { id: req.user.id } }
+                            }
+                        }
+                    } : undefined,
+                    // Update Payment Settings
+                    payment: payment ? {
+                        update: {
+                            where: { id: existing.paymentId },
+                            data: {
+                                ...payment,
+                                id: undefined,
+                                tenantId: undefined,
+                                updatedByUser: { connect: { id: req.user.id } }
+                            }
                         }
                     } : undefined,
                 },
-                include: {
-                    general: true,
-                    invoice: true,
-                    payment: true
-                }
+                include: { general: true, invoice: true, payment: true }
             });
-            res.status(200).json({
-                success: true,
-                data: updatedProfile,
-                message: 'Profile updated successfully'
-            });
+            res.status(200).json({ success: true, data: updatedProfile });
         }
         catch (error) {
-            console.error('Update profile error:', error);
-            if (error instanceof types_1.NotFoundError) {
-                res.status(404).json({ success: false, error: error.message });
-                return;
-            }
-            if (error instanceof types_1.ValidationError) {
-                res.status(400).json({ success: false, error: error.message });
-                return;
-            }
-            res.status(500).json({ success: false, error: 'Failed to update profile' });
+            console.error(error);
+            res.status(500).json({ success: false, error: 'Internal Server Error' });
         }
     }
     static async hardDeleteProfile(req, res) {
