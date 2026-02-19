@@ -737,6 +737,7 @@ export type CreateTimesheetData = {
   weekStart: string; // ISO date
   weekEnd: string;   // ISO date
   rows: CreateTimesheetRowData[];
+  leaveCount?: number;
 };
 
 export type UpdateTimesheetRowData = {
@@ -749,6 +750,8 @@ export type UpdateTimesheetRowData = {
   billable?: boolean;
   taskId ?: string;
   projectId?: string;
+ 
+  
 };
 
 export type UpdateTimesheetData = {
@@ -758,6 +761,7 @@ export type UpdateTimesheetData = {
   status?: "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED";
   rejectReason?: string;
   rows?: UpdateTimesheetRowData[];
+  leaveCount?: number;
 };
 
 
