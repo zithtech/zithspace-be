@@ -131,32 +131,6 @@ class DailyUpdateController {
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             const result = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                // Check if user already submitted today
-                // const existing = await client.statusUpdate.findFirst({
-                //   where: {
-                //     userId: req.user!.id,
-                //     tenantId: req.tenantId,
-                //     date: today,
-                //   },
-                // });
-                // if (existing) {
-                //   throw new ValidationError('You have already submitted an update for today. Please edit the existing one.');
-                // }
-                // const start = new Date(date);
-                // start.setHours(0, 0, 0, 0);
-                // const end = new Date(date);
-                // end.setHours(23, 59, 59, 999);
-                // const updates = await client.statusUpdate.findMany({
-                //   where: {
-                //     userId: req.user!.id,
-                //     tenantId: req.tenantId,
-                //     date: {
-                //       gte: dayjs(date).startOf("day").toDate(),
-                //       lte: dayjs(date).endOf("day").toDate(),
-                //     },
-                //   },
-                //   orderBy: { submittedAt: "asc" },
-                // });
                 function startOfDay(date) {
                     const d = new Date(date);
                     d.setHours(0, 0, 0, 0);
@@ -204,7 +178,7 @@ class DailyUpdateController {
                 }
                 const now = new Date();
                 // // submitted working date (from frontend or today)
-                console.log("date****", date);
+                //console.log("date****", date);
                 const submittedDate = date ? new Date(date) : new Date();
                 submittedDate.setHours(0, 0, 0, 0);
                 console.log("submittedDate", submittedDate);
@@ -218,13 +192,6 @@ class DailyUpdateController {
                 console.log("isMissed", isMissed);
                 const missedUpdateAt = isMissed ? submittedDate : null;
                 console.log("missedUpdateAt ", missedUpdateAt);
-                // Working date selected by user
-                // ✅ AUTO DETERMINE BOD / EOD BASED ON IST TIME
-                const nowTime = new Date();
-                const istTime = new Date(nowTime.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }));
-                const hours = istTime.getHours();
-                const calculatedUpdateType = hours >= 14 ? "EOD" : "BOD";
-                console.log("Auto calculated updateType:", calculatedUpdateType);
                 const statusUpdate = await client.statusUpdate.create({
                     data: {
                         userId: req.user.id,
