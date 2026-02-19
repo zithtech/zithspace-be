@@ -17,6 +17,17 @@ export async function createEmploymentDetails(
         department: employment.department,
         team: employment.team,
         employeeType: employment.employeeType,
+
+        workType: employment.workType || null,
+        hybridMode: employment.hybridMode || null,
+        fixedDays: employment.fixedDays || [],
+        totalDays: employment.totalDays || null,
+        totalHours: employment.totalHours || null,
+        // workJoiningDate: employment.employeeJoiningDate
+        //   ? new Date(employment.employeeJoiningDate)
+        //   : null,
+        workJoiningDate: employment.employeeJoiningDate || null,
+
         workLocation: employment.workLocation,
         workShift: employment.workShift,
         createdById: req.user?.id,
@@ -37,9 +48,11 @@ export async function createEmploymentDetails(
       data: {
         employeeId,
         joiningDate: new Date(employment.joiningDate),
+        //joiningDate: employment.joiningDate,
         trainingCompletionDate: new Date(employment.trainingCompletion),
-        createdById: req.user?.id,
-        updatedById: req.user?.id,
+        //trainingCompletionDate: employment.trainingCompletion,
+        createdById: employeeId,
+        updatedById: employeeId,
       },
     });
 
@@ -47,10 +60,21 @@ export async function createEmploymentDetails(
       data: employment.projects.map((project: string) => ({
         employeeId,
         projectName: project,
+        reportingManager: employment.reportingManager || null,
         createdById: employeeId,
         updatedById: employeeId,
       })),
     });
+
+    // await tx.employeeProjectMapping.createMany({
+    //   data: employment.projects.map((project: any) => ({
+    //     employeeId,
+    //     projectName: project.projectName,
+    //     reportingManager: project.reportingManager || null,
+    //     createdById: employeeId,
+    //     updatedById: employeeId,
+    //   })),
+    // });
 
     return {
       success: true,
@@ -96,11 +120,18 @@ export async function getEmploymentDetails(
       employeeType: workDetails.employeeType,
       workLocation: workDetails.workLocation,
       workShift: workDetails.workShift,
+      workType: workDetails.workType || null,
+      hybridMode: workDetails.hybridMode || null,
+      fixedDays: workDetails.fixedDays || [],
+      totalDays: workDetails.totalDays || null,
+      totalHours: workDetails.totalHours || null,
+      employeeJoiningDate: workDetails.workJoiningDate || null,
       employeeGrade: additionalDetails?.employeeGrade || null,
       promotionStatus: additionalDetails?.promotionStatus || null,
       joiningDate: timeline?.joiningDate || null,
       trainingCompletion: timeline?.trainingCompletionDate || null,
       projects: projects.map((p) => p.projectName),
+      reportingManager: projects[0]?.reportingManager || null,
     };
   } catch (error) {
     console.error("Error in getEmploymentDetails:", error);
@@ -108,46 +139,6 @@ export async function getEmploymentDetails(
   }
 }
 
-// ✅ GET All Employees Employment Details
-// export async function getAllEmploymentDetails(req: AuthRequest) {
-//   try {
-//     if (!req.user?.id || !req.tenantId) throw new Error("Unauthorized");
-
-//     const employees = await prisma.employee.findMany({
-//       where: {
-//         tenantId: req.tenantId,
-//         status: true,
-//       },
-//       include: {
-//         workDetail: true,
-//         additionalDetails: true,
-//         employeeTimeline: true,
-//         projectMappings: true,
-//       },
-//     });
-
-//     return employees.map((employee) => ({
-//       id: employee.id,
-//       employeeCode: employee.employee_code,
-//       firstName: employee.first_name,
-//       lastName: employee.last_name,
-//       department: employee.workDetail?.department || null,
-//       team: employee.workDetail?.team || null,
-//       employeeType: employee.workDetail?.employeeType || null,
-//       workLocation: employee.workDetail?.workLocation || null,
-//       workShift: employee.workDetail?.workShift || null,
-//       employeeGrade: employee.additionalDetails?.employeeTimeline || null,
-//       promotionStatus: employee.additionalDetails?.promotionStatus || null,
-//       joiningDate: employee.employeeTimeline?.joiningDate || null,
-//       trainingCompletion:
-//         employee.employeeTimeline?.trainingCompletionDate || null,
-//       projects: employee.projectMappings.map((p) => p.projectName),
-//     }));
-//   } catch (error) {
-//     console.error("Error in getAllEmploymentDetails:", error);
-//     throw error;
-//   }
-// }
 export async function getAllEmploymentDetails(req: AuthRequest) {
   try {
     if (!req.user?.id || !req.tenantId) {
@@ -189,6 +180,7 @@ export async function getAllEmploymentDetails(req: AuthRequest) {
         employeeType: latestWorkDetail?.employeeType || null,
         workLocation: latestWorkDetail?.workLocation || null,
         workShift: latestWorkDetail?.workShift || null,
+        employeeJoiningDate: latestWorkDetail?.workJoiningDate || null,
 
         employeeGrade: latestAdditionalDetail?.employeeGrade || null,
         promotionStatus: latestAdditionalDetail?.promotionStatus || null,
@@ -199,6 +191,7 @@ export async function getAllEmploymentDetails(req: AuthRequest) {
         projects: employee.projectMappings.map(
           (project) => project.projectName,
         ),
+        reportingManager: employee.projectMappings[0]?.reportingManager || null,
       };
     });
   } catch (error) {
@@ -248,6 +241,17 @@ export async function updateEmploymentDetails(
           employeeType: employment.employeeType,
           workLocation: employment.workLocation,
           workShift: employment.workShift,
+          workType: employment.workType || null,
+          hybridMode: employment.hybridMode || null,
+          fixedDays: employment.fixedDays || [],
+          totalDays: employment.totalDays || null,
+          totalHours: employment.totalHours || null,
+          workJoiningDate: employment.employeeJoiningDate || null,
+
+          // workJoiningDate: employment.employeeJoiningDate
+          //   ? new Date(employment.employeeJoiningDate)
+          //   : null,
+
           updatedById: req.user.id,
         },
       });
@@ -260,6 +264,14 @@ export async function updateEmploymentDetails(
           employeeType: employment.employeeType,
           workLocation: employment.workLocation,
           workShift: employment.workShift,
+          workType: employment.workType || null,
+          hybridMode: employment.hybridMode || null,
+          fixedDays: employment.fixedDays || [],
+          totalDays: employment.totalDays || null,
+          totalHours: employment.totalHours || null,
+          workJoiningDate: employment.employeeJoiningDate
+            ? new Date(employment.employeeJoiningDate)
+            : null,
           createdById: req.user.id,
         },
       });
@@ -277,7 +289,7 @@ export async function updateEmploymentDetails(
         data: {
           employeeGrade: employment.employeeGrade,
           promotionStatus: employment.promotionStatus,
-          updatedById: req.user.id,
+          updatedById: employeeId,
         },
       });
     } else {
@@ -286,8 +298,8 @@ export async function updateEmploymentDetails(
           employeeId,
           employeeGrade: employment.employeeGrade,
           promotionStatus: employment.promotionStatus,
-          createdById: req.user.id,
-          updatedById: req.user.id,
+          createdById: employeeId,
+          updatedById: employeeId,
         },
       });
     }
@@ -328,8 +340,9 @@ export async function updateEmploymentDetails(
         data: employment.projects.map((project: string) => ({
           employeeId,
           projectName: project,
-          createdById: req.user.id,
-          updatedById: req.user.id,
+          reportingManager: employment.reportingManager || null,
+          createdById: employeeId,
+          updatedById: employeeId,
         })),
       });
     }

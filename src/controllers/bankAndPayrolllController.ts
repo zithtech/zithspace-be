@@ -182,13 +182,14 @@ export async function updateBankPayrollDetails(
       await tx.employeeBankDetail.update({
         where: { id: existingBankDetails.id },
         data: {
+          employeeId,
           bankName: bank.bankName,
           branchName: bank.branchName,
           accountHolderName: bank.accountHolderName,
           accountNumber: bank.accountNumber,
           accountType: bank.accountType,
           ifscCode: bank.ifscCode,
-          updatedById: req.user.id,
+          updatedById: employeeId,
         },
       });
     } else {
@@ -201,8 +202,8 @@ export async function updateBankPayrollDetails(
           accountNumber: bank.accountNumber,
           accountType: bank.accountType,
           ifscCode: bank.ifscCode,
-          createdById: req.user.id,
-          updatedById: req.user.id,
+          createdById: employeeId,
+          updatedById: employeeId,
         },
       });
     }
@@ -221,7 +222,7 @@ export async function updateBankPayrollDetails(
           esiNumber: bank.esiNumber,
           taxRegime: bank.taxRegime,
           paymentType: bank.paymentType,
-          updatedById: req.user.id,
+          updatedById: employeeId,
         },
       });
     } else {
@@ -233,8 +234,8 @@ export async function updateBankPayrollDetails(
           esiNumber: bank.esiNumber,
           taxRegime: bank.taxRegime,
           paymentType: bank.paymentType,
-          createdById: req.user.id,
-          updatedById: req.user.id,
+          createdById: employeeId,
+          updatedById: employeeId,
         },
       });
     }
@@ -242,6 +243,7 @@ export async function updateBankPayrollDetails(
     return {
       success: true,
       message: "Bank and payroll details updated successfully",
+      data: employeeId,
     };
   } catch (error) {
     console.error("Error in updateBankPayrollDetails:", error);

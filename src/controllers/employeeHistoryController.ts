@@ -43,24 +43,31 @@ export async function createEmployeeHistory(
 
       for (const docType of singleDocFields) {
         const fileData = (h as any)[docType];
-        if (fileData && fileData.base64) {
-          const url = await uploadEmployeeDocumentToR2(
-            fileData.base64,
-            fileData.fileName,
-            req.tenantId!,
-            employeeId,
-            docType,
-          );
-
-          await tx.employeeDocument.create({
-            data: {
+        if (fileData) {
+          let url = null;
+          if (fileData.base64) {
+            url = await uploadEmployeeDocumentToR2(
+              fileData.base64,
+              fileData.fileName,
+              req.tenantId!,
               employeeId,
-              documentType: docType,
-              documentUrl: url,
-              createdById: employeeId,
-              updatedById: employeeId,
-            },
-          });
+              docType,
+            );
+          } else if (fileData.url) {
+            url = fileData.url;
+          }
+
+          if (url) {
+            await tx.employeeDocument.create({
+              data: {
+                employeeId,
+                documentType: docType,
+                documentUrl: url,
+                createdById: employeeId,
+                updatedById: employeeId,
+              },
+            });
+          }
         }
       }
 
@@ -71,40 +78,50 @@ export async function createEmployeeHistory(
         const files = (h as any)[docType];
         if (Array.isArray(files)) {
           for (const fileData of files) {
-            if (fileData && fileData.base64) {
-              const url = await uploadEmployeeDocumentToR2(
-                fileData.base64,
-                fileData.fileName,
-                req.tenantId!,
-                employeeId,
-                docType,
-              );
-
-              await tx.employeeDocument.create({
-                data: {
+            if (fileData) {
+              let url = null;
+              if (fileData.base64) {
+                url = await uploadEmployeeDocumentToR2(
+                  fileData.base64,
+                  fileData.fileName,
+                  req.tenantId!,
                   employeeId,
-                  documentType: docType,
-                  documentUrl: url,
-                  createdById: employeeId,
-                  updatedById: employeeId,
-                },
-              });
+                  docType,
+                );
+              } else if (fileData.url) {
+                url = fileData.url;
+              }
+
+              if (url) {
+                await tx.employeeDocument.create({
+                  data: {
+                    employeeId,
+                    documentType: docType,
+                    documentUrl: url,
+                    createdById: employeeId,
+                    updatedById: employeeId,
+                  },
+                });
+              }
             }
           }
         }
       }
 
-      for (const c of h.contacts) {
-        await tx.employeeContact.create({
-          data: {
-            employeeId,
-            contactPersonType: c.contactRole,
-            name: c.contactName,
-            mobile: c.contactNumber,
-            createdById: employeeId,
-            updatedById: employeeId,
-          },
-        });
+      if (Array.isArray(h.contacts)) {
+        for (const c of h.contacts) {
+          await tx.employeeContact.create({
+            data: {
+              employeeId,
+              contactPersonType: c.contactRole,
+              name: c.contactName,
+              mobile: c.contactNumber,
+              email: c.contactEmail || null, // SAFE FIX
+              createdById: employeeId,
+              updatedById: employeeId,
+            },
+          });
+        }
       }
     }
 
@@ -203,6 +220,7 @@ export async function getEmployeeHistory(req: AuthRequest, employeeId: string) {
             contactRole: c.contactPersonType,
             contactName: c.name,
             contactNumber: c.mobile,
+            contactEmail: c.email,
           })),
         };
       }),
@@ -291,6 +309,7 @@ export async function getSingleExperience(
         contactRole: c.contactPersonType,
         contactName: c.name,
         contactNumber: c.mobile,
+        contactEmail: c.email,
       })),
     };
   } catch (error) {
@@ -350,7 +369,7 @@ export async function updateEmployeeHistory(
         companyAddress: history.address,
         joiningDate: new Date(history.doj),
         lastWorkingDate: new Date(history.lwd),
-        updatedById: req.user.id,
+        updatedById: employeeId,
       },
     });
 
@@ -388,8 +407,8 @@ export async function updateEmployeeHistory(
             employeeId,
             documentType: docType,
             documentUrl: url,
-            createdById: req.user.id,
-            updatedById: req.user.id,
+            createdById: employeeId,
+            updatedById: employeeId,
           },
         });
       }
@@ -416,8 +435,8 @@ export async function updateEmployeeHistory(
                 employeeId,
                 documentType: docType,
                 documentUrl: url,
-                createdById: req.user.id,
-                updatedById: req.user.id,
+                createdById: employeeId,
+                updatedById: employeeId,
               },
             });
           }
@@ -438,8 +457,9 @@ export async function updateEmployeeHistory(
             contactPersonType: c.contactRole,
             name: c.contactName,
             mobile: c.contactNumber,
-            createdById: req.user.id,
-            updatedById: req.user.id,
+            email: c.contactEmail,
+            createdById: employeeId,
+            updatedById: employeeId,
           },
         });
       }

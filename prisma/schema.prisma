@@ -1072,6 +1072,13 @@ model EmployeeWorkDetail {
   employeeType   String   @db.VarChar(50)  @map("employee_type")
   workLocation   String   @db.VarChar(100) @map("work_location")
   workShift      String   @db.VarChar(50)  @map("work_shift")
+  workJoiningDate  String?  @db.VarChar(30)  @map("work_joining_date")  
+
+  workType       String?  @db.VarChar(50)  @map("work_type")       
+  hybridMode     String?  @db.VarChar(20)  @map("hybrid_mode")    
+  fixedDays      String[] @default([])     @map("fixed_days")      
+  totalDays      Int?     @map("total_days")                        
+  totalHours     Int?     @map("total_hours")                       
 
   
   createdById    String   @db.Uuid @map("created_by_id")
@@ -1109,7 +1116,7 @@ model EmployeeProjectMapping {
 
 
   employeeId        String    @db.Uuid @map("employee_id")
-  reportingManager  String?    @db.Uuid @map("reporting_manager")  
+  reportingManager  String?    @db.VarChar(50) @map("reporting_manager")  
   createdById       String?   @db.Uuid @map("created_by_id")
   updatedById       String?   @db.Uuid @map("updated_by_id")
 
@@ -1265,6 +1272,8 @@ model EmployeeContact {
   contactPersonType String   @db.VarChar(50) @map("contact_person_type")
   name              String   @db.VarChar(150)
   mobile            String   @db.VarChar(15)
+
+  email             String?  @db.VarChar(150)  
 
   createdById       String?  @db.Uuid @map("created_by_id")
   updatedById       String?  @db.Uuid @map("updated_by_id")

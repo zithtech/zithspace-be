@@ -234,7 +234,7 @@ export class EmployeeOnboardingController {
 
       res.status(200).json({
         success: true,
-        data: result,
+        data: result || { id: employeeId },
         message: "Employee updated successfully",
       });
     } catch (err: any) {

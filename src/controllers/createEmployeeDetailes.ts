@@ -25,6 +25,7 @@ export async function createPersonalDetails(
         last_name: personal.lastName,
         gender: personal.gender,
         date_of_birth: new Date(personal.dob),
+
         blood_group: personal.bloodGroup,
         mobile: personal.mobile,
         work_email: personal.workEmail,
@@ -35,8 +36,31 @@ export async function createPersonalDetails(
     });
 
     // ✅ Create addresses
-    const currentAddr = personal.address?.current || {};
-    const permAddr = personal.address?.permanent || {};
+    let currentAddr = personal.address?.current;
+    let permAddr = personal.address?.permanent;
+
+    // Fallback for flat structure if nested address is missing
+    if (!currentAddr && !permAddr) {
+      currentAddr = {
+        c_flat: personal.c_flat,
+        c_area: personal.c_area,
+        c_city: personal.c_city,
+        c_state: personal.c_state,
+        c_country: personal.c_country,
+        c_pincode: personal.c_pincode,
+      };
+      permAddr = {
+        p_flat: personal.p_flat,
+        p_area: personal.p_area,
+        p_city: personal.p_city,
+        p_state: personal.p_state,
+        p_country: personal.p_country,
+        p_pincode: personal.p_pincode,
+      };
+    }
+
+    currentAddr = currentAddr || {};
+    permAddr = permAddr || {};
 
     await tx.employeeAddress.createMany({
       data: [
@@ -193,6 +217,7 @@ export async function getAllEmployees(req: AuthRequest) {
     const employees = await prisma.employee.findMany({
       where: {
         tenantId: req.tenantId,
+        status: true,
       },
       include: {
         addresses: true,
@@ -309,8 +334,31 @@ export async function updatePersonalDetails(
     });
 
     // ✅ Update addresses
-    const currentAddr = personal.address?.current || {};
-    const permAddr = personal.address?.permanent || {};
+    let currentAddr = personal.address?.current;
+    let permAddr = personal.address?.permanent;
+
+    // Fallback for flat structure if nested address is missing
+    if (!currentAddr && !permAddr) {
+      currentAddr = {
+        c_flat: personal.c_flat,
+        c_area: personal.c_area,
+        c_city: personal.c_city,
+        c_state: personal.c_state,
+        c_country: personal.c_country,
+        c_pincode: personal.c_pincode,
+      };
+      permAddr = {
+        p_flat: personal.p_flat,
+        p_area: personal.p_area,
+        p_city: personal.p_city,
+        p_state: personal.p_state,
+        p_country: personal.p_country,
+        p_pincode: personal.p_pincode,
+      };
+    }
+
+    currentAddr = currentAddr || {};
+    permAddr = permAddr || {};
 
     // Delete existing addresses and create new ones
     await tx.employeeAddress.deleteMany({
