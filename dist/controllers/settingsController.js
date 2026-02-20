@@ -33,9 +33,9 @@ class SettingsController {
                 return;
             }
             // OPTIMIZED: Run all queries in parallel instead of sequential
-            const [users, projects, releasePlans, dropdownOptions] = await Promise.all([
+            const [users, projects, releasePlans] = await Promise.all([
                 // Get all users for assignee dropdowns
-                database_1.prisma.user.findMany({
+                await database_1.prisma.user.findMany({
                     where: {
                         tenantId: req.tenantId,
                         isActive: true
@@ -49,7 +49,7 @@ class SettingsController {
                     orderBy: { name: 'asc' }
                 }),
                 // Get all projects
-                database_1.prisma.project.findMany({
+                await database_1.prisma.project.findMany({
                     where: {
                         tenantId: req.tenantId,
                         status: 'active'
@@ -63,7 +63,7 @@ class SettingsController {
                     orderBy: { name: 'asc' }
                 }),
                 // Get active release plans
-                database_1.prisma.releasePlan.findMany({
+                await database_1.prisma.releasePlan.findMany({
                     where: {
                         tenantId: req.tenantId,
                         status: { in: ['planning', 'active'] },
@@ -82,45 +82,50 @@ class SettingsController {
                         }
                     },
                     orderBy: { version: 'asc' }
-                }),
-                // Get dropdown options from database
-                database_1.prisma.dropdownOption.findMany({
-                    where: {
-                        tenantId: req.tenantId,
-                        isActive: true
-                    },
-                    select: {
-                        id: true,
-                        category: true,
-                        value: true,
-                        label: true,
-                        order: true
-                    },
-                    orderBy: { order: 'asc' }
                 })
             ]);
-            // Group dropdown options by category
-            const groupedOptions = dropdownOptions.reduce((acc, option) => {
-                if (!acc[option.category]) {
-                    acc[option.category] = [];
-                }
-                acc[option.category].push({
-                    value: option.value,
-                    label: option.label,
-                    order: option.order
-                });
-                return acc;
-            }, {});
-            // Build configurations with database-driven dropdowns
+            // Default configuration values (can be made tenant-specific in the future)
             const configurations = {
-                // Dropdown options from database (tenant-specific)
-                priorities: groupedOptions.priority || [],
-                taskTypes: groupedOptions.taskType || [],
-                statuses: groupedOptions.status || [],
-                platforms: groupedOptions.platform || [],
-                stacks: groupedOptions.stack || [],
-                taskLevels: groupedOptions.taskLevel || [],
-                // Workflow steps (static for now, can be made configurable later)
+                // Static dropdown options
+                priorities: [
+                    { value: 'P1', label: 'High (P1)', color: '#ff4d4f', description: 'Critical priority' },
+                    { value: 'P2', label: 'Medium (P2)', color: '#fa8c16', description: 'Medium priority' },
+                    { value: 'P3', label: 'Lite (P3)', color: '#52c41a', description: 'Low priority' }
+                ],
+                taskTypes: [
+                    { value: 'Bug', label: 'Bug', color: '#ff4d4f', description: 'Bug fix' },
+                    { value: 'Task', label: 'Task', color: '#1890ff', description: 'General task' },
+                    { value: 'Feat', label: 'Feature', color: '#52c41a', description: 'New feature' },
+                    { value: 'Enhancement', label: 'Enhancement', color: '#722ed1', description: 'Enhancement' }
+                ],
+                statuses: [
+                    { value: 'not_started', label: 'Not Started', color: '#d9d9d9', description: 'Task not started' },
+                    { value: 'in_progress', label: 'In Progress', color: '#1890ff', description: 'Task in progress' },
+                    { value: 'dev_complete', label: 'Dev Complete', color: '#2db7f5', description: 'Development completed' },
+                    { value: 'in_testing', label: 'Testing', color: '#fa8c16', description: 'In testing phase' },
+                    { value: 'in_review', label: 'In Review', color: '#722ed1', description: 'Under review' },
+                    { value: 'completed', label: 'Completed', color: '#52c41a', description: 'Task completed' },
+                    { value: 'live', label: 'Live', color: '#0050b3', description: 'Deployed to production' },
+                ],
+                platforms: [
+                    { value: 'Development', label: 'Development', color: '#1890ff', description: 'Software development tasks' },
+                    { value: 'UI/UX', label: 'UI/UX', color: '#722ed1', description: 'User interface and experience design' },
+                    { value: 'PM', label: 'PM', color: '#fa8c16', description: 'Project management tasks' },
+                    { value: 'Business Team', label: 'Business Team', color: '#52c41a', description: 'Business analysis and requirements' },
+                    { value: 'DevOps', label: 'DevOps', color: '#eb2f96', description: 'DevOps and infrastructure' },
+                    { value: 'Testing', label: 'Testing', color: '#13c2c2', description: 'Quality assurance and testing' }
+                ],
+                stacks: [
+                    { value: 'Front End', label: 'Front End', color: '#1890ff', description: 'Frontend development' },
+                    { value: 'Back End', label: 'Back End', color: '#52c41a', description: 'Backend development' },
+                    { value: 'Full Stack', label: 'Full Stack', color: '#722ed1', description: 'Full stack development' }
+                ],
+                taskLevels: [
+                    { value: 'Easy', label: 'Easy', color: '#52c41a', description: 'Simple task' },
+                    { value: 'Lite', label: 'Lite', color: '#1890ff', description: 'Light complexity' },
+                    { value: 'Medium', label: 'Medium', color: '#fa8c16', description: 'Medium complexity' },
+                    { value: 'Hard', label: 'Hard', color: '#ff4d4f', description: 'High complexity' }
+                ],
                 workflowSteps: [
                     'Scope Document',
                     'KT (Knowledge Transfer)',
@@ -1035,9 +1040,6 @@ class SettingsController {
                     isActive: true
                 }
             });
-            // Invalidate ticket configurations cache
-            const cacheKey = `ticket-config-${req.tenantId}`;
-            configCache.delete(cacheKey);
             res.status(201).json({
                 success: true,
                 data: {
@@ -1104,9 +1106,6 @@ class SettingsController {
                 where: { id },
                 data: updateData
             });
-            // Invalidate ticket configurations cache
-            const cacheKey = `ticket-config-${req.tenantId}`;
-            configCache.delete(cacheKey);
             res.status(200).json({
                 success: true,
                 data: {
@@ -1167,9 +1166,6 @@ class SettingsController {
             await database_1.prisma.dropdownOption.delete({
                 where: { id }
             });
-            // Invalidate ticket configurations cache
-            const cacheKey = `ticket-config-${req.tenantId}`;
-            configCache.delete(cacheKey);
             res.status(200).json({
                 success: true,
                 message: 'Dropdown option deleted successfully'
@@ -1219,9 +1215,6 @@ class SettingsController {
                 data: { order: item.order }
             }));
             await Promise.all(updatePromises);
-            // Invalidate ticket configurations cache
-            const cacheKey = `ticket-config-${req.tenantId}`;
-            configCache.delete(cacheKey);
             res.status(200).json({
                 success: true,
                 message: 'Dropdown options reordered successfully'
