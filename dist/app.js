@@ -176,9 +176,6 @@ app.use("/api/channels/:channelId/messages", messages_1.default);
 app.use('/api/email-history', emailHistoryRoutes_1.default);
 app.use("/api/timesheets", timesheet_1.default);
 app.use("/api/zoho", calendar_1.default);
-// Public document access (no auth required)
-const documentHubController_1 = require("@/controllers/documentHubController");
-app.get("/api/public/document/:shareToken", documentHubController_1.DocumentHubController.getPublicDocument);
 app.get("/api/health", (req, res) => {
     res.status(200).json({
         success: true,

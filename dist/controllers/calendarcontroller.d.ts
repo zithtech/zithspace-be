@@ -1,93 +1,54 @@
-import { Response } from 'express';
-import { AuthRequest as BaseAuthRequest } from '@/types';
-import { Session } from 'express-session';
-export type AuthRequest = BaseAuthRequest & {
-    session: Session & {
-        zohoState?: string;
-        zohoTokens?: {
-            accessToken: string;
-            refreshToken: string;
-            expiry: Date;
-        };
-    };
-};
+import { Response } from "express";
+import { AuthRequest } from "@/types";
 export declare class CalendarController {
     /**
-     * Connect to Zoho - Redirect user to Zoho login page
-     * GET /api/zoho/connect
+     * GET /api/zoho/status
+     * Returns whether the current user has connected their Zoho account.
      */
+    static getStatus(req: AuthRequest, res: Response): Promise<void>;
     /**
-     * Connect to Zoho - Redirect user to Zoho login page
      * GET /api/zoho/connect
+     * Redirects user to Zoho OAuth2 authorization page.
      */
     static connect(req: AuthRequest, res: Response): Promise<void>;
     /**
-     * Handle OAuth callback from Zoho
      * GET /api/zoho/callback
+     * Handles Zoho OAuth2 callback, exchanges code for tokens.
      */
     static callback(req: AuthRequest, res: Response): Promise<void>;
     /**
-     * Helper: Refresh user token
-     */
-    private static refreshUserToken;
-    /**
-     * Helper: Get valid token (automatically refreshes if expired)
-     */
-    private static getValidToken;
-    /**
-     * Check Zoho connection status
-     * GET /api/zoho/status
-     */
-    static status(req: AuthRequest, res: Response): Promise<void>;
-    /**
-     * Get all calendars from Zoho
-     * GET /api/zoho/calendars
-     */
-    static getCalendars(req: AuthRequest, res: Response): Promise<void>;
-    /**
-     * Associate Zoho tokens with logged-in user
-     * POST /api/zoho/associate
-     */
-    static associateTokens(req: AuthRequest, res: Response): Promise<void>;
-    /**
-     * Get events from local database with pagination
-     * GET /api/zoho/events
-     */
-    static getEvents(req: AuthRequest, res: Response): Promise<void>;
-    /**
-     * Get single event by ID
-     * GET /api/zoho/events/:id
-     */
-    static getEventById(req: AuthRequest, res: Response): Promise<void>;
-    /**
-     * Sync events from Zoho to local database
-     * POST /api/zoho/events/sync
-     */
-    static syncEvents(req: AuthRequest, res: Response): Promise<void>;
-    /**
-     * Create event in Zoho and save to local DB
-     * POST /api/zoho/events
-     */
-    static createEvent(req: any, res: Response): Promise<void>;
-    /**
-     * Update event in Zoho and local DB
-     * PUT /api/zoho/events/:id
-     */
-    static updateEvent(req: AuthRequest, res: Response): Promise<void>;
-    /**
-     * Delete event from Zoho and local DB
-     * DELETE /api/zoho/events/:id
-     */
-    static deleteEvent(req: AuthRequest, res: Response): Promise<void>;
-    /**
-     * Disconnect Zoho and clear all data
      * POST /api/zoho/disconnect
+     * Clears Zoho tokens from the user record.
      */
     static disconnect(req: AuthRequest, res: Response): Promise<void>;
     /**
-     * Get events for dropdown/select (minimal data)
-     * GET /api/zoho/events/select
+     * GET /api/zoho/events
+     * Fetches events from Zoho Calendar and syncs to DB.
+     * NOTE: Zoho Calendar API does NOT support range_start/range_end query params
+     * on the events list endpoint — they cause EXTRA_PARAM_FOUND.
+     * We fetch all events from Zoho, upsert to DB, then filter by date in DB.
      */
-    static getEventsForSelect(req: AuthRequest, res: Response): Promise<void>;
+    static getEvents(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * POST /api/zoho/events
+     * Creates a new event on Zoho Calendar and saves to DB.
+     */
+    static createEvent(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * PUT /api/zoho/events/:id
+     * Updates an event on Zoho Calendar and in DB.
+     * Zoho requires an If-Match: <etag> header — fetch the ETag first via GET.
+     */
+    static updateEvent(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * DELETE /api/zoho/events/:id
+     * Deletes an event from Zoho Calendar and from DB.
+     * Zoho requires an If-Match: <etag> header — fetch the ETag first via GET.
+     */
+    static deleteEvent(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * POST /api/zoho/sync
+     * Full sync: fetches all events from Zoho and upserts into DB.
+     */
+    static syncEvents(req: AuthRequest, res: Response): Promise<void>;
 }
-export default CalendarController;
