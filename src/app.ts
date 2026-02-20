@@ -45,7 +45,7 @@ import employeeWorkDetailRoutes from "@/routes/employeeWorkDetailes";
 import employeeTimelineRoutes from "@/routes/employeeTimeline";
 // personal Detailes
 //import employeeDetailsRoutes from "@/routes/createEmployeeRoutes";
-import employeeEmploymentDetailsRoutes from "@/routes/employeeEmploymentDetailes";
+//import employeeEmploymentDetailsRoutes from "@/routes/employeeEmploymentDetailes";
 
 // main
 import employeeOnboardingRoutes from "@/routes/onboardingRoutes";
@@ -164,7 +164,7 @@ app.use("/api/channels/:channelId/messages", messageRoutes);
 app.use("/api/employee-work-details", employeeWorkDetailRoutes);
 app.use("/api/employee-timelines", employeeTimelineRoutes);
 //app.use("/api/employee-details", employeeDetailsRoutes);
-app.use("/api/employee-employment-details", employeeEmploymentDetailsRoutes);
+//app.use("/api/employee-employment-details", employeeEmploymentDetailsRoutes);
 // main
 app.use("/api/onboarding", employeeOnboardingRoutes);
 
