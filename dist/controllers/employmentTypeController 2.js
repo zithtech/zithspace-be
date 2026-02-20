@@ -10,10 +10,14 @@ class EmploymentTypeController {
                 res.status(400).json({ success: false, error: "Tenant context and user are missing" });
                 return;
             }
-            const { name, description, isActive } = req.body;
+            const { name, code, description, isActive } = req.body;
             const createdById = req.user.id;
             if (!name || typeof name !== 'string' || name.trim() === '') {
                 res.status(400).json({ success: false, error: "A valid name is required." });
+                return;
+            }
+            if (!code || typeof code !== 'string' || code.trim() === '') {
+                res.status(400).json({ success: false, error: "A valid code is required." });
                 return;
             }
             // Check if name already exists for this tenant
@@ -29,9 +33,23 @@ class EmploymentTypeController {
                 res.status(409).json({ success: false, error: "Employment type with this name already exists for this tenant." });
                 return;
             }
+            // Check if code already exists for this tenant
+            const existingCode = await database_1.prisma.employmentType.findUnique({
+                where: {
+                    tenantId_code: {
+                        tenantId: req.tenantId,
+                        code: code.trim()
+                    }
+                }
+            });
+            if (existingCode) {
+                res.status(409).json({ success: false, error: "Employment type with this code already exists for this tenant." });
+                return;
+            }
             const employmentType = await database_1.prisma.employmentType.create({
                 data: {
                     tenantId: req.tenantId,
+                    code: code.trim(),
                     name: name.trim(),
                     description,
                     isActive: isActive !== undefined ? isActive : true,
@@ -107,7 +125,7 @@ class EmploymentTypeController {
             }
             const { id } = req.params;
             const updatedById = req.user.id;
-            const { name, description, isActive } = req.body;
+            const { name, code, description, isActive } = req.body;
             const employmentTypeToUpdate = await database_1.prisma.employmentType.findFirst({
                 where: { id, tenantId: req.tenantId },
             });
@@ -117,6 +135,10 @@ class EmploymentTypeController {
             }
             if (name !== undefined && (typeof name !== 'string' || name.trim() === '')) {
                 res.status(400).json({ success: false, error: "If provided, name must be a valid string." });
+                return;
+            }
+            if (code !== undefined && (typeof code !== 'string' || code.trim() === '')) {
+                res.status(400).json({ success: false, error: "If provided, code must be a valid string." });
                 return;
             }
             // Check for duplicate name if name is being updated
@@ -134,9 +156,25 @@ class EmploymentTypeController {
                     return;
                 }
             }
+            // Check for duplicate code if code is being updated
+            if (code && code.trim() !== employmentTypeToUpdate.code) {
+                const duplicateCode = await database_1.prisma.employmentType.findUnique({
+                    where: {
+                        tenantId_code: {
+                            tenantId: req.tenantId,
+                            code: code.trim()
+                        }
+                    }
+                });
+                if (duplicateCode) {
+                    res.status(409).json({ success: false, error: "Employment type with this code already exists for this tenant." });
+                    return;
+                }
+            }
             const updatedEmploymentType = await database_1.prisma.employmentType.update({
                 where: { id },
                 data: {
+                    code: code ? code.trim() : undefined,
                     name: name ? name.trim() : undefined,
                     description,
                     isActive: isActive !== undefined ? isActive : undefined,
@@ -182,4 +220,4 @@ class EmploymentTypeController {
     }
 }
 exports.EmploymentTypeController = EmploymentTypeController;
-//# sourceMappingURL=employmentTypeController.js.map
+//# sourceMappingURL=employmentTypeController%202.js.map

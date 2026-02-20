@@ -18,4 +18,4 @@ router.get("/:id", subDepartmentController_1.SubDepartmentController.getSubDepar
 router.put("/:id", subDepartmentController_1.SubDepartmentController.updateSubDepartment);
 router.delete("/:id", subDepartmentController_1.SubDepartmentController.deleteSubDepartment);
 exports.default = router;
-//# sourceMappingURL=subDepartmentRoutes%202.js.map
+//# sourceMappingURL=subDepartmentRoutes%203.js.map

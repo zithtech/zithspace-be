@@ -194,4 +194,4 @@ class DepartmentController {
     }
 }
 exports.DepartmentController = DepartmentController;
-//# sourceMappingURL=departmentController.js.map
+//# sourceMappingURL=departmentController%202.js.map

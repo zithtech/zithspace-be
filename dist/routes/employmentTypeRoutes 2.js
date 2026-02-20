@@ -14,4 +14,4 @@ router.get("/:id", employmentTypeController_1.EmploymentTypeController.getEmploy
 router.put("/:id", employmentTypeController_1.EmploymentTypeController.updateEmploymentType);
 router.delete("/:id", employmentTypeController_1.EmploymentTypeController.deleteEmploymentType);
 exports.default = router;
-//# sourceMappingURL=employmentTypeRoutes.js.map
+//# sourceMappingURL=employmentTypeRoutes%202.js.map

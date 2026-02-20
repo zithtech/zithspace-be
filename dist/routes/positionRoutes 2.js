@@ -18,4 +18,4 @@ router.get("/:id", positionController_1.PositionController.getPositionById);
 router.put("/:id", positionController_1.PositionController.updatePosition);
 router.delete("/:id", positionController_1.PositionController.deletePosition);
 exports.default = router;
-//# sourceMappingURL=positionRoutes.js.map
+//# sourceMappingURL=positionRoutes%202.js.map

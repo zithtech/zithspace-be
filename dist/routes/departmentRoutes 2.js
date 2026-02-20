@@ -14,4 +14,4 @@ router.get("/:id", departmentController_1.DepartmentController.getDepartmentById
 router.put("/:id", departmentController_1.DepartmentController.updateDepartment);
 router.delete("/:id", departmentController_1.DepartmentController.deleteDepartment);
 exports.default = router;
-//# sourceMappingURL=departmentRoutes.js.map
+//# sourceMappingURL=departmentRoutes%202.js.map
