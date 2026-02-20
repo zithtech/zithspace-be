@@ -16,7 +16,7 @@ import gradeRoutes from "@/routes/gradeRoutes";
 import companyRoutes from "./routes/companyRoutes";
 
 
-// Import middleware
+// Import middlewares
 import { optionalTenantContext } from "@/middleware/tenantContext";
 
 import authRoutes from "@/routes/auth";
