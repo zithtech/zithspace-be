@@ -2,10 +2,6 @@ import { Request, Response } from "express";
 import { AuthRequest } from "@/types";
 export declare class TicketController {
     /**
-     * Helper to notify project members via Novu
-     */
-    private static notifyProjectMembers;
-    /**
      * Upload image to R2 for ticket description
      */
     static uploadImage(req: AuthRequest, res: Response): Promise<void>;

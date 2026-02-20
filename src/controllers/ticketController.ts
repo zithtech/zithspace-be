@@ -17,51 +17,8 @@ import {
 import { sanitizeHtmlContent, validateHtmlLength } from "@/utils/htmlSanitizer";
 import { socketService } from "@/services/socketService";
 import cacheService from "@/utils/cacheService";
-import { novuService } from "@/services/novuService";
 
 export class TicketController {
-
-  /**
-   * Helper to notify project members via Novu
-   */
-  private static async notifyProjectMembers(
-    tenantId: string,
-    projectId: string,
-    workflowId: string,
-    payload: any,
-    excludeUserId?: string
-  ) {
-    try {
-      // Fetch project members
-      const members = await prisma.projectMember.findMany({
-        where: {
-          projectId,
-          // We can add tenantId check if needed, but projectId is unique enough usually. 
-          // Schema has project_members with projectId and userId.
-          // Safer to verify project belongs to tenant? Not strictly necessary here as caller does it.
-        },
-        select: {
-          userId: true
-        }
-      });
-
-      // Extract user IDs
-      let subscriberIds = members.map(m => m.userId);
-
-      // Exclude the actor
-      if (excludeUserId) {
-        subscriberIds = subscriberIds.filter(id => id !== excludeUserId);
-      }
-
-      if (subscriberIds.length === 0) return;
-
-      // Trigger notification
-      await novuService.triggerNotification(workflowId, subscriberIds, payload);
-    } catch (error) {
-      console.error("Failed to notify project members:", error);
-    }
-  }
-
   /**
    * Upload image to R2 for ticket description
    */
@@ -538,21 +495,6 @@ export class TicketController {
       if (parentId) {
         await cacheService.invalidateTicket(parentId, req.tenantId);
       }
-
-      // Notify project members
-      TicketController.notifyProjectMembers(
-        req.tenantId,
-        projectId,
-        "ticket-created",
-        {
-          ticketId: ticket.id,
-          ticketTitle: ticket.title,
-          actorName: req.user!.name,
-          actionType: "Ticket Created",
-          ticketNumber: ticket.ticketNumber
-        },
-        req.user!.id
-      );
 
       res.status(201).json({
         success: true,
@@ -1291,39 +1233,6 @@ export class TicketController {
         console.error("Update ticket side-effect error (non-fatal):", sideEffectError);
       }
 
-      // Notify project members if significant changes occurred
-      try {
-        // Retrieve the changes array from the activity log logic above if possible, or re-derive
-        // Actually, we can check if we logged anything. 
-        // But simpler is to check if we made any updates that warrant notification.
-        // We can check mappedUpdates keys or reuse the `changes` array logic if we scope it correctly.
-        // Since `changes` array logic was inside a try-catch block and local scope, we might duplicate basic check or just notify on any successful update that isn't just a view count?
-        // Let's assume if this function was called and connection update succeeded, we notify.
-        // But usually we only want for Status, Priority, Assignee.
-        // User said: "status change, priority change, or new comment".
-        // Let's check `updates` body again.
-        const meaningfulUpdates = ['status', 'priority', 'assignee', 'assigneeId', 'description', 'title'];
-        const hasMeaningfulUpdate = Object.keys(updates).some(k => meaningfulUpdates.includes(k) || meaningfulUpdates.includes(k.replace('Id', '')));
-
-        if (hasMeaningfulUpdate) {
-          TicketController.notifyProjectMembers(
-            req.tenantId,
-            existingTicket.projectId,
-            "ticket-updated",
-            {
-              ticketId: ticket.id,
-              ticketTitle: ticket.title,
-              actorName: req.user!.name,
-              actionType: "Ticket Updated",
-              ticketNumber: ticket.ticketNumber
-            },
-            req.user!.id
-          );
-        }
-      } catch (notifyError) {
-        console.error("Failed to trigger update notification:", notifyError);
-      }
-
       res.status(200).json({
         success: true,
         data: ticket,
@@ -1925,25 +1834,6 @@ export class TicketController {
           },
         },
       });
-
-      // Notify project members
-      TicketController.notifyProjectMembers(
-        req.tenantId,
-        ticket.projectId,
-        "ticket-updated", // User said "A ticket is updated (... or new comment)". Often comments have their own trigger like 'ticket-commented' but user grouped them. I will use 'ticket-commented' for clarity or 'ticket-updated' if strict? 
-        // User asked: "Trigger ... whenever ... A ticket is updated (... or new comment)". 
-        // I will use 'ticket-updated' to keep it simple as per user request, OR 'ticket-comment-added' if I think it's better. 
-        // Let's use specific actionType in payload.
-        {
-          ticketId: ticket.id,
-          ticketTitle: ticket.title,
-          actorName: req.user!.name,
-          actionType: "New Comment",
-          ticketNumber: ticket.ticketNumber,
-          commentPreview: comment.trim().substring(0, 50)
-        },
-        req.user!.id
-      );
 
       res.status(201).json({
         success: true,
