@@ -87,7 +87,8 @@ model User {
   phone             String
   passwordHash      String    @map("password_hash")
   role              String    @default("user")
-  position          String
+  positionId        String?   @map("position_id")
+  position          Position? @relation("UserPosition", fields: [positionId], references: [id])
   reportsToId       String?   @map("reports_to_id")
   dateOfBirth       DateTime? @map("date_of_birth")
   workDays          Int[]     @default([1, 2, 3, 4, 5]) @map("work_days")
@@ -279,6 +280,7 @@ model Grade {
   id          String   @id @default(uuid())
   tenantId    String   @map("tenant_id")
   code        String
+  codes       String?
   name        String
   levelOrder  Int      @map("level_order")
   description String?
@@ -388,6 +390,7 @@ model Position {
   grade           Grade         @relation(fields: [gradeId], references: [id])
   createdBy       User          @relation("PositionCreator", fields: [createdById], references: [id])
   updatedBy       User?         @relation("PositionUpdater", fields: [updatedById], references: [id])
+  users           User[]        @relation("UserPosition")
 
   @@unique([tenantId, code])
   @@map("positions")
@@ -1901,7 +1904,7 @@ model LeaveOriginStructure {
   id          String   @id @default(uuid())
   tenantId    String   @map("tenant_id")
   origin      String
-  subOrigin   String   @map("sub_origin")
+  subOriginId String   @map("sub_origin_id")
 
   createdById String   @map("created_by_id")
   updatedById String?  @map("updated_by_id")
@@ -1914,7 +1917,7 @@ model LeaveOriginStructure {
 
   leaveTypes  OriginLeaveType[]
 
-  @@unique([tenantId, origin, subOrigin])
+  @@unique([tenantId, origin, subOriginId])
   @@map("leave_origin_structures")
 }
 

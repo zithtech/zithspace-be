@@ -5,7 +5,7 @@ import { prisma } from "@/config/database";
 // Create Leave Origin Structure
 export const createLeaveOriginStructure = async (req: Request, res: Response) => {
   try {
-    const { origin, subOrigin, leaveTypes } = req.body;
+    const { origin, subOriginId, leaveTypes } = req.body;
     const tenantId = (req as any).tenantId;
     const userId = (req as any).user?.id;
 
@@ -17,7 +17,7 @@ export const createLeaveOriginStructure = async (req: Request, res: Response) =>
       data: {
         tenantId,
         origin,
-        subOrigin,
+        subOriginId,
         createdById: userId || "system",
         leaveTypes: {
           create: Array.isArray(leaveTypes) ? leaveTypes.map((type: any) => ({
