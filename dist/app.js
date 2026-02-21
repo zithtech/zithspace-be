@@ -44,6 +44,18 @@ const fixedHolidays_1 = __importDefault(require("@/routes/fixedHolidays"));
 const documenthub_1 = __importDefault(require("@/routes/documenthub"));
 const channels_1 = __importDefault(require("@/routes/channels"));
 const messages_1 = __importDefault(require("@/routes/messages"));
+// Onboarding
+// import employeeRoutes from "@/routes/employeeRoutes";
+// import employeeAddressRoutes from "@/routes/employeeAddress";
+// import employeeEmergencyContactRoutes from "@/routes/emergencyContact";
+// import employeeIdentityRoutes from "@/routes/employeeIdentity";
+const employeeWorkDetailes_1 = __importDefault(require("@/routes/employeeWorkDetailes"));
+const employeeTimeline_1 = __importDefault(require("@/routes/employeeTimeline"));
+// personal Detailes
+//import employeeDetailsRoutes from "@/routes/createEmployeeRoutes";
+//import employeeEmploymentDetailsRoutes from "@/routes/employeeEmploymentDetailes";
+// main
+const onboardingRoutes_1 = __importDefault(require("@/routes/onboardingRoutes"));
 const timesheet_1 = __importDefault(require("@/routes/timesheet"));
 const companyGovernmentHoliday_routes_1 = __importDefault(require("./routes/companyGovernmentHoliday.routes"));
 const leaveAdjustmentRoutes_1 = __importDefault(require("./routes/leaveAdjustmentRoutes"));
@@ -133,7 +145,7 @@ app.get("/health", (req, res) => {
 // app.use("/api", optionalTenantContext);
 // API routes
 app.use("/api/leave-adjustments", leaveAdjustmentRoutes_1.default);
-app.use('/api/company-government-holidays', companyGovernmentHoliday_routes_1.default);
+app.use("/api/company-government-holidays", companyGovernmentHoliday_routes_1.default);
 app.use("/api/leave-origins", leaveOriginRoutes_1.default);
 app.use("/api/fixed-holidays", fixedHolidays_1.default);
 app.use("/api/auth", auth_1.default);
@@ -173,9 +185,22 @@ app.use("/api/employment-types", employmentTypeRoutes_1.default);
 app.use("/api/documenthub", documenthub_1.default);
 app.use("/api/channels", channels_1.default);
 app.use("/api/channels/:channelId/messages", messages_1.default);
-app.use('/api/email-history', emailHistoryRoutes_1.default);
+app.use("/api/email-history", emailHistoryRoutes_1.default);
 app.use("/api/timesheets", timesheet_1.default);
 app.use("/api/zoho", calendar_1.default);
+// onboarding
+// app.use("/api/employees", employeeRoutes);
+// app.use("/api/employee-addresses", employeeAddressRoutes);
+// app.use("/api/employee-emergency-contacts", employeeEmergencyContactRoutes);
+// app.use("/api/employee-identities", employeeIdentityRoutes);
+app.use("/api/employee-work-details", employeeWorkDetailes_1.default);
+app.use("/api/employee-timelines", employeeTimeline_1.default);
+//app.use("/api/employee-details", employeeDetailsRoutes);
+//app.use("/api/employee-employment-details", employeeEmploymentDetailsRoutes);
+// main
+app.use("/api/onboarding", onboardingRoutes_1.default);
+// app.use("/api/addresses", addressRoutes);
+//app.use("/api/employee_address", addressRoutes);
 app.get("/api/health", (req, res) => {
     res.status(200).json({
         success: true,

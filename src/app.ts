@@ -1,4 +1,4 @@
- import "module-alias/register";
+import "module-alias/register";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -16,7 +16,6 @@ import { connectDatabase, disconnectDatabase } from "@/config/database";
 import salaryComponentRoutes from "@/routes/salaryComponentRoutes";
 import gradeRoutes from "@/routes/gradeRoutes";
 import companyRoutes from "./routes/companyRoutes";
-
 
 // Import middlewares
 import { optionalTenantContext } from "@/middleware/tenantContext";
@@ -48,12 +47,23 @@ import fixedHolidayRoutes from "@/routes/fixedHolidays";
 import documentHubRoutes from "@/routes/documenthub";
 import channelRoutes from "@/routes/channels";
 import messageRoutes from "@/routes/messages";
+// Onboarding
+// import employeeRoutes from "@/routes/employeeRoutes";
+// import employeeAddressRoutes from "@/routes/employeeAddress";
+// import employeeEmergencyContactRoutes from "@/routes/emergencyContact";
+// import employeeIdentityRoutes from "@/routes/employeeIdentity";
+import employeeWorkDetailRoutes from "@/routes/employeeWorkDetailes";
+import employeeTimelineRoutes from "@/routes/employeeTimeline";
+// personal Detailes
+//import employeeDetailsRoutes from "@/routes/createEmployeeRoutes";
+//import employeeEmploymentDetailsRoutes from "@/routes/employeeEmploymentDetailes";
+
+// main
+import employeeOnboardingRoutes from "@/routes/onboardingRoutes";
+
 import timesheetRoutes from "@/routes/timesheet";
 
-
-
-
-import companyGovernmentHolidayRouter from './routes/companyGovernmentHoliday.routes';
+import companyGovernmentHolidayRouter from "./routes/companyGovernmentHoliday.routes";
 import leaveAdjustmentRoutes from "./routes/leaveAdjustmentRoutes";
 import reimbursement from "@/routes/reimbursementCategory";
 import employmentTypeRoutes from "@/routes/employmentTypeRoutes";
@@ -62,8 +72,6 @@ import departmentRoutes from "@/routes/departmentRoutes";
 import subDepartmentRoutes from "@/routes/subDepartmentRoutes";
 import positionRoutes from "@/routes/positionRoutes";
 import calenderRoutes from "@/routes/calendar"
-
-
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
 import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
 // Load environment
@@ -167,7 +175,7 @@ app.get("/health", (req, res) => {
 
 // API routes
 app.use("/api/leave-adjustments", leaveAdjustmentRoutes);
-app.use('/api/company-government-holidays', companyGovernmentHolidayRouter);
+app.use("/api/company-government-holidays", companyGovernmentHolidayRouter);
 app.use("/api/leave-origins", leaveOriginRoutes);
 app.use("/api/fixed-holidays", fixedHolidayRoutes);
 app.use("/api/auth", authRoutes);
@@ -192,8 +200,8 @@ app.use("/api/reimbursement-category", reimbursement);
 app.use("/api/repositories", repositoryRoutes);
 app.use("/api/leave-types", leaveTypeRoutes);
 app.use("/api/customers", customerRoutes);
-app.use("/api/invoicesetting", invoiceSettingRoutes)
-app.use("/api/invoices", invoice)
+app.use("/api/invoicesetting", invoiceSettingRoutes);
+app.use("/api/invoices", invoice);
 //app.use("/api/invoice",invoicedownload)
 app.use("/api/buckets", bucketRoutes);
 app.use("/api/trash", trashRoutes);
@@ -209,11 +217,24 @@ app.use("/api/employment-types", employmentTypeRoutes);
 app.use("/api/documenthub", documentHubRoutes);
 app.use("/api/channels", channelRoutes);
 app.use("/api/channels/:channelId/messages", messageRoutes);
-app.use('/api/email-history', emailHistoryRoutes);
+app.use("/api/email-history", emailHistoryRoutes);
 app.use("/api/timesheets", timesheetRoutes);
 app.use("/api/zoho", calenderRoutes);
 
+// onboarding
+// app.use("/api/employees", employeeRoutes);
+// app.use("/api/employee-addresses", employeeAddressRoutes);
+// app.use("/api/employee-emergency-contacts", employeeEmergencyContactRoutes);
+// app.use("/api/employee-identities", employeeIdentityRoutes);
+app.use("/api/employee-work-details", employeeWorkDetailRoutes);
+app.use("/api/employee-timelines", employeeTimelineRoutes);
+//app.use("/api/employee-details", employeeDetailsRoutes);
+//app.use("/api/employee-employment-details", employeeEmploymentDetailsRoutes);
+// main
+app.use("/api/onboarding", employeeOnboardingRoutes);
 
+// app.use("/api/addresses", addressRoutes);
+//app.use("/api/employee_address", addressRoutes);
 
 app.get("/api/health", (req: any, res) => {
   res.status(200).json({
