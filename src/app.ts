@@ -7,6 +7,9 @@ import compression from "compression";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
+import session from "express-session";
+
+
 
 // Import configurations
 import { connectDatabase, disconnectDatabase } from "@/config/database";
@@ -68,6 +71,8 @@ import repositoryRoutes from "@/routes/repositoryRoutes";
 import departmentRoutes from "@/routes/departmentRoutes";
 import subDepartmentRoutes from "@/routes/subDepartmentRoutes";
 import positionRoutes from "@/routes/positionRoutes";
+import calenderRoutes from "@/routes/calendar"
+
 
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
 import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
@@ -79,6 +84,17 @@ const app = express();
 // Body parsing middleware
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
+app.use(session({
+  secret: process.env.SESSION_SECRET || "your-fallback-secret-key",
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === "production", // true in production
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
+}));
 
 // Connect to PostgreSQL
 
@@ -154,6 +170,9 @@ app.get("/health", (req, res) => {
   });
 });
 
+
+
+
 // app.use("/api", optionalTenantContext);
 
 // API routes
@@ -202,6 +221,7 @@ app.use("/api/channels", channelRoutes);
 app.use("/api/channels/:channelId/messages", messageRoutes);
 app.use("/api/email-history", emailHistoryRoutes);
 app.use("/api/timesheets", timesheetRoutes);
+app.use("/api/zoho", calenderRoutes);
 
 // onboarding
 // app.use("/api/employees", employeeRoutes);
@@ -374,6 +394,8 @@ const gracefulShutdown = async (signal: string) => {
 
     try {
       await disconnectDatabase();
+
+
       console.log("Database connections closed");
     } catch (error) {
       console.error("Error closing database connections:", error);

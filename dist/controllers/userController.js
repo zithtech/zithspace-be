@@ -28,7 +28,7 @@ class UserController {
             if (role)
                 where.role = role;
             if (position)
-                where.position = position;
+                where.position = { title: position }; // Filter by position title if string passed
             if (isActive !== 'all')
                 where.isActive = isActive === 'true';
             if (search) {
@@ -53,13 +53,13 @@ class UserController {
                         personalEmail: true,
                         phone: true,
                         role: true,
-                        position: true,
+                        position: { select: { id: true, title: true } },
                         isActive: true,
                         lastLoginAt: true,
                         createdAt: true,
                         updatedAt: true,
                         reportsTo: {
-                            select: { id: true, name: true, position: true }
+                            select: { id: true, name: true, position: { select: { title: true } } }
                         }
                     },
                     orderBy,
@@ -115,7 +115,7 @@ class UserController {
                     personalEmail: true,
                     phone: true,
                     role: true,
-                    position: true,
+                    position: { select: { id: true, title: true } },
                     reportsToId: true,
                     dateOfBirth: true,
                     workDays: true,
@@ -124,7 +124,7 @@ class UserController {
                     createdAt: true,
                     updatedAt: true,
                     reportsTo: {
-                        select: { id: true, name: true, position: true }
+                        select: { id: true, name: true, position: { select: { title: true } } }
                     }
                 }
             });
@@ -162,7 +162,7 @@ class UserController {
             }
             const userData = req.body;
             // Validate required fields
-            if (!userData.name || !userData.workEmail || !userData.password || !userData.position) {
+            if (!userData.name || !userData.workEmail || !userData.password || !userData.positionId) {
                 res.status(400).json({
                     success: false,
                     error: 'Name, work email, password, and position are required'
@@ -221,7 +221,7 @@ class UserController {
                     phone: userData.phone,
                     passwordHash,
                     role: userData.role || 'user',
-                    position: userData.position,
+                    positionId: userData.positionId,
                     reportsToId: userData.reportsToId,
                     dateOfBirth: userData.dateOfBirth ? new Date(userData.dateOfBirth) : null,
                     workDays: userData.workDays || [1, 2, 3, 4, 5], // Default to weekdays
@@ -235,11 +235,11 @@ class UserController {
                     personalEmail: true,
                     phone: true,
                     role: true,
-                    position: true,
+                    position: { select: { id: true, title: true } },
                     isActive: true,
                     createdAt: true,
                     reportsTo: {
-                        select: { id: true, name: true, position: true }
+                        select: { id: true, name: true, position: { select: { title: true } } }
                     }
                 }
             });
@@ -354,7 +354,7 @@ class UserController {
                     personalEmail: true,
                     phone: true,
                     role: true,
-                    position: true,
+                    position: { select: { id: true, title: true } },
                     workDays: true,
                     isActive: true,
                     updatedAt: true,
@@ -367,7 +367,7 @@ class UserController {
                         }
                     },
                     reportsTo: {
-                        select: { id: true, name: true, position: true }
+                        select: { id: true, name: true, position: { select: { title: true } } }
                     }
                 }
             });
@@ -539,7 +539,7 @@ class UserController {
                     personalEmail: true,
                     phone: true,
                     role: true,
-                    position: true,
+                    position: { select: { id: true, title: true } },
                     dateOfBirth: true,
                     workDays: true,
                     isActive: true,
@@ -547,7 +547,7 @@ class UserController {
                     createdAt: true,
                     updatedAt: true,
                     reportsTo: {
-                        select: { id: true, name: true, position: true }
+                        select: { id: true, name: true, position: { select: { title: true } } }
                     }
                 }
             });
@@ -608,12 +608,12 @@ class UserController {
                     workEmail: true,
                     personalEmail: true,
                     phone: true,
-                    position: true,
+                    position: { select: { id: true, title: true } },
                     dateOfBirth: true,
                     workDays: true,
                     updatedAt: true,
                     reportsTo: {
-                        select: { id: true, name: true, position: true }
+                        select: { id: true, name: true, position: { select: { title: true } } }
                     }
                 }
             });
@@ -807,14 +807,14 @@ class UserController {
             if (role)
                 where.role = role;
             if (position)
-                where.position = position;
+                where.position = { title: position };
             const members = await database_1.prisma.user.findMany({
                 where,
                 select: {
                     id: true,
                     name: true,
                     workEmail: true,
-                    position: true,
+                    position: { select: { id: true, title: true } },
                     role: true,
                 },
                 orderBy: { name: 'asc' }
@@ -823,7 +823,7 @@ class UserController {
                 value: member.id,
                 label: member.name,
                 email: member.workEmail,
-                position: member.position,
+                position: member.position?.title,
                 role: member.role,
             }));
             res.status(200).json({
@@ -897,7 +897,7 @@ class UserController {
                     personalEmail: true,
                     phone: true,
                     role: true,
-                    position: true,
+                    position: { select: { id: true, title: true } },
                     isActive: true,
                     updatedAt: true,
                     assignedShift: {
@@ -912,11 +912,11 @@ class UserController {
                         select: {
                             id: true,
                             name: true,
-                            position: true,
+                            position: { select: { title: true } },
                         }
                     },
                     reportsTo: {
-                        select: { id: true, name: true, position: true }
+                        select: { id: true, name: true, position: { select: { title: true } } }
                     }
                 }
             });

@@ -212,8 +212,15 @@ class DailyUpdateController {
                             select: {
                                 id: true,
                                 name: true,
-                                position: true,
                                 workEmail: true,
+                                positionId: true,
+                                position: {
+                                    select: {
+                                        id: true,
+                                        title: true,
+                                        code: true,
+                                    },
+                                },
                             },
                         },
                     },
@@ -324,7 +331,16 @@ class DailyUpdateController {
                 // Check user role and position
                 const user = await client.user.findUnique({
                     where: { id: req.user.id },
-                    select: { role: true, position: true },
+                    select: {
+                        role: true,
+                        position: {
+                            select: {
+                                id: true,
+                                title: true,
+                                code: true,
+                            },
+                        },
+                    },
                 });
                 if (!user) {
                     throw new types_1.NotFoundError("User not found");
@@ -363,7 +379,7 @@ class DailyUpdateController {
                     // No additional filters needed
                 }
                 // Project Manager - can see updates from their projects
-                else if (user.position === "Project Manager") {
+                else if (user.position?.title === "Project Manager") {
                     const managedProjects = await client.project.findMany({
                         where: {
                             tenantId: req.tenantId,
@@ -402,7 +418,7 @@ class DailyUpdateController {
                     orderBy: { submittedAt: "desc" },
                 });
                 // Filter by project if PM and projectId specified
-                if (user.position === "Project Manager" &&
+                if (user.position?.title === "Project Manager" &&
                     user.role !== "super_admin") {
                     const managedProjects = await client.project.findMany({
                         where: {
@@ -474,7 +490,7 @@ class DailyUpdateController {
                 };
                 // Regular users only see their own
                 if (user.role !== "super_admin" &&
-                    user.position !== "Project Manager") {
+                    user.position?.title !== "Project Manager") {
                     where.userId = req.user.id;
                 }
                 let allUpdates = await client.statusUpdate.findMany({
@@ -492,7 +508,7 @@ class DailyUpdateController {
                     orderBy: { submittedAt: "desc" },
                 });
                 // Filter for Project Managers
-                if (user.position === "Project Manager" &&
+                if (user.position?.title === "Project Manager" &&
                     user.role !== "super_admin") {
                     const managedProjects = await client.project.findMany({
                         where: {
@@ -589,7 +605,16 @@ class DailyUpdateController {
                 // Check access permissions
                 const user = await client.user.findUnique({
                     where: { id: req.user.id },
-                    select: { role: true, position: true },
+                    select: {
+                        role: true,
+                        position: {
+                            select: {
+                                id: true,
+                                title: true,
+                                code: true,
+                            },
+                        },
+                    },
                 });
                 if (!user) {
                     throw new types_1.NotFoundError("User not found");
@@ -603,7 +628,7 @@ class DailyUpdateController {
                     return statusUpdate;
                 }
                 // Project Manager can see if update includes their projects
-                if (user.position === "Project Manager") {
+                if (user.position?.title === "Project Manager") {
                     const managedProjects = await client.project.findMany({
                         where: {
                             tenantId: req.tenantId,
@@ -821,14 +846,23 @@ class DailyUpdateController {
             const stats = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
                 const user = await client.user.findUnique({
                     where: { id: req.user.id },
-                    select: { role: true, position: true },
+                    select: {
+                        role: true,
+                        position: {
+                            select: {
+                                id: true,
+                                title: true,
+                                code: true,
+                            },
+                        },
+                    },
                 });
                 if (!user) {
                     throw new types_1.NotFoundError("User not found");
                 }
                 // Only PM or Super Admin can access stats
                 if (user.role !== "super_admin" &&
-                    user.position !== "Project Manager") {
+                    user.position?.title !== "Project Manager") {
                     throw new types_1.ValidationError("You do not have permission to view statistics");
                 }
                 const start = startDate
