@@ -140,7 +140,8 @@ class TenantController {
                         phone: tenantData.adminUser.phone,
                         passwordHash,
                         role: "admin",
-                        position: "Administrator",
+                        // Position will be assigned later after positions are set up
+                        positionId: null,
                         workDays: [1, 2, 3, 4, 5], // Monday to Friday
                     },
                 });

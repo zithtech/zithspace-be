@@ -10,6 +10,19 @@ export interface Tenant {
     createdAt: Date;
     updatedAt: Date;
 }
+export interface Position {
+    id: string;
+    tenantId: string;
+    code: string;
+    title: string;
+    departmentId: string;
+    subDepartmentId?: string;
+    gradeId: string;
+    description?: string;
+    isActive: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+}
 export interface User {
     id: string;
     tenantId: string;
@@ -19,7 +32,8 @@ export interface User {
     phone: string;
     passwordHash: string;
     role: string;
-    position: string;
+    positionId?: string;
+    position?: Position;
     reportsToId?: string;
     dateOfBirth?: Date;
     workDays: number[];
@@ -200,7 +214,7 @@ export interface AuthUser {
     tenantId: string;
     email: string;
     role: string;
-    position: string;
+    position: string | null;
     name: string;
     sessionId?: string;
 }
@@ -209,7 +223,7 @@ export interface JWTPayload {
     tenantId: string;
     email: string;
     role: string;
-    position: string;
+    position: string | null;
     sessionId?: string;
     iat?: number;
     exp?: number;
@@ -233,7 +247,7 @@ export interface LoginResponse {
         workEmail: string;
         personalEmail: string;
         role: string;
-        position: string;
+        position: string | null;
         tenantId: string;
         tenantName: string;
         isActive: boolean;
@@ -314,7 +328,7 @@ export interface CreateUserData {
     phone: string;
     password: string;
     role?: string;
-    position: string;
+    positionId?: string;
     reportsToId?: string;
     dateOfBirth?: Date;
     workDays?: number[];
@@ -327,7 +341,7 @@ export interface UpdateUserData {
     personalEmail?: string;
     phone?: string;
     role?: string;
-    position?: string;
+    positionId?: string;
     reportsToId?: string;
     dateOfBirth?: Date;
     workDays?: number[];
