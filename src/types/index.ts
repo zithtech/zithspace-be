@@ -1,4 +1,4 @@
-import { Request } from 'express';
+import { Request } from "express";
 
 // All enums removed for maximum flexibility
 // Values are now stored as strings and can be configured per tenant
@@ -315,7 +315,7 @@ export interface PaginationParams {
   page?: number;
   limit?: number;
   sortBy?: string;
-  sortOrder?: 'asc' | 'desc';
+  sortOrder?: "asc" | "desc";
   search?: string;
 }
 
@@ -542,7 +542,7 @@ export interface UpdateClientData {
 
 export interface CreateTransactionData {
   userId: string;
-  type: 'income' | 'expense' | 'bonus' | 'deduction';
+  type: "income" | "expense" | "bonus" | "deduction";
   amount: number;
   description: string;
   category?: string;
@@ -569,7 +569,7 @@ export interface CreateAttendanceData {
   date: Date;
   clockIn?: Date;
   clockOut?: Date;
-  status?: 'present' | 'absent' | 'late' | 'half_day';
+  status?: "present" | "absent" | "late" | "half_day";
   notes?: string;
 }
 
@@ -580,17 +580,42 @@ export interface AttendanceFilters {
   status?: string[];
 }
 
+// Data required to create a new customer
+export interface CreateCustomerData {
+  companyName: string;
+  email: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  country?: string;
+  taxId?: string;
+}
+
+// Data allowed to update a customer
+export interface UpdateCustomerData {
+  companyName?: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  city?: string;
+  country?: string;
+  taxId?: string;
+}
+
 // ==========================================
 // VALIDATION SCHEMAS
 // ==========================================
 
 export class ValidationError extends Error {
   public readonly statusCode: number = 400;
-  public readonly code: string = 'VALIDATION_ERROR';
+  public readonly code: string = "VALIDATION_ERROR";
 
-  constructor(message: string, public readonly field?: string) {
+  constructor(
+    message: string,
+    public readonly field?: string,
+  ) {
     super(message);
-    this.name = 'ValidationError';
+    this.name = "ValidationError";
   }
 }
 
@@ -608,7 +633,7 @@ export interface QueryOptions {
   include?: Record<string, boolean | QueryOptions>;
   select?: Record<string, boolean>;
   where?: Record<string, any>;
-  orderBy?: Record<string, 'asc' | 'desc'>;
+  orderBy?: Record<string, "asc" | "desc">;
   skip?: number;
   take?: number;
 }
@@ -669,34 +694,71 @@ export class AppValidationError extends AppError {
   public errors: ValidationError[];
 
   constructor(errors: ValidationError[]) {
-    super('Validation failed', 400, 'VALIDATION_ERROR');
+    super("Validation failed", 400, "VALIDATION_ERROR");
     this.errors = errors;
   }
 }
 
 export class AuthenticationError extends AppError {
-  constructor(message: string = 'Authentication failed') {
-    super(message, 401, 'AUTHENTICATION_ERROR');
+  constructor(message: string = "Authentication failed") {
+    super(message, 401, "AUTHENTICATION_ERROR");
   }
 }
 
 export class AuthorizationError extends AppError {
-  constructor(message: string = 'Authorization failed') {
-    super(message, 403, 'AUTHORIZATION_ERROR');
+  constructor(message: string = "Authorization failed") {
+    super(message, 403, "AUTHORIZATION_ERROR");
   }
 }
 
 export class TenantError extends AppError {
-  constructor(message: string = 'Tenant error') {
-    super(message, 400, 'TENANT_ERROR');
+  constructor(message: string = "Tenant error") {
+    super(message, 400, "TENANT_ERROR");
   }
 }
 
 export class NotFoundError extends AppError {
-  constructor(resource: string = 'Resource') {
-    super(`${resource} not found`, 404, 'NOT_FOUND');
+  constructor(resource: string = "Resource") {
+    super(`${resource} not found`, 404, "NOT_FOUND");
   }
 }
+
+
+export type CreateTimesheetRowData = {
+  day: string; // ISO string
+  projectName: string;
+  taskName: string;
+  description?: string;
+  hours: number;
+  billable?: boolean;
+};
+
+export type CreateTimesheetData = {
+  weekStart: string; // ISO date
+  weekEnd: string;   // ISO date
+  rows: CreateTimesheetRowData[];
+};
+
+export type UpdateTimesheetRowData = {
+  id?: string;   
+  day?: string;
+  projectName?: string;
+  taskName?: string;
+  description?: string;
+  hours?: number;
+  billable?: boolean;
+  taskId ?: string;
+  projectId?: string;
+};
+
+export type UpdateTimesheetData = {
+ 
+  weekStart?: string;
+  weekEnd?: string;
+  status?: "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED";
+  rejectReason?: string;
+  rows?: UpdateTimesheetRowData[];
+};
 
 
 // Note: Prisma types will be available after running 'npx prisma generate'

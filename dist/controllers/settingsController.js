@@ -101,11 +101,11 @@ class SettingsController {
                 statuses: [
                     { value: 'not_started', label: 'Not Started', color: '#d9d9d9', description: 'Task not started' },
                     { value: 'in_progress', label: 'In Progress', color: '#1890ff', description: 'Task in progress' },
-                    // { value: 'in_review', label: 'In Review', color: '#722ed1', description: 'Under review' },
-                    { value: 'in_testing', label: 'Testing', color: '#13c2c2', description: 'In testing phase' },
+                    { value: 'dev_complete', label: 'Dev Complete', color: '#2db7f5', description: 'Development completed' },
+                    { value: 'in_testing', label: 'Testing', color: '#fa8c16', description: 'In testing phase' },
+                    { value: 'in_review', label: 'In Review', color: '#722ed1', description: 'Under review' },
                     { value: 'completed', label: 'Completed', color: '#52c41a', description: 'Task completed' },
-                    // { value: 'on_hold', label: 'On Hold', color: '#fa8c16', description: 'Task on hold' },
-                    // { value: 'cancelled', label: 'Cancelled', color: '#8c8c8c', description: 'Task cancelled' }
+                    { value: 'live', label: 'Live', color: '#0050b3', description: 'Deployed to production' },
                 ],
                 platforms: [
                     { value: 'Development', label: 'Development', color: '#1890ff', description: 'Software development tasks' },

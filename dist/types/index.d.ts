@@ -1,4 +1,4 @@
-import { Request } from 'express';
+import { Request } from "express";
 export interface Tenant {
     id: string;
     name: string;
@@ -272,7 +272,7 @@ export interface PaginationParams {
     page?: number;
     limit?: number;
     sortBy?: string;
-    sortOrder?: 'asc' | 'desc';
+    sortOrder?: "asc" | "desc";
     search?: string;
 }
 export interface CreateTenantData {
@@ -456,7 +456,7 @@ export interface UpdateClientData {
 }
 export interface CreateTransactionData {
     userId: string;
-    type: 'income' | 'expense' | 'bonus' | 'deduction';
+    type: "income" | "expense" | "bonus" | "deduction";
     amount: number;
     description: string;
     category?: string;
@@ -477,7 +477,7 @@ export interface CreateAttendanceData {
     date: Date;
     clockIn?: Date;
     clockOut?: Date;
-    status?: 'present' | 'absent' | 'late' | 'half_day';
+    status?: "present" | "absent" | "late" | "half_day";
     notes?: string;
 }
 export interface AttendanceFilters {
@@ -485,6 +485,24 @@ export interface AttendanceFilters {
     dateFrom?: Date;
     dateTo?: Date;
     status?: string[];
+}
+export interface CreateCustomerData {
+    companyName: string;
+    email: string;
+    phone?: string;
+    address?: string;
+    city?: string;
+    country?: string;
+    taxId?: string;
+}
+export interface UpdateCustomerData {
+    companyName?: string;
+    email?: string;
+    phone?: string;
+    address?: string;
+    city?: string;
+    country?: string;
+    taxId?: string;
 }
 export declare class ValidationError extends Error {
     readonly field?: string;
@@ -501,7 +519,7 @@ export interface QueryOptions {
     include?: Record<string, boolean | QueryOptions>;
     select?: Record<string, boolean>;
     where?: Record<string, any>;
-    orderBy?: Record<string, 'asc' | 'desc'>;
+    orderBy?: Record<string, "asc" | "desc">;
     skip?: number;
     take?: number;
 }
@@ -555,3 +573,34 @@ export declare class TenantError extends AppError {
 export declare class NotFoundError extends AppError {
     constructor(resource?: string);
 }
+export type CreateTimesheetRowData = {
+    day: string;
+    projectName: string;
+    taskName: string;
+    description?: string;
+    hours: number;
+    billable?: boolean;
+};
+export type CreateTimesheetData = {
+    weekStart: string;
+    weekEnd: string;
+    rows: CreateTimesheetRowData[];
+};
+export type UpdateTimesheetRowData = {
+    id?: string;
+    day?: string;
+    projectName?: string;
+    taskName?: string;
+    description?: string;
+    hours?: number;
+    billable?: boolean;
+    taskId?: string;
+    projectId?: string;
+};
+export type UpdateTimesheetData = {
+    weekStart?: string;
+    weekEnd?: string;
+    status?: "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED";
+    rejectReason?: string;
+    rows?: UpdateTimesheetRowData[];
+};

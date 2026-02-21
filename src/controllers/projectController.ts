@@ -1446,6 +1446,11 @@ export class ProjectController {
       } as ApiResponse);
     }
   }
+  /**
+ * Get project member counts (tenant-aware)
+ */
+
+
 }
 
 export default ProjectController;

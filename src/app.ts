@@ -10,8 +10,11 @@ import rateLimit from "express-rate-limit";
 
 // Import configurations
 import { connectDatabase, disconnectDatabase } from "@/config/database";
+import salaryComponentRoutes from "@/routes/salaryComponentRoutes";
+import gradeRoutes from "@/routes/gradeRoutes";
+import companyRoutes from "./routes/companyRoutes";
 
-// Import middleware
+// Import middlewares
 import { optionalTenantContext } from "@/middleware/tenantContext";
 
 import authRoutes from "@/routes/auth";
@@ -29,6 +32,11 @@ import userRoutes from "@/routes/user";
 import dailyUpdateRoutes from "@/routes/dailyUpdates";
 import dashboardRoutes from "@/routes/dashboard";
 import leaveRoutes from "@/routes/leaves";
+import leaveTypeRoutes from "@/routes/leaveTypeRoutes";
+import customerRoutes from "@/routes/customerRoutes";
+import invoiceSettingRoutes from "@/routes/invoiceSettingsRoutes";
+import invoice from "@/routes/invoice";
+//import invoicedownload from "@/routes/invoiceDownload"
 import bucketRoutes from "@/routes/buckets";
 import trashRoutes from "@/routes/trash";
 import sprintCompletionRoutes from "@/routes/sprintCompletion";
@@ -50,7 +58,20 @@ import employeeTimelineRoutes from "@/routes/employeeTimeline";
 // main
 import employeeOnboardingRoutes from "@/routes/onboardingRoutes";
 
-// Load environment variables
+import timesheetRoutes from "@/routes/timesheet";
+
+import companyGovernmentHolidayRouter from "./routes/companyGovernmentHoliday.routes";
+import leaveAdjustmentRoutes from "./routes/leaveAdjustmentRoutes";
+import reimbursement from "@/routes/reimbursementCategory";
+import employmentTypeRoutes from "@/routes/employmentTypeRoutes";
+import repositoryRoutes from "@/routes/repositoryRoutes";
+import departmentRoutes from "@/routes/departmentRoutes";
+import subDepartmentRoutes from "@/routes/subDepartmentRoutes";
+import positionRoutes from "@/routes/positionRoutes";
+
+import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
+import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
+// Load environment
 dotenv.config();
 // Create Express application
 const app = express();
@@ -66,6 +87,9 @@ const allowedOrigins = [
   "http://localhost:3005", // Local development for internal app
   "https://zithmi.vercel.app", // Vercel production URL
   "https://www.zithtech.com",
+  "https://zithspace.com",
+  "https://zithmi.zithspace.com",
+  /\.zithspace\.com$/,
   /\.zithtech\.com$/, // allow any subdomain like dinesh.zithtech.com
 ];
 
@@ -130,14 +154,19 @@ app.get("/health", (req, res) => {
   });
 });
 
-// Tenant resolution for all API routes
 // app.use("/api", optionalTenantContext);
 
 // API routes
+app.use("/api/leave-adjustments", leaveAdjustmentRoutes);
+app.use("/api/company-government-holidays", companyGovernmentHolidayRouter);
+app.use("/api/leave-origins", leaveOriginRoutes);
 app.use("/api/fixed-holidays", fixedHolidayRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/tenants", tenantRoutes);
 app.use("/api/projects", projectRoutes);
+import publicTicketRoutes from "@/routes/publicTickets";
+
+app.use("/api/public/tickets", publicTicketRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/clients", clientRoutes);
@@ -150,12 +179,30 @@ app.use("/api/user", userRoutes);
 app.use("/api/daily-updates", dailyUpdateRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/leaves", leaveRoutes);
+app.use("/api/reimbursement-category", reimbursement);
+app.use("/api/repositories", repositoryRoutes);
+app.use("/api/leave-types", leaveTypeRoutes);
+app.use("/api/customers", customerRoutes);
+app.use("/api/invoicesetting", invoiceSettingRoutes);
+app.use("/api/invoices", invoice);
+//app.use("/api/invoice",invoicedownload)
 app.use("/api/buckets", bucketRoutes);
 app.use("/api/trash", trashRoutes);
 app.use("/api/sprint-completion", sprintCompletionRoutes);
+app.use("/api/salary-components", salaryComponentRoutes);
+app.use("/api/companies", companyRoutes);
+app.use("/api/grades", gradeRoutes);
+
+app.use("/api/departments", departmentRoutes);
+app.use("/api/sub-departments", subDepartmentRoutes);
+app.use("/api/positions", positionRoutes);
+app.use("/api/employment-types", employmentTypeRoutes);
 app.use("/api/documenthub", documentHubRoutes);
 app.use("/api/channels", channelRoutes);
 app.use("/api/channels/:channelId/messages", messageRoutes);
+app.use("/api/email-history", emailHistoryRoutes);
+app.use("/api/timesheets", timesheetRoutes);
+
 // onboarding
 // app.use("/api/employees", employeeRoutes);
 // app.use("/api/employee-addresses", employeeAddressRoutes);
@@ -171,7 +218,6 @@ app.use("/api/onboarding", employeeOnboardingRoutes);
 // app.use("/api/addresses", addressRoutes);
 //app.use("/api/employee_address", addressRoutes);
 
-// Tenant-specific health check
 app.get("/api/health", (req: any, res) => {
   res.status(200).json({
     success: true,
@@ -182,7 +228,7 @@ app.get("/api/health", (req: any, res) => {
   });
 });
 
-// Handle Socket.io requests (to prevent 404 errors)
+// Handle Socket.io requests (to prevent)
 app.all("/socket.io/*", (req, res) => {
   res.status(200).json({
     success: false,
