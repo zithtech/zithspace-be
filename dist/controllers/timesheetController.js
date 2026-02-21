@@ -1,15 +1,4 @@
 "use strict";
-// import { Response } from "express";
-// import { prisma } from "@/config/database";
-// import {
-//   AuthRequest,
-//   ApiResponse,
-//   NotFoundError,
-//   ValidationError,
-//   CreateTimesheetData,
-//   UpdateTimesheetData,
-// } from "@/types";
-// // import { getSundayToSaturdayWeek } from "@/utils/week.util";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TimesheetController = void 0;
 const database_1 = require("@/config/database");
@@ -19,99 +8,39 @@ class TimesheetController {
     /**
      * Create a new timesheet
      */
-    // static async createTimesheet(req: AuthRequest, res: Response): Promise<void> {
-    //   try {
-    //     if (!req.user || !req.tenantId)
-    //       throw new ValidationError("Tenant context and authentication required");
-    //     const data: CreateTimesheetData = req.body;
-    //     // Check if timesheet for same week exists
-    //     const existing = await prisma.timesheet.findFirst({
-    //       where: {
-    //         tenantId: req.tenantId,
-    //         userId: req.user.id,
-    //         weekStart: new Date(data.weekStart),
-    //         //  weekStart,
-    //       },
-    //     });
-    //     if (existing)
-    //       throw new ValidationError("Timesheet for this week already exists");
-    //     // Calculate total hours
-    //     const totalHours = data.rows.reduce((sum, row) => sum + row.hours, 0);
-    //     // ✅ Get leaveCount from request body (default to 0 if not provided)
-    //     const leaveCount = data.leaveCount !== undefined ? data.leaveCount : 0;
-    //     console.log("leaveCount",leaveCount);
-    //     const timesheet = await prisma.timesheet.create({
-    //       data: {
-    //         tenantId: req.tenantId,
-    //         userId: req.user.id,
-    //         weekStart: new Date(data.weekStart),
-    //         weekEnd: new Date(data.weekEnd),
-    //         //  weekStart, // ✅ Sun
-    //         //  weekEnd,
-    //         totalHours,
-    //         // ✅ Save leave count
-    //         leaveCount,
-    //         status: "DRAFT",
-    //         createdById: req.user.id,
-    //         rows: {
-    //           create: data.rows.map((row) => ({
-    //             tenantId: req.tenantId,
-    //             day: new Date(row.day),
-    //             updatedById: req.user.id,
-    //             projectName: row.projectName,
-    //             taskName: row.taskName,
-    //             description: row.description,
-    //             hours: row.hours,
-    //             billable: row.billable || false,
-    //             createdById: req.user.id,
-    //           })),
-    //         },
-    //       },
-    //       include: { rows: true },
-    //     });
-    //     console.log("data1",data)
-    //     res.status(201).json({ success: true, data: timesheet } as ApiResponse);
-    //   } catch (error: any) {
-    //     console.error("Create timesheet error:", error);
-    //     res.status(error instanceof ValidationError ? 400 : 500).json({
-    //       success: false,
-    //       error: error.message || "Failed to create timesheet",
-    //     } as ApiResponse);
-    //   }
-    // }
     static async createTimesheet(req, res) {
         try {
             if (!req.user || !req.tenantId)
                 throw new types_1.ValidationError("Tenant context and authentication required");
             const data = req.body;
-            // Log received data
-            console.log("Received data:", {
-                leaveCount: data.leaveCount,
-                totalRows: data.rows?.length
-            });
             // Check if timesheet for same week exists
             const existing = await database_1.prisma.timesheet.findFirst({
                 where: {
                     tenantId: req.tenantId,
                     userId: req.user.id,
                     weekStart: new Date(data.weekStart),
+                    //  weekStart,
                 },
             });
             if (existing)
                 throw new types_1.ValidationError("Timesheet for this week already exists");
             // Calculate total hours
-            const totalHours = data.rows.reduce((sum, row) => sum + (row.hours || 0), 0);
-            // IMPORTANT: Ensure leaveCount is a number
-            const leaveCount = data.leaveCount !== undefined ? Number(data.leaveCount) : 0;
-            console.log("📤 Saving leaveCount:", leaveCount);
+            const totalHours = data.rows.reduce((sum, row) => sum + row.hours, 0);
+            // ✅ Get leaveCount from request body (default to 0 if not provided)
+            const leaveCount = data.leaveCount !== undefined ? data.leaveCount : 0;
+            console.log("leaveCount", leaveCount);
             const timesheet = await database_1.prisma.timesheet.create({
                 data: {
                     tenantId: req.tenantId,
                     userId: req.user.id,
                     weekStart: new Date(data.weekStart),
                     weekEnd: new Date(data.weekEnd),
+                    //  weekStart, // ✅ Sun
+                    //  weekEnd,
                     totalHours,
-                    leaveCount: leaveCount, // Make sure this is explicitly set
+                    // ✅ Save leave count
+                    // leaveCount,
+                    leaveCount: leaveCount,
                     status: "DRAFT",
                     createdById: req.user.id,
                     rows: {
@@ -119,10 +48,10 @@ class TimesheetController {
                             tenantId: req.tenantId,
                             day: new Date(row.day),
                             updatedById: req.user.id,
-                            projectName: row.projectName || '',
-                            taskName: row.taskName || '',
-                            description: row.description || '',
-                            hours: row.hours || 0,
+                            projectName: row.projectName,
+                            taskName: row.taskName,
+                            description: row.description,
+                            hours: row.hours,
                             billable: row.billable || false,
                             createdById: req.user.id,
                         })),
@@ -130,17 +59,78 @@ class TimesheetController {
                 },
                 include: { rows: true },
             });
-            console.log("✅ Timesheet created with leaveCount:", timesheet.leaveCount);
+            console.log("data1", data);
             res.status(201).json({ success: true, data: timesheet });
         }
         catch (error) {
-            console.error("❌ Create timesheet error:", error);
+            console.error("Create timesheet error:", error);
             res.status(error instanceof types_1.ValidationError ? 400 : 500).json({
                 success: false,
                 error: error.message || "Failed to create timesheet",
             });
         }
     }
+    //   static async createTimesheet(req: AuthRequest, res: Response): Promise<void> {
+    //   try {
+    //     if (!req.user || !req.tenantId)
+    //       throw new ValidationError("Tenant context and authentication required");
+    //     const data: CreateTimesheetData = req.body;
+    //     // Log received data
+    //     console.log("Received data:", {
+    //       leaveCount: data.leaveCount,
+    //       totalRows: data.rows?.length
+    //     });
+    //     // Check if timesheet for same week exists
+    //     const existing = await prisma.timesheet.findFirst({
+    //       where: {
+    //         tenantId: req.tenantId,
+    //         userId: req.user.id,
+    //         weekStart: new Date(data.weekStart),
+    //       },
+    //     });
+    //     if (existing)
+    //       throw new ValidationError("Timesheet for this week already exists");
+    //     // Calculate total hours
+    //     const totalHours = data.rows.reduce((sum, row) => sum + (row.hours || 0), 0);
+    //     // IMPORTANT: Ensure leaveCount is a number
+    //     const leaveCount = data.leaveCount !== undefined ? Number(data.leaveCount) : 0;
+    //     console.log("📤 Saving leaveCount:", leaveCount);
+    //     const timesheet = await prisma.timesheet.create({
+    //       data: {
+    //         tenantId: req.tenantId,
+    //         userId: req.user.id,
+    //         weekStart: new Date(data.weekStart),
+    //         weekEnd: new Date(data.weekEnd),
+    //         totalHours,
+    //         leaveCount: leaveCount, // Make sure this is explicitly set
+    //         status: "DRAFT",
+    //         createdById: req.user.id,
+    //         rows: {
+    //           create: data.rows.map((row) => ({
+    //             tenantId: req.tenantId,
+    //             day: new Date(row.day),
+    //             updatedById: req.user.id,
+    //             projectName: row.projectName || '',
+    //             taskName: row.taskName || '',
+    //             description: row.description || '',
+    //             hours: row.hours || 0,
+    //             billable: row.billable || false,
+    //             createdById: req.user.id,
+    //           })),
+    //         },
+    //       },
+    //       include: { rows: true },
+    //     });
+    //     console.log("✅ Timesheet created with leaveCount:", timesheet.leaveCount);
+    //     res.status(201).json({ success: true, data: timesheet } as ApiResponse);
+    //   } catch (error: any) {
+    //     console.error("❌ Create timesheet error:", error);
+    //     res.status(error instanceof ValidationError ? 400 : 500).json({
+    //       success: false,
+    //       error: error.message || "Failed to create timesheet",
+    //     } as ApiResponse);
+    //   }
+    // }
     /**
      * Create a new timesheet
      */
@@ -284,104 +274,20 @@ class TimesheetController {
     /**
      * Update timesheet rows or basic info
      */
-    // static async updateTimesheet(req: AuthRequest, res: Response): Promise<void> {
-    //   try {
-    //     if (!req.user || !req.tenantId)
-    //       throw new ValidationError("Tenant context and authentication required");
-    //     const { id } = req.params;
-    //     const data: UpdateTimesheetData = req.body;
-    //     console.log("data", data);
-    //     const timesheet = await prisma.timesheet.findFirst({
-    //       where: { id, tenantId: req.tenantId },
-    //       include: { rows: true },
-    //     });
-    //     console.log("ROWS FROM DB 👉", timesheet.rows);
-    //     if (!timesheet) throw new NotFoundError("Timesheet not found");
-    //     if (data.rows && data.rows.length) {
-    //       for (const rowData of data.rows) {
-    //         if (!rowData.id) continue;
-    //         await prisma.timesheetRow.update({
-    //           where: { id: rowData.id },
-    //           data: {
-    //             day: rowData.day,
-    //             description: rowData.description,
-    //             hours: rowData.hours,
-    //             billable: rowData.billable,
-    //             // updatedById: req.user.id,
-    //             updatedAt: new Date(),
-    //             // projectId: rowData.projectId ?? null,
-    //             // taskId: rowData.taskId ?? null,
-    //             taskName: rowData.taskName,
-    //             projectName: rowData.projectName,
-    //             updatedBy: {
-    //               connect: { id: req.user.id }, // dynamically using logged-in user ID
-    //             },
-    //           },
-    //         });
-    //       }
-    //     }
-    //     // ✅ Recalculate total hours
-    //     const updatedRows = await prisma.timesheetRow.findMany({
-    //       where: { timesheetId: id },
-    //     });
-    //     const totalHours = updatedRows.reduce(
-    //       (sum, r) => sum + Number(r.hours || 0),
-    //       0,
-    //     );
-    //     console.log("TOTAL HOURS 👉", totalHours);
-    //     // ✅ Get leaveCount from request body (preserve existing if not provided)
-    //     const leaveCount = data.leaveCount !== undefined 
-    //       ? data.leaveCount 
-    //       : timesheet.leaveCount || 0;
-    //     // Update basic info
-    //     const updated = await prisma.timesheet.update({
-    //       where: { id },
-    //       data: {
-    //         weekStart: data.weekStart ? new Date(data.weekStart) : undefined,
-    //         weekEnd: data.weekEnd ? new Date(data.weekEnd) : undefined,
-    //         // weekStart: weekRange?.weekStart,
-    //         // weekEnd: weekRange?.weekEnd,
-    //         status: data.status,
-    //         rejectReason: data.rejectReason,
-    //         updatedById: req.user.id,
-    //         updatedAt: new Date(),
-    //         totalHours: totalHours,
-    //         // ✅ Update leave count
-    //         leaveCount: leaveCount,
-    //       },
-    //       include: { rows: true },
-    //     });
-    //     res.status(200).json({
-    //       success: true,
-    //       data: updated,
-    //       message: "Timesheet updated successfully",
-    //     } as ApiResponse);
-    //   } catch (error: any) {
-    //     console.error("Update timesheet error:", error);
-    //     res
-    //       .status(
-    //         error instanceof ValidationError
-    //           ? 400
-    //           : error instanceof NotFoundError
-    //             ? 404
-    //             : 500,
-    //       )
-    //       .json({ success: false, error: error.message } as ApiResponse);
-    //   }
-    // }
     static async updateTimesheet(req, res) {
         try {
             if (!req.user || !req.tenantId)
                 throw new types_1.ValidationError("Tenant context and authentication required");
             const { id } = req.params;
             const data = req.body;
+            console.log("data", data);
             const timesheet = await database_1.prisma.timesheet.findFirst({
                 where: { id, tenantId: req.tenantId },
                 include: { rows: true },
             });
+            console.log("ROWS FROM DB 👉", timesheet.rows);
             if (!timesheet)
                 throw new types_1.NotFoundError("Timesheet not found");
-            // Update rows if provided
             if (data.rows && data.rows.length) {
                 for (const rowData of data.rows) {
                     if (!rowData.id)
@@ -393,36 +299,47 @@ class TimesheetController {
                             description: rowData.description,
                             hours: rowData.hours,
                             billable: rowData.billable,
+                            // updatedById: req.user.id,
                             updatedAt: new Date(),
+                            // projectId: rowData.projectId ?? null,
+                            // taskId: rowData.taskId ?? null,
                             taskName: rowData.taskName,
                             projectName: rowData.projectName,
-                            updatedBy: { connect: { id: req.user.id } },
+                            updatedBy: {
+                                connect: { id: req.user.id }, // dynamically using logged-in user ID
+                            },
                         },
                     });
                 }
             }
-            // Recalculate total hours
+            // ✅ Recalculate total hours
             const updatedRows = await database_1.prisma.timesheetRow.findMany({
                 where: { timesheetId: id },
             });
             const totalHours = updatedRows.reduce((sum, r) => sum + Number(r.hours || 0), 0);
-            // IMPORTANT: Get leaveCount from request and ensure it's a number
-            const leaveCount = data.leaveCount !== undefined ? Number(data.leaveCount) : timesheet.leaveCount || 0;
+            console.log("TOTAL HOURS 👉", totalHours);
+            // ✅ Get leaveCount from request body (preserve existing if not provided)
+            const leaveCount = data.leaveCount !== undefined
+                ? data.leaveCount
+                : timesheet.leaveCount || 0;
+            // Update basic info
             const updated = await database_1.prisma.timesheet.update({
                 where: { id },
                 data: {
                     weekStart: data.weekStart ? new Date(data.weekStart) : undefined,
                     weekEnd: data.weekEnd ? new Date(data.weekEnd) : undefined,
+                    // weekStart: weekRange?.weekStart,
+                    // weekEnd: weekRange?.weekEnd,
                     status: data.status,
                     rejectReason: data.rejectReason,
                     updatedById: req.user.id,
                     updatedAt: new Date(),
                     totalHours: totalHours,
-                    leaveCount: leaveCount, // Make sure this is set
+                    // ✅ Update leave count
+                    leaveCount: leaveCount,
                 },
                 include: { rows: true },
             });
-            console.log("✅ Updated timesheet leaveCount:", updated.leaveCount);
             res.status(200).json({
                 success: true,
                 data: updated,
@@ -431,9 +348,80 @@ class TimesheetController {
         }
         catch (error) {
             console.error("Update timesheet error:", error);
-            res.status(500).json({ success: false, error: error.message });
+            res
+                .status(error instanceof types_1.ValidationError
+                ? 400
+                : error instanceof types_1.NotFoundError
+                    ? 404
+                    : 500)
+                .json({ success: false, error: error.message });
         }
     }
+    //   static async updateTimesheet(req: AuthRequest, res: Response): Promise<void> {
+    //   try {
+    //     if (!req.user || !req.tenantId)
+    //       throw new ValidationError("Tenant context and authentication required");
+    //     const { id } = req.params;
+    //     const data: UpdateTimesheetData = req.body;
+    //     const timesheet = await prisma.timesheet.findFirst({
+    //       where: { id, tenantId: req.tenantId },
+    //       include: { rows: true },
+    //     });
+    //     if (!timesheet) throw new NotFoundError("Timesheet not found");
+    //     // Update rows if provided
+    //     if (data.rows && data.rows.length) {
+    //       for (const rowData of data.rows) {
+    //         if (!rowData.id) continue;
+    //         await prisma.timesheetRow.update({
+    //           where: { id: rowData.id },
+    //           data: {
+    //             day: rowData.day,
+    //             description: rowData.description,
+    //             hours: rowData.hours,
+    //             billable: rowData.billable,
+    //             updatedAt: new Date(),
+    //             taskName: rowData.taskName,
+    //             projectName: rowData.projectName,
+    //             updatedBy: { connect: { id: req.user.id } },
+    //           },
+    //         });
+    //       }
+    //     }
+    //     // Recalculate total hours
+    //     const updatedRows = await prisma.timesheetRow.findMany({
+    //       where: { timesheetId: id },
+    //     });
+    //     const totalHours = updatedRows.reduce(
+    //       (sum, r) => sum + Number(r.hours || 0),
+    //       0,
+    //     );
+    //     // IMPORTANT: Get leaveCount from request and ensure it's a number
+    //     const leaveCount = data.leaveCount !== undefined ? Number(data.leaveCount) : timesheet.leaveCount || 0;
+    //     const updated = await prisma.timesheet.update({
+    //       where: { id },
+    //       data: {
+    //         weekStart: data.weekStart ? new Date(data.weekStart) : undefined,
+    //         weekEnd: data.weekEnd ? new Date(data.weekEnd) : undefined,
+    //         status: data.status,
+    //         rejectReason: data.rejectReason,
+    //         updatedById: req.user.id,
+    //         updatedAt: new Date(),
+    //         totalHours: totalHours,
+    //         leaveCount: leaveCount, // Make sure this is set
+    //       },
+    //       include: { rows: true },
+    //     });
+    //     console.log("✅ Updated timesheet leaveCount:", updated.leaveCount);
+    //     res.status(200).json({
+    //       success: true,
+    //       data: updated,
+    //       message: "Timesheet updated successfully",
+    //     } as ApiResponse);
+    //   } catch (error: any) {
+    //     console.error("Update timesheet error:", error);
+    //     res.status(500).json({ success: false, error: error.message } as ApiResponse);
+    //   }
+    // }
     /**
      * Delete timesheet (soft delete or permanent)
      */
