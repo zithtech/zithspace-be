@@ -8,46 +8,42 @@ datasource db {
 }
 
 model Tenant {
-  id               String            @id @default(uuid())
-  name             String
-  subdomain        String            @unique
-  planType         String            @default("basic") @map("plan_type")
-  maxUsers         Int               @default(10) @map("max_users")
-  isActive         Boolean           @default(true) @map("is_active")
-  settings         Json?             @default("{}")
-  createdAt        DateTime          @default(now()) @map("created_at")
-  updatedAt        DateTime          @updatedAt @map("updated_at")
-  attendance       Attendance[]
-  attendanceBreaks AttendanceBreak[]
-  buckets          Bucket[]
-  customers        Customer[]
-  dropdownOptions  DropdownOption[]
-  leaves           Leave[]
-  leaveTypes          LeaveType[]
-  leaveAdjustments    LeaveAdjustment[]
+  id                    String                     @id @default(uuid())
+  name                  String
+  subdomain             String                     @unique
+  planType              String                     @default("basic") @map("plan_type")
+  maxUsers              Int                        @default(10) @map("max_users")
+  isActive              Boolean                    @default(true) @map("is_active")
+  settings              Json?                      @default("{}")
+  createdAt             DateTime                   @default(now()) @map("created_at")
+  updatedAt             DateTime                   @updatedAt @map("updated_at")
+  attendance            Attendance[]
+  attendanceBreaks      AttendanceBreak[]
+  buckets               Bucket[]
+  customers             Customer[]
+  dropdownOptions       DropdownOption[]
+  leaves                Leave[]
+  leaveTypes            LeaveType[]
+  leaveAdjustments      LeaveAdjustment[]
   leaveOriginStructures LeaveOriginStructure[]
   originLeaveTypes      OriginLeaveType[]
-  fixedHolidays    FixedHoliday[]
-  employmentTypes  EmploymentType[]
-  grades           Grade[]
-  departments      Department[]
-  subDepartments   SubDepartment[]
-  positions        Position[]
-  zohoEvents       ZohoEvent[] 
-  salaryComponents SalaryComponent[]
-  companies        Company[]
-  holidays         CompanyGovernmentHoliday[]
-  projects         Project[]
-  releasePlans     ReleasePlan[]
+  fixedHolidays         FixedHoliday[]
+  employmentTypes       EmploymentType[]
+  grades                Grade[]
+  departments           Department[]
+  subDepartments        SubDepartment[]
+  positions             Position[]
+  zohoEvents            ZohoEvent[]
+  salaryComponents      SalaryComponent[]
+  companies             Company[]
+  holidays              CompanyGovernmentHoliday[]
+  projects              Project[]
+  releasePlans          ReleasePlan[]
 
-   reimbursementCategories ReimbursementCategory[]
-    emailLogs EmailLog[]
+  reimbursementCategories ReimbursementCategory[]
+  emailLogs               EmailLog[]
 
-
-
-
-
-  shifts           Shift[]
+  shifts Shift[]
 
   sprintCompletionLogs SprintCompletionLog[]
   statusUpdates        StatusUpdate[]
@@ -89,7 +85,8 @@ model User {
   phone             String
   passwordHash      String    @map("password_hash")
   role              String    @default("user")
-  position          String
+  positionId        String?   @map("position_id")
+  position          Position? @relation("UserPosition", fields: [positionId], references: [id])
   reportsToId       String?   @map("reports_to_id")
   dateOfBirth       DateTime? @map("date_of_birth")
   workDays          Int[]     @default([1, 2, 3, 4, 5]) @map("work_days")
@@ -101,11 +98,11 @@ model User {
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
-  zohoAccessToken    String?     @map("zoho_access_token")
-  zohoRefreshToken   String?      @map("zoho_refresh_token")
-  zohoTokenExpiry    DateTime?    @map("zoho_token_expiry") @db.Timestamptz(6)
-  zohoCalendarId     String?       @map("zoho_calendar_id")
-  zohoLastSync       DateTime?    @map("zoho_last_sync") @db.Timestamptz(6)
+  zohoAccessToken  String?   @map("zoho_access_token")
+  zohoRefreshToken String?   @map("zoho_refresh_token")
+  zohoTokenExpiry  DateTime? @map("zoho_token_expiry") @db.Timestamptz(6)
+  zohoCalendarId   String?   @map("zoho_calendar_id")
+  zohoLastSync     DateTime? @map("zoho_last_sync") @db.Timestamptz(6)
 
   createdSalaryComponents SalaryComponent[] @relation("SalaryComponentCreator")
   updatedSalaryComponents SalaryComponent[] @relation("SalaryComponentUpdater")
@@ -114,55 +111,55 @@ model User {
   createdCustomers        Customer[]        @relation("CustomerCreatedBy")
   updatedCustomers        Customer[]        @relation("CustomerUpdatedBy")
 
-  enteredAttendance    Attendance[]               @relation("AttendanceEnteredBy")
-  attendance           Attendance[]
-  createdClients       Client[]                   @relation("ClientCreator")
-  approvedLeaves       Leave[]                    @relation("LeaveApprover")
-  createdLeaveTypes    LeaveType[]         @relation("LeaveTypeCreator")
-  updatedLeaveTypes    LeaveType[]         @relation("LeaveTypeUpdater")
-  leaves               Leave[]                    @relation("UserLeaves")
-  leaveAdjustments        LeaveAdjustment[] @relation("UserLeaveAdjustments")
-  approvedAdjustments     LeaveAdjustment[] @relation("LeaveAdjustmentApprover")
-  createdLeaveAdjustments LeaveAdjustment[] @relation("LeaveAdjustmentCreator")
-  updatedLeaveAdjustments LeaveAdjustment[] @relation("LeaveAdjustmentUpdater")
-  createdLeaveOriginStructures LeaveOriginStructure[] @relation("LeaveOriginStructureCreator")
-  updatedLeaveOriginStructures LeaveOriginStructure[] @relation("LeaveOriginStructureUpdater")
-  createdOriginLeaveTypes      OriginLeaveType[]      @relation("OriginLeaveTypeCreator")
-  updatedOriginLeaveTypes      OriginLeaveType[]      @relation("OriginLeaveTypeUpdater")
-  projectMemberships   ProjectMember[]
-  createdProjects      Project[]                  @relation("ProjectCreator")
-  managedProjects      Project[]                  @relation("ProjectManager")
-  refreshTokens        RefreshToken[]
-  createdReleasePlans  ReleasePlan[]              @relation("ReleasePlanCreator")
-  statusUpdates        StatusUpdate[]             @relation("UserStatusUpdates")
-  performedActivityLog TicketActivityLog[]
-  ticketAttachments    TicketAttachment[]
-  ticketComments       TicketComment[]
-  addedRelatedLinks    TicketRelatedLink[]
-  documenthub          DocumentHub[]
-  documents            Document[]
-  documentHistory      DocumentHistory[]
-  documenttree         DocumentTree[]
-  assignedTickets      Ticket[]                   @relation("TicketAssignee")
-  createdTickets       Ticket[]                   @relation("TicketCreator")
-  reportToTickets      Ticket[]                   @relation("TicketReportTo")
-  archivedTickets      Ticket[]                   @relation("TicketArchivedBy")
-  deletedTickets       Ticket[]                   @relation("TicketDeletedBy")
-  createdBuckets       Bucket[]                   @relation("BucketCreator")
-  bucketMemberships    BucketMember[]
-  createdFixedHolidays FixedHoliday[]             @relation("FixedHolidayCreator")
-  updatedFixedHolidays FixedHoliday[]             @relation("FixedHolidayUpdater")
-  createdHolidays      CompanyGovernmentHoliday[] @relation("CompanyGovernmentHolidayCreator")
-  updatedHolidays      CompanyGovernmentHoliday[] @relation("CompanyGovernmentHolidayUpdater")
-  sprintCompletionLogs SprintCompletionLog[]
-  transactions         Transaction[]
-  assignedShift        Shift?              @relation("UserShift", fields: [assignedShiftId], references: [id])
-  reportsTo            User?               @relation("UserHierarchy", fields: [reportsToId], references: [id])
-  subordinates         User[]              @relation("UserHierarchy")
-  shiftAssignedBy      User?               @relation("ShiftAssigner", fields: [shiftAssignedById], references: [id])
-  assignedShifts       User[]              @relation("ShiftAssigner")
-  tenant               Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-// ---------------- TIMESHEETS ----------------
+  enteredAttendance            Attendance[]               @relation("AttendanceEnteredBy")
+  attendance                   Attendance[]
+  createdClients               Client[]                   @relation("ClientCreator")
+  approvedLeaves               Leave[]                    @relation("LeaveApprover")
+  createdLeaveTypes            LeaveType[]                @relation("LeaveTypeCreator")
+  updatedLeaveTypes            LeaveType[]                @relation("LeaveTypeUpdater")
+  leaves                       Leave[]                    @relation("UserLeaves")
+  leaveAdjustments             LeaveAdjustment[]          @relation("UserLeaveAdjustments")
+  approvedAdjustments          LeaveAdjustment[]          @relation("LeaveAdjustmentApprover")
+  createdLeaveAdjustments      LeaveAdjustment[]          @relation("LeaveAdjustmentCreator")
+  updatedLeaveAdjustments      LeaveAdjustment[]          @relation("LeaveAdjustmentUpdater")
+  createdLeaveOriginStructures LeaveOriginStructure[]     @relation("LeaveOriginStructureCreator")
+  updatedLeaveOriginStructures LeaveOriginStructure[]     @relation("LeaveOriginStructureUpdater")
+  createdOriginLeaveTypes      OriginLeaveType[]          @relation("OriginLeaveTypeCreator")
+  updatedOriginLeaveTypes      OriginLeaveType[]          @relation("OriginLeaveTypeUpdater")
+  projectMemberships           ProjectMember[]
+  createdProjects              Project[]                  @relation("ProjectCreator")
+  managedProjects              Project[]                  @relation("ProjectManager")
+  refreshTokens                RefreshToken[]
+  createdReleasePlans          ReleasePlan[]              @relation("ReleasePlanCreator")
+  statusUpdates                StatusUpdate[]             @relation("UserStatusUpdates")
+  performedActivityLog         TicketActivityLog[]
+  ticketAttachments            TicketAttachment[]
+  ticketComments               TicketComment[]
+  addedRelatedLinks            TicketRelatedLink[]
+  documenthub                  DocumentHub[]
+  documents                    Document[]
+  documentHistory              DocumentHistory[]
+  documenttree                 DocumentTree[]
+  assignedTickets              Ticket[]                   @relation("TicketAssignee")
+  createdTickets               Ticket[]                   @relation("TicketCreator")
+  reportToTickets              Ticket[]                   @relation("TicketReportTo")
+  archivedTickets              Ticket[]                   @relation("TicketArchivedBy")
+  deletedTickets               Ticket[]                   @relation("TicketDeletedBy")
+  createdBuckets               Bucket[]                   @relation("BucketCreator")
+  bucketMemberships            BucketMember[]
+  createdFixedHolidays         FixedHoliday[]             @relation("FixedHolidayCreator")
+  updatedFixedHolidays         FixedHoliday[]             @relation("FixedHolidayUpdater")
+  createdHolidays              CompanyGovernmentHoliday[] @relation("CompanyGovernmentHolidayCreator")
+  updatedHolidays              CompanyGovernmentHoliday[] @relation("CompanyGovernmentHolidayUpdater")
+  sprintCompletionLogs         SprintCompletionLog[]
+  transactions                 Transaction[]
+  assignedShift                Shift?                     @relation("UserShift", fields: [assignedShiftId], references: [id])
+  reportsTo                    User?                      @relation("UserHierarchy", fields: [reportsToId], references: [id])
+  subordinates                 User[]                     @relation("UserHierarchy")
+  shiftAssignedBy              User?                      @relation("ShiftAssigner", fields: [shiftAssignedById], references: [id])
+  assignedShifts               User[]                     @relation("ShiftAssigner")
+  tenant                       Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // ---------------- TIMESHEETS ----------------
 
   // Owner of timesheets
   timesheets Timesheet[]
@@ -181,11 +178,7 @@ model User {
   createdTimesheetRows TimesheetRow[] @relation("TimesheetRowCreator")
   updatedTimesheetRows TimesheetRow[] @relation("TimesheetRowUpdater")
 
- 
-
-
-
-    // ===== Reimbursement Category =====
+  // ===== Reimbursement Category =====
   createdReimbursementCategories ReimbursementCategory[] @relation("ReimbursementCategoryCreatedBy")
   updatedReimbursementCategories ReimbursementCategory[] @relation("ReimbursementCategoryUpdatedBy")
 
@@ -198,44 +191,44 @@ model User {
   updatedEmploymentTypes EmploymentType[] @relation("EmploymentTypeUpdater")
 
   // ===== Department Relations =====
-  managedDepartments     Department[]     @relation("DepartmentHead")
-  createdDepartments     Department[]     @relation("DepartmentCreator")
-  updatedDepartments     Department[]     @relation("DepartmentUpdater")
-  createdSubDepartments  SubDepartment[]  @relation("SubDepartmentCreator")
-  updatedSubDepartments  SubDepartment[]  @relation("SubDepartmentUpdater")
+  managedDepartments    Department[]    @relation("DepartmentHead")
+  createdDepartments    Department[]    @relation("DepartmentCreator")
+  updatedDepartments    Department[]    @relation("DepartmentUpdater")
+  createdSubDepartments SubDepartment[] @relation("SubDepartmentCreator")
+  updatedSubDepartments SubDepartment[] @relation("SubDepartmentUpdater")
 
   // ===== Position Relations =====
-  createdPositions       Position[]       @relation("PositionCreator")
-  updatedPositions       Position[]       @relation("PositionUpdater")
+  createdPositions Position[] @relation("PositionCreator")
+  updatedPositions Position[] @relation("PositionUpdater")
 
   // ===== Settings Relations =====
-  createdGeneralSettings GeneralSetting[] @relation("GeneralSettingCreatedBy")
-  updatedGeneralSettings GeneralSetting[] @relation("GeneralSettingUpdatedBy")
-  createdInvoiceSettings InvoiceSetting[] @relation("InvoiceSettingCreatedBy")
-  updatedInvoiceSettings InvoiceSetting[] @relation("InvoiceSettingUpdatedBy")
-  createdPaymentSettings PaymentSetting[] @relation("PaymentSettingCreatedBy")
-  updatedPaymentSettings PaymentSetting[] @relation("PaymentSettingUpdatedBy")
+  createdGeneralSettings  GeneralSetting[]  @relation("GeneralSettingCreatedBy")
+  updatedGeneralSettings  GeneralSetting[]  @relation("GeneralSettingUpdatedBy")
+  createdInvoiceSettings  InvoiceSetting[]  @relation("InvoiceSettingCreatedBy")
+  updatedInvoiceSettings  InvoiceSetting[]  @relation("InvoiceSettingUpdatedBy")
+  createdPaymentSettings  PaymentSetting[]  @relation("PaymentSettingCreatedBy")
+  updatedPaymentSettings  PaymentSetting[]  @relation("PaymentSettingUpdatedBy")
   createdSettingsProfiles SettingsProfile[] @relation("SettingsProfileCreatedBy")
   updatedSettingsProfiles SettingsProfile[] @relation("SettingsProfileUpdatedBy")
 
   // ===== Invoice Relations =====
-  createdInvoices Invoice[] @relation("InvoiceCreatedBy")
-  updatedInvoices Invoice[] @relation("InvoiceUpdatedBy")
-  deletedInvoices Invoice[] @relation("InvoiceDeletedBy")
-  createdInvoiceItems InvoiceItem[] @relation("InvoiceItemCreatedBy")
-  updatedInvoiceItems InvoiceItem[] @relation("InvoiceItemUpdatedBy")
-  deletedInvoiceItems InvoiceItem[] @relation("InvoiceItemDeletedBy")
+  createdInvoices        Invoice[]        @relation("InvoiceCreatedBy")
+  updatedInvoices        Invoice[]        @relation("InvoiceUpdatedBy")
+  deletedInvoices        Invoice[]        @relation("InvoiceDeletedBy")
+  createdInvoiceItems    InvoiceItem[]    @relation("InvoiceItemCreatedBy")
+  updatedInvoiceItems    InvoiceItem[]    @relation("InvoiceItemUpdatedBy")
+  deletedInvoiceItems    InvoiceItem[]    @relation("InvoiceItemDeletedBy")
   createdInvoicePayments InvoicePayment[] @relation("InvoicePaymentCreatedBy")
   updatedInvoicePayments InvoicePayment[] @relation("InvoicePaymentUpdatedBy")
-  sentEmails EmailLog[] @relation("EmailSentBy")
-  updatedZohoEvents       ZohoEvent[]                   @relation("ZohoEventUpdatedBy")
-  zohoEvents       ZohoEvent[]                   @relation("UserZohoEvents")
+  sentEmails             EmailLog[]       @relation("EmailSentBy")
+  updatedZohoEvents      ZohoEvent[]      @relation("ZohoEventUpdatedBy")
+  zohoEvents             ZohoEvent[]      @relation("UserZohoEvents")
 
   // ===== Chat & Meeting Relations =====
-  createdChannels Channel[] @relation("ChannelCreator")
-  channelMemberships ChannelMember[]
-  channelMessages ChannelMessage[]
-  createdMeetings Meeting[] @relation("MeetingCreator")
+  createdChannels       Channel[]            @relation("ChannelCreator")
+  channelMemberships    ChannelMember[]
+  channelMessages       ChannelMessage[]
+  createdMeetings       Meeting[]            @relation("MeetingCreator")
   meetingParticipations MeetingParticipant[]
 
   @@unique([tenantId, workEmail])
@@ -245,40 +238,36 @@ model User {
   @@map("users")
 }
 
-
-
-
-
 model ReimbursementCategory {
-  id                        String   @id @default(uuid())
-  tenantId                  String   @map("tenant_id")
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
 
-  code                      String   @db.VarChar(50)
-  name                      String   @db.VarChar(100)
-  description               String?
+  code        String  @db.VarChar(50)
+  name        String  @db.VarChar(100)
+  description String?
 
-  maxRequestsPerMonth       Int?      @map("max_requests_per_month")
-  monthlyLimitAmount        Decimal?  @map("monthly_limit_amount") @db.Decimal(12, 2)
-  yearlyLimitAmount         Decimal?  @map("yearly_limit_amount")  @db.Decimal(12, 2)
+  maxRequestsPerMonth Int?     @map("max_requests_per_month")
+  monthlyLimitAmount  Decimal? @map("monthly_limit_amount") @db.Decimal(12, 2)
+  yearlyLimitAmount   Decimal? @map("yearly_limit_amount") @db.Decimal(12, 2)
 
-  allowedRoles              String[]  @map("allowed_roles")
-  approvalFlow              Json?     @map("approval_flow")
+  allowedRoles String[] @map("allowed_roles")
+  approvalFlow Json?    @map("approval_flow")
 
-  attachmentRequired        Boolean   @default(false) @map("attachment_required")
-  autoApproveUnderAmount    Decimal?  @map("auto_approve_under_amount") @db.Decimal(12, 2)
+  attachmentRequired     Boolean  @default(false) @map("attachment_required")
+  autoApproveUnderAmount Decimal? @map("auto_approve_under_amount") @db.Decimal(12, 2)
 
-  isActive                  Boolean   @default(true) @map("is_active")
+  isActive Boolean @default(true) @map("is_active")
 
-  createdAt                 DateTime  @default(now()) @map("created_at")
-  createdBy                 String    @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  createdBy String   @map("created_by")
 
-  updatedAt                 DateTime  @updatedAt @map("updated_at")
-  updatedBy                 String?   @map("updated_by")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedBy String?  @map("updated_by")
 
   // Relations
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  createdByUser User     @relation("ReimbursementCategoryCreatedBy", fields: [createdBy], references: [id])
-  updatedByUser User?    @relation("ReimbursementCategoryUpdatedBy", fields: [updatedBy], references: [id])
+  tenant        Tenant @relation(fields: [tenantId], references: [id])
+  createdByUser User   @relation("ReimbursementCategoryCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser User?  @relation("ReimbursementCategoryUpdatedBy", fields: [updatedBy], references: [id])
 
   @@unique([tenantId, code])
   @@map("reimbursement_category")
@@ -288,6 +277,7 @@ model Grade {
   id          String   @id @default(uuid())
   tenantId    String   @map("tenant_id")
   code        String
+  codes       String?
   name        String
   levelOrder  Int      @map("level_order")
   description String?
@@ -297,9 +287,9 @@ model Grade {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdBy User   @relation("GradeCreator", fields: [createdById], references: [id])
-  updatedBy User?  @relation("GradeUpdater", fields: [updatedById], references: [id])
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User       @relation("GradeCreator", fields: [createdById], references: [id])
+  updatedBy User?      @relation("GradeUpdater", fields: [updatedById], references: [id])
   positions Position[]
 
   @@unique([tenantId, code])
@@ -341,10 +331,10 @@ model Department {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  head      User?  @relation("DepartmentHead", fields: [headId], references: [id], onDelete: SetNull)
-  createdBy User   @relation("DepartmentCreator", fields: [createdById], references: [id])
-  updatedBy User?  @relation("DepartmentUpdater", fields: [updatedById], references: [id])
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  head           User?           @relation("DepartmentHead", fields: [headId], references: [id], onDelete: SetNull)
+  createdBy      User            @relation("DepartmentCreator", fields: [createdById], references: [id])
+  updatedBy      User?           @relation("DepartmentUpdater", fields: [updatedById], references: [id])
   subDepartments SubDepartment[]
   positions      Position[]
 
@@ -354,23 +344,23 @@ model Department {
 }
 
 model SubDepartment {
-  id             String   @id @default(uuid())
-  tenantId       String   @map("tenant_id")
-  parentDepartmentId String @map("parent_department_id")
-  code           String
-  name           String
-  description    String?
-  isActive       Boolean  @default(true) @map("is_active")
-  createdById    String   @map("created_by_id")
-  updatedById    String?  @map("updated_by_id")
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  id                 String   @id @default(uuid())
+  tenantId           String   @map("tenant_id")
+  parentDepartmentId String   @map("parent_department_id")
+  code               String
+  name               String
+  description        String?
+  isActive           Boolean  @default(true) @map("is_active")
+  createdById        String   @map("created_by_id")
+  updatedById        String?  @map("updated_by_id")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
 
   tenant           Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   parentDepartment Department @relation(fields: [parentDepartmentId], references: [id], onDelete: Cascade)
-  createdBy   User       @relation("SubDepartmentCreator", fields: [createdById], references: [id])
-  updatedBy   User?      @relation("SubDepartmentUpdater", fields: [updatedById], references: [id])
-  positions   Position[]
+  createdBy        User       @relation("SubDepartmentCreator", fields: [createdById], references: [id])
+  updatedBy        User?      @relation("SubDepartmentUpdater", fields: [updatedById], references: [id])
+  positions        Position[]
 
   @@unique([tenantId, code])
   @@map("sub_departments")
@@ -391,16 +381,18 @@ model Position {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
 
-  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  department      Department    @relation(fields: [departmentId], references: [id])
-  subDepartment   SubDepartment? @relation(fields: [subDepartmentId], references: [id])
-  grade           Grade         @relation(fields: [gradeId], references: [id])
-  createdBy       User          @relation("PositionCreator", fields: [createdById], references: [id])
-  updatedBy       User?         @relation("PositionUpdater", fields: [updatedById], references: [id])
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  department    Department     @relation(fields: [departmentId], references: [id])
+  subDepartment SubDepartment? @relation(fields: [subDepartmentId], references: [id])
+  grade         Grade          @relation(fields: [gradeId], references: [id])
+  createdBy     User           @relation("PositionCreator", fields: [createdById], references: [id])
+  updatedBy     User?          @relation("PositionUpdater", fields: [updatedById], references: [id])
+  users         User[]         @relation("UserPosition")
 
   @@unique([tenantId, code])
   @@map("positions")
 }
+
 model RefreshToken {
   id        String   @id @default(uuid())
   token     String   @unique
@@ -821,7 +813,7 @@ model StatusUpdate {
   tenant           Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user             User        @relation("UserStatusUpdates", fields: [userId], references: [id], onDelete: Cascade)
   workEntries      WorkEntry[]
-  updateType       String?  // "BOD" | "EOD"
+  updateType       String? // "BOD" | "EOD"
 
   @@index([tenantId, date])
   @@index([userId, date])
@@ -855,7 +847,7 @@ model LeaveType {
   name             String
   code             String
   description      String?
-  type             String   // "Days" or "Hours"
+  type             String // "Days" or "Hours"
   days             Int?     @default(1)
   hours            Decimal? @db.Decimal(4, 2)
   isPaid           Boolean  @default(true) @map("is_paid")
@@ -945,22 +937,22 @@ model FixedHoliday {
 }
 
 model Customer {
-  id          String    @id @default(uuid())
-  tenantId    String    @map("tenant_id")
-  companyName String    @map("company_name")
+  id          String     @id @default(uuid())
+  tenantId    String     @map("tenant_id")
+  companyName String     @map("company_name")
   email       String?
   phone       String?
   address     String?
   city        String?
   country     String?
-  taxId       String?   @map("tax_id")
-  emailLogs EmailLog[]
-  
-  createdBy   String    @map("created_by")
-  updatedBy   String?   @map("updated_by")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
-  
+  taxId       String?    @map("tax_id")
+  emailLogs   EmailLog[]
+
+  createdBy String   @map("created_by")
+  updatedBy String?  @map("updated_by")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
   // Relations
   tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   invoices      Invoice[]
@@ -971,8 +963,6 @@ model Customer {
   @@unique([tenantId, email]) // tenant-level email uniqueness
   @@map("customers")
 }
-
-
 
 model Bucket {
   id          String   @id @default(uuid())
@@ -1223,29 +1213,28 @@ model Invoice {
   customerId       String @map("customer_id")
   customerSnapshot Json?  @map("customer_snapshot")
 
-  invoiceDate DateTime      @map("invoice_date")
-  dueDate     DateTime      @map("due_date")
-  invoiceType InvoiceType   @default(STANDARD) @map("invoice_type")
-  status      InvoiceStatus @default(DRAFT)
-  description String?       @db.Text // Add this line
-  deletedAt DateTime?       @map("deleted_at")
-   deletedBy String?   @map("deleted_by")
-   deletedByUser User? @relation("InvoiceDeletedBy", fields: [deletedBy], references: [id])
+  invoiceDate   DateTime      @map("invoice_date")
+  dueDate       DateTime      @map("due_date")
+  invoiceType   InvoiceType   @default(STANDARD) @map("invoice_type")
+  status        InvoiceStatus @default(DRAFT)
+  description   String?       @db.Text // Add this line
+  deletedAt     DateTime?     @map("deleted_at")
+  deletedBy     String?       @map("deleted_by")
+  deletedByUser User?         @relation("InvoiceDeletedBy", fields: [deletedBy], references: [id])
 
   currency           Currency
   recurringFrequency RecurringFrequency? @map("recurring_frequency")
 
-  taxInclusive Boolean @default(false) @map("tax_inclusive")
-  discount     Decimal @default(0) @db.Decimal(15, 2)
-  subtotal     Decimal @db.Decimal(15, 2)
-  taxTotal     Decimal @map("tax_total") @db.Decimal(15, 2)
-  total        Decimal @db.Decimal(15, 2)
-  paidAmount   Decimal @default(0) @map("paid_amount")
-  balanceDue   Decimal @map("balance_due") @db.Decimal(15, 2)
+  taxInclusive     Boolean   @default(false) @map("tax_inclusive")
+  discount         Decimal   @default(0) @db.Decimal(15, 2)
+  subtotal         Decimal   @db.Decimal(15, 2)
+  taxTotal         Decimal   @map("tax_total") @db.Decimal(15, 2)
+  total            Decimal   @db.Decimal(15, 2)
+  paidAmount       Decimal   @default(0) @map("paid_amount")
+  balanceDue       Decimal   @map("balance_due") @db.Decimal(15, 2)
   firstPaymentDate DateTime? @map("first_payment_date")
   lastPaymentDate  DateTime? @map("last_payment_date")
   fullyPaidDate    DateTime? @map("fully_paid_date")
-
 
   notes String? @db.Text
   terms String? @db.Text
@@ -1292,8 +1281,8 @@ model InvoiceItem {
   description String? @db.Text
   qty         Int     @default(1)
 
-  price Decimal @default(0) @db.Decimal(15, 2)
-  tax   Decimal @default(0) @db.Decimal(15, 2) // percentage
+  price     Decimal   @default(0) @db.Decimal(15, 2)
+  tax       Decimal   @default(0) @db.Decimal(15, 2) // percentage
   deletedAt DateTime? @map("deleted_at")
   deletedBy String?   @map("deleted_by")
 
@@ -1705,7 +1694,6 @@ model MeetingParticipant {
   @@map("meeting_participants")
 }
 
-
 enum timesheet_status {
   DRAFT
   SUBMITTED
@@ -1713,38 +1701,36 @@ enum timesheet_status {
   REJECTED
 }
 
-
-
 model Timesheet {
-  id            String          @id @default(cuid())
-  tenantId    String   @map("tenant_id")
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
 
   // Owner of the timesheet (employee)
-  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  userId        String          @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @map("user_id")
 
-  weekStart     DateTime        @map("week_start")
-  weekEnd       DateTime        @map("week_end")
+  weekStart DateTime @map("week_start")
+  weekEnd   DateTime @map("week_end")
 
-  status        timesheet_status @default(DRAFT)
-  totalHours    Float           @map("total_hours")
+  status     timesheet_status @default(DRAFT)
+  totalHours Float            @map("total_hours")
 
   // Approval
-  rejectReason  String?         @map("reject_reason")
-  approvedById  String?         @map("approved_by_id")
-  approvedBy    User?           @relation("TimesheetApprover",fields: [approvedById],references: [id])
+  rejectReason String? @map("reject_reason")
+  approvedById String? @map("approved_by_id")
+  approvedBy   User?   @relation("TimesheetApprover", fields: [approvedById], references: [id])
 
   // Audit fields
-  createdById   String          @map("created_by_id")
-  createdBy     User            @relation("TimesheetCreator", fields: [createdById], references: [id])
+  createdById String @map("created_by_id")
+  createdBy   User   @relation("TimesheetCreator", fields: [createdById], references: [id])
 
-  updatedById   String?         @map("updated_by_id")
-  updatedBy     User?           @relation("TimesheetUpdater",fields: [updatedById],references: [id])
+  updatedById String? @map("updated_by_id")
+  updatedBy   User?   @relation("TimesheetUpdater", fields: [updatedById], references: [id])
 
-  rows          TimesheetRow[]
+  rows TimesheetRow[]
 
-  createdAt     DateTime        @default(now()) @map("created_at")
-  updatedAt     DateTime        @updatedAt      @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@unique([userId, weekStart])
   @@index([userId])
@@ -1752,81 +1738,82 @@ model Timesheet {
 }
 
 model TimesheetRow {
-  id            String     @id @default(cuid())
-  tenantId    String   @map("tenant_id")
+  id       String @id @default(cuid())
+  tenantId String @map("tenant_id")
 
   // Parent timesheet
-  timesheet     Timesheet @relation(fields: [timesheetId], references: [id], onDelete: Cascade)
-  timesheetId   String    @map("timesheet_id")
+  timesheet   Timesheet @relation(fields: [timesheetId], references: [id], onDelete: Cascade)
+  timesheetId String    @map("timesheet_id")
 
-  day           DateTime     
- 
-  projectName   String    @map("project_name")
-  taskName      String    @map("task_name")
-  taskId    String?
-  projectId String? 
+  day DateTime
 
-  description   String?
+  projectName String  @map("project_name")
+  taskName    String  @map("task_name")
+  taskId      String?
+  projectId   String?
 
-  hours         Float
-  billable      Boolean   @default(false)
+  description String?
+
+  hours    Float
+  billable Boolean @default(false)
 
   // Audit fields
-  createdById   String    @map("created_by_id")
-  createdBy     User      @relation("TimesheetRowCreator",fields: [createdById],references: [id])
+  createdById String @map("created_by_id")
+  createdBy   User   @relation("TimesheetRowCreator", fields: [createdById], references: [id])
 
-  updatedById   String?   @map("updated_by_id")
-  updatedBy     User?     @relation( "TimesheetRowUpdater", fields: [updatedById], references: [id] )
+  updatedById String? @map("updated_by_id")
+  updatedBy   User?   @relation("TimesheetRowUpdater", fields: [updatedById], references: [id])
 
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt      @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   @@index([timesheetId])
   @@index([createdById])
   @@index([updatedById])
   @@map("timesheet_rows")
 }
+
 model LeaveOriginStructure {
-  id          String   @id @default(uuid())
-  tenantId    String   @map("tenant_id")
+  id          String @id @default(uuid())
+  tenantId    String @map("tenant_id")
   origin      String
-  subOrigin   String   @map("sub_origin")
+  subOriginId String @map("sub_origin_id")
 
   createdById String   @map("created_by_id")
   updatedById String?  @map("updated_by_id")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdBy   User     @relation("LeaveOriginStructureCreator", fields: [createdById], references: [id])
-  updatedBy   User?    @relation("LeaveOriginStructureUpdater", fields: [updatedById], references: [id])
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User   @relation("LeaveOriginStructureCreator", fields: [createdById], references: [id])
+  updatedBy User?  @relation("LeaveOriginStructureUpdater", fields: [updatedById], references: [id])
 
-  leaveTypes  OriginLeaveType[]
+  leaveTypes OriginLeaveType[]
 
-  @@unique([tenantId, origin, subOrigin])
+  @@unique([tenantId, origin, subOriginId])
   @@map("leave_origin_structures")
 }
 
 model OriginLeaveType {
-  id                  String               @id @default(uuid())
-  tenantId            String               @map("tenant_id")
-  leaveOriginId       String               @map("leave_origin_id")
-  
-  leaveType           String               @map("leave_type")
-  unit                Decimal              @db.Decimal(5, 2)
-  period              String
-  carryForward        Boolean              @default(false) @map("carry_forward")
-  status              String               @default("Active")
+  id            String @id @default(uuid())
+  tenantId      String @map("tenant_id")
+  leaveOriginId String @map("leave_origin_id")
 
-  createdById         String               @map("created_by_id")
-  updatedById         String?              @map("updated_by_id")
-  createdAt           DateTime             @default(now()) @map("created_at")
-  updatedAt           DateTime             @updatedAt @map("updated_at")
+  leaveType    String  @map("leave_type")
+  unit         Decimal @db.Decimal(5, 2)
+  period       String
+  carryForward Boolean @default(false) @map("carry_forward")
+  status       String  @default("Active")
 
-  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdById String   @map("created_by_id")
+  updatedById String?  @map("updated_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant               Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   leaveOriginStructure LeaveOriginStructure @relation(fields: [leaveOriginId], references: [id], onDelete: Cascade)
-  createdBy           User                 @relation("OriginLeaveTypeCreator", fields: [createdById], references: [id])
-  updatedBy           User?                @relation("OriginLeaveTypeUpdater", fields: [updatedById], references: [id])
+  createdBy            User                 @relation("OriginLeaveTypeCreator", fields: [createdById], references: [id])
+  updatedBy            User?                @relation("OriginLeaveTypeUpdater", fields: [updatedById], references: [id])
 
   @@map("origin_leave_types")
 }
@@ -1836,16 +1823,16 @@ model OriginLeaveType {
 model Repository {
   id          String   @id @default(uuid())
   tenantId    String   @map("tenant_id")
-  name        String   // e.g. "frontend-monorepo"
-  url         String   // e.g. "https://github.com/org/repo"
+  name        String // e.g. "frontend-monorepo"
+  url         String // e.g. "https://github.com/org/repo"
   description String?
   isActive    Boolean  @default(true) @map("is_active")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   // Relations
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
-  branches    TicketBranch[]
+  tenant       Tenant              @relation(fields: [tenantId], references: [id])
+  branches     TicketBranch[]
   pullRequests TicketPullRequest[]
 
   @@unique([tenantId, name])
@@ -1856,14 +1843,14 @@ model TicketBranch {
   id           String   @id @default(uuid())
   ticketId     String   @map("ticket_id")
   repositoryId String   @map("repository_id")
-  name         String   // e.g. "feat/ticket-123-login"
-  url          String?  // Optional direct link to branch tree
+  name         String // e.g. "feat/ticket-123-login"
+  url          String? // Optional direct link to branch tree
   isDefault    Boolean  @default(false) @map("is_default")
   createdAt    DateTime @default(now()) @map("created_at")
-  
+
   // Relations
-  ticket       Ticket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  ticket     Ticket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
 
   @@index([ticketId])
   @@index([repositoryId])
@@ -1878,75 +1865,72 @@ model TicketPullRequest {
   url          String
   branchName   String?  @map("branch_name")
   branchUrl    String?  @map("branch_url")
-  number       Int?     // PR Number e.g. 456
+  number       Int? // PR Number e.g. 456
   state        String   @default("open") // open, closed, merged
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   // Relations
-  ticket       Ticket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  ticket     Ticket     @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
 
   @@index([ticketId])
   @@index([repositoryId])
   @@map("ticket_pull_requests")
 }
 
-
-
-
 model EmailLog {
-  id            String   @id @default(uuid())
-  tenantId      String   @map("tenant_id")
-  
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
   // Module information - identifies which module the email belongs to
-  module        String   // INVOICE, ESTIMATE, RECEIPT, CONTRACT, etc.
-  moduleId      String   @map("module_id") // ID of the related record
-  moduleNumber  String?  @map("module_number") 
-  
+  module       String // INVOICE, ESTIMATE, RECEIPT, CONTRACT, etc.
+  moduleId     String  @map("module_id") // ID of the related record
+  moduleNumber String? @map("module_number")
+
   // Email details
-  to            String   @map("to_email")
-  from          String   @map("from_email")
-  fromName      String?  @map("from_name")
-  subject       String
-  html          String   @db.Text // Full email HTML - exactly as sent
-  plainText     String?  @db.Text @map("plain_text")
-  
+  to        String  @map("to_email")
+  from      String  @map("from_email")
+  fromName  String? @map("from_name")
+  subject   String
+  html      String  @db.Text // Full email HTML - exactly as sent
+  plainText String? @map("plain_text") @db.Text
+
   // Customer/Recipient info (denormalized - snapshot at time of sending)
-  customerId    String?  @map("customer_id")
-  customerName  String?  @map("customer_name")
-  customerEmail String?  @map("customer_email")
-  
+  customerId    String? @map("customer_id")
+  customerName  String? @map("customer_name")
+  customerEmail String? @map("customer_email")
+
   // Invoice specific fields (denormalized)
-  amount        String?  // Formatted amount: "$1,250.00"
-  dueDate       String?  @map("due_date") // Formatted date: "May 15, 2024"
-  currency      String?  @default("USD")
-  
+  amount   String? // Formatted amount: "$1,250.00"
+  dueDate  String? @map("due_date") // Formatted date: "May 15, 2024"
+  currency String? @default("USD")
+
   // Attachment info
-  hasAttachment Boolean  @default(false) @map("has_attachment")
-  attachmentUrl String?  @map("attachment_url") @db.Text
+  hasAttachment  Boolean @default(false) @map("has_attachment")
+  attachmentUrl  String? @map("attachment_url") @db.Text
   attachmentName String? @map("attachment_name")
-  
+
   // Status tracking
-  status        String   @default("SENT") // SENT, FAILED, OPENED, CLICKED, BOUNCED
-  errorMessage  String?  @map("error_message") @db.Text
-  
+  status       String  @default("SENT") // SENT, FAILED, OPENED, CLICKED, BOUNCED
+  errorMessage String? @map("error_message") @db.Text
+
   // Tracking timestamps
-  sentAt        DateTime @map("sent_at") @default(now())
-  openedAt      DateTime? @map("opened_at")
-  clickedAt     DateTime? @map("clicked_at")
-  
+  sentAt    DateTime  @default(now()) @map("sent_at")
+  openedAt  DateTime? @map("opened_at")
+  clickedAt DateTime? @map("clicked_at")
+
   // User who sent the email
-  sentBy        String   @map("sent_by") // User ID
-  sentByUser    String?  @map("sent_by_user") // User name/email
-  
+  sentBy     String  @map("sent_by") // User ID
+  sentByUser String? @map("sent_by_user") // User name/email
+
   // Metadata - store any additional module-specific data
-  metadata      Json?    // Flexible field for future needs
-  
+  metadata Json? // Flexible field for future needs
+
   // Relations
-  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customer      Customer? @relation(fields: [customerId], references: [id])
-  sentByUserRel User     @relation("EmailSentBy", fields: [sentBy], references: [id])
+  sentByUserRel User      @relation("EmailSentBy", fields: [sentBy], references: [id])
 
   // Indexes for fast queries
   @@index([tenantId, sentAt])
@@ -1956,15 +1940,13 @@ model EmailLog {
   @@index([to])
   @@index([status])
   @@index([sentAt])
-  
   @@map("email_logs")
 }
-
 
 model ZohoEvent {
   id          String    @id
   eventId     String    @map("event_id")
-  tenantId      String   @map("tenant_id")
+  tenantId    String    @map("tenant_id")
   calendarId  String    @map("calendar_id")
   title       String
   description String?
@@ -1985,7 +1967,8 @@ model ZohoEvent {
   exdate      Json?     @map("exdate")
   updatedBy   User?     @relation("ZohoEventUpdatedBy", fields: [updatedById], references: [id], onUpdate: NoAction, map: "fk_zoho_events_updated_by")
   user        User      @relation("UserZohoEvents", fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_zoho_events_user")
-  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@unique([eventId, tenantId], map: "zoho_events_event_tenant_unique")
   @@index([calendarId], map: "idx_zoho_events_calendar_id")
   @@index([startTime], map: "idx_zoho_events_start_time")

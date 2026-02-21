@@ -89,7 +89,7 @@ async function main() {
           phone: DEFAULT_ADMIN.phone,
           passwordHash: passwordHash,
           role: DEFAULT_ADMIN.role,
-          position: DEFAULT_ADMIN.position,
+          // Position will be assigned later after organizational structure is set up
           isActive: DEFAULT_ADMIN.isActive,
           workDays: DEFAULT_ADMIN.workDays,
         },

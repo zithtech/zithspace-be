@@ -167,14 +167,16 @@ export class TenantController {
         // Create admin user
         const adminUser = await tx.user.create({
           data: {
-            tenantId: tenant.id,
+            tenant: {
+              connect: { id: tenant.id }
+            },
             name: tenantData.adminUser.name,
             workEmail: tenantData.adminUser.email.toLowerCase(),
             personalEmail: tenantData.adminUser.email.toLowerCase(),
             phone: tenantData.adminUser.phone,
             passwordHash,
             role: "admin",
-            position: "Administrator",
+            // Position will be assigned later after positions are set up
             workDays: [1, 2, 3, 4, 5], // Monday to Friday
           },
         });
