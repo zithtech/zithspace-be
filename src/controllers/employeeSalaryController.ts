@@ -99,7 +99,7 @@ export class EmployeeSalaryController {
 
       if (
         !employee_id ||
-        !salary_structure_id ||
+        // !salary_structure_id ||
         !current_annual_ctc ||
         !current_monthly_ctc
       ) {
@@ -123,17 +123,29 @@ export class EmployeeSalaryController {
 
       const salary = await prisma.employeeSalary.create({
         data: {
-          tenant_id: tenantId,
-          employee_id,
-          salary_structure_id,
-          current_annual_ctc,
-          current_monthly_ctc,
-          additional_pf_pct: additional_pf_pct ?? 0,
+          tenant: {
+            connect: { id: tenantId }, // REQUIRED
+          },
+          employee: {
+            connect: { id: employee_id },
+          },
+          // salary_structure: {
+          //   connect: { id: salary_structure_id },
+          // },
+
+          current_annual_ctc: current_annual_ctc,
+          current_monthly_ctc: current_monthly_ctc,
+
+          additional_pf_pct: additional_pf_pct || 0,
           is_additional_pf_active: is_additional_pf_active ?? false,
-          nps_contribution_pct: nps_contribution_pct ?? 0,
-          insurance_topup: insurance_topup ?? 0,
-          fbp_choices: fbp_choices ?? {},
-          salary_timeline: [timelineEntry],
+
+          nps_contribution_pct: nps_contribution_pct || 0,
+          insurance_topup: insurance_topup || 0,
+
+          fbp_choices: fbp_choices || {},
+          salary_timeline: timelineEntry,
+
+          is_active: true,
         },
         include: {
           employee: {
@@ -361,9 +373,9 @@ export class EmployeeSalaryController {
       const averageCTC =
         activeCount > 0
           ? activeSalaries.reduce(
-              (sum, s) => sum + Number(s.current_annual_ctc),
-              0,
-            ) / activeCount
+            (sum, s) => sum + Number(s.current_annual_ctc),
+            0,
+          ) / activeCount
           : 0;
 
       // VPF active = employees with is_additional_pf_active = true among active

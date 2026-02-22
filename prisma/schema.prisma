@@ -2420,7 +2420,7 @@ model EmployeeSalary {
   updated_at              DateTime @default(now())
 
   // Relations
-  tenant            Tenant           @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  tenant    Tenant @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
   employee          Employee         @relation(fields: [employee_id], references: [id], onDelete: Cascade)
   salary_structure  SalaryStructure  @relation(fields: [salary_structure_id], references: [id], onDelete: Cascade)
 

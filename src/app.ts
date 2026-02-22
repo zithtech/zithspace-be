@@ -235,7 +235,7 @@ app.use("/api/onboarding", employeeOnboardingRoutes);
 //app.use("/api/employee_address", addressRoutes);;
 
 // Employee Salary Management
-app.use("/api/salary", salaryRoutes);
+app.use("/api/employee-salary", salaryRoutes);
 
 app.get("/api/health", (req: any, res) => {
   res.status(200).json({
