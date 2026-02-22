@@ -46,7 +46,7 @@ model Tenant {
       employees   Employee[]
   employeeAddresses EmployeeAddress[]
 
-
+employeeSalaries EmployeeSalary[]
 
 
 
@@ -1996,6 +1996,7 @@ model Employee {
 
   
   experiences EmployeeExperience[]
+  employeeSalaries EmployeeSalary[]
 
   createdExperiences EmployeeExperience[] @relation("EmployeeExperienceCreatedBy")
   updatedExperiences EmployeeExperience[] @relation("EmployeeExperienceUpdatedBy")
@@ -2393,4 +2394,61 @@ model ZohoEvent {
   @@index([startTime], map: "idx_zoho_events_start_time")
   @@index([userId], map: "idx_zoho_events_user_id")
   @@map("zoho_events")
+}
+
+model EmployeeSalary {
+  id                      String   @id @default(uuid()) @db.Uuid
+
+  tenant_id               String
+  salary_structure_id     Int
+  employee_id             String   @db.Uuid
+
+  current_annual_ctc      Decimal  @db.Decimal(15, 2)
+  current_monthly_ctc     Decimal  @db.Decimal(15, 2)
+
+  additional_pf_pct       Decimal  @default(0.00) @db.Decimal(5, 2)
+  is_additional_pf_active Boolean  @default(false)
+
+  nps_contribution_pct    Decimal  @default(0.00) @db.Decimal(5, 2)
+  insurance_topup         Decimal  @default(0.00) @db.Decimal(12, 2)
+
+  fbp_choices             Json     @default("{}")
+  salary_timeline         Json     @default("[]")
+
+  is_active               Boolean  @default(true)
+
+  updated_at              DateTime @default(now())
+
+  // Relations
+  tenant            Tenant           @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  employee          Employee         @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+  salary_structure  SalaryStructure  @relation(fields: [salary_structure_id], references: [id], onDelete: Cascade)
+
+  @@map("employee_salary")
+}
+
+enum VisibilityType {
+  PUBLIC
+  PRIVATE
+}
+
+model SalaryStructure {
+  id                 Int       @id @default(autoincrement())
+  name               String
+  description        String
+  grossSalary        Int
+  deductionsEnabled  Boolean?  @default(false)
+  visibility         VisibilityType? @default(PUBLIC)
+  companyId          Int?
+  roleId             Int?
+  tenant_id          String
+  created_at         DateTime? @default(now())
+  updated_at         DateTime? @updatedAt
+  created_by_id      String?
+  updated_by_id      String?
+  isActive           Boolean?  @default(false)
+
+  employeeSalaries EmployeeSalary[]
+
+  @@map("salary_structures")
 }
