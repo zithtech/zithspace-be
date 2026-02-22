@@ -116,6 +116,8 @@ export class EmployeeSalaryController {
         action: "CREATED",
         current_annual_ctc,
         current_monthly_ctc,
+        annual_ctc_change_pct: 0,
+        monthly_ctc_change_pct: 0,
         date: new Date().toISOString(),
         changed_by: userId,
         note: note || "Initial offer",
@@ -240,20 +242,49 @@ export class EmployeeSalaryController {
         }
       }
 
-      // Append timeline entry
+      // Only add timeline entry if CTC actually changed
       const existingTimeline = (existing.salary_timeline as any[]) || [];
-      const timelineEntry = {
-        action: "UPDATED",
-        current_annual_ctc: current_annual_ctc ?? existing.current_annual_ctc,
-        current_monthly_ctc:
-          current_monthly_ctc ?? existing.current_monthly_ctc,
-        date: new Date().toISOString(),
-        changed_by: userId,
-        changes,
-        note: note || "",
-      };
 
-      updateData.salary_timeline = [...existingTimeline, timelineEntry];
+      const newAnnual = Number(
+        current_annual_ctc ?? existing.current_annual_ctc,
+      );
+      const oldAnnual = Number(existing.current_annual_ctc);
+      const newMonthly = Number(
+        current_monthly_ctc ?? existing.current_monthly_ctc,
+      );
+      const oldMonthly = Number(existing.current_monthly_ctc);
+
+      const ctcChanged = newAnnual !== oldAnnual || newMonthly !== oldMonthly;
+
+      if (ctcChanged) {
+        const annualChangePct =
+          oldAnnual !== 0
+            ? Math.round(((newAnnual - oldAnnual) / oldAnnual) * 100 * 100) /
+              100
+            : 0;
+        const monthlyChangePct =
+          oldMonthly !== 0
+            ? Math.round(((newMonthly - oldMonthly) / oldMonthly) * 100 * 100) /
+              100
+            : 0;
+
+        const timelineEntry = {
+          action: "UPDATED",
+          current_annual_ctc: newAnnual,
+          current_monthly_ctc: newMonthly,
+          previous_annual_ctc: oldAnnual,
+          previous_monthly_ctc: oldMonthly,
+          annual_ctc_change_pct: annualChangePct,
+          monthly_ctc_change_pct: monthlyChangePct,
+          date: new Date().toISOString(),
+          changed_by: userId,
+          changes,
+          note: note || "",
+        };
+
+        updateData.salary_timeline = [...existingTimeline, timelineEntry];
+      }
+
       updateData.updated_at = new Date();
 
       const updated = await prisma.employeeSalary.update({
