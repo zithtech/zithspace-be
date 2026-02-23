@@ -74,6 +74,8 @@ import positionRoutes from "@/routes/positionRoutes";
 import calenderRoutes from "@/routes/calendar"
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
 import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
+import reimbursementConfigurationRoutes from "@/routes/reimbursementConfig";
+import reimbursementsettingsRoutes from "@/routes/reimbursementsettingsRoutes";
 // Load environment
 dotenv.config();
 // Create Express application
@@ -196,7 +198,8 @@ app.use("/api/user", userRoutes);
 app.use("/api/daily-updates", dailyUpdateRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/leaves", leaveRoutes);
-app.use("/api/reimbursement-category", reimbursement);
+// app.use("/api/reimbursement-category", reimbursement);
+app.use("/api/reimbursement-categories", reimbursement);  // plural form
 app.use("/api/repositories", repositoryRoutes);
 app.use("/api/leave-types", leaveTypeRoutes);
 app.use("/api/customers", customerRoutes);
@@ -232,6 +235,8 @@ app.use("/api/employee-timelines", employeeTimelineRoutes);
 //app.use("/api/employee-employment-details", employeeEmploymentDetailsRoutes);
 // main
 app.use("/api/onboarding", employeeOnboardingRoutes);
+app.use("/api/reimbursement-configurations", reimbursementConfigurationRoutes);
+app.use("/api/reimbursement-settings", reimbursementsettingsRoutes);
 
 // app.use("/api/addresses", addressRoutes);
 //app.use("/api/employee_address", addressRoutes);

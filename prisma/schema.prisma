@@ -239,6 +239,10 @@ model User {
   createdMeetings       Meeting[]            @relation("MeetingCreator")
   meetingParticipations MeetingParticipant[]
 
+   //  ADD THESE TWO LINES
+  reimbursementsCreated  ReimbursementConfiguration[] @relation("ReimbursementCreatedBy")
+  reimbursementsUpdated  ReimbursementConfiguration[] @relation("ReimbursementUpdatedBy")
+
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
   @@unique([tenantId, phone])
@@ -278,7 +282,7 @@ model ReimbursementCategory {
   updatedByUser User?  @relation("ReimbursementCategoryUpdatedBy", fields: [updatedBy], references: [id])
 
   @@unique([tenantId, code])
-  @@map("reimbursement_category")
+  @@map("reimbursement_settings_categories")
 }
 
 model Grade {
@@ -2393,4 +2397,33 @@ model ZohoEvent {
   @@index([startTime], map: "idx_zoho_events_start_time")
   @@index([userId], map: "idx_zoho_events_user_id")
   @@map("zoho_events")
+}
+
+
+
+model ReimbursementConfiguration {
+  id            String   @id @default(uuid())
+
+  tenantId      String   @map("tenant_id")
+
+  origin        String
+  subOrigin   String @map("sub_origin")
+  categoryType  String   @map("category_type")
+
+  amount        Decimal  @db.Decimal(10,2)
+  period        String   // "MONTH" or "YEAR"
+
+  status        String
+  createdBy     User    @relation("ReimbursementCreatedBy", fields: [createdById], references: [id])
+  updatedBy     User?   @relation("ReimbursementUpdatedBy", fields: [updatedById], references: [id])
+
+ 
+
+  createdById   String   @map("created_by_id")
+  updatedById   String?  @map("updated_by_id")
+
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("reimbursement_configurations")
 }
