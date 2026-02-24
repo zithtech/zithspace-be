@@ -6,6 +6,9 @@ export declare class TimesheetController {
      */
     static createTimesheet(req: AuthRequest, res: Response): Promise<void>;
     /**
+     * Create a new timesheet
+     */
+    /**
      * Get all timesheets for current tenant with pagination
      */
     static getTimesheets(req: AuthRequest, res: Response): Promise<void>;
