@@ -53,6 +53,13 @@ export class AuthController {
             },
             include: {
               tenant: true,
+              position: {
+                select: {
+                  id: true,
+                  title: true,
+                  code: true,
+                },
+              },
             },
           });
         }
@@ -92,7 +99,7 @@ export class AuthController {
         tenantId: user.tenantId,
         email: user.workEmail,
         role: user.role as any,
-        position: user.position as any,
+        position: user.position?.title || null,
         name: user.name,
       };
 
@@ -133,7 +140,7 @@ export class AuthController {
           workEmail: user.workEmail,
           personalEmail: user.personalEmail,
           role: user.role as any,
-          position: user.position as any,
+          position: user.position?.title || null,
           tenantId: user.tenantId,
           tenantName: user.tenant.name,
           isActive: user.isActive
@@ -183,6 +190,13 @@ export class AuthController {
               user: {
                 include: {
                   tenant: true,
+                  position: {
+                    select: {
+                      id: true,
+                      title: true,
+                      code: true,
+                    },
+                  },
                 },
               },
             },
@@ -204,7 +218,7 @@ export class AuthController {
         tenantId: storedToken.user.tenantId,
         email: storedToken.user.workEmail,
         role: storedToken.user.role as any,
-        position: storedToken.user.position as any,
+        position: storedToken.user.position?.title || null,
         name: storedToken.user.name,
       };
 
@@ -322,7 +336,20 @@ export class AuthController {
                 select: {
                   id: true,
                   name: true,
-                  position: true,
+                  position: {
+                    select: {
+                      id: true,
+                      title: true,
+                      code: true,
+                    },
+                  },
+                },
+              },
+              position: {
+                select: {
+                  id: true,
+                  title: true,
+                  code: true,
                 },
               },
               tenant: {
@@ -355,6 +382,7 @@ export class AuthController {
           phone: user.phone,
           role: user.role,
           position: user.position,
+          positionTitle: user.position?.title,
           dateOfBirth: user.dateOfBirth,
           workDays: user.workDays,
           isActive: user.isActive,
@@ -424,7 +452,7 @@ export class AuthController {
 
       // Validate required fields
       if (!userData.name || !userData.workEmail || !userData.personalEmail || 
-          !userData.phone || !userData.password || !userData.position) {
+          !userData.phone || !userData.password || !userData.positionId) {
         res.status(400).json({
           success: false,
           error: 'All required fields must be provided',
@@ -448,10 +476,19 @@ export class AuthController {
               phone: userData.phone,
               passwordHash,
               role: userData.role || 'user',
-              position: userData.position,
+              positionId: userData.positionId,
               reportsToId: userData.reportsToId || null,
               dateOfBirth: userData.dateOfBirth || null,
               workDays: userData.workDays || [1, 2, 3, 4, 5], // Monday to Friday
+            },
+            include: {
+              position: {
+                select: {
+                  id: true,
+                  title: true,
+                  code: true,
+                },
+              },
             },
           });
         }
@@ -467,6 +504,7 @@ export class AuthController {
           phone: user.phone,
           role: user.role,
           position: user.position,
+          positionTitle: user.position?.title,
           isActive: user.isActive,
         },
         message: 'User created successfully',

@@ -1,9 +1,13 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
-import { nanoid } from 'nanoid';
+import {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+} from "@aws-sdk/client-s3";
+import { nanoid } from "nanoid";
 
 // Cloudflare R2 Configuration
-const REGION = 'auto';
-const BUCKET_NAME = process.env.CF_R2_BUCKET_NAME || 'zithspace';
+const REGION = "auto";
+const BUCKET_NAME = process.env.CF_R2_BUCKET_NAME || "zithspace";
 const ACCOUNT_ID = process.env.CF_R2_ACCOUNT_ID;
 const ACCESS_KEY_ID = process.env.CF_R2_ACCESS_KEY_ID;
 const SECRET_ACCESS_KEY = process.env.CF_R2_SECRET_ACCESS_KEY;
@@ -11,7 +15,7 @@ const PUBLIC_URL = process.env.CF_R2_PUBLIC_URL;
 
 // Validate required environment variables
 if (!ACCOUNT_ID || !ACCESS_KEY_ID || !SECRET_ACCESS_KEY) {
-  console.error('Missing required R2 environment variables');
+  console.error("Missing required R2 environment variables");
 }
 
 // Create S3 client for R2
@@ -34,33 +38,39 @@ export const s3Client = new S3Client({
 export async function uploadImageToR2(
   base64Image: string,
   tenantId: string,
-  ticketId?: string
+  ticketId?: string,
 ): Promise<string> {
   try {
     // Extract content type and base64 data
     const matches = base64Image.match(/^data:(image\/\w+);base64,(.+)$/);
     if (!matches) {
-      throw new Error('Invalid image format. Expected base64 encoded image.');
+      throw new Error("Invalid image format. Expected base64 encoded image.");
     }
 
     const contentType = matches[1];
     const base64Data = matches[2];
-    const buffer = Buffer.from(base64Data, 'base64');
+    const buffer = Buffer.from(base64Data, "base64");
 
     // Validate file size (max 5MB)
     const fileSizeInMB = buffer.length / (1024 * 1024);
     if (fileSizeInMB > 5) {
-      throw new Error('Image size exceeds 5MB limit');
+      throw new Error("Image size exceeds 5MB limit");
     }
 
     // Validate content type
-    const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp'];
+    const allowedTypes = [
+      "image/png",
+      "image/jpeg",
+      "image/jpg",
+      "image/gif",
+      "image/webp",
+    ];
     if (!allowedTypes.includes(contentType)) {
-      throw new Error('Invalid image type. Allowed: PNG, JPEG, JPG, GIF, WEBP');
+      throw new Error("Invalid image type. Allowed: PNG, JPEG, JPG, GIF, WEBP");
     }
 
     // Generate unique file name
-    const fileExt = contentType.split('/')[1];
+    const fileExt = contentType.split("/")[1];
     const uniqueId = nanoid(12);
 
     // Organize by tenant and optionally by ticket
@@ -72,11 +82,11 @@ export async function uploadImageToR2(
 
     // Upload to R2
     const params = {
-      Bucket: 'zithspace',
+      Bucket: "zithspace",
       Key: fileName,
       Body: buffer,
       ContentType: contentType,
-      CacheControl: 'public, max-age=31536000', // Cache for 1 year
+      CacheControl: "public, max-age=31536000", // Cache for 1 year
     };
 
     await s3Client.send(new PutObjectCommand(params));
@@ -86,7 +96,7 @@ export async function uploadImageToR2(
 
     return imageUrl;
   } catch (error: any) {
-    console.error('R2 upload error:', error);
+    console.error("R2 upload error:", error);
     throw new Error(`Failed to upload image: ${error.message}`);
   }
 }
@@ -103,44 +113,42 @@ export async function uploadFileToR2(
   base64File: string,
   fileName: string,
   tenantId: string,
-  ticketId?: string
+  ticketId: string,
 ): Promise<{ fileUrl: string; fileSize: number; fileType: string }> {
   try {
     // Extract content type and base64 data
     const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
     if (!matches) {
-      throw new Error('Invalid file format. Expected base64 encoded file.');
+      throw new Error("Invalid file format. Expected base64 encoded file.");
     }
 
     const contentType = matches[1];
     const base64Data = matches[2];
-    const buffer = Buffer.from(base64Data, 'base64');
+    const buffer = Buffer.from(base64Data, "base64");
 
     // Validate file size (max 5MB)
     const fileSizeInBytes = buffer.length;
     const fileSizeInMB = fileSizeInBytes / (1024 * 1024);
     if (fileSizeInMB > 5) {
-      throw new Error('File size exceeds 5MB limit');
+      throw new Error("File size exceeds 5MB limit");
     }
 
     // Generate unique file name while preserving original extension
-    const fileExtension = fileName.split('.').pop() || 'bin';
+    const fileExtension = fileName.split(".").pop() || "bin";
     const uniqueId = nanoid(12);
-    const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
+    const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
 
     // Organize by tenant and ticket in attachments folder
-    const folderPath = ticketId
-      ? `${tenantId}/tickets/${ticketId}/attachments`
-      : `${tenantId}/reimbursements/attachments`;
+    const folderPath = `${tenantId}/tickets/${ticketId}/attachments`;
     const storedFileName = `${folderPath}/${uniqueId}_${sanitizedFileName}`;
 
     // Upload to R2
     const params = {
-      Bucket: 'zithspace',
+      Bucket: "zithspace",
       Key: storedFileName,
       Body: buffer,
       ContentType: contentType,
-      CacheControl: 'public, max-age=31536000', // Cache for 1 year
+      CacheControl: "public, max-age=31536000", // Cache for 1 year
       ContentDisposition: `attachment; filename="${sanitizedFileName}"`, // Force download with original name
     };
 
@@ -155,8 +163,103 @@ export async function uploadFileToR2(
       fileType: contentType,
     };
   } catch (error: any) {
-    console.error('R2 file upload error:', error);
+    console.error("R2 file upload error:", error);
     throw new Error(`Failed to upload file: ${error.message}`);
+  }
+}
+
+/**
+ * Upload employee document to Cloudflare R2
+ * @param base64File - Base64 encoded file string
+ * @param fileName - Original file name
+ * @param tenantId - Tenant ID
+ * @param employeeId - Employee ID
+ * @param documentType - Type of document (e.g., experienceLetter)
+ * @returns Public URL of uploaded document
+ */
+export async function uploadEmployeeDocumentToR2(
+  base64File: string,
+  fileName: string,
+  tenantId: string,
+  employeeId: string,
+  documentType: string,
+): Promise<string> {
+  try {
+    const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+    if (!matches) {
+      throw new Error("Invalid file format. Expected base64 encoded file.");
+    }
+
+    const contentType = matches[1];
+    const base64Data = matches[2];
+    const buffer = Buffer.from(base64Data, "base64");
+
+    const uniqueId = nanoid(12);
+    const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+    const key = `${tenantId}/employees/${employeeId}/documents/${documentType}/${uniqueId}_${sanitizedFileName}`;
+
+    const params = {
+      Bucket: BUCKET_NAME,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+    };
+
+    await s3Client.send(new PutObjectCommand(params));
+
+    return `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/${key}`;
+  } catch (error: any) {
+    console.error("R2 upload error:", error);
+    throw new Error(`Failed to upload document: ${error.message}`);
+  }
+}
+
+/**
+ * Upload employee asset image to Cloudflare R2
+ * @param base64File - Base64 encoded file string or an existing URL
+ * @param fileName - Original file name
+ * @param tenantId - Tenant ID
+ * @param employeeId - Employee ID
+ * @returns Public URL of uploaded document
+ */
+export async function uploadEmployeeAssetToR2(
+  base64File: string,
+  fileName: string,
+  tenantId: string,
+  employeeId: string,
+): Promise<string> {
+  try {
+    // If it's already a URL, return it directly (for edits where image is not changed)
+    if (base64File.startsWith("http")) {
+      return base64File;
+    }
+
+    const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+    if (!matches) {
+      throw new Error("Invalid file format. Expected base64 encoded file.");
+    }
+
+    const contentType = matches[1];
+    const base64Data = matches[2];
+    const buffer = Buffer.from(base64Data, "base64");
+
+    const uniqueId = nanoid(12);
+    const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+    const key = `${tenantId}/employees/${employeeId}/assets/${uniqueId}_${sanitizedFileName}`;
+
+    await s3Client.send(
+      new PutObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+      }),
+    );
+
+    return `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/${key}`;
+  } catch (error: any) {
+    console.error("R2 asset image upload error:", error);
+    throw new Error(`Failed to upload asset image: ${error.message}`);
   }
 }
 
@@ -167,22 +270,24 @@ export async function uploadFileToR2(
  */
 export async function deleteFileFromR2(
   fileUrl: string,
-  tenantId: string
+  tenantId: string,
 ): Promise<void> {
   try {
     // Extract file key from URL
-    const urlParts = fileUrl.split('/');
-    const publicUrlIndex = urlParts.findIndex(part => part.includes('r2.dev'));
+    const urlParts = fileUrl.split("/");
+    const publicUrlIndex = urlParts.findIndex((part) =>
+      part.includes("r2.dev"),
+    );
 
     if (publicUrlIndex === -1) {
-      throw new Error('Invalid file URL');
+      throw new Error("Invalid file URL");
     }
 
-    const fileName = urlParts.slice(publicUrlIndex + 1).join('/');
+    const fileName = urlParts.slice(publicUrlIndex + 1).join("/");
 
     // Validate that the file belongs to the tenant
     if (!fileName.startsWith(tenantId)) {
-      throw new Error('Unauthorized: File does not belong to this tenant');
+      throw new Error("Unauthorized: File does not belong to this tenant");
     }
 
     // Delete from R2
@@ -194,7 +299,7 @@ export async function deleteFileFromR2(
     await s3Client.send(new DeleteObjectCommand(params));
     console.log(`Deleted file: ${fileName}`);
   } catch (error: any) {
-    console.error('R2 delete error:', error);
+    console.error("R2 delete error:", error);
     throw new Error(`Failed to delete file: ${error.message}`);
   }
 }
@@ -206,22 +311,22 @@ export async function deleteFileFromR2(
  */
 export async function deleteImageFromR2(
   imageUrl: string,
-  tenantId: string
+  tenantId: string,
 ): Promise<void> {
   try {
     // Extract file key from URL
-    const urlParts = imageUrl.split('/');
+    const urlParts = imageUrl.split("/");
     const bucketIndex = urlParts.indexOf(BUCKET_NAME);
 
     if (bucketIndex === -1) {
-      throw new Error('Invalid image URL');
+      throw new Error("Invalid image URL");
     }
 
-    const fileName = urlParts.slice(bucketIndex + 1).join('/');
+    const fileName = urlParts.slice(bucketIndex + 1).join("/");
 
     // Validate that the file belongs to the tenant
     if (!fileName.startsWith(tenantId)) {
-      throw new Error('Unauthorized: Image does not belong to this tenant');
+      throw new Error("Unauthorized: Image does not belong to this tenant");
     }
 
     // Delete from R2
@@ -233,7 +338,7 @@ export async function deleteImageFromR2(
     await s3Client.send(new DeleteObjectCommand(params));
     console.log(`Deleted image: ${fileName}`);
   } catch (error: any) {
-    console.error('R2 delete error:', error);
+    console.error("R2 delete error:", error);
     throw new Error(`Failed to delete image: ${error.message}`);
   }
 }
@@ -264,14 +369,14 @@ export function extractImageUrlsFromHtml(htmlContent: string): string[] {
 export async function cleanupOrphanedImages(
   oldHtml: string,
   newHtml: string,
-  tenantId: string
+  tenantId: string,
 ): Promise<void> {
   try {
     const oldImages = extractImageUrlsFromHtml(oldHtml);
     const newImages = extractImageUrlsFromHtml(newHtml);
 
     // Find images that were removed
-    const removedImages = oldImages.filter(url => !newImages.includes(url));
+    const removedImages = oldImages.filter((url) => !newImages.includes(url));
 
     // Delete removed images from R2
     for (const imageUrl of removedImages) {
@@ -287,7 +392,7 @@ export async function cleanupOrphanedImages(
       console.log(`Cleaned up ${removedImages.length} orphaned images`);
     }
   } catch (error) {
-    console.error('Error cleaning up orphaned images:', error);
+    console.error("Error cleaning up orphaned images:", error);
     // Don't throw error - cleanup is best effort
   }
 }

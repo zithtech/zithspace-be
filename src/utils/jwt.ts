@@ -8,7 +8,7 @@ export class JWTUtils {
     process.env.JWT_REFRESH_SECRET!;
   private static readonly ACCESS_TOKEN_EXPIRY: jwt.SignOptions["expiresIn"] =
     (process.env.JWT_ACCESS_EXPIRES_IN as jwt.SignOptions["expiresIn"]) ||
-    "1d";
+    "15m";
 
   private static readonly REFRESH_TOKEN_EXPIRY: jwt.SignOptions["expiresIn"] =
     (process.env.JWT_REFRESH_EXPIRES_IN as jwt.SignOptions["expiresIn"]) ||

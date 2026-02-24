@@ -17,7 +17,7 @@ class DailyUpdateController {
                 return;
             }
             console.log("request checking", req.body);
-            const { mood, totalHoursWorked, projectUpdates, generalNotes, date } = req.body;
+            const { mood, totalHoursWorked, projectUpdates, generalNotes, date, updateType, } = req.body;
             // Validation
             if (!projectUpdates ||
                 !Array.isArray(projectUpdates) ||
@@ -131,32 +131,6 @@ class DailyUpdateController {
             const today = new Date();
             today.setHours(0, 0, 0, 0);
             const result = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                // Check if user already submitted today
-                // const existing = await client.statusUpdate.findFirst({
-                //   where: {
-                //     userId: req.user!.id,
-                //     tenantId: req.tenantId,
-                //     date: today,
-                //   },
-                // });
-                // if (existing) {
-                //   throw new ValidationError('You have already submitted an update for today. Please edit the existing one.');
-                // }
-                // const start = new Date(date);
-                // start.setHours(0, 0, 0, 0);
-                // const end = new Date(date);
-                // end.setHours(23, 59, 59, 999);
-                // const updates = await client.statusUpdate.findMany({
-                //   where: {
-                //     userId: req.user!.id,
-                //     tenantId: req.tenantId,
-                //     date: {
-                //       gte: dayjs(date).startOf("day").toDate(),
-                //       lte: dayjs(date).endOf("day").toDate(),
-                //     },
-                //   },
-                //   orderBy: { submittedAt: "asc" },
-                // });
                 function startOfDay(date) {
                     const d = new Date(date);
                     d.setHours(0, 0, 0, 0);
@@ -204,7 +178,7 @@ class DailyUpdateController {
                 }
                 const now = new Date();
                 // // submitted working date (from frontend or today)
-                console.log("date****", date);
+                //console.log("date****", date);
                 const submittedDate = date ? new Date(date) : new Date();
                 submittedDate.setHours(0, 0, 0, 0);
                 console.log("submittedDate", submittedDate);
@@ -218,7 +192,6 @@ class DailyUpdateController {
                 console.log("isMissed", isMissed);
                 const missedUpdateAt = isMissed ? submittedDate : null;
                 console.log("missedUpdateAt ", missedUpdateAt);
-                // Working date selected by user
                 const statusUpdate = await client.statusUpdate.create({
                     data: {
                         userId: req.user.id,
@@ -231,14 +204,23 @@ class DailyUpdateController {
                         totalHoursWorked: totalHoursWorked || null,
                         projectUpdates: projectUpdates,
                         generalNotes: generalNotes || null,
+                        updateType: updateType ?? null,
+                        //updateType: calculatedUpdateType,
                     },
                     include: {
                         user: {
                             select: {
                                 id: true,
                                 name: true,
-                                position: true,
                                 workEmail: true,
+                                positionId: true,
+                                position: {
+                                    select: {
+                                        id: true,
+                                        title: true,
+                                        code: true,
+                                    },
+                                },
                             },
                         },
                     },
@@ -343,12 +325,22 @@ class DailyUpdateController {
                 });
                 return;
             }
-            const { date, startDate, endDate, projectId, userId } = req.query;
+            const { date, startDate, endDate, projectId, userId, updateType } = req.query;
+            console.log("updateType from URL:", req.query.updateType);
             const updates = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
                 // Check user role and position
                 const user = await client.user.findUnique({
                     where: { id: req.user.id },
-                    select: { role: true, position: true },
+                    select: {
+                        role: true,
+                        position: {
+                            select: {
+                                id: true,
+                                title: true,
+                                code: true,
+                            },
+                        },
+                    },
                 });
                 if (!user) {
                     throw new types_1.NotFoundError("User not found");
@@ -379,12 +371,15 @@ class DailyUpdateController {
                     today.setHours(0, 0, 0, 0);
                     where.date = today;
                 }
+                if (updateType) {
+                    where.updateType = updateType;
+                }
                 // Super Admin - can see all updates
                 if (user.role === "super_admin") {
                     // No additional filters needed
                 }
                 // Project Manager - can see updates from their projects
-                else if (user.position === "Project Manager") {
+                else if (user.position?.title === "Project Manager") {
                     const managedProjects = await client.project.findMany({
                         where: {
                             tenantId: req.tenantId,
@@ -423,7 +418,7 @@ class DailyUpdateController {
                     orderBy: { submittedAt: "desc" },
                 });
                 // Filter by project if PM and projectId specified
-                if (user.position === "Project Manager" &&
+                if (user.position?.title === "Project Manager" &&
                     user.role !== "super_admin") {
                     const managedProjects = await client.project.findMany({
                         where: {
@@ -495,7 +490,7 @@ class DailyUpdateController {
                 };
                 // Regular users only see their own
                 if (user.role !== "super_admin" &&
-                    user.position !== "Project Manager") {
+                    user.position?.title !== "Project Manager") {
                     where.userId = req.user.id;
                 }
                 let allUpdates = await client.statusUpdate.findMany({
@@ -513,7 +508,7 @@ class DailyUpdateController {
                     orderBy: { submittedAt: "desc" },
                 });
                 // Filter for Project Managers
-                if (user.position === "Project Manager" &&
+                if (user.position?.title === "Project Manager" &&
                     user.role !== "super_admin") {
                     const managedProjects = await client.project.findMany({
                         where: {
@@ -610,7 +605,16 @@ class DailyUpdateController {
                 // Check access permissions
                 const user = await client.user.findUnique({
                     where: { id: req.user.id },
-                    select: { role: true, position: true },
+                    select: {
+                        role: true,
+                        position: {
+                            select: {
+                                id: true,
+                                title: true,
+                                code: true,
+                            },
+                        },
+                    },
                 });
                 if (!user) {
                     throw new types_1.NotFoundError("User not found");
@@ -624,7 +628,7 @@ class DailyUpdateController {
                     return statusUpdate;
                 }
                 // Project Manager can see if update includes their projects
-                if (user.position === "Project Manager") {
+                if (user.position?.title === "Project Manager") {
                     const managedProjects = await client.project.findMany({
                         where: {
                             tenantId: req.tenantId,
@@ -842,14 +846,23 @@ class DailyUpdateController {
             const stats = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
                 const user = await client.user.findUnique({
                     where: { id: req.user.id },
-                    select: { role: true, position: true },
+                    select: {
+                        role: true,
+                        position: {
+                            select: {
+                                id: true,
+                                title: true,
+                                code: true,
+                            },
+                        },
+                    },
                 });
                 if (!user) {
                     throw new types_1.NotFoundError("User not found");
                 }
                 // Only PM or Super Admin can access stats
                 if (user.role !== "super_admin" &&
-                    user.position !== "Project Manager") {
+                    user.position?.title !== "Project Manager") {
                     throw new types_1.ValidationError("You do not have permission to view statistics");
                 }
                 const start = startDate

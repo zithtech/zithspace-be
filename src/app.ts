@@ -7,6 +7,8 @@ import compression from "compression";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
+import session from "express-session";
+
 
 
 // Import configurations
@@ -15,6 +17,8 @@ import salaryComponentRoutes from "@/routes/salaryComponentRoutes";
 import gradeRoutes from "@/routes/gradeRoutes";
 import companyRoutes from "./routes/companyRoutes";
 
+// Import middlewares
+import { optionalTenantContext } from "@/middleware/tenantContext";
 
 import authRoutes from "@/routes/auth";
 import tenantRoutes from "@/routes/tenants";
@@ -31,7 +35,6 @@ import userRoutes from "@/routes/user";
 import dailyUpdateRoutes from "@/routes/dailyUpdates";
 import dashboardRoutes from "@/routes/dashboard";
 import leaveRoutes from "@/routes/leaves";
-import reimbursementCategoryRoutes from "@/routes/reimbursementCategories";
 import leaveTypeRoutes from "@/routes/leaveTypeRoutes";
 import customerRoutes from "@/routes/customerRoutes";
 import invoiceSettingRoutes from "@/routes/invoiceSettingsRoutes";
@@ -44,24 +47,31 @@ import fixedHolidayRoutes from "@/routes/fixedHolidays";
 import documentHubRoutes from "@/routes/documenthub";
 import channelRoutes from "@/routes/channels";
 import messageRoutes from "@/routes/messages";
+// Onboarding
+// import employeeRoutes from "@/routes/employeeRoutes";
+// import employeeAddressRoutes from "@/routes/employeeAddress";
+// import employeeEmergencyContactRoutes from "@/routes/emergencyContact";
+// import employeeIdentityRoutes from "@/routes/employeeIdentity";
+import employeeWorkDetailRoutes from "@/routes/employeeWorkDetailes";
+import employeeTimelineRoutes from "@/routes/employeeTimeline";
+// personal Detailes
+//import employeeDetailsRoutes from "@/routes/createEmployeeRoutes";
+//import employeeEmploymentDetailsRoutes from "@/routes/employeeEmploymentDetailes";
+
+// main
+import employeeOnboardingRoutes from "@/routes/onboardingRoutes";
+
 import timesheetRoutes from "@/routes/timesheet";
 
-
-
-
-import companyGovernmentHolidayRouter from './routes/companyGovernmentHoliday.routes';
+import companyGovernmentHolidayRouter from "./routes/companyGovernmentHoliday.routes";
 import leaveAdjustmentRoutes from "./routes/leaveAdjustmentRoutes";
-import fileDownloadRoutes from "./routes/fileDownload";
 import reimbursement from "@/routes/reimbursementCategory";
 import employmentTypeRoutes from "@/routes/employmentTypeRoutes";
 import repositoryRoutes from "@/routes/repositoryRoutes";
-import releaseNotesRouter from "@/routes/releasenotes";
-import enviromentsRoutes from "@/routes/enviroments";
 import departmentRoutes from "@/routes/departmentRoutes";
 import subDepartmentRoutes from "@/routes/subDepartmentRoutes";
 import positionRoutes from "@/routes/positionRoutes";
-
-
+import calenderRoutes from "@/routes/calendar"
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
 import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
 // Load environment
@@ -72,6 +82,17 @@ const app = express();
 // Body parsing middleware
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
+app.use(session({
+  secret: process.env.SESSION_SECRET || "your-fallback-secret-key",
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === "production", // true in production
+    httpOnly: true,
+    maxAge: 24 * 60 * 60 * 1000 // 24 hours
+  }
+}));
 
 // Connect to PostgreSQL
 
@@ -148,11 +169,13 @@ app.get("/health", (req, res) => {
 });
 
 
+
+
 // app.use("/api", optionalTenantContext);
 
 // API routes
 app.use("/api/leave-adjustments", leaveAdjustmentRoutes);
-app.use('/api/company-government-holidays', companyGovernmentHolidayRouter);
+app.use("/api/company-government-holidays", companyGovernmentHolidayRouter);
 app.use("/api/leave-origins", leaveOriginRoutes);
 app.use("/api/fixed-holidays", fixedHolidayRoutes);
 app.use("/api/auth", authRoutes);
@@ -173,13 +196,12 @@ app.use("/api/user", userRoutes);
 app.use("/api/daily-updates", dailyUpdateRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/leaves", leaveRoutes);
-app.use("/api/reimbursement-categories", reimbursementCategoryRoutes);
 app.use("/api/reimbursement-category", reimbursement);
 app.use("/api/repositories", repositoryRoutes);
 app.use("/api/leave-types", leaveTypeRoutes);
 app.use("/api/customers", customerRoutes);
-app.use("/api/invoicesetting", invoiceSettingRoutes)
-app.use("/api/invoices", invoice)
+app.use("/api/invoicesetting", invoiceSettingRoutes);
+app.use("/api/invoices", invoice);
 //app.use("/api/invoice",invoicedownload)
 app.use("/api/buckets", bucketRoutes);
 app.use("/api/trash", trashRoutes);
@@ -195,17 +217,24 @@ app.use("/api/employment-types", employmentTypeRoutes);
 app.use("/api/documenthub", documentHubRoutes);
 app.use("/api/channels", channelRoutes);
 app.use("/api/channels/:channelId/messages", messageRoutes);
-app.use("/api/releasenotes", releaseNotesRouter);
-app.use("/api/enviroments", enviromentsRoutes);
-app.use("/api/files", fileDownloadRoutes);
-app.use('/api/email-history', emailHistoryRoutes);
+app.use("/api/email-history", emailHistoryRoutes);
 app.use("/api/timesheets", timesheetRoutes);
+app.use("/api/zoho", calenderRoutes);
 
-// Public document access (no auth required)
-import { DocumentHubController } from "@/controllers/documentHubController";
-app.get("/api/public/document/:shareToken", DocumentHubController.getPublicDocument);
+// onboarding
+// app.use("/api/employees", employeeRoutes);
+// app.use("/api/employee-addresses", employeeAddressRoutes);
+// app.use("/api/employee-emergency-contacts", employeeEmergencyContactRoutes);
+// app.use("/api/employee-identities", employeeIdentityRoutes);
+app.use("/api/employee-work-details", employeeWorkDetailRoutes);
+app.use("/api/employee-timelines", employeeTimelineRoutes);
+//app.use("/api/employee-details", employeeDetailsRoutes);
+//app.use("/api/employee-employment-details", employeeEmploymentDetailsRoutes);
+// main
+app.use("/api/onboarding", employeeOnboardingRoutes);
 
-
+// app.use("/api/addresses", addressRoutes);
+//app.use("/api/employee_address", addressRoutes);
 
 app.get("/api/health", (req: any, res) => {
   res.status(200).json({
@@ -363,6 +392,8 @@ const gracefulShutdown = async (signal: string) => {
 
     try {
       await disconnectDatabase();
+
+
       console.log("Database connections closed");
     } catch (error) {
       console.error("Error closing database connections:", error);
