@@ -126,7 +126,6 @@ export class ProjectController {
 
       const { id } = req.params;
 
-
       const project = await prisma.project.findFirst({
         where: {
           id,
@@ -163,8 +162,6 @@ export class ProjectController {
           },
         },
       });
-
-
 
       if (!project) {
         res.status(404).json({
@@ -235,7 +232,6 @@ export class ProjectController {
         projectCode = `${namePrefix}${timestamp}`;
       }
 
-
       // Validate project manager exists and belongs to tenant
       const manager = await prisma.user.findFirst({
         where: {
@@ -261,7 +257,7 @@ export class ProjectController {
 
         if (members.length !== teamMemberIds.length) {
           throw new ValidationError(
-            "One or more team members not found in this tenant"
+            "One or more team members not found in this tenant",
           );
         }
       }
@@ -277,7 +273,7 @@ export class ProjectController {
 
         if (existingProject) {
           throw new ValidationError(
-            "Project code already exists in this tenant"
+            "Project code already exists in this tenant",
           );
         }
       }
@@ -331,7 +327,6 @@ export class ProjectController {
         data: project,
         message: "Project created successfully",
       } as ApiResponse);
-
     } catch (error: any) {
       console.error("Create project error:", error);
 
@@ -379,7 +374,6 @@ export class ProjectController {
       delete updates.createdAt;
       delete updates.tenantId;
 
-
       // Check if project exists and belongs to tenant
       const existingProject = await prisma.project.findFirst({
         where: {
@@ -403,9 +397,7 @@ export class ProjectController {
         });
 
         if (!manager) {
-          throw new ValidationError(
-            "Project manager not found in this tenant"
-          );
+          throw new ValidationError("Project manager not found in this tenant");
         }
       }
 
@@ -421,7 +413,7 @@ export class ProjectController {
 
         if (duplicateProject) {
           throw new ValidationError(
-            "Project code already exists in this tenant"
+            "Project code already exists in this tenant",
           );
         }
         updates.code = updates.code.toUpperCase();
@@ -457,7 +449,7 @@ export class ProjectController {
 
           if (members.length !== updates.teamMemberIds.length) {
             throw new ValidationError(
-              "One or more team members not found in this tenant"
+              "One or more team members not found in this tenant",
             );
           }
 
@@ -504,7 +496,6 @@ export class ProjectController {
         data: project,
         message: "Project updated successfully",
       } as ApiResponse);
-
     } catch (error: any) {
       console.error("Update project error:", error);
 
@@ -546,7 +537,6 @@ export class ProjectController {
 
       const { id } = req.params;
 
-
       const project = await prisma.project.findFirst({
         where: {
           id,
@@ -569,7 +559,7 @@ export class ProjectController {
 
       if (activeTickets > 0) {
         throw new ValidationError(
-          `Cannot delete project with ${activeTickets} active tickets. Please complete or reassign tickets first.`
+          `Cannot delete project with ${activeTickets} active tickets. Please complete or reassign tickets first.`,
         );
       }
 
@@ -581,7 +571,6 @@ export class ProjectController {
         success: true,
         message: "Project deleted successfully",
       } as ApiResponse);
-
     } catch (error: any) {
       console.error("Delete project error:", error);
 
@@ -614,7 +603,6 @@ export class ProjectController {
       }
 
       const { id } = req.params;
-
 
       const project = await prisma.project.findFirst({
         where: {
@@ -689,7 +677,6 @@ export class ProjectController {
         recentTickets,
       };
 
-
       res.status(200).json({
         success: true,
         data: stats,
@@ -717,7 +704,7 @@ export class ProjectController {
    */
   static async getProjectsForSelect(
     req: AuthRequest,
-    res: Response
+    res: Response,
   ): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
@@ -727,7 +714,6 @@ export class ProjectController {
         } as ApiResponse);
         return;
       }
-
 
       const projects = await prisma.project.findMany({
         where: {
@@ -742,8 +728,6 @@ export class ProjectController {
         },
         orderBy: { name: "asc" },
       });
-
-
 
       const projectOptions = projects.map((project) => ({
         value: project.id,
@@ -768,10 +752,16 @@ export class ProjectController {
   /**
    * Get rich project data for selection screen (tenant-aware + role-based)
    */
-  static async getSelectionProjects(req: AuthRequest, res: Response): Promise<void> {
+  static async getSelectionProjects(
+    req: AuthRequest,
+    res: Response,
+  ): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
-        res.status(400).json({ success: false, error: "Tenant and Auth required" } as ApiResponse);
+        res.status(400).json({
+          success: false,
+          error: "Tenant and Auth required",
+        } as ApiResponse);
         return;
       }
 
@@ -793,16 +783,16 @@ export class ProjectController {
       // 2. Determine Project Scope based on Role
       let whereClause: any = {
         tenantId,
-        status: { not: 'ARCHIVED' } // Exclude archived by default
+        status: { not: "ARCHIVED" }, // Exclude archived by default
       };
 
       // STRICT ROLE LOGIC:
       // SUPER_ADMIN -> Sees ALL projects in tenant
       // ADMIN / MEMBER -> Sees ONLY assigned projects (Member or PM)
-      if (userRole?.toUpperCase() !== 'SUPER_ADMIN') {
+      if (userRole?.toUpperCase() !== "SUPER_ADMIN") {
         whereClause.OR = [
           { projectManagerId: userId },
-          { members: { some: { userId } } }
+          { members: { some: { userId } } },
         ];
       }
 
@@ -817,76 +807,91 @@ export class ProjectController {
           status: true,
           projectManagerId: true,
           projectManager: {
-            select: { name: true, id: true }
+            select: { name: true, id: true },
           },
           members: {
             take: 5, // Limit mostly members for UI
             select: {
-              user: { select: { id: true, name: true, position: true } }
-            }
+              user: { select: { id: true, name: true, position: true } },
+            },
           },
           _count: {
-            select: { members: true }
-          }
+            select: { members: true },
+          },
         },
-        orderBy: { updatedAt: 'desc' }
+        orderBy: { updatedAt: "desc" },
       });
 
       // 4. Aggregate Ticket Stats (Real Data)
       // We do this in parallel for performance, or use a complex groupBy
       // For generic Prisma, iterating is safest for complex counts unless we use raw query
 
-      const enrichedProjects = await Promise.all(projects.map(async (p) => {
-        const ticketStats = await prisma.ticket.groupBy({
-          by: ['status'],
-          where: {
-            projectId: p.id,
-            tenantId
-          },
-          _count: { _all: true }
-        });
+      const enrichedProjects = await Promise.all(
+        projects.map(async (p) => {
+          const ticketStats = await prisma.ticket.groupBy({
+            by: ["status"],
+            where: {
+              projectId: p.id,
+              tenantId,
+            },
+            _count: { _all: true },
+          });
 
-        let total = 0;
-        let done = 0;
-        let inProgress = 0;
+          let total = 0;
+          let done = 0;
+          let inProgress = 0;
 
-        ticketStats.forEach(stat => {
-          const count = stat._count._all;
-          const status = stat.status?.toLowerCase() || '';
+          ticketStats.forEach((stat) => {
+            const count = stat._count._all;
+            const status = stat.status?.toLowerCase() || "";
 
-          total += count;
+            total += count;
 
-          // broader check for done states
-          if (['completed', 'done', 'closed', 'resolved'].includes(status)) {
-            done += count;
-          }
+            // broader check for done states
+            if (["completed", "done", "closed", "resolved"].includes(status)) {
+              done += count;
+            }
 
-          // broader check for in-progress states
-          if (['in_progress', 'in progress', 'active', 'in_review', 'testing', 'qa', 'dev', 'development'].includes(status)) {
-            inProgress += count;
-          }
-        });
+            // broader check for in-progress states
+            if (
+              [
+                "in_progress",
+                "in progress",
+                "active",
+                "in_review",
+                "testing",
+                "qa",
+                "dev",
+                "development",
+              ].includes(status)
+            ) {
+              inProgress += count;
+            }
+          });
 
-        return {
-          ...p,
-          totalTickets: total,
-          completedTickets: done,
-          inProgressTickets: inProgress,
-          memberCount: p._count.members
-        };
-      }));
+          return {
+            ...p,
+            totalTickets: total,
+            completedTickets: done,
+            inProgressTickets: inProgress,
+            memberCount: p._count.members,
+          };
+        }),
+      );
 
       // 5. Cache Result (TTL 5 mins)
       // await cacheService.set(cacheKey, enrichedProjects, 300);
 
       res.status(200).json({
         success: true,
-        data: enrichedProjects
+        data: enrichedProjects,
       } as ApiResponse);
-
     } catch (error) {
       console.error("Get selection projects error:", error);
-      res.status(500).json({ success: false, error: "Failed to fetch selection projects" } as ApiResponse);
+      res.status(500).json({
+        success: false,
+        error: "Failed to fetch selection projects",
+      } as ApiResponse);
     }
   }
 
@@ -905,7 +910,6 @@ export class ProjectController {
 
       const userId = req.user.id;
 
-
       const projects = await prisma.project.findMany({
         where: {
           tenantId: req.tenantId,
@@ -923,7 +927,6 @@ export class ProjectController {
         },
         orderBy: { name: "asc" },
       });
-
 
       const projectOptions = projects.map((project) => ({
         value: project.id,
@@ -945,15 +948,12 @@ export class ProjectController {
     }
   }
 
-
-
-
   /**
    * Get projects where user is a member or project manager (for ticket creation)
    */
   static async getUserProjectsForTickets(
     req: AuthRequest,
-    res: Response
+    res: Response,
   ): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
@@ -966,25 +966,23 @@ export class ProjectController {
 
       const userId = req.user.id;
 
-      const projects =
-        await prisma.project.findMany({
-          where: {
-            tenantId: req.tenantId,
-            status: "active",
-            OR: [
-              { projectManagerId: userId },
-              { members: { some: { userId: userId } } },
-            ],
-          },
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            description: true,
-          },
-          orderBy: { name: "asc" },
-        });
-
+      const projects = await prisma.project.findMany({
+        where: {
+          tenantId: req.tenantId,
+          status: "active",
+          OR: [
+            { projectManagerId: userId },
+            { members: { some: { userId: userId } } },
+          ],
+        },
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          description: true,
+        },
+        orderBy: { name: "asc" },
+      });
 
       const projectOptions = projects.map((project) => ({
         value: project.id,
@@ -1030,7 +1028,6 @@ export class ProjectController {
         return;
       }
 
-
       const [project, user] = await Promise.all([
         prisma.project.findFirst({
           where: { id, tenantId: req.tenantId },
@@ -1051,7 +1048,7 @@ export class ProjectController {
 
       // Check if user is already a team member
       const isAlreadyMember = project.members.some(
-        (member) => member.userId === userId
+        (member) => member.userId === userId,
       );
       if (isAlreadyMember) {
         throw new ValidationError("User is already a team member");
@@ -1090,7 +1087,6 @@ export class ProjectController {
         data: updatedProject,
         message: "Team member added successfully",
       } as ApiResponse);
-
     } catch (error: any) {
       console.error("Add team member error:", error);
 
@@ -1114,7 +1110,7 @@ export class ProjectController {
    */
   static async getProjectMembers(
     req: AuthRequest,
-    res: Response
+    res: Response,
   ): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
@@ -1126,7 +1122,6 @@ export class ProjectController {
       }
 
       const { id } = req.params;
-
 
       const project = await prisma.project.findFirst({
         where: {
@@ -1182,7 +1177,7 @@ export class ProjectController {
       // Remove duplicates (in case project manager is also in members list)
       const uniqueMembers = allMembers.filter(
         (member, index, self) =>
-          index === self.findIndex((m) => m.value === member.value)
+          index === self.findIndex((m) => m.value === member.value),
       );
 
       const members = uniqueMembers;
@@ -1214,7 +1209,7 @@ export class ProjectController {
    */
   static async getMyTicketsByProject(
     req: AuthRequest,
-    res: Response
+    res: Response,
   ): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
@@ -1226,7 +1221,6 @@ export class ProjectController {
       }
 
       const { id } = req.params; // project ID
-
 
       // Verify project exists and user has access
       const project = await prisma.project.findFirst({
@@ -1284,7 +1278,7 @@ export class ProjectController {
    */
   static async getProjectTickets(
     req: AuthRequest,
-    res: Response
+    res: Response,
   ): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
@@ -1296,7 +1290,6 @@ export class ProjectController {
       }
 
       const { id } = req.params; // project ID
-
 
       // Verify project exists and user has access
       const project = await prisma.project.findFirst({
@@ -1320,9 +1313,7 @@ export class ProjectController {
       const isMember = project.members.length > 0;
 
       if (!isProjectManager && !isMember) {
-        throw new AuthorizationError(
-          "You do not have access to this project"
-        );
+        throw new AuthorizationError("You do not have access to this project");
       }
 
       // Get all tickets in this project
@@ -1340,7 +1331,6 @@ export class ProjectController {
         },
         orderBy: { ticketNumber: "desc" },
       });
-
 
       res.status(200).json({
         success: true,
@@ -1377,7 +1367,7 @@ export class ProjectController {
    */
   static async removeTeamMember(
     req: AuthRequest,
-    res: Response
+    res: Response,
   ): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
@@ -1390,7 +1380,6 @@ export class ProjectController {
 
       const { id, userId } = req.params;
 
-
       const project = await prisma.project.findFirst({
         where: { id, tenantId: req.tenantId },
         include: { members: true },
@@ -1402,12 +1391,10 @@ export class ProjectController {
 
       // Check if user is actually a team member
       const isMember = project.members.some(
-        (member) => member.userId === userId
+        (member) => member.userId === userId,
       );
       if (!isMember) {
-        throw new ValidationError(
-          "User is not a team member of this project"
-        );
+        throw new ValidationError("User is not a team member of this project");
       }
 
       // Remove the team member
@@ -1442,7 +1429,6 @@ export class ProjectController {
         data: updatedProject,
         message: "Team member removed successfully",
       } as ApiResponse);
-
     } catch (error: any) {
       console.error("Remove team member error:", error);
 

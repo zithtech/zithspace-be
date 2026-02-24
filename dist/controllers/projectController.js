@@ -646,7 +646,10 @@ class ProjectController {
     static async getSelectionProjects(req, res) {
         try {
             if (!req.tenantId || !req.user) {
-                res.status(400).json({ success: false, error: "Tenant and Auth required" });
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant and Auth required",
+                });
                 return;
             }
             const userId = req.user.id;
@@ -665,15 +668,15 @@ class ProjectController {
             // 2. Determine Project Scope based on Role
             let whereClause = {
                 tenantId,
-                status: { not: 'ARCHIVED' } // Exclude archived by default
+                status: { not: "ARCHIVED" }, // Exclude archived by default
             };
             // STRICT ROLE LOGIC:
             // SUPER_ADMIN -> Sees ALL projects in tenant
             // ADMIN / MEMBER -> Sees ONLY assigned projects (Member or PM)
-            if (userRole?.toUpperCase() !== 'SUPER_ADMIN') {
+            if (userRole?.toUpperCase() !== "SUPER_ADMIN") {
                 whereClause.OR = [
                     { projectManagerId: userId },
-                    { members: { some: { userId } } }
+                    { members: { some: { userId } } },
                 ];
             }
             // 3. Fetch Projects
@@ -687,45 +690,54 @@ class ProjectController {
                     status: true,
                     projectManagerId: true,
                     projectManager: {
-                        select: { name: true, id: true }
+                        select: { name: true, id: true },
                     },
                     members: {
                         take: 5, // Limit mostly members for UI
                         select: {
-                            user: { select: { id: true, name: true, position: true } }
-                        }
+                            user: { select: { id: true, name: true, position: true } },
+                        },
                     },
                     _count: {
-                        select: { members: true }
-                    }
+                        select: { members: true },
+                    },
                 },
-                orderBy: { updatedAt: 'desc' }
+                orderBy: { updatedAt: "desc" },
             });
             // 4. Aggregate Ticket Stats (Real Data)
             // We do this in parallel for performance, or use a complex groupBy
             // For generic Prisma, iterating is safest for complex counts unless we use raw query
             const enrichedProjects = await Promise.all(projects.map(async (p) => {
                 const ticketStats = await database_1.prisma.ticket.groupBy({
-                    by: ['status'],
+                    by: ["status"],
                     where: {
                         projectId: p.id,
-                        tenantId
+                        tenantId,
                     },
-                    _count: { _all: true }
+                    _count: { _all: true },
                 });
                 let total = 0;
                 let done = 0;
                 let inProgress = 0;
-                ticketStats.forEach(stat => {
+                ticketStats.forEach((stat) => {
                     const count = stat._count._all;
-                    const status = stat.status?.toLowerCase() || '';
+                    const status = stat.status?.toLowerCase() || "";
                     total += count;
                     // broader check for done states
-                    if (['completed', 'done', 'closed', 'resolved'].includes(status)) {
+                    if (["completed", "done", "closed", "resolved"].includes(status)) {
                         done += count;
                     }
                     // broader check for in-progress states
-                    if (['in_progress', 'in progress', 'active', 'in_review', 'testing', 'qa', 'dev', 'development'].includes(status)) {
+                    if ([
+                        "in_progress",
+                        "in progress",
+                        "active",
+                        "in_review",
+                        "testing",
+                        "qa",
+                        "dev",
+                        "development",
+                    ].includes(status)) {
                         inProgress += count;
                     }
                 });
@@ -734,19 +746,22 @@ class ProjectController {
                     totalTickets: total,
                     completedTickets: done,
                     inProgressTickets: inProgress,
-                    memberCount: p._count.members
+                    memberCount: p._count.members,
                 };
             }));
             // 5. Cache Result (TTL 5 mins)
             // await cacheService.set(cacheKey, enrichedProjects, 300);
             res.status(200).json({
                 success: true,
-                data: enrichedProjects
+                data: enrichedProjects,
             });
         }
         catch (error) {
             console.error("Get selection projects error:", error);
-            res.status(500).json({ success: false, error: "Failed to fetch selection projects" });
+            res.status(500).json({
+                success: false,
+                error: "Failed to fetch selection projects",
+            });
         }
     }
     /**

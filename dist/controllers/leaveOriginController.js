@@ -5,7 +5,7 @@ const database_1 = require("@/config/database");
 // Create Leave Origin Structure
 const createLeaveOriginStructure = async (req, res) => {
     try {
-        const { origin, subOrigin, leaveTypes } = req.body;
+        const { origin, subOriginId, leaveTypes } = req.body;
         const tenantId = req.tenantId;
         const userId = req.user?.id;
         if (!tenantId) {
@@ -15,7 +15,7 @@ const createLeaveOriginStructure = async (req, res) => {
             data: {
                 tenantId,
                 origin,
-                subOrigin,
+                subOriginId,
                 createdById: userId || "system",
                 leaveTypes: {
                     create: Array.isArray(leaveTypes) ? leaveTypes.map((type) => ({
