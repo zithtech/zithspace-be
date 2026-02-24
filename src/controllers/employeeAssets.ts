@@ -21,7 +21,7 @@ export async function createEmployeeAssets(
       // If image is a base64 string, upload it to R2
       if (asset.image && asset.image.startsWith("data:")) {
         imageUrl = await uploadEmployeeAssetToR2(
-          asset.image,
+          asset.image || null,
           asset.imageName || "asset.png",
           req.tenantId!,
           employeeId,
@@ -31,13 +31,13 @@ export async function createEmployeeAssets(
       await tx.employeeAsset.create({
         data: {
           employeeId,
-          itemName: asset.item,
-          brandName: asset.brand,
-          modelName: asset.model,
-          modelNumber: asset.modelNumber,
-          uploadImage: imageUrl,
-          createdById: employeeId,
-          updatedById: employeeId,
+          itemName: asset.item || null,
+          brandName: asset.brand || null,
+          modelName: asset.model || null,
+          modelNumber: asset.modelNumber || null,
+          uploadImage: imageUrl || null,
+          createdById: employeeId || null,
+          updatedById: employeeId || null,
         },
       });
     }
