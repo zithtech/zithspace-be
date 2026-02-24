@@ -47,6 +47,15 @@ export const authenticateToken = async (
           tenantId: decoded.tenantId,
           isActive: true,
         },
+        include: {
+          position: {
+            select: {
+              id: true,
+              title: true,
+              code: true,
+            },
+          },
+        },
       });
       
       // Cache for 5 minutes
@@ -75,7 +84,7 @@ export const authenticateToken = async (
       tenantId: user.tenantId,
       email: user.workEmail,
       role: user.role as any,
-      position: user.position as any,
+      position: user.position?.title || null,
       name: user.name,
       sessionId: decoded.sessionId,
     };
@@ -129,6 +138,15 @@ export const optionalAuth = async (
         tenantId: decoded.tenantId,
         isActive: true,
       },
+      include: {
+        position: {
+          select: {
+            id: true,
+            title: true,
+            code: true,
+          },
+        },
+      },
     });
 
     if (user && (!req.tenantId || user.tenantId === req.tenantId)) {
@@ -137,7 +155,7 @@ export const optionalAuth = async (
         tenantId: user.tenantId,
         email: user.workEmail,
         role: user.role as any,
-        position: user.position as any,
+        position: user.position?.title || null,
         name: user.name,
         sessionId: decoded.sessionId,
       };

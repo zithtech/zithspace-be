@@ -11,6 +11,7 @@ const compression_1 = __importDefault(require("compression"));
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
+const express_session_1 = __importDefault(require("express-session"));
 // Import configurations
 const database_1 = require("@/config/database");
 const salaryComponentRoutes_1 = __importDefault(require("@/routes/salaryComponentRoutes"));
@@ -64,6 +65,7 @@ const repositoryRoutes_1 = __importDefault(require("@/routes/repositoryRoutes"))
 const departmentRoutes_1 = __importDefault(require("@/routes/departmentRoutes"));
 const subDepartmentRoutes_1 = __importDefault(require("@/routes/subDepartmentRoutes"));
 const positionRoutes_1 = __importDefault(require("@/routes/positionRoutes"));
+const calendar_1 = __importDefault(require("@/routes/calendar"));
 const leaveOriginRoutes_1 = __importDefault(require("@/routes/leaveOriginRoutes"));
 const emailHistoryRoutes_1 = __importDefault(require("@/routes/emailHistoryRoutes"));
 // Load environment
@@ -73,6 +75,16 @@ const app = (0, express_1.default)();
 // Body parsing middleware
 app.use(express_1.default.json({ limit: "10mb" }));
 app.use(express_1.default.urlencoded({ extended: true, limit: "10mb" }));
+app.use((0, express_session_1.default)({
+    secret: process.env.SESSION_SECRET || "your-fallback-secret-key",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        secure: process.env.NODE_ENV === "production", // true in production
+        httpOnly: true,
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    }
+}));
 // Connect to PostgreSQL
 const allowedOrigins = [
     "http://localhost:3000", // Local development
@@ -175,6 +187,7 @@ app.use("/api/channels", channels_1.default);
 app.use("/api/channels/:channelId/messages", messages_1.default);
 app.use("/api/email-history", emailHistoryRoutes_1.default);
 app.use("/api/timesheets", timesheet_1.default);
+app.use("/api/zoho", calendar_1.default);
 // onboarding
 // app.use("/api/employees", employeeRoutes);
 // app.use("/api/employee-addresses", employeeAddressRoutes);
