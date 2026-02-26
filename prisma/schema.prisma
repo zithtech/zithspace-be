@@ -1972,6 +1972,7 @@ model Employee {
   work_email      String   @db.VarChar(150)
   personal_email  String?  @db.VarChar(150)
   status          Boolean  @default(true)
+  profile_pic     String?  @db.VarChar(255) 
 
   created_by      String   @db.Uuid
   updated_by      String?  @db.Uuid

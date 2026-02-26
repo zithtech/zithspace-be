@@ -1,6 +1,7 @@
 import { prisma } from "@/config/database";
 
 import { AuthRequest } from "@/types";
+import { uploadEmployeeAssetToR2, deleteFileFromR2 } from "@/utils/r2Client";
 
 export async function createPersonalDetails(
   req: AuthRequest,
@@ -16,7 +17,7 @@ export async function createPersonalDetails(
       throw new Error("Personal details are missing from the request body");
     }
 
-    // ✅ Create employee
+    // ✅ Create employee (without profile pic first)
     const employee = await tx.employee.create({
       data: {
         tenantId: req.tenantId,
@@ -34,6 +35,27 @@ export async function createPersonalDetails(
         created_by: req.user.id,
       },
     });
+
+    // ✅ Handle profile image upload to R2
+    if (personal.profilePic) {
+      let profilePicUrl: string;
+      if (personal.profilePic.startsWith("http")) {
+        profilePicUrl = personal.profilePic;
+      } else {
+        profilePicUrl = await uploadEmployeeAssetToR2({
+          base64: personal.profilePic,
+          fileName: "profile.png", // A default name for profile pictures
+          tenantId: req.tenantId!,
+          employeeId: employee.id,
+          folder: "profile-pictures",
+        });
+      }
+      // Now update the employee with the URL
+      await tx.employee.update({
+        where: { id: employee.id },
+        data: { profile_pic: profilePicUrl },
+      });
+    }
 
     // ✅ Create addresses
     let currentAddr = personal.address?.current;
@@ -168,6 +190,7 @@ export async function getPersonalDetails(req: AuthRequest, employeeId: string) {
       lastName: employee.last_name,
       gender: employee.gender,
       dob: employee.date_of_birth,
+      profile_pic: (employee as any).profile_pic,
       bloodGroup: employee.blood_group,
       mobile: employee.mobile,
       workEmail: employee.work_email,
@@ -229,7 +252,7 @@ export async function getAllEmployees(req: AuthRequest) {
       },
     });
 
-    return employees.map((employee) => {
+    return employees.map((employee: any) => {
       const currentAddress = employee.addresses.find(
         (addr) => addr.addressType === "CURRENT",
       );
@@ -247,6 +270,7 @@ export async function getAllEmployees(req: AuthRequest) {
         lastName: employee.last_name,
         gender: employee.gender,
         dob: employee.date_of_birth,
+        profile_pic: employee.profile_pic,
         bloodGroup: employee.blood_group,
         mobile: employee.mobile,
         workEmail: employee.work_email,
@@ -299,6 +323,13 @@ export async function updatePersonalDetails(
   try {
     if (!req.user?.id || !req.tenantId) throw new Error("Unauthorized");
 
+    // ✅ Validate employeeId to prevent Prisma error
+    if (!employeeId || employeeId === "undefined" || employeeId === "null") {
+      throw new Error(
+        "Invalid Employee ID provided for update (in createEmployeeDetailes)",
+      );
+    }
+
     const { personal } = req.body;
 
     if (!personal) {
@@ -318,19 +349,61 @@ export async function updatePersonalDetails(
     }
 
     // ✅ Update employee basic info
+
+    const updateData: any = {
+      updated_by: req.user.id,
+    };
+
+    if (personal?.firstName) updateData.first_name = personal.firstName;
+
+    if (personal?.lastName) updateData.last_name = personal.lastName;
+
+    if (personal?.gender) updateData.gender = personal.gender;
+
+    if (personal?.bloodGroup) updateData.blood_group = personal.bloodGroup;
+
+    if (personal?.mobile) updateData.mobile = personal.mobile;
+
+    if (personal?.workEmail) updateData.work_email = personal.workEmail;
+
+    if (personal?.personalEmail)
+      updateData.personal_email = personal.personalEmail;
+
+    if (personal?.dob) {
+      const parsedDate = new Date(personal.dob);
+      if (!isNaN(parsedDate.getTime())) {
+        updateData.date_of_birth = parsedDate;
+      }
+    }
+
+    // ✅ Handle profile image upload
+    if (
+      personal.profilePic &&
+      personal.profilePic !== existingEmployee.profile_pic
+    ) {
+      let newProfilePicUrl: string | null = null;
+      // If it's a new base64 string, upload it
+      if (personal.profilePic.startsWith("data:")) {
+        newProfilePicUrl = await uploadEmployeeAssetToR2({
+          base64: personal.profilePic,
+          fileName: "profile.png",
+          tenantId: req.tenantId!,
+          employeeId: employeeId,
+          folder: "profile-pictures",
+        });
+      } else if (personal.profilePic.startsWith("http")) {
+        // If it's a new URL, use it
+        newProfilePicUrl = personal.profilePic;
+      }
+
+      if (newProfilePicUrl) {
+        updateData.profile_pic = newProfilePicUrl;
+      }
+    }
+
     const employee = await tx.employee.update({
       where: { id: employeeId },
-      data: {
-        first_name: personal.firstName,
-        last_name: personal.lastName,
-        gender: personal.gender,
-        date_of_birth: new Date(personal.dob),
-        blood_group: personal.bloodGroup,
-        mobile: personal.mobile,
-        work_email: personal.workEmail,
-        personal_email: personal.personalEmail,
-        updated_by: req.user.id,
-      },
+      data: updateData,
     });
 
     // ✅ Update addresses

@@ -53,6 +53,7 @@ export class AuthController {
             },
             include: {
               tenant: true,
+              employee: true,
               position: {
                 select: {
                   id: true,
@@ -389,6 +390,7 @@ export class AuthController {
           isActive: user.isActive,
           reportsTo: user.reportsTo,
           employeeId: user.employeeId,
+          employee: user?.employee || {}, // Include linked employee data if available
           tenant: user.tenant,
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
