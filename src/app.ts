@@ -71,11 +71,13 @@ import repositoryRoutes from "@/routes/repositoryRoutes";
 import departmentRoutes from "@/routes/departmentRoutes";
 import subDepartmentRoutes from "@/routes/subDepartmentRoutes";
 import positionRoutes from "@/routes/positionRoutes";
-import calenderRoutes from "@/routes/calendar"
+import calendarRoutes from "@/routes/calendar"
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
 import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
 // Load environment
 dotenv.config();
+console.log("🚀 API Starting up...");
+console.log("📅 Mounting calendar routes at /api/calendar");
 // Create Express application
 const app = express();
 
@@ -178,8 +180,12 @@ app.use("/api/leave-adjustments", leaveAdjustmentRoutes);
 app.use("/api/company-government-holidays", companyGovernmentHolidayRouter);
 app.use("/api/leave-origins", leaveOriginRoutes);
 app.use("/api/fixed-holidays", fixedHolidayRoutes);
+app.get("/api/direct-test", (req, res) => {
+  res.json({ success: true, message: "Direct app.get works" });
+});
 app.use("/api/auth", authRoutes);
 app.use("/api/tenants", tenantRoutes);
+app.use("/api/calendar", calendarRoutes);
 app.use("/api/projects", projectRoutes);
 import publicTicketRoutes from "@/routes/publicTickets";
 
@@ -219,7 +225,6 @@ app.use("/api/channels", channelRoutes);
 app.use("/api/channels/:channelId/messages", messageRoutes);
 app.use("/api/email-history", emailHistoryRoutes);
 app.use("/api/timesheets", timesheetRoutes);
-app.use("/api/zoho", calenderRoutes);
 
 // onboarding
 // app.use("/api/employees", employeeRoutes);
