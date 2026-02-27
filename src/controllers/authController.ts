@@ -2,15 +2,16 @@ import { Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { tenantAwarePrisma } from '@/config/database';
 import { JWTUtils } from '@/utils/jwt';
-import { 
-  AuthRequest, 
-  LoginCredentials, 
-  LoginResponse, 
+import {
+  AuthRequest,
+  LoginCredentials,
+  LoginResponse,
   ApiResponse,
   AuthenticationError,
   NotFoundError,
   CreateUserData
 } from '@/types';
+import { RBACService } from '@/modules/rbac/rbac.service';
 
 export class AuthController {
   /**
@@ -372,6 +373,13 @@ export class AuthController {
         return;
       }
 
+      // Load effective permissions from RBAC service (cached)
+      const permSet = await RBACService.getUserPermissions(
+        user.id,
+        user.tenantId,
+        user.role,
+      );
+
       res.status(200).json({
         success: true,
         data: {
@@ -390,6 +398,7 @@ export class AuthController {
           tenant: user.tenant,
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
+          permissions: Array.from(permSet),
         },
       } as ApiResponse);
     } catch (error) {

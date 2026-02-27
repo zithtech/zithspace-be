@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { SettingsController } from '@/controllers/settingsController';
-import { authenticateToken, requireAuth, requireAdmin } from '@/middleware/auth';
+import { authenticateToken, requireAuth } from '@/middleware/auth';
+import { requirePermission } from '@/middleware/permission';
+import { Permissions } from '@/types/permissions';
 import { resolveTenant } from '@/middleware/tenantContext';
 
 const router = Router();
@@ -50,7 +52,7 @@ router.get('/workflow-templates', SettingsController.getWorkflowTemplates);
  * @param   projectId - Project ID
  * @body    { workflowSteps: string[] }
  */
-router.put('/workflow-templates/:projectId', requireAdmin, SettingsController.updateWorkflowTemplate);
+router.put('/workflow-templates/:projectId', requirePermission(Permissions.SETTINGS_UPDATE), SettingsController.updateWorkflowTemplate);
 
 /**
  * @route   GET /api/settings/parent-tickets
@@ -80,7 +82,7 @@ router.get('/tenant', SettingsController.getTenantSettings);
  * @access  Private (admin only)
  * @body    { settings: object }
  */
-router.put('/tenant', requireAdmin, SettingsController.updateTenantSettings);
+router.put('/tenant', requirePermission(Permissions.SETTINGS_MANAGE), SettingsController.updateTenantSettings);
 
 /**
  * @route   GET /api/settings/search

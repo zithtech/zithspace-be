@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { ReleasePlansController } from '@/controllers/releasePlansController';
-import { authenticateToken, requireAuth, requireAdmin } from '@/middleware/auth';
+import { authenticateToken, requireAuth } from '@/middleware/auth';
+import { requirePermission } from '@/middleware/permission';
+import { Permissions } from '@/types/permissions';
 import { resolveTenant } from '@/middleware/tenantContext';
 
 const router = Router();
@@ -100,7 +102,7 @@ router.put('/:id', ReleasePlansController.updateReleasePlan);
  * @access  Private (admin only)
  * @param   id - Release plan ID
  */
-router.delete('/:id', requireAdmin, ReleasePlansController.deleteReleasePlan);
+router.delete('/:id', requirePermission(Permissions.PROJECT_MANAGE), ReleasePlansController.deleteReleasePlan);
 
 /**
  * @route   POST /api/release-plans/:id/start

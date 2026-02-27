@@ -3,7 +3,6 @@ import { Router } from "express";
 import {
   authenticateToken,
   requireAuth,
-  requireAdmin,
 } from "@/middleware/auth";
 import { resolveTenant } from "@/middleware/tenantContext";
 import { CustomerController } from "@/controllers/customerController";

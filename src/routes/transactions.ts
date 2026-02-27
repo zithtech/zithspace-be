@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { TransactionsController } from '@/controllers/transactionsController';
-import { authenticateToken, requireAuth, requireAdmin } from '@/middleware/auth';
+import { authenticateToken, requireAuth } from '@/middleware/auth';
+import { requirePermission } from '@/middleware/permission';
+import { Permissions } from '@/types/permissions';
 import { resolveTenant } from '@/middleware/tenantContext';
 
 const router = Router();
@@ -65,7 +67,7 @@ router.get('/:id', TransactionsController.getTransactionById);
  * @access  Private (admin only)
  * @body    CreateTransactionData
  */
-router.post('/', requireAdmin, TransactionsController.createTransaction);
+router.post('/', requirePermission(Permissions.TRANSACTION_CREATE), TransactionsController.createTransaction);
 
 /**
  * @route   PUT /api/transactions/:id
@@ -74,7 +76,7 @@ router.post('/', requireAdmin, TransactionsController.createTransaction);
  * @param   id - Transaction ID
  * @body    Partial transaction data
  */
-router.put('/:id', requireAdmin, TransactionsController.updateTransaction);
+router.put('/:id', requirePermission(Permissions.TRANSACTION_UPDATE), TransactionsController.updateTransaction);
 
 /**
  * @route   DELETE /api/transactions/:id
@@ -82,6 +84,6 @@ router.put('/:id', requireAdmin, TransactionsController.updateTransaction);
  * @access  Private (admin only)
  * @param   id - Transaction ID
  */
-router.delete('/:id', requireAdmin, TransactionsController.deleteTransaction);
+router.delete('/:id', requirePermission(Permissions.TRANSACTION_DELETE), TransactionsController.deleteTransaction);
 
 export default router;

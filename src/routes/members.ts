@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { UserController } from '@/controllers/userController';
-import { authenticateToken, requireAuth, requireAdmin } from '@/middleware/auth';
+import { authenticateToken, requireAuth } from '@/middleware/auth';
+import { requirePermission } from '@/middleware/permission';
+import { Permissions } from '@/types/permissions';
 import { resolveTenant } from '@/middleware/tenantContext';
 
 const router = Router();
@@ -42,7 +44,7 @@ router.get('/:id', UserController.getMemberById);
  * @access  Private (admin only)
  * @body    CreateUserData
  */
-router.post('/', requireAdmin, UserController.createMember);
+router.post('/', requirePermission(Permissions.USER_CREATE), UserController.createMember);
 
 /**
  * @route   PUT /api/members/:id
@@ -51,7 +53,7 @@ router.post('/', requireAdmin, UserController.createMember);
  * @param   id - Member ID
  * @body    UpdateUserData
  */
-router.put('/:id', requireAdmin, UserController.updateMember);
+router.put('/:id', requirePermission(Permissions.USER_UPDATE), UserController.updateMember);
 
 /**
  * @route   DELETE /api/members/:id
@@ -59,7 +61,7 @@ router.put('/:id', requireAdmin, UserController.updateMember);
  * @access  Private (admin only)
  * @param   id - Member ID
  */
-router.delete('/:id', requireAdmin, UserController.deleteMember);
+router.delete('/:id', requirePermission(Permissions.USER_DELETE), UserController.deleteMember);
 
 /**
  * @route   PATCH /api/members/:id/activate
@@ -67,7 +69,7 @@ router.delete('/:id', requireAdmin, UserController.deleteMember);
  * @access  Private (admin only)
  * @param   id - Member ID
  */
-router.patch('/:id/activate', requireAdmin, UserController.activateMember);
+router.patch('/:id/activate', requirePermission(Permissions.USER_MANAGE), UserController.activateMember);
 
 /**
  * @route   PATCH /api/members/:id/assign-shift
@@ -76,6 +78,6 @@ router.patch('/:id/activate', requireAdmin, UserController.activateMember);
  * @param   id - Member ID
  * @body    { shiftId: string }
  */
-router.patch('/:id/assign-shift', requireAdmin, UserController.assignShift);
+router.patch('/:id/assign-shift', requirePermission(Permissions.USER_MANAGE), UserController.assignShift);
 
 export default router;

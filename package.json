@@ -13,12 +13,13 @@
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:seed": "tsx src/scripts/seed.ts",
+    "db:seed-rbac": "npx ts-node -r tsconfig-paths/register src/scripts/seed-rbac.ts",
     "lint": "eslint src --ext .ts",
     "test": "jest",
     "postinstall": "prisma generate"
   },
   "_moduleAliases": {
-    "@": "dist"
+    "@": "src"
   },
   "keywords": [
     "express",

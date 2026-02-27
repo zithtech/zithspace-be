@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { ProjectController } from '@/controllers/projectController';
-import { authenticateToken, requireAuth, requireAdmin } from '@/middleware/auth';
+import { authenticateToken, requireAuth } from '@/middleware/auth';
+import { requirePermission } from '@/middleware/permission';
+import { Permissions } from '@/types/permissions';
 import { resolveTenant } from '@/middleware/tenantContext';
 
 const router = Router();
@@ -101,7 +103,7 @@ router.get('/:id', ProjectController.getProjectById);
  * @access  Private (admin or project manager role)
  * @body    CreateProjectData
  */
-router.post('/', requireAdmin, ProjectController.createProject);
+router.post('/', requirePermission(Permissions.PROJECT_CREATE), ProjectController.createProject);
 
 /**
  * @route   PUT /api/projects/:id
@@ -118,7 +120,7 @@ router.put('/:id', ProjectController.updateProject);
  * @access  Private (admin only)
  * @param   id - Project ID
  */
-router.delete('/:id', requireAdmin, ProjectController.deleteProject);
+router.delete('/:id', requirePermission(Permissions.PROJECT_DELETE), ProjectController.deleteProject);
 
 /**
  * @route   POST /api/projects/:id/team-members

@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { AttendanceController } from '@/controllers/attendanceController';
-import { authenticateToken, requireAuth, requireAdmin } from '@/middleware/auth';
+import { authenticateToken, requireAuth } from '@/middleware/auth';
+import { requirePermission } from '@/middleware/permission';
+import { Permissions } from '@/types/permissions';
 import { resolveTenant } from '@/middleware/tenantContext';
 
 const router = Router();
@@ -79,7 +81,7 @@ router.post('/clock-out', AttendanceController.clockOut);
  * @access  Private (admin only)
  * @body    CreateAttendanceData
  */
-router.post('/', requireAdmin, AttendanceController.createAttendance);
+router.post('/', requirePermission(Permissions.ATTENDANCE_MANAGE), AttendanceController.createAttendance);
 
 /**
  * @route   PUT /api/attendance/:id
@@ -88,6 +90,6 @@ router.post('/', requireAdmin, AttendanceController.createAttendance);
  * @param   id - Attendance record ID
  * @body    Partial attendance data
  */
-router.put('/:id', requireAdmin, AttendanceController.updateAttendance);
+router.put('/:id', requirePermission(Permissions.ATTENDANCE_MANAGE), AttendanceController.updateAttendance);
 
 export default router;

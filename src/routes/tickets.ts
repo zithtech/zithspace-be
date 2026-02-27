@@ -4,8 +4,9 @@ import { TicketCodeController } from "@/controllers/ticketCodeController";
 import {
   authenticateToken,
   requireAuth,
-  requireAdmin,
 } from "@/middleware/auth";
+import { requirePermission } from '@/middleware/permission';
+import { Permissions } from '@/types/permissions';
 import { resolveTenant } from "@/middleware/tenantContext";
 
 const router = Router();
@@ -173,7 +174,7 @@ router.put("/:id", TicketController.updateTicket);
  * @access  Private (admin only)
  * @param   id - Ticket ID
  */
-router.delete("/:id", requireAdmin, TicketController.deleteTicket);
+router.delete("/:id", requirePermission(Permissions.TICKET_DELETE), TicketController.deleteTicket);
 
 /**
  * @route   PATCH /api/tickets/bulk/status

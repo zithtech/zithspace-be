@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { ClientController } from '@/controllers/clientController';
-import { authenticateToken, requireAuth, requireAdmin } from '@/middleware/auth';
+import { authenticateToken, requireAuth } from '@/middleware/auth';
+import { requirePermission } from '@/middleware/permission';
+import { Permissions } from '@/types/permissions';
 import { resolveTenant } from '@/middleware/tenantContext';
 
 const router = Router();
@@ -73,7 +75,7 @@ router.put('/:id', ClientController.updateClient);
  * @access  Private (admin only)
  * @param   id - Client ID
  */
-router.delete('/:id', requireAdmin, ClientController.deleteClient);
+router.delete('/:id', requirePermission(Permissions.CLIENT_DELETE), ClientController.deleteClient);
 
 /**
  * @route   PATCH /api/clients/bulk/status
@@ -81,6 +83,6 @@ router.delete('/:id', requireAdmin, ClientController.deleteClient);
  * @access  Private (admin only)
  * @body    { clientIds: string[], isActive: boolean }
  */
-router.patch('/bulk/status', requireAdmin, ClientController.bulkUpdateClientStatus);
+router.patch('/bulk/status', requirePermission(Permissions.CLIENT_MANAGE), ClientController.bulkUpdateClientStatus);
 
 export default router;

@@ -9,6 +9,8 @@ import {
   CreateProjectData,
   UpdateProjectData,
 } from "@/types";
+import { RBACService } from '@/modules/rbac/rbac.service';
+import { Permissions } from '@/types/permissions';
 
 export class ProjectController {
   /**
@@ -789,7 +791,7 @@ export class ProjectController {
       // STRICT ROLE LOGIC:
       // SUPER_ADMIN -> Sees ALL projects in tenant
       // ADMIN / MEMBER -> Sees ONLY assigned projects (Member or PM)
-      if (userRole?.toUpperCase() !== "SUPER_ADMIN") {
+      if (!await RBACService.hasPermission(userId, tenantId, Permissions.PROJECT_MANAGE, userRole)) {
         whereClause.OR = [
           { projectManagerId: userId },
           { members: { some: { userId } } },

@@ -3,8 +3,9 @@ import LeaveController from "@/controllers/leaveController";
 import {
   authenticateToken,
   requireAuth,
-  requireAdmin,
 } from "@/middleware/auth";
+import { requirePermission } from '@/middleware/permission';
+import { Permissions } from '@/types/permissions';
 import { resolveTenant } from "@/middleware/tenantContext";
 
 const router = Router();
@@ -49,7 +50,7 @@ router.get("/:id", LeaveController.getLeaveById);
  * @desc    Get all leaves (admin only)
  * @access  Private (admin only)
  */
-router.get("/", requireAdmin, LeaveController.getAllLeaves);
+router.get("/", requirePermission(Permissions.LEAVE_MANAGE), LeaveController.getAllLeaves);
 
 /**
  * @route   PUT /api/leaves/:id/approve

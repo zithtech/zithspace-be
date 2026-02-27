@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-import { authenticateToken, requireAuth, requireAdmin } from '@/middleware/auth';
+import { authenticateToken, requireAuth } from '@/middleware/auth';
 import { resolveTenant } from '@/middleware/tenantContext';
 import InvoiceSettingsController from '@/controllers/InvoiceSettingsController';
 
