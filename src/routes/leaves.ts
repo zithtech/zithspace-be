@@ -22,28 +22,28 @@ router.use(requireAuth);
  * @desc    Apply for leave
  * @access  Private (authenticated users)
  */
-router.post("/", LeaveController.applyLeave);
+router.post("/", requirePermission(Permissions.LEAVE_CREATE), LeaveController.applyLeave);
 
 /**
  * @route   GET /api/leaves/my-leaves
  * @desc    Get current user's leaves
  * @access  Private (authenticated users)
  */
-router.get("/my-leaves", LeaveController.getMyLeaves);
+router.get("/my-leaves", requirePermission(Permissions.LEAVE_READ), LeaveController.getMyLeaves);
 
 /**
  * @route   GET /api/leaves/pending-approvals
  * @desc    Get pending leave approvals (for managers and super admins)
  * @access  Private (managers and super admins)
  */
-router.get("/pending-approvals", LeaveController.getPendingApprovals);
+router.get("/pending-approvals", requirePermission(Permissions.LEAVE_APPROVE), LeaveController.getPendingApprovals);
 
 /**
  * @route   GET /api/leaves/:id
  * @desc    Get leave by ID
  * @access  Private (authenticated users - own leaves, managers - subordinates, admins - all)
  */
-router.get("/:id", LeaveController.getLeaveById);
+router.get("/:id", requirePermission(Permissions.LEAVE_READ), LeaveController.getLeaveById);
 
 /**
  * @route   GET /api/leaves
@@ -57,20 +57,20 @@ router.get("/", requirePermission(Permissions.LEAVE_MANAGE), LeaveController.get
  * @desc    Approve leave (managers and super admins)
  * @access  Private (managers for subordinates, super admins for all)
  */
-router.put("/:id/approve", LeaveController.approveLeave);
+router.put("/:id/approve", requirePermission(Permissions.LEAVE_APPROVE), LeaveController.approveLeave);
 
 /**
  * @route   PUT /api/leaves/:id/reject
  * @desc    Reject leave (managers and super admins)
  * @access  Private (managers for subordinates, super admins for all)
  */
-router.put("/:id/reject", LeaveController.rejectLeave);
+router.put("/:id/reject", requirePermission(Permissions.LEAVE_APPROVE), LeaveController.rejectLeave);
 
 /**
  * @route   PUT /api/leaves/:id/cancel
  * @desc    Cancel own leave
  * @access  Private (authenticated users - own leaves only)
  */
-router.put("/:id/cancel", LeaveController.cancelLeave);
+router.put("/:id/cancel", requirePermission(Permissions.LEAVE_UPDATE), LeaveController.cancelLeave);
 
 export default router;

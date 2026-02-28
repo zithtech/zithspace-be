@@ -19,14 +19,14 @@ router.use(requireAuth);
  * @desc    Get client statistics (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/stats', ClientController.getClientStats);
+router.get('/stats', requirePermission(Permissions.CLIENT_READ), ClientController.getClientStats);
 
 /**
  * @route   GET /api/clients/select
  * @desc    Get clients for dropdown/select (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/select', ClientController.getClientsForSelect);
+router.get('/select', requirePermission(Permissions.CLIENT_READ), ClientController.getClientsForSelect);
 
 /**
  * @route   GET /api/clients/search
@@ -34,7 +34,7 @@ router.get('/select', ClientController.getClientsForSelect);
  * @access  Private (authenticated users within tenant)
  * @query   q, limit
  */
-router.get('/search', ClientController.searchClients);
+router.get('/search', requirePermission(Permissions.CLIENT_READ), ClientController.searchClients);
 
 /**
  * @route   GET /api/clients
@@ -42,7 +42,7 @@ router.get('/search', ClientController.searchClients);
  * @access  Private (authenticated users within tenant)
  * @query   page, limit, search, status, sortBy, sortOrder
  */
-router.get('/', ClientController.getClients);
+router.get('/', requirePermission(Permissions.CLIENT_READ), ClientController.getClients);
 
 /**
  * @route   GET /api/clients/:id
@@ -50,7 +50,7 @@ router.get('/', ClientController.getClients);
  * @access  Private (authenticated users within tenant)
  * @param   id - Client ID
  */
-router.get('/:id', ClientController.getClientById);
+router.get('/:id', requirePermission(Permissions.CLIENT_READ), ClientController.getClientById);
 
 /**
  * @route   POST /api/clients
@@ -58,7 +58,7 @@ router.get('/:id', ClientController.getClientById);
  * @access  Private (authenticated users within tenant)
  * @body    CreateClientData
  */
-router.post('/', ClientController.createClient);
+router.post('/', requirePermission(Permissions.CLIENT_CREATE), ClientController.createClient);
 
 /**
  * @route   PUT /api/clients/:id
@@ -67,7 +67,7 @@ router.post('/', ClientController.createClient);
  * @param   id - Client ID
  * @body    UpdateClientData
  */
-router.put('/:id', ClientController.updateClient);
+router.put('/:id', requirePermission(Permissions.CLIENT_UPDATE), ClientController.updateClient);
 
 /**
  * @route   DELETE /api/clients/:id

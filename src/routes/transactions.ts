@@ -20,14 +20,14 @@ router.use(requireAuth);
  * @access  Private (authenticated users within tenant)
  * @query   startDate, endDate
  */
-router.get('/summary', TransactionsController.getTransactionSummary);
+router.get('/summary', requirePermission(Permissions.TRANSACTION_READ), TransactionsController.getTransactionSummary);
 
 /**
  * @route   GET /api/transactions/balance/account
  * @desc    Get overall account balance (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/balance/account', TransactionsController.getAccountBalance);
+router.get('/balance/account', requirePermission(Permissions.TRANSACTION_READ), TransactionsController.getAccountBalance);
 
 /**
  * @route   GET /api/transactions/balance/user/:userId
@@ -35,7 +35,7 @@ router.get('/balance/account', TransactionsController.getAccountBalance);
  * @access  Private (authenticated users within tenant)
  * @param   userId - User ID
  */
-router.get('/balance/user/:userId', TransactionsController.getUserBalance);
+router.get('/balance/user/:userId', requirePermission(Permissions.TRANSACTION_READ), TransactionsController.getUserBalance);
 
 /**
  * @route   GET /api/transactions/monthly
@@ -43,7 +43,7 @@ router.get('/balance/user/:userId', TransactionsController.getUserBalance);
  * @access  Private (authenticated users within tenant)
  * @query   year, month
  */
-router.get('/monthly', TransactionsController.getMonthlySummary);
+router.get('/monthly', requirePermission(Permissions.TRANSACTION_READ), TransactionsController.getMonthlySummary);
 
 /**
  * @route   GET /api/transactions
@@ -51,7 +51,7 @@ router.get('/monthly', TransactionsController.getMonthlySummary);
  * @access  Private (authenticated users within tenant)
  * @query   page, limit, type, category, userId, startDate, endDate, search, sortBy, sortOrder
  */
-router.get('/', TransactionsController.getTransactions);
+router.get('/', requirePermission(Permissions.TRANSACTION_READ), TransactionsController.getTransactions);
 
 /**
  * @route   GET /api/transactions/:id
@@ -59,7 +59,7 @@ router.get('/', TransactionsController.getTransactions);
  * @access  Private (authenticated users within tenant)
  * @param   id - Transaction ID
  */
-router.get('/:id', TransactionsController.getTransactionById);
+router.get('/:id', requirePermission(Permissions.TRANSACTION_READ), TransactionsController.getTransactionById);
 
 /**
  * @route   POST /api/transactions

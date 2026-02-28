@@ -21,7 +21,7 @@ router.use(requireAuth);
  * @query   page, limit, projectId, search, sortBy, sortOrder
  * @note    Only returns tickets deleted within the last 7 days
  */
-router.get('/', TrashController.getTrashTickets);
+router.get('/', requirePermission(Permissions.TICKET_READ), TrashController.getTrashTickets);
 
 /**
  * @route   POST /api/trash/move
@@ -29,7 +29,7 @@ router.get('/', TrashController.getTrashTickets);
  * @access  Private (authenticated users within tenant)
  * @body    { ticketIds: string[] }
  */
-router.post('/move', TrashController.moveToTrash);
+router.post('/move', requirePermission(Permissions.TICKET_UPDATE), TrashController.moveToTrash);
 
 /**
  * @route   POST /api/trash/restore
@@ -37,7 +37,7 @@ router.post('/move', TrashController.moveToTrash);
  * @access  Private (authenticated users within tenant)
  * @body    { ticketIds: string[] }
  */
-router.post('/restore', TrashController.restoreFromTrash);
+router.post('/restore', requirePermission(Permissions.TICKET_UPDATE), TrashController.restoreFromTrash);
 
 /**
  * @route   DELETE /api/trash/permanent

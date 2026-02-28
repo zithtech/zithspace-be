@@ -20,7 +20,7 @@ router.use(requireAuth);
  * @access  Private (authenticated users within tenant)
  * @query   role, position
  */
-router.get('/select', UserController.getMembersForSelect);
+router.get('/select', requirePermission(Permissions.USER_READ), UserController.getMembersForSelect);
 
 /**
  * @route   GET /api/members
@@ -28,7 +28,7 @@ router.get('/select', UserController.getMembersForSelect);
  * @access  Private (authenticated users within tenant)
  * @query   page, limit, role, position, isActive, search, sortBy, sortOrder
  */
-router.get('/', UserController.getMembers);
+router.get('/', requirePermission(Permissions.USER_READ), UserController.getMembers);
 
 /**
  * @route   GET /api/members/:id
@@ -36,7 +36,7 @@ router.get('/', UserController.getMembers);
  * @access  Private (authenticated users within tenant)
  * @param   id - Member ID
  */
-router.get('/:id', UserController.getMemberById);
+router.get('/:id', requirePermission(Permissions.USER_READ), UserController.getMemberById);
 
 /**
  * @route   POST /api/members
