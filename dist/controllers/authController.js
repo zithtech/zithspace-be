@@ -7,6 +7,7 @@ exports.AuthController = void 0;
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const database_1 = require("@/config/database");
 const jwt_1 = require("@/utils/jwt");
+const rbac_service_1 = require("@/modules/rbac/rbac.service");
 class AuthController {
     /**
      * User login with tenant context
@@ -322,6 +323,8 @@ class AuthController {
                 });
                 return;
             }
+            // Load effective permissions from RBAC service (cached)
+            const permSet = await rbac_service_1.RBACService.getUserPermissions(user.id, user.tenantId, user.role);
             res.status(200).json({
                 success: true,
                 data: {
@@ -340,6 +343,7 @@ class AuthController {
                     tenant: user.tenant,
                     createdAt: user.createdAt,
                     updatedAt: user.updatedAt,
+                    permissions: Array.from(permSet),
                 },
             });
         }

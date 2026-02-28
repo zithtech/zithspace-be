@@ -68,6 +68,7 @@ const positionRoutes_1 = __importDefault(require("@/routes/positionRoutes"));
 const calendar_1 = __importDefault(require("@/routes/calendar"));
 const leaveOriginRoutes_1 = __importDefault(require("@/routes/leaveOriginRoutes"));
 const emailHistoryRoutes_1 = __importDefault(require("@/routes/emailHistoryRoutes"));
+const rbac_1 = __importDefault(require("@/routes/rbac"));
 // Load environment
 dotenv_1.default.config();
 // Create Express application
@@ -199,6 +200,8 @@ app.use("/api/employee-timelines", employeeTimeline_1.default);
 //app.use("/api/employee-employment-details", employeeEmploymentDetailsRoutes);
 // main
 app.use("/api/onboarding", onboardingRoutes_1.default);
+// RBAC management API
+app.use("/api/rbac", rbac_1.default);
 // app.use("/api/addresses", addressRoutes);
 //app.use("/api/employee_address", addressRoutes);
 app.get("/api/health", (req, res) => {
