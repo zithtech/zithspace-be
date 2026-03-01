@@ -180,6 +180,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/tenants", tenantRoutes);
 app.use("/api/projects", projectRoutes);
 import publicTicketRoutes from "@/routes/publicTickets";
+import employeeSettingsRoutes from "./routes/employeeSettingsRoutes";
 
 app.use("/api/public/tickets", publicTicketRoutes);
 app.use("/api/tickets", ticketRoutes);
@@ -231,6 +232,7 @@ app.use("/api/employee-timelines", employeeTimelineRoutes);
 // main
 app.use("/api/onboarding", employeeOnboardingRoutes);
 app.use("/api/profile/new", newProfileRoutes);
+app.use("/api/employeesettings", employeeSettingsRoutes);
 
 // app.use("/api/addresses", addressRoutes);
 //app.use("/api/employee_address", addressRoutes);
