@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { TrashController } from '@/controllers/trashController';
-import { authenticateToken, requireAuth, requireAdmin } from '@/middleware/auth';
+import { authenticateToken, requireAuth } from '@/middleware/auth';
+import { requirePermission } from '@/middleware/permission';
+import { Permissions } from '@/types/permissions';
 import { resolveTenant } from '@/middleware/tenantContext';
 
 const router = Router();
@@ -19,7 +21,7 @@ router.use(requireAuth);
  * @query   page, limit, projectId, search, sortBy, sortOrder
  * @note    Only returns tickets deleted within the last 7 days
  */
-router.get('/', TrashController.getTrashTickets);
+router.get('/', requirePermission(Permissions.TICKET_READ), TrashController.getTrashTickets);
 
 /**
  * @route   POST /api/trash/move
@@ -27,7 +29,7 @@ router.get('/', TrashController.getTrashTickets);
  * @access  Private (authenticated users within tenant)
  * @body    { ticketIds: string[] }
  */
-router.post('/move', TrashController.moveToTrash);
+router.post('/move', requirePermission(Permissions.TICKET_UPDATE), TrashController.moveToTrash);
 
 /**
  * @route   POST /api/trash/restore
@@ -35,7 +37,7 @@ router.post('/move', TrashController.moveToTrash);
  * @access  Private (authenticated users within tenant)
  * @body    { ticketIds: string[] }
  */
-router.post('/restore', TrashController.restoreFromTrash);
+router.post('/restore', requirePermission(Permissions.TICKET_UPDATE), TrashController.restoreFromTrash);
 
 /**
  * @route   DELETE /api/trash/permanent
@@ -44,7 +46,7 @@ router.post('/restore', TrashController.restoreFromTrash);
  * @body    { ticketIds: string[] }
  * @warning This action cannot be undone
  */
-router.delete('/permanent', requireAdmin, TrashController.permanentlyDelete);
+router.delete('/permanent', requirePermission(Permissions.TICKET_MANAGE), TrashController.permanentlyDelete);
 
 /**
  * @route   POST /api/trash/empty
@@ -53,7 +55,7 @@ router.delete('/permanent', requireAdmin, TrashController.permanentlyDelete);
  * @body    { force?: boolean, projectId?: string }
  * @note    If not forced, only deletes tickets older than 7 days
  */
-router.post('/empty', requireAdmin, TrashController.emptyTrash);
+router.post('/empty', requirePermission(Permissions.TICKET_MANAGE), TrashController.emptyTrash);
 
 /**
  * @route   POST /api/trash/auto-purge
@@ -61,6 +63,6 @@ router.post('/empty', requireAdmin, TrashController.emptyTrash);
  * @access  Private (admin only)
  * @note    Permanently deletes tickets that have been in trash for more than 7 days
  */
-router.post('/auto-purge', requireAdmin, TrashController.autoPurge);
+router.post('/auto-purge', requirePermission(Permissions.TICKET_MANAGE), TrashController.autoPurge);
 
 export default router;
