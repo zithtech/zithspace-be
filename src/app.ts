@@ -75,6 +75,7 @@ import calenderRoutes from "@/routes/calendar"
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
 import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
 import rbacRoutes from "@/routes/rbac";
+import agentRoutes from "@/routes/agent";
 // Load environment
 dotenv.config();
 // Create Express application
@@ -236,6 +237,9 @@ app.use("/api/onboarding", employeeOnboardingRoutes);
 
 // RBAC management API
 app.use("/api/rbac", rbacRoutes);
+
+// AI Agent API
+app.use("/api/agent", agentRoutes);
 
 // app.use("/api/addresses", addressRoutes);
 //app.use("/api/employee_address", addressRoutes);

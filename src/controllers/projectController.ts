@@ -226,12 +226,22 @@ export class ProjectController {
       // Auto-generate code if not provided
       let projectCode = code;
       if (!projectCode) {
+        // Extract alphabetic characters for prefix
         const namePrefix = name
           .replace(/[^a-zA-Z]/g, "")
           .substring(0, 3)
           .toUpperCase();
+        
+        // Generate timestamp suffix
         const timestamp = Date.now().toString().slice(-4);
-        projectCode = `${namePrefix}${timestamp}`;
+        
+        // If no alphabetic characters, use "PRJ" as default prefix
+        const prefix = namePrefix.length > 0 ? namePrefix : "PRJ";
+        
+        projectCode = `${prefix}${timestamp}`;
+        
+        // Log auto-generated code for debugging
+        console.log(`[Project Creation] Auto-generated code: ${projectCode} for project: "${name}" (tenant: ${req.tenantId})`);
       }
 
       // Validate project manager exists and belongs to tenant
@@ -323,6 +333,9 @@ export class ProjectController {
           },
         },
       });
+
+      // Log successful project creation for debugging
+      console.log(`[Project Created] ID: ${project.id}, Name: "${project.name}", Code: ${project.code}, Tenant: ${req.tenantId}`);
 
       res.status(201).json({
         success: true,
@@ -492,6 +505,9 @@ export class ProjectController {
           },
         },
       });
+
+      // Log successful project update for debugging
+      console.log(`[Project Updated] ID: ${project.id}, Name: "${project.name}", Code: ${project.code}, Tenant: ${req.tenantId}`);
 
       res.status(200).json({
         success: true,
