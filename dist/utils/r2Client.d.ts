@@ -32,6 +32,17 @@ export declare function uploadFileToR2(base64File: string, fileName: string, ten
  */
 export declare function uploadEmployeeDocumentToR2(base64File: string, fileName: string, tenantId: string, employeeId: string, documentType: string): Promise<string>;
 /**
+ * Upload Client V2 document to Cloudflare R2
+ * @param base64File - Base64 encoded file string
+ * @param fileName - Original file name
+ * @param tenantId - Tenant ID
+ * @param clientId - Client ID
+ * @param category - Main Category (e.g., Sales, Legal)
+ * @param documentType - Sub Category of document
+ * @returns Public URL of uploaded document
+ */
+export declare function uploadClientDocumentToR2(base64File: string, fileName: string, tenantId: string, clientId: string, category: string, documentType: string): Promise<string>;
+/**
  * Upload employee asset image to Cloudflare R2
  * @param base64File - Base64 encoded file string or an existing URL
  * @param fileName - Original file name

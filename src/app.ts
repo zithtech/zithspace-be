@@ -1,4 +1,6 @@
-import "module-alias/register";
+if (process.env.NODE_ENV !== "development") {
+  require("module-alias/register");
+}
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -26,6 +28,7 @@ import projectRoutes from "@/routes/projects";
 import ticketRoutes from "@/routes/tickets";
 import attendanceRoutes from "@/routes/attendance";
 import clientRoutes from "@/routes/clients";
+import clientV2Routes from "@/routes/clientsV2";
 import memberRoutes from "@/routes/members";
 import shiftRoutes from "@/routes/shifts";
 import transactionRoutes from "@/routes/transactions";
@@ -187,6 +190,7 @@ app.use("/api/public/tickets", publicTicketRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/clients", clientRoutes);
+app.use("/api/clients-v2", clientV2Routes);
 app.use("/api/members", memberRoutes);
 app.use("/api/shifts", shiftRoutes);
 app.use("/api/transactions", transactionRoutes);

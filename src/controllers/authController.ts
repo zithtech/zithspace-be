@@ -2,10 +2,10 @@ import { Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { tenantAwarePrisma } from '@/config/database';
 import { JWTUtils } from '@/utils/jwt';
-import { 
-  AuthRequest, 
-  LoginCredentials, 
-  LoginResponse, 
+import {
+  AuthRequest,
+  LoginCredentials,
+  LoginResponse,
   ApiResponse,
   AuthenticationError,
   NotFoundError,
@@ -124,7 +124,7 @@ export class AuthController {
       res.cookie('refreshToken', refreshToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production'? "none": 'lax',
+        sameSite: process.env.NODE_ENV === 'production' ? "none" : 'lax',
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
         path: '/', // Ensure cookie is available for all paths
       });
@@ -229,7 +229,7 @@ export class AuthController {
       await tenantAwarePrisma.withTenant(
         decoded.tenantId,
         async (client) => {
-          await client.refreshToken.delete({
+          await client.refreshToken.deleteMany({
             where: { id: storedToken.id },
           });
 
@@ -247,7 +247,7 @@ export class AuthController {
       res.cookie('refreshToken', newRefreshToken, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production'? "none": 'lax',
+        sameSite: process.env.NODE_ENV === 'production' ? "none" : 'lax',
         maxAge: 7 * 24 * 60 * 60 * 1000, // 30 days
         path: '/', // Ensure cookie is available for all paths
       });
@@ -451,8 +451,8 @@ export class AuthController {
       const userData: CreateUserData = req.body;
 
       // Validate required fields
-      if (!userData.name || !userData.workEmail || !userData.personalEmail || 
-          !userData.phone || !userData.password || !userData.positionId) {
+      if (!userData.name || !userData.workEmail || !userData.personalEmail ||
+        !userData.phone || !userData.password || !userData.positionId) {
         res.status(400).json({
           success: false,
           error: 'All required fields must be provided',
@@ -511,7 +511,7 @@ export class AuthController {
       } as ApiResponse);
     } catch (error: any) {
       console.error('Create user error:', error);
-      
+
       if (error.code === 'P2002') {
         res.status(409).json({
           success: false,

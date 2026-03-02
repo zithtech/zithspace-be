@@ -194,7 +194,7 @@ class AuthController {
             const { accessToken, refreshToken: newRefreshToken } = jwt_1.JWTUtils.generateTokenPair(authUser);
             // Replace old refresh token with new one
             await database_1.tenantAwarePrisma.withTenant(decoded.tenantId, async (client) => {
-                await client.refreshToken.delete({
+                await client.refreshToken.deleteMany({
                     where: { id: storedToken.id },
                 });
                 await client.refreshToken.create({
