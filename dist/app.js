@@ -56,6 +56,7 @@ const employeeTimeline_1 = __importDefault(require("@/routes/employeeTimeline"))
 //import employeeEmploymentDetailsRoutes from "@/routes/employeeEmploymentDetailes";
 // main
 const onboardingRoutes_1 = __importDefault(require("@/routes/onboardingRoutes"));
+const auth_2 = __importDefault(require("@/routes/auth"));
 const timesheet_1 = __importDefault(require("@/routes/timesheet"));
 const companyGovernmentHoliday_routes_1 = __importDefault(require("./routes/companyGovernmentHoliday.routes"));
 const leaveAdjustmentRoutes_1 = __importDefault(require("./routes/leaveAdjustmentRoutes"));
@@ -74,8 +75,8 @@ dotenv_1.default.config();
 // Create Express application
 const app = (0, express_1.default)();
 // Body parsing middleware
-app.use(express_1.default.json({ limit: "10mb" }));
-app.use(express_1.default.urlencoded({ extended: true, limit: "10mb" }));
+app.use(express_1.default.json({ limit: "30mb" }));
+app.use(express_1.default.urlencoded({ extended: true, limit: "30mb" }));
 app.use((0, express_session_1.default)({
     secret: process.env.SESSION_SECRET || "your-fallback-secret-key",
     resave: false,
@@ -83,8 +84,8 @@ app.use((0, express_session_1.default)({
     cookie: {
         secure: process.env.NODE_ENV === "production", // true in production
         httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
-    }
+        maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    },
 }));
 // Connect to PostgreSQL
 const allowedOrigins = [
@@ -153,6 +154,7 @@ app.use("/api/auth", auth_1.default);
 app.use("/api/tenants", tenants_1.default);
 app.use("/api/projects", projects_1.default);
 const publicTickets_1 = __importDefault(require("@/routes/publicTickets"));
+const employeeSettingsRoutes_1 = __importDefault(require("./routes/employeeSettingsRoutes"));
 app.use("/api/public/tickets", publicTickets_1.default);
 app.use("/api/tickets", tickets_1.default);
 app.use("/api/attendance", attendance_1.default);
@@ -200,6 +202,8 @@ app.use("/api/employee-timelines", employeeTimeline_1.default);
 //app.use("/api/employee-employment-details", employeeEmploymentDetailsRoutes);
 // main
 app.use("/api/onboarding", onboardingRoutes_1.default);
+app.use("/api/profile/new", auth_2.default);
+app.use("/api/employeesettings", employeeSettingsRoutes_1.default);
 // RBAC management API
 app.use("/api/rbac", rbac_1.default);
 // app.use("/api/addresses", addressRoutes);

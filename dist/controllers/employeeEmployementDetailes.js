@@ -14,28 +14,29 @@ async function createEmploymentDetails(req, employeeId, tx = database_1.prisma) 
         await tx.employeeWorkDetail.create({
             data: {
                 employeeId,
-                department: employment.department,
-                team: employment.team,
-                employeeType: employment.employeeType,
+                department: employment.department || null,
+                team: employment.team || null,
+                employeeType: employment.employeeType || null,
                 workType: employment.workType || null,
                 hybridMode: employment.hybridMode || null,
                 fixedDays: employment.fixedDays || [],
                 totalDays: employment.totalDays || null,
                 totalHours: employment.totalHours || null,
+                notice_period: employment.noticePeriod || null,
                 // workJoiningDate: employment.employeeJoiningDate
                 //   ? new Date(employment.employeeJoiningDate)
                 //   : null,
-                workJoiningDate: employment.employeeJoiningDate || null,
-                workLocation: employment.workLocation,
-                workShift: employment.workShift,
+                workJoiningDate: employment.employeeJoiningDate || "",
+                workLocation: employment.workLocation || null,
+                workShift: employment.workShift || null, // Stores the JSON string from frontend
                 createdById: req.user?.id,
             },
         });
         await tx.employeeAdditionalDetail.create({
             data: {
                 employeeId,
-                employeeGrade: employment.employeeGrade,
-                promotionStatus: employment.promotionStatus,
+                employeeGrade: employment.employeeGrade || null,
+                promotionStatus: employment.promotionStatus || null,
                 createdById: employeeId,
                 updatedById: employeeId,
             },
@@ -43,9 +44,9 @@ async function createEmploymentDetails(req, employeeId, tx = database_1.prisma) 
         await tx.employeeTimeline.create({
             data: {
                 employeeId,
-                joiningDate: new Date(employment.joiningDate),
+                joiningDate: new Date(employment.joiningDate) || null,
                 //joiningDate: employment.joiningDate,
-                trainingCompletionDate: new Date(employment.trainingCompletion),
+                trainingCompletionDate: new Date(employment.trainingCompletion) || null,
                 //trainingCompletionDate: employment.trainingCompletion,
                 createdById: employeeId,
                 updatedById: employeeId,
@@ -54,21 +55,12 @@ async function createEmploymentDetails(req, employeeId, tx = database_1.prisma) 
         await tx.employeeProjectMapping.createMany({
             data: employment.projects.map((project) => ({
                 employeeId,
-                projectName: project,
+                projectName: project || null,
                 reportingManager: employment.reportingManager || null,
                 createdById: employeeId,
                 updatedById: employeeId,
             })),
         });
-        // await tx.employeeProjectMapping.createMany({
-        //   data: employment.projects.map((project: any) => ({
-        //     employeeId,
-        //     projectName: project.projectName,
-        //     reportingManager: project.reportingManager || null,
-        //     createdById: employeeId,
-        //     updatedById: employeeId,
-        //   })),
-        // });
         return {
             success: true,
             message: "Employment details created successfully",
@@ -110,6 +102,7 @@ async function getEmploymentDetails(req, employeeId) {
             fixedDays: workDetails.fixedDays || [],
             totalDays: workDetails.totalDays || null,
             totalHours: workDetails.totalHours || null,
+            noticePeriod: workDetails.notice_period || null,
             employeeJoiningDate: workDetails.workJoiningDate || null,
             employeeGrade: additionalDetails?.employeeGrade || null,
             promotionStatus: additionalDetails?.promotionStatus || null,
@@ -162,6 +155,12 @@ async function getAllEmploymentDetails(req) {
                 workLocation: latestWorkDetail?.workLocation || null,
                 workShift: latestWorkDetail?.workShift || null,
                 employeeJoiningDate: latestWorkDetail?.workJoiningDate || null,
+                noticePeriod: latestWorkDetail?.notice_period || null,
+                workType: latestWorkDetail?.workType || null,
+                hybridMode: latestWorkDetail?.hybridMode || null,
+                fixedDays: latestWorkDetail?.fixedDays || [],
+                totalDays: latestWorkDetail?.totalDays || null,
+                totalHours: latestWorkDetail?.totalHours || null,
                 employeeGrade: latestAdditionalDetail?.employeeGrade || null,
                 promotionStatus: latestAdditionalDetail?.promotionStatus || null,
                 joiningDate: latestTimeline?.joiningDate || null,
@@ -207,13 +206,14 @@ async function updateEmploymentDetails(req, employeeId, tx = database_1.prisma) 
                     team: employment.team,
                     employeeType: employment.employeeType,
                     workLocation: employment.workLocation,
-                    workShift: employment.workShift,
+                    workShift: employment.workShift, // Stores the JSON string from frontend
                     workType: employment.workType || null,
                     hybridMode: employment.hybridMode || null,
                     fixedDays: employment.fixedDays || [],
                     totalDays: employment.totalDays || null,
                     totalHours: employment.totalHours || null,
                     workJoiningDate: employment.employeeJoiningDate || null,
+                    notice_period: employment.noticePeriod || null,
                     // workJoiningDate: employment.employeeJoiningDate
                     //   ? new Date(employment.employeeJoiningDate)
                     //   : null,
@@ -225,18 +225,19 @@ async function updateEmploymentDetails(req, employeeId, tx = database_1.prisma) 
             await tx.employeeWorkDetail.create({
                 data: {
                     employeeId,
-                    department: employment.department,
-                    team: employment.team,
-                    employeeType: employment.employeeType,
-                    workLocation: employment.workLocation,
-                    workShift: employment.workShift,
+                    department: employment.department || null,
+                    team: employment.team || null,
+                    employeeType: employment.employeeType || null,
+                    workLocation: employment.workLocation || null,
+                    workShift: employment.workShift || null,
                     workType: employment.workType || null,
                     hybridMode: employment.hybridMode || null,
                     fixedDays: employment.fixedDays || [],
                     totalDays: employment.totalDays || null,
                     totalHours: employment.totalHours || null,
+                    notice_period: employment.noticePeriod || null,
                     workJoiningDate: employment.employeeJoiningDate
-                        ? new Date(employment.employeeJoiningDate)
+                        ? employment?.employeeJoiningDate
                         : null,
                     createdById: req.user.id,
                 },

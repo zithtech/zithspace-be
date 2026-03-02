@@ -1,4 +1,6 @@
 import { AuthRequest } from "@/types";
+export declare function encrypt(text: string): string;
+export declare function decrypt(text: string): string;
 export declare function createBankPayrollDetails(req: AuthRequest, employeeId: string, tx?: any): Promise<{
     success: boolean;
     message: string;
