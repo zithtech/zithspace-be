@@ -2130,7 +2130,8 @@ model EmployeeIdentity {
     hybridMode     String?  @db.VarChar(20)  @map("hybrid_mode")    
     fixedDays      String[] @default([])     @map("fixed_days")      
     totalDays      Int?     @map("total_days")                        
-    totalHours     Int?     @map("total_hours")                       
+    totalHours     Int?     @map("total_hours")  
+    notice_period   String?  @db.VarChar(10)                     
 
     
     createdById    String   @db.Uuid @map("created_by_id")

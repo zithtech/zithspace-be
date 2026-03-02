@@ -1,5 +1,6 @@
 import { AuthRequest } from "@/types";
 import { prisma } from "@/config/database";
+import { not } from "joi";
 
 // ✅ CREATE Employment Details
 
@@ -23,6 +24,7 @@ export async function createEmploymentDetails(
         fixedDays: employment.fixedDays || [],
         totalDays: employment.totalDays || null,
         totalHours: employment.totalHours || null,
+        notice_period: employment.noticePeriod || null,
         // workJoiningDate: employment.employeeJoiningDate
         //   ? new Date(employment.employeeJoiningDate)
         //   : null,
@@ -115,6 +117,7 @@ export async function getEmploymentDetails(
       fixedDays: workDetails.fixedDays || [],
       totalDays: workDetails.totalDays || null,
       totalHours: workDetails.totalHours || null,
+      noticePeriod: workDetails.notice_period || null,
       employeeJoiningDate: workDetails.workJoiningDate || null,
       employeeGrade: additionalDetails?.employeeGrade || null,
       promotionStatus: additionalDetails?.promotionStatus || null,
@@ -171,6 +174,12 @@ export async function getAllEmploymentDetails(req: AuthRequest) {
         workLocation: latestWorkDetail?.workLocation || null,
         workShift: latestWorkDetail?.workShift || null,
         employeeJoiningDate: latestWorkDetail?.workJoiningDate || null,
+        noticePeriod: latestWorkDetail?.notice_period || null,
+        workType: latestWorkDetail?.workType || null,
+        hybridMode: latestWorkDetail?.hybridMode || null,
+        fixedDays: latestWorkDetail?.fixedDays || [],
+        totalDays: latestWorkDetail?.totalDays || null,
+        totalHours: latestWorkDetail?.totalHours || null,
 
         employeeGrade: latestAdditionalDetail?.employeeGrade || null,
         promotionStatus: latestAdditionalDetail?.promotionStatus || null,
@@ -237,6 +246,7 @@ export async function updateEmploymentDetails(
           totalDays: employment.totalDays || null,
           totalHours: employment.totalHours || null,
           workJoiningDate: employment.employeeJoiningDate || null,
+          notice_period: employment.noticePeriod || null,
 
           // workJoiningDate: employment.employeeJoiningDate
           //   ? new Date(employment.employeeJoiningDate)
@@ -259,6 +269,7 @@ export async function updateEmploymentDetails(
           fixedDays: employment.fixedDays || [],
           totalDays: employment.totalDays || null,
           totalHours: employment.totalHours || null,
+          notice_period: employment.noticePeriod || null,
           workJoiningDate: employment.employeeJoiningDate
             ? employment?.employeeJoiningDate
             : null,
