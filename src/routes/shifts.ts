@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { ShiftsController } from '@/controllers/shiftsController';
-import { authenticateToken, requireAuth, requireAdmin } from '@/middleware/auth';
+import { authenticateToken, requireAuth } from '@/middleware/auth';
+import { requirePermission } from '@/middleware/permission';
+import { Permissions } from '@/types/permissions';
 import { resolveTenant } from '@/middleware/tenantContext';
 
 const router = Router();
@@ -49,7 +51,7 @@ router.get('/:id', ShiftsController.getShiftById);
  * @access  Private (admin only)
  * @body    { name, startTime, endTime }
  */
-router.post('/', requireAdmin, ShiftsController.createShift);
+router.post('/', requirePermission(Permissions.SHIFT_CREATE), ShiftsController.createShift);
 
 /**
  * @route   PUT /api/shifts/:id
@@ -58,7 +60,7 @@ router.post('/', requireAdmin, ShiftsController.createShift);
  * @param   id - Shift ID
  * @body    { name?, startTime?, endTime?, isActive? }
  */
-router.put('/:id', requireAdmin, ShiftsController.updateShift);
+router.put('/:id', requirePermission(Permissions.SHIFT_UPDATE), ShiftsController.updateShift);
 
 /**
  * @route   DELETE /api/shifts/:id
@@ -66,7 +68,7 @@ router.put('/:id', requireAdmin, ShiftsController.updateShift);
  * @access  Private (admin only)
  * @param   id - Shift ID
  */
-router.delete('/:id', requireAdmin, ShiftsController.deleteShift);
+router.delete('/:id', requirePermission(Permissions.SHIFT_DELETE), ShiftsController.deleteShift);
 
 /**
  * @route   PATCH /api/shifts/:id/activate
@@ -74,7 +76,7 @@ router.delete('/:id', requireAdmin, ShiftsController.deleteShift);
  * @access  Private (admin only)
  * @param   id - Shift ID
  */
-router.patch('/:id/activate', requireAdmin, ShiftsController.activateShift);
+router.patch('/:id/activate', requirePermission(Permissions.SHIFT_MANAGE), ShiftsController.activateShift);
 
 /**
  * @route   POST /api/shifts/:shiftId/assign
@@ -83,7 +85,7 @@ router.patch('/:id/activate', requireAdmin, ShiftsController.activateShift);
  * @param   shiftId - Shift ID
  * @body    { userId }
  */
-router.post('/:shiftId/assign', requireAdmin, ShiftsController.assignShiftToUser);
+router.post('/:shiftId/assign', requirePermission(Permissions.SHIFT_MANAGE), ShiftsController.assignShiftToUser);
 
 /**
  * @route   DELETE /api/shifts/users/:userId/remove
@@ -91,6 +93,6 @@ router.post('/:shiftId/assign', requireAdmin, ShiftsController.assignShiftToUser
  * @access  Private (admin only)
  * @param   userId - User ID
  */
-router.delete('/users/:userId/remove', requireAdmin, ShiftsController.removeShiftFromUser);
+router.delete('/users/:userId/remove', requirePermission(Permissions.SHIFT_MANAGE), ShiftsController.removeShiftFromUser);
 
 export default router;

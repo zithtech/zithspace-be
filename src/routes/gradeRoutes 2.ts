@@ -2,6 +2,8 @@ import express from "express";
 import { GradeController } from "@/controllers/gradeController";
 import { authenticateToken, requireAuth } from '@/middleware/auth';
 import { resolveTenant } from '@/middleware/tenantContext';
+import { requirePermission } from "@/middleware/permission";
+import { Permissions } from "@/types/permissions";
 
 const router = express.Router();
 
@@ -11,14 +13,14 @@ router.use(authenticateToken);
 router.use(requireAuth);
 
 // Create a new grade
-router.post("/", GradeController.createGrade);
+router.post("/", requirePermission(Permissions.ORG_MANAGE), GradeController.createGrade);
 
 // Get all grades for the current tenant
-router.get("/", GradeController.getAllGrades);
+router.get("/", requirePermission(Permissions.ORG_READ), GradeController.getAllGrades);
 
 // Get, Update, and Delete a specific grade by ID
-router.get("/:id", GradeController.getGradeById);
-router.put("/:id", GradeController.updateGrade);
-router.delete("/:id", GradeController.deleteGrade);
+router.get("/:id", requirePermission(Permissions.ORG_READ), GradeController.getGradeById);
+router.put("/:id", requirePermission(Permissions.ORG_MANAGE), GradeController.updateGrade);
+router.delete("/:id", requirePermission(Permissions.ORG_MANAGE), GradeController.deleteGrade);
 
 export default router;

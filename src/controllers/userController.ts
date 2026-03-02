@@ -835,15 +835,6 @@ export class UserController {
         return;
       }
 
-      // Check if current user is admin
-      if (req.user.role !== 'super_admin' && req.user.role !== 'admin') {
-        res.status(403).json({
-          success: false,
-          error: 'Access denied. admin privileges required.'
-        } as ApiResponse);
-        return;
-      }
-
       const { userId } = req.params;
       const { newPassword } = req.body;
 

@@ -3,6 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const projectController_1 = require("@/controllers/projectController");
 const auth_1 = require("@/middleware/auth");
+const permission_1 = require("@/middleware/permission");
+const permissions_1 = require("@/types/permissions");
 const tenantContext_1 = require("@/middleware/tenantContext");
 const router = (0, express_1.Router)();
 // Apply tenant context resolution to all routes
@@ -16,19 +18,19 @@ router.use(auth_1.requireAuth);
  * @access  Private (authenticated users within tenant)
  * @query   page, limit, search, status, projectManagerId, sortBy, sortOrder
  */
-router.get('/', projectController_1.ProjectController.getProjects);
+router.get('/', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_READ), projectController_1.ProjectController.getProjects);
 /**
  * @route   GET /api/projects/selection
  * @desc    Get rich project data for selection screen (tenant-aware + role-based)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/selection', projectController_1.ProjectController.getSelectionProjects);
+router.get('/selection', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_READ), projectController_1.ProjectController.getSelectionProjects);
 /**
  * @route   GET /api/projects/select
  * @desc    Get projects for dropdown/select (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/select', projectController_1.ProjectController.getProjectsForSelect);
+router.get('/select', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_READ), projectController_1.ProjectController.getProjectsForSelect);
 /**
  * @route   GET /api/projects/user
  * @desc    Get projects where user is a member (tenant-aware)
@@ -40,55 +42,55 @@ router.get('/select', projectController_1.ProjectController.getProjectsForSelect
  * @desc    Get projects where user is a member (alias for compatibility)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/user-projects', projectController_1.ProjectController.getUserProjects);
+router.get('/user-projects', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_READ), projectController_1.ProjectController.getUserProjects);
 /**
  * @route   GET /api/projects/user-projects-for-tickets
  * @desc    Get projects where user is a member or project manager (for ticket creation)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/user-projects-for-tickets', projectController_1.ProjectController.getUserProjectsForTickets);
+router.get('/user-projects-for-tickets', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_READ), projectController_1.ProjectController.getUserProjectsForTickets);
 /**
  * @route   GET /api/projects/:id/tickets/my
  * @desc    Get tickets assigned to current user in a project (for daily updates)
  * @access  Private (authenticated users within tenant)
  * @param   id - Project ID
  */
-router.get('/:id/tickets/my', projectController_1.ProjectController.getMyTicketsByProject);
+router.get('/:id/tickets/my', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_READ), projectController_1.ProjectController.getMyTicketsByProject);
 /**
  * @route   GET /api/projects/:id/tickets
  * @desc    Get all tickets for a project that user has access to (for daily updates)
  * @access  Private (authenticated users within tenant)
  * @param   id - Project ID
  */
-router.get('/:id/tickets', projectController_1.ProjectController.getProjectTickets);
+router.get('/:id/tickets', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_READ), projectController_1.ProjectController.getProjectTickets);
 /**
  * @route   GET /api/projects/:id/members
  * @desc    Get project members for dropdown/select (tenant-aware)
  * @access  Private (authenticated users within tenant)
  * @param   id - Project ID
  */
-router.get('/:id/members', projectController_1.ProjectController.getProjectMembers);
+router.get('/:id/members', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_READ), projectController_1.ProjectController.getProjectMembers);
 /**
  * @route   GET /api/projects/:id/stats
  * @desc    Get project statistics (tenant-aware)
  * @access  Private (authenticated users within tenant)
  * @param   id - Project ID
  */
-router.get('/:id/stats', projectController_1.ProjectController.getProjectStats);
+router.get('/:id/stats', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_READ), projectController_1.ProjectController.getProjectStats);
 /**
  * @route   GET /api/projects/:id
  * @desc    Get project by ID (tenant-aware)
  * @access  Private (authenticated users within tenant)
  * @param   id - Project ID
  */
-router.get('/:id', projectController_1.ProjectController.getProjectById);
+router.get('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_READ), projectController_1.ProjectController.getProjectById);
 /**
  * @route   POST /api/projects
  * @desc    Create a new project (tenant-aware)
  * @access  Private (admin or project manager role)
  * @body    CreateProjectData
  */
-router.post('/', auth_1.requireAdmin, projectController_1.ProjectController.createProject);
+router.post('/', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_CREATE), projectController_1.ProjectController.createProject);
 /**
  * @route   PUT /api/projects/:id
  * @desc    Update project (tenant-aware)
@@ -96,14 +98,14 @@ router.post('/', auth_1.requireAdmin, projectController_1.ProjectController.crea
  * @param   id - Project ID
  * @body    UpdateProjectData
  */
-router.put('/:id', projectController_1.ProjectController.updateProject);
+router.put('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_UPDATE), projectController_1.ProjectController.updateProject);
 /**
  * @route   DELETE /api/projects/:id
  * @desc    Delete project (tenant-aware)
  * @access  Private (admin only)
  * @param   id - Project ID
  */
-router.delete('/:id', auth_1.requireAdmin, projectController_1.ProjectController.deleteProject);
+router.delete('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_DELETE), projectController_1.ProjectController.deleteProject);
 /**
  * @route   POST /api/projects/:id/team-members
  * @desc    Add team member to project (tenant-aware)
@@ -111,7 +113,7 @@ router.delete('/:id', auth_1.requireAdmin, projectController_1.ProjectController
  * @param   id - Project ID
  * @body    { userId: string }
  */
-router.post('/:id/team-members', projectController_1.ProjectController.addTeamMember);
+router.post('/:id/team-members', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_MANAGE), projectController_1.ProjectController.addTeamMember);
 /**
  * @route   DELETE /api/projects/:id/team-members/:userId
  * @desc    Remove team member from project (tenant-aware)
@@ -119,6 +121,6 @@ router.post('/:id/team-members', projectController_1.ProjectController.addTeamMe
  * @param   id - Project ID
  * @param   userId - User ID to remove
  */
-router.delete('/:id/team-members/:userId', projectController_1.ProjectController.removeTeamMember);
+router.delete('/:id/team-members/:userId', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_MANAGE), projectController_1.ProjectController.removeTeamMember);
 exports.default = router;
 //# sourceMappingURL=projects.js.map
