@@ -463,6 +463,7 @@ model ClientProject {
   projectId   String   @map("project_id")
   billingType String?  @map("billing_type")
   budget      Decimal? @db.Decimal(15, 2)
+  budgetType   String?   @map("budget_type") 
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
