@@ -57,6 +57,8 @@ const employeeTimeline_1 = __importDefault(require("@/routes/employeeTimeline"))
 // main
 const onboardingRoutes_1 = __importDefault(require("@/routes/onboardingRoutes"));
 const auth_2 = __importDefault(require("@/routes/auth"));
+const publicTickets_1 = __importDefault(require("@/routes/publicTickets"));
+const employeeSettingsRoutes_1 = __importDefault(require("./routes/employeeSettingsRoutes"));
 const timesheet_1 = __importDefault(require("@/routes/timesheet"));
 const companyGovernmentHoliday_routes_1 = __importDefault(require("./routes/companyGovernmentHoliday.routes"));
 const leaveAdjustmentRoutes_1 = __importDefault(require("./routes/leaveAdjustmentRoutes"));
@@ -153,8 +155,6 @@ app.use("/api/fixed-holidays", fixedHolidays_1.default);
 app.use("/api/auth", auth_1.default);
 app.use("/api/tenants", tenants_1.default);
 app.use("/api/projects", projects_1.default);
-const publicTickets_1 = __importDefault(require("@/routes/publicTickets"));
-const employeeSettingsRoutes_1 = __importDefault(require("./routes/employeeSettingsRoutes"));
 app.use("/api/public/tickets", publicTickets_1.default);
 app.use("/api/tickets", tickets_1.default);
 app.use("/api/attendance", attendance_1.default);
