@@ -2,6 +2,8 @@ import express from "express";
 import { EmployeeTimelineController } from "@/controllers/employeeTimelineController";
 import { authenticateToken, requireAuth } from "@/middleware/auth";
 import { resolveTenant } from "@/middleware/tenantContext";
+import { requirePermission } from "@/middleware/permission";
+import { Permissions } from "@/types/permissions";
 
 const router = express.Router();
 
@@ -14,21 +16,22 @@ router.use(requireAuth);
 // ================= EMPLOYEE TIMELINE ROUTES =================
 
 // Create employee timeline
-router.post("/", EmployeeTimelineController.createTimeline);
+router.post("/", requirePermission(Permissions.ONBOARDING_MANAGE), EmployeeTimelineController.createTimeline);
 
 // Get timeline by employeeId
 router.get(
   "/employee/:employeeId",
+  requirePermission(Permissions.ONBOARDING_READ),
   EmployeeTimelineController.getTimelineByEmployee,
 );
 
 // Get timeline by timeline ID
-router.get("/:id", EmployeeTimelineController.getTimelineById);
+router.get("/:id", requirePermission(Permissions.ONBOARDING_READ), EmployeeTimelineController.getTimelineById);
 
 // Update employee timeline
-router.put("/:id", EmployeeTimelineController.updateTimeline);
+router.put("/:id", requirePermission(Permissions.ONBOARDING_MANAGE), EmployeeTimelineController.updateTimeline);
 
 // Delete employee timeline
-router.delete("/:id", EmployeeTimelineController.deleteTimeline);
+router.delete("/:id", requirePermission(Permissions.ONBOARDING_MANAGE), EmployeeTimelineController.deleteTimeline);
 
 export default router;

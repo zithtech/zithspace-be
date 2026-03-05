@@ -599,6 +599,7 @@ export type CreateTimesheetData = {
     weekStart: string;
     weekEnd: string;
     rows: CreateTimesheetRowData[];
+    leaveCount?: number;
 };
 export type UpdateTimesheetRowData = {
     id?: string;
@@ -617,4 +618,5 @@ export type UpdateTimesheetData = {
     status?: "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED";
     rejectReason?: string;
     rows?: UpdateTimesheetRowData[];
+    leaveCount?: number;
 };

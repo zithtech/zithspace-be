@@ -22,16 +22,16 @@ async function createEmployeeHistory(req, employeeId, tx = database_1.prisma) {
             const exp = await tx.employeeExperience.create({
                 data: {
                     employeeId,
-                    companyName: h.companyName,
-                    designation: h.designation,
-                    employmentType: h.employmentType,
-                    industry: h.industry,
-                    location: h.location,
-                    companyAddress: h.address,
-                    joiningDate: new Date(h.doj),
-                    lastWorkingDate: new Date(h.lwd),
-                    createdById: employeeId,
-                    updatedById: employeeId,
+                    companyName: h.companyName || null,
+                    designation: h.designation || null,
+                    employmentType: h.employmentType || null,
+                    industry: h.industry || null,
+                    location: h.location || null,
+                    companyAddress: h.address || null,
+                    joiningDate: new Date(h.doj) || null,
+                    lastWorkingDate: new Date(h.lwd) || null,
+                    createdById: employeeId || null,
+                    updatedById: employeeId || null,
                 },
             });
             // Handle Single Documents
@@ -98,12 +98,12 @@ async function createEmployeeHistory(req, employeeId, tx = database_1.prisma) {
                     await tx.employeeContact.create({
                         data: {
                             employeeId,
-                            contactPersonType: c.contactRole,
-                            name: c.contactName,
+                            contactPersonType: c.contactRole || null,
+                            name: c.contactName || null,
                             mobile: c.contactNumber,
                             email: c.contactEmail || null, // SAFE FIX
-                            createdById: employeeId,
-                            updatedById: employeeId,
+                            createdById: employeeId || null,
+                            updatedById: employeeId || null,
                         },
                     });
                 }

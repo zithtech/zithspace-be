@@ -1,8 +1,8 @@
-import { Router } from 'express';
-import rateLimit from 'express-rate-limit';
-import { AuthController } from '@/controllers/authController';
-import { resolveTenant } from '@/middleware/tenantContext';
-import { authenticateToken, optionalAuth } from '@/middleware/auth';
+import { Router } from "express";
+import rateLimit from "express-rate-limit";
+import { AuthController } from "@/controllers/authController";
+import { resolveTenant } from "@/middleware/tenantContext";
+import { authenticateToken, optionalAuth } from "@/middleware/auth";
 
 const router = Router();
 
@@ -12,8 +12,8 @@ const authRateLimit = rateLimit({
   max: 1000, // 5 attempts per window
   message: {
     success: false,
-    error: 'Too many authentication attempts, please try again later.',
-    code: 'RATE_LIMIT_EXCEEDED',
+    error: "Too many authentication attempts, please try again later.",
+    code: "RATE_LIMIT_EXCEEDED",
   },
   standardHeaders: true,
   legacyHeaders: false,
@@ -25,29 +25,54 @@ const generalAuthRateLimit = rateLimit({
   max: 1000, // 20 requests per window
   message: {
     success: false,
-    error: 'Too many requests, please try again later.',
-    code: 'RATE_LIMIT_EXCEEDED',
+    error: "Too many requests, please try again later.",
+    code: "RATE_LIMIT_EXCEEDED",
   },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
 // Login route - requires tenant context
-router.post('/login', authRateLimit, resolveTenant, AuthController.login);
+router.post("/login", authRateLimit, resolveTenant, AuthController.login);
 
 // Refresh token route - uses optional tenant context from token
-router.post('/refresh', authRateLimit, optionalAuth, AuthController.refresh);
+router.post("/refresh", authRateLimit, optionalAuth, AuthController.refresh);
 
 // Logout route - requires authentication
-router.post('/logout', generalAuthRateLimit, resolveTenant, authenticateToken, AuthController.logout);
+router.post(
+  "/logout",
+  generalAuthRateLimit,
+  resolveTenant,
+  authenticateToken,
+  AuthController.logout,
+);
 
 // Get current user profile - requires authentication
-router.get('/me', generalAuthRateLimit,resolveTenant, authenticateToken, AuthController.me);
+router.get(
+  "/me",
+  generalAuthRateLimit,
+  resolveTenant,
+  authenticateToken,
+  AuthController.me,
+);
+
+//get new profile for user - requires authentication
+router.get("/new", AuthController.getNewProfile);
 
 // Authentication check - requires authentication
-router.get('/check', generalAuthRateLimit, authenticateToken, AuthController.check);
+router.get(
+  "/check",
+  generalAuthRateLimit,
+  authenticateToken,
+  AuthController.check,
+);
 
 // Create user route - requires tenant context (for testing/setup)
-router.post('/users', generalAuthRateLimit, resolveTenant, AuthController.createUser);
+router.post(
+  "/users",
+  generalAuthRateLimit,
+  resolveTenant,
+  AuthController.createUser,
+);
 
 export default router;

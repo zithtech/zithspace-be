@@ -33,13 +33,20 @@ export declare function uploadFileToR2(base64File: string, fileName: string, ten
 export declare function uploadEmployeeDocumentToR2(base64File: string, fileName: string, tenantId: string, employeeId: string, documentType: string): Promise<string>;
 /**
  * Upload employee asset image to Cloudflare R2
- * @param base64File - Base64 encoded file string or an existing URL
+ * @param base64 - Base64 encoded file string or an existing URL
  * @param fileName - Original file name
  * @param tenantId - Tenant ID
  * @param employeeId - Employee ID
+ * @param folder - The subfolder inside the employee's directory (e.g., 'assets', 'profile-pictures')
  * @returns Public URL of uploaded document
  */
-export declare function uploadEmployeeAssetToR2(base64File: string, fileName: string, tenantId: string, employeeId: string): Promise<string>;
+export declare function uploadEmployeeAssetToR2({ base64, fileName, tenantId, employeeId, folder, }: {
+    base64: string;
+    fileName?: string;
+    tenantId: string;
+    employeeId: string;
+    folder?: string;
+}): Promise<string>;
 /**
  * Delete any file from Cloudflare R2
  * @param fileUrl - Full URL of the file to delete
