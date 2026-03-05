@@ -341,6 +341,11 @@ const server = app.listen(PORT, () => {
     // Start trash auto-purge cron job
     const { startTrashAutoPurgeJob } = require("@/jobs/trashAutoPurge");
     startTrashAutoPurgeJob();
+    // Start Calendar Sync Worker (scheduler + BullMQ processor)
+    const { SyncWorker } = require("@/services/calendar/SyncWorker");
+    const { startSyncProcessor } = require("@/services/calendar/calendarSyncProcessor");
+    SyncWorker.start();
+    startSyncProcessor();
 });
 // Graceful shutdown
 const gracefulShutdown = async (signal) => {

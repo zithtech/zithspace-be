@@ -19,6 +19,7 @@ router.get("/test", (req, res) => {
     res.json({ success: true, message: "Calendar router reached" });
 });
 router.get("/:provider/status", optionalAuth, calendarcontroller_1.CalendarController.getStatus);
+router.get("/providers", tenantContext_1.resolveTenant, auth_1.authenticateToken, auth_1.requireAuth, calendarcontroller_1.CalendarController.getProviders);
 router.get("/:provider/connect", tenantContext_1.resolveTenant, auth_1.authenticateToken, auth_1.requireAuth, calendarcontroller_1.CalendarController.connect);
 router.get("/:provider/callback", calendarcontroller_1.CalendarController.callback);
 router.post("/:provider/disconnect", tenantContext_1.resolveTenant, auth_1.authenticateToken, auth_1.requireAuth, calendarcontroller_1.CalendarController.disconnect);

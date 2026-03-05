@@ -10,6 +10,10 @@ export declare class CalendarController {
      * GET /api/calendar/:provider/connect
      * Initiates the OAuth flow for a provider.
      */
+    /**
+ * GET /api/calendar/:provider/connect
+ * Initiates the OAuth flow for a provider.
+ */
     static connect(req: AuthRequest, res: Response): Promise<void>;
     /**
      * GET /api/calendar/:provider/callback
@@ -20,6 +24,11 @@ export declare class CalendarController {
      * POST /api/calendar/:provider/disconnect
      */
     static disconnect(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * GET /api/calendar/providers
+     * Returns all connected calendar providers for the current user.
+     */
+    static getProviders(req: AuthRequest, res: Response): Promise<void>;
     /**
      * GET /api/calendar/events
      * Fetches events from local database (which are synced from providers).
