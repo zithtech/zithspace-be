@@ -170,6 +170,14 @@ export class EmployeeOnboardingController {
   static async update(req: AuthRequest, res: Response) {
     try {
       const { employeeId } = req.params;
+
+      if (!employeeId || employeeId === "undefined" || employeeId === "null") {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid or missing Employee ID",
+        });
+      }
+
       const { personal, employment, bank, history, assets } = req.body;
 
       const result = await prisma.$transaction(
