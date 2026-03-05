@@ -59,6 +59,8 @@ import employeeTimelineRoutes from "@/routes/employeeTimeline";
 // main
 import employeeOnboardingRoutes from "@/routes/onboardingRoutes";
 import newProfileRoutes from "@/routes/auth";
+import publicTicketRoutes from "@/routes/publicTickets";
+import employeeSettingsRoutes from "./routes/employeeSettingsRoutes";
 
 import timesheetRoutes from "@/routes/timesheet";
 
@@ -180,9 +182,6 @@ app.use("/api/fixed-holidays", fixedHolidayRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/tenants", tenantRoutes);
 app.use("/api/projects", projectRoutes);
-import publicTicketRoutes from "@/routes/publicTickets";
-import employeeSettingsRoutes from "./routes/employeeSettingsRoutes";
-
 app.use("/api/public/tickets", publicTicketRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/attendance", attendanceRoutes);
