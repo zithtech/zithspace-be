@@ -7,7 +7,7 @@ import { resolveTenant } from '@/middleware/tenantContext';
 
 const router = Router();
 
-// Apply tenant context resolution to all routes
+
 router.use(resolveTenant);
 
 // Apply authentication to all routes

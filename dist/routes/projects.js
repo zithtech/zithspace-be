@@ -7,7 +7,6 @@ const permission_1 = require("@/middleware/permission");
 const permissions_1 = require("@/types/permissions");
 const tenantContext_1 = require("@/middleware/tenantContext");
 const router = (0, express_1.Router)();
-// Apply tenant context resolution to all routes
 router.use(tenantContext_1.resolveTenant);
 // Apply authentication to all routes
 router.use(auth_1.authenticateToken);
