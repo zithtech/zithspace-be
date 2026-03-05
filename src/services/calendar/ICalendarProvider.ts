@@ -11,6 +11,8 @@ export interface CalendarEventData {
     rrule?: string;
     attendees?: string[];
     generateMeeting?: boolean;
+    recurringDays?: string[];
+    existingMeetingLink?: string;
 }
 
 export interface ProviderAuthResult {
@@ -25,12 +27,20 @@ export interface ProviderTokenResult {
     expiresIn: number;
 }
 
+export interface IncrementalSyncResult {
+    events: any[];
+    nextToken: string;
+    hasMore: boolean;
+}
+
 export interface ICalendarProvider {
     getAuthUrl(userId: string): string;
     handleCallback(code: string, state: string): Promise<ProviderAuthResult>;
     getEvents(accessToken: string, calendarId?: string, startDate?: Date, endDate?: Date): Promise<any[]>;
+    getIncrementalChanges(accessToken: string, calendarId: string, token?: string): Promise<IncrementalSyncResult>;
     createEvent(accessToken: string, calendarId: string, eventData: CalendarEventData): Promise<any>;
-    updateEvent(accessToken: string, calendarId: string, externalId: string, eventData: CalendarEventData): Promise<any>;
+    updateEvent(accessToken: string, calendarId: string, externalId: string, eventData: CalendarEventData, action?: number, occurrenceDate?: string): Promise<any>;
     deleteEvent(accessToken: string, calendarId: string, externalId: string, action?: number, occurrenceDate?: string): Promise<void>;
     refreshToken(refreshToken: string): Promise<ProviderTokenResult>;
+    mapToInternalEvent?(rawEvent: any): any;
 }

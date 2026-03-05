@@ -21,6 +21,7 @@ router.get("/test", (req, res) => {
 });
 
 router.get("/:provider/status", optionalAuth, CalendarController.getStatus);
+router.get("/providers", resolveTenant, authenticateToken, requireAuth, CalendarController.getProviders);
 router.get(
     "/:provider/connect",
     resolveTenant,
