@@ -65,6 +65,7 @@ import timesheetRoutes from "@/routes/timesheet";
 
 import companyGovernmentHolidayRouter from "./routes/companyGovernmentHoliday.routes";
 import leaveAdjustmentRoutes from "./routes/leaveAdjustmentRoutes";
+import leaveAllocationRoutes from "@/routes/leaveAllocationRoutes";
 import reimbursement from "@/routes/reimbursementCategory";
 import employmentTypeRoutes from "@/routes/employmentTypeRoutes";
 import repositoryRoutes from "@/routes/repositoryRoutes";
@@ -74,6 +75,10 @@ import positionRoutes from "@/routes/positionRoutes";
 import calenderRoutes from "@/routes/calendar"
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
 import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
+import leaveRequestRoutes from "@/routes/leaveRequestRoutes";
+import leaveBalanceRoutes from "@/routes/leaveBalanceRoutes";
+
+
 // Load environment
 dotenv.config();
 // Create Express application
@@ -220,6 +225,11 @@ app.use("/api/channels/:channelId/messages", messageRoutes);
 app.use("/api/email-history", emailHistoryRoutes);
 app.use("/api/timesheets", timesheetRoutes);
 app.use("/api/zoho", calenderRoutes);
+app.use("/api/leave-allocation", leaveAllocationRoutes);
+app.use("/api/leave-request", leaveRequestRoutes);
+app.use("/api/leave-balances", leaveBalanceRoutes);
+
+
 
 // onboarding
 // app.use("/api/employees", employeeRoutes);

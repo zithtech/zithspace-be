@@ -26,7 +26,9 @@ model Tenant {
   leaveTypes            LeaveType[]
   leaveAdjustments      LeaveAdjustment[]
   leaveOriginStructures LeaveOriginStructure[]
+  leaveRequests         LeaveRequest[]
   originLeaveTypes      OriginLeaveType[]
+  leaveLedgerEntries    LeaveLedger[]
   fixedHolidays         FixedHoliday[]
   employmentTypes       EmploymentType[]
   grades                Grade[]
@@ -105,6 +107,8 @@ model User {
   lastLoginAt       DateTime? @map("last_login_at")
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
+  employeeId        String?   @map("employee_id") 
+  employee          Employee? @relation(fields: [employeeId], references: [id])
 
   zohoAccessToken  String?   @map("zoho_access_token")
   zohoRefreshToken String?   @map("zoho_refresh_token")
@@ -126,8 +130,10 @@ model User {
   createdLeaveTypes            LeaveType[]                @relation("LeaveTypeCreator")
   updatedLeaveTypes            LeaveType[]                @relation("LeaveTypeUpdater")
   leaves                       Leave[]                    @relation("UserLeaves")
-  leaveAdjustments             LeaveAdjustment[]          @relation("UserLeaveAdjustments")
   approvedAdjustments          LeaveAdjustment[]          @relation("LeaveAdjustmentApprover")
+  approvedLeaveRequests        LeaveRequest[]             @relation("LeaveRequestApprover")
+  createdLeaveRequests         LeaveRequest[]             @relation("LeaveRequestCreator")
+  updatedLeaveRequests         LeaveRequest[]             @relation("LeaveRequestUpdater")
   createdLeaveAdjustments      LeaveAdjustment[]          @relation("LeaveAdjustmentCreator")
   updatedLeaveAdjustments      LeaveAdjustment[]          @relation("LeaveAdjustmentUpdater")
   createdLeaveOriginStructures LeaveOriginStructure[]     @relation("LeaveOriginStructureCreator")
@@ -238,6 +244,9 @@ model User {
   channelMessages       ChannelMessage[]
   createdMeetings       Meeting[]            @relation("MeetingCreator")
   meetingParticipations MeetingParticipant[]
+
+  createdLeaveLedgerEntries LeaveLedger[] @relation("LeaveLedgerCreator")
+  updatedLeaveLedgerEntries LeaveLedger[] @relation("LeaveLedgerUpdater")
 
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
@@ -396,6 +405,7 @@ model Position {
   createdBy     User           @relation("PositionCreator", fields: [createdById], references: [id])
   updatedBy     User?          @relation("PositionUpdater", fields: [updatedById], references: [id])
   users         User[]         @relation("UserPosition")
+  workDetail       EmployeeWorkDetail[]
 
   @@unique([tenantId, code])
   @@map("positions")
@@ -868,6 +878,10 @@ model LeaveType {
   tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   createdBy        User?    @relation("LeaveTypeCreator", fields: [createdById], references: [id])
   updatedBy        User?    @relation("LeaveTypeUpdater", fields: [updatedById], references: [id])
+   originLeaveTypes  OriginLeaveType[]
+  leaveLedgerEntries LeaveLedger[]
+  leaveRequests      LeaveRequest[]
+  leaveAdjustments   LeaveAdjustment[]
 
   @@unique([tenantId, code])
   @@map("leave_types")
@@ -900,8 +914,7 @@ model Leave {
 model LeaveAdjustment {
   id              String    @id @default(uuid())
   tenantId        String    @map("tenant_id")
-  userId          String    @map("user_id")
-  leaveType       String    @map("leave_type")
+  employeeId      String    @map("employee_id") @db.Uuid
   adjustmentType  String    @map("adjustment_type")
   amount          Decimal   @db.Decimal(5, 2)
   unit            String    @default("Days")
@@ -913,12 +926,15 @@ model LeaveAdjustment {
   updatedById     String?   @map("updated_by_id")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
+  leaveTypeId     String    @map("leave_type_id")
 
+  
   tenant     Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user       User   @relation("UserLeaveAdjustments", fields: [userId], references: [id], onDelete: Cascade)
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   approvedBy User?  @relation("LeaveAdjustmentApprover", fields: [approvedById], references: [id])
   createdBy  User   @relation("LeaveAdjustmentCreator", fields: [createdById], references: [id])
   updatedBy  User?  @relation("LeaveAdjustmentUpdater", fields: [updatedById], references: [id])
+  leaveType  LeaveType @relation(fields: [leaveTypeId], references: [id])
 
   @@map("leave_adjustments")
 }
@@ -1811,7 +1827,8 @@ model OriginLeaveType {
   tenantId      String @map("tenant_id")
   leaveOriginId String @map("leave_origin_id")
 
-  leaveType    String  @map("leave_type")
+  leaveTypeId  String    @map("leave_type_id")
+  leaveType    LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
   unit         Decimal @db.Decimal(5, 2)
   period       String
   carryForward Boolean @default(false) @map("carry_forward")
@@ -1826,6 +1843,7 @@ model OriginLeaveType {
   leaveOriginStructure LeaveOriginStructure @relation(fields: [leaveOriginId], references: [id], onDelete: Cascade)
   createdBy            User                 @relation("OriginLeaveTypeCreator", fields: [createdById], references: [id])
   updatedBy            User?                @relation("OriginLeaveTypeUpdater", fields: [updatedById], references: [id])
+  leaveLedgerEntries   LeaveLedger[]
 
   @@map("origin_leave_types")
 }
@@ -1975,6 +1993,7 @@ model Employee {
 
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
+  users           User[]
 
   
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -2019,6 +2038,10 @@ model Employee {
   createdAssets EmployeeAsset[] @relation("EmployeeAssetCreatedBy")
 
   updatedAssets EmployeeAsset[] @relation("EmployeeAssetUpdatedBy")
+
+  leaveLedgerEntries LeaveLedger[]
+  leaveAdjustments   LeaveAdjustment[]
+  leaveRequests      LeaveRequest[]
 
   @@map("employees")
 }
@@ -2113,10 +2136,11 @@ model EmployeeWorkDetail {
   employeeId     String   @db.Uuid @map("employee_id")
  
   department     String   @db.VarChar(100)
+  positionId     String?  @db.Uuid @map("position_id")   // ✅ ADD THIS
   team           String   @db.VarChar(100)
   employeeType   String   @db.VarChar(50)  @map("employee_type")
   workLocation   String   @db.VarChar(100) @map("work_location")
-  workShift      String   @db.VarChar(50)  @map("work_shift")
+ workShift       Json?   @map("work_shift")
   workJoiningDate  String?  @db.VarChar(30)  @map("work_joining_date")  
 
   workType       String?  @db.VarChar(50)  @map("work_type")       
@@ -2132,6 +2156,7 @@ model EmployeeWorkDetail {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt      @map("updated_at")
   employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+position   Position? @relation(fields: [positionId], references: [id])
 
   @@map("employee_work_details")
 }
@@ -2397,4 +2422,93 @@ model ZohoEvent {
   @@index([startTime], map: "idx_zoho_events_start_time")
   @@index([userId], map: "idx_zoho_events_user_id")
   @@map("zoho_events")
+}
+
+
+enum TransactionType {
+  monthly_credit
+  yearly_credit
+  carry_forward_credit
+  adjustment_credit
+  leave_debit
+  leave_encashment_debit
+  expiry_debit
+  reversal
+
+  @@map("transaction_type")
+}
+
+model LeaveLedger {
+  id              String          @id @default(uuid())
+  tenantId        String          @map("tenant_id")
+  employeeId      String          @map("employee_id") @db.Uuid
+  leaveTypeId     String          @map("leave_type_id")
+  transactionType TransactionType @map("transaction_type")
+  referenceId     String?         @map("reference_id")
+  units           Decimal         @db.Decimal(6, 2)
+  balanceAfter    Decimal         @map("balance_after") @db.Decimal(6, 2)
+  transactionDate DateTime        @map("transaction_date") @db.Date
+  expiryDate      DateTime?       @map("expiry_date") @db.Date
+  policyVersion   Int             @map("policy_version")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  createdById     String?         @map("created_by_id")
+  updatedById     String?         @map("updated_by_id")
+
+  // Relations
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee  Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType LeaveType        @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+  reference OriginLeaveType? @relation(fields: [referenceId], references: [id], onDelete: SetNull)
+  createdBy User?            @relation("LeaveLedgerCreator", fields: [createdById], references: [id])
+  updatedBy User?            @relation("LeaveLedgerUpdater", fields: [updatedById], references: [id])
+
+  @@index([tenantId])
+  @@index([employeeId])
+  @@index([leaveTypeId])
+  @@index([referenceId])
+  @@index([transactionDate])
+  @@map("leave_ledger")
+}
+
+enum LeaveRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+
+  @@map("leave_request_status")
+}
+
+model LeaveRequest {
+  id          String             @id @default(uuid())
+  tenantId    String             @map("tenant_id")
+  employeeId  String             @map("employee_id") @db.Uuid
+  leaveTypeId String?          @map("leave_type_id")
+  fromDate    DateTime           @map("from_date") @db.Date
+  toDate      DateTime           @map("to_date") @db.Date
+  totalUnits  Decimal            @map("total_units") @db.Decimal(5, 2)
+  status      LeaveRequestStatus @default(PENDING)
+  reason      String?
+  appliedAt   DateTime           @default(now()) @map("applied_at")
+  approvedAt  DateTime?          @map("approved_at")
+  approvedById  String?            @map("approved_by_id")
+
+  createdById String   @map("created_by_id")
+  updatedById String?  @map("updated_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee       Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType     LeaveType? @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+  approvedByUser User?     @relation("LeaveRequestApprover", fields: [approvedById], references: [id])
+  createdByUser  User      @relation("LeaveRequestCreator", fields: [createdById], references: [id])
+  updatedByUser  User?     @relation("LeaveRequestUpdater", fields: [updatedById], references: [id])
+
+  @@index([tenantId, employeeId, status])
+  @@index([leaveTypeId])
+  @@index([createdById])
+  @@map("leave_requests")
 }

@@ -23,6 +23,7 @@ export class EmployeeWorkDetailController {
         employeeType,
         workLocation,
         workShift,
+        positionId
       } = req.body;
 
       if (
@@ -55,13 +56,15 @@ export class EmployeeWorkDetailController {
 
       const workDetail = await prisma.employeeWorkDetail.create({
         data: {
-          employeeId,
+          employee: { connect: { id: employeeId } },
           department,
           team,
           employeeType,
           workLocation,
           workShift,
           createdById: req.user.id,
+          position: { connect: { id: positionId }
+    }
         },
       });
 
