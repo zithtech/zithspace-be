@@ -1,9 +1,9 @@
-import { Router } from 'express';
-import { AttendanceController } from '@/controllers/attendanceController';
-import { authenticateToken, requireAuth } from '@/middleware/auth';
-import { requirePermission } from '@/middleware/permission';
-import { Permissions } from '@/types/permissions';
-import { resolveTenant } from '@/middleware/tenantContext';
+import { Router } from "express";
+import { AttendanceController } from "@/controllers/attendanceController";
+import { authenticateToken, requireAuth } from "@/middleware/auth";
+import { requirePermission } from "@/middleware/permission";
+import { Permissions } from "@/types/permissions";
+import { resolveTenant } from "@/middleware/tenantContext";
 
 const router = Router();
 
@@ -19,21 +19,33 @@ router.use(requireAuth);
  * @desc    Get attendance dashboard summary (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/dashboard/summary', requirePermission(Permissions.ATTENDANCE_READ), AttendanceController.getDashboardSummary);
+router.get(
+  "/dashboard/summary",
+  requirePermission(Permissions.ATTENDANCE_READ),
+  AttendanceController.getDashboardSummary,
+);
 
 /**
  * @route   GET /api/attendance/dashboard/present
  * @desc    Get present members (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/dashboard/present', requirePermission(Permissions.ATTENDANCE_READ), AttendanceController.getPresentMembers);
+router.get(
+  "/dashboard/present",
+  requirePermission(Permissions.ATTENDANCE_READ),
+  AttendanceController.getPresentMembers,
+);
 
 /**
  * @route   GET /api/attendance/today
  * @desc    Get today's attendance for current user (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/today', requirePermission(Permissions.ATTENDANCE_READ), AttendanceController.getTodayAttendance);
+router.get(
+  "/today",
+  requirePermission(Permissions.ATTENDANCE_READ),
+  AttendanceController.getTodayAttendance,
+);
 
 /**
  * @route   GET /api/attendance/my-summary
@@ -41,7 +53,11 @@ router.get('/today', requirePermission(Permissions.ATTENDANCE_READ), AttendanceC
  * @access  Private (authenticated users within tenant)
  * @query   month, year
  */
-router.get('/my-summary', requirePermission(Permissions.ATTENDANCE_READ), AttendanceController.getMyAttendanceSummary);
+router.get(
+  "/my-summary",
+  requirePermission(Permissions.ATTENDANCE_READ),
+  AttendanceController.getMyAttendanceSummary,
+);
 
 /**
  * @route   GET /api/attendance
@@ -49,7 +65,11 @@ router.get('/my-summary', requirePermission(Permissions.ATTENDANCE_READ), Attend
  * @access  Private (authenticated users within tenant)
  * @query   page, limit, userId, date, status, startDate, endDate, sortBy, sortOrder
  */
-router.get('/', requirePermission(Permissions.ATTENDANCE_READ), AttendanceController.getAttendance);
+router.get(
+  "/",
+  requirePermission(Permissions.ATTENDANCE_READ),
+  AttendanceController.getAttendance,
+);
 
 /**
  * @route   GET /api/attendance/:id
@@ -57,7 +77,11 @@ router.get('/', requirePermission(Permissions.ATTENDANCE_READ), AttendanceContro
  * @access  Private (authenticated users within tenant)
  * @param   id - Attendance record ID
  */
-router.get('/:id', requirePermission(Permissions.ATTENDANCE_READ), AttendanceController.getAttendanceById);
+router.get(
+  "/:id",
+  requirePermission(Permissions.ATTENDANCE_READ),
+  AttendanceController.getAttendanceById,
+);
 
 /**
  * @route   POST /api/attendance/clock-in
@@ -65,7 +89,11 @@ router.get('/:id', requirePermission(Permissions.ATTENDANCE_READ), AttendanceCon
  * @access  Private (authenticated users within tenant)
  * @body    { userId?: string } - optional for admin to clock in others
  */
-router.post('/clock-in', requirePermission(Permissions.ATTENDANCE_CREATE), AttendanceController.clockIn);
+router.post(
+  "/clock-in",
+  requirePermission(Permissions.ATTENDANCE_CREATE),
+  AttendanceController.clockIn,
+);
 
 /**
  * @route   POST /api/attendance/clock-out
@@ -73,7 +101,11 @@ router.post('/clock-in', requirePermission(Permissions.ATTENDANCE_CREATE), Atten
  * @access  Private (authenticated users within tenant)
  * @body    { userId?: string } - optional for admin to clock out others
  */
-router.post('/clock-out', requirePermission(Permissions.ATTENDANCE_CREATE), AttendanceController.clockOut);
+router.post(
+  "/clock-out",
+  requirePermission(Permissions.ATTENDANCE_CREATE),
+  AttendanceController.clockOut,
+);
 
 /**
  * @route   POST /api/attendance
@@ -81,7 +113,11 @@ router.post('/clock-out', requirePermission(Permissions.ATTENDANCE_CREATE), Atte
  * @access  Private (admin only)
  * @body    CreateAttendanceData
  */
-router.post('/', requirePermission(Permissions.ATTENDANCE_MANAGE), AttendanceController.createAttendance);
+router.post(
+  "/",
+  requirePermission(Permissions.ATTENDANCE_MANAGE),
+  AttendanceController.createAttendance,
+);
 
 /**
  * @route   PUT /api/attendance/:id
@@ -90,6 +126,14 @@ router.post('/', requirePermission(Permissions.ATTENDANCE_MANAGE), AttendanceCon
  * @param   id - Attendance record ID
  * @body    Partial attendance data
  */
-router.put('/:id', requirePermission(Permissions.ATTENDANCE_MANAGE), AttendanceController.updateAttendance);
+router.put(
+  "/:id",
+  requirePermission(Permissions.ATTENDANCE_MANAGE),
+  AttendanceController.updateAttendance,
+);
+
+// last 5 days  average working hors routes
+
+router.get("/last-5-average", AttendanceController.getLast5DaysAverage);
 
 export default router;
