@@ -20,7 +20,7 @@ const createLeaveOriginStructure = async (req, res) => {
                 leaveTypes: {
                     create: Array.isArray(leaveTypes) ? leaveTypes.map((type) => ({
                         tenantId,
-                        leaveType: type.leaveType,
+                        leaveTypeId: type.leaveTypeId,
                         unit: type.unit,
                         period: type.period,
                         carryForward: type.carryForward ?? false,
@@ -30,7 +30,9 @@ const createLeaveOriginStructure = async (req, res) => {
                 },
             },
             include: {
-                leaveTypes: true,
+                leaveTypes: {
+                    include: { leaveType: true },
+                },
             },
         });
         res.status(201).json({ success: true, data: leaveOrigin });
@@ -76,7 +78,7 @@ const updateLeaveOriginStructure = async (req, res) => {
                 return database_1.prisma.originLeaveType.update({
                     where: { id: type.id },
                     data: {
-                        leaveType: type.leaveType,
+                        leaveTypeId: type.leaveTypeId,
                         unit: type.unit,
                         period: type.period,
                         carryForward: type.carryForward ?? false,
@@ -91,7 +93,7 @@ const updateLeaveOriginStructure = async (req, res) => {
                     data: {
                         tenantId,
                         leaveOriginId: id,
-                        leaveType: type.leaveType,
+                        leaveTypeId: type.leaveTypeId,
                         unit: type.unit,
                         period: type.period,
                         carryForward: type.carryForward ?? false,
@@ -108,7 +110,9 @@ const updateLeaveOriginStructure = async (req, res) => {
         const updatedStructure = await database_1.prisma.leaveOriginStructure.findUnique({
             where: { id },
             include: {
-                leaveTypes: true,
+                leaveTypes: {
+                    include: { leaveType: true },
+                },
             },
         });
         res.status(200).json({ success: true, data: updatedStructure });
@@ -122,7 +126,7 @@ exports.updateLeaveOriginStructure = updateLeaveOriginStructure;
 // Create Origin Leave Type
 const createOriginLeaveType = async (req, res) => {
     try {
-        const { leaveOriginId, leaveType, unit, period, carryForward, status } = req.body;
+        const { leaveOriginId, leaveTypeId, unit, period, carryForward, status } = req.body;
         const tenantId = req.tenantId;
         const userId = req.user?.id;
         if (!leaveOriginId) {
@@ -142,7 +146,7 @@ const createOriginLeaveType = async (req, res) => {
             data: {
                 tenantId,
                 leaveOriginId,
-                leaveType,
+                leaveTypeId,
                 unit,
                 period,
                 carryForward,
@@ -168,7 +172,9 @@ const getAllLeaveOrigins = async (req, res) => {
         const leaveOrigins = await database_1.prisma.leaveOriginStructure.findMany({
             where: { tenantId },
             include: {
-                leaveTypes: true,
+                leaveTypes: {
+                    include: { leaveType: true },
+                },
             },
             orderBy: { createdAt: 'desc' }
         });
@@ -235,7 +241,7 @@ exports.deleteOriginLeaveType = deleteOriginLeaveType;
 const updateOriginLeaveType = async (req, res) => {
     try {
         const { id } = req.params;
-        const { leaveType, unit, period, carryForward, status, leaveOriginId } = req.body;
+        const { leaveTypeId, unit, period, carryForward, status, leaveOriginId } = req.body;
         const tenantId = req.tenantId;
         const userId = req.user?.id;
         if (!tenantId) {
@@ -250,7 +256,7 @@ const updateOriginLeaveType = async (req, res) => {
         const updated = await database_1.prisma.originLeaveType.update({
             where: { id },
             data: {
-                leaveType,
+                leaveTypeId,
                 unit,
                 period,
                 carryForward,

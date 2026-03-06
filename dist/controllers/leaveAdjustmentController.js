@@ -1,38 +1,86 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.deleteLeaveAdjustment = exports.updateLeaveAdjustment = exports.getLeaveAdjustments = exports.createLeaveAdjustment = void 0;
+const client_1 = require("@prisma/client");
 const database_1 = require("@/config/database");
-// const prisma = new PrismaClient(); // This is inefficient. Use the shared prisma instance.
 const createLeaveAdjustment = async (req, res) => {
     try {
         const tenantId = req.tenantId;
         const createdById = req.user?.id;
         if (!tenantId || !createdById) {
-            return res.status(401).json({ error: "Unauthorized or missing tenant context" });
+            return res.status(401).json({
+                error: "Unauthorized or missing tenant context",
+            });
         }
-        const { userId, leaveType, adjustmentType, amount, unit, reason, approvedById, compOffWorkDate, expiryDate, } = req.body;
+        const { employeeId, leaveTypeId, adjustmentType, amount, unit, reason, approvedById, compOffWorkDate, expiryDate, } = req.body;
         const numericAmount = parseFloat(amount);
         if (isNaN(numericAmount) || numericAmount < 0) {
-            return res.status(400).json({ error: "A valid, non-negative amount is required." });
+            return res.status(400).json({
+                error: "A valid, non-negative amount is required.",
+            });
         }
-        const leaveAdjustment = await database_1.prisma.leaveAdjustment.create({
-            data: {
-                tenantId,
-                userId,
-                leaveType,
-                adjustmentType,
-                amount: numericAmount,
-                unit,
-                reason,
-                approvedById,
-                compOffWorkDate: compOffWorkDate ? new Date(compOffWorkDate) : null,
-                expiryDate: expiryDate ? new Date(expiryDate) : null,
-                createdById,
-            },
+        const result = await database_1.prisma.$transaction(async (tx) => {
+            // 1️⃣ Create Leave Adjustment
+            const adjustment = await tx.leaveAdjustment.create({
+                data: {
+                    tenantId,
+                    employeeId,
+                    leaveTypeId,
+                    adjustmentType,
+                    amount: numericAmount,
+                    unit,
+                    reason,
+                    approvedById,
+                    compOffWorkDate: compOffWorkDate ? new Date(compOffWorkDate) : null,
+                    expiryDate: expiryDate ? new Date(expiryDate) : null,
+                    createdById,
+                },
+            });
+            // 2️⃣ Get last ledger balance
+            const lastLedger = await tx.leaveLedger.findFirst({
+                where: {
+                    tenantId,
+                    employeeId,
+                    leaveTypeId,
+                },
+                orderBy: {
+                    createdAt: "desc",
+                },
+            });
+            const previousBalance = lastLedger
+                ? new client_1.Prisma.Decimal(lastLedger.balanceAfter)
+                : new client_1.Prisma.Decimal(0);
+            // 3️⃣ Determine units
+            const units = adjustmentType === "Credit"
+                ? new client_1.Prisma.Decimal(numericAmount)
+                : new client_1.Prisma.Decimal(numericAmount).negated();
+            // 4️⃣ Calculate new balance
+            const newBalance = previousBalance.plus(units);
+            // Prevent negative leave balance
+            if (newBalance.lessThan(0)) {
+                throw new Error("Leave balance cannot be negative");
+            }
+            // 5️⃣ Insert ledger entry
+            await tx.leaveLedger.create({
+                data: {
+                    tenantId,
+                    employeeId,
+                    leaveTypeId,
+                    transactionType: "adjustment_credit",
+                    referenceId: adjustment.id,
+                    units,
+                    balanceAfter: newBalance,
+                    transactionDate: new Date(),
+                    expiryDate: expiryDate ? new Date(expiryDate) : null,
+                    policyVersion: 1,
+                    createdById,
+                },
+            });
+            return adjustment;
         });
         res.status(201).json({
             success: true,
-            data: leaveAdjustment,
+            data: result,
             message: "Leave adjustment created successfully",
         });
     }
@@ -51,20 +99,30 @@ const getLeaveAdjustments = async (req, res) => {
     try {
         const tenantId = req.tenantId;
         if (!tenantId) {
-            return res.status(401).json({ error: "Unauthorized or missing tenant context" });
+            return res.status(401).json({
+                error: "Unauthorized or missing tenant context",
+            });
         }
         const leaveAdjustments = await database_1.prisma.leaveAdjustment.findMany({
             where: {
-                tenantId: tenantId,
+                tenantId,
             },
             include: {
-                user: {
+                employee: {
+                    select: {
+                        id: true,
+                        first_name: true,
+                        last_name: true,
+                        employee_code: true,
+                    },
+                },
+                approvedBy: {
                     select: {
                         id: true,
                         name: true,
                     },
                 },
-                approvedBy: {
+                leaveType: {
                     select: {
                         id: true,
                         name: true,
@@ -75,7 +133,10 @@ const getLeaveAdjustments = async (req, res) => {
                 createdAt: "desc",
             },
         });
-        res.status(200).json({ success: true, data: leaveAdjustments });
+        res.status(200).json({
+            success: true,
+            data: leaveAdjustments,
+        });
     }
     catch (error) {
         console.error("Error fetching leave adjustments:", error);
@@ -93,25 +154,30 @@ const updateLeaveAdjustment = async (req, res) => {
         const tenantId = req.tenantId;
         const updatedById = req.user?.id;
         const { id } = req.params;
-        const { leaveType, adjustmentType, amount, unit, reason, approvedById, compOffWorkDate, expiryDate, } = req.body;
+        const { leaveTypeId, adjustmentType, amount, unit, reason, approvedById, compOffWorkDate, expiryDate, } = req.body;
         if (!tenantId || !updatedById) {
-            return res.status(401).json({ error: "Unauthorized or missing tenant context" });
+            return res.status(401).json({
+                error: "Unauthorized or missing tenant context",
+            });
         }
         const numericAmount = parseFloat(amount);
         if (isNaN(numericAmount) || numericAmount < 0) {
-            return res.status(400).json({ error: "A valid, non-negative amount is required." });
+            return res.status(400).json({
+                error: "A valid, non-negative amount is required.",
+            });
         }
-        // Ensure the record belongs to the tenant before updating
         const existingAdjustment = await database_1.prisma.leaveAdjustment.findFirst({
             where: { id, tenantId },
         });
         if (!existingAdjustment) {
-            return res.status(404).json({ error: "Leave adjustment not found." });
+            return res.status(404).json({
+                error: "Leave adjustment not found.",
+            });
         }
         const leaveAdjustment = await database_1.prisma.leaveAdjustment.update({
             where: { id },
             data: {
-                leaveType,
+                leaveTypeId,
                 adjustmentType,
                 amount: numericAmount,
                 unit,
@@ -144,21 +210,25 @@ const deleteLeaveAdjustment = async (req, res) => {
         const tenantId = req.tenantId;
         const { id } = req.params;
         if (!tenantId) {
-            return res.status(401).json({ error: "Unauthorized or missing tenant context" });
+            return res.status(401).json({
+                error: "Unauthorized or missing tenant context",
+            });
         }
-        // Ensure the record belongs to the tenant before deleting
         const existingAdjustment = await database_1.prisma.leaveAdjustment.findFirst({
             where: { id, tenantId },
         });
         if (!existingAdjustment) {
-            return res.status(404).json({ error: "Leave adjustment not found." });
+            return res.status(404).json({
+                error: "Leave adjustment not found.",
+            });
         }
         await database_1.prisma.leaveAdjustment.delete({
             where: { id },
         });
-        res
-            .status(200)
-            .json({ success: true, message: "Leave adjustment deleted successfully" });
+        res.status(200).json({
+            success: true,
+            message: "Leave adjustment deleted successfully",
+        });
     }
     catch (error) {
         console.error("Error deleting leave adjustment:", error);

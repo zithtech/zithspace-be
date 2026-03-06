@@ -59,6 +59,7 @@ const onboardingRoutes_1 = __importDefault(require("@/routes/onboardingRoutes"))
 const timesheet_1 = __importDefault(require("@/routes/timesheet"));
 const companyGovernmentHoliday_routes_1 = __importDefault(require("./routes/companyGovernmentHoliday.routes"));
 const leaveAdjustmentRoutes_1 = __importDefault(require("./routes/leaveAdjustmentRoutes"));
+const leaveAllocationRoutes_1 = __importDefault(require("@/routes/leaveAllocationRoutes"));
 const reimbursementCategory_1 = __importDefault(require("@/routes/reimbursementCategory"));
 const employmentTypeRoutes_1 = __importDefault(require("@/routes/employmentTypeRoutes"));
 const repositoryRoutes_1 = __importDefault(require("@/routes/repositoryRoutes"));
@@ -68,6 +69,8 @@ const positionRoutes_1 = __importDefault(require("@/routes/positionRoutes"));
 const calendar_1 = __importDefault(require("@/routes/calendar"));
 const leaveOriginRoutes_1 = __importDefault(require("@/routes/leaveOriginRoutes"));
 const emailHistoryRoutes_1 = __importDefault(require("@/routes/emailHistoryRoutes"));
+const leaveRequestRoutes_1 = __importDefault(require("@/routes/leaveRequestRoutes"));
+const leaveBalanceRoutes_1 = __importDefault(require("@/routes/leaveBalanceRoutes"));
 // Load environment
 dotenv_1.default.config();
 // Create Express application
@@ -188,6 +191,9 @@ app.use("/api/channels/:channelId/messages", messages_1.default);
 app.use("/api/email-history", emailHistoryRoutes_1.default);
 app.use("/api/timesheets", timesheet_1.default);
 app.use("/api/zoho", calendar_1.default);
+app.use("/api/leave-allocation", leaveAllocationRoutes_1.default);
+app.use("/api/leave-request", leaveRequestRoutes_1.default);
+app.use("/api/leave-balances", leaveBalanceRoutes_1.default);
 // onboarding
 // app.use("/api/employees", employeeRoutes);
 // app.use("/api/employee-addresses", employeeAddressRoutes);

@@ -43,6 +43,7 @@ class AuthController {
                     },
                     include: {
                         tenant: true,
+                        employee: true,
                         position: {
                             select: {
                                 id: true,
@@ -285,6 +286,7 @@ class AuthController {
                         tenantId: req.user.tenantId,
                     },
                     include: {
+                        employee: true,
                         reportsTo: {
                             select: {
                                 id: true,
@@ -337,6 +339,8 @@ class AuthController {
                     workDays: user.workDays,
                     isActive: user.isActive,
                     reportsTo: user.reportsTo,
+                    employeeId: user.employeeId,
+                    employee: user.employee || {},
                     tenant: user.tenant,
                     createdAt: user.createdAt,
                     updatedAt: user.updatedAt,
