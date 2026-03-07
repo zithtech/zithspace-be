@@ -33,7 +33,7 @@ model Tenant {
   departments           Department[]
   subDepartments        SubDepartment[]
   positions             Position[]
-  zohoEvents            ZohoEvent[]
+  
   salaryComponents      SalaryComponent[]
   companies             Company[]
   holidays              CompanyGovernmentHoliday[]
@@ -47,6 +47,10 @@ model Tenant {
       employees   Employee[]
   employeeAddresses EmployeeAddress[]
   employeeSetting EmployeeSetting[]
+
+  calendarIntegrations CalendarIntegration[]
+  calendarEvents       CalendarEvent[]
+
 
 
 
@@ -76,7 +80,7 @@ model Tenant {
   documents            Document[]
   documenttree         DocumentTree[]
   documentHistory      DocumentHistory[]
-
+  exceptions CalendarEventException[]
   // ZithTech Calls Relations
   channels Channel[]
   meetings Meeting[]
@@ -111,14 +115,9 @@ model User {
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
+  
   employeeId        String?   @map("employee_id") 
   employee          Employee? @relation(fields: [employeeId], references: [id]) 
-
-  zohoAccessToken  String?   @map("zoho_access_token")
-  zohoRefreshToken String?   @map("zoho_refresh_token")
-  zohoTokenExpiry  DateTime? @map("zoho_token_expiry") @db.Timestamptz(6)
-  zohoCalendarId   String?   @map("zoho_calendar_id")
-  zohoLastSync     DateTime? @map("zoho_last_sync") @db.Timestamptz(6)
 
   createdSalaryComponents SalaryComponent[] @relation("SalaryComponentCreator")
   updatedSalaryComponents SalaryComponent[] @relation("SalaryComponentUpdater")
@@ -237,8 +236,16 @@ model User {
   createdInvoicePayments InvoicePayment[] @relation("InvoicePaymentCreatedBy")
   updatedInvoicePayments InvoicePayment[] @relation("InvoicePaymentUpdatedBy")
   sentEmails             EmailLog[]       @relation("EmailSentBy")
-  updatedZohoEvents      ZohoEvent[]      @relation("ZohoEventUpdatedBy")
-  zohoEvents             ZohoEvent[]      @relation("UserZohoEvents")
+  createdExceptions CalendarEventException[] @relation("ExceptionCreatedBy")
+  updatedExceptions CalendarEventException[] @relation("ExceptionUpdatedBy")
+  exceptions    CalendarEventException[]
+  calendarIntegrations CalendarIntegration[]
+  calendarEvents       CalendarEvent[]
+  createdCalendarIntegrations CalendarIntegration[] @relation("CreatedByUser")
+  updatedCalendarIntegrations CalendarIntegration[] @relation("UpdatedByUser")
+  createdCalendarEvents CalendarEvent[] @relation("CreatedByUser")
+  updatedCalendarEvents CalendarEvent[] @relation("UpdatedByUser")
+
 
   // ===== Chat & Meeting Relations =====
   createdChannels       Channel[]            @relation("ChannelCreator")
@@ -253,7 +260,7 @@ model User {
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
   @@unique([tenantId, phone])
-  @@index([zohoCalendarId], map: "idx_users_zoho_calendar_id")
+ 
   @@map("users")
 }
 
@@ -2393,38 +2400,166 @@ model EmployeeSetting {
 }
 
 
-model ZohoEvent {
-  id          String    @id
-  eventId     String    @map("event_id")
-  tenantId    String    @map("tenant_id")
-  calendarId  String    @map("calendar_id")
+
+enum CalendarProvider {
+  GOOGLE
+  MICROSOFT
+  ZOHO
+  @@map("calendar_provider")
+}
+
+model CalendarIntegration {
+ id        String @id  // TEXT id
+
+  userId    String  @map("user_id")
+  tenantId  String  @map("tenant_id")
+  provider  CalendarProvider
+
+  // COMMON TOKENS
+  accessToken   String?  @map("access_token")
+  refreshToken  String?   @map("refresh_token")
+  tokenExpiry   DateTime? @db.Timestamptz(6) @map("token_expiry")
+  calendarId    String? @map("calendar_id")
+
+  // GOOGLE
+  googleSyncToken     String?  @map("google_sync_token")
+  googleChannelId     String? @map("google_channel_id")
+  googleResourceId    String? @map("google_resource_id")
+  googleChannelExpiry DateTime? @db.Timestamptz(6) @map("google_channel_expiry")
+
+  // MICROSOFT
+  microsoftDeltaLink           String?  @map("microsoft_delta_link")
+  microsoftSubscriptionId      String? @map("microsoft_subscription_id")
+  microsoftSubscriptionExpiry  DateTime? @db.Timestamptz(6) @map("microsoft_subscription_expiry")
+  microsoftClientState         String? @map("microsoft_client_state")
+
+  // ZOHO
+  zohoLastSync DateTime? @db.Timestamptz(6) @map("zoho_last_sync")
+
+  // SYNC STATE
+  isSyncing       Boolean   @default(false) @map("is_syncing")
+  lastSyncStatus  String?   @map("last_sync_status") // 'SUCCESS', 'FAILED', 'NEEDS_REAUTH'
+  lastSyncAt      DateTime? @db.Timestamptz(6) @map("last_sync_at")
+  nextSyncDueAt   DateTime? @default(now()) @db.Timestamptz(6) @map("next_sync_due_at")
+  syncErrorCount  Int       @default(0) @map("sync_error_count")
+
+  createdById String? @map("created_by_id")
+  updatedById String? @map("updated_by_id")
+
+  // Audit
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+  createdBy User? @relation("CreatedByUser", fields: [createdById], references: [id])
+  updatedBy User? @relation("UpdatedByUser", fields: [updatedById], references: [id])
+
+  // Relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+  @@index([tenantId])
+  @@map("calendar_integrations")
+}
+
+
+
+model CalendarEvent {
+  id        String @id  // TEXT id
+
+  provider    CalendarProvider
+  externalId  String  @map("external_id")
+
+  tenantId    String  @map("tenant_id")
+  userId      String  @map("user_id")
+
+  calendarId  String?  @map("calendar_id")
+
   title       String
   description String?
-  startTime   DateTime  @map("start_time") @db.Timestamptz(6)
-  endTime     DateTime  @map("end_time") @db.Timestamptz(6)
   location    String?
-  userId      String    @map("user_id")
-  updatedById String?   @map("updated_by")
-  createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt   DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  isAllDay    Boolean   @default(false) @map("is_all_day")
-  isRecurring Boolean   @default(false) @map("is_recurring")
-  rrule       String?   @map("rrule")
-  calendar    String?   @map("calendar_name") @db.VarChar(255)
-  sourceType  String?   @map("source_type") @db.VarChar(100)
-  attendees   Json?     @map("attendees")
-  meetingLink String?   @map("meeting_link") @db.VarChar(255)
-  exdate      Json?     @map("exdate")
-  updatedBy   User?     @relation("ZohoEventUpdatedBy", fields: [updatedById], references: [id], onUpdate: NoAction, map: "fk_zoho_events_updated_by")
-  user        User      @relation("UserZohoEvents", fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_zoho_events_user")
-  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  @@unique([eventId, tenantId], map: "zoho_events_event_tenant_unique")
-  @@index([calendarId], map: "idx_zoho_events_calendar_id")
-  @@index([startTime], map: "idx_zoho_events_start_time")
-  @@index([userId], map: "idx_zoho_events_user_id")
-  @@map("zoho_events")
+  startTime   DateTime @db.Timestamptz(6)  @map("start_time")
+  endTime     DateTime @db.Timestamptz(6)  @map("end_time")
+
+  isAllDay    Boolean  @default(false)  @map("is_all_day")
+  isRecurring Boolean  @default(false)  @map("is_recurring")
+  rrule       String?
+  exdate      Json?
+  calendar    String?   @map("calendar_name") @db.VarChar(255)
+  isDeleted   Boolean   @default(false) @map("is_deleted")
+  sourceType  String?   @map("source_type") @db.VarChar(100)  
+  attendees   Json?
+  meetingLink String?  @map("meeting_link")
+  organizerEmail String? @map("organizer_email")
+  createdById String?  @map("created_by_id")
+  updatedById String?  @map("updated_by_id")
+  exceptions CalendarEventException[]
+  // Audit
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+  createdBy User? @relation("CreatedByUser", fields: [createdById], references: [id])
+  updatedBy User? @relation("UpdatedByUser", fields: [updatedById], references: [id])
+
+  // Relations
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, externalId, tenantId])
+  @@index([userId])
+  @@index([tenantId])
+  @@index([startTime])
+  @@map("calendar_events")
 }
+
+model CalendarEventException {
+  id String @id @default(cuid())
+
+  eventId   String   @map("event_id")
+  tenantId  String   @map("tenant_id")
+  userId    String   @map("user_id")
+
+   overrideTitle       String? @map("override_title")
+  overrideDescription String? @map("override_description")
+  overrideLocation    String? @map("override_location")
+  overrideMeetingLink String? @map("override_meeting_link")
+  overrideAttendees   Json?  @map("override_attendees")
+
+
+  // Audit fields
+  createdById String  @map("created_by")
+  updatedById String? @map("updated_by")
+
+  // The original occurrence date (before modification)
+  originalDate DateTime @db.Timestamptz(6) @map("original_date")
+
+  // If occurrence is modified
+  newStartTime DateTime? @db.Timestamptz(6) @map("new_start_time")
+  newEndTime   DateTime? @db.Timestamptz(6) @map("new_end_time")
+
+  // If occurrence is deleted
+  isCancelled Boolean @default(false) @map("is_cancelled")
+
+  // Provider instance ID
+  externalInstanceId String? @map("external_instance_id")
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  // Relations
+  event  CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdBy User @relation("ExceptionCreatedBy", fields: [createdById], references: [id])
+  updatedBy User? @relation("ExceptionUpdatedBy", fields: [updatedById], references: [id])
+
+  @@index([eventId])
+  @@index([tenantId])
+  @@unique([eventId, originalDate])
+  @@map("calendar_event_exceptions")
+}
+
+
 
 // =====================================================
 //  RBAC — Role-Based Access Control
