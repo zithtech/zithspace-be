@@ -2168,8 +2168,9 @@ model EmployeeWorkDetail {
   workType   String?  @map("work_type") @db.VarChar(50)
   hybridMode String?  @map("hybrid_mode") @db.VarChar(20)
   fixedDays  String[] @default([]) @map("fixed_days")
-  totalDays  Int?     @map("total_days")
-  totalHours Int?     @map("total_hours")
+  totalDays     Int?    @map("total_days")
+  totalHours    Int?    @map("total_hours")
+  notice_period String? @db.VarChar(100)
 
   createdById String  @map("created_by_id") @db.Uuid
   updatedById String? @map("updated_by_id") @db.Uuid
