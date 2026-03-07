@@ -231,10 +231,12 @@ export class AuthController {
         JWTUtils.generateTokenPair(authUser);
 
       // Replace old refresh token with new one
-      await tenantAwarePrisma.withTenant(decoded.tenantId, async (client) => {
-        await client.refreshToken.delete({
-          where: { id: storedToken.id },
-        });
+      await tenantAwarePrisma.withTenant(
+        decoded.tenantId,
+        async (client) => {
+          await client.refreshToken.deleteMany({
+            where: { id: storedToken.id },
+          });
 
         await client.refreshToken.create({
           data: {

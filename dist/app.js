@@ -3,7 +3,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-require("module-alias/register");
+if (process.env.NODE_ENV !== "development") {
+    require("module-alias/register");
+}
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const morgan_1 = __importDefault(require("morgan"));
@@ -23,6 +25,7 @@ const projects_1 = __importDefault(require("@/routes/projects"));
 const tickets_1 = __importDefault(require("@/routes/tickets"));
 const attendance_1 = __importDefault(require("@/routes/attendance"));
 const clients_1 = __importDefault(require("@/routes/clients"));
+const clientsV2_1 = __importDefault(require("@/routes/clientsV2"));
 const members_1 = __importDefault(require("@/routes/members"));
 const shifts_1 = __importDefault(require("@/routes/shifts"));
 const transactions_1 = __importDefault(require("@/routes/transactions"));
@@ -165,6 +168,7 @@ app.use("/api/public/tickets", publicTickets_1.default);
 app.use("/api/tickets", tickets_1.default);
 app.use("/api/attendance", attendance_1.default);
 app.use("/api/clients", clients_1.default);
+app.use("/api/clients-v2", clientsV2_1.default);
 app.use("/api/members", members_1.default);
 app.use("/api/shifts", shifts_1.default);
 app.use("/api/transactions", transactions_1.default);

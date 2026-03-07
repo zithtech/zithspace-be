@@ -111,8 +111,8 @@ export declare function deletePersonalDetails(req: AuthRequest, employeeId: stri
     success: boolean;
     message: string;
     employee: {
-        tenantId: string;
         status: boolean;
+        tenantId: string;
         id: string;
         employee_code: string;
         first_name: string;

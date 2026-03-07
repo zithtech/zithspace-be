@@ -215,6 +215,55 @@ export async function uploadEmployeeDocumentToR2(
 }
 
 /**
+ * Upload Client V2 document to Cloudflare R2
+ * @param base64File - Base64 encoded file string
+ * @param fileName - Original file name
+ * @param tenantId - Tenant ID
+ * @param clientId - Client ID
+ * @param category - Main Category (e.g., Sales, Legal)
+ * @param documentType - Sub Category of document
+ * @returns Public URL of uploaded document
+ */
+export async function uploadClientDocumentToR2(
+  base64File: string,
+  fileName: string,
+  tenantId: string,
+  clientId: string,
+  category: string,
+  documentType: string,
+): Promise<string> {
+  try {
+    const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+    if (!matches) {
+      throw new Error("Invalid file format. Expected base64 encoded file.");
+    }
+
+    const contentType = matches[1];
+    const base64Data = matches[2];
+    const buffer = Buffer.from(base64Data, "base64");
+
+    const uniqueId = nanoid(12);
+    const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+    // Organize by tenant -> clients-v2 -> client ID -> category -> document type
+    const key = `${tenantId}/clients-v2/${clientId}/documents/${category}/${documentType}/${uniqueId}_${sanitizedFileName}`;
+
+    const params = {
+      Bucket: BUCKET_NAME,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+    };
+
+    await s3Client.send(new PutObjectCommand(params));
+
+    return `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/${key}`;
+  } catch (error: any) {
+    console.error("R2 upload error (Client V2):", error);
+    throw new Error(`Failed to upload client document: ${error.message}`);
+  }
+}
+
+/**
  * Upload employee asset image to Cloudflare R2
  * @param base64 - Base64 encoded file string or an existing URL
  * @param fileName - Original file name
