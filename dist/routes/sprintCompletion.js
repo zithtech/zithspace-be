@@ -4,6 +4,8 @@ const express_1 = require("express");
 const sprintCompletionController_1 = require("@/controllers/sprintCompletionController");
 const auth_1 = require("@/middleware/auth");
 const tenantContext_1 = require("@/middleware/tenantContext");
+const permission_1 = require("@/middleware/permission");
+const permissions_1 = require("@/types/permissions");
 const router = (0, express_1.Router)();
 // Apply tenant context resolution to all routes
 router.use(tenantContext_1.resolveTenant);
@@ -17,7 +19,7 @@ router.use(auth_1.requireAuth);
  * @param   sprintId - Sprint Plan ID
  * @returns Sprint details, completed/pending tickets, statistics, available destinations
  */
-router.get('/:sprintId/summary', sprintCompletionController_1.SprintCompletionController.getSprintCompletionSummary);
+router.get('/:sprintId/summary', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_READ), sprintCompletionController_1.SprintCompletionController.getSprintCompletionSummary);
 /**
  * @route   POST /api/sprint-completion/:sprintId/bulk-resolve
  * @desc    Bulk resolve sprint tickets (tenant-aware)
@@ -26,7 +28,7 @@ router.get('/:sprintId/summary', sprintCompletionController_1.SprintCompletionCo
  * @body    { actions: Array<{ ticketId: string, action: string, destinationId?: string }> }
  * @note    Actions: move_to_sprint, move_to_bucket, move_to_backlog, move_to_trash
  */
-router.post('/:sprintId/bulk-resolve', sprintCompletionController_1.SprintCompletionController.bulkResolveTickets);
+router.post('/:sprintId/bulk-resolve', (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_MANAGE), sprintCompletionController_1.SprintCompletionController.bulkResolveTickets);
 /**
  * @route   POST /api/sprint-completion/:sprintId/complete
  * @desc    Complete sprint with enhanced workflow (tenant-aware)
@@ -35,7 +37,7 @@ router.post('/:sprintId/bulk-resolve', sprintCompletionController_1.SprintComple
  * @body    { force?: boolean }
  * @note    Validates all tickets are resolved before completion (unless force=true)
  */
-router.post('/:sprintId/complete', sprintCompletionController_1.SprintCompletionController.completeSprint);
+router.post('/:sprintId/complete', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_MANAGE), sprintCompletionController_1.SprintCompletionController.completeSprint);
 /**
  * @route   GET /api/sprint-completion/:sprintId/log
  * @desc    Get sprint completion history/audit log (tenant-aware)
@@ -44,6 +46,6 @@ router.post('/:sprintId/complete', sprintCompletionController_1.SprintCompletion
  * @query   page, limit
  * @returns Paginated completion logs with action summary
  */
-router.get('/:sprintId/log', sprintCompletionController_1.SprintCompletionController.getSprintCompletionLog);
+router.get('/:sprintId/log', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_READ), sprintCompletionController_1.SprintCompletionController.getSprintCompletionLog);
 exports.default = router;
 //# sourceMappingURL=sprintCompletion.js.map

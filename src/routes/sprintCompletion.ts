@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { SprintCompletionController } from '@/controllers/sprintCompletionController';
 import { authenticateToken, requireAuth } from '@/middleware/auth';
 import { resolveTenant } from '@/middleware/tenantContext';
+import { requirePermission } from '@/middleware/permission';
+import { Permissions } from '@/types/permissions';
 
 const router = Router();
 
@@ -19,7 +21,7 @@ router.use(requireAuth);
  * @param   sprintId - Sprint Plan ID
  * @returns Sprint details, completed/pending tickets, statistics, available destinations
  */
-router.get('/:sprintId/summary', SprintCompletionController.getSprintCompletionSummary);
+router.get('/:sprintId/summary', requirePermission(Permissions.PROJECT_READ), SprintCompletionController.getSprintCompletionSummary);
 
 /**
  * @route   POST /api/sprint-completion/:sprintId/bulk-resolve
@@ -29,7 +31,7 @@ router.get('/:sprintId/summary', SprintCompletionController.getSprintCompletionS
  * @body    { actions: Array<{ ticketId: string, action: string, destinationId?: string }> }
  * @note    Actions: move_to_sprint, move_to_bucket, move_to_backlog, move_to_trash
  */
-router.post('/:sprintId/bulk-resolve', SprintCompletionController.bulkResolveTickets);
+router.post('/:sprintId/bulk-resolve', requirePermission(Permissions.TICKET_MANAGE), SprintCompletionController.bulkResolveTickets);
 
 /**
  * @route   POST /api/sprint-completion/:sprintId/complete
@@ -39,7 +41,7 @@ router.post('/:sprintId/bulk-resolve', SprintCompletionController.bulkResolveTic
  * @body    { force?: boolean }
  * @note    Validates all tickets are resolved before completion (unless force=true)
  */
-router.post('/:sprintId/complete', SprintCompletionController.completeSprint);
+router.post('/:sprintId/complete', requirePermission(Permissions.PROJECT_MANAGE), SprintCompletionController.completeSprint);
 
 /**
  * @route   GET /api/sprint-completion/:sprintId/log
@@ -49,6 +51,6 @@ router.post('/:sprintId/complete', SprintCompletionController.completeSprint);
  * @query   page, limit
  * @returns Paginated completion logs with action summary
  */
-router.get('/:sprintId/log', SprintCompletionController.getSprintCompletionLog);
+router.get('/:sprintId/log', requirePermission(Permissions.PROJECT_READ), SprintCompletionController.getSprintCompletionLog);
 
 export default router;

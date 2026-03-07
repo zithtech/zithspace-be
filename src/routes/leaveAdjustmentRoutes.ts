@@ -7,6 +7,8 @@ import {
 } from "../controllers/leaveAdjustmentController";
 import { authenticateToken, requireAuth } from "@/middleware/auth";
 import { resolveTenant } from "@/middleware/tenantContext";
+import { requirePermission } from "@/middleware/permission";
+import { Permissions } from "@/types/permissions";
 
 const router = Router();
 
@@ -15,9 +17,9 @@ router.use(resolveTenant);
 router.use(authenticateToken);
 router.use(requireAuth);
 
-router.post("/", createLeaveAdjustment);
-router.get("/", getLeaveAdjustments);
-router.put("/:id", updateLeaveAdjustment);
-router.delete("/:id", deleteLeaveAdjustment);
+router.post("/", requirePermission(Permissions.LEAVE_MANAGE), createLeaveAdjustment);
+router.get("/", requirePermission(Permissions.LEAVE_MANAGE), getLeaveAdjustments);
+router.put("/:id", requirePermission(Permissions.LEAVE_MANAGE), updateLeaveAdjustment);
+router.delete("/:id", requirePermission(Permissions.LEAVE_MANAGE), deleteLeaveAdjustment);
 
 export default router;

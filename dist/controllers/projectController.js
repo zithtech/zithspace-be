@@ -3,6 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ProjectController = void 0;
 const database_1 = require("@/config/database");
 const types_1 = require("@/types");
+const rbac_service_1 = require("@/modules/rbac/rbac.service");
+const permissions_1 = require("@/types/permissions");
 class ProjectController {
     /**
      * Get all projects with filtering and pagination (tenant-aware)
@@ -673,7 +675,7 @@ class ProjectController {
             // STRICT ROLE LOGIC:
             // SUPER_ADMIN -> Sees ALL projects in tenant
             // ADMIN / MEMBER -> Sees ONLY assigned projects (Member or PM)
-            if (userRole?.toUpperCase() !== "SUPER_ADMIN") {
+            if (!await rbac_service_1.RBACService.hasPermission(userId, tenantId, permissions_1.Permissions.PROJECT_MANAGE, userRole)) {
                 whereClause.OR = [
                     { projectManagerId: userId },
                     { members: { some: { userId } } },

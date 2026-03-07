@@ -2,6 +2,8 @@ import express from "express";
 import { PositionController } from "@/controllers/positionController";
 import { authenticateToken, requireAuth } from "@/middleware/auth";
 import { resolveTenant } from "@/middleware/tenantContext";
+import { requirePermission } from "@/middleware/permission";
+import { Permissions } from "@/types/permissions";
 
 const router = express.Router();
 
@@ -10,10 +12,10 @@ router.use(resolveTenant);
 router.use(authenticateToken);
 router.use(requireAuth);
 
-router.post("/", PositionController.createPosition);
-router.get("/", PositionController.getPositions);
-router.get("/:id", PositionController.getPositionById);
-router.put("/:id", PositionController.updatePosition);
-router.delete("/:id", PositionController.deletePosition);
+router.post("/", requirePermission(Permissions.ORG_MANAGE), PositionController.createPosition);
+router.get("/", requirePermission(Permissions.ORG_READ), PositionController.getPositions);
+router.get("/:id", requirePermission(Permissions.ORG_READ), PositionController.getPositionById);
+router.put("/:id", requirePermission(Permissions.ORG_MANAGE), PositionController.updatePosition);
+router.delete("/:id", requirePermission(Permissions.ORG_MANAGE), PositionController.deletePosition);
 
 export default router;

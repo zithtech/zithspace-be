@@ -1,7 +1,9 @@
 import { Router } from "express";
 import { TimesheetController } from "@/controllers/timesheetController";
-import { authenticateToken, requireAuth, requireAdmin } from "@/middleware/auth";
+import { authenticateToken, requireAuth } from "@/middleware/auth";
 import { resolveTenant } from "@/middleware/tenantContext";
+import { requirePermission } from "@/middleware/permission";
+import { Permissions } from "@/types/permissions";
 
 const router = Router();
 
@@ -18,7 +20,7 @@ router.use(requireAuth);
  * @desc    Get user projects & tasks for timesheet
  * @access  Private
  */
-router.get("/meta", TimesheetController.getTimesheetMeta);
+router.get("/meta", requirePermission(Permissions.TIMESHEET_READ), TimesheetController.getTimesheetMeta);
 
 
 /**
@@ -26,28 +28,28 @@ router.get("/meta", TimesheetController.getTimesheetMeta);
  * @desc    Get all timesheets for current tenant (with optional pagination)
  * @access  Private
  */
-router.get("/", TimesheetController.getTimesheets);
+router.get("/", requirePermission(Permissions.TIMESHEET_READ), TimesheetController.getTimesheets);
 
 /**
  * @route   GET /api/timesheets/:id
  * @desc    Get a single timesheet by ID
  * @access  Private
  */
-router.get("/:id", TimesheetController.getTimesheetById);
+router.get("/:id", requirePermission(Permissions.TIMESHEET_READ), TimesheetController.getTimesheetById);
 
 /**
  * @route   POST /api/timesheets
  * @desc    Create a new timesheet (DRAFT)
  * @access  Private
  */
-router.post("/", TimesheetController.createTimesheet);
+router.post("/", requirePermission(Permissions.TIMESHEET_CREATE), TimesheetController.createTimesheet);
 
 /**
  * @route   PUT /api/timesheets/:id
  * @desc    Update timesheet rows or basic info
  * @access  Private
  */
-router.put("/:id", TimesheetController.updateTimesheet);
+router.put("/:id", requirePermission(Permissions.TIMESHEET_UPDATE), TimesheetController.updateTimesheet);
 
 /**
  * @route   POST /api/timesheets/:id/submit
@@ -56,7 +58,7 @@ router.put("/:id", TimesheetController.updateTimesheet);
  */
 // router.post("/:id/submit", TimesheetController.approveTimesheet);
 //  // if submit uses approve logic, else create separate submit method
-router.post("/:id/submit", TimesheetController.submitTimesheet);
+router.post("/:id/submit", requirePermission(Permissions.TIMESHEET_UPDATE), TimesheetController.submitTimesheet);
 
 
 /**
@@ -64,14 +66,14 @@ router.post("/:id/submit", TimesheetController.submitTimesheet);
  * @desc    Approve or reject a timesheet
  * @access  Private (admin or manager)
  */
-router.post("/:id/review",TimesheetController.approveTimesheet);
+router.post("/:id/review", requirePermission(Permissions.TIMESHEET_APPROVE), TimesheetController.approveTimesheet);
 
 /**
  * @route   DELETE /api/timesheets/:id
  * @desc    Delete a timesheet
  * @access  Private
  */
-router.delete("/:id", TimesheetController.deleteTimesheet);
+router.delete("/:id", requirePermission(Permissions.TIMESHEET_MANAGE), TimesheetController.deleteTimesheet);
 
 
 

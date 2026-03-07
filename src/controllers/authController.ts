@@ -1,7 +1,7 @@
-import { Response } from 'express';
-import bcrypt from 'bcryptjs';
-import { tenantAwarePrisma } from '@/config/database';
-import { JWTUtils } from '@/utils/jwt';
+import { Response } from "express";
+import bcrypt from "bcryptjs";
+import { tenantAwarePrisma } from "@/config/database";
+import { JWTUtils } from "@/utils/jwt";
 import {
   AuthRequest,
   LoginCredentials,
@@ -9,8 +9,9 @@ import {
   ApiResponse,
   AuthenticationError,
   NotFoundError,
-  CreateUserData
-} from '@/types';
+  CreateUserData,
+} from "@/types";
+import { RBACService } from "@/modules/rbac/rbac.service";
 
 export class AuthController {
   /**
@@ -24,7 +25,7 @@ export class AuthController {
       if (!email || !password) {
         res.status(400).json({
           success: false,
-          error: 'Email and password are required',
+          error: "Email and password are required",
         } as ApiResponse);
         return;
       }
@@ -33,7 +34,7 @@ export class AuthController {
       if (!req.tenantId || !req.tenant) {
         res.status(400).json({
           success: false,
-          error: 'Tenant context is required for login',
+          error: "Tenant context is required for login",
         } as ApiResponse);
         return;
       }
@@ -46,13 +47,14 @@ export class AuthController {
             where: {
               OR: [
                 { workEmail: email.toLowerCase() },
-                { personalEmail: email.toLowerCase() }
+                { personalEmail: email.toLowerCase() },
               ],
               tenantId: req.tenantId,
               isActive: true,
             },
             include: {
               tenant: true,
+              employee: true,
               position: {
                 select: {
                   id: true,
@@ -62,13 +64,13 @@ export class AuthController {
               },
             },
           });
-        }
+        },
       );
 
       if (!user) {
         res.status(401).json({
           success: false,
-          error: 'Invalid credentials',
+          error: "Invalid credentials",
         } as ApiResponse);
         return;
       }
@@ -79,7 +81,7 @@ export class AuthController {
       if (!isPasswordValid) {
         res.status(401).json({
           success: false,
-          error: 'Invalid credentials',
+          error: "Invalid credentials",
         } as ApiResponse);
         return;
       }
@@ -88,7 +90,7 @@ export class AuthController {
       if (!user.tenant.isActive) {
         res.status(403).json({
           success: false,
-          error: 'Account suspended',
+          error: "Account suspended",
         } as ApiResponse);
         return;
       }
@@ -104,29 +106,27 @@ export class AuthController {
       };
 
       // Generate token pair
-      const { accessToken, refreshToken } = JWTUtils.generateTokenPair(authUser);
+      const { accessToken, refreshToken } =
+        JWTUtils.generateTokenPair(authUser);
 
       // Store refresh token in database
-      await tenantAwarePrisma.withTenant(
-        req.tenantId,
-        async (client) => {
-          await client.refreshToken.create({
-            data: {
-              token: refreshToken,
-              userId: user.id,
-              expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
-            },
-          });
-        }
-      );
+      await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+        await client.refreshToken.create({
+          data: {
+            token: refreshToken,
+            userId: user.id,
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+          },
+        });
+      });
 
       // Set refresh token cookie
-      res.cookie('refreshToken', refreshToken, {
+      res.cookie("refreshToken", refreshToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? "none" : 'lax',
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-        path: '/', // Ensure cookie is available for all paths
+        path: "/", // Ensure cookie is available for all paths
       });
 
       // Return user data and access token
@@ -143,17 +143,17 @@ export class AuthController {
           position: user.position?.title || null,
           tenantId: user.tenantId,
           tenantName: user.tenant.name,
-          isActive: user.isActive
+          isActive: user.isActive,
         },
-        message: 'Login successful',
+        message: "Login successful",
       };
 
       res.status(200).json(loginResponse);
     } catch (error) {
-      console.error('Login error:', error);
+      console.error("Login error:", error);
       res.status(500).json({
         success: false,
-        error: 'Login failed',
+        error: "Login failed",
       } as ApiResponse);
     }
   }
@@ -168,7 +168,7 @@ export class AuthController {
       if (!refreshToken) {
         res.status(401).json({
           success: false,
-          error: 'Refresh token required',
+          error: "Refresh token required",
         } as ApiResponse);
         return;
       }
@@ -201,13 +201,17 @@ export class AuthController {
               },
             },
           });
-        }
+        },
       );
 
-      if (!storedToken || !storedToken.user.isActive || !storedToken.user.tenant.isActive) {
+      if (
+        !storedToken ||
+        !storedToken.user.isActive ||
+        !storedToken.user.tenant.isActive
+      ) {
         res.status(401).json({
           success: false,
-          error: 'Invalid or expired refresh token',
+          error: "Invalid or expired refresh token",
         } as ApiResponse);
         return;
       }
@@ -223,7 +227,8 @@ export class AuthController {
       };
 
       // Generate new token pair
-      const { accessToken, refreshToken: newRefreshToken } = JWTUtils.generateTokenPair(authUser);
+      const { accessToken, refreshToken: newRefreshToken } =
+        JWTUtils.generateTokenPair(authUser);
 
       // Replace old refresh token with new one
       await tenantAwarePrisma.withTenant(
@@ -233,35 +238,34 @@ export class AuthController {
             where: { id: storedToken.id },
           });
 
-          await client.refreshToken.create({
-            data: {
-              token: newRefreshToken,
-              userId: storedToken.user.id,
-              expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
-            },
-          });
-        }
-      );
+        await client.refreshToken.create({
+          data: {
+            token: newRefreshToken,
+            userId: storedToken.user.id,
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+          },
+        });
+      });
 
       // Set new refresh token cookie
-      res.cookie('refreshToken', newRefreshToken, {
+      res.cookie("refreshToken", newRefreshToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? "none" : 'lax',
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
         maxAge: 7 * 24 * 60 * 60 * 1000, // 30 days
-        path: '/', // Ensure cookie is available for all paths
+        path: "/", // Ensure cookie is available for all paths
       });
 
       res.status(200).json({
         success: true,
         accessToken,
-        message: 'Token refreshed successfully',
+        message: "Token refreshed successfully",
       } as ApiResponse);
     } catch (error) {
-      console.error('Token refresh error:', error);
+      console.error("Token refresh error:", error);
       res.status(401).json({
         success: false,
-        error: 'Token refresh failed',
+        error: "Token refresh failed",
       } as ApiResponse);
     }
   }
@@ -285,26 +289,26 @@ export class AuthController {
                   userId: req.user!.id,
                 },
               });
-            }
+            },
           );
         } catch (error) {
-          console.error('Error revoking refresh token:', error);
+          console.error("Error revoking refresh token:", error);
           // Continue with logout even if token deletion fails
         }
       }
 
       // Clear refresh token cookie
-      res.clearCookie('refreshToken');
+      res.clearCookie("refreshToken");
 
       res.status(200).json({
         success: true,
-        message: 'Logged out successfully',
+        message: "Logged out successfully",
       } as ApiResponse);
     } catch (error) {
-      console.error('Logout error:', error);
+      console.error("Logout error:", error);
       res.status(500).json({
         success: false,
-        error: 'Logout failed',
+        error: "Logout failed",
       } as ApiResponse);
     }
   }
@@ -317,7 +321,7 @@ export class AuthController {
       if (!req.user) {
         res.status(401).json({
           success: false,
-          error: 'Authentication required',
+          error: "Authentication required",
         } as ApiResponse);
         return;
       }
@@ -332,6 +336,7 @@ export class AuthController {
               tenantId: req.user!.tenantId,
             },
             include: {
+              employee: true,
               reportsTo: {
                 select: {
                   id: true,
@@ -361,13 +366,13 @@ export class AuthController {
               },
             },
           });
-        }
+        },
       );
 
       if (!user) {
         res.status(404).json({
           success: false,
-          error: 'User not found',
+          error: "User not found",
         } as ApiResponse);
         return;
       }
@@ -387,16 +392,18 @@ export class AuthController {
           workDays: user.workDays,
           isActive: user.isActive,
           reportsTo: user.reportsTo,
+          employeeId: user.employeeId,
+          employee: user?.employee || {}, // Include linked employee data if available
           tenant: user.tenant,
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
         },
       } as ApiResponse);
     } catch (error) {
-      console.error('Get user profile error:', error);
+      console.error("Get user profile error:", error);
       res.status(500).json({
         success: false,
-        error: 'Failed to get user profile',
+        error: "Failed to get user profile",
       } as ApiResponse);
     }
   }
@@ -410,7 +417,7 @@ export class AuthController {
         res.status(401).json({
           success: false,
           authenticated: false,
-          error: 'Not authenticated',
+          error: "Not authenticated",
         } as ApiResponse);
         return;
       }
@@ -427,10 +434,10 @@ export class AuthController {
         },
       } as ApiResponse);
     } catch (error) {
-      console.error('Auth check error:', error);
+      console.error("Auth check error:", error);
       res.status(500).json({
         success: false,
-        error: 'Authentication check failed',
+        error: "Authentication check failed",
       } as ApiResponse);
     }
   }
@@ -443,7 +450,7 @@ export class AuthController {
       if (!req.tenantId || !req.tenant) {
         res.status(400).json({
           success: false,
-          error: 'Tenant context is required',
+          error: "Tenant context is required",
         } as ApiResponse);
         return;
       }
@@ -451,11 +458,17 @@ export class AuthController {
       const userData: CreateUserData = req.body;
 
       // Validate required fields
-      if (!userData.name || !userData.workEmail || !userData.personalEmail ||
-        !userData.phone || !userData.password || !userData.positionId) {
+      if (
+        !userData.name ||
+        !userData.workEmail ||
+        !userData.personalEmail ||
+        !userData.phone ||
+        !userData.password ||
+        !userData.positionId
+      ) {
         res.status(400).json({
           success: false,
-          error: 'All required fields must be provided',
+          error: "All required fields must be provided",
         } as ApiResponse);
         return;
       }
@@ -475,7 +488,7 @@ export class AuthController {
               personalEmail: userData.personalEmail.toLowerCase(),
               phone: userData.phone,
               passwordHash,
-              role: userData.role || 'user',
+              role: userData.role || "user",
               positionId: userData.positionId,
               reportsToId: userData.reportsToId || null,
               dateOfBirth: userData.dateOfBirth || null,
@@ -491,7 +504,7 @@ export class AuthController {
               },
             },
           });
-        }
+        },
       );
 
       res.status(201).json({
@@ -507,22 +520,124 @@ export class AuthController {
           positionTitle: user.position?.title,
           isActive: user.isActive,
         },
-        message: 'User created successfully',
+        message: "User created successfully",
       } as ApiResponse);
     } catch (error: any) {
-      console.error('Create user error:', error);
+      console.error("Create user error:", error);
 
-      if (error.code === 'P2002') {
+      if (error.code === "P2002") {
         res.status(409).json({
           success: false,
-          error: 'User with this email or phone already exists',
+          error: "User with this email or phone already exists",
         } as ApiResponse);
         return;
       }
 
       res.status(500).json({
         success: false,
-        error: 'Failed to create user',
+        error: "Failed to create user",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Get new profile including employee info
+   */
+  static async getNewProfile(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({
+          success: false,
+          error: "Authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      // Fetch user and linked employee
+      const user = await tenantAwarePrisma.withTenant(
+        req.user.tenantId,
+        async (client) => {
+          return await client.user.findFirst({
+            where: {
+              id: req.user!.id,
+              tenantId: req.user!.tenantId,
+            },
+            include: {
+              employee: true, // Assuming `employee` is the relation in Prisma
+              reportsTo: {
+                select: {
+                  id: true,
+                  name: true,
+                  position: {
+                    select: {
+                      id: true,
+                      title: true,
+                      code: true,
+                    },
+                  },
+                },
+              },
+              position: {
+                select: {
+                  id: true,
+                  title: true,
+                  code: true,
+                },
+              },
+              tenant: {
+                select: {
+                  id: true,
+                  name: true,
+                  subdomain: true,
+                },
+              },
+            },
+          });
+        },
+      );
+
+      if (!user) {
+        res.status(404).json({
+          success: false,
+          error: "User not found",
+        } as ApiResponse);
+        return;
+      }
+
+      // Load effective permissions from RBAC service (cached)
+      const permSet = await RBACService.getUserPermissions(
+        user.id,
+        user.tenantId,
+        user.role,
+      );
+
+      res.status(200).json({
+        success: true,
+        data: {
+          id: user.id,
+          name: user.name,
+          workEmail: user.workEmail,
+          personalEmail: user.personalEmail,
+          phone: user.phone,
+          role: user.role,
+          position: user.position,
+          positionTitle: user.position?.title,
+          dateOfBirth: user.dateOfBirth,
+          workDays: user.workDays,
+          isActive: user.isActive,
+          reportsTo: user.reportsTo,
+          tenant: user.tenant,
+          employeeId: user.employee?.id || null, // Employee ID from linked table
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt,
+          permissions: Array.from(permSet),
+        },
+      } as ApiResponse);
+    } catch (error) {
+      console.error("Get new profile error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to get profile",
       } as ApiResponse);
     }
   }

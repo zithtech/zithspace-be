@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { SettingsController } from '@/controllers/settingsController';
-import { authenticateToken, requireAuth, requireAdmin } from '@/middleware/auth';
+import { authenticateToken, requireAuth } from '@/middleware/auth';
+import { requirePermission } from '@/middleware/permission';
+import { Permissions } from '@/types/permissions';
 import { resolveTenant } from '@/middleware/tenantContext';
 
 const router = Router();
@@ -17,7 +19,7 @@ router.use(requireAuth);
  * @desc    Get all configuration options for ticket creation (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/ticket-configurations', SettingsController.getTicketConfigurations);
+router.get('/ticket-configurations', requirePermission(Permissions.SETTINGS_READ), SettingsController.getTicketConfigurations);
 
 /**
  * @route   GET /api/settings/team-members
@@ -25,7 +27,7 @@ router.get('/ticket-configurations', SettingsController.getTicketConfigurations)
  * @access  Private (authenticated users within tenant)
  * @query   projectId, role, position
  */
-router.get('/team-members', SettingsController.getTeamMembers);
+router.get('/team-members', requirePermission(Permissions.SETTINGS_READ), SettingsController.getTeamMembers);
 
 /**
  * @route   GET /api/settings/release-plans/:projectId
@@ -33,7 +35,7 @@ router.get('/team-members', SettingsController.getTeamMembers);
  * @access  Private (authenticated users within tenant)
  * @param   projectId - Project ID
  */
-router.get('/release-plans/:projectId', SettingsController.getReleasePlansByProject);
+router.get('/release-plans/:projectId', requirePermission(Permissions.SETTINGS_READ), SettingsController.getReleasePlansByProject);
 
 /**
  * @route   GET /api/settings/workflow-templates
@@ -41,7 +43,7 @@ router.get('/release-plans/:projectId', SettingsController.getReleasePlansByProj
  * @access  Private (authenticated users within tenant)
  * @query   projectId
  */
-router.get('/workflow-templates', SettingsController.getWorkflowTemplates);
+router.get('/workflow-templates', requirePermission(Permissions.SETTINGS_READ), SettingsController.getWorkflowTemplates);
 
 /**
  * @route   PUT /api/settings/workflow-templates/:projectId
@@ -50,7 +52,7 @@ router.get('/workflow-templates', SettingsController.getWorkflowTemplates);
  * @param   projectId - Project ID
  * @body    { workflowSteps: string[] }
  */
-router.put('/workflow-templates/:projectId', requireAdmin, SettingsController.updateWorkflowTemplate);
+router.put('/workflow-templates/:projectId', requirePermission(Permissions.SETTINGS_UPDATE), SettingsController.updateWorkflowTemplate);
 
 /**
  * @route   GET /api/settings/parent-tickets
@@ -58,21 +60,21 @@ router.put('/workflow-templates/:projectId', requireAdmin, SettingsController.up
  * @access  Private (authenticated users within tenant)
  * @query   projectId, exclude, search
  */
-router.get('/parent-tickets', SettingsController.getParentTickets);
+router.get('/parent-tickets', requirePermission(Permissions.SETTINGS_READ), SettingsController.getParentTickets);
 
 /**
  * @route   GET /api/settings/system-stats
  * @desc    Get system statistics for dashboard (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/system-stats', SettingsController.getSystemStats);
+router.get('/system-stats', requirePermission(Permissions.SETTINGS_READ), SettingsController.getSystemStats);
 
 /**
  * @route   GET /api/settings/tenant
  * @desc    Get tenant settings (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/tenant', SettingsController.getTenantSettings);
+router.get('/tenant', requirePermission(Permissions.SETTINGS_READ), SettingsController.getTenantSettings);
 
 /**
  * @route   PUT /api/settings/tenant
@@ -80,7 +82,7 @@ router.get('/tenant', SettingsController.getTenantSettings);
  * @access  Private (admin only)
  * @body    { settings: object }
  */
-router.put('/tenant', requireAdmin, SettingsController.updateTenantSettings);
+router.put('/tenant', requirePermission(Permissions.SETTINGS_MANAGE), SettingsController.updateTenantSettings);
 
 /**
  * @route   GET /api/settings/search
@@ -88,7 +90,7 @@ router.put('/tenant', requireAdmin, SettingsController.updateTenantSettings);
  * @access  Private (authenticated users within tenant)
  * @query   q (search query), limit
  */
-router.get('/search', SettingsController.globalSearch);
+router.get('/search', requirePermission(Permissions.SETTINGS_READ), SettingsController.globalSearch);
 
 // ==========================================
 // DROPDOWN OPTIONS MANAGEMENT (CRITICAL)
@@ -100,7 +102,7 @@ router.get('/search', SettingsController.globalSearch);
  * @access  Private (authenticated users within tenant)
  * @query   includeInactive
  */
-router.get('/dropdown-options', SettingsController.getDropdownOptions);
+router.get('/dropdown-options', requirePermission(Permissions.SETTINGS_READ), SettingsController.getDropdownOptions);
 
 /**
  * @route   GET /api/settings/dropdown-options/:type
@@ -109,7 +111,7 @@ router.get('/dropdown-options', SettingsController.getDropdownOptions);
  * @param   type - Dropdown type (platform, stack, priority, taskLevel, taskType, status)
  * @query   includeInactive
  */
-router.get('/dropdown-options/:type', SettingsController.getDropdownOptionsByType);
+router.get('/dropdown-options/:type', requirePermission(Permissions.SETTINGS_READ), SettingsController.getDropdownOptionsByType);
 
 /**
  * @route   POST /api/settings/dropdown-options
@@ -117,7 +119,7 @@ router.get('/dropdown-options/:type', SettingsController.getDropdownOptionsByTyp
  * @access  Private (authenticated users within tenant)
  * @body    { type, value, label, color?, description? }
  */
-router.post('/dropdown-options', SettingsController.createDropdownOption);
+router.post('/dropdown-options', requirePermission(Permissions.SETTINGS_UPDATE), SettingsController.createDropdownOption);
 
 /**
  * @route   PUT /api/settings/dropdown-options/:id
@@ -126,7 +128,7 @@ router.post('/dropdown-options', SettingsController.createDropdownOption);
  * @param   id - Dropdown option ID
  * @body    { value, label, color?, description?, isActive? }
  */
-router.put('/dropdown-options/:id', SettingsController.updateDropdownOption);
+router.put('/dropdown-options/:id', requirePermission(Permissions.SETTINGS_UPDATE), SettingsController.updateDropdownOption);
 
 /**
  * @route   DELETE /api/settings/dropdown-options/:id
@@ -134,7 +136,7 @@ router.put('/dropdown-options/:id', SettingsController.updateDropdownOption);
  * @access  Private (authenticated users within tenant)
  * @param   id - Dropdown option ID
  */
-router.delete('/dropdown-options/:id', SettingsController.deleteDropdownOption);
+router.delete('/dropdown-options/:id', requirePermission(Permissions.SETTINGS_UPDATE), SettingsController.deleteDropdownOption);
 
 /**
  * @route   PUT /api/settings/dropdown-options/reorder
@@ -142,6 +144,6 @@ router.delete('/dropdown-options/:id', SettingsController.deleteDropdownOption);
  * @access  Private (authenticated users within tenant)
  * @body    { items: [{ id, order }] }
  */
-router.put('/dropdown-options/reorder', SettingsController.reorderDropdownOptions);
+router.put('/dropdown-options/reorder', requirePermission(Permissions.SETTINGS_UPDATE), SettingsController.reorderDropdownOptions);
 
 export default router;

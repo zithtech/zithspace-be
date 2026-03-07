@@ -2,6 +2,8 @@ import { Router } from "express";
 import { CompanyController } from "@/controllers/companyController";
 import { authenticateToken, requireAuth } from "@/middleware/auth";
 import { resolveTenant } from "@/middleware/tenantContext";
+import { requirePermission } from "@/middleware/permission";
+import { Permissions } from "@/types/permissions";
 
 const router = Router();
 
@@ -12,11 +14,11 @@ router.use(requireAuth);
 /**
  * Companies
  */
-router.get("/", CompanyController.getCompanies);
-router.get("/:id", CompanyController.getCompanyById);
-router.post("/", CompanyController.createCompany);
-router.put("/:id", CompanyController.updateCompany);
-router.patch("/:id/active", CompanyController.setActiveCompany);
-router.delete("/:id", CompanyController.deleteCompany);
+router.get("/", requirePermission(Permissions.SALARY_READ), CompanyController.getCompanies);
+router.get("/:id", requirePermission(Permissions.SALARY_READ), CompanyController.getCompanyById);
+router.post("/", requirePermission(Permissions.SALARY_MANAGE), CompanyController.createCompany);
+router.put("/:id", requirePermission(Permissions.SALARY_MANAGE), CompanyController.updateCompany);
+router.patch("/:id/active", requirePermission(Permissions.SALARY_MANAGE), CompanyController.setActiveCompany);
+router.delete("/:id", requirePermission(Permissions.SALARY_MANAGE), CompanyController.deleteCompany);
 
 export default router;
