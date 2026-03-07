@@ -1,3 +1,10 @@
+
+
+
+
+
+
+
 import { Response } from "express";
 import { prisma } from "@/config/database";
 import {
@@ -6,15 +13,15 @@ import {
   NotFoundError,
   ValidationError,
 } from "@/types";
-
 export class ReimbursementConfigurationController {
-  /**
-   * CREATE
-   */
+
+  /* =====================================================
+     CREATE (with tenantId check)
+  ===================================================== */
   static async createConfig(req: AuthRequest, res: Response): Promise<void> {
     try {
-      if (!req.user || !req.tenantId)
-        throw new ValidationError("Tenant context and authentication required");
+      if (!req.user || !req.tenantId)  // 👈 Added tenantId check
+        throw new ValidationError("Authentication required");
 
       const {
         origin,
@@ -23,76 +30,153 @@ export class ReimbursementConfigurationController {
         amount,
         period,
         status,
+        approvers = [],
       } = req.body;
+       console.log("========== APPROVER DEBUG ==========");
+    console.log("Approvers from UI:", JSON.stringify(approvers));
+    console.log("Current User ID:", req.user.id);
 
       if (!origin || !categoryType || !amount || !period)
         throw new ValidationError("Required fields missing");
 
       if (!["MONTH", "YEAR"].includes(period))
         throw new ValidationError("Period must be MONTH or YEAR");
+      
 
-      const config = await prisma.reimbursementConfiguration.create({
-        data: {
-          tenantId: req.tenantId,
-          origin,
-          subOrigin,
-          categoryType,
-          amount,
-          period,
-          status: status || "ACTIVE",
-          createdById: req.user.id,
-        },
+      const result = await prisma.$transaction(async (tx) => {
+
+        // 1️⃣ Create Policy
+        const policy = await tx.reimbursementPolicy.create({
+          data: {
+            tenantId: req.tenantId, 
+            originType: origin,
+            originId: subOrigin,
+            isActive: status !== "INACTIVE",
+            createdById: req.user!.id,
+          },
+        });
+
+        // 2️⃣ Create Rule
+        const rule = await tx.reimbursementPolicyRule.create({
+          data: {
+            tenantId: req.tenantId, 
+            policyId: policy.id,
+            categoryId: categoryType,
+            maxAmount: Number(amount),
+            periodType: period,
+            isActive: status !== "INACTIVE",
+            createdById: req.user!.id,
+          },
+        });
+
+        // 3️⃣ Create Approvers and collect them
+        let createdApprovers = [];
+
+        if (approvers.length > 0) {
+          createdApprovers = await Promise.all(
+            approvers.map((approver: any) =>{
+              
+              console.log("Approver object from UI:", approver);
+      console.log("ApproverId storing in DB:", approver.approverId);
+        console.log(`Saving approver level ${approver.level}:`, {
+              approverId: approver.approverId,
+              approverType: approver.approverType
+            });
+               return tx.reimbursementPolicyApprover.create({
+                data: {
+                  tenantId: req.tenantId,
+                
+                  policyRuleId: rule.id,
+                  level: approver.level,
+                  approverType: approver.approverType,
+                  approverId: approver.approverId || null,
+                  createdById: req.user!.id,
+                },
+              })
+            })
+          );
+        }
+
+        return { policy, rule, approvers: createdApprovers };
       });
+      
 
       res.status(201).json({
         success: true,
-        data: config,
-      } as ApiResponse);
+        data: result,
+      });
+
     } catch (error: any) {
       res.status(error instanceof ValidationError ? 400 : 500).json({
         success: false,
         error: error.message,
-      } as ApiResponse);
+      });
     }
   }
 
-  /**
-   * GET ALL (with calculated amount)
-   */
+
+
+ 
+
+
+
+  
+
+
+  /* =====================================================
+     GET ALL (with tenantId filter)
+  ===================================================== */
   static async getConfigs(req: AuthRequest, res: Response): Promise<void> {
     try {
-      if (!req.user || !req.tenantId)
-        throw new ValidationError("Tenant context and authentication required");
+      if (!req.user || !req.tenantId)  // 👈 Added tenantId check
+        throw new ValidationError("Authentication required");
 
-      const configs = await prisma.reimbursementConfiguration.findMany({
-        where: { tenantId: req.tenantId },
+      const policies = await prisma.reimbursementPolicy.findMany({
+        where: { tenantId: req.tenantId },  // 👈 Added tenant filter
+        include: {
+          rules: {
+            include: {
+              approvers: true,
+            },
+          },
+        },
         orderBy: { createdAt: "desc" },
       });
 
-      // 🔥 Amount calculation logic
-      const calculated = configs.map((config) => {
-        let yearlyAmount = 0;
-        let monthlyAmount = 0;
+      const formatted = policies.map((policy) => {
+        const rule = policy.rules[0];
+        if (!rule) return null;
 
-        if (config.period === "MONTH") {
-          monthlyAmount = Number(config.amount);
-          yearlyAmount = Number(config.amount) * 12;
-        } else if (config.period === "YEAR") {
-          yearlyAmount = Number(config.amount);
-          monthlyAmount = Number(config.amount) / 12;
+        let monthlyAmount = 0;
+        let yearlyAmount = 0;
+
+        if (rule.periodType === "MONTH") {
+          monthlyAmount = Number(rule.maxAmount);
+          yearlyAmount = Number(rule.maxAmount) * 12;
+        } else {
+          yearlyAmount = Number(rule.maxAmount);
+          monthlyAmount = Number(rule.maxAmount) / 12;
         }
 
         return {
-          ...config,
+          id: policy.id,
+          origin: policy.originType,
+          subOrigin: policy.originId,
+          categoryType: rule.categoryId,
+          amount: rule.maxAmount,
+          period: rule.periodType,
+          status: policy.isActive ? "ACTIVE" : "INACTIVE",
+          approvers: rule.approvers,
           monthlyAmount,
           yearlyAmount,
         };
-      });
+      }).filter(Boolean);
 
       res.status(200).json({
         success: true,
-        data: calculated,
+        data: formatted,
       } as ApiResponse);
+
     } catch (error: any) {
       res.status(500).json({
         success: false,
@@ -100,61 +184,80 @@ export class ReimbursementConfigurationController {
       } as ApiResponse);
     }
   }
+  
 
-  /**
-   * GET BY ID (with calculation)
-   */
-  static async getConfigById(
-    req: AuthRequest,
-    res: Response
-  ): Promise<void> {
+  /* =====================================================
+     GET BY ID (with tenantId check)
+  ===================================================== */
+  static async getConfigById(req: AuthRequest, res: Response): Promise<void> {
     try {
-      if (!req.user || !req.tenantId)
-        throw new ValidationError("Tenant context and authentication required");
-
       const { id } = req.params;
 
-      const config = await prisma.reimbursementConfiguration.findFirst({
-        where: { id, tenantId: req.tenantId },
+      if (!req.user || !req.tenantId)  // 👈 Added tenantId check
+        throw new ValidationError("Authentication required");
+
+      const policy = await prisma.reimbursementPolicy.findFirst({  // 👈 Changed to findFirst
+        where: { 
+          id,
+          tenantId: req.tenantId  // 👈 Added tenant filter
+        },
+        include: {
+          rules: {
+            include: { approvers: true },
+          },
+        },
       });
 
-      if (!config) throw new NotFoundError("Configuration not found");
+      if (!policy) throw new NotFoundError("Configuration not found");
 
-      let yearlyAmount = 0;
+      const rule = policy.rules[0];
+
       let monthlyAmount = 0;
+      let yearlyAmount = 0;
 
-      if (config.period === "MONTH") {
-        monthlyAmount = Number(config.amount);
-        yearlyAmount = Number(config.amount) * 12;
-      } else if (config.period === "YEAR") {
-        yearlyAmount = Number(config.amount);
-        monthlyAmount = Number(config.amount) / 12;
+      if (rule.periodType === "MONTH") {
+        monthlyAmount = Number(rule.maxAmount);
+        yearlyAmount = Number(rule.maxAmount) * 12;
+      } else {
+        yearlyAmount = Number(rule.maxAmount);
+        monthlyAmount = Number(rule.maxAmount) / 12;
       }
 
       res.status(200).json({
         success: true,
         data: {
-          ...config,
+          id: policy.id,
+          origin: policy.originType,
+          subOrigin: policy.originId,
+          categoryType: rule.categoryId,
+          amount: rule.maxAmount,
+          period: rule.periodType,
+          status: policy.isActive ? "ACTIVE" : "INACTIVE",
+          approvers: rule.approvers,
           monthlyAmount,
           yearlyAmount,
         },
       } as ApiResponse);
+
     } catch (error: any) {
-      res
-        .status(error instanceof NotFoundError ? 404 : 500)
-        .json({ success: false, error: error.message } as ApiResponse);
+      res.status(error instanceof NotFoundError ? 404 : 500).json({
+        success: false,
+        error: error.message,
+      } as ApiResponse);
     }
   }
 
-  /**
-   * UPDATE
-   */
+
+  /* =====================================================
+     UPDATE (with tenantId check)
+  ===================================================== */
   static async updateConfig(req: AuthRequest, res: Response): Promise<void> {
     try {
-      if (!req.user || !req.tenantId)
-        throw new ValidationError("Tenant context and authentication required");
-
       const { id } = req.params;
+      
+      if (!req.user || !req.tenantId)  // 👈 Added tenantId check
+        throw new ValidationError("Authentication required");
+
       const {
         origin,
         subOrigin,
@@ -162,76 +265,135 @@ export class ReimbursementConfigurationController {
         amount,
         period,
         status,
+        approvers = [],
       } = req.body;
 
-      const existing = await prisma.reimbursementConfiguration.findFirst({
-        where: { id, tenantId: req.tenantId },
+      const existing = await prisma.reimbursementPolicy.findFirst({  // 👈 Changed to findFirst
+        where: { 
+          id,
+          tenantId: req.tenantId  // 👈 Added tenant filter
+        },
+        include: { rules: true },
       });
 
-      if (!existing) throw new NotFoundError("Configuration not found");
+      if (!existing)
+        throw new NotFoundError("Configuration not found");
 
-      if (period && !["MONTH", "YEAR"].includes(period))
-        throw new ValidationError("Period must be MONTH or YEAR");
+      await prisma.$transaction(async (tx) => {
 
-      const updated = await prisma.reimbursementConfiguration.update({
-        where: { id },
-        data: {
-          origin,
-          subOrigin,
-          categoryType,
-          amount,
-          period,
-          status,
-          updatedById: req.user.id,
+        /* Update Policy */
+        await tx.reimbursementPolicy.update({
+          where: { id },
+          data: {
+            originType: origin,
+            originId: subOrigin,
+            isActive: status !== "INACTIVE",
+            updatedById: req.user!.id,
+          },
+        });
+
+        const ruleId = existing.rules[0].id;
+
+        /* Update Rule */
+        await tx.reimbursementPolicyRule.update({
+          where: { id: ruleId },
+          data: {
+            categoryId: categoryType,
+            maxAmount: Number(amount),
+            periodType: period,
+            isActive: status !== "INACTIVE",
+            updatedById: req.user!.id,
+          },
+        });
+
+        /* Delete old approvers */
+        await tx.reimbursementPolicyApprover.deleteMany({
+          where: { policyRuleId: ruleId },
+        });
+
+        /* Recreate approvers */
+        for (const approver of approvers) {
+          await tx.reimbursementPolicyApprover.create({
+            data: {
+              tenantId: req.tenantId,
+              policyRuleId: ruleId,
+              level: approver.level,
+            
+              approverType: approver.approverType,
+              approverId: approver.approverId || null,
+              createdById: req.user!.id,
+            },
+          });
+        }
+
+      });
+
+      res.status(200).json({
+        success: true,
+        message: "Configuration updated successfully",
+      } as ApiResponse);
+
+    } catch (error: any) {
+      res.status(error instanceof NotFoundError ? 404 : 500).json({
+        success: false,
+        error: error.message,
+      } as ApiResponse);
+    }
+  }
+  static async deleteConfig(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+
+      if (!req.user || !req.tenantId)  // 👈 Added tenantId check
+        throw new ValidationError("Authentication required");
+
+      const existing = await prisma.reimbursementPolicy.findFirst({  // 👈 Changed to findFirst
+        where: { 
+          id,
+          tenantId: req.tenantId  // 👈 Added tenant filter
+        },
+        include: { 
+          rules: {
+            include: { approvers: true }
+          }
         },
       });
 
-      res.status(200).json({
-        success: true,
-        data: updated,
-        message: "Configuration updated successfully",
-      } as ApiResponse);
-    } catch (error: any) {
-      res
-        .status(
-          error instanceof ValidationError
-            ? 400
-            : error instanceof NotFoundError
-            ? 404
-            : 500
-        )
-        .json({ success: false, error: error.message } as ApiResponse);
-    }
-  }
+      if (!existing)
+        throw new NotFoundError("Configuration not found");
 
-  /**
-   * DELETE
-   */
-  static async deleteConfig(req: AuthRequest, res: Response): Promise<void> {
-    try {
-      if (!req.user || !req.tenantId)
-        throw new ValidationError("Tenant context and authentication required");
+      // Use transaction to delete all related records
+      await prisma.$transaction(async (tx) => {
+        
+        // First, delete all approvers for each rule
+        for (const rule of existing.rules) {
+          await tx.reimbursementPolicyApprover.deleteMany({
+            where: { policyRuleId: rule.id },
+          });
+        }
 
-      const { id } = req.params;
+        // Then delete all rules
+        await tx.reimbursementPolicyRule.deleteMany({
+          where: { policyId: id },
+        });
 
-      const existing = await prisma.reimbursementConfiguration.findFirst({
-        where: { id, tenantId: req.tenantId },
-      });
+        // Finally delete the policy
+        await tx.reimbursementPolicy.delete({
+          where: { id },
+        });
 
-      if (!existing) throw new NotFoundError("Configuration not found");
-
-      await prisma.reimbursementConfiguration.delete({
-        where: { id },
       });
 
       res.status(200).json({
         success: true,
-        message: "Configuration deleted successfully",
+        message: "Configuration deleted permanently",
       } as ApiResponse);
+
     } catch (error: any) {
-      res
-        .status(error instanceof NotFoundError ? 404 : 500)
-        .json({ success: false, error: error.message } as ApiResponse);
+      res.status(error instanceof NotFoundError ? 404 : 500).json({
+        success: false,
+        error: error.message,
+      } as ApiResponse);
     }
   }
 }

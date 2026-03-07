@@ -1,5 +1,6 @@
 import { Request } from "express";
 
+
 // All enums removed for maximum flexibility
 // Values are now stored as strings and can be configured per tenant
 
@@ -285,6 +286,17 @@ export interface LoginResponse {
   };
   message: string;
 }
+// auth.d.ts OR types.ts
+export interface AuthUser {
+  id: string;
+  email: string;
+  role: string;
+}
+
+// extend it in the same file or another file
+export interface AuthUser {
+  employeeId?: string;
+}
 
 // ==========================================
 // REQUEST TYPES
@@ -294,6 +306,9 @@ export interface AuthRequest extends Request {
   user?: AuthUser;
   tenantId?: string;
   tenant?: Tenant;
+  
+ 
+  
 }
 
 export interface TenantRequest extends Request {

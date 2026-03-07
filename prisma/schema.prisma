@@ -181,6 +181,10 @@ model User {
   // Updated timesheets
   updatedTimesheets Timesheet[] @relation("TimesheetUpdater")
 
+
+  createdReimbursements Reimbursement[]         @relation("ReimbursementCreatedBy")
+  updatedReimbursements Reimbursement[]         @relation("ReimbursementUpdatedBy")
+
   // ---------------- TIMESHEET ROWS ----------------
 
   createdTimesheetRows TimesheetRow[] @relation("TimesheetRowCreator")
@@ -243,6 +247,11 @@ model User {
   reimbursementsCreated  ReimbursementConfiguration[] @relation("ReimbursementCreatedBy")
   reimbursementsUpdated  ReimbursementConfiguration[] @relation("ReimbursementUpdatedBy")
 
+
+
+  employeeId        String?   @map("employee_id") 
+  employee          Employee? @relation(fields: [employeeId], references: [id])
+
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
   @@unique([tenantId, phone])
@@ -250,40 +259,7 @@ model User {
   @@map("users")
 }
 
-model ReimbursementCategory {
-  id       String @id @default(uuid())
-  tenantId String @map("tenant_id")
 
-  code        String  @db.VarChar(50)
-  name        String  @db.VarChar(100)
-  description String?
-
-  maxRequestsPerMonth Int?     @map("max_requests_per_month")
-  monthlyLimitAmount  Decimal? @map("monthly_limit_amount") @db.Decimal(12, 2)
-  yearlyLimitAmount   Decimal? @map("yearly_limit_amount") @db.Decimal(12, 2)
-
-  allowedRoles String[] @map("allowed_roles")
-  approvalFlow Json?    @map("approval_flow")
-
-  attachmentRequired     Boolean  @default(false) @map("attachment_required")
-  autoApproveUnderAmount Decimal? @map("auto_approve_under_amount") @db.Decimal(12, 2)
-
-  isActive Boolean @default(true) @map("is_active")
-
-  createdAt DateTime @default(now()) @map("created_at")
-  createdBy String   @map("created_by")
-
-  updatedAt DateTime @updatedAt @map("updated_at")
-  updatedBy String?  @map("updated_by")
-
-  // Relations
-  tenant        Tenant @relation(fields: [tenantId], references: [id])
-  createdByUser User   @relation("ReimbursementCategoryCreatedBy", fields: [createdBy], references: [id])
-  updatedByUser User?  @relation("ReimbursementCategoryUpdatedBy", fields: [updatedBy], references: [id])
-
-  @@unique([tenantId, code])
-  @@map("reimbursement_settings_categories")
-}
 
 model Grade {
   id          String   @id @default(uuid())
@@ -1975,6 +1951,7 @@ model Employee {
 
   created_at      DateTime @default(now())
   updated_at      DateTime @updatedAt
+  users           User[]
 
   
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -2008,7 +1985,9 @@ model Employee {
   createdDocuments  EmployeeDocument[]  @relation("CreatedByEmployee")
   updatedDocuments  EmployeeDocument[]  @relation("UpdatedByEmployee")
 
+
  contacts EmployeeContact[] 
+
 
   contactsCreated EmployeeContact[] @relation("EmployeeContactCreatedBy")
 
@@ -2426,4 +2405,225 @@ model ReimbursementConfiguration {
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   @@map("reimbursement_configurations")
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+model ReimbursementCategory {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  code        String  @db.VarChar(50)
+  name        String  @db.VarChar(100)
+  description String?
+
+  maxRequestsPerMonth Int?     @map("max_requests_per_month")
+  monthlyLimitAmount  Decimal? @map("monthly_limit_amount") @db.Decimal(12, 2)
+  yearlyLimitAmount   Decimal? @map("yearly_limit_amount") @db.Decimal(12, 2)
+
+  allowedRoles String[] @map("allowed_roles")
+  approvalFlow Json?    @map("approval_flow")
+
+  attachmentRequired     Boolean  @default(false) @map("attachment_required")
+  autoApproveUnderAmount Decimal? @map("auto_approve_under_amount") @db.Decimal(12, 2)
+
+  isActive Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  createdBy String   @map("created_by")
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedBy String?  @map("updated_by")
+
+  // Relations
+  tenant        Tenant @relation(fields: [tenantId], references: [id])
+  createdByUser User   @relation("ReimbursementCategoryCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser User?  @relation("ReimbursementCategoryUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@unique([tenantId, code])
+  @@map("reimbursement_settings_categories")
+}
+enum ReimbursementStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED    // 👈 Add this
+  REJECTED 
+  PAID 
+  PARTIALLY_APPROVED
+  PARTIALLY_PAID
+
+   @@map("reimbursementcreate_status")
+}
+
+model Reimbursement {
+  id           String   @id @default(uuid()) @db.Uuid
+
+  tenantId     String   @db.Uuid @map("tenant_id")
+
+  status       ReimbursementStatus @default(DRAFT)
+  
+
+  totalAmount  Decimal  @db.Decimal(10,2)@map("total_amount")
+  createdBy     User    @relation("ReimbursementCreatedBy", fields: [createdById], references: [id])
+  updatedBy     User?   @relation("ReimbursementUpdatedBy", fields: [updatedById], references: [id])
+
+  createdById   String   @db.Uuid @map("created_by_id")   // ✅ logged-in user creating
+  updatedById   String?  @db.Uuid @map("updated_by_id")   // ✅ logged-in user updating
+
+  submittedAt  DateTime? @map("submitted_at")
+  submittedBy  String?   @db.Uuid @map("submitted_by")
+
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  items        ReimbursementItem[]
+
+  @@index([tenantId])
+  @@map("reimbursements")
+}
+enum ApproverStatus {
+  SUBMITTED
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+
+  @@map("approver_status")
+}
+
+model ReimbursementItem {
+  id              String   @id @default(uuid()) @db.Uuid
+
+  reimbursementId String   @db.Uuid @map("reimbursement_id")
+  reimbursement   Reimbursement @relation(fields: [reimbursementId], references: [id], onDelete: Cascade)
+
+ 
+  status          ReimbursementStatus @default(SUBMITTED)
+
+  category        String   @db.VarChar(100)
+  date            DateTime @db.Date
+  billNo          String   @db.VarChar(100) @map("bill_no")
+  amount          Decimal  @db.Decimal(10,2)
+  description     String?  @db.Text
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  approvers       ReimbursementItemApprover[]
+
+  attachments     Attachment[]
+
+  @@index([reimbursementId])
+  @@map("reimbursement_items")
+}
+model ReimbursementItemApprover {
+  id                   String   @id @default(uuid())
+
+  tenantId             String   @db.Uuid @map("tenant_id")
+  reimbursementItemId  String   @db.Uuid @map("reimbursement_item_id")
+  level                Int
+
+  approverType         String   @map("approver_type")   // MANAGER / HR / FINANCE (optional)
+  approverId           String    @map("approver_id")    // User ID who will approve
+
+  status               ApproverStatus @default(PENDING)
+
+  actedAt              DateTime?   @map("acted_at")  // When approved/rejected
+  remarks              String?      // Optional comment
+  createdAt            DateTime    @map("created_at")   @default(now())
+  updatedAt            DateTime    @map("updated_at")   @updatedAt
+
+  reimbursementItem    ReimbursementItem @relation(fields: [reimbursementItemId], references: [id])
+
+  @@index([reimbursementItemId])
+  @@index([approverId])
+  @@map("reimbursement_item_approvers")
+}
+model Attachment {
+  id                  String   @id @default(uuid()) @db.Uuid
+
+
+  reimbursementItemId String   @db.Uuid @map("reimbursement_item_id")
+  reimbursementItem   ReimbursementItem @relation(fields: [reimbursementItemId], references: [id], onDelete: Cascade)
+
+  fileName            String   @db.VarChar(255) @map("file_name")
+  fileUrl             String   @db.Text @map("file_url")
+  fileSize            Int      @map("file_size")
+  fileType            String   @db.VarChar(100)  @map("file_type")
+
+  uploadedBy          String   @db.Uuid @map("uploaded_by")
+  uploadedAt          DateTime @default(now()) @map("uploaded_at")
+
+  @@index([reimbursementItemId])
+  @@map("attachments")
+}
+model ReimbursementPolicy {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId          String    @map("tenant_id")
+  originType   String   @map("origin_type")
+  originId     String   @db.Uuid @map("origin_id")
+  isActive     Boolean  @default(true) @map("is_active")
+
+  createdById  String   @db.Uuid @map("created_by_id")
+  updatedById  String?  @db.Uuid @map("updated_by_id")
+
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  
+  rules        ReimbursementPolicyRule[]
+
+  @@map("reimbursement_policies")
+}
+model ReimbursementPolicyRule {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId          String    @map("tenant_id")
+
+  policyId     String   @db.Uuid @map("policy_id")
+  categoryId   String   @map("category_id")
+
+  maxAmount    Decimal  @db.Decimal(12,2) @map("max_amount")
+  periodType   String   @map("period_type") // MONTH | YEAR
+
+  isActive     Boolean  @default(true) @map("is_active")
+
+  createdById  String   @db.Uuid @map("created_by_id")
+  updatedById  String?  @db.Uuid @map("updated_by_id")
+
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  
+  policy       ReimbursementPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  approvers    ReimbursementPolicyApprover[]
+
+  @@map("reimbursement_policy_rules")
+}
+
+model ReimbursementPolicyApprover {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id")
+  policyRuleId  String   @db.Uuid @map("policy_rule_id")
+
+  level         Int
+  approverType  String   @map("approver_type")
+  approverId    String  @map("approver_id")
+  createdById   String   @db.Uuid @map("created_by_id")
+  updatedById   String?  @db.Uuid @map("updated_by_id")
+
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+ 
+  rule          ReimbursementPolicyRule @relation(fields: [policyRuleId], references: [id], onDelete: Cascade)
+
+  @@map("reimbursement_policy_approvers")
 }

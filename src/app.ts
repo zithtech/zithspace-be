@@ -76,6 +76,8 @@ import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
 import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
 import reimbursementConfigurationRoutes from "@/routes/reimbursementConfig";
 import reimbursementsettingsRoutes from "@/routes/reimbursementsettingsRoutes";
+import reimbursementRoutes from "@/routes/reimbursementcreateRoutes"; // the file we created earlier
+// import managerReimbursementRoutes from "./routes/managerReimbursementRoutes";
 // Load environment
 dotenv.config();
 // Create Express application
@@ -237,6 +239,9 @@ app.use("/api/employee-timelines", employeeTimelineRoutes);
 app.use("/api/onboarding", employeeOnboardingRoutes);
 app.use("/api/reimbursement-configurations", reimbursementConfigurationRoutes);
 app.use("/api/reimbursement-settings", reimbursementsettingsRoutes);
+// Reimbursements (with file upload)
+app.use("/api/reimbursements", reimbursementRoutes);
+// app.use("/api/manager/reimbursements", managerReimbursementRoutes);
 
 // app.use("/api/addresses", addressRoutes);
 //app.use("/api/employee_address", addressRoutes);
