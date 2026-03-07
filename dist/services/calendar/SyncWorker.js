@@ -15,9 +15,10 @@ class SyncWorker {
      */
     static start() {
         node_cron_1.default.schedule("*/5 * * * *", () => {
-            this.pollAndEnqueue().catch(err => {
-                logger_1.syncLogger.error('Critical error during polling', { error: err.message });
-            });
+            // this.pollAndEnqueue().catch(err => {
+            //     syncLogger.error('Critical error during polling', { error: err.message });
+            // });
+            console.log("Bellooo");
         });
         logger_1.syncLogger.info('Calendar sync scheduler started');
     }
