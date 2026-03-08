@@ -77,6 +77,7 @@ const emailHistoryRoutes_1 = __importDefault(require("@/routes/emailHistoryRoute
 const reimbursementConfig_1 = __importDefault(require("@/routes/reimbursementConfig"));
 const reimbursementsettingsRoutes_1 = __importDefault(require("@/routes/reimbursementsettingsRoutes"));
 const reimbursementcreateRoutes_1 = __importDefault(require("@/routes/reimbursementcreateRoutes")); // the file we created earlier
+// import managerReimbursementRoutes from "./routes/managerReimbursementRoutes";
 const rbac_1 = __importDefault(require("@/routes/rbac"));
 // Load environment
 dotenv_1.default.config();
@@ -219,6 +220,7 @@ app.use("/api/reimbursement-configurations", reimbursementConfig_1.default);
 app.use("/api/reimbursement-settings", reimbursementsettingsRoutes_1.default);
 // Reimbursements (with file upload)
 app.use("/api/reimbursements", reimbursementcreateRoutes_1.default);
+// app.use("/api/manager/reimbursements", managerReimbursementRoutes);
 app.use("/api/profile/new", auth_2.default);
 app.use("/api/employeesettings", employeeSettingsRoutes_1.default);
 // RBAC management API

@@ -42,12 +42,28 @@ router.get("/:id", reimbursementcreateController_1.ReimbursementController.getBy
  * @desc    Update reimbursement status
  * @access  Private
  */
-router.put("/:id", reimbursementcreateController_1.ReimbursementController.update);
+// router.put("/:id", ReimbursementController.update);
+router.put('/:id', // ✅ CORRECT - just the ID parameter
+upload.fields([
+    { name: 'items', maxCount: 1 },
+    { name: 'files' }
+]), reimbursementcreateController_1.ReimbursementController.update);
 /**
  * @route   DELETE /api/reimbursements/:id
  * @desc    Delete reimbursement
  * @access  Private
  */
 router.delete("/:id", reimbursementcreateController_1.ReimbursementController.delete);
+router.get('/user/limits', reimbursementcreateController_1.ReimbursementController.getUserReimbursementLimits);
+router.get('/manager/approvals', reimbursementcreateController_1.ReimbursementController.getApprovalList);
+// In your routes file
+router.post("/approve", reimbursementcreateController_1.ReimbursementController.approve);
+router.post("/reject", reimbursementcreateController_1.ReimbursementController.reject);
+// router.put(
+//   "/:id/mark-paid",
+//   ReimbursementController.markAsPaid
+// );
+router.get("/finance/items", reimbursementcreateController_1.ReimbursementController.getFinanceItems);
+router.put("/:id/mark-paid", reimbursementcreateController_1.ReimbursementController.markAsPaid);
 exports.default = router;
 //# sourceMappingURL=reimbursementcreateRoutes.js.map

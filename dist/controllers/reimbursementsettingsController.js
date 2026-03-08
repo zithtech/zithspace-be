@@ -1,12 +1,4 @@
 "use strict";
-// import { Response } from "express";
-// import { prisma } from "@/config/database";
-// import {
-//   AuthRequest,
-//   ApiResponse,
-//   NotFoundError,
-//   ValidationError,
-// } from "@/types";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ReimbursementSettingsCategoriesController = void 0;
 const database_1 = require("@/config/database");
