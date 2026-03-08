@@ -2,6 +2,8 @@ import express from "express";
 import { FixedHolidayController } from "@/controllers/fixedHoliday.controller";
 import { authenticateToken, requireAuth } from '@/middleware/auth';
 import { resolveTenant } from '@/middleware/tenantContext';
+import { requirePermission } from "@/middleware/permission";
+import { Permissions } from "@/types/permissions";
 
 const router = express.Router();
 
@@ -11,18 +13,18 @@ router.use(authenticateToken);
 router.use(requireAuth);
 
 // Create a new fixed holiday
-router.post("/", FixedHolidayController.createFixedHoliday);
+router.post("/", requirePermission(Permissions.LEAVE_MANAGE), FixedHolidayController.createFixedHoliday);
 
 // Get all fixed holidays for the current tenant
-router.get("/", FixedHolidayController.getFixedHolidays);
+router.get("/", requirePermission(Permissions.LEAVE_READ), FixedHolidayController.getFixedHolidays);
 
 // Get a specific fixed holiday by ID
-router.get("/:id", FixedHolidayController.getFixedHolidayById);
+router.get("/:id", requirePermission(Permissions.LEAVE_READ), FixedHolidayController.getFixedHolidayById);
 
 // Update a fixed holiday
-router.put("/:id", FixedHolidayController.updateFixedHoliday);
+router.put("/:id", requirePermission(Permissions.LEAVE_MANAGE), FixedHolidayController.updateFixedHoliday);
 
 // Delete a fixed holiday
-router.delete("/:id", FixedHolidayController.deleteFixedHoliday);
+router.delete("/:id", requirePermission(Permissions.LEAVE_MANAGE), FixedHolidayController.deleteFixedHoliday);
 
 export default router;

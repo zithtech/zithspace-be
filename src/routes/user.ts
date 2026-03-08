@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { UserController } from '@/controllers/userController';
-import { authenticateToken, requireAuth, requireAdmin } from '@/middleware/auth';
+import { authenticateToken, requireAuth } from '@/middleware/auth';
+import { requirePermission } from '@/middleware/permission';
+import { Permissions } from '@/types/permissions';
 import { resolveTenant } from '@/middleware/tenantContext';
 
 const router = Router();
@@ -42,6 +44,6 @@ router.post('/change-password', UserController.changePassword);
  * @param   userId - User ID
  * @body    { newPassword }
  */
-router.post('/reset-password/:userId', requireAdmin, UserController.resetUserPassword);
+router.post('/reset-password/:userId', requirePermission(Permissions.USER_MANAGE), UserController.resetUserPassword);
 
 export default router;

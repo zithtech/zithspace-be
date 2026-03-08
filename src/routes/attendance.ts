@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { AttendanceController } from '@/controllers/attendanceController';
-import { authenticateToken, requireAuth, requireAdmin } from '@/middleware/auth';
+import { authenticateToken, requireAuth } from '@/middleware/auth';
+import { requirePermission } from '@/middleware/permission';
+import { Permissions } from '@/types/permissions';
 import { resolveTenant } from '@/middleware/tenantContext';
 
 const router = Router();
@@ -17,21 +19,21 @@ router.use(requireAuth);
  * @desc    Get attendance dashboard summary (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/dashboard/summary', AttendanceController.getDashboardSummary);
+router.get('/dashboard/summary', requirePermission(Permissions.ATTENDANCE_READ), AttendanceController.getDashboardSummary);
 
 /**
  * @route   GET /api/attendance/dashboard/present
  * @desc    Get present members (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/dashboard/present', AttendanceController.getPresentMembers);
+router.get('/dashboard/present', requirePermission(Permissions.ATTENDANCE_READ), AttendanceController.getPresentMembers);
 
 /**
  * @route   GET /api/attendance/today
  * @desc    Get today's attendance for current user (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/today', AttendanceController.getTodayAttendance);
+router.get('/today', requirePermission(Permissions.ATTENDANCE_READ), AttendanceController.getTodayAttendance);
 
 /**
  * @route   GET /api/attendance/my-summary
@@ -39,7 +41,7 @@ router.get('/today', AttendanceController.getTodayAttendance);
  * @access  Private (authenticated users within tenant)
  * @query   month, year
  */
-router.get('/my-summary', AttendanceController.getMyAttendanceSummary);
+router.get('/my-summary', requirePermission(Permissions.ATTENDANCE_READ), AttendanceController.getMyAttendanceSummary);
 
 /**
  * @route   GET /api/attendance
@@ -47,7 +49,7 @@ router.get('/my-summary', AttendanceController.getMyAttendanceSummary);
  * @access  Private (authenticated users within tenant)
  * @query   page, limit, userId, date, status, startDate, endDate, sortBy, sortOrder
  */
-router.get('/', AttendanceController.getAttendance);
+router.get('/', requirePermission(Permissions.ATTENDANCE_READ), AttendanceController.getAttendance);
 
 /**
  * @route   GET /api/attendance/:id
@@ -55,7 +57,7 @@ router.get('/', AttendanceController.getAttendance);
  * @access  Private (authenticated users within tenant)
  * @param   id - Attendance record ID
  */
-router.get('/:id', AttendanceController.getAttendanceById);
+router.get('/:id', requirePermission(Permissions.ATTENDANCE_READ), AttendanceController.getAttendanceById);
 
 /**
  * @route   POST /api/attendance/clock-in
@@ -63,7 +65,7 @@ router.get('/:id', AttendanceController.getAttendanceById);
  * @access  Private (authenticated users within tenant)
  * @body    { userId?: string } - optional for admin to clock in others
  */
-router.post('/clock-in', AttendanceController.clockIn);
+router.post('/clock-in', requirePermission(Permissions.ATTENDANCE_CREATE), AttendanceController.clockIn);
 
 /**
  * @route   POST /api/attendance/clock-out
@@ -71,7 +73,7 @@ router.post('/clock-in', AttendanceController.clockIn);
  * @access  Private (authenticated users within tenant)
  * @body    { userId?: string } - optional for admin to clock out others
  */
-router.post('/clock-out', AttendanceController.clockOut);
+router.post('/clock-out', requirePermission(Permissions.ATTENDANCE_CREATE), AttendanceController.clockOut);
 
 /**
  * @route   POST /api/attendance
@@ -79,7 +81,7 @@ router.post('/clock-out', AttendanceController.clockOut);
  * @access  Private (admin only)
  * @body    CreateAttendanceData
  */
-router.post('/', requireAdmin, AttendanceController.createAttendance);
+router.post('/', requirePermission(Permissions.ATTENDANCE_MANAGE), AttendanceController.createAttendance);
 
 /**
  * @route   PUT /api/attendance/:id
@@ -88,6 +90,6 @@ router.post('/', requireAdmin, AttendanceController.createAttendance);
  * @param   id - Attendance record ID
  * @body    Partial attendance data
  */
-router.put('/:id', requireAdmin, AttendanceController.updateAttendance);
+router.put('/:id', requirePermission(Permissions.ATTENDANCE_MANAGE), AttendanceController.updateAttendance);
 
 export default router;

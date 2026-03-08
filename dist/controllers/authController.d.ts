@@ -1,5 +1,5 @@
-import { Response } from 'express';
-import { AuthRequest } from '@/types';
+import { Response } from "express";
+import { AuthRequest } from "@/types";
 export declare class AuthController {
     /**
      * User login with tenant context
@@ -25,5 +25,9 @@ export declare class AuthController {
      * Create a new user (for testing and tenant setup)
      */
     static createUser(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get new profile including employee info
+     */
+    static getNewProfile(req: AuthRequest, res: Response): Promise<void>;
 }
 export default AuthController;

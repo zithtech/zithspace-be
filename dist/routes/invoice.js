@@ -4,6 +4,8 @@ const express_1 = require("express");
 const auth_1 = require("@/middleware/auth");
 const tenantContext_1 = require("@/middleware/tenantContext");
 const InvoiceController_1 = require("@/controllers/InvoiceController");
+const permission_1 = require("@/middleware/permission");
+const permissions_1 = require("@/types/permissions");
 const router = (0, express_1.Router)();
 // Apply middleware
 router.use(tenantContext_1.resolveTenant);
@@ -11,31 +13,31 @@ router.use(auth_1.authenticateToken);
 router.use(auth_1.requireAuth);
 // ==================== INVOICE ROUTES ====================
 // Get all invoices (non-deleted)
-router.get('/', (req, res) => InvoiceController_1.InvoiceController.getInvoices(req, res));
+router.get('/', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_READ), (req, res) => InvoiceController_1.InvoiceController.getInvoices(req, res));
 // Get all soft-deleted invoices (trash)
-router.get('/deleted', (req, res) => InvoiceController_1.InvoiceController.getDeletedInvoices(req, res));
+router.get('/deleted', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_READ), (req, res) => InvoiceController_1.InvoiceController.getDeletedInvoices(req, res));
 // Get next invoice number for pre-filling in frontend
-router.get('/next-number', (req, res) => InvoiceController_1.InvoiceController.getNextInvoiceNumber(req, res));
+router.get('/next-number', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_READ), (req, res) => InvoiceController_1.InvoiceController.getNextInvoiceNumber(req, res));
 // Get single invoice by ID
-router.get('/:id', (req, res) => InvoiceController_1.InvoiceController.getInvoiceById(req, res));
+router.get('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_READ), (req, res) => InvoiceController_1.InvoiceController.getInvoiceById(req, res));
 // Create new invoice
-router.post('/', (req, res) => InvoiceController_1.InvoiceController.createInvoice(req, res));
+router.post('/', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_CREATE), (req, res) => InvoiceController_1.InvoiceController.createInvoice(req, res));
 // Update invoice status
-router.patch('/:id/status', (req, res) => InvoiceController_1.InvoiceController.updateStatus(req, res));
+router.patch('/:id/status', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_UPDATE), (req, res) => InvoiceController_1.InvoiceController.updateStatus(req, res));
 // Soft delete invoice
-router.delete('/:id', (req, res) => InvoiceController_1.InvoiceController.deleteInvoice(req, res));
+router.delete('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_DELETE), (req, res) => InvoiceController_1.InvoiceController.deleteInvoice(req, res));
 // Restore soft-deleted invoice
-router.patch('/:id/restore', (req, res) => InvoiceController_1.InvoiceController.restoreInvoice(req, res));
+router.patch('/:id/restore', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_MANAGE), (req, res) => InvoiceController_1.InvoiceController.restoreInvoice(req, res));
 // Permanently delete invoice (hard delete) - Admin only
-router.delete('/:id/permanent', (req, res) => InvoiceController_1.InvoiceController.permanentDeleteInvoice(req, res));
+router.delete('/:id/permanent', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_MANAGE), (req, res) => InvoiceController_1.InvoiceController.permanentDeleteInvoice(req, res));
 // Update invoice
-router.put('/:id', (req, res) => InvoiceController_1.InvoiceController.updateInvoice(req, res));
+router.put('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_UPDATE), (req, res) => InvoiceController_1.InvoiceController.updateInvoice(req, res));
 // Download invoice PDF
-router.get('/:id/download', InvoiceController_1.InvoiceController.downloadInvoice);
+router.get('/:id/download', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_READ), InvoiceController_1.InvoiceController.downloadInvoice);
 // Check PDF status
-router.get('/:invoiceNumber/check-pdf', InvoiceController_1.InvoiceController.checkPDFStatus);
+router.get('/:invoiceNumber/check-pdf', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_READ), InvoiceController_1.InvoiceController.checkPDFStatus);
 // Get payment history for invoice
-router.get('/:invoiceId/payments', InvoiceController_1.InvoiceController.getPaymentHistory);
-router.post('/:id/send', InvoiceController_1.InvoiceController.sendEmail);
+router.get('/:invoiceId/payments', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_READ), InvoiceController_1.InvoiceController.getPaymentHistory);
+router.post('/:id/send', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_MANAGE), InvoiceController_1.InvoiceController.sendEmail);
 exports.default = router;
 //# sourceMappingURL=invoice.js.map
