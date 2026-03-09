@@ -77,6 +77,8 @@ const emailHistoryRoutes_1 = __importDefault(require("@/routes/emailHistoryRoute
 const rbac_1 = __importDefault(require("@/routes/rbac"));
 // Load environment
 dotenv_1.default.config();
+console.log("🚀 API Starting up...");
+console.log("📅 Mounting calendar routes at /api/calendar");
 // Create Express application
 const app = (0, express_1.default)();
 // Body parsing middleware
@@ -155,8 +157,12 @@ app.use("/api/leave-adjustments", leaveAdjustmentRoutes_1.default);
 app.use("/api/company-government-holidays", companyGovernmentHoliday_routes_1.default);
 app.use("/api/leave-origins", leaveOriginRoutes_1.default);
 app.use("/api/fixed-holidays", fixedHolidays_1.default);
+app.get("/api/direct-test", (req, res) => {
+    res.json({ success: true, message: "Direct app.get works" });
+});
 app.use("/api/auth", auth_1.default);
 app.use("/api/tenants", tenants_1.default);
+app.use("/api/calendar", calendar_1.default);
 app.use("/api/projects", projects_1.default);
 app.use("/api/public/tickets", publicTickets_1.default);
 app.use("/api/tickets", tickets_1.default);
@@ -194,7 +200,6 @@ app.use("/api/channels", channels_1.default);
 app.use("/api/channels/:channelId/messages", messages_1.default);
 app.use("/api/email-history", emailHistoryRoutes_1.default);
 app.use("/api/timesheets", timesheet_1.default);
-app.use("/api/zoho", calendar_1.default);
 // onboarding
 // app.use("/api/employees", employeeRoutes);
 // app.use("/api/employee-addresses", employeeAddressRoutes);
@@ -340,6 +345,11 @@ const server = app.listen(PORT, () => {
     // Start trash auto-purge cron job
     const { startTrashAutoPurgeJob } = require("@/jobs/trashAutoPurge");
     startTrashAutoPurgeJob();
+    // Start Calendar Sync Worker (scheduler + BullMQ processor)
+    const { SyncWorker } = require("@/services/calendar/SyncWorker");
+    const { startSyncProcessor } = require("@/services/calendar/calendarSyncProcessor");
+    SyncWorker.start();
+    startSyncProcessor();
 });
 // Graceful shutdown
 const gracefulShutdown = async (signal) => {

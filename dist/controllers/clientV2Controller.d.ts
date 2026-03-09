@@ -1,5 +1,5 @@
-import { Response } from 'express';
-import { AuthRequest } from '@/types';
+import { Response } from "express";
+import { AuthRequest } from "@/types";
 export declare class ClientV2Controller {
     static getClients(req: AuthRequest, res: Response): Promise<void>;
     static getClientById(req: AuthRequest, res: Response): Promise<void>;

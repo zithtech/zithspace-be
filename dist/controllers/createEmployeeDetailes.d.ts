@@ -114,13 +114,13 @@ export declare function deletePersonalDetails(req: AuthRequest, employeeId: stri
         status: boolean;
         tenantId: string;
         id: string;
+        mobile: string;
         employee_code: string;
         first_name: string;
         last_name: string;
         gender: string;
         date_of_birth: Date;
         blood_group: string | null;
-        mobile: string;
         work_email: string;
         personal_email: string | null;
         profile_pic: string | null;
