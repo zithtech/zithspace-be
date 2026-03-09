@@ -54,7 +54,7 @@ export class AuthController {
             },
             include: {
               tenant: true,
-              employee: true,
+              // employee: true,
               position: {
                 select: {
                   id: true,
@@ -140,7 +140,7 @@ export class AuthController {
           workEmail: user.workEmail,
           personalEmail: user.personalEmail,
           role: user.role as any,
-        position: (user as any).position?.title || null,
+          position: (user as any).position?.title || null,
           tenantId: user.tenantId,
           tenantName: (user as any).tenant.name,
           isActive: user.isActive,
@@ -232,7 +232,7 @@ export class AuthController {
 
       // Replace old refresh token with new one
       await tenantAwarePrisma.withTenant(decoded.tenantId, async (client) => {
-          await client.refreshToken.delete({
+        await client.refreshToken.delete({
           where: { id: storedToken.id },
         });
 
@@ -334,7 +334,7 @@ export class AuthController {
               tenantId: req.user!.tenantId,
             },
             include: {
-              employee: true,
+              //employee: true,
               reportsTo: {
                 select: {
                   id: true,
@@ -390,8 +390,8 @@ export class AuthController {
           workDays: user.workDays,
           isActive: user.isActive,
           reportsTo: (user as any).reportsTo,
-           employeeId: (user as any).employee?.id || null,
-          employee: (user as any).employee || {},  // Include linked employee data if available
+          employeeId: (user as any).employee?.id || null,
+          employee: (user as any).employee || {}, // Include linked employee data if available
           tenant: (user as any).tenant,
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
@@ -520,17 +520,10 @@ export class AuthController {
         },
         message: "User created successfully",
       } as ApiResponse);
-    
     } catch (error: any) {
-<<<<<<< HEAD
-      console.error('Create user error:', error);
-
-      if (error.code === 'P2002') {
-=======
       console.error("Create user error:", error);
 
       if (error.code === "P2002") {
->>>>>>> production
         res.status(409).json({
           success: false,
           error: "User with this email or phone already exists",
@@ -543,12 +536,7 @@ export class AuthController {
         error: "Failed to create user",
       } as ApiResponse);
     }
-  
   }
-
-
-
-
   /**
    * Get new profile including employee info
    */
@@ -572,7 +560,7 @@ export class AuthController {
               tenantId: req.user!.tenantId,
             },
             include: {
-              employee: true, // Assuming `employee` is the relation in Prisma
+              // employee: true, // Assuming `employee` is the relation in Prisma
               reportsTo: {
                 select: {
                   id: true,
@@ -650,8 +638,6 @@ export class AuthController {
       } as ApiResponse);
     }
   }
-
 }
-  
-  
+
 export default AuthController;
