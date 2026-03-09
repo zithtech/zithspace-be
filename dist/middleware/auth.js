@@ -33,6 +33,15 @@ const authenticateToken = async (req, res, next) => {
                     tenantId: decoded.tenantId,
                     isActive: true,
                 },
+                include: {
+                    position: {
+                        select: {
+                            id: true,
+                            title: true,
+                            code: true,
+                        },
+                    },
+                },
             });
             // Cache for 5 minutes
             if (user) {
@@ -56,7 +65,7 @@ const authenticateToken = async (req, res, next) => {
             tenantId: user.tenantId,
             email: user.workEmail,
             role: user.role,
-            position: user.position,
+            position: user.position?.title || null,
             name: user.name,
             sessionId: decoded.sessionId,
         };
@@ -101,6 +110,15 @@ const optionalAuth = async (req, res, next) => {
                 tenantId: decoded.tenantId,
                 isActive: true,
             },
+            include: {
+                position: {
+                    select: {
+                        id: true,
+                        title: true,
+                        code: true,
+                    },
+                },
+            },
         });
         if (user && (!req.tenantId || user.tenantId === req.tenantId)) {
             req.user = {
@@ -108,7 +126,7 @@ const optionalAuth = async (req, res, next) => {
                 tenantId: user.tenantId,
                 email: user.workEmail,
                 role: user.role,
-                position: user.position,
+                position: user.position?.title || null,
                 name: user.name,
                 sessionId: decoded.sessionId,
             };

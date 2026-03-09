@@ -3,6 +3,9 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.s3Client = void 0;
 exports.uploadImageToR2 = uploadImageToR2;
 exports.uploadFileToR2 = uploadFileToR2;
+exports.uploadEmployeeDocumentToR2 = uploadEmployeeDocumentToR2;
+exports.uploadClientDocumentToR2 = uploadClientDocumentToR2;
+exports.uploadEmployeeAssetToR2 = uploadEmployeeAssetToR2;
 exports.deleteFileFromR2 = deleteFileFromR2;
 exports.deleteImageFromR2 = deleteImageFromR2;
 exports.extractImageUrlsFromHtml = extractImageUrlsFromHtml;
@@ -10,15 +13,15 @@ exports.cleanupOrphanedImages = cleanupOrphanedImages;
 const client_s3_1 = require("@aws-sdk/client-s3");
 const nanoid_1 = require("nanoid");
 // Cloudflare R2 Configuration
-const REGION = 'auto';
-const BUCKET_NAME = process.env.CF_R2_BUCKET_NAME || 'zithspace';
+const REGION = "auto";
+const BUCKET_NAME = process.env.CF_R2_BUCKET_NAME || "zithspace";
 const ACCOUNT_ID = process.env.CF_R2_ACCOUNT_ID;
 const ACCESS_KEY_ID = process.env.CF_R2_ACCESS_KEY_ID;
 const SECRET_ACCESS_KEY = process.env.CF_R2_SECRET_ACCESS_KEY;
 const PUBLIC_URL = process.env.CF_R2_PUBLIC_URL;
 // Validate required environment variables
 if (!ACCOUNT_ID || !ACCESS_KEY_ID || !SECRET_ACCESS_KEY) {
-    console.error('Missing required R2 environment variables');
+    console.error("Missing required R2 environment variables");
 }
 // Create S3 client for R2
 exports.s3Client = new client_s3_1.S3Client({
@@ -41,23 +44,29 @@ async function uploadImageToR2(base64Image, tenantId, ticketId) {
         // Extract content type and base64 data
         const matches = base64Image.match(/^data:(image\/\w+);base64,(.+)$/);
         if (!matches) {
-            throw new Error('Invalid image format. Expected base64 encoded image.');
+            throw new Error("Invalid image format. Expected base64 encoded image.");
         }
         const contentType = matches[1];
         const base64Data = matches[2];
-        const buffer = Buffer.from(base64Data, 'base64');
+        const buffer = Buffer.from(base64Data, "base64");
         // Validate file size (max 5MB)
         const fileSizeInMB = buffer.length / (1024 * 1024);
         if (fileSizeInMB > 5) {
-            throw new Error('Image size exceeds 5MB limit');
+            throw new Error("Image size exceeds 5MB limit");
         }
         // Validate content type
-        const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp'];
+        const allowedTypes = [
+            "image/png",
+            "image/jpeg",
+            "image/jpg",
+            "image/gif",
+            "image/webp",
+        ];
         if (!allowedTypes.includes(contentType)) {
-            throw new Error('Invalid image type. Allowed: PNG, JPEG, JPG, GIF, WEBP');
+            throw new Error("Invalid image type. Allowed: PNG, JPEG, JPG, GIF, WEBP");
         }
         // Generate unique file name
-        const fileExt = contentType.split('/')[1];
+        const fileExt = contentType.split("/")[1];
         const uniqueId = (0, nanoid_1.nanoid)(12);
         // Organize by tenant and optionally by ticket
         const folderPath = ticketId
@@ -66,11 +75,11 @@ async function uploadImageToR2(base64Image, tenantId, ticketId) {
         const fileName = `${folderPath}/${uniqueId}.${fileExt}`;
         // Upload to R2
         const params = {
-            Bucket: 'zithspace',
+            Bucket: "zithspace",
             Key: fileName,
             Body: buffer,
             ContentType: contentType,
-            CacheControl: 'public, max-age=31536000', // Cache for 1 year
+            CacheControl: "public, max-age=31536000", // Cache for 1 year
         };
         await exports.s3Client.send(new client_s3_1.PutObjectCommand(params));
         // Construct public URL
@@ -78,7 +87,7 @@ async function uploadImageToR2(base64Image, tenantId, ticketId) {
         return imageUrl;
     }
     catch (error) {
-        console.error('R2 upload error:', error);
+        console.error("R2 upload error:", error);
         throw new Error(`Failed to upload image: ${error.message}`);
     }
 }
@@ -95,31 +104,31 @@ async function uploadFileToR2(base64File, fileName, tenantId, ticketId) {
         // Extract content type and base64 data
         const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
         if (!matches) {
-            throw new Error('Invalid file format. Expected base64 encoded file.');
+            throw new Error("Invalid file format. Expected base64 encoded file.");
         }
         const contentType = matches[1];
         const base64Data = matches[2];
-        const buffer = Buffer.from(base64Data, 'base64');
+        const buffer = Buffer.from(base64Data, "base64");
         // Validate file size (max 5MB)
         const fileSizeInBytes = buffer.length;
         const fileSizeInMB = fileSizeInBytes / (1024 * 1024);
         if (fileSizeInMB > 5) {
-            throw new Error('File size exceeds 5MB limit');
+            throw new Error("File size exceeds 5MB limit");
         }
         // Generate unique file name while preserving original extension
-        const fileExtension = fileName.split('.').pop() || 'bin';
+        const fileExtension = fileName.split(".").pop() || "bin";
         const uniqueId = (0, nanoid_1.nanoid)(12);
-        const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
+        const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
         // Organize by tenant and ticket in attachments folder
         const folderPath = `${tenantId}/tickets/${ticketId}/attachments`;
         const storedFileName = `${folderPath}/${uniqueId}_${sanitizedFileName}`;
         // Upload to R2
         const params = {
-            Bucket: 'zithspace',
+            Bucket: "zithspace",
             Key: storedFileName,
             Body: buffer,
             ContentType: contentType,
-            CacheControl: 'public, max-age=31536000', // Cache for 1 year
+            CacheControl: "public, max-age=31536000", // Cache for 1 year
             ContentDisposition: `attachment; filename="${sanitizedFileName}"`, // Force download with original name
         };
         await exports.s3Client.send(new client_s3_1.PutObjectCommand(params));
@@ -132,8 +141,121 @@ async function uploadFileToR2(base64File, fileName, tenantId, ticketId) {
         };
     }
     catch (error) {
-        console.error('R2 file upload error:', error);
+        console.error("R2 file upload error:", error);
         throw new Error(`Failed to upload file: ${error.message}`);
+    }
+}
+/**
+ * Upload employee document to Cloudflare R2
+ * @param base64File - Base64 encoded file string
+ * @param fileName - Original file name
+ * @param tenantId - Tenant ID
+ * @param employeeId - Employee ID
+ * @param documentType - Type of document (e.g., experienceLetter)
+ * @returns Public URL of uploaded document
+ */
+async function uploadEmployeeDocumentToR2(base64File, fileName, tenantId, employeeId, documentType) {
+    try {
+        const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+        if (!matches) {
+            throw new Error("Invalid file format. Expected base64 encoded file.");
+        }
+        const contentType = matches[1];
+        const base64Data = matches[2];
+        const buffer = Buffer.from(base64Data, "base64");
+        const uniqueId = (0, nanoid_1.nanoid)(12);
+        const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+        const key = `${tenantId}/employees/${employeeId}/documents/${documentType}/${uniqueId}_${sanitizedFileName}`;
+        const params = {
+            Bucket: BUCKET_NAME,
+            Key: key,
+            Body: buffer,
+            ContentType: contentType,
+        };
+        await exports.s3Client.send(new client_s3_1.PutObjectCommand(params));
+        return `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/${key}`;
+    }
+    catch (error) {
+        console.error("R2 upload error:", error);
+        throw new Error(`Failed to upload document: ${error.message}`);
+    }
+}
+/**
+ * Upload Client V2 document to Cloudflare R2
+ * @param base64File - Base64 encoded file string
+ * @param fileName - Original file name
+ * @param tenantId - Tenant ID
+ * @param clientId - Client ID
+ * @param category - Main Category (e.g., Sales, Legal)
+ * @param documentType - Sub Category of document
+ * @returns Public URL of uploaded document
+ */
+async function uploadClientDocumentToR2(base64File, fileName, tenantId, clientId, category, documentType) {
+    try {
+        const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+        if (!matches) {
+            throw new Error("Invalid file format. Expected base64 encoded file.");
+        }
+        const contentType = matches[1];
+        const base64Data = matches[2];
+        const buffer = Buffer.from(base64Data, "base64");
+        const uniqueId = (0, nanoid_1.nanoid)(12);
+        const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+        // Organize by tenant -> clients-v2 -> client ID -> category -> document type
+        const key = `${tenantId}/clients-v2/${clientId}/documents/${category}/${documentType}/${uniqueId}_${sanitizedFileName}`;
+        const params = {
+            Bucket: BUCKET_NAME,
+            Key: key,
+            Body: buffer,
+            ContentType: contentType,
+        };
+        await exports.s3Client.send(new client_s3_1.PutObjectCommand(params));
+        return `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/${key}`;
+    }
+    catch (error) {
+        console.error("R2 upload error (Client V2):", error);
+        throw new Error(`Failed to upload client document: ${error.message}`);
+    }
+}
+/**
+ * Upload employee asset image to Cloudflare R2
+ * @param base64 - Base64 encoded file string or an existing URL
+ * @param fileName - Original file name
+ * @param tenantId - Tenant ID
+ * @param employeeId - Employee ID
+ * @param folder - The subfolder inside the employee's directory (e.g., 'assets', 'profile-pictures')
+ * @returns Public URL of uploaded document
+ */
+async function uploadEmployeeAssetToR2({ base64, fileName = "asset.png", tenantId, employeeId, folder = "assets", }) {
+    try {
+        if (!base64) {
+            throw new Error("File content is missing");
+        }
+        // If it's already a URL, return it directly
+        if (base64.startsWith("http")) {
+            return base64;
+        }
+        const matches = base64.match(/^data:([^;]+);base64,(.+)$/);
+        if (!matches) {
+            throw new Error("Invalid file format. Expected base64 encoded file.");
+        }
+        const contentType = matches[1];
+        const base64Data = matches[2];
+        const buffer = Buffer.from(base64Data, "base64");
+        const uniqueId = (0, nanoid_1.nanoid)(12);
+        const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+        const key = `${tenantId}/employees/${employeeId}/${folder}/${uniqueId}_${sanitizedFileName}`;
+        await exports.s3Client.send(new client_s3_1.PutObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: key,
+            Body: buffer,
+            ContentType: contentType,
+        }));
+        return `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/${key}`;
+    }
+    catch (error) {
+        console.error(`R2 ${folder} image upload error:`, error);
+        throw new Error(`Failed to upload ${folder} image: ${error.message}`);
     }
 }
 /**
@@ -144,15 +266,15 @@ async function uploadFileToR2(base64File, fileName, tenantId, ticketId) {
 async function deleteFileFromR2(fileUrl, tenantId) {
     try {
         // Extract file key from URL
-        const urlParts = fileUrl.split('/');
-        const publicUrlIndex = urlParts.findIndex(part => part.includes('r2.dev'));
+        const urlParts = fileUrl.split("/");
+        const publicUrlIndex = urlParts.findIndex((part) => part.includes("r2.dev"));
         if (publicUrlIndex === -1) {
-            throw new Error('Invalid file URL');
+            throw new Error("Invalid file URL");
         }
-        const fileName = urlParts.slice(publicUrlIndex + 1).join('/');
+        const fileName = urlParts.slice(publicUrlIndex + 1).join("/");
         // Validate that the file belongs to the tenant
         if (!fileName.startsWith(tenantId)) {
-            throw new Error('Unauthorized: File does not belong to this tenant');
+            throw new Error("Unauthorized: File does not belong to this tenant");
         }
         // Delete from R2
         const params = {
@@ -163,7 +285,7 @@ async function deleteFileFromR2(fileUrl, tenantId) {
         console.log(`Deleted file: ${fileName}`);
     }
     catch (error) {
-        console.error('R2 delete error:', error);
+        console.error("R2 delete error:", error);
         throw new Error(`Failed to delete file: ${error.message}`);
     }
 }
@@ -175,15 +297,15 @@ async function deleteFileFromR2(fileUrl, tenantId) {
 async function deleteImageFromR2(imageUrl, tenantId) {
     try {
         // Extract file key from URL
-        const urlParts = imageUrl.split('/');
+        const urlParts = imageUrl.split("/");
         const bucketIndex = urlParts.indexOf(BUCKET_NAME);
         if (bucketIndex === -1) {
-            throw new Error('Invalid image URL');
+            throw new Error("Invalid image URL");
         }
-        const fileName = urlParts.slice(bucketIndex + 1).join('/');
+        const fileName = urlParts.slice(bucketIndex + 1).join("/");
         // Validate that the file belongs to the tenant
         if (!fileName.startsWith(tenantId)) {
-            throw new Error('Unauthorized: Image does not belong to this tenant');
+            throw new Error("Unauthorized: Image does not belong to this tenant");
         }
         // Delete from R2
         const params = {
@@ -194,7 +316,7 @@ async function deleteImageFromR2(imageUrl, tenantId) {
         console.log(`Deleted image: ${fileName}`);
     }
     catch (error) {
-        console.error('R2 delete error:', error);
+        console.error("R2 delete error:", error);
         throw new Error(`Failed to delete image: ${error.message}`);
     }
 }
@@ -223,7 +345,7 @@ async function cleanupOrphanedImages(oldHtml, newHtml, tenantId) {
         const oldImages = extractImageUrlsFromHtml(oldHtml);
         const newImages = extractImageUrlsFromHtml(newHtml);
         // Find images that were removed
-        const removedImages = oldImages.filter(url => !newImages.includes(url));
+        const removedImages = oldImages.filter((url) => !newImages.includes(url));
         // Delete removed images from R2
         for (const imageUrl of removedImages) {
             try {
@@ -239,7 +361,7 @@ async function cleanupOrphanedImages(oldHtml, newHtml, tenantId) {
         }
     }
     catch (error) {
-        console.error('Error cleaning up orphaned images:', error);
+        console.error("Error cleaning up orphaned images:", error);
         // Don't throw error - cleanup is best effort
     }
 }

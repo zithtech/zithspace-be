@@ -10,7 +10,7 @@ class GradeController {
                 res.status(400).json({ success: false, error: "Tenant context and user are missing" });
                 return;
             }
-            const { name, code, levelOrder, description, isActive } = req.body;
+            const { name, code, codes, levelOrder, description, isActive } = req.body;
             const createdById = req.user.id;
             if (!name || !code || levelOrder === undefined) {
                 res.status(400).json({ success: false, error: "Name, code, and levelOrder are required." });
@@ -21,6 +21,7 @@ class GradeController {
                     tenantId: req.tenantId,
                     name,
                     code,
+                    codes,
                     levelOrder,
                     description,
                     isActive,
@@ -91,7 +92,7 @@ class GradeController {
             }
             const { id } = req.params;
             const updatedById = req.user.id;
-            const { name, code, levelOrder, description, isActive } = req.body;
+            const { name, code, codes, levelOrder, description, isActive } = req.body;
             const existing = await database_1.prisma.grade.findFirst({
                 where: { id, tenantId: req.tenantId },
             });
@@ -110,7 +111,7 @@ class GradeController {
             }
             const updatedGrade = await database_1.prisma.grade.update({
                 where: { id },
-                data: { name, code, levelOrder, description, isActive, updatedById },
+                data: { name, code, codes, levelOrder, description, isActive, updatedById },
             });
             res.status(200).json({ success: true, data: updatedGrade, message: "Grade updated successfully" });
         }

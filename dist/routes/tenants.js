@@ -8,6 +8,8 @@ const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const tenantController_1 = require("@/controllers/tenantController");
 const tenantContext_1 = require("@/middleware/tenantContext");
 const auth_1 = require("@/middleware/auth");
+const permission_1 = require("@/middleware/permission");
+const permissions_1 = require("@/types/permissions");
 const router = (0, express_1.Router)();
 // Rate limiting for tenant operations
 const tenantRateLimit = (0, express_rate_limit_1.default)({
@@ -68,13 +70,13 @@ router.get('/profile', tenantRateLimit, tenantContext_1.resolveTenant, auth_1.au
  * Update current tenant profile
  * Requires tenant context, authentication, and admin role
  */
-router.put('/profile', tenantRateLimit, tenantContext_1.resolveTenant, auth_1.authenticateToken, auth_1.requireAdmin, tenantController_1.TenantController.updateProfile);
+router.put('/profile', tenantRateLimit, tenantContext_1.resolveTenant, auth_1.authenticateToken, (0, permission_1.requirePermission)(permissions_1.Permissions.SETTINGS_UPDATE), tenantController_1.TenantController.updateProfile);
 /**
  * GET /api/tenants/statistics
  * Get detailed tenant statistics
  * Requires tenant context, authentication, and admin role
  */
-router.get('/statistics', tenantRateLimit, tenantContext_1.resolveTenant, auth_1.authenticateToken, auth_1.requireAdmin, tenantController_1.TenantController.getStatistics);
+router.get('/statistics', tenantRateLimit, tenantContext_1.resolveTenant, auth_1.authenticateToken, (0, permission_1.requirePermission)(permissions_1.Permissions.REPORT_READ), tenantController_1.TenantController.getStatistics);
 // ==========================================
 // super_admin ENDPOINTS (Require super_admin access)
 // ==========================================

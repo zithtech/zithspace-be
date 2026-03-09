@@ -23,7 +23,7 @@ class BucketController {
                 tenantId: req.tenantId,
             };
             if (projectId) {
-                if (projectId === 'null' || projectId === 'cross-project') {
+                if (projectId === "null" || projectId === "cross-project") {
                     // Cross-project buckets (projectId is null)
                     where.projectId = null;
                 }
@@ -63,7 +63,7 @@ class BucketController {
                 if (!bucket.isShared)
                     return false;
                 // Shared buckets visible to members
-                if (includeShared === 'true' || includeShared === true) {
+                if (includeShared === "true" || includeShared === true) {
                     const isMember = bucket.members.some((member) => member.userId === req.user.id);
                     return isMember || bucket.createdById === req.user.id;
                 }
@@ -222,7 +222,12 @@ class BucketController {
                     members: {
                         include: {
                             user: {
-                                select: { id: true, name: true, workEmail: true, position: true },
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    workEmail: true,
+                                    position: true,
+                                },
                             },
                         },
                     },
@@ -437,7 +442,9 @@ class BucketController {
                 where: { id },
                 data: {
                     name: name?.trim() || existingBucket.name,
-                    description: description !== undefined ? description?.trim() : existingBucket.description,
+                    description: description !== undefined
+                        ? description?.trim()
+                        : existingBucket.description,
                     color: color || existingBucket.color,
                     isShared: isShared !== undefined ? isShared : existingBucket.isShared,
                     updatedAt: new Date(),

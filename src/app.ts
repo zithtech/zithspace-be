@@ -1,4 +1,6 @@
- import "module-alias/register";
+if (process.env.NODE_ENV !== "development") {
+  require("module-alias/register");
+}
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -7,7 +9,7 @@ import compression from "compression";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
-
+import session from "express-session";
 
 // Import configurations
 import { connectDatabase, disconnectDatabase } from "@/config/database";
@@ -15,8 +17,7 @@ import salaryComponentRoutes from "@/routes/salaryComponentRoutes";
 import gradeRoutes from "@/routes/gradeRoutes";
 import companyRoutes from "./routes/companyRoutes";
 
-
-// Import middleware
+// Import middlewares
 import { optionalTenantContext } from "@/middleware/tenantContext";
 
 import authRoutes from "@/routes/auth";
@@ -25,6 +26,7 @@ import projectRoutes from "@/routes/projects";
 import ticketRoutes from "@/routes/tickets";
 import attendanceRoutes from "@/routes/attendance";
 import clientRoutes from "@/routes/clients";
+import clientV2Routes from "@/routes/clientsV2";
 import memberRoutes from "@/routes/members";
 import shiftRoutes from "@/routes/shifts";
 import transactionRoutes from "@/routes/transactions";
@@ -46,12 +48,26 @@ import fixedHolidayRoutes from "@/routes/fixedHolidays";
 import documentHubRoutes from "@/routes/documenthub";
 import channelRoutes from "@/routes/channels";
 import messageRoutes from "@/routes/messages";
+// Onboarding
+// import employeeRoutes from "@/routes/employeeRoutes";
+// import employeeAddressRoutes from "@/routes/employeeAddress";
+// import employeeEmergencyContactRoutes from "@/routes/emergencyContact";
+// import employeeIdentityRoutes from "@/routes/employeeIdentity";
+import employeeWorkDetailRoutes from "@/routes/employeeWorkDetailes";
+import employeeTimelineRoutes from "@/routes/employeeTimeline";
+// personal Detailes
+//import employeeDetailsRoutes from "@/routes/createEmployeeRoutes";
+//import employeeEmploymentDetailsRoutes from "@/routes/employeeEmploymentDetailes";
+
+// main
+import employeeOnboardingRoutes from "@/routes/onboardingRoutes";
+import newProfileRoutes from "@/routes/auth";
+import publicTicketRoutes from "@/routes/publicTickets";
+import employeeSettingsRoutes from "./routes/employeeSettingsRoutes";
+
 import timesheetRoutes from "@/routes/timesheet";
 
-
-
-
-import companyGovernmentHolidayRouter from './routes/companyGovernmentHoliday.routes';
+import companyGovernmentHolidayRouter from "./routes/companyGovernmentHoliday.routes";
 import leaveAdjustmentRoutes from "./routes/leaveAdjustmentRoutes";
 import reimbursement from "@/routes/reimbursementCategory";
 import employmentTypeRoutes from "@/routes/employmentTypeRoutes";
@@ -59,18 +75,33 @@ import repositoryRoutes from "@/routes/repositoryRoutes";
 import departmentRoutes from "@/routes/departmentRoutes";
 import subDepartmentRoutes from "@/routes/subDepartmentRoutes";
 import positionRoutes from "@/routes/positionRoutes";
-
-
+import calendarRoutes from "@/routes/calendar"
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
 import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
+import rbacRoutes from "@/routes/rbac";
 // Load environment
 dotenv.config();
+console.log("🚀 API Starting up...");
+console.log("📅 Mounting calendar routes at /api/calendar");
 // Create Express application
 const app = express();
 
 // Body parsing middleware
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(express.json({ limit: "30mb" }));
+app.use(express.urlencoded({ extended: true, limit: "30mb" }));
+
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || "your-fallback-secret-key",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === "production", // true in production
+      httpOnly: true,
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    },
+  }),
+);
 
 // Connect to PostgreSQL
 
@@ -146,23 +177,25 @@ app.get("/health", (req, res) => {
   });
 });
 
-
 // app.use("/api", optionalTenantContext);
 
 // API routes
 app.use("/api/leave-adjustments", leaveAdjustmentRoutes);
-app.use('/api/company-government-holidays', companyGovernmentHolidayRouter);
+app.use("/api/company-government-holidays", companyGovernmentHolidayRouter);
 app.use("/api/leave-origins", leaveOriginRoutes);
 app.use("/api/fixed-holidays", fixedHolidayRoutes);
+app.get("/api/direct-test", (req, res) => {
+  res.json({ success: true, message: "Direct app.get works" });
+});
 app.use("/api/auth", authRoutes);
 app.use("/api/tenants", tenantRoutes);
+app.use("/api/calendar", calendarRoutes);
 app.use("/api/projects", projectRoutes);
-import publicTicketRoutes from "@/routes/publicTickets";
-
 app.use("/api/public/tickets", publicTicketRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/clients", clientRoutes);
+app.use("/api/clients-v2", clientV2Routes);
 app.use("/api/members", memberRoutes);
 app.use("/api/shifts", shiftRoutes);
 app.use("/api/transactions", transactionRoutes);
@@ -176,8 +209,8 @@ app.use("/api/reimbursement-category", reimbursement);
 app.use("/api/repositories", repositoryRoutes);
 app.use("/api/leave-types", leaveTypeRoutes);
 app.use("/api/customers", customerRoutes);
-app.use("/api/invoicesetting", invoiceSettingRoutes)
-app.use("/api/invoices", invoice)
+app.use("/api/invoicesetting", invoiceSettingRoutes);
+app.use("/api/invoices", invoice);
 //app.use("/api/invoice",invoicedownload)
 app.use("/api/buckets", bucketRoutes);
 app.use("/api/trash", trashRoutes);
@@ -193,10 +226,28 @@ app.use("/api/employment-types", employmentTypeRoutes);
 app.use("/api/documenthub", documentHubRoutes);
 app.use("/api/channels", channelRoutes);
 app.use("/api/channels/:channelId/messages", messageRoutes);
-app.use('/api/email-history', emailHistoryRoutes);
+app.use("/api/email-history", emailHistoryRoutes);
 app.use("/api/timesheets", timesheetRoutes);
 
+// onboarding
+// app.use("/api/employees", employeeRoutes);
+// app.use("/api/employee-addresses", employeeAddressRoutes);
+// app.use("/api/employee-emergency-contacts", employeeEmergencyContactRoutes);
+// app.use("/api/employee-identities", employeeIdentityRoutes);
+app.use("/api/employee-work-details", employeeWorkDetailRoutes);
+app.use("/api/employee-timelines", employeeTimelineRoutes);
+//app.use("/api/employee-details", employeeDetailsRoutes);
+//app.use("/api/employee-employment-details", employeeEmploymentDetailsRoutes);
+// main
+app.use("/api/onboarding", employeeOnboardingRoutes);
+app.use("/api/profile/new", newProfileRoutes);
+app.use("/api/employeesettings", employeeSettingsRoutes);
 
+// RBAC management API
+app.use("/api/rbac", rbacRoutes);
+
+// app.use("/api/addresses", addressRoutes);
+//app.use("/api/employee_address", addressRoutes);
 
 app.get("/api/health", (req: any, res) => {
   res.status(200).json({
@@ -343,6 +394,13 @@ const server = app.listen(PORT, () => {
   // Start trash auto-purge cron job
   const { startTrashAutoPurgeJob } = require("@/jobs/trashAutoPurge");
   startTrashAutoPurgeJob();
+
+  // Start Calendar Sync Worker (scheduler + BullMQ processor)
+  // TEMPORARILY DISABLED: Redis not available (ECONNREFUSED 127.0.0.1:6379)
+  // const { SyncWorker } = require("@/services/calendar/SyncWorker");
+  // const { startSyncProcessor } = require("@/services/calendar/calendarSyncProcessor");
+  // SyncWorker.start();
+  // startSyncProcessor();
 });
 
 // Graceful shutdown
@@ -354,6 +412,7 @@ const gracefulShutdown = async (signal: string) => {
 
     try {
       await disconnectDatabase();
+
       console.log("Database connections closed");
     } catch (error) {
       console.error("Error closing database connections:", error);
