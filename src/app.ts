@@ -11,8 +11,6 @@ import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
 import session from "express-session";
 
-
-
 // Import configurations
 import { connectDatabase, disconnectDatabase } from "@/config/database";
 import salaryComponentRoutes from "@/routes/salaryComponentRoutes";
@@ -63,6 +61,9 @@ import employeeTimelineRoutes from "@/routes/employeeTimeline";
 
 // main
 import employeeOnboardingRoutes from "@/routes/onboardingRoutes";
+import newProfileRoutes from "@/routes/auth";
+import publicTicketRoutes from "@/routes/publicTickets";
+import employeeSettingsRoutes from "./routes/employeeSettingsRoutes";
 
 import timesheetRoutes from "@/routes/timesheet";
 
@@ -74,28 +75,31 @@ import repositoryRoutes from "@/routes/repositoryRoutes";
 import departmentRoutes from "@/routes/departmentRoutes";
 import subDepartmentRoutes from "@/routes/subDepartmentRoutes";
 import positionRoutes from "@/routes/positionRoutes";
-import calenderRoutes from "@/routes/calendar"
+import calenderRoutes from "@/routes/calendar";
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
 import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
+import rbacRoutes from "@/routes/rbac";
 // Load environment
 dotenv.config();
 // Create Express application
 const app = express();
 
 // Body parsing middleware
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(express.json({ limit: "30mb" }));
+app.use(express.urlencoded({ extended: true, limit: "30mb" }));
 
-app.use(session({
-  secret: process.env.SESSION_SECRET || "your-fallback-secret-key",
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    secure: process.env.NODE_ENV === "production", // true in production
-    httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
-  }
-}));
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || "your-fallback-secret-key",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === "production", // true in production
+      httpOnly: true,
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    },
+  }),
+);
 
 // Connect to PostgreSQL
 
@@ -171,9 +175,6 @@ app.get("/health", (req, res) => {
   });
 });
 
-
-
-
 // app.use("/api", optionalTenantContext);
 
 // API routes
@@ -184,8 +185,6 @@ app.use("/api/fixed-holidays", fixedHolidayRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/tenants", tenantRoutes);
 app.use("/api/projects", projectRoutes);
-import publicTicketRoutes from "@/routes/publicTickets";
-
 app.use("/api/public/tickets", publicTicketRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/attendance", attendanceRoutes);
@@ -236,6 +235,11 @@ app.use("/api/employee-timelines", employeeTimelineRoutes);
 //app.use("/api/employee-employment-details", employeeEmploymentDetailsRoutes);
 // main
 app.use("/api/onboarding", employeeOnboardingRoutes);
+app.use("/api/profile/new", newProfileRoutes);
+app.use("/api/employeesettings", employeeSettingsRoutes);
+
+// RBAC management API
+app.use("/api/rbac", rbacRoutes);
 
 // app.use("/api/addresses", addressRoutes);
 //app.use("/api/employee_address", addressRoutes);
@@ -396,7 +400,6 @@ const gracefulShutdown = async (signal: string) => {
 
     try {
       await disconnectDatabase();
-
 
       console.log("Database connections closed");
     } catch (error) {

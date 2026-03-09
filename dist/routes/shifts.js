@@ -3,6 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const shiftsController_1 = require("@/controllers/shiftsController");
 const auth_1 = require("@/middleware/auth");
+const permission_1 = require("@/middleware/permission");
+const permissions_1 = require("@/types/permissions");
 const tenantContext_1 = require("@/middleware/tenantContext");
 const router = (0, express_1.Router)();
 // Apply tenant context resolution to all routes
@@ -43,7 +45,7 @@ router.get('/:id', shiftsController_1.ShiftsController.getShiftById);
  * @access  Private (admin only)
  * @body    { name, startTime, endTime }
  */
-router.post('/', auth_1.requireAdmin, shiftsController_1.ShiftsController.createShift);
+router.post('/', (0, permission_1.requirePermission)(permissions_1.Permissions.SHIFT_CREATE), shiftsController_1.ShiftsController.createShift);
 /**
  * @route   PUT /api/shifts/:id
  * @desc    Update shift (tenant-aware)
@@ -51,21 +53,21 @@ router.post('/', auth_1.requireAdmin, shiftsController_1.ShiftsController.create
  * @param   id - Shift ID
  * @body    { name?, startTime?, endTime?, isActive? }
  */
-router.put('/:id', auth_1.requireAdmin, shiftsController_1.ShiftsController.updateShift);
+router.put('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.SHIFT_UPDATE), shiftsController_1.ShiftsController.updateShift);
 /**
  * @route   DELETE /api/shifts/:id
  * @desc    Delete shift (soft delete - tenant-aware)
  * @access  Private (admin only)
  * @param   id - Shift ID
  */
-router.delete('/:id', auth_1.requireAdmin, shiftsController_1.ShiftsController.deleteShift);
+router.delete('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.SHIFT_DELETE), shiftsController_1.ShiftsController.deleteShift);
 /**
  * @route   PATCH /api/shifts/:id/activate
  * @desc    Activate shift (tenant-aware)
  * @access  Private (admin only)
  * @param   id - Shift ID
  */
-router.patch('/:id/activate', auth_1.requireAdmin, shiftsController_1.ShiftsController.activateShift);
+router.patch('/:id/activate', (0, permission_1.requirePermission)(permissions_1.Permissions.SHIFT_MANAGE), shiftsController_1.ShiftsController.activateShift);
 /**
  * @route   POST /api/shifts/:shiftId/assign
  * @desc    Assign shift to user (tenant-aware)
@@ -73,13 +75,13 @@ router.patch('/:id/activate', auth_1.requireAdmin, shiftsController_1.ShiftsCont
  * @param   shiftId - Shift ID
  * @body    { userId }
  */
-router.post('/:shiftId/assign', auth_1.requireAdmin, shiftsController_1.ShiftsController.assignShiftToUser);
+router.post('/:shiftId/assign', (0, permission_1.requirePermission)(permissions_1.Permissions.SHIFT_MANAGE), shiftsController_1.ShiftsController.assignShiftToUser);
 /**
  * @route   DELETE /api/shifts/users/:userId/remove
  * @desc    Remove shift assignment from user (tenant-aware)
  * @access  Private (admin only)
  * @param   userId - User ID
  */
-router.delete('/users/:userId/remove', auth_1.requireAdmin, shiftsController_1.ShiftsController.removeShiftFromUser);
+router.delete('/users/:userId/remove', (0, permission_1.requirePermission)(permissions_1.Permissions.SHIFT_MANAGE), shiftsController_1.ShiftsController.removeShiftFromUser);
 exports.default = router;
 //# sourceMappingURL=shifts.js.map

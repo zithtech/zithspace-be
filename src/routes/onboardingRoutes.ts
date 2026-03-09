@@ -2,6 +2,8 @@ import express from "express";
 import { EmployeeOnboardingController } from "@/controllers/employeeOnboardingController";
 import { authenticateToken, requireAuth } from "@/middleware/auth";
 import { resolveTenant } from "@/middleware/tenantContext";
+import { requirePermission } from "@/middleware/permission";
+import { Permissions } from "@/types/permissions";
 
 const router = express.Router();
 
@@ -14,12 +16,13 @@ router.use(authenticateToken);
 router.use(requireAuth);
 
 // ROUTES
-router.post("/", asyncHandler(EmployeeOnboardingController.create));
-router.get("/", asyncHandler(EmployeeOnboardingController.getAll));
-router.get("/:employeeId", asyncHandler(EmployeeOnboardingController.getById));
-router.put("/:employeeId", asyncHandler(EmployeeOnboardingController.update));
+router.post("/", requirePermission(Permissions.ONBOARDING_CREATE), asyncHandler(EmployeeOnboardingController.create));
+router.get("/", requirePermission(Permissions.ONBOARDING_READ), asyncHandler(EmployeeOnboardingController.getAll));
+router.get("/:employeeId", requirePermission(Permissions.ONBOARDING_READ), asyncHandler(EmployeeOnboardingController.getById));
+router.put("/:employeeId", requirePermission(Permissions.ONBOARDING_UPDATE), asyncHandler(EmployeeOnboardingController.update));
 router.delete(
   "/:employeeId",
+  requirePermission(Permissions.ONBOARDING_MANAGE),
   asyncHandler(EmployeeOnboardingController.delete),
 );
 

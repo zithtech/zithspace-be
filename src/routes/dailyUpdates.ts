@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { DailyUpdateController } from '@/controllers/dailyUpdateController';
 import { authenticateToken, requireAuth } from '@/middleware/auth';
 import { resolveTenant } from '@/middleware/tenantContext';
+import { requirePermission } from '@/middleware/permission';
+import { Permissions } from '@/types/permissions';
 
 const router = Router();
 
@@ -18,7 +20,7 @@ router.use(requireAuth);
  * @access  Private (all authenticated users)
  * @body    { mood?, totalHoursWorked?, projectUpdates: [], generalNotes? }
  */
-router.post('/', DailyUpdateController.createUpdate);
+router.post('/', requirePermission(Permissions.DAILY_UPDATE_CREATE), DailyUpdateController.createUpdate);
 
 /**
  * @route   GET /api/daily-updates/my
@@ -26,7 +28,7 @@ router.post('/', DailyUpdateController.createUpdate);
  * @access  Private (authenticated user)
  * @query   date?, limit?
  */
-router.get('/my', DailyUpdateController.getMyUpdates);
+router.get('/my', requirePermission(Permissions.DAILY_UPDATE_READ), DailyUpdateController.getMyUpdates);
 
 /**
  * @route   GET /api/daily-updates/team
@@ -34,21 +36,21 @@ router.get('/my', DailyUpdateController.getMyUpdates);
  * @access  Private (Project Manager or Super Admin)
  * @query   date?, projectId?, userId?
  */
-router.get('/team', DailyUpdateController.getTeamUpdates);
+router.get('/team', requirePermission(Permissions.DAILY_UPDATE_MANAGE), DailyUpdateController.getTeamUpdates);
 
 /**
  * @route   GET /api/daily-updates/today
  * @desc    Get today's updates (role-based)
  * @access  Private (authenticated user)
  */
-router.get('/today', DailyUpdateController.getTodayUpdates);
+router.get('/today', requirePermission(Permissions.DAILY_UPDATE_READ), DailyUpdateController.getTodayUpdates);
 
 /**
  * @route   GET /api/daily-updates/check-today
  * @desc    Check if user has submitted update today
  * @access  Private (authenticated user)
  */
-router.get('/check-today', DailyUpdateController.checkTodaySubmission);
+router.get('/check-today', requirePermission(Permissions.DAILY_UPDATE_READ), DailyUpdateController.checkTodaySubmission);
 
 /**
  * @route   GET /api/daily-updates/stats/submission-rate
@@ -56,14 +58,14 @@ router.get('/check-today', DailyUpdateController.checkTodaySubmission);
  * @access  Private (Project Manager or Super Admin)
  * @query   startDate?, endDate?, projectId?
  */
-router.get('/stats/submission-rate', DailyUpdateController.getSubmissionStats);
+router.get('/stats/submission-rate', requirePermission(Permissions.DAILY_UPDATE_MANAGE), DailyUpdateController.getSubmissionStats);
 
 /**
  * @route   GET /api/daily-updates/:id
  * @desc    Get specific daily update by ID
  * @access  Private (owner, PM, or admin)
  */
-router.get('/:id', DailyUpdateController.getUpdateById);
+router.get('/:id', requirePermission(Permissions.DAILY_UPDATE_READ), DailyUpdateController.getUpdateById);
 
 /**
  * @route   PUT /api/daily-updates/:id
@@ -71,13 +73,13 @@ router.get('/:id', DailyUpdateController.getUpdateById);
  * @access  Private (owner only)
  * @body    { mood?, totalHoursWorked?, projectUpdates: [], generalNotes? }
  */
-router.put('/:id', DailyUpdateController.updateUpdate);
+router.put('/:id', requirePermission(Permissions.DAILY_UPDATE_CREATE), DailyUpdateController.updateUpdate);
 
 /**
  * @route   DELETE /api/daily-updates/:id
  * @desc    Delete daily status update
  * @access  Private (owner only)
  */
-router.delete('/:id', DailyUpdateController.deleteUpdate);
+router.delete('/:id', requirePermission(Permissions.DAILY_UPDATE_MANAGE), DailyUpdateController.deleteUpdate);
 
 export default router;

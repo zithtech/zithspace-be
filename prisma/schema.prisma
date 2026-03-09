@@ -39,12 +39,14 @@ model Tenant {
   holidays              CompanyGovernmentHoliday[]
   projects              Project[]
   releasePlans          ReleasePlan[]
+  
 
   reimbursementCategories ReimbursementCategory[]
   emailLogs               EmailLog[]
 
   employees         Employee[]
   employeeAddresses EmployeeAddress[]
+  employeeSetting EmployeeSetting[]
 
   shifts Shift[]
 
@@ -82,6 +84,8 @@ model Tenant {
   clientDocumentsV2           ClientDocumentV2[]
   employeeClientAllocationsV2 EmployeeClientAllocationV2[]
   ClientProject               ClientProject[]
+  // RBAC
+  roles Role[]
 
   @@map("tenants")
 }
@@ -107,6 +111,9 @@ model User {
   lastLoginAt       DateTime? @map("last_login_at")
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  employeeId        String?   @map("employee_id") 
+  employee          Employee? @relation(fields: [employeeId], references: [id]) 
 
   zohoAccessToken  String?   @map("zoho_access_token")
   zohoRefreshToken String?   @map("zoho_refresh_token")
@@ -244,6 +251,8 @@ model User {
   // Client V2 Relations
   createdClientsV2          ClientV2[]         @relation("ClientV2Creator")
   uploadedClientDocumentsV2 ClientDocumentV2[] @relation("ClientDocumentV2Uploader")
+  // ===== RBAC Relations =====
+  userRoles UserRole[]
 
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
@@ -1987,33 +1996,35 @@ model Employee {
   id       String @id @default(uuid()) @db.Uuid
   tenantId String @map("tenant_id")
 
-  employee_code  String   @db.VarChar(30)
-  first_name     String   @db.VarChar(100)
-  last_name      String   @db.VarChar(100)
-  gender         String   @db.VarChar(20)
-  date_of_birth  DateTime @db.Date
-  blood_group    String?  @db.VarChar(10)
-  mobile         String   @db.VarChar(15)
-  work_email     String   @db.VarChar(150)
-  personal_email String?  @db.VarChar(150)
-  status         Boolean  @default(true)
+  employee_code   String   @db.VarChar(30)
+  first_name      String   @db.VarChar(100)
+  last_name       String   @db.VarChar(100)
+  gender          String   @db.VarChar(20)
+  date_of_birth   DateTime @db.Date
+  blood_group     String?  @db.VarChar(10)
+  mobile          String   @db.VarChar(15)
+  work_email      String   @db.VarChar(150)
+  personal_email  String?  @db.VarChar(150)
+  status          Boolean  @default(true)
+  profile_pic     String?  @db.VarChar(255) 
 
   created_by String  @db.Uuid
   updated_by String? @db.Uuid
 
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
-
-  tenant                   Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  addresses                EmployeeAddress[]
-  emergencyContacts        EmployeeEmergencyContact[]
-  employeeIdentity         EmployeeIdentity?
-  workDetail               EmployeeWorkDetail[]
-  employeeTimeline         EmployeeTimeline[]
-  projectMappings          EmployeeProjectMapping[]   @relation("EmployeeProjectMappingEmployee")
-  createdMappings          EmployeeProjectMapping[]   @relation("EmployeeProjectMappingCreatedBy")
-  updatedMappings          EmployeeProjectMapping[]   @relation("EmployeeProjectMappingUpdatedBy")
-  additionalDetails        EmployeeAdditionalDetail[] @relation("EmployeeAdditionalDetailEmployee")
+  
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  users     User[] 
+  addresses           EmployeeAddress[]
+  emergencyContacts  EmployeeEmergencyContact[]
+  employeeIdentity    EmployeeIdentity?
+  workDetail       EmployeeWorkDetail[]
+  employeeTimeline   EmployeeTimeline[]
+  projectMappings   EmployeeProjectMapping[] @relation("EmployeeProjectMappingEmployee")
+  createdMappings   EmployeeProjectMapping[] @relation("EmployeeProjectMappingCreatedBy")
+  updatedMappings   EmployeeProjectMapping[] @relation("EmployeeProjectMappingUpdatedBy")
+  additionalDetails       EmployeeAdditionalDetail[] @relation("EmployeeAdditionalDetailEmployee")
   createdAdditionalDetails EmployeeAdditionalDetail[] @relation("EmployeeAdditionalDetailCreatedBy")
   updatedAdditionalDetails EmployeeAdditionalDetail[] @relation("EmployeeAdditionalDetailUpdatedBy")
 
@@ -2115,12 +2126,11 @@ model EmployeeIdentity {
 
   employeeId String @unique @map("employee_id") @db.Uuid
 
-  aadhaarNumber  String  @map("aadhaar_number") @db.VarChar(12)
-  panNumber      String  @map("pan_number") @db.VarChar(10)
-  passportNumber String? @map("passport_number") @db.VarChar(20)
-
   createdById String  @map("created_by_id") @db.Uuid
   updatedById String? @map("updated_by_id") @db.Uuid
+  aadhaarNumber   String   @db.VarChar(255) @map("aadhaar_number")
+  panNumber       String   @db.VarChar(255) @map("pan_number")
+  passportNumber  String?  @db.VarChar(255) @map("passport_number")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -2129,44 +2139,46 @@ model EmployeeIdentity {
   @@map("employee_identities")
 }
 
-model EmployeeWorkDetail {
-  id String @id @default(uuid()) @db.Uuid
+  model EmployeeWorkDetail {
 
-  employeeId String @map("employee_id") @db.Uuid
+    id             String   @id @default(uuid()) @db.Uuid
+    employeeId     String   @db.Uuid @map("employee_id")
+  
+    department     String?   @db.VarChar(100)
+    team           String?   @db.VarChar(100)
+    employeeType   String?   @db.VarChar(50)  @map("employee_type")
+    workLocation   String?   @db.VarChar(100) @map("work_location")
+    workShift   Json?   @map("work_shift")
+    workJoiningDate  String?  @db.VarChar(30)  @map("work_joining_date")  
 
-  department      String? @db.VarChar(100)
-  team            String? @db.VarChar(100)
-  employeeType    String? @map("employee_type") @db.VarChar(50)
-  workLocation    String  @map("work_location") @db.VarChar(100)
-  workShift       String? @map("work_shift") @db.VarChar(50)
-  workJoiningDate String? @map("work_joining_date") @db.VarChar(30)
+    workType       String?  @db.VarChar(50)  @map("work_type")       
+    hybridMode     String?  @db.VarChar(20)  @map("hybrid_mode")    
+    fixedDays      String[] @default([])     @map("fixed_days")      
+    totalDays      Int?     @map("total_days")                        
+    totalHours     Int?     @map("total_hours")  
+    notice_period   String?  @db.VarChar(10)                     
 
-  workType   String?  @map("work_type") @db.VarChar(50)
-  hybridMode String?  @map("hybrid_mode") @db.VarChar(20)
-  fixedDays  String[] @default([]) @map("fixed_days")
-  totalDays  Int?     @map("total_days")
-  totalHours Int?     @map("total_hours")
+    
+    createdById    String   @db.Uuid @map("created_by_id")
+    updatedById    String?  @db.Uuid @map("updated_by_id")
 
-  createdById String  @map("created_by_id") @db.Uuid
-  updatedById String? @map("updated_by_id") @db.Uuid
+    createdAt      DateTime @default(now()) @map("created_at")
+    updatedAt      DateTime @updatedAt      @map("updated_at")
+    employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  employee  Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-
-  @@map("employee_work_details")
-}
+    @@map("employee_work_details")
+  }
 
 model EmployeeTimeline {
   id String @id @default(uuid()) @db.Uuid
 
   employeeId String @map("employee_id") @db.Uuid
 
-  joiningDate            DateTime @map("joining_date") @db.Date
-  trainingCompletionDate DateTime @map("training_completion_date") @db.Date
 
   createdById String  @map("created_by_id") @db.Uuid
   updatedById String? @map("updated_by_id") @db.Uuid
+  joiningDate             DateTime? @db.Date @map("joining_date")
+  trainingCompletionDate  DateTime? @db.Date @map("training_completion_date")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -2188,6 +2200,8 @@ model EmployeeProjectMapping {
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+  
+
 
   employee  Employee  @relation("EmployeeProjectMappingEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
   createdBy Employee? @relation("EmployeeProjectMappingCreatedBy", fields: [createdById], references: [id])
@@ -2205,9 +2219,14 @@ model EmployeeAdditionalDetail {
 
   promotionStatus String? @map("promotion_status") @db.VarChar(50)
   employeeGrade   String? @map("employee_grade") @db.VarChar(50)
+ 
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+
+
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+
 
   employee  Employee  @relation("EmployeeAdditionalDetailEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
   createdBy Employee? @relation("EmployeeAdditionalDetailCreatedBy", fields: [createdById], references: [id])
@@ -2223,12 +2242,14 @@ model EmployeeBankDetail {
   createdById String? @map("created_by_id") @db.Uuid
   updatedById String? @map("updated_by_id") @db.Uuid
 
-  bankName          String  @map("bank_name") @db.VarChar(150)
-  accountHolderName String  @map("account_holder_name") @db.VarChar(150)
-  accountNumber     String  @map("account_number") @db.VarChar(30)
-  ifscCode          String  @map("ifsc_code") @db.VarChar(15)
-  branchName        String  @map("branch_name") @db.VarChar(150)
-  accountType       String? @map("account_type") @db.VarChar(50)
+
+
+  bankName          String?   @db.VarChar(150) @map("bank_name")
+  accountHolderName String?   @db.VarChar(150) @map("account_holder_name")
+  accountNumber     String?   @db.VarChar(225)  @map("account_number")
+  ifscCode          String?   @db.VarChar(225)  @map("ifsc_code")
+  branchName        String?   @db.VarChar(150) @map("branch_name")
+  accountType       String?   @db.VarChar(50)  @map("account_type")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -2243,18 +2264,17 @@ model EmployeeBankDetail {
 }
 
 model EmployeePayrollDetail {
-  id String @id @default(uuid()) @db.Uuid
 
-  employeeId  String  @unique @map("employee_id") @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
+  employeeId String @unique @map("employee_id") @db.Uuid
+  taxRegime   String? @map("tax_regime") @db.VarChar(20)
+  paymentType String? @map("payment_type") @db.VarChar(50)
+  uanNumber       String?  @db.VarChar(225) @map("uan_number")
+  pfNumber        String?  @db.VarChar(225) @map("pf_number")
+  esiNumber       String?  @db.VarChar(225) @map("esi_number")
   createdById String? @map("created_by_id") @db.Uuid
   updatedById String? @map("updated_by_id") @db.Uuid
 
-  uanNumber String? @map("uan_number") @db.VarChar(20)
-  pfNumber  String? @map("pf_number") @db.VarChar(20)
-  esiNumber String? @map("esi_number") @db.VarChar(20)
-
-  taxRegime   String? @map("tax_regime") @db.VarChar(20)
-  paymentType String? @map("payment_type") @db.VarChar(50)
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -2279,11 +2299,11 @@ model EmployeeExperience {
   industry       String? @db.VarChar(100)
   companyAddress String? @map("company_address") @db.Text
 
-  joiningDate     DateTime  @map("joining_date") @db.Date
-  lastWorkingDate DateTime? @map("last_working_date") @db.Date
+  joiningDate     DateTime? @db.Date @map("joining_date")
+  lastWorkingDate DateTime? @db.Date @map("last_working_date")
 
-  designation    String? @db.VarChar(100)
-  employmentType String? @map("employment_type") @db.VarChar(50)
+  designation     String?   @db.VarChar(100)
+  employmentType  String?   @db.VarChar(50) @map("employment_type")
 
   createdById String? @map("created_by_id") @db.Uuid
   updatedById String? @map("updated_by_id") @db.Uuid
@@ -2304,9 +2324,9 @@ model EmployeeDocument {
   createdById String? @map("created_by_id") @db.Uuid
   updatedById String? @map("updated_by_id") @db.Uuid
 
-  documentType String   @map("document_type") @db.VarChar(50)
-  documentUrl  String   @map("document_url") @db.Text
-  uploadedAt   DateTime @default(now()) @map("uploaded_at")
+  documentType  String?  @db.VarChar(50) @map("document_type")
+  documentUrl   String?   @db.Text @map("document_url")
+  uploadedAt    DateTime @default(now()) @map("uploaded_at")
 
   employee Employee @relation("EmployeeDocuments", fields: [employeeId], references: [id])
 
@@ -2324,6 +2344,7 @@ model EmployeeContact {
   contactPersonType String? @map("contact_person_type") @db.VarChar(50)
   name              String? @db.VarChar(150)
   mobile            String? @db.VarChar(15)
+  
 
   email String? @db.VarChar(150)
 
@@ -2348,15 +2369,16 @@ model EmployeeAsset {
   employeeId String   @map("employee_id") @db.Uuid
   employee   Employee @relation("EmployeeAssets", fields: [employeeId], references: [id], onDelete: Cascade)
 
-  itemName    String @map("item_name") @db.VarChar(30)
-  brandName   String @map("brand_name") @db.VarChar(30)
-  modelName   String @map("model_name") @db.VarChar(30)
-  modelNumber String @map("model_number") @db.VarChar(30)
 
-  uploadImage String? @map("upload_image") @db.Text
 
   createdById String  @map("created_by_id") @db.Uuid
   updatedById String? @map("updated_by_id") @db.Uuid
+  itemName      String?   @db.VarChar(30) @map("item_name")
+  brandName     String?   @db.VarChar(30) @map("brand_name")
+  modelName     String?   @db.VarChar(30) @map("model_name")
+  modelNumber   String?   @db.VarChar(30) @map("model_number")
+
+  uploadImage   String?   @db.Text @map("upload_image")
 
   createdBy Employee @relation("EmployeeAssetCreatedBy", fields: [createdById], references: [id])
 
@@ -2367,6 +2389,20 @@ model EmployeeAsset {
 
   @@map("employee_assets")
 }
+
+model EmployeeSetting {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @unique @db.Uuid @map("tenant_id")
+  employeePrefix  String   @db.VarChar(20) @map("employee_prefix")
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("employee_settings")
+}
+
 
 model ZohoEvent {
   id          String    @id
@@ -2543,4 +2579,101 @@ model EmployeeClientAllocationV2 {
   project  Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@map("employee_client_allocations_v2")
+}
+// =====================================================
+//  RBAC — Role-Based Access Control
+// =====================================================
+
+/// All possible permission strings in the system.
+/// Seeded once on migration; never modified at runtime.
+model Permission {
+  id          String   @id @default(uuid())
+  name        String   @unique           // e.g. "ticket.create"
+  resource    String                     // e.g. "ticket"
+  action      String                     // e.g. "create"
+  description String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  rolePermissions RolePermission[]
+
+  @@index([resource])
+  @@map("permissions")
+}
+
+/// A named collection of permissions, scoped to a tenant.
+/// System roles (isSystem = true) cannot be deleted.
+model Role {
+  id          String  @id @default(uuid())
+  tenantId    String  @map("tenant_id")
+  name        String                     // e.g. "HR Manager"
+  slug        String                     // e.g. "hr_manager"
+  description String?
+  isSystem    Boolean @default(false) @map("is_system")   // protected from deletion
+  isActive    Boolean @default(true)  @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt       @map("updated_at")
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@map("roles")
+}
+
+/// Join table: which permissions a role has.
+model RolePermission {
+  roleId       String @map("role_id")
+  permissionId String @map("permission_id")
+
+  grantedAt   DateTime @default(now()) @map("granted_at")
+  grantedById String?  @map("granted_by_id")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+/// Join table: which roles a user has (supports optional expiry for temporary roles).
+model UserRole {
+  userId   String @map("user_id")
+  roleId   String @map("role_id")
+  tenantId String @map("tenant_id")
+
+  assignedAt   DateTime  @default(now()) @map("assigned_at")
+  assignedById String?   @map("assigned_by_id")
+  expiresAt    DateTime? @map("expires_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([userId, tenantId])
+  @@map("user_roles")
+}
+
+/// Audit trail for every authorization decision.
+model AuthorizationLog {
+  id         String  @id @default(uuid())
+  tenantId   String  @map("tenant_id")
+  userId     String? @map("user_id")
+  permission String                     // permission checked
+  resource   String
+  resourceId String? @map("resource_id")
+  result     String                     // "granted" | "denied"
+  reason     String?
+  ipAddress  String? @map("ip_address")
+  userAgent  String? @map("user_agent")
+  endpoint   String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, userId])
+  @@index([createdAt])
+  @@map("authorization_logs")
 }

@@ -21,18 +21,23 @@ async function createEmployeeAssets(req, employeeId, tx = database_1.prisma) {
             let imageUrl = asset.image; // Default to existing URL if present
             // If image is a base64 string, upload it to R2
             if (asset.image && asset.image.startsWith("data:")) {
-                imageUrl = await (0, r2Client_1.uploadEmployeeAssetToR2)(asset.image, asset.imageName || "asset.png", req.tenantId, employeeId);
+                imageUrl = await (0, r2Client_1.uploadEmployeeAssetToR2)({
+                    base64: asset.image,
+                    fileName: asset.imageName || "asset.png",
+                    tenantId: req.tenantId,
+                    employeeId,
+                });
             }
             await tx.employeeAsset.create({
                 data: {
                     employeeId,
-                    itemName: asset.item,
-                    brandName: asset.brand,
-                    modelName: asset.model,
-                    modelNumber: asset.modelNumber,
-                    uploadImage: imageUrl,
-                    createdById: employeeId,
-                    updatedById: employeeId,
+                    itemName: asset.item || null,
+                    brandName: asset.brand || null,
+                    modelName: asset.model || null,
+                    modelNumber: asset.modelNumber || null,
+                    uploadImage: imageUrl || null,
+                    createdById: employeeId || null,
+                    updatedById: employeeId || null,
                 },
             });
         }
@@ -191,7 +196,12 @@ async function updateEmployeeAsset(req, employeeId, assetId) {
         let imageUrl = existingAsset.uploadImage; // Keep existing image by default
         // If a new image is provided as base64, upload it to R2
         if (asset.image && asset.image.startsWith("data:")) {
-            imageUrl = await (0, r2Client_1.uploadEmployeeAssetToR2)(asset.image, asset.imageName || "asset.png", req.tenantId, employeeId);
+            imageUrl = await (0, r2Client_1.uploadEmployeeAssetToR2)({
+                base64: asset.image,
+                fileName: asset.imageName || "asset.png",
+                tenantId: req.tenantId,
+                employeeId,
+            });
         }
         else if (asset.image) {
             // If it's already a URL, use it
@@ -250,7 +260,12 @@ async function updateEmployeeAssets(req, employeeId) {
                 // If no ID, create new asset
                 let imageUrl = asset.image;
                 if (asset.image && asset.image.startsWith("data:")) {
-                    imageUrl = await (0, r2Client_1.uploadEmployeeAssetToR2)(asset.image, asset.imageName || "asset.png", req.tenantId, employeeId);
+                    imageUrl = await (0, r2Client_1.uploadEmployeeAssetToR2)({
+                        base64: asset.image,
+                        fileName: asset.imageName || "asset.png",
+                        tenantId: req.tenantId,
+                        employeeId,
+                    });
                 }
                 await database_1.prisma.employeeAsset.create({
                     data: {
@@ -277,7 +292,12 @@ async function updateEmployeeAssets(req, employeeId) {
                     continue; // Skip if not found
                 let imageUrl = existingAsset.uploadImage;
                 if (asset.image && asset.image.startsWith("data:")) {
-                    imageUrl = await (0, r2Client_1.uploadEmployeeAssetToR2)(asset.image, asset.imageName || "asset.png", req.tenantId, employeeId);
+                    imageUrl = await (0, r2Client_1.uploadEmployeeAssetToR2)({
+                        base64: asset.image,
+                        fileName: asset.imageName || "asset.png",
+                        tenantId: req.tenantId,
+                        employeeId,
+                    });
                 }
                 else if (asset.image) {
                     imageUrl = asset.image;

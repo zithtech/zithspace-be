@@ -2,7 +2,9 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { TenantController } from '@/controllers/tenantController';
 import { resolveTenant, optionalTenantContext } from '@/middleware/tenantContext';
-import { authenticateToken, requireSuperAdmin, requireAdmin } from '@/middleware/auth';
+import { authenticateToken, requireSuperAdmin } from '@/middleware/auth';
+import { requirePermission } from '@/middleware/permission';
+import { Permissions } from '@/types/permissions';
 
 const router = Router();
 
@@ -73,14 +75,14 @@ router.get('/profile', tenantRateLimit, resolveTenant, authenticateToken, Tenant
  * Update current tenant profile
  * Requires tenant context, authentication, and admin role
  */
-router.put('/profile', tenantRateLimit, resolveTenant, authenticateToken, requireAdmin, TenantController.updateProfile);
+router.put('/profile', tenantRateLimit, resolveTenant, authenticateToken, requirePermission(Permissions.SETTINGS_UPDATE), TenantController.updateProfile);
 
 /**
  * GET /api/tenants/statistics
  * Get detailed tenant statistics
  * Requires tenant context, authentication, and admin role
  */
-router.get('/statistics', tenantRateLimit, resolveTenant, authenticateToken, requireAdmin, TenantController.getStatistics);
+router.get('/statistics', tenantRateLimit, resolveTenant, authenticateToken, requirePermission(Permissions.REPORT_READ), TenantController.getStatistics);
 
 // ==========================================
 // super_admin ENDPOINTS (Require super_admin access)
