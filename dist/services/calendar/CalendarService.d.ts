@@ -1,16 +1,10 @@
 import { CalendarProvider } from "@prisma/client";
 import { CalendarEventData } from "./ICalendarProvider";
 export declare class CalendarService {
-    /**
-     * Get the authorization URL for a specific provider.
-     */
     static getAuthUrl(provider: CalendarProvider, userId: string): Promise<string>;
     /**
      * Handle the OAuth callback and save integration details.
      */
-    /**
- * Handle the OAuth callback and save integration details.
- */
     static handleCallback(provider: CalendarProvider, userId: string, tenantId: string, code: string, state: string): Promise<{
         tenantId: string;
         refreshToken: string | null;
@@ -23,6 +17,7 @@ export declare class CalendarService {
         accessToken: string | null;
         calendarId: string | null;
         provider: import(".prisma/client").$Enums.CalendarProvider;
+        mailAccountId: string | null;
         tokenExpiry: Date | null;
         googleSyncToken: string | null;
         googleChannelId: string | null;
@@ -43,9 +38,6 @@ export declare class CalendarService {
      * Fetch events for a user/tenant, expanding recurring ones at runtime.
      */
     static getEvents(userId: string, tenantId: string, startDate?: Date, endDate?: Date): Promise<any[]>;
-    /**
-     * Get a valid access token for a user and provider, refreshing if necessary.
-     */
     static getValidAccessToken(userId: string, provider: CalendarProvider): Promise<{
         accessToken: string;
         calendarId?: string;

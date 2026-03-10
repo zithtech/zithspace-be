@@ -76,6 +76,7 @@ import departmentRoutes from "@/routes/departmentRoutes";
 import subDepartmentRoutes from "@/routes/subDepartmentRoutes";
 import positionRoutes from "@/routes/positionRoutes";
 import calendarRoutes from "@/routes/calendar"
+import mailRoutes from "@/routes/mail"
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
 import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
 import rbacRoutes from "@/routes/rbac";
@@ -190,6 +191,7 @@ app.get("/api/direct-test", (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/tenants", tenantRoutes);
 app.use("/api/calendar", calendarRoutes);
+app.use("/api/mail", mailRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/public/tickets", publicTicketRoutes);
 app.use("/api/tickets", ticketRoutes);
