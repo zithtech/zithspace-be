@@ -17,6 +17,9 @@ export const getLeaveAllocationWithEmployees = async (
       });
     }
 
+    /* ===============================
+       1️⃣ GET POLICIES
+    =============================== */
 
     const policies = await prisma.leaveOriginStructure.findMany({
       where: {
@@ -39,10 +42,15 @@ export const getLeaveAllocationWithEmployees = async (
             id: true,
             leaveTypeId: true,
             unit: true,
+            accrualInterval: true, // ⭐ added
           },
         },
       },
     });
+
+    /* ===============================
+       2️⃣ GET EMPLOYEES
+    =============================== */
 
     const employees = await prisma.employee.findMany({
       where: {
@@ -53,9 +61,14 @@ export const getLeaveAllocationWithEmployees = async (
         id: true,
         first_name: true,
         last_name: true,
+        created_at: true,
         workDetail: {
           select: {
             positionId: true,
+            workJoiningDate: true,
+          },
+          orderBy: {
+            createdAt: 'desc'
           },
           take: 1,
         },
@@ -71,33 +84,31 @@ export const getLeaveAllocationWithEmployees = async (
       positionId: emp.workDetail[0]?.positionId || null,
     }));
 
+    /* ===============================
+       3️⃣ GET POSITIONS
+    =============================== */
 
     const positions = await prisma.position.findMany({
       where: { tenantId },
       select: {
         id: true,
-        department: {
-          select: { id: true, name: true },
-        },
-        subDepartment: {
-          select: { id: true, name: true },
-        },
-        grade: {
-          select: { id: true, name: true },
-        },
+        department: { select: { id: true, name: true } },
+        subDepartment: { select: { id: true, name: true } },
+        grade: { select: { id: true, name: true } },
       },
     });
-const positionMap = new Map();
+
+    const positionMap = new Map();
     positions.forEach((pos) => {
       positionMap.set(pos.id, pos);
     });
 
     const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
 
-    const ledgerEntries: any[] = [];
-    // 4️⃣ Loop employees
+    /* ===============================
+       4️⃣ LOOP EMPLOYEES
+    =============================== */
+
     for (const emp of employees) {
       const positionId = emp.workDetail[0]?.positionId;
       if (!positionId) continue;
@@ -105,82 +116,101 @@ const positionMap = new Map();
       const position = positionMap.get(positionId);
       if (!position) continue;
 
-      // 5️⃣ Find matching policies (OR condition)
       const matchedPolicies = policies.filter((policy) => {
         return (
           (policy.origin === "Position" &&
             policy.subOriginId === positionId) ||
           (policy.origin === "Department" &&
             policy.subOriginId === position.department?.id) ||
-          (policy.origin === "SubDepartment" &&
+          (policy.origin === "Sub-department" &&
             policy.subOriginId === position.subDepartment?.id) ||
           (policy.origin === "Grade" &&
             policy.subOriginId === position.grade?.id)
         );
       });
 
-      // 6️⃣ Insert leave types
+      /* ===============================
+         5️⃣ PROCESS POLICY
+      =============================== */
 
-for (const policy of matchedPolicies) {
-  for (const leaveType of policy.leaveTypes) {
+      for (const policy of matchedPolicies) {
+        for (const leaveType of policy.leaveTypes) {
 
-    const creditUnits = new Prisma.Decimal(leaveType.unit);
+          const joinDate = new Date(emp.workDetail[0]?.workJoiningDate || emp.created_at);
 
-    // 1️⃣ Get latest balance for this employee + leaveType 
-    const lastLedger = await prisma.leaveLedger.findFirst({
-      where: {
-        tenantId,
-        employeeId: emp.id,
-        leaveTypeId: leaveType.leaveTypeId,
-      },
-      orderBy: {
-        transactionDate: "desc",
-      },
-    });
+          let monthsWorked =
+            (now.getFullYear() - joinDate.getFullYear()) * 12 +
+            (now.getMonth() - joinDate.getMonth());
 
-    const previousBalance = lastLedger
-      ? new Prisma.Decimal(lastLedger.balanceAfter)
-      : new Prisma.Decimal(0);
+          // If the current day of the month is before the joining day, a full month hasn't passed.
+          if (now.getDate() < joinDate.getDate()) {
+            monthsWorked--;
+          }
 
-    const newBalance = previousBalance.plus(creditUnits);
+          if (monthsWorked < 0) continue; // Do not process employees who haven't joined yet
 
-    // 2️⃣ Prevent duplicate monthly credit
-    const alreadyCredited = await prisma.leaveLedger.findFirst({
-      where: {
-        tenantId,
-        employeeId: emp.id,
-        leaveTypeId: leaveType.leaveTypeId,
-        transactionType: "monthly_credit",
-        transactionDate: {
-          gte: monthStart,
-          lte: monthEnd,
-        },
-      },
-    });
+          const interval = leaveType.accrualInterval || 1;
 
-    if (alreadyCredited) continue;
+          // Determine how many credits this employee should have by now.
+          // The logic is: 1 credit on joining (month 0), then 1 for each completed interval.
+          const creditsShouldExist = 1 + Math.floor(monthsWorked / interval);
 
-    // 3️⃣ Create Ledger Entry
-    await prisma.leaveLedger.create({
-      data: {
-        tenantId,
-        employeeId: emp.id,
-        leaveTypeId: leaveType.leaveTypeId,
-        transactionType: "monthly_credit",
-        referenceId: null,
-        units: creditUnits,
-        balanceAfter: newBalance,
-        transactionDate: monthStart,
-        expiryDate: null, // Or set next month expiry if required
-        policyVersion: 1, // You can dynamically store policy version here
-        createdById: null,
-        updatedById: null,
-      },
-    });
-  }
-}
+          // Count how many credits have actually been given.
+          const creditsGiven = await prisma.leaveLedger.count({
+            where: {
+              tenantId,
+              employeeId: emp.id,
+              leaveTypeId: leaveType.leaveTypeId,
+              transactionType: "monthly_credit",
+            },
+          });
+
+          const creditsToGive = creditsShouldExist - creditsGiven;
+
+          // If the employee has enough or more credits, they are up-to-date.
+          if (creditsToGive <= 0) {
+            continue;
+          }
+
+          // If we are here, credit(s) are due. Calculate the total units to credit.
+          const totalUnitsToCredit = new Prisma.Decimal(leaveType.unit).times(creditsToGive);
+
+          const lastLedger = await prisma.leaveLedger.findFirst({
+            where: {
+              tenantId,
+              employeeId: emp.id,
+              leaveTypeId: leaveType.leaveTypeId,
+            },
+            orderBy: [{ transactionDate: "desc" }, { createdAt: "desc" }],
+          });
+
+          const previousBalance = lastLedger
+            ? new Prisma.Decimal(lastLedger.balanceAfter)
+            : new Prisma.Decimal(0);
+
+          const newBalance = previousBalance.plus(totalUnitsToCredit);
+
+          // Create a single ledger entry for all due credits
+          await prisma.leaveLedger.create({
+            data: {
+              tenantId,
+              employeeId: emp.id,
+              leaveTypeId: leaveType.leaveTypeId,
+              transactionType: "monthly_credit",
+              referenceId: `accrual-catch-up-${creditsToGive}-credits`,
+              units: totalUnitsToCredit,
+              balanceAfter: newBalance,
+              transactionDate: now, // Use current date for the transaction
+              policyVersion: 1,
+            },
+          });
+        }
+      }
     }
 
+    /* ===============================
+       RESPONSE
+    =============================== */
 
     return res.status(200).json({
       success: true,
@@ -193,6 +223,7 @@ for (const policy of matchedPolicies) {
 
   } catch (error: any) {
     console.error("Error fetching allocation + employees:", error);
+
     return res.status(500).json({
       success: false,
       error: error.message,

@@ -1833,6 +1833,7 @@ model OriginLeaveType {
   period       String
   carryForward Boolean @default(false) @map("carry_forward")
   status       String  @default("Active")
+  accrualInterval Int @default(1) @map("accrual_interval")   // ⭐ NEW
 
   createdById String   @map("created_by_id")
   updatedById String?  @map("updated_by_id")

@@ -3,6 +3,10 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/config/database";
 import { AuthRequest } from "@/types";
 
+/* =====================================================
+   CREATE LEAVE ADJUSTMENT
+===================================================== */
+
 export const createLeaveAdjustment = async (req: AuthRequest, res: Response) => {
   try {
     const tenantId = req.tenantId;
@@ -30,13 +34,12 @@ export const createLeaveAdjustment = async (req: AuthRequest, res: Response) => 
 
     if (isNaN(numericAmount) || numericAmount < 0) {
       return res.status(400).json({
-        error: "A valid, non-negative amount is required.",
+        error: "Invalid amount",
       });
     }
 
     const result = await prisma.$transaction(async (tx) => {
-      
-      // 1️⃣ Create Leave Adjustment
+
       const adjustment = await tx.leaveAdjustment.create({
         data: {
           tenantId,
@@ -53,7 +56,6 @@ export const createLeaveAdjustment = async (req: AuthRequest, res: Response) => 
         },
       });
 
-      // 2️⃣ Get last ledger balance
       const lastLedger = await tx.leaveLedger.findFirst({
         where: {
           tenantId,
@@ -61,7 +63,7 @@ export const createLeaveAdjustment = async (req: AuthRequest, res: Response) => 
           leaveTypeId,
         },
         orderBy: {
-          createdAt: "desc",
+          transactionDate: "desc",
         },
       });
 
@@ -69,27 +71,26 @@ export const createLeaveAdjustment = async (req: AuthRequest, res: Response) => 
         ? new Prisma.Decimal(lastLedger.balanceAfter)
         : new Prisma.Decimal(0);
 
-      // 3️⃣ Determine units
       const units =
         adjustmentType === "Credit"
           ? new Prisma.Decimal(numericAmount)
           : new Prisma.Decimal(numericAmount).negated();
 
-      // 4️⃣ Calculate new balance
       const newBalance = previousBalance.plus(units);
 
-      // Prevent negative leave balance
       if (newBalance.lessThan(0)) {
         throw new Error("Leave balance cannot be negative");
       }
 
-      // 5️⃣ Insert ledger entry
       await tx.leaveLedger.create({
         data: {
           tenantId,
           employeeId,
           leaveTypeId,
-          transactionType: "adjustment_credit",
+          transactionType:
+  adjustmentType === "Credit"
+    ? "adjustment_credit"
+    : "leave_debit",
           referenceId: adjustment.id,
           units,
           balanceAfter: newBalance,
@@ -110,31 +111,26 @@ export const createLeaveAdjustment = async (req: AuthRequest, res: Response) => 
     });
 
   } catch (error) {
-    console.error("Error creating leave adjustment:", error);
+    console.error("Create Adjustment Error:", error);
 
     res.status(500).json({
       error: "Failed to create leave adjustment",
-      ...(process.env.NODE_ENV === "development" && {
-        details: error instanceof Error ? error.message : String(error),
-      }),
     });
   }
 };
 
+
+/* =====================================================
+   GET LEAVE ADJUSTMENTS
+===================================================== */
+
 export const getLeaveAdjustments = async (req: AuthRequest, res: Response) => {
   try {
+
     const tenantId = req.tenantId;
 
-    if (!tenantId) {
-      return res.status(401).json({
-        error: "Unauthorized or missing tenant context",
-      });
-    }
-
-    const leaveAdjustments = await prisma.leaveAdjustment.findMany({
-      where: {
-        tenantId,
-      },
+    const data = await prisma.leaveAdjustment.findMany({
+      where: { tenantId },
       include: {
         employee: {
           select: {
@@ -144,13 +140,13 @@ export const getLeaveAdjustments = async (req: AuthRequest, res: Response) => {
             employee_code: true,
           },
         },
-        approvedBy: {
+        leaveType: {
           select: {
             id: true,
             name: true,
           },
         },
-        leaveType: {
+        approvedBy: {
           select: {
             id: true,
             name: true,
@@ -162,28 +158,30 @@ export const getLeaveAdjustments = async (req: AuthRequest, res: Response) => {
       },
     });
 
-    res.status(200).json({
+    res.json({
       success: true,
-      data: leaveAdjustments,
+      data,
     });
 
   } catch (error) {
-    console.error("Error fetching leave adjustments:", error);
+    console.error("Fetch Adjustment Error:", error);
 
     res.status(500).json({
       error: "Failed to fetch leave adjustments",
-      ...(process.env.NODE_ENV === "development" && {
-        details: error instanceof Error ? error.message : String(error),
-      }),
     });
   }
 };
 
+
+/* =====================================================
+   UPDATE LEAVE ADJUSTMENT
+===================================================== */
+
 export const updateLeaveAdjustment = async (req: AuthRequest, res: Response) => {
   try {
+
     const tenantId = req.tenantId;
     const updatedById = req.user?.id;
-
     const { id } = req.params;
 
     const {
@@ -197,101 +195,175 @@ export const updateLeaveAdjustment = async (req: AuthRequest, res: Response) => 
       expiryDate,
     } = req.body;
 
-    if (!tenantId || !updatedById) {
-      return res.status(401).json({
-        error: "Unauthorized or missing tenant context",
-      });
-    }
-
     const numericAmount = parseFloat(amount);
 
-    if (isNaN(numericAmount) || numericAmount < 0) {
-      return res.status(400).json({
-        error: "A valid, non-negative amount is required.",
-      });
-    }
-
-    const existingAdjustment = await prisma.leaveAdjustment.findFirst({
+    const existing = await prisma.leaveAdjustment.findFirst({
       where: { id, tenantId },
     });
 
-    if (!existingAdjustment) {
+    if (!existing) {
       return res.status(404).json({
-        error: "Leave adjustment not found.",
+        error: "Adjustment not found",
       });
     }
 
-    const leaveAdjustment = await prisma.leaveAdjustment.update({
-      where: { id },
-      data: {
-        leaveTypeId,
-        adjustmentType,
-        amount: numericAmount,
-        unit,
-        reason,
-        approvedById,
-        compOffWorkDate: compOffWorkDate ? new Date(compOffWorkDate) : null,
-        expiryDate: expiryDate ? new Date(expiryDate) : null,
-        updatedById,
-      },
+    const result = await prisma.$transaction(async (tx) => {
+
+      const lastLedger = await tx.leaveLedger.findFirst({
+        where: {
+          tenantId,
+          employeeId: existing.employeeId,
+          leaveTypeId: existing.leaveTypeId,
+        },
+        orderBy: {
+          transactionDate: "desc",
+        },
+      });
+
+      const previousBalance = lastLedger
+        ? new Prisma.Decimal(lastLedger.balanceAfter)
+        : new Prisma.Decimal(0);
+
+      const oldAmount = new Prisma.Decimal(existing.amount);
+      const newAmount = new Prisma.Decimal(numericAmount);
+
+      const difference = newAmount.minus(oldAmount);
+
+      const newBalance = previousBalance.plus(difference);
+
+      if (newBalance.lessThan(0)) {
+        throw new Error("Leave balance cannot be negative");
+      }
+
+      const updated = await tx.leaveAdjustment.update({
+        where: { id },
+        data: {
+          leaveTypeId,
+          adjustmentType,
+          amount: numericAmount,
+          unit,
+          reason,
+          approvedById,
+          compOffWorkDate: compOffWorkDate ? new Date(compOffWorkDate) : null,
+          expiryDate: expiryDate ? new Date(expiryDate) : null,
+          updatedById,
+        },
+      });
+
+      await tx.leaveLedger.create({
+        data: {
+          tenantId,
+          employeeId: existing.employeeId,
+          leaveTypeId,
+         transactionType:
+  adjustmentType === "Credit"
+    ? "adjustment_credit"
+    : "leave_debit",
+          referenceId: id,
+          units: difference,
+          balanceAfter: newBalance,
+          transactionDate: new Date(),
+          policyVersion: 1,
+          createdById: updatedById,
+        },
+      });
+
+      return updated;
     });
 
-    res.status(200).json({
+    res.json({
       success: true,
-      data: leaveAdjustment,
-      message: "Leave adjustment updated successfully",
+      data: result,
+      message: "Leave adjustment updated",
     });
 
   } catch (error) {
-    console.error("Error updating leave adjustment:", error);
+    console.error("Update Adjustment Error:", error);
 
     res.status(500).json({
       error: "Failed to update leave adjustment",
-      ...(process.env.NODE_ENV === "development" && {
-        details: error instanceof Error ? error.message : String(error),
-      }),
     });
   }
 };
 
+
+/* =====================================================
+   DELETE LEAVE ADJUSTMENT
+===================================================== */
+
 export const deleteLeaveAdjustment = async (req: AuthRequest, res: Response) => {
   try {
+
     const tenantId = req.tenantId;
+    const userId = req.user?.id;
     const { id } = req.params;
 
-    if (!tenantId) {
-      return res.status(401).json({
-        error: "Unauthorized or missing tenant context",
-      });
-    }
-
-    const existingAdjustment = await prisma.leaveAdjustment.findFirst({
+    const adjustment = await prisma.leaveAdjustment.findFirst({
       where: { id, tenantId },
     });
 
-    if (!existingAdjustment) {
+    if (!adjustment) {
       return res.status(404).json({
-        error: "Leave adjustment not found.",
+        error: "Adjustment not found",
       });
     }
 
-    await prisma.leaveAdjustment.delete({
-      where: { id },
+    const result = await prisma.$transaction(async (tx) => {
+
+      const lastLedger = await tx.leaveLedger.findFirst({
+        where: {
+          tenantId,
+          employeeId: adjustment.employeeId,
+          leaveTypeId: adjustment.leaveTypeId,
+        },
+        orderBy: {
+          createdAt: "desc"
+        },
+      });
+
+  const previousBalance = lastLedger
+  ? new Prisma.Decimal(lastLedger.balanceAfter)
+  : new Prisma.Decimal(0);
+
+if (adjustment?.adjustmentType === "Debit" && previousBalance.lessThanOrEqualTo(0)) {
+  throw new Error("No leave balance available to debit");
+}
+
+      const reverseUnits = new Prisma.Decimal(adjustment.amount).negated();
+
+      const newBalance = previousBalance.plus(reverseUnits);
+
+      await tx.leaveLedger.create({
+        data: {
+          tenantId,
+          employeeId: adjustment.employeeId,
+          leaveTypeId: adjustment.leaveTypeId,
+          transactionType: "reversal",
+          referenceId: adjustment.id,
+          units: reverseUnits,
+          balanceAfter: newBalance,
+          transactionDate: new Date(),
+          policyVersion: 1,
+          createdById: userId,
+        },
+      });
+
+      await tx.leaveAdjustment.delete({
+        where: { id },
+      });
+
     });
 
-    res.status(200).json({
+    res.json({
       success: true,
       message: "Leave adjustment deleted successfully",
     });
 
   } catch (error) {
-    console.error("Error deleting leave adjustment:", error);
+    console.error("Delete Adjustment Error:", error);
 
     res.status(500).json({
       error: "Failed to delete leave adjustment",
-      ...(process.env.NODE_ENV === "development" && {
-        details: error instanceof Error ? error.message : String(error),
-      }),
     });
   }
 };

@@ -25,6 +25,7 @@ export const createLeaveOriginStructure = async (req: Request, res: Response) =>
             leaveTypeId: type.leaveTypeId,
             unit: type.unit,
             period: type.period,
+             accrualInterval: type.accrualInterval ?? 1,
             carryForward: type.carryForward ?? false,
             status: type.status || "Active",
             createdById: userId || "system",
@@ -90,6 +91,7 @@ export const updateLeaveOriginStructure = async (req: Request, res: Response) =>
             leaveTypeId: type.leaveTypeId,
             unit: type.unit,
             period: type.period,
+            accrualInterval: type.accrualInterval ?? 1,
             carryForward: type.carryForward ?? false,
             status: type.status || "Active",
             updatedById: userId || "system",
@@ -104,6 +106,7 @@ export const updateLeaveOriginStructure = async (req: Request, res: Response) =>
             leaveTypeId: type.leaveTypeId,
             unit: type.unit,
             period: type.period,
+            accrualInterval: type.accrualInterval ?? 1,
             carryForward: type.carryForward ?? false,
             status: type.status || "Active",
             createdById: userId || "system",
@@ -139,7 +142,7 @@ export const updateLeaveOriginStructure = async (req: Request, res: Response) =>
 // Create Origin Leave Type
 export const createOriginLeaveType = async (req: Request, res: Response) => {
   try {
-    const { leaveOriginId, leaveTypeId, unit, period, carryForward, status } = req.body;
+    const { leaveOriginId, leaveTypeId, unit, period, accrualInterval, carryForward, status } = req.body;
     const tenantId = (req as any).tenantId;
     const userId = (req as any).user?.id;
 
@@ -167,6 +170,7 @@ export const createOriginLeaveType = async (req: Request, res: Response) => {
         leaveTypeId,
         unit,
         period,
+        accrualInterval: accrualInterval ?? 1,
         carryForward,
         status,
         createdById: userId || "system",
@@ -267,7 +271,7 @@ export const deleteOriginLeaveType = async (req: Request, res: Response) => {
 export const updateOriginLeaveType = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { leaveTypeId, unit, period, carryForward, status, leaveOriginId } = req.body;
+    const { leaveTypeId, unit, period, accrualInterval, carryForward, status, leaveOriginId } = req.body;
     const tenantId = (req as any).tenantId;
     const userId = (req as any).user?.id;
 
@@ -289,6 +293,7 @@ export const updateOriginLeaveType = async (req: Request, res: Response) => {
         leaveTypeId,
         unit,
         period,
+        accrualInterval: accrualInterval ?? 1,
         carryForward,
         status,
         leaveOriginId,

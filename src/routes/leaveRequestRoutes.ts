@@ -5,7 +5,8 @@ import {
   applyLeave,
   getLeaveRequests,
   updateLeaveStatus,
-  cancelLeaveRequest
+  cancelLeaveRequest,
+  getPendingApprovals
 } from "@/controllers/leaverequestcontroller";
 import { authenticateToken, requireAuth } from "@/middleware/auth";
 import { resolveTenant, requireTenant } from "@/middleware/tenantContext";
@@ -22,5 +23,6 @@ router.post("/", applyLeave);
 router.get("/", getLeaveRequests);
 router.put("/:id/status", updateLeaveStatus);
 router.put("/:id/cancel", cancelLeaveRequest);
+router.get("/approvals", getPendingApprovals);
 
 export default router;
