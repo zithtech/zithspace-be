@@ -236,18 +236,18 @@ export const getLeaveRequests = async (req: AuthRequest, res: Response) => {
       },
     });
 
-const formatted = leaveRequests.map((leave) => ({
-  ...leave,
-  leaveType: leave.leaveType || {
-    id: "lop",
-    name: "Loss Of Pay (LOP)",
-  },
-}));
+    const formatted = leaveRequests.map((leave) => ({
+      ...leave,
+      leaveType: leave.leaveType || {
+        id: "lop",
+        name: "Loss Of Pay (LOP)",
+      },
+    }));
 
-return res.json({
-  success: true,
-  data: formatted,
-});
+    return res.json({
+      success: true,
+      data: formatted,
+    });
 
   } catch (error: any) {
     console.error("Get Leave Requests Error:", error);
@@ -474,55 +474,55 @@ export const getPendingApprovals = async (req: AuthRequest, res: Response) => {
 
     const team = await prisma.employeeProjectMapping.findMany({
       where: {
-            reportingManager: userId, 
+        reportingManager: userId,
       },
       select: {
         employeeId: true,
       },
     });
-console.log("Manager Employee ID:", user.employeeId);
+    console.log("Manager Employee ID:", user.employeeId);
     const employeeIds = team.map((t) => t.employeeId);
 
     /* Get only pending requests */
 
-   const approvals = await prisma.leaveRequest.findMany({
-  where: {
-    tenantId,
-    employeeId: { in: employeeIds },
-    status: "PENDING",
-  },
-  include: {
-    employee: {
-      select: {
-        id: true,
-        first_name: true,
-        last_name: true,
+    const approvals = await prisma.leaveRequest.findMany({
+      where: {
+        tenantId,
+        employeeId: { in: employeeIds },
+        status: "PENDING",
       },
-    },
-    leaveType: {
-      select: {
-        id: true,
-        name: true,
+      include: {
+        employee: {
+          select: {
+            id: true,
+            first_name: true,
+            last_name: true,
+          },
+        },
+        leaveType: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
       },
-    },
-  },
-  orderBy: {
-    createdAt: "desc",
-  },
-});
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
 
-const formatted = approvals.map((leave) => ({
-  ...leave,
-  leaveType: leave.leaveType || {
-    id: "lop",
-    name: "Loss Of Pay (LOP)",
-  },
-}));
+    const formatted = approvals.map((leave) => ({
+      ...leave,
+      leaveType: leave.leaveType || {
+        id: "lop",
+        name: "Loss Of Pay (LOP)",
+      },
+    }));
 
-return res.json({
-  success: true,
-  data: formatted,
-});
+    return res.json({
+      success: true,
+      data: formatted,
+    });
 
   } catch (error: any) {
 
