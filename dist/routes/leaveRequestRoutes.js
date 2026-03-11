@@ -18,5 +18,6 @@ router.post("/", leaverequestcontroller_1.applyLeave);
 router.get("/", leaverequestcontroller_1.getLeaveRequests);
 router.put("/:id/status", leaverequestcontroller_1.updateLeaveStatus);
 router.put("/:id/cancel", leaverequestcontroller_1.cancelLeaveRequest);
+router.get("/approvals", leaverequestcontroller_1.getPendingApprovals);
 exports.default = router;
 //# sourceMappingURL=leaveRequestRoutes.js.map

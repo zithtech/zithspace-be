@@ -7,6 +7,7 @@ const getLeaveBalances = async (req, res) => {
     try {
         const tenantId = req.tenantId;
         const userId = req.user?.id;
+        const { employeeId: queryEmployeeId } = req.query;
         // 1️⃣ Validate request
         if (!tenantId || !userId) {
             return res.status(401).json({
@@ -14,39 +15,48 @@ const getLeaveBalances = async (req, res) => {
                 message: "Unauthorized",
             });
         }
-        // 2️⃣ Get employeeId from User table
-        const user = await database_1.prisma.user.findFirst({
-            where: {
-                id: userId,
-                tenantId,
-            },
-            select: {
-                employeeId: true,
-                workEmail: true,
-            },
-        });
-        let employeeId = user?.employeeId;
-        // Fallback: Try to find employee by email if not linked
-        if (!employeeId && user?.workEmail) {
-            const employee = await database_1.prisma.employee.findFirst({
+        let employeeId;
+        // If an employeeId is passed in the query, use it (for admins/managers).
+        // Otherwise, use the logged-in user's employeeId.
+        if (queryEmployeeId) {
+            // TODO: Add role check to ensure only admins/managers can do this
+            employeeId = queryEmployeeId;
+        }
+        else {
+            // 2️⃣ Get employeeId from User table
+            const user = await database_1.prisma.user.findFirst({
                 where: {
+                    id: userId,
                     tenantId,
                 },
-                select: { id: true },
+                select: {
+                    employeeId: true,
+                    workEmail: true,
+                },
             });
-            if (employee) {
-                employeeId = employee.id;
-                // Auto-link for future
-                await database_1.prisma.user.update({
-                    where: { id: userId },
-                    data: { employeeId: employee.id },
+            employeeId = user?.employeeId;
+            // Fallback: Try to find employee by email if not linked
+            if (!employeeId && user?.workEmail) {
+                const employee = await database_1.prisma.employee.findFirst({
+                    where: {
+                        tenantId,
+                    },
+                    select: { id: true },
                 });
+                if (employee) {
+                    employeeId = employee.id;
+                    // Auto-link for future
+                    await database_1.prisma.user.update({
+                        where: { id: userId },
+                        data: { employeeId: employee.id },
+                    });
+                }
             }
         }
         if (!employeeId) {
             return res.status(404).json({
                 success: false,
-                message: "Employee not linked to this user",
+                message: "Employee not found for the user or query.",
             });
         }
         // 3️⃣ Get leave types

@@ -1,11 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.cancelLeaveRequest = exports.updateLeaveStatus = exports.getLeaveRequests = exports.applyLeave = void 0;
+exports.getPendingApprovals = exports.cancelLeaveRequest = exports.updateLeaveStatus = exports.getLeaveRequests = exports.applyLeave = void 0;
 const client_1 = require("@prisma/client");
 const database_1 = require("@/config/database");
-/* ================================
+/* =========================================
    APPLY LEAVE
-================================ */
+========================================= */
 const applyLeave = async (req, res) => {
     try {
         const tenantId = req.tenantId;
@@ -17,23 +17,11 @@ const applyLeave = async (req, res) => {
                 message: "Unauthorized",
             });
         }
-        if (!leaveTypeId || !fromDate || !toDate) {
-            return res.status(400).json({
-                success: false,
-                message: "Missing fields",
-            });
-        }
-        /* 🔹 Get employeeId from user */
         const user = await database_1.prisma.user.findUnique({
-            where: {
-                id: userId,
-                tenantId,
-            },
-            select: {
-                employeeId: true,
-            },
+            where: { id: userId, tenantId },
+            select: { employeeId: true },
         });
-        if (!user || !user.employeeId) {
+        if (!user?.employeeId) {
             return res.status(404).json({
                 success: false,
                 message: "Employee profile not found",
@@ -48,11 +36,11 @@ const applyLeave = async (req, res) => {
                 message: "From date cannot be greater than To date",
             });
         }
-        /* 🔹 Check overlapping leave */
+        /* Overlapping leave check */
         const overlappingLeave = await database_1.prisma.leaveRequest.findFirst({
             where: {
-                employeeId,
                 tenantId,
+                employeeId,
                 status: { in: ["PENDING", "APPROVED"] },
                 OR: [
                     {
@@ -65,14 +53,36 @@ const applyLeave = async (req, res) => {
         if (overlappingLeave) {
             return res.status(409).json({
                 success: false,
-                message: "You already have an overlapping leave request",
+                message: "Overlapping leave request exists",
             });
         }
-        /* 🔹 Calculate leave days */
-        const diffTime = end.getTime() - start.getTime();
-        const totalDays = diffTime / (1000 * 60 * 60 * 24) + 1;
+        const LOP_LEAVE_TYPE_ID = "lop";
+        /* Calculate leave days */
+        let totalDays;
+        if (leaveTypeId === LOP_LEAVE_TYPE_ID) {
+            let count = 0;
+            const curDate = new Date(start.getTime());
+            while (curDate <= end) {
+                const dayOfWeek = curDate.getDay();
+                if (dayOfWeek !== 0 && dayOfWeek !== 6) { // 0=Sun, 6=Sat
+                    count++;
+                }
+                curDate.setDate(curDate.getDate() + 1);
+            }
+            totalDays = count;
+            if (totalDays === 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: "LOP cannot be applied only on weekends. No working days in selected range.",
+                });
+            }
+        }
+        else {
+            const diffTime = end.getTime() - start.getTime();
+            totalDays = diffTime / (1000 * 60 * 60 * 24) + 1;
+        }
         const totalUnits = new client_1.Prisma.Decimal(totalDays);
-        /* 🔹 Get latest balance */
+        /* Check leave balance */
         const lastLedger = await database_1.prisma.leaveLedger.findFirst({
             where: {
                 tenantId,
@@ -83,19 +93,17 @@ const applyLeave = async (req, res) => {
                 transactionDate: "desc",
             },
         });
-        const currentBalance = lastLedger
+        const balance = lastLedger
             ? new client_1.Prisma.Decimal(lastLedger.balanceAfter)
             : new client_1.Prisma.Decimal(0);
-        const LOP_LEAVE_TYPE_ID = "lop";
         if (leaveTypeId !== LOP_LEAVE_TYPE_ID) {
-            if (currentBalance.lessThan(totalUnits)) {
+            if (balance.lessThan(totalUnits)) {
                 return res.status(400).json({
                     success: false,
                     message: "Insufficient leave balance",
                 });
             }
         }
-        /* 🔹 Create leave request */
         const leaveRequest = await database_1.prisma.leaveRequest.create({
             data: {
                 tenantId,
@@ -109,7 +117,7 @@ const applyLeave = async (req, res) => {
                 reason,
             },
         });
-        return res.status(201).json({
+        return res.json({
             success: true,
             message: "Leave applied successfully",
             data: leaveRequest,
@@ -124,41 +132,50 @@ const applyLeave = async (req, res) => {
     }
 };
 exports.applyLeave = applyLeave;
-/* ================================
+/* =========================================
    GET LEAVE REQUESTS
-================================ */
+========================================= */
 const getLeaveRequests = async (req, res) => {
     try {
         const tenantId = req.tenantId;
         const userId = req.user?.id;
-        const { status } = req.query;
+        const role = req.user?.role;
         if (!tenantId || !userId) {
             return res.status(400).json({
                 success: false,
-                message: "Tenant or User ID missing",
+                message: "Missing tenant or user",
             });
         }
-        /* 🔹 Get employeeId */
         const user = await database_1.prisma.user.findUnique({
-            where: {
-                id: userId,
-                tenantId,
-            },
-            select: {
-                employeeId: true,
-            },
+            where: { id: userId, tenantId },
+            select: { employeeId: true },
         });
-        if (!user || !user.employeeId) {
+        if (!user?.employeeId) {
             return res.status(404).json({
                 success: false,
                 message: "Employee profile not found",
             });
         }
-        const whereCondition = {
-            tenantId,
-            employeeId: user.employeeId,
-            ...(status && { status: status }),
-        };
+        let whereCondition = { tenantId };
+        /* Employee view */
+        if (role === "EMPLOYEE") {
+            whereCondition.employeeId = user.employeeId;
+        }
+        /* Manager view (employees who report to them) */
+        if (role === "MANAGER" || role === "ADMIN") {
+            const team = await database_1.prisma.employeeProjectMapping.findMany({
+                where: {
+                    reportingManager: user.employeeId,
+                },
+                select: {
+                    employeeId: true,
+                },
+            });
+            const employeeIds = team.map((t) => t.employeeId);
+            whereCondition.employeeId = {
+                in: employeeIds,
+            };
+        }
         const leaveRequests = await database_1.prisma.leaveRequest.findMany({
             where: whereCondition,
             include: {
@@ -186,9 +203,16 @@ const getLeaveRequests = async (req, res) => {
                 createdAt: "desc",
             },
         });
-        return res.status(200).json({
+        const formatted = leaveRequests.map((leave) => ({
+            ...leave,
+            leaveType: leave.leaveType || {
+                id: "lop",
+                name: "Loss Of Pay (LOP)",
+            },
+        }));
+        return res.json({
             success: true,
-            data: leaveRequests,
+            data: formatted,
         });
     }
     catch (error) {
@@ -200,9 +224,9 @@ const getLeaveRequests = async (req, res) => {
     }
 };
 exports.getLeaveRequests = getLeaveRequests;
-/* ================================
-   UPDATE LEAVE STATUS
-================================ */
+/* =========================================
+   APPROVE / REJECT LEAVE
+========================================= */
 const updateLeaveStatus = async (req, res) => {
     try {
         const tenantId = req.tenantId;
@@ -230,7 +254,7 @@ const updateLeaveStatus = async (req, res) => {
                 message: "Leave already processed",
             });
         }
-        /* 🔹 Reject Leave */
+        /* Reject Leave */
         if (status === "REJECTED") {
             const updated = await database_1.prisma.leaveRequest.update({
                 where: { id },
@@ -246,9 +270,9 @@ const updateLeaveStatus = async (req, res) => {
                 data: updated,
             });
         }
-        /* 🔹 Approve Leave with Ledger Transaction */
+        /* Approve Leave + Ledger */
         const result = await database_1.prisma.$transaction(async (tx) => {
-            const updatedRequest = await tx.leaveRequest.update({
+            const updated = await tx.leaveRequest.update({
                 where: { id },
                 data: {
                     status: "APPROVED",
@@ -280,12 +304,11 @@ const updateLeaveStatus = async (req, res) => {
                     units: new client_1.Prisma.Decimal(leaveRequest.totalUnits).negated(),
                     balanceAfter: newBalance,
                     transactionDate: new Date(),
-                    expiryDate: null,
                     policyVersion: 1,
                     createdById: approverId,
                 },
             });
-            return updatedRequest;
+            return updated;
         });
         return res.json({
             success: true,
@@ -302,27 +325,23 @@ const updateLeaveStatus = async (req, res) => {
     }
 };
 exports.updateLeaveStatus = updateLeaveStatus;
+/* =========================================
+   CANCEL LEAVE
+========================================= */
 const cancelLeaveRequest = async (req, res) => {
     try {
         const tenantId = req.tenantId;
         const userId = req.user?.id;
         const { id } = req.params;
-        if (!tenantId || !userId) {
-            return res.status(401).json({
-                success: false,
-                message: "Unauthorized",
-            });
-        }
         const leaveRequest = await database_1.prisma.leaveRequest.findUnique({
             where: { id },
         });
         if (!leaveRequest || leaveRequest.tenantId !== tenantId) {
             return res.status(404).json({
                 success: false,
-                message: "Leave request not found",
+                message: "Leave not found",
             });
         }
-        // Only creator can cancel
         if (leaveRequest.createdById !== userId) {
             return res.status(403).json({
                 success: false,
@@ -356,4 +375,86 @@ const cancelLeaveRequest = async (req, res) => {
     }
 };
 exports.cancelLeaveRequest = cancelLeaveRequest;
+/* =========================================
+   GET PENDING APPROVALS (MANAGER)
+========================================= */
+const getPendingApprovals = async (req, res) => {
+    try {
+        const tenantId = req.tenantId;
+        const userId = req.user?.id;
+        if (!tenantId || !userId) {
+            return res.status(400).json({
+                success: false,
+                message: "Missing tenant or user",
+            });
+        }
+        /* Get manager employeeId */
+        const user = await database_1.prisma.user.findUnique({
+            where: { id: userId, tenantId },
+            select: { employeeId: true },
+        });
+        if (!user?.employeeId) {
+            return res.status(404).json({
+                success: false,
+                message: "Employee profile not found",
+            });
+        }
+        /* Find employees reporting to this manager */
+        const team = await database_1.prisma.employeeProjectMapping.findMany({
+            where: {
+                reportingManager: userId,
+            },
+            select: {
+                employeeId: true,
+            },
+        });
+        console.log("Manager Employee ID:", user.employeeId);
+        const employeeIds = team.map((t) => t.employeeId);
+        /* Get only pending requests */
+        const approvals = await database_1.prisma.leaveRequest.findMany({
+            where: {
+                tenantId,
+                employeeId: { in: employeeIds },
+                status: "PENDING",
+            },
+            include: {
+                employee: {
+                    select: {
+                        id: true,
+                        first_name: true,
+                        last_name: true,
+                    },
+                },
+                leaveType: {
+                    select: {
+                        id: true,
+                        name: true,
+                    },
+                },
+            },
+            orderBy: {
+                createdAt: "desc",
+            },
+        });
+        const formatted = approvals.map((leave) => ({
+            ...leave,
+            leaveType: leave.leaveType || {
+                id: "lop",
+                name: "Loss Of Pay (LOP)",
+            },
+        }));
+        return res.json({
+            success: true,
+            data: formatted,
+        });
+    }
+    catch (error) {
+        console.error("Get Approvals Error:", error);
+        return res.status(500).json({
+            success: false,
+            error: error.message,
+        });
+    }
+};
+exports.getPendingApprovals = getPendingApprovals;
 //# sourceMappingURL=leaverequestcontroller.js.map

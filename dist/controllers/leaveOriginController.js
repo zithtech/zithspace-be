@@ -23,6 +23,7 @@ const createLeaveOriginStructure = async (req, res) => {
                         leaveTypeId: type.leaveTypeId,
                         unit: type.unit,
                         period: type.period,
+                        accrualInterval: type.accrualInterval ?? 1,
                         carryForward: type.carryForward ?? false,
                         status: type.status || "Active",
                         createdById: userId || "system",
@@ -81,6 +82,7 @@ const updateLeaveOriginStructure = async (req, res) => {
                         leaveTypeId: type.leaveTypeId,
                         unit: type.unit,
                         period: type.period,
+                        accrualInterval: type.accrualInterval ?? 1,
                         carryForward: type.carryForward ?? false,
                         status: type.status || "Active",
                         updatedById: userId || "system",
@@ -96,6 +98,7 @@ const updateLeaveOriginStructure = async (req, res) => {
                         leaveTypeId: type.leaveTypeId,
                         unit: type.unit,
                         period: type.period,
+                        accrualInterval: type.accrualInterval ?? 1,
                         carryForward: type.carryForward ?? false,
                         status: type.status || "Active",
                         createdById: userId || "system",
@@ -126,7 +129,7 @@ exports.updateLeaveOriginStructure = updateLeaveOriginStructure;
 // Create Origin Leave Type
 const createOriginLeaveType = async (req, res) => {
     try {
-        const { leaveOriginId, leaveTypeId, unit, period, carryForward, status } = req.body;
+        const { leaveOriginId, leaveTypeId, unit, period, accrualInterval, carryForward, status } = req.body;
         const tenantId = req.tenantId;
         const userId = req.user?.id;
         if (!leaveOriginId) {
@@ -149,6 +152,7 @@ const createOriginLeaveType = async (req, res) => {
                 leaveTypeId,
                 unit,
                 period,
+                accrualInterval: accrualInterval ?? 1,
                 carryForward,
                 status,
                 createdById: userId || "system",
@@ -241,7 +245,7 @@ exports.deleteOriginLeaveType = deleteOriginLeaveType;
 const updateOriginLeaveType = async (req, res) => {
     try {
         const { id } = req.params;
-        const { leaveTypeId, unit, period, carryForward, status, leaveOriginId } = req.body;
+        const { leaveTypeId, unit, period, accrualInterval, carryForward, status, leaveOriginId } = req.body;
         const tenantId = req.tenantId;
         const userId = req.user?.id;
         if (!tenantId) {
@@ -259,6 +263,7 @@ const updateOriginLeaveType = async (req, res) => {
                 leaveTypeId,
                 unit,
                 period,
+                accrualInterval: accrualInterval ?? 1,
                 carryForward,
                 status,
                 leaveOriginId,
