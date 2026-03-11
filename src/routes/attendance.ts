@@ -71,6 +71,10 @@ router.get(
   AttendanceController.getAttendance,
 );
 
+// last 5 days  average working hors routes
+
+router.get("/last-5-average", AttendanceController.getLast5DaysAverage);
+
 /**
  * @route   GET /api/attendance/:id
  * @desc    Get attendance record by ID (tenant-aware)
@@ -131,9 +135,5 @@ router.put(
   requirePermission(Permissions.ATTENDANCE_MANAGE),
   AttendanceController.updateAttendance,
 );
-
-// last 5 days  average working hors routes
-
-router.get("/last-5-average", AttendanceController.getLast5DaysAverage);
 
 export default router;

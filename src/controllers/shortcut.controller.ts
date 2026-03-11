@@ -1,73 +1,162 @@
+import { Response } from "express";
 import { prisma } from "@/config/database";
-import { AuthRequest, ApiResponse } from "@/types";
+import {
+  AuthRequest,
+  ApiResponse,
+  NotFoundError,
+  ValidationError,
+} from "@/types";
 
-// ✅ CREATE Shortcut
-export async function createShortcut(req: AuthRequest) {
-  try {
-    if (!req.user?.id) throw new Error("Unauthorized");
+export class ShortcutController {
+  /**
+   * Create Shortcut
+   */
+  static async createShortcut(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
 
-    const { name, path } = req.body;
+      const { name, path } = req.body;
 
-    const shortcut = await prisma.shortcut.create({
-      data: {
-        title: name,
-        path,
-        createdById: req.user.id,
-        updatedById: req.user.id,
-      },
-    });
+      if (!name || !path) {
+        res.status(400).json({
+          success: false,
+          error: "Name and path are required",
+        } as ApiResponse);
+        return;
+      }
 
-    return {
-      success: true,
-      message: "Shortcut created successfully",
-      shortcut,
-    };
-  } catch (error) {
-    console.error("Error in createShortcut:", error);
-    throw error;
-  }
-}
+      const shortcut = await prisma.shortcut.create({
+        data: {
+          title: name,
+          path,
+          createdById: req.user.id,
+          tenantId: req.tenantId,
+        },
+        select: {
+          id: true,
+          title: true,
+          path: true,
+          createdAt: true,
+        },
+      });
 
-// ✅ GET All Shortcuts
-export async function getShortcuts(req: AuthRequest) {
-  try {
-    if (!req.tenantId || !req.user) {
-      throw new Error("Tenant context and authentication required");
+      res.status(201).json({
+        success: true,
+        data: shortcut,
+        message: "Shortcut created successfully",
+      } as ApiResponse);
+    } catch (error) {
+      console.error("Create shortcut error:", error);
+
+      res.status(500).json({
+        success: false,
+        error: "Failed to create shortcut",
+      } as ApiResponse);
     }
+  }
 
-    const shortcuts = await prisma.shortcut.findMany({
-      where: {
-        createdById: req.user.id,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+  /**
+   * Get Shortcuts
+   */
+  static async getShortcuts(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
 
-    return shortcuts;
-  } catch (error) {
-    console.error("Error in getShortcuts:", error);
-    throw error;
+      const shortcuts = await prisma.shortcut.findMany({
+        where: {
+          createdById: req.user.id,
+          tenantId: req.tenantId,
+        },
+        select: {
+          id: true,
+          title: true,
+          path: true,
+          createdAt: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
+
+      res.status(200).json({
+        success: true,
+        data: shortcuts,
+        message: "Shortcuts fetched successfully",
+      } as ApiResponse);
+    } catch (error) {
+      console.error("Get shortcuts error:", error);
+
+      res.status(500).json({
+        success: false,
+        error: "Failed to fetch shortcuts",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Delete Shortcut
+   */
+  static async deleteShortcut(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { id } = req.params;
+
+      const shortcut = await prisma.shortcut.findFirst({
+        where: {
+          id,
+          tenantId: req.tenantId,
+          createdById: req.user.id,
+        },
+      });
+
+      if (!shortcut) {
+        throw new NotFoundError("Shortcut not found");
+      }
+
+      await prisma.shortcut.delete({
+        where: { id },
+      });
+
+      res.status(200).json({
+        success: true,
+        message: "Shortcut deleted successfully",
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Delete shortcut error:", error);
+
+      if (error instanceof NotFoundError) {
+        res.status(404).json({
+          success: false,
+          error: error.message,
+        } as ApiResponse);
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        error: "Failed to delete shortcut",
+      } as ApiResponse);
+    }
   }
 }
 
-// ✅ DELETE Shortcut
-export async function deleteShortcut(req: AuthRequest, shortcutId: string) {
-  try {
-    if (!req.user?.id) throw new Error("Unauthorized");
-
-    await prisma.shortcut.delete({
-      where: {
-        id: shortcutId,
-      },
-    });
-
-    return {
-      success: true,
-      message: "Shortcut deleted successfully",
-    };
-  } catch (error) {
-    console.error("Error in deleteShortcut:", error);
-    throw error;
-  }
-}
+export default ShortcutController;

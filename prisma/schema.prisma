@@ -39,6 +39,7 @@ model Tenant {
   holidays              CompanyGovernmentHoliday[]
   projects              Project[]
   releasePlans          ReleasePlan[]
+  shortcuts             Shortcut[] 
 
    reimbursementCategories ReimbursementCategory[]
     emailLogs EmailLog[]
@@ -2507,6 +2508,8 @@ model Shortcut {
   id          String   @id @default(uuid())
   title       String
   path        String
+  tenantId    String?   @map("tenant_id")
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
 
   createdById String  @map("created_by_id")
   updatedById String? @map("updated_by_id")
