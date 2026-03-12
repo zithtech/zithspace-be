@@ -347,6 +347,13 @@ const server = app.listen(PORT, () => {
     // Start trash auto-purge cron job
     const { startTrashAutoPurgeJob } = require("@/jobs/trashAutoPurge");
     startTrashAutoPurgeJob();
+    // Start scheduled mail processor every minute
+    const { MailService } = require("@/services/mail/MailService");
+    setInterval(() => {
+        MailService.processScheduledEmails().catch((err) => {
+            console.error("[BackgroundWorker] Scheduled mail processing failed:", err);
+        });
+    }, 60000);
     // Start Calendar Sync Worker (scheduler + BullMQ processor)
     // TEMPORARILY DISABLED: Redis not available (ECONNREFUSED 127.0.0.1:6379)
     // const { SyncWorker } = require("@/services/calendar/SyncWorker");

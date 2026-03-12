@@ -1,13 +1,16 @@
 import { Response } from "express";
+import axios from "axios";
 import { prisma } from "@/config/database";
 import { AuthRequest, ApiResponse } from "@/types";
 import { MailService } from "@/services/mail/MailService";
+import { syncLogger } from "@/utils/logger";
 
 export class MailController {
     /**
      * Get mail account status (connected email address)
      */
     static async getStatus(req: AuthRequest, res: Response) {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
         try {
             const userId = req.user!.id;
             const tenantId = req.tenantId!;
@@ -114,10 +117,11 @@ export class MailController {
      * Get all mail threads for the authenticated user
      */
     static async getThreads(req: AuthRequest, res: Response) {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
         try {
             const userId = req.user!.id;
             const tenantId = req.tenantId!;
-            const { label } = req.query;
+            const { label, filter, search } = req.query;
 
             // 1. Find the connected mail account
             const account = await prisma.mailAccount.findFirst({
@@ -128,12 +132,7 @@ export class MailController {
                 return res.json({ success: true, data: [] });
             }
 
-            // 2. Trigger sync in background (non-blocking to prevent UI timeout)
-            MailService.syncMail(userId, tenantId, account.email).catch(err => {
-                console.error("[MailController] Background sync error:", err);
-            });
-
-            // 3. Fetch from DB
+            // 2. Fetch from DB
             const whereClause: any = { accountId: account.id, tenantId };
 
             if (label && typeof label === 'string') {
@@ -145,6 +144,43 @@ export class MailController {
                     ];
                 } else {
                     whereClause.labels = { has: upperLabel };
+                }
+            }
+
+            if (filter === 'UNREAD') {
+                whereClause.isRead = false;
+            } else if (filter === 'READ') {
+                whereClause.isRead = true;
+            } else if (filter === 'HAS_ATTACHMENTS') {
+                whereClause.hasAttachments = true;
+            } else if (filter === 'NO_ATTACHMENTS') {
+                whereClause.hasAttachments = false;
+            }
+
+            // Search filter
+            if (search && typeof search === 'string' && search.trim()) {
+                const searchLower = search.trim();
+                const searchFilter = {
+                    OR: [
+                        { subject: { contains: searchLower, mode: 'insensitive' } },
+                        { fromAddress: { contains: searchLower, mode: 'insensitive' } },
+                        { snippet: { contains: searchLower, mode: 'insensitive' } },
+                        // Standard Prisma JSON array search
+                        { toEmails: { array_contains: searchLower } }
+                    ]
+                };
+
+                // Combine with existing whereClause
+                if (whereClause.OR) {
+                    // If we already have an OR (like for Inbox), we need to wrap everything in an AND
+                    const existingOR = whereClause.OR;
+                    delete whereClause.OR;
+                    whereClause.AND = [
+                        { OR: existingOR },
+                        searchFilter
+                    ];
+                } else {
+                    Object.assign(whereClause, searchFilter);
                 }
             }
 
@@ -170,6 +206,7 @@ export class MailController {
      * Get messages for a specific thread
      */
     static async getThreadMessages(req: AuthRequest, res: Response) {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
         try {
             const { threadId } = req.params;
             const tenantId = req.tenantId!;
@@ -231,7 +268,7 @@ export class MailController {
 
             return res.json({
                 success: true,
-                message: "Mail synchronization started"
+                message: "Mail synchronization completed"
             });
         } catch (error: any) {
             console.error("[MailController] syncMail error:", error);
@@ -249,7 +286,7 @@ export class MailController {
         try {
             const userId = req.user!.id;
             const tenantId = req.tenantId!;
-            const { to, subject, body, cc, bcc } = req.body;
+            const { to, subject, body, cc, bcc, scheduledAt, attachments, threadId } = req.body;
 
             // 1. Find the connected mail account
             const account = await prisma.mailAccount.findFirst({
@@ -263,19 +300,59 @@ export class MailController {
                 });
             }
 
+            console.log(`[MailController] sendMessage attachments received:`, attachments?.length || 0);
+            if (attachments && attachments.length > 0) {
+                console.log(`[MailController] First attachment raw:`, JSON.stringify(attachments[0], null, 2));
+            }
+
+            const mappedAttachments = attachments?.map((att: any, index: number) => {
+                const filename = att.filename || att.name || att.response?.filename || att.response?.name || att.fileName;
+                const url = att.url || att.response?.url || (att.response?.data?.url);
+                const contentType = att.contentType || att.type || att.response?.contentType || att.response?.type || att.mimeType;
+                const size = att.size || att.response?.size || 0;
+
+                console.log(`[MailController] Mapping attachment ${index}:`, {
+                    originalFilename: att.name || att.filename,
+                    extractedFilename: filename,
+                    extractedUrl: url,
+                    extractedType: contentType,
+                    extractedSize: size
+                });
+
+                return {
+                    filename: filename === 'undefined' ? undefined : filename,
+                    url: url === 'undefined' ? undefined : url,
+                    contentType: contentType === 'undefined' ? undefined : contentType,
+                    size: typeof size === 'number' ? size : parseInt(size) || 0
+                };
+            }).filter((a: any) => {
+                const isValid = !!(a.url && a.filename);
+                if (!isValid) {
+                    console.log(`[MailController] Filtering out invalid attachment:`, a);
+                }
+                return isValid;
+            }) || [];
+
+            console.log(`[MailController] Mapped attachments:`, mappedAttachments.length);
+
             await MailService.sendMessage(userId, tenantId, account.email, {
                 to: Array.isArray(to) ? to : [to],
                 subject,
                 body,
-                cc,
-                bcc,
-                from: account.email
+                cc: Array.isArray(cc) ? cc : (cc ? [cc] : []),
+                bcc: Array.isArray(bcc) ? bcc : (bcc ? [bcc] : []),
+                from: account.email,
+                scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+                threadId,
+                attachments: mappedAttachments
             });
 
-            // Trigger immediate background sync
-            MailService.syncMail(userId, tenantId, account.email).catch(err => {
-                console.error("[MailController] Background sync after send error:", err);
-            });
+            // Trigger immediate sync and wait for it to ensure UI updates correctly
+            try {
+                await MailService.syncMail(userId, tenantId, account.email);
+            } catch (err) {
+                console.error("[MailController] Sync after send error:", err);
+            }
 
             return res.json({
                 success: true,
@@ -297,7 +374,7 @@ export class MailController {
         try {
             const userId = req.user!.id;
             const tenantId = req.tenantId!;
-            const { to, subject, body, cc, bcc, id } = req.body;
+            const { to, subject, body, cc, bcc, id, threadId } = req.body;
 
             const account = await prisma.mailAccount.findFirst({
                 where: { userId, tenantId, isActive: true }
@@ -317,7 +394,8 @@ export class MailController {
                 cc,
                 bcc,
                 from: account.email,
-                id
+                id,
+                threadId
             });
 
             return res.json({
@@ -377,7 +455,6 @@ export class MailController {
             const tenantId = req.tenantId!;
             const { id } = req.params;
 
-            // 1. Find the connected mail account
             const account = await prisma.mailAccount.findFirst({
                 where: { userId, tenantId, isActive: true }
             });
@@ -413,7 +490,6 @@ export class MailController {
             const tenantId = req.tenantId!;
             const { threadId } = req.body;
 
-            // 1. Find the connected mail account
             const account = await prisma.mailAccount.findFirst({
                 where: { userId, tenantId, isActive: true }
             });
@@ -512,6 +588,357 @@ export class MailController {
             return res.status(500).json({
                 success: false,
                 error: error.message || "Failed to delete threads"
+            });
+        }
+    }
+
+    /**
+     * Upload an attachment
+     */
+    static async uploadAttachment(req: AuthRequest, res: Response) {
+        try {
+            const tenantId = req.tenantId!;
+            const { file, fileName } = req.body;
+
+            if (!file) {
+                return res.status(400).json({
+                    success: false,
+                    error: "No file data provided"
+                });
+            }
+
+            const r2Result = await MailService.uploadAttachment(tenantId, file, fileName);
+
+            return res.json({
+                success: true,
+                data: r2Result
+            });
+        } catch (error: any) {
+            console.error("[MailController] uploadAttachment error:", error);
+            return res.status(500).json({
+                success: false,
+                error: error.message || "Failed to upload attachment"
+            });
+        }
+    }
+
+    /**
+     * Archive a mail thread
+     */
+    static async archiveThread(req: AuthRequest, res: Response) {
+        try {
+            const userId = req.user!.id;
+            const tenantId = req.tenantId!;
+            const { threadId } = req.body;
+
+            const account = await prisma.mailAccount.findFirst({
+                where: { userId, tenantId, isActive: true }
+            });
+
+            if (!account) {
+                return res.status(404).json({
+                    success: false,
+                    error: "No connected mail account found"
+                });
+            }
+
+            await MailService.archiveThread(userId, tenantId, account.email, threadId);
+
+            return res.json({
+                success: true,
+                message: "Thread archived successfully"
+            });
+        } catch (error: any) {
+            console.error("[MailController] archiveThread error:", error);
+            return res.status(500).json({
+                success: false,
+                error: error.message || "Failed to archive thread"
+            });
+        }
+    }
+
+    /**
+     * Archive multiple threads
+     */
+    static async bulkArchiveThreads(req: AuthRequest, res: Response) {
+        try {
+            const userId = req.user!.id;
+            const tenantId = req.tenantId!;
+            const { ids } = req.body;
+
+            if (!ids || !Array.isArray(ids)) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Thread IDs array is required"
+                });
+            }
+
+            const account = await prisma.mailAccount.findFirst({
+                where: { userId, tenantId, isActive: true }
+            });
+
+            if (!account) {
+                return res.status(404).json({
+                    success: false,
+                    error: "No connected mail account found"
+                });
+            }
+
+            await MailService.bulkArchiveThreads(userId, tenantId, account.email, ids);
+
+            return res.json({
+                success: true,
+                message: `${ids.length} threads archived successfully`
+            });
+        } catch (error: any) {
+            console.error("[MailController] bulkArchiveThreads error:", error);
+            return res.status(500).json({
+                success: false,
+                error: error.message || "Failed to archive threads"
+            });
+        }
+    }
+
+    /**
+     * Mark a thread as read
+     */
+    static async markThreadAsRead(req: AuthRequest, res: Response) {
+        try {
+            const userId = req.user!.id;
+            const tenantId = req.tenantId!;
+            const { threadId } = req.body;
+
+            const account = await prisma.mailAccount.findFirst({
+                where: { userId, tenantId, isActive: true }
+            });
+
+            if (!account) {
+                return res.status(404).json({
+                    success: false,
+                    error: "No connected mail account found"
+                });
+            }
+
+            await MailService.markThreadAsRead(userId, tenantId, account.email, threadId);
+
+            return res.json({
+                success: true,
+                message: "Thread marked as read"
+            });
+        } catch (error: any) {
+            console.error("[MailController] markThreadAsRead error:", error);
+            return res.status(500).json({
+                success: false,
+                error: error.message || "Failed to mark thread as read"
+            });
+        }
+    }
+
+    /**
+     * Restore multiple threads from trash
+     */
+    static async bulkRestoreThreads(req: AuthRequest, res: Response) {
+        try {
+            const userId = req.user!.id;
+            const tenantId = req.tenantId!;
+            const { ids } = req.body;
+
+            if (!ids || !Array.isArray(ids)) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Thread IDs array is required"
+                });
+            }
+
+            const account = await prisma.mailAccount.findFirst({
+                where: { userId, tenantId, isActive: true }
+            });
+
+            if (!account) {
+                return res.status(404).json({
+                    success: false,
+                    error: "No connected mail account found"
+                });
+            }
+
+            await MailService.bulkRestoreThreads(userId, tenantId, account.email, ids);
+
+            return res.json({
+                success: true,
+                message: `${ids.length} threads restored successfully`
+            });
+        } catch (error: any) {
+            console.error("[MailController] bulkRestoreThreads error:", error);
+            return res.status(500).json({
+                success: false,
+                error: error.message || "Failed to restore threads"
+            });
+        }
+    }
+
+    /**
+     * Permanently delete multiple threads
+     */
+    static async bulkDestroyThreads(req: AuthRequest, res: Response) {
+        try {
+            const userId = req.user!.id;
+            const tenantId = req.tenantId!;
+            const { ids } = req.body;
+
+            if (!ids || !Array.isArray(ids)) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Thread IDs array is required"
+                });
+            }
+
+            const account = await prisma.mailAccount.findFirst({
+                where: { userId, tenantId, isActive: true }
+            });
+
+            if (!account) {
+                return res.status(404).json({
+                    success: false,
+                    error: "No connected mail account found"
+                });
+            }
+
+            await MailService.bulkDestroyThreads(userId, tenantId, account.email, ids);
+
+            return res.json({
+                success: true,
+                message: `${ids.length} threads deleted permanently`
+            });
+        } catch (error: any) {
+            console.error("[MailController] bulkDestroyThreads error:", error);
+            return res.status(500).json({
+                success: false,
+                error: error.message || "Failed to delete threads permanently"
+            });
+        }
+    }
+
+    /**
+     * Proxy attachment download from R2 to handle CORS and Content-Disposition
+     */
+    static async downloadAttachment(req: AuthRequest, res: Response) {
+        try {
+            const { url, filename, mode } = req.query;
+            syncLogger.info(`[MailController] Proxying attachment`, { url, filename, mode });
+
+            if (!url || typeof url !== 'string') {
+                return res.status(400).json({ success: false, error: "URL is required" });
+            }
+
+            // For security, verify the URL is from our R2 bucket
+            if (!url.includes('r2.dev')) {
+                return res.status(403).json({ success: false, error: "Unauthorized attachment source" });
+            }
+
+            const response = await axios.get(url, { responseType: 'stream' });
+
+            // Set headers — derive content-type from filename when R2 serves generic octet-stream
+            const r2ContentType = response.headers['content-type'] || '';
+            const filenameStr = typeof filename === 'string' ? filename : 'file';
+            const ext = filenameStr.split('.').pop()?.toLowerCase() || '';
+
+            const MIME_MAP: Record<string, string> = {
+                pdf: 'application/pdf',
+                png: 'image/png',
+                jpg: 'image/jpeg',
+                jpeg: 'image/jpeg',
+                gif: 'image/gif',
+                webp: 'image/webp',
+                svg: 'image/svg+xml',
+                mp4: 'video/mp4',
+                mp3: 'audio/mpeg',
+                txt: 'text/plain',
+                csv: 'text/csv',
+                html: 'text/html',
+                htm: 'text/html',
+            };
+
+            const resolvedContentType =
+                (!r2ContentType || r2ContentType === 'application/octet-stream')
+                    ? (MIME_MAP[ext] || 'application/octet-stream')
+                    : r2ContentType;
+
+            res.setHeader('Content-Type', resolvedContentType);
+
+            if (mode === 'inline') {
+                res.setHeader('Content-Disposition', `inline; filename="${filenameStr}"`);
+            } else {
+                res.setHeader('Content-Disposition', `attachment; filename="${filenameStr}"`);
+            }
+
+            // Allow iframe embedding from same origin
+            res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+            res.setHeader('Content-Security-Policy', "frame-ancestors 'self'");
+
+            return response.data.pipe(res);
+        } catch (error: any) {
+            console.error("[MailController] downloadAttachment error:", error);
+            return res.status(500).json({
+                success: false,
+                error: error.message || "Failed to proxy attachment"
+            });
+        }
+    }
+
+    /**
+     * POST /api/mail/:provider/disconnect
+     */
+    static async disconnect(req: AuthRequest, res: Response) {
+        try {
+            const userId = req.user!.id;
+            const tenantId = req.tenantId!;
+            const { provider } = req.params;
+
+            if (!provider) {
+                return res.status(400).json({
+                    success: false,
+                    error: "Provider is required"
+                });
+            }
+
+            const providerUpper = provider.toUpperCase();
+
+            // Find matching accounts
+            const accounts = await prisma.mailAccount.findMany({
+                where: {
+                    userId,
+                    tenantId,
+                    provider: providerUpper as any
+                }
+            });
+
+            if (accounts.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    error: `No connected mail account found for ${provider}`
+                });
+            }
+
+            // Delete each account and its logs
+            // Cascades handle threads, messages, attachments
+            for (const acc of accounts) {
+                await prisma.mailSyncLog.deleteMany({
+                    where: { accountId: acc.id }
+                });
+                await prisma.mailAccount.delete({
+                    where: { id: acc.id }
+                });
+            }
+
+            return res.json({
+                success: true,
+                message: `${provider} mail disconnected and data cleared successfully`
+            });
+        } catch (error: any) {
+            console.error("[MailController] disconnect error:", error);
+            return res.status(500).json({
+                success: false,
+                error: error.message || "Failed to disconnect mail"
             });
         }
     }

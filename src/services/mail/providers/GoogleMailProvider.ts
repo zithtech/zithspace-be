@@ -15,36 +15,53 @@ export class GoogleMailProvider implements IMailProvider {
         return labelIds.map(id => mapping[id] || id.toUpperCase());
     }
 
-    async getThreads(accessToken: string, cursor?: string): Promise<{ threads: MailThreadData[], nextCursor?: string }> {
+    async getThreads(accessToken: string, cursor?: string, lastSyncedAt?: Date): Promise<{ threads: MailThreadData[], nextCursor?: string }> {
+        const params: any = {
+            maxResults: 20,
+            pageToken: cursor
+        };
+
+        if (lastSyncedAt && !cursor) {
+            // Gmail query 'after:TIMESTAMP_IN_SECONDS'
+            // Use a 5-minute buffer to ensure we don't miss messages indexed with slightly older internal dates
+            const bufferTime = new Date(lastSyncedAt.getTime() - 5 * 60 * 1000);
+            const seconds = Math.floor(bufferTime.getTime() / 1000);
+            params.q = `after:${seconds}`;
+        }
+
         const response = await axios.get(`${this.GMAIL_API_BASE}/threads`, {
             headers: { Authorization: `Bearer ${accessToken}` },
-            params: {
-                maxResults: 20,
-                pageToken: cursor
-            }
+            params
         });
 
         const threads = await Promise.all(
             (response.data.threads || []).map(async (t: any) => {
                 const details = await axios.get(`${this.GMAIL_API_BASE}/threads/${t.id}`, {
                     headers: { Authorization: `Bearer ${accessToken}` },
-                    params: { format: "minimal" }
+                    params: { format: "metadata" }
                 });
 
-                const lastMsg = details.data.messages[details.data.messages.length - 1];
+                const messages = details.data.messages || [];
+                const lastMsg = messages[messages.length - 1];
+
+                if (!lastMsg) return null;
+
+                const headers = lastMsg.payload?.headers || [];
+                const subject = headers.find((h: any) => h.name === "Subject")?.value || "No Subject";
+
                 return {
                     id: t.id,
-                    subject: lastMsg.payload.headers.find((h: any) => h.name === "Subject")?.value || "No Subject",
+                    subject,
                     lastMessageAt: new Date(parseInt(lastMsg.internalDate)),
-                    messageCount: details.data.messages.length,
+                    messageCount: messages.length,
                     snippet: t.snippet,
-                    labels: this.normalizeLabels(details.data.messages[0]?.labelIds || [])
+                    labels: this.normalizeLabels(messages[0]?.labelIds || [])
                 };
             })
         );
 
         return {
-            threads,
+            threads: threads.filter((t): t is MailThreadData => t !== null),
             nextCursor: response.data.nextPageToken
         };
     }
@@ -56,7 +73,7 @@ export class GoogleMailProvider implements IMailProvider {
 
         return await Promise.all(
             response.data.messages.map(async (msg: any) => {
-                const headers = msg.payload.headers;
+                const headers = msg.payload?.headers || [];
                 const subject = headers.find((h: any) => h.name === "Subject")?.value || "";
                 const from = headers.find((h: any) => h.name === "From")?.value || "";
                 const to = headers.find((h: any) => h.name === "To")?.value?.split(",") || [];
@@ -99,56 +116,78 @@ export class GoogleMailProvider implements IMailProvider {
         );
     }
 
-    async sendMessage(accessToken: string, mailData: Partial<MailMessageData>): Promise<void> {
-        // Basic implementation for sending via Gmail
-        const str = [
-            `To: ${mailData.to?.join(", ")}`,
-            `Subject: ${mailData.subject}`,
-            "",
-            mailData.body
-        ].join("\n");
+    async sendMessage(accessToken: string, mailData: Partial<MailMessageData>): Promise<{ messageId: string, threadId?: string } | void> {
+        const raw = this.constructRawMessage(mailData);
+        const encodedMail = Buffer.from(raw).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
-        const encodedMail = Buffer.from(str).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-
-        await axios.post(`${this.GMAIL_API_BASE}/messages/send`, { raw: encodedMail }, {
+        const response = await axios.post(`${this.GMAIL_API_BASE}/messages/send`, { raw: encodedMail }, {
             headers: { Authorization: `Bearer ${accessToken}` }
         });
+
+        return { messageId: response.data.id, threadId: response.data.threadId };
     }
 
-    async saveDraft(accessToken: string, draftData: Partial<MailMessageData>): Promise<{ id: string }> {
-        const str = [
-            `To: ${draftData.to?.join(", ")}`,
-            `Subject: ${draftData.subject}`,
-            "",
-            draftData.body
-        ].join("\n");
+    async saveDraft(accessToken: string, draftData: Partial<MailMessageData>): Promise<{ id: string, messageId?: string, threadId?: string }> {
+        const raw = this.constructRawMessage(draftData);
+        const encodedMail = Buffer.from(raw).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
-        const encodedMail = Buffer.from(str).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-
-        const response = await axios.post(`${this.GMAIL_API_BASE}/drafts`, {
+        const payload: any = {
             message: { raw: encodedMail }
-        }, {
+        };
+
+        if (draftData.threadId) {
+            payload.message.threadId = draftData.threadId;
+        }
+
+        const response = await axios.post(`${this.GMAIL_API_BASE}/drafts`, payload, {
             headers: { Authorization: `Bearer ${accessToken}` }
         });
 
-        return { id: response.data.id };
+        return {
+            id: response.data.id,
+            messageId: response.data.message.id,
+            threadId: response.data.message.threadId
+        };
     }
 
     async updateDraft(accessToken: string, draftId: string, draftData: Partial<MailMessageData>): Promise<void> {
-        const str = [
-            `To: ${draftData.to?.join(", ")}`,
-            `Subject: ${draftData.subject}`,
-            "",
-            draftData.body
-        ].join("\n");
+        const raw = this.constructRawMessage(draftData);
+        const encodedMail = Buffer.from(raw).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
-        const encodedMail = Buffer.from(str).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-
-        await axios.put(`${this.GMAIL_API_BASE}/drafts/${draftId}`, {
+        const payload: any = {
             message: { raw: encodedMail }
-        }, {
+        };
+
+        if (draftData.threadId) {
+            payload.message.threadId = draftData.threadId;
+        }
+
+        await axios.put(`${this.GMAIL_API_BASE}/drafts/${draftId}`, payload, {
             headers: { Authorization: `Bearer ${accessToken}` }
         });
+    }
+
+    private constructRawMessage(mailData: Partial<MailMessageData>): string {
+        const from = mailData.from || "";
+        const to = mailData.to?.filter(Boolean).join(", ") || "";
+        const cc = mailData.cc?.filter(Boolean).join(", ") || "";
+        const subject = mailData.subject || "";
+        const body = mailData.body || "";
+
+        const lines = [
+            `Date: ${new Date().toUTCString()}`,
+            from ? `From: ${from}` : null,
+            `To: ${to}`,
+            cc ? `Cc: ${cc}` : null,
+            `Subject: ${subject}`,
+            `MIME-Version: 1.0`,
+            `Content-Type: text/html; charset=utf-8`,
+            `Content-Transfer-Encoding: base64`,
+            "",
+            Buffer.from(body).toString('base64')
+        ].filter(line => line !== null);
+
+        return lines.join("\r\n");
     }
 
     async sendDraft(accessToken: string, draftId: string): Promise<void> {
@@ -170,12 +209,40 @@ export class GoogleMailProvider implements IMailProvider {
     }
 
     async deleteThread(accessToken: string, threadId: string): Promise<void> {
+        try {
+            await axios.delete(`${this.GMAIL_API_BASE}/threads/${threadId}`, {
+                headers: { Authorization: `Bearer ${accessToken}` }
+            });
+        } catch (error: any) {
+            if (error.response?.status === 403) {
+                console.warn(`[GoogleMailProvider] Permanent delete forbidden for thread ${threadId} (insufficient scopes). Skipping...`);
+            } else {
+                throw error;
+            }
+        }
+    }
+
+    async trashThread(accessToken: string, threadId: string): Promise<void> {
         await axios.post(`${this.GMAIL_API_BASE}/threads/${threadId}/trash`, null, {
             headers: { Authorization: `Bearer ${accessToken}` }
         });
     }
 
     async deleteMessage(accessToken: string, messageId: string): Promise<void> {
+        try {
+            await axios.delete(`${this.GMAIL_API_BASE}/messages/${messageId}`, {
+                headers: { Authorization: `Bearer ${accessToken}` }
+            });
+        } catch (error: any) {
+            if (error.response?.status === 403) {
+                console.warn(`[GoogleMailProvider] Permanent delete forbidden for message ${messageId} (insufficient scopes). Skipping...`);
+            } else {
+                throw error;
+            }
+        }
+    }
+
+    async trashMessage(accessToken: string, messageId: string): Promise<void> {
         await axios.post(`${this.GMAIL_API_BASE}/messages/${messageId}/trash`, null, {
             headers: { Authorization: `Bearer ${accessToken}` }
         });
@@ -211,9 +278,33 @@ export class GoogleMailProvider implements IMailProvider {
         });
 
         for (const thread of (response.data.threads || [])) {
-            await axios.delete(`${this.GMAIL_API_BASE}/threads/${thread.id}`, {
-                headers: { Authorization: `Bearer ${accessToken}` }
-            });
+            try {
+                await axios.delete(`${this.GMAIL_API_BASE}/threads/${thread.id}`, {
+                    headers: { Authorization: `Bearer ${accessToken}` }
+                });
+            } catch (error: any) {
+                if (error.response?.status === 403) {
+                    console.warn(`[GoogleMailProvider] Permanent delete forbidden for thread ${thread.id} (insufficient scopes). Skipping...`);
+                } else {
+                    throw error;
+                }
+            }
         }
+    }
+
+    async markAsRead(accessToken: string, threadId: string): Promise<void> {
+        await axios.post(`${this.GMAIL_API_BASE}/threads/${threadId}/modify`, {
+            removeLabelIds: ["UNREAD"]
+        }, {
+            headers: { Authorization: `Bearer ${accessToken}` }
+        });
+    }
+
+    async archiveThread(accessToken: string, threadId: string): Promise<void> {
+        await axios.post(`${this.GMAIL_API_BASE}/threads/${threadId}/modify`, {
+            removeLabelIds: ["INBOX"]
+        }, {
+            headers: { Authorization: `Bearer ${accessToken}` }
+        });
     }
 }

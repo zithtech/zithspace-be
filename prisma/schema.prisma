@@ -2921,6 +2921,8 @@ model MailThread {
 
   labels String[] @default([])
   snippet String?
+  isRead Boolean @default(false) @map("is_read")
+  hasAttachments Boolean @default(false) @map("has_attachments")
   fromAddress String? @map("from_address")
   toEmails    Json?    @map("to_emails")
 
@@ -2970,11 +2972,13 @@ model MailMessage {
 
   isRead Boolean @default(false) @map("is_read")
   isSent Boolean @default(false) @map("is_sent")
+  hasAttachments Boolean @default(false) @map("has_attachments")
 
   labels String[] @default([])
 
   receivedAt DateTime? @map("received_at")
   sentAt     DateTime? @map("sent_at")
+  scheduledAt DateTime? @map("scheduled_at")
 
   attachments MailAttachment[]
 

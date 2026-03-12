@@ -184,10 +184,27 @@ export class CalendarController {
                 return;
             }
 
+            const providerUpper = provider.toUpperCase();
+
+            // 1. Delete associated mail data
+            // Since MailAccount cascades to threads/messages/attachments, we just need to handle logs and the account
+            const mailAccounts = await prisma.mailAccount.findMany({
+                where: {
+                    userId: req.user.id,
+                    provider: providerUpper as any,
+                }
+            });
+
+            for (const acc of mailAccounts) {
+                await prisma.mailSyncLog.deleteMany({ where: { accountId: acc.id } });
+                await prisma.mailAccount.delete({ where: { id: acc.id } });
+            }
+
+            // 2. Delete calendar integration
             await prisma.calendarIntegration.deleteMany({
                 where: {
                     userId: req.user.id,
-                    provider: provider.toUpperCase() as CalendarProvider,
+                    provider: providerUpper as CalendarProvider,
                 },
             });
 
