@@ -76,6 +76,7 @@ const mail_1 = __importDefault(require("@/routes/mail"));
 const leaveOriginRoutes_1 = __importDefault(require("@/routes/leaveOriginRoutes"));
 const emailHistoryRoutes_1 = __importDefault(require("@/routes/emailHistoryRoutes"));
 const rbac_1 = __importDefault(require("@/routes/rbac"));
+const MailController_1 = require("@/controllers/MailController");
 // Load environment
 dotenv_1.default.config();
 console.log("🚀 API Starting up...");
@@ -164,6 +165,8 @@ app.get("/api/direct-test", (req, res) => {
 app.use("/api/auth", auth_1.default);
 app.use("/api/tenants", tenants_1.default);
 app.use("/api/calendar", calendar_1.default);
+// Public attachment proxy (no auth/tenant middleware)
+app.get("/api/mail/attachments/download", MailController_1.MailController.downloadAttachment);
 app.use("/api/mail", mail_1.default);
 app.use("/api/projects", projects_1.default);
 app.use("/api/public/tickets", publicTickets_1.default);

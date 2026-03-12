@@ -157,10 +157,24 @@ class CalendarController {
                 res.status(401).json({ success: false, error: "Authentication required" });
                 return;
             }
+            const providerUpper = provider.toUpperCase();
+            // 1. Delete associated mail data
+            // Since MailAccount cascades to threads/messages/attachments, we just need to handle logs and the account
+            const mailAccounts = await database_1.prisma.mailAccount.findMany({
+                where: {
+                    userId: req.user.id,
+                    provider: providerUpper,
+                }
+            });
+            for (const acc of mailAccounts) {
+                await database_1.prisma.mailSyncLog.deleteMany({ where: { accountId: acc.id } });
+                await database_1.prisma.mailAccount.delete({ where: { id: acc.id } });
+            }
+            // 2. Delete calendar integration
             await database_1.prisma.calendarIntegration.deleteMany({
                 where: {
                     userId: req.user.id,
-                    provider: provider.toUpperCase(),
+                    provider: providerUpper,
                 },
             });
             res.status(200).json({
