@@ -109,6 +109,7 @@ model User {
   updatedAt         DateTime  @updatedAt @map("updated_at")
   employeeId        String?   @map("employee_id") 
   employee          Employee? @relation(fields: [employeeId], references: [id])
+  leaveAdjustments             LeaveAdjustment[]          @relation("UserLeaveAdjustments")
 
   zohoAccessToken  String?   @map("zoho_access_token")
   zohoRefreshToken String?   @map("zoho_refresh_token")
@@ -914,6 +915,7 @@ model Leave {
 model LeaveAdjustment {
   id              String    @id @default(uuid())
   tenantId        String    @map("tenant_id")
+  userId          String?    @map("user_id")
   employeeId      String?    @map("employee_id") @db.Uuid
   adjustmentType  String    @map("adjustment_type")
   amount          Decimal   @db.Decimal(5, 2)
@@ -935,6 +937,7 @@ model LeaveAdjustment {
   createdBy  User   @relation("LeaveAdjustmentCreator", fields: [createdById], references: [id])
   updatedBy  User?  @relation("LeaveAdjustmentUpdater", fields: [updatedById], references: [id])
   leaveType  LeaveType @relation(fields: [leaveTypeId], references: [id])
+  user       User?   @relation("UserLeaveAdjustments", fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("leave_adjustments")
 }

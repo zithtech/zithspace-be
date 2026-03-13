@@ -19,6 +19,7 @@ export const createLeaveAdjustment = async (req: AuthRequest, res: Response) => 
     }
 
     const {
+      userId,
       employeeId,
       leaveTypeId,
       adjustmentType,
@@ -43,6 +44,7 @@ export const createLeaveAdjustment = async (req: AuthRequest, res: Response) => 
       const adjustment = await tx.leaveAdjustment.create({
         data: {
           tenantId,
+          userId,
           employeeId,
           leaveTypeId,
           adjustmentType,
