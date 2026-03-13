@@ -37,7 +37,7 @@ const getLeaveAllocationWithEmployees = async (req, res) => {
                         id: true,
                         leaveTypeId: true,
                         unit: true,
-                        accrualInterval: true, // ⭐ added
+                        accrualInterval: true,
                     },
                 },
             },
@@ -60,9 +60,7 @@ const getLeaveAllocationWithEmployees = async (req, res) => {
                         positionId: true,
                         workJoiningDate: true,
                     },
-                    orderBy: {
-                        createdAt: 'desc'
-                    },
+                    orderBy: { createdAt: "desc" },
                     take: 1,
                 },
             },
@@ -93,93 +91,95 @@ const getLeaveAllocationWithEmployees = async (req, res) => {
         });
         const now = new Date();
         /* ===============================
-           4️⃣ LOOP EMPLOYEES
+           4️⃣ PROCESS EMPLOYEES (BATCH)
         =============================== */
-        for (const emp of employees) {
-            const positionId = emp.workDetail[0]?.positionId;
-            if (!positionId)
-                continue;
-            const position = positionMap.get(positionId);
-            if (!position)
-                continue;
-            const matchedPolicies = policies.filter((policy) => {
-                return ((policy.origin === "Position" &&
-                    policy.subOriginId === positionId) ||
-                    (policy.origin === "Department" &&
-                        policy.subOriginId === position.department?.id) ||
-                    (policy.origin === "Sub-department" &&
-                        policy.subOriginId === position.subDepartment?.id) ||
-                    (policy.origin === "Grade" &&
-                        policy.subOriginId === position.grade?.id));
-            });
-            /* ===============================
-               5️⃣ PROCESS POLICY
-            =============================== */
-            for (const policy of matchedPolicies) {
-                for (const leaveType of policy.leaveTypes) {
-                    const joinDate = new Date(emp.workDetail[0]?.workJoiningDate || emp.created_at);
-                    let monthsWorked = (now.getFullYear() - joinDate.getFullYear()) * 12 +
-                        (now.getMonth() - joinDate.getMonth());
-                    // If the current day of the month is before the joining day, a full month hasn't passed.
-                    if (now.getDate() < joinDate.getDate()) {
-                        monthsWorked--;
+        const batchSize = 10;
+        for (let i = 0; i < employees.length; i += batchSize) {
+            const batch = employees.slice(i, i + batchSize);
+            await Promise.all(batch.map(async (emp) => {
+                const positionId = emp.workDetail[0]?.positionId;
+                if (!positionId)
+                    return;
+                const position = positionMap.get(positionId);
+                if (!position)
+                    return;
+                const matchedPolicies = policies.filter((policy) => {
+                    return ((policy.origin === "Position" &&
+                        policy.subOriginId === positionId) ||
+                        (policy.origin === "Department" &&
+                            policy.subOriginId === position.department?.id) ||
+                        (policy.origin === "Sub-department" &&
+                            policy.subOriginId === position.subDepartment?.id) ||
+                        (policy.origin === "Grade" &&
+                            policy.subOriginId === position.grade?.id));
+                });
+                for (const policy of matchedPolicies) {
+                    for (const leaveType of policy.leaveTypes) {
+                        /* ===============================
+                           CHECK MONTHLY DUPLICATE CREDIT
+                        =============================== */
+                        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+                        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+                        const existingCredit = await database_1.prisma.leaveLedger.findFirst({
+                            where: {
+                                tenantId,
+                                employeeId: emp.id,
+                                leaveTypeId: leaveType.leaveTypeId,
+                                transactionType: "monthly_credit",
+                                transactionDate: {
+                                    gte: startOfMonth,
+                                    lte: endOfMonth,
+                                },
+                            },
+                        });
+                        if (existingCredit)
+                            return;
+                        /* ===============================
+                           CALCULATE LEAVE CREDIT
+                        =============================== */
+                        const totalUnitsToCredit = new client_1.Prisma.Decimal(leaveType.unit);
+                        const lastLedger = await database_1.prisma.leaveLedger.findFirst({
+                            where: {
+                                tenantId,
+                                employeeId: emp.id,
+                                leaveTypeId: leaveType.leaveTypeId,
+                            },
+                            orderBy: [
+                                { transactionDate: "desc" },
+                                { createdAt: "desc" },
+                            ],
+                        });
+                        const previousBalance = lastLedger
+                            ? new client_1.Prisma.Decimal(lastLedger.balanceAfter)
+                            : new client_1.Prisma.Decimal(0);
+                        const newBalance = previousBalance.plus(totalUnitsToCredit);
+                        /* ===============================
+                           INSERT LEDGER ENTRY
+                        =============================== */
+                        await database_1.prisma.leaveLedger.create({
+                            data: {
+                                tenantId,
+                                employeeId: emp.id,
+                                leaveTypeId: leaveType.leaveTypeId,
+                                transactionType: "monthly_credit",
+                                referenceId: "monthly-accrual",
+                                units: totalUnitsToCredit,
+                                balanceAfter: newBalance,
+                                transactionDate: now,
+                                policyVersion: 1,
+                            },
+                        });
                     }
-                    if (monthsWorked < 0)
-                        continue; // Do not process employees who haven't joined yet
-                    const interval = leaveType.accrualInterval || 1;
-                    // Determine how many credits this employee should have by now.
-                    // The logic is: 1 credit on joining (month 0), then 1 for each completed interval.
-                    const creditsShouldExist = 1 + Math.floor(monthsWorked / interval);
-                    // Count how many credits have actually been given.
-                    const creditsGiven = await database_1.prisma.leaveLedger.count({
-                        where: {
-                            tenantId,
-                            employeeId: emp.id,
-                            leaveTypeId: leaveType.leaveTypeId,
-                            transactionType: "monthly_credit",
-                        },
-                    });
-                    const creditsToGive = creditsShouldExist - creditsGiven;
-                    // If the employee has enough or more credits, they are up-to-date.
-                    if (creditsToGive <= 0) {
-                        continue;
-                    }
-                    // If we are here, credit(s) are due. Calculate the total units to credit.
-                    const totalUnitsToCredit = new client_1.Prisma.Decimal(leaveType.unit).times(creditsToGive);
-                    const lastLedger = await database_1.prisma.leaveLedger.findFirst({
-                        where: {
-                            tenantId,
-                            employeeId: emp.id,
-                            leaveTypeId: leaveType.leaveTypeId,
-                        },
-                        orderBy: [{ transactionDate: "desc" }, { createdAt: "desc" }],
-                    });
-                    const previousBalance = lastLedger
-                        ? new client_1.Prisma.Decimal(lastLedger.balanceAfter)
-                        : new client_1.Prisma.Decimal(0);
-                    const newBalance = previousBalance.plus(totalUnitsToCredit);
-                    // Create a single ledger entry for all due credits
-                    await database_1.prisma.leaveLedger.create({
-                        data: {
-                            tenantId,
-                            employeeId: emp.id,
-                            leaveTypeId: leaveType.leaveTypeId,
-                            transactionType: "monthly_credit",
-                            referenceId: `accrual-catch-up-${creditsToGive}-credits`,
-                            units: totalUnitsToCredit,
-                            balanceAfter: newBalance,
-                            transactionDate: now, // Use current date for the transaction
-                            policyVersion: 1,
-                        },
-                    });
                 }
-            }
+            }));
         }
         /* ===============================
            RESPONSE
         =============================== */
         return res.status(200).json({
             success: true,
+            message: "Leave allocation completed",
+            totalEmployees: employees.length,
             data: {
                 policies,
                 employees: formattedEmployees,
