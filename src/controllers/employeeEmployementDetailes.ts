@@ -15,7 +15,7 @@ export async function createEmploymentDetails(
     await tx.employeeWorkDetail.create({
       data: {
         employeeId,
-        department: employment.department || null,
+        positionId: employment.positionId || null,
         team: employment.team || null,
         employeeType: employment.employeeType || null,
 
@@ -107,7 +107,7 @@ export async function getEmploymentDetails(
     }
 
     return {
-      department: workDetails.department,
+      positionId: workDetails.positionId,
       team: workDetails.team,
       employeeType: workDetails.employeeType,
       workLocation: workDetails.workLocation,
@@ -168,7 +168,7 @@ export async function getAllEmploymentDetails(req: AuthRequest) {
         firstName: employee.first_name,
         lastName: employee.last_name,
 
-        department: latestWorkDetail?.department || null,
+        positionId: latestWorkDetail?.positionId || null,
         team: latestWorkDetail?.team || null,
         employeeType: latestWorkDetail?.employeeType || null,
         workLocation: latestWorkDetail?.workLocation || null,
@@ -235,7 +235,7 @@ export async function updateEmploymentDetails(
       await tx.employeeWorkDetail.update({
         where: { id: existingWorkDetails.id },
         data: {
-          department: employment.department,
+          positionId: employment.positionId,
           team: employment.team,
           employeeType: employment.employeeType,
           workLocation: employment.workLocation,
@@ -259,7 +259,7 @@ export async function updateEmploymentDetails(
       await tx.employeeWorkDetail.create({
         data: {
           employeeId,
-          department: employment.department || null,
+          positionId: employment.positionId || null,
           team: employment.team || null,
           employeeType: employment.employeeType || null,
           workLocation: employment.workLocation || null,

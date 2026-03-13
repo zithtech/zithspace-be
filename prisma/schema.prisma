@@ -96,6 +96,12 @@ model Tenant {
   // RBAC
   roles Role[]
 
+  exitNoticePolicies ExitNoticePolicy[]
+    exitTypes  ExitType[]
+      reasonForExits ReasonForExit[]
+      employeeExits EmployeeExit[]
+       exitApprovalWorkflows ExitApprovalWorkflow[]
+
   @@map("tenants")
 }
 
@@ -131,6 +137,15 @@ model User {
   updatedCompanies        Company[]         @relation("CompanyUpdater")
   createdCustomers        Customer[]        @relation("CustomerCreatedBy")
   updatedCustomers        Customer[]        @relation("CustomerUpdatedBy")
+  
+  createdExitTypes ExitType[] @relation("ExitNoticePolicyCreator")
+  updatedExitTypes ExitType[] @relation("ExitNoticePolicyUpdater")
+  createdReasonForExits ReasonForExit[] @relation("ReasonForExitCreator")
+  updatedReasonForExits ReasonForExit[] @relation("ReasonForExitUpdater")
+    createdEmployeeExits EmployeeExit[]
+    createdExitApprovalWorkflows ExitApprovalWorkflow[] @relation("ExitApprovalWorkflowCreatedBy")
+  updatedExitApprovalWorkflows ExitApprovalWorkflow[] @relation("ExitApprovalWorkflowUpdatedBy")
+
 
   enteredAttendance            Attendance[]               @relation("AttendanceEnteredBy")
   attendance                   Attendance[]
@@ -266,6 +281,9 @@ model User {
 
   // ===== RBAC Relations =====
   userRoles UserRole[]
+
+  createdExitPolicies ExitNoticePolicy[] @relation("ExitNoticePolicyCreator")
+  updatedExitPolicies ExitNoticePolicy[] @relation("ExitNoticePolicyUpdater")
 
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
@@ -424,6 +442,7 @@ model Position {
   createdBy     User           @relation("PositionCreator", fields: [createdById], references: [id])
   updatedBy     User?          @relation("PositionUpdater", fields: [updatedById], references: [id])
   users         User[]         @relation("UserPosition")
+  workDetail       EmployeeWorkDetail[]
 
   @@unique([tenantId, code])
   @@map("positions")
@@ -2049,6 +2068,7 @@ model Employee {
   payrollUpdated EmployeePayrollDetail[] @relation("EmployeePayrollDetailUpdatedBy")
 
   experiences EmployeeExperience[]
+  employeeExits EmployeeExit[]
 
   createdExperiences EmployeeExperience[] @relation("EmployeeExperienceCreatedBy")
   updatedExperiences EmployeeExperience[] @relation("EmployeeExperienceUpdatedBy")
@@ -2171,9 +2191,11 @@ model EmployeeWorkDetail {
   totalDays     Int?    @map("total_days")
   totalHours    Int?    @map("total_hours")
   notice_period String? @db.VarChar(100)
+  positionId     String?  @db.Uuid @map("position_id") 
 
   createdById String  @map("created_by_id") @db.Uuid
   updatedById String? @map("updated_by_id") @db.Uuid
+  position   Position? @relation(fields: [positionId], references: [id])
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -2377,6 +2399,11 @@ model EmployeeAsset {
   brandName   String @map("brand_name") @db.VarChar(30)
   modelName   String @map("model_name") @db.VarChar(30)
   modelNumber String @map("model_number") @db.VarChar(30)
+
+  returnStatus String?   @map("return_status") @db.Text
+  condition    String?   @db.Text
+  deduction    Int?      @db.Integer
+  remarks      String?   @db.Text
 
   uploadImage String? @map("upload_image") @db.Text
 
@@ -2807,4 +2834,136 @@ model EmployeeClientAllocationV2 {
   project  Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@map("employee_client_allocations_v2")
+}
+
+model ExitNoticePolicy {
+  id                      String   @id @default(uuid())
+  tenantId                String   @map("tenant_id")
+  policyName              String   @map("policy_name")
+  code                    String
+  description             String?
+  levelType               String   @map("level_type") // e.g., 'Grades', 'Positions'
+  levelId                 String   @map("level_id") // Grade ID or Position ID
+  noticePeriodDays        Int      @map("notice_period_days")
+  buyoutCalculatingType   String?  @map("buyout_calculating_type") // E.g. 'Basic', 'Gross' etc.
+  probationPeriodDays     Int?     @map("probotion_period_days") // note: matched req spelling for DB field
+  probationNoticeDays     Int?     @map("probation_notice_days")
+  status                  Boolean  @default(true)
+  createdById             String   @map("created_by_id")
+  updatedById             String?  @map("updated_by_id")
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User   @relation("ExitNoticePolicyCreator", fields: [createdById], references: [id])
+  updatedBy User?  @relation("ExitNoticePolicyUpdater", fields: [updatedById], references: [id])
+
+  @@unique([tenantId, code])
+  @@map("exit_notice_policies")
+}
+
+model ExitType {
+  id           String   @id @db.Text
+  tenantId     String   @map("tenant_id") @db.Text
+
+  name         String   @db.Text
+  code         String   @unique @db.Text
+  is_active    Boolean  @default(true)
+
+  createdById  String   @map("created_by_id") @db.Text
+  updatedById  String?  @map("updated_by_id") @db.Text
+
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User   @relation("ExitNoticePolicyCreator", fields: [createdById], references: [id])
+  updatedBy User?  @relation("ExitNoticePolicyUpdater", fields: [updatedById], references: [id])
+
+  @@map("exit_types")
+}
+model ReasonForExit {
+  id           String   @id @db.Text
+  tenantId     String   @map("tenant_id") @db.Text
+
+  name         String   @db.Text
+  code         String   @unique @db.Text
+  is_active    Boolean  @default(true)
+
+  createdById  String   @map("created_by_id") @db.Text
+  updatedById  String?  @map("updated_by_id") @db.Text
+
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdBy    User     @relation("ReasonForExitCreator", fields: [createdById], references: [id])
+  updatedBy    User?    @relation("ReasonForExitUpdater", fields: [updatedById], references: [id])
+
+  @@map("reason_for_exits")
+}
+model EmployeeExit {
+  id                     String   @id @db.Text
+
+  tenantId               String   @map("tenant_id") @db.Text
+  employeeId             String   @map("employee_id") @db.Uuid
+
+  departmentId           String?  @map("department_id") @db.Text
+  positionId             String?  @map("position_id") @db.Text
+  reportingManagerId     String?  @map("reporting_manager_id") @db.Uuid
+
+  exitTypeId             String?  @map("exit_type_id") @db.Text
+  exitReasonId           String?  @map("exit_reason_id") @db.Text
+
+  resignationDate        DateTime @map("resignation_date")
+  proposedLastWorkingDay DateTime @map("proposed_last_working_day")
+  noticePeriodDay        DateTime @map("notice_period_day")
+
+  waiveNoticePeriod      Boolean  @map("waive_notice_period")
+  buyoutRequired         Boolean  @map("buyout_required")
+  buyoutAmount           Decimal? @map("buyout_amount") @db.Decimal(15,2)
+
+  leaveAdjectment        String?  @map("leave_adjectment") @db.Text
+  explanation            String?  @db.VarChar(1000)
+
+  status                 String   @db.Text
+
+  createdById            String   @map("created_by_id") @db.Text
+
+  createdAt              DateTime @map("created_at") @default(now())
+  updatedAt              DateTime @map("update_at") @updatedAt
+
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  createdBy  User     @relation(fields: [createdById], references: [id])
+
+  @@map("employee_exit_request")
+}
+
+model ExitApprovalWorkflow {
+  id            String   @id @default(uuid())
+  tenantId      String   @map("tenant_id")
+
+  stepOrder     Int?     @map("step_order")
+  roleIds       String[] @map("role")
+
+  mandatory     Boolean?
+  approvalType  String?  @map("approval_type") @db.VarChar(50)
+
+  levelType     String?  @map("level_type") @db.VarChar(50)
+  levelId       String?  @map("level_id")
+
+  createdById   String?  @map("created_by_id")
+  updatedById   String?  @map("updated_by_id")
+
+  createdAt     DateTime? @default(now()) @map("created_at")
+  updatedAt     DateTime? @updatedAt @map("updated_at")
+
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdBy     User?    @relation("ExitApprovalWorkflowCreatedBy", fields: [createdById], references: [id])
+  updatedBy     User?    @relation("ExitApprovalWorkflowUpdatedBy", fields: [updatedById], references: [id])
+
+  @@map("exit_approval_workflow")
 }

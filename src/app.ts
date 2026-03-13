@@ -76,9 +76,11 @@ import departmentRoutes from "@/routes/departmentRoutes";
 import subDepartmentRoutes from "@/routes/subDepartmentRoutes";
 import positionRoutes from "@/routes/positionRoutes";
 import calendarRoutes from "@/routes/calendar"
+import employeeExitRoutes from "@/routes/employeeExit.routes";
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
 import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
 import rbacRoutes from "@/routes/rbac";
+import employeeAssetRoutes from "@/routes/employeeAssets.routes";
 // Load environment
 dotenv.config();
 console.log("🚀 API Starting up...");
@@ -242,9 +244,19 @@ app.use("/api/employee-timelines", employeeTimelineRoutes);
 app.use("/api/onboarding", employeeOnboardingRoutes);
 app.use("/api/profile/new", newProfileRoutes);
 app.use("/api/employeesettings", employeeSettingsRoutes);
+import noticePolicyRoutes from "./routes/noticePolicy.routes";
+import exitTypeRoutes from "./routes/exitType.routes";
+import reasonForExitRoutes from "./routes/reasonForExit.routes";
+import exitApprovalWorkflowRoutes from "./routes/exitApprovalWorkflow.routes";
+app.use("/api/exit/notice-policy", noticePolicyRoutes);
+app.use("/api/exit/exit-type", exitTypeRoutes);
+app.use("/api/exit/reason-for-exit", reasonForExitRoutes);
+app.use("/api/exit/approval-workflow", exitApprovalWorkflowRoutes);
+app.use("/api/exit/request", employeeExitRoutes);
 
 // RBAC management API
 app.use("/api/rbac", rbacRoutes);
+app.use("/api/employee-assets", employeeAssetRoutes);
 
 // app.use("/api/addresses", addressRoutes);
 //app.use("/api/employee_address", addressRoutes);
