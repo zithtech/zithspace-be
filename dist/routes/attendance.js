@@ -44,6 +44,8 @@ router.get("/my-summary", (0, permission_1.requirePermission)(permissions_1.Perm
  * @query   page, limit, userId, date, status, startDate, endDate, sortBy, sortOrder
  */
 router.get("/", (0, permission_1.requirePermission)(permissions_1.Permissions.ATTENDANCE_READ), attendanceController_1.AttendanceController.getAttendance);
+// last 5 days  average working hors routes
+router.get("/last-5-average", attendanceController_1.AttendanceController.getLast5DaysAverage);
 /**
  * @route   GET /api/attendance/:id
  * @desc    Get attendance record by ID (tenant-aware)
@@ -80,7 +82,5 @@ router.post("/", (0, permission_1.requirePermission)(permissions_1.Permissions.A
  * @body    Partial attendance data
  */
 router.put("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.ATTENDANCE_MANAGE), attendanceController_1.AttendanceController.updateAttendance);
-// last 5 days  average working hors routes
-router.get("/last-5-average", attendanceController_1.AttendanceController.getLast5DaysAverage);
 exports.default = router;
 //# sourceMappingURL=attendance.js.map
