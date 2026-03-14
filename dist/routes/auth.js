@@ -15,8 +15,8 @@ const authRateLimit = (0, express_rate_limit_1.default)({
     max: 1000, // 5 attempts per window
     message: {
         success: false,
-        error: 'Too many authentication attempts, please try again later.',
-        code: 'RATE_LIMIT_EXCEEDED',
+        error: "Too many authentication attempts, please try again later.",
+        code: "RATE_LIMIT_EXCEEDED",
     },
     standardHeaders: true,
     legacyHeaders: false,
@@ -27,23 +27,25 @@ const generalAuthRateLimit = (0, express_rate_limit_1.default)({
     max: 1000, // 20 requests per window
     message: {
         success: false,
-        error: 'Too many requests, please try again later.',
-        code: 'RATE_LIMIT_EXCEEDED',
+        error: "Too many requests, please try again later.",
+        code: "RATE_LIMIT_EXCEEDED",
     },
     standardHeaders: true,
     legacyHeaders: false,
 });
 // Login route - requires tenant context
-router.post('/login', authRateLimit, tenantContext_1.resolveTenant, authController_1.AuthController.login);
+router.post("/login", authRateLimit, tenantContext_1.resolveTenant, authController_1.AuthController.login);
 // Refresh token route - uses optional tenant context from token
-router.post('/refresh', authRateLimit, auth_1.optionalAuth, authController_1.AuthController.refresh);
+router.post("/refresh", authRateLimit, auth_1.optionalAuth, authController_1.AuthController.refresh);
 // Logout route - requires authentication
-router.post('/logout', generalAuthRateLimit, tenantContext_1.resolveTenant, auth_1.authenticateToken, authController_1.AuthController.logout);
+router.post("/logout", generalAuthRateLimit, tenantContext_1.resolveTenant, auth_1.authenticateToken, authController_1.AuthController.logout);
 // Get current user profile - requires authentication
-router.get('/me', generalAuthRateLimit, tenantContext_1.resolveTenant, auth_1.authenticateToken, authController_1.AuthController.me);
+router.get("/me", generalAuthRateLimit, tenantContext_1.resolveTenant, auth_1.authenticateToken, authController_1.AuthController.me);
+//get new profile for user - requires authentication
+router.get("/new", authController_1.AuthController.getNewProfile);
 // Authentication check - requires authentication
-router.get('/check', generalAuthRateLimit, auth_1.authenticateToken, authController_1.AuthController.check);
+router.get("/check", generalAuthRateLimit, auth_1.authenticateToken, authController_1.AuthController.check);
 // Create user route - requires tenant context (for testing/setup)
-router.post('/users', generalAuthRateLimit, tenantContext_1.resolveTenant, authController_1.AuthController.createUser);
+router.post("/users", generalAuthRateLimit, tenantContext_1.resolveTenant, authController_1.AuthController.createUser);
 exports.default = router;
 //# sourceMappingURL=auth.js.map

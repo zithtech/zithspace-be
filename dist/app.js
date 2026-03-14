@@ -3,7 +3,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-require("module-alias/register");
+if (process.env.NODE_ENV !== "development") {
+    require("module-alias/register");
+}
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const morgan_1 = __importDefault(require("morgan"));
@@ -23,6 +25,7 @@ const projects_1 = __importDefault(require("@/routes/projects"));
 const tickets_1 = __importDefault(require("@/routes/tickets"));
 const attendance_1 = __importDefault(require("@/routes/attendance"));
 const clients_1 = __importDefault(require("@/routes/clients"));
+const clientsV2_1 = __importDefault(require("@/routes/clientsV2"));
 const members_1 = __importDefault(require("@/routes/members"));
 const shifts_1 = __importDefault(require("@/routes/shifts"));
 const transactions_1 = __importDefault(require("@/routes/transactions"));
@@ -57,6 +60,9 @@ const employeeTimeline_1 = __importDefault(require("@/routes/employeeTimeline"))
 //import employeeEmploymentDetailsRoutes from "@/routes/employeeEmploymentDetailes";
 // main
 const onboardingRoutes_1 = __importDefault(require("@/routes/onboardingRoutes"));
+const auth_2 = __importDefault(require("@/routes/auth"));
+const publicTickets_1 = __importDefault(require("@/routes/publicTickets"));
+const employeeSettingsRoutes_1 = __importDefault(require("./routes/employeeSettingsRoutes"));
 const timesheet_1 = __importDefault(require("@/routes/timesheet"));
 const companyGovernmentHoliday_routes_1 = __importDefault(require("./routes/companyGovernmentHoliday.routes"));
 const leaveAdjustmentRoutes_1 = __importDefault(require("./routes/leaveAdjustmentRoutes"));
@@ -72,11 +78,13 @@ const emailHistoryRoutes_1 = __importDefault(require("@/routes/emailHistoryRoute
 const rbac_1 = __importDefault(require("@/routes/rbac"));
 // Load environment
 dotenv_1.default.config();
+console.log("🚀 API Starting up...");
+console.log("📅 Mounting calendar routes at /api/calendar");
 // Create Express application
 const app = (0, express_1.default)();
 // Body parsing middleware
-app.use(express_1.default.json({ limit: "10mb" }));
-app.use(express_1.default.urlencoded({ extended: true, limit: "10mb" }));
+app.use(express_1.default.json({ limit: "30mb" }));
+app.use(express_1.default.urlencoded({ extended: true, limit: "30mb" }));
 app.use((0, express_session_1.default)({
     secret: process.env.SESSION_SECRET || "your-fallback-secret-key",
     resave: false,
@@ -150,14 +158,18 @@ app.use("/api/leave-adjustments", leaveAdjustmentRoutes_1.default);
 app.use("/api/company-government-holidays", companyGovernmentHoliday_routes_1.default);
 app.use("/api/leave-origins", leaveOriginRoutes_1.default);
 app.use("/api/fixed-holidays", fixedHolidays_1.default);
+app.get("/api/direct-test", (req, res) => {
+    res.json({ success: true, message: "Direct app.get works" });
+});
 app.use("/api/auth", auth_1.default);
 app.use("/api/tenants", tenants_1.default);
+app.use("/api/calendar", calendar_1.default);
 app.use("/api/projects", projects_1.default);
-const publicTickets_1 = __importDefault(require("@/routes/publicTickets"));
 app.use("/api/public/tickets", publicTickets_1.default);
 app.use("/api/tickets", tickets_1.default);
 app.use("/api/attendance", attendance_1.default);
 app.use("/api/clients", clients_1.default);
+app.use("/api/clients-v2", clientsV2_1.default);
 app.use("/api/members", members_1.default);
 app.use("/api/shifts", shifts_1.default);
 app.use("/api/transactions", transactions_1.default);
@@ -193,6 +205,8 @@ app.use("/api/zoho", calendar_1.default);
 app.use("/api/employee-work-details", employeeWorkDetailes_1.default);
 app.use("/api/employee-timelines", employeeTimeline_1.default);
 app.use("/api/onboarding", onboardingRoutes_1.default);
+app.use("/api/profile/new", auth_2.default);
+app.use("/api/employeesettings", employeeSettingsRoutes_1.default);
 // RBAC management API
 app.use("/api/rbac", rbac_1.default);
 app.use("/api/shortcuts", shortcut_routes_1.default);
@@ -326,6 +340,12 @@ const server = app.listen(PORT, () => {
     // Start trash auto-purge cron job
     const { startTrashAutoPurgeJob } = require("@/jobs/trashAutoPurge");
     startTrashAutoPurgeJob();
+    // Start Calendar Sync Worker (scheduler + BullMQ processor)
+    // TEMPORARILY DISABLED: Redis not available (ECONNREFUSED 127.0.0.1:6379)
+    // const { SyncWorker } = require("@/services/calendar/SyncWorker");
+    // const { startSyncProcessor } = require("@/services/calendar/calendarSyncProcessor");
+    // SyncWorker.start();
+    // startSyncProcessor();
 });
 // Graceful shutdown
 const gracefulShutdown = async (signal) => {

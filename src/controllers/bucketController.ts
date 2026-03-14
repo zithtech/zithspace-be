@@ -30,7 +30,7 @@ export class BucketController {
       };
 
       if (projectId) {
-        if (projectId === 'null' || projectId === 'cross-project') {
+        if (projectId === "null" || projectId === "cross-project") {
           // Cross-project buckets (projectId is null)
           where.projectId = null;
         } else {
@@ -66,18 +66,18 @@ export class BucketController {
       const filteredBuckets = buckets.filter((bucket) => {
         // Owner always has access
         if (bucket.createdById === req.user!.id) return true;
-        
+
         // Non-shared buckets only visible to owner
         if (!bucket.isShared) return false;
-        
+
         // Shared buckets visible to members
-        if (includeShared === 'true' || includeShared === true) {
+        if (includeShared === "true" || includeShared === true) {
           const isMember = bucket.members.some(
-            (member) => member.userId === req.user!.id
+            (member) => member.userId === req.user!.id,
           );
           return isMember || bucket.createdById === req.user!.id;
         }
-        
+
         return false;
       });
 
@@ -97,7 +97,10 @@ export class BucketController {
   /**
    * Get paginated tickets in a bucket (tenant-aware)
    */
-  static async getBucketTickets(req: AuthRequest, res: Response): Promise<void> {
+  static async getBucketTickets(
+    req: AuthRequest,
+    res: Response,
+  ): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
         res.status(400).json({
@@ -134,7 +137,7 @@ export class BucketController {
       // Check access permissions
       const isOwner = bucket.createdById === req.user.id;
       const isMember = bucket.members.some(
-        (member) => member.userId === req.user.id
+        (member) => member.userId === req.user.id,
       );
 
       if (!isOwner && !isMember && bucket.isShared) {
@@ -155,7 +158,7 @@ export class BucketController {
 
       // Get paginated tickets
       const skip = (Number(page) - 1) * Number(limit);
-      
+
       const [tickets, total] = await Promise.all([
         prisma.ticket.findMany({
           where: {
@@ -248,7 +251,12 @@ export class BucketController {
           members: {
             include: {
               user: {
-                select: { id: true, name: true, workEmail: true, position: true },
+                select: {
+                  id: true,
+                  name: true,
+                  workEmail: true,
+                  position: true,
+                },
               },
             },
           },
@@ -285,7 +293,7 @@ export class BucketController {
       // Check access permissions
       const isOwner = bucket.createdById === req.user.id;
       const isMember = bucket.members.some(
-        (member) => member.userId === req.user.id
+        (member) => member.userId === req.user.id,
       );
 
       if (!isOwner && !isMember && bucket.isShared) {
@@ -500,7 +508,10 @@ export class BucketController {
         where: { id },
         data: {
           name: name?.trim() || existingBucket.name,
-          description: description !== undefined ? description?.trim() : existingBucket.description,
+          description:
+            description !== undefined
+              ? description?.trim()
+              : existingBucket.description,
           color: color || existingBucket.color,
           isShared: isShared !== undefined ? isShared : existingBucket.isShared,
           updatedAt: new Date(),
@@ -741,7 +752,7 @@ export class BucketController {
    */
   static async removeBucketMember(
     req: AuthRequest,
-    res: Response
+    res: Response,
   ): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
@@ -819,7 +830,7 @@ export class BucketController {
    */
   static async assignTicketsToBucket(
     req: AuthRequest,
-    res: Response
+    res: Response,
   ): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
@@ -894,7 +905,7 @@ export class BucketController {
    */
   static async unassignTicketsFromBucket(
     req: AuthRequest,
-    res: Response
+    res: Response,
   ): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {

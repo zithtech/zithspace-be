@@ -4,6 +4,7 @@ exports.s3Client = void 0;
 exports.uploadImageToR2 = uploadImageToR2;
 exports.uploadFileToR2 = uploadFileToR2;
 exports.uploadEmployeeDocumentToR2 = uploadEmployeeDocumentToR2;
+exports.uploadClientDocumentToR2 = uploadClientDocumentToR2;
 exports.uploadEmployeeAssetToR2 = uploadEmployeeAssetToR2;
 exports.deleteFileFromR2 = deleteFileFromR2;
 exports.deleteImageFromR2 = deleteImageFromR2;
@@ -180,19 +181,17 @@ async function uploadEmployeeDocumentToR2(base64File, fileName, tenantId, employ
     }
 }
 /**
- * Upload employee asset image to Cloudflare R2
- * @param base64File - Base64 encoded file string or an existing URL
+ * Upload Client V2 document to Cloudflare R2
+ * @param base64File - Base64 encoded file string
  * @param fileName - Original file name
  * @param tenantId - Tenant ID
- * @param employeeId - Employee ID
+ * @param clientId - Client ID
+ * @param category - Main Category (e.g., Sales, Legal)
+ * @param documentType - Sub Category of document
  * @returns Public URL of uploaded document
  */
-async function uploadEmployeeAssetToR2(base64File, fileName, tenantId, employeeId) {
+async function uploadClientDocumentToR2(base64File, fileName, tenantId, clientId, category, documentType) {
     try {
-        // If it's already a URL, return it directly (for edits where image is not changed)
-        if (base64File.startsWith("http")) {
-            return base64File;
-        }
         const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
         if (!matches) {
             throw new Error("Invalid file format. Expected base64 encoded file.");
@@ -202,7 +201,50 @@ async function uploadEmployeeAssetToR2(base64File, fileName, tenantId, employeeI
         const buffer = Buffer.from(base64Data, "base64");
         const uniqueId = (0, nanoid_1.nanoid)(12);
         const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
-        const key = `${tenantId}/employees/${employeeId}/assets/${uniqueId}_${sanitizedFileName}`;
+        // Organize by tenant -> clients-v2 -> client ID -> category -> document type
+        const key = `${tenantId}/clients-v2/${clientId}/documents/${category}/${documentType}/${uniqueId}_${sanitizedFileName}`;
+        const params = {
+            Bucket: BUCKET_NAME,
+            Key: key,
+            Body: buffer,
+            ContentType: contentType,
+        };
+        await exports.s3Client.send(new client_s3_1.PutObjectCommand(params));
+        return `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/${key}`;
+    }
+    catch (error) {
+        console.error("R2 upload error (Client V2):", error);
+        throw new Error(`Failed to upload client document: ${error.message}`);
+    }
+}
+/**
+ * Upload employee asset image to Cloudflare R2
+ * @param base64 - Base64 encoded file string or an existing URL
+ * @param fileName - Original file name
+ * @param tenantId - Tenant ID
+ * @param employeeId - Employee ID
+ * @param folder - The subfolder inside the employee's directory (e.g., 'assets', 'profile-pictures')
+ * @returns Public URL of uploaded document
+ */
+async function uploadEmployeeAssetToR2({ base64, fileName = "asset.png", tenantId, employeeId, folder = "assets", }) {
+    try {
+        if (!base64) {
+            throw new Error("File content is missing");
+        }
+        // If it's already a URL, return it directly
+        if (base64.startsWith("http")) {
+            return base64;
+        }
+        const matches = base64.match(/^data:([^;]+);base64,(.+)$/);
+        if (!matches) {
+            throw new Error("Invalid file format. Expected base64 encoded file.");
+        }
+        const contentType = matches[1];
+        const base64Data = matches[2];
+        const buffer = Buffer.from(base64Data, "base64");
+        const uniqueId = (0, nanoid_1.nanoid)(12);
+        const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+        const key = `${tenantId}/employees/${employeeId}/${folder}/${uniqueId}_${sanitizedFileName}`;
         await exports.s3Client.send(new client_s3_1.PutObjectCommand({
             Bucket: BUCKET_NAME,
             Key: key,
@@ -212,8 +254,8 @@ async function uploadEmployeeAssetToR2(base64File, fileName, tenantId, employeeI
         return `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/${key}`;
     }
     catch (error) {
-        console.error("R2 asset image upload error:", error);
-        throw new Error(`Failed to upload asset image: ${error.message}`);
+        console.error(`R2 ${folder} image upload error:`, error);
+        throw new Error(`Failed to upload ${folder} image: ${error.message}`);
     }
 }
 /**

@@ -58,6 +58,4 @@ class NotFoundError extends AppError {
     }
 }
 exports.NotFoundError = NotFoundError;
-// Note: Prisma types will be available after running 'npx prisma generate'
-// For now, we use the temporary interfaces and enums defined above
 //# sourceMappingURL=index.js.map
