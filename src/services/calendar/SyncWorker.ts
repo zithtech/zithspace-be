@@ -12,9 +12,10 @@ export class SyncWorker {
      */
     static start() {
         nodeCron.schedule("*/5 * * * *", () => {
-            this.pollAndEnqueue().catch(err => {
-                syncLogger.error('Critical error during polling', { error: err.message });
-            });
+            // this.pollAndEnqueue().catch(err => {
+            //     syncLogger.error('Critical error during polling', { error: err.message });
+            // });
+            console.log("Bellooo")
         });
         syncLogger.info('Calendar sync scheduler started');
     }

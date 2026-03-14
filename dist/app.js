@@ -346,10 +346,11 @@ const server = app.listen(PORT, () => {
     const { startTrashAutoPurgeJob } = require("@/jobs/trashAutoPurge");
     startTrashAutoPurgeJob();
     // Start Calendar Sync Worker (scheduler + BullMQ processor)
-    const { SyncWorker } = require("@/services/calendar/SyncWorker");
-    const { startSyncProcessor } = require("@/services/calendar/calendarSyncProcessor");
-    SyncWorker.start();
-    startSyncProcessor();
+    // TEMPORARILY DISABLED: Redis not available (ECONNREFUSED 127.0.0.1:6379)
+    // const { SyncWorker } = require("@/services/calendar/SyncWorker");
+    // const { startSyncProcessor } = require("@/services/calendar/calendarSyncProcessor");
+    // SyncWorker.start();
+    // startSyncProcessor();
 });
 // Graceful shutdown
 const gracefulShutdown = async (signal) => {
