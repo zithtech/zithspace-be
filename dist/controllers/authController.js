@@ -44,7 +44,7 @@ class AuthController {
                     },
                     include: {
                         tenant: true,
-                        // employee: true,
+                        employee: true,
                         position: {
                             select: {
                                 id: true,
@@ -289,7 +289,7 @@ class AuthController {
                         tenantId: req.user.tenantId,
                     },
                     include: {
-                        //employee: true,
+                        employee: true,
                         reportsTo: {
                             select: {
                                 id: true,
@@ -336,14 +336,14 @@ class AuthController {
                     personalEmail: user.personalEmail,
                     phone: user.phone,
                     role: user.role,
-                    position: user.positionId,
+                    position: user.position,
                     positionTitle: user.position?.title,
                     dateOfBirth: user.dateOfBirth,
                     workDays: user.workDays,
                     isActive: user.isActive,
                     reportsTo: user.reportsTo,
-                    employeeId: user.employee?.id || null,
-                    employee: user.employee || {}, // Include linked employee data if available
+                    employeeId: user.employeeId,
+                    employee: user?.employee || {}, // Include linked employee data if available
                     tenant: user.tenant,
                     createdAt: user.createdAt,
                     updatedAt: user.updatedAt,
@@ -497,7 +497,7 @@ class AuthController {
                         tenantId: req.user.tenantId,
                     },
                     include: {
-                        // employee: true, // Assuming `employee` is the relation in Prisma
+                        employee: true, // Assuming `employee` is the relation in Prisma
                         reportsTo: {
                             select: {
                                 id: true,
