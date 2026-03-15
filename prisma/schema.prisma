@@ -51,6 +51,15 @@ model Tenant {
   calendarIntegrations CalendarIntegration[]
   calendarEvents       CalendarEvent[]
 
+  //mail Integration
+
+  mailAccounts     MailAccount[]
+  mailThreads      MailThread[]
+  mailMessages     MailMessage[]
+  mailAttachments  MailAttachment[]
+  mailSyncLogs     MailSyncLog[]
+
+
 
 
 
@@ -251,6 +260,30 @@ model User {
   updatedCalendarIntegrations CalendarIntegration[] @relation("UpdatedByUser")
   createdCalendarEvents CalendarEvent[] @relation("CreatedByUser")
   updatedCalendarEvents CalendarEvent[] @relation("UpdatedByUser")
+
+  //mail
+  mailAccounts MailAccount[]
+
+  // Audit relations
+
+
+  createdMailAccounts   MailAccount[]   @relation("MailAccountCreatedBy")
+  updatedMailAccounts   MailAccount[]   @relation("MailAccountUpdatedBy")
+
+  createdMailThreads    MailThread[]    @relation("MailThreadCreatedBy")
+  updatedMailThreads    MailThread[]    @relation("MailThreadUpdatedBy")
+
+  createdMailMessages   MailMessage[]   @relation("MailMessageCreatedBy")
+  updatedMailMessages   MailMessage[]   @relation("MailMessageUpdatedBy")
+
+  createdMailAttachments MailAttachment[] @relation("MailAttachmentCreatedBy")
+  updatedMailAttachments MailAttachment[] @relation("MailAttachmentUpdatedBy")
+
+  createdMailSyncLogs MailSyncLog[] @relation("MailSyncCreatedBy")
+  updatedMailSyncLogs MailSyncLog[] @relation("MailSyncUpdatedBy")
+
+
+
 
 
   // ===== Chat & Meeting Relations =====
@@ -2427,6 +2460,9 @@ model CalendarIntegration {
   tokenExpiry   DateTime? @db.Timestamptz(6) @map("token_expiry")
   calendarId    String? @map("calendar_id")
 
+  // ✅ NEW: Link to MailAccount
+    mailAccountId String? @unique @map("mail_account_id")
+
   // GOOGLE
   googleSyncToken     String?  @map("google_sync_token")
   googleChannelId     String? @map("google_channel_id")
@@ -2461,6 +2497,8 @@ model CalendarIntegration {
   // Relations
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+    // ✅ NEW: Relation to MailAccount
+  mailAccount MailAccount? @relation(fields: [mailAccountId], references: [id])
 
   @@unique([userId, provider])
   @@index([tenantId])
@@ -2808,3 +2846,230 @@ model EmployeeClientAllocationV2 {
 
   @@map("employee_client_allocations_v2")
 }
+
+
+
+enum MailProvider {
+  GOOGLE
+  MICROSOFT
+  ZOHO
+
+  @@map("mail_provider")
+}
+
+model MailAccount {
+  id String @id
+
+  provider MailProvider
+  email    String
+
+  tenantId String @map("tenant_id")
+  userId   String @map("user_id")
+
+  displayName String? @map("display_name")
+
+  accessToken  String?   @map("access_token")
+  refreshToken String?   @map("refresh_token")
+  expiresAt    DateTime? @map("expires_at")
+
+    // ✅ NEW: Link to CalendarIntegration
+  calendarIntegration CalendarIntegration?
+  useSharedTokens Boolean @default(true) @map("use_shared_tokens")
+
+  syncCursor   String?   @map("sync_cursor")
+  lastSyncedAt DateTime? @map("last_synced_at")
+
+  isActive Boolean @default(true) @map("is_active")
+  syncLogs  MailSyncLog[] 
+  threads   MailThread[]
+  messages  MailMessage[]
+
+  createdById String? @map("created_by_id")
+  updatedById String? @map("updated_by_id")
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  createdBy User? @relation("MailAccountCreatedBy", fields: [createdById], references: [id])
+  updatedBy User? @relation("MailAccountUpdatedBy", fields: [updatedById], references: [id])
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+
+
+  @@unique([provider, email, tenantId])
+  @@index([tenantId])
+  @@index([userId])
+  @@map("mail_accounts")
+}
+
+
+model MailThread {
+  id String @id
+
+  accountId String @map("account_id")
+  tenantId  String @map("tenant_id")
+
+  externalThreadId String @map("external_thread_id")
+
+  subject String?
+
+  lastMessageAt DateTime? @map("last_message_at")
+
+  messageCount Int @default(0) @map("message_count")
+
+  labels String[] @default([])
+  snippet String?
+  isRead Boolean @default(false) @map("is_read")
+  hasAttachments Boolean @default(false) @map("has_attachments")
+  fromAddress String? @map("from_address")
+  toEmails    Json?    @map("to_emails")
+
+  account MailAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  messages MailMessage[]
+
+  createdById String? @map("created_by_id")
+  updatedById String? @map("updated_by_id")
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  createdBy User? @relation("MailThreadCreatedBy", fields: [createdById], references: [id])
+  updatedBy User? @relation("MailThreadUpdatedBy", fields: [updatedById], references: [id])
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([accountId])
+  @@index([externalThreadId])
+  @@map("mail_threads")
+}
+
+
+model MailMessage {
+  id String @id
+
+  accountId String  @map("account_id")
+  threadId  String? @map("thread_id")
+  tenantId  String  @map("tenant_id")
+
+  externalId String @map("external_id")
+
+  subject String?
+
+  fromEmail String @map("from_email")
+
+  toEmails  Json   @map("to_emails")
+  ccEmails  Json?  @map("cc_emails")
+  bccEmails Json?  @map("bcc_emails")
+
+  bodyHtml String? @map("body_html")
+  bodyText String? @map("body_text")
+
+  snippet String?
+
+  isRead Boolean @default(false) @map("is_read")
+  isSent Boolean @default(false) @map("is_sent")
+  hasAttachments Boolean @default(false) @map("has_attachments")
+
+  labels String[] @default([])
+
+  receivedAt DateTime? @map("received_at")
+  sentAt     DateTime? @map("sent_at")
+  scheduledAt DateTime? @map("scheduled_at")
+
+  attachments MailAttachment[]
+
+  account MailAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  thread  MailThread? @relation(fields: [threadId], references: [id])
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdById String? @map("created_by_id")
+  updatedById String? @map("updated_by_id")
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  createdBy User? @relation("MailMessageCreatedBy", fields: [createdById], references: [id])
+  updatedBy User? @relation("MailMessageUpdatedBy", fields: [updatedById], references: [id])
+
+  @@unique([externalId, accountId])
+  @@index([tenantId])
+  @@index([threadId])
+  @@index([accountId])
+  @@map("mail_messages")
+}
+
+
+model MailAttachment {
+  id String @id
+
+  messageId String @map("message_id")
+  tenantId  String @map("tenant_id")
+
+  fileName String @map("file_name")
+  mimeType String @map("mime_type")
+
+  size Int
+
+  storageKey String @map("storage_key")
+
+  downloadUrl String? @map("download_url")
+
+  message MailMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdById String? @map("created_by_id")
+  updatedById String? @map("updated_by_id")
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  createdBy User? @relation("MailAttachmentCreatedBy", fields: [createdById], references: [id])
+  updatedBy User? @relation("MailAttachmentUpdatedBy", fields: [updatedById], references: [id])
+
+  @@index([tenantId])
+  @@index([messageId])
+  @@map("mail_attachments")
+}
+
+model MailSyncLog {
+  id String @id
+
+  tenantId  String @map("tenant_id")
+  accountId String @map("account_id")
+
+  provider MailProvider
+
+  syncType String @map("sync_type")
+
+  status String
+
+  message String?
+
+  startedAt  DateTime @map("started_at")
+  finishedAt DateTime? @map("finished_at")
+
+  account MailAccount @relation(fields: [accountId], references: [id])
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdById String? @map("created_by_id")
+  updatedById String? @map("updated_by_id")
+
+  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
+  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+
+  createdBy User? @relation("MailSyncCreatedBy", fields: [createdById], references: [id])
+  updatedBy User? @relation("MailSyncUpdatedBy", fields: [updatedById], references: [id])
+
+  @@index([tenantId])
+  @@index([accountId])
+  @@map("mail_sync_logs")
+}
+
+

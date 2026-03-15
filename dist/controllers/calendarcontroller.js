@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CalendarController = void 0;
 const database_1 = require("@/config/database");
 const CalendarService_1 = require("@/services/calendar/CalendarService");
+const MailService_1 = require("@/services/mail/MailService");
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 class CalendarController {
     /**
@@ -111,10 +112,10 @@ class CalendarController {
             const { code, state, error: oauthError } = req.query;
             if (oauthError) {
                 console.error(`${provider} OAuth error:`, oauthError);
-                return res.redirect(`${FRONTEND_URL}/calendar?error=${provider}_denied`);
+                return res.redirect(`${FRONTEND_URL}/integrations?error=${provider}_denied`);
             }
             if (!code || !state) {
-                return res.redirect(`${FRONTEND_URL}/calendar?error=missing_params`);
+                return res.redirect(`${FRONTEND_URL}/integrations?error=missing_params`);
             }
             // In our implementation, state is the userId
             const userId = state;
@@ -122,16 +123,28 @@ class CalendarController {
             const user = await database_1.prisma.user.findUnique({ where: { id: userId } });
             if (!user)
                 throw new Error("User not found");
-            await CalendarService_1.CalendarService.handleCallback(provider.toUpperCase(), userId, user.tenantId, code, state);
-            // Sync events immediately after connection
-            await CalendarService_1.CalendarService.syncEvents(userId, user.tenantId, provider.toUpperCase()).catch(err => {
-                console.error(`Initial sync failed for ${provider}:`, err);
-            });
-            res.redirect(`${FRONTEND_URL}/calendar?connected=true&provider=${provider}`);
+            const integration = await CalendarService_1.CalendarService.handleCallback(provider.toUpperCase(), userId, user.tenantId, code, state);
+            if (integration) {
+                // Sync events immediately after connection
+                CalendarService_1.CalendarService.syncEvents(userId, user.tenantId, provider.toUpperCase()).catch(err => {
+                    console.error(`Initial calendar sync failed for ${provider}:`, err);
+                });
+                // Sync mail immediately after connection
+                // Assuming the email for MailAccount can be derived from the integration or fetched again
+                const mailAccount = await database_1.prisma.mailAccount.findFirst({
+                    where: { userId, tenantId: user.tenantId, provider: provider.toUpperCase() }
+                });
+                if (mailAccount) {
+                    MailService_1.MailService.syncMail(userId, user.tenantId, mailAccount.email).catch(err => {
+                        console.error(`Initial mail sync failed for ${provider}:`, err);
+                    });
+                }
+            }
+            res.redirect(`${FRONTEND_URL}/integrations?success=${provider}_connected`);
         }
         catch (error) {
             console.error("Calendar callback error:", error);
-            res.redirect(`${FRONTEND_URL}/calendar?error=callback_failed`);
+            res.redirect(`${FRONTEND_URL}/integrations?error=callback_failed`);
         }
     }
     /**
@@ -144,10 +157,24 @@ class CalendarController {
                 res.status(401).json({ success: false, error: "Authentication required" });
                 return;
             }
+            const providerUpper = provider.toUpperCase();
+            // 1. Delete associated mail data
+            // Since MailAccount cascades to threads/messages/attachments, we just need to handle logs and the account
+            const mailAccounts = await database_1.prisma.mailAccount.findMany({
+                where: {
+                    userId: req.user.id,
+                    provider: providerUpper,
+                }
+            });
+            for (const acc of mailAccounts) {
+                await database_1.prisma.mailSyncLog.deleteMany({ where: { accountId: acc.id } });
+                await database_1.prisma.mailAccount.delete({ where: { id: acc.id } });
+            }
+            // 2. Delete calendar integration
             await database_1.prisma.calendarIntegration.deleteMany({
                 where: {
                     userId: req.user.id,
-                    provider: provider.toUpperCase(),
+                    provider: providerUpper,
                 },
             });
             res.status(200).json({
