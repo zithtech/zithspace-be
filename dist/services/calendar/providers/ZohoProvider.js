@@ -58,24 +58,14 @@ class ZohoProvider {
     }
     async getEvents(accessToken, calendarId, startDate, endDate) {
         console.log(`[ZohoProvider] Fetching events for calendar: ${calendarId}`);
-        // Zoho API limit: Range cannot exceed 31 days
-        let sDate = startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-        let eDate = endDate || new Date(Date.now() + 23 * 24 * 60 * 60 * 1000);
-        if (eDate.getTime() - sDate.getTime() > 30 * 24 * 60 * 60 * 1000) {
-            eDate = new Date(sDate.getTime() + 30 * 24 * 60 * 60 * 1000);
-        }
-        const range = {
-            start: this.toZohoDate(sDate, false),
-            end: this.toZohoDate(eDate, false)
-        };
+        const params = {};
+        if (startDate)
+            params.start_time = this.toZohoDate(startDate, false);
+        if (endDate)
+            params.end_time = this.toZohoDate(endDate, false);
         const response = await axios_1.default.get(`${ZOHO_CALENDAR_API}/calendars/${calendarId}/events`, {
-            headers: {
-                Authorization: `Zoho-oauthtoken ${accessToken}`,
-                'Accept': 'application/json+large'
-            },
-            params: {
-                range: JSON.stringify(range)
-            }
+            headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
+            params
         });
         return response.data?.events || [];
     }

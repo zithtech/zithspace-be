@@ -10,7 +10,6 @@ const axios_1 = __importDefault(require("axios"));
 const CalendarProviderFactory_1 = require("./CalendarProviderFactory");
 const redis_1 = require("redis");
 const logger_1 = require("@/utils/logger");
-const UnifiedAuthService_1 = require("../UnifiedAuthService");
 // Singleton Redis client for distributed locking
 let redisClient = null;
 async function getRedisClient() {
@@ -28,8 +27,11 @@ async function getRedisClient() {
     return redisClient;
 }
 class CalendarService {
+    /**
+     * Get the authorization URL for a specific provider.
+     */
     static async getAuthUrl(provider, userId) {
-        return UnifiedAuthService_1.UnifiedAuthService.getAuthUrl(provider, userId);
+        return CalendarProviderFactory_1.CalendarProviderFactory.getProvider(provider).getAuthUrl(userId);
     }
     /**
      * Handle the OAuth callback and save integration details.
@@ -58,15 +60,32 @@ class CalendarService {
     //         },
     //     });
     // }
+    /**
+ * Handle the OAuth callback and save integration details.
+ */
     static async handleCallback(provider, userId, tenantId, code, state) {
-        // Clear existing calendar data for this user to ensure a clean sync with the new connection
-        await database_1.prisma.calendarIntegration.deleteMany({ where: { userId } });
-        await database_1.prisma.calendarEvent.deleteMany({ where: { userId } });
-        // Delegate to UnifiedAuthService to handle both Calendar and Mail setup
-        await UnifiedAuthService_1.UnifiedAuthService.handleCallback(provider, code, state, userId, tenantId);
-        // Fetch and return the newly created integration
-        return await database_1.prisma.calendarIntegration.findUnique({
-            where: { userId_provider: { userId, provider } }
+        const providerImpl = CalendarProviderFactory_1.CalendarProviderFactory.getProvider(provider);
+        const result = await providerImpl.handleCallback(code, state);
+        const expiry = new Date(Date.now() + result.expiresIn * 1000);
+        // FIRST, DELETE ANY EXISTING INTEGRATIONS AND EVENTS FOR THIS USER
+        await database_1.prisma.calendarIntegration.deleteMany({
+            where: { userId }
+        });
+        await database_1.prisma.calendarEvent.deleteMany({
+            where: { userId }
+        });
+        // THEN CREATE THE NEW ONE
+        return await database_1.prisma.calendarIntegration.create({
+            data: {
+                id: `${userId}_${provider}`,
+                userId,
+                tenantId,
+                provider,
+                accessToken: result.accessToken,
+                refreshToken: result.refreshToken,
+                tokenExpiry: expiry,
+                calendarId: result.calendarId,
+            },
         });
     }
     /**
@@ -250,16 +269,34 @@ class CalendarService {
         // Final sort and return
         return allEvents.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
     }
+    /**
+     * Get a valid access token for a user and provider, refreshing if necessary.
+     */
     static async getValidAccessToken(userId, provider) {
-        const accessToken = await UnifiedAuthService_1.UnifiedAuthService.getValidAccessToken(userId, provider);
         const integration = await database_1.prisma.calendarIntegration.findUnique({
             where: { userId_provider: { userId, provider } },
-            select: { calendarId: true }
         });
-        return {
-            accessToken,
-            calendarId: integration?.calendarId || undefined
-        };
+        if (!integration || !integration.accessToken) {
+            throw new Error(`${provider} integration not found`);
+        }
+        const fiveMinutes = 5 * 60 * 1000;
+        if (integration.tokenExpiry && integration.tokenExpiry.getTime() - Date.now() > fiveMinutes) {
+            return { accessToken: integration.accessToken, calendarId: integration.calendarId || undefined };
+        }
+        if (!integration.refreshToken) {
+            throw new Error(`${provider} refresh token not found`);
+        }
+        const providerImpl = CalendarProviderFactory_1.CalendarProviderFactory.getProvider(provider);
+        const result = await providerImpl.refreshToken(integration.refreshToken);
+        const expiry = new Date(Date.now() + result.expiresIn * 1000);
+        await database_1.prisma.calendarIntegration.update({
+            where: { id: integration.id },
+            data: {
+                accessToken: result.accessToken,
+                tokenExpiry: expiry,
+            },
+        });
+        return { accessToken: result.accessToken, calendarId: integration.calendarId || undefined };
     }
     /**
      * Sync events from the provider to the local database.

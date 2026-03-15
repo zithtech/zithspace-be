@@ -60,30 +60,15 @@ export class ZohoProvider implements ICalendarProvider {
 
     async getEvents(accessToken: string, calendarId: string, startDate?: Date, endDate?: Date): Promise<any[]> {
         console.log(`[ZohoProvider] Fetching events for calendar: ${calendarId}`);
-
-        // Zoho API limit: Range cannot exceed 31 days
-        let sDate = startDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-        let eDate = endDate || new Date(Date.now() + 23 * 24 * 60 * 60 * 1000);
-
-        if (eDate.getTime() - sDate.getTime() > 30 * 24 * 60 * 60 * 1000) {
-            eDate = new Date(sDate.getTime() + 30 * 24 * 60 * 60 * 1000);
-        }
-
-        const range = {
-            start: this.toZohoDate(sDate, false),
-            end: this.toZohoDate(eDate, false)
-        };
+        const params: any = {};
+        if (startDate) params.start_time = this.toZohoDate(startDate, false);
+        if (endDate) params.end_time = this.toZohoDate(endDate, false);
 
         const response = await axios.get(
             `${ZOHO_CALENDAR_API}/calendars/${calendarId}/events`,
             {
-                headers: {
-                    Authorization: `Zoho-oauthtoken ${accessToken}`,
-                    'Accept': 'application/json+large'
-                },
-                params: {
-                    range: JSON.stringify(range)
-                }
+                headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
+                params
             }
         );
 
@@ -266,7 +251,7 @@ export class ZohoProvider implements ICalendarProvider {
 
             // For partial week series (less than 7 days), try without conference first
             const isPartialWeek = eventData.recurringDays && eventData.recurringDays.length > 0 && eventData.recurringDays.length < 7;
-
+            
             console.log(`[ZohoProvider] Conference logic check: generateMeeting=${eventData.generateMeeting}, recurringDays=${JSON.stringify(eventData.recurringDays)}, isPartialWeek=${isPartialWeek}`);
 
             // Remove conference data for updates to avoid Zoho API limitations
@@ -277,10 +262,10 @@ export class ZohoProvider implements ICalendarProvider {
                 delete updatePayload.conferenceType;
                 delete updatePayload.app_data?.meetingdata;
                 console.log(`[ZohoProvider] Removed conference data for series update to avoid Zoho limitations`);
-
+                
                 // Add a small delay to ensure Zoho has processed the deletion
                 await new Promise(resolve => setTimeout(resolve, 1000));
-
+                
                 // Refresh the event to get fresh ETag before updating
                 console.log(`[ZohoProvider] Refreshing event to get fresh ETag before update`);
                 const freshEvent = await this.getEvent(accessToken, calendarId, fullUid);
@@ -297,7 +282,7 @@ export class ZohoProvider implements ICalendarProvider {
                 console.log(`[ZohoProvider] Removing attendees to test if that's causing the issue`);
                 delete payload.attendees;
             }
-
+            
             if (rruleToUse) payload.rrule = rruleToUse;
 
             // recurrence_edittype: "all" is the default for master UID updates, but explicitly sending it can cause pattern mismatch errors
@@ -337,14 +322,14 @@ export class ZohoProvider implements ICalendarProvider {
                 console.log(`[ZohoProvider] Using fullUid for refresh: ${fullUid}`);
                 const freshEvent = await this.getEvent(accessToken, calendarId, fullUid);
                 console.log(`[ZohoProvider] Fresh event result:`, freshEvent ? { etag: freshEvent.etag, uid: freshEvent.uid } : 'NOT FOUND');
-
+                
                 if (freshEvent?.etag && freshEvent.etag !== etag) {
                     console.log(`[ZohoProvider] Fresh etag found: ${freshEvent.etag} vs old: ${etag}`);
                     payload.etag = freshEvent.etag;
-
+                    
                     const retryFormBody = new URLSearchParams();
                     retryFormBody.append("eventdata", JSON.stringify(payload));
-
+                    
                     const retryRes = await axios.put(resolved.url, retryFormBody, {
                         headers: {
                             Authorization: `Zoho-oauthtoken ${accessToken}`,
@@ -352,19 +337,19 @@ export class ZohoProvider implements ICalendarProvider {
                         },
                         validateStatus: () => true,
                     });
-
+                    
                     console.log(`[ZohoProvider] Retry result:`, retryRes.status, JSON.stringify(retryRes.data, null, 2));
                     if (retryRes.status < 400) return retryRes.data?.events?.[0];
                 } else {
                     console.log(`[ZohoProvider] No fresh etag found or same etag. ETag retry failed.`);
-
+                    
                     // Try alternative URL format as fallback
                     console.log(`[ZohoProvider] Trying alternative URL format...`);
                     const alternativeUrl = `${ZOHO_CALENDAR_API}/calendars/${calendarId}/events/EID${fullUid}`;
-
+                    
                     const altFormBody = new URLSearchParams();
                     altFormBody.append("eventdata", JSON.stringify(payload));
-
+                    
                     const altRes = await axios.put(alternativeUrl, altFormBody, {
                         headers: {
                             Authorization: `Zoho-oauthtoken ${accessToken}`,
@@ -372,10 +357,10 @@ export class ZohoProvider implements ICalendarProvider {
                         },
                         validateStatus: () => true,
                     });
-
+                    
                     console.log(`[ZohoProvider] Alternative URL result:`, altRes.status, JSON.stringify(altRes.data, null, 2));
                     if (altRes.status < 400) return altRes.data?.events?.[0];
-
+                    
                     // If that fails, try minimal payload (just title, date, rrule)
                     console.log(`[ZohoProvider] Trying minimal payload...`);
                     const minimalPayload = {
@@ -385,10 +370,10 @@ export class ZohoProvider implements ICalendarProvider {
                         rrule: payload.rrule,
                         etag: payload.etag
                     };
-
+                    
                     const minFormBody = new URLSearchParams();
                     minFormBody.append("eventdata", JSON.stringify(minimalPayload));
-
+                    
                     const minRes = await axios.put(resolved.url, minFormBody, {
                         headers: {
                             Authorization: `Zoho-oauthtoken ${accessToken}`,
@@ -396,10 +381,10 @@ export class ZohoProvider implements ICalendarProvider {
                         },
                         validateStatus: () => true,
                     });
-
+                    
                     console.log(`[ZohoProvider] Minimal payload result:`, minRes.status, JSON.stringify(minRes.data, null, 2));
                     if (minRes.status < 400) return minRes.data?.events?.[0];
-
+                    
                     // If all else fails, try delete + recreate approach for recurring meetings
                     console.log(`[ZohoProvider] All update attempts failed, trying delete + recreate approach...`);
                     if (eventData.generateMeeting) {
@@ -407,10 +392,10 @@ export class ZohoProvider implements ICalendarProvider {
                             // Delete the entire series
                             await this.deleteEvent(accessToken, calendarId, fullUid, 2);
                             console.log(`[ZohoProvider] Series deleted successfully, recreating...`);
-
+                            
                             // Wait a moment for Zoho to process
                             await new Promise(resolve => setTimeout(resolve, 500));
-
+                            
                             // Recreate with new data
                             const recreatePayload = {
                                 title: eventData.title,
@@ -424,10 +409,10 @@ export class ZohoProvider implements ICalendarProvider {
                                     attendees: eventData.attendees.filter(email => email && email.trim()).map(email => ({ email }))
                                 })
                             };
-
+                            
                             const createFormBody = new URLSearchParams();
                             createFormBody.append("eventdata", JSON.stringify(recreatePayload));
-
+                            
                             const createRes = await axios.post(`${ZOHO_CALENDAR_API}/calendars/${calendarId}/events`, createFormBody, {
                                 headers: {
                                     Authorization: `Zoho-oauthtoken ${accessToken}`,
@@ -435,10 +420,10 @@ export class ZohoProvider implements ICalendarProvider {
                                 },
                                 validateStatus: () => true,
                             });
-
+                            
                             console.log(`[ZohoProvider] Recreate result:`, createRes.status, JSON.stringify(createRes.data, null, 2));
                             if (createRes.status < 400) return createRes.data?.events?.[0];
-
+                            
                         } catch (recreateErr) {
                             console.log(`[ZohoProvider] Delete + recreate failed:`, recreateErr.message);
                         }
@@ -454,7 +439,7 @@ export class ZohoProvider implements ICalendarProvider {
             delete payload.rrule;
             // action=0: "only", action=1: "following" (Zoho docs suggest 'following' over 'thisandfollowing')
             payload.recurrence_edittype = action === 0 ? "only" : "following";
-
+            
             // For occurrence updates, use the new time from eventData, not existing
             payload.dateandtime = forceZ({
                 start: this.toZohoDate(eventData.startTime, !!eventData.isAllDay),
@@ -501,10 +486,10 @@ export class ZohoProvider implements ICalendarProvider {
                 if (freshEvent?.etag && freshEvent.etag !== etag) {
                     console.log(`[ZohoProvider] Fresh etag found: ${freshEvent.etag} vs old: ${etag}`);
                     payload.etag = freshEvent.etag;
-
+                    
                     const retryFormBody = new URLSearchParams();
                     retryFormBody.append("eventdata", JSON.stringify(payload));
-
+                    
                     const retryRes = await axios.put(resolved.url, retryFormBody, {
                         headers: {
                             Authorization: `Zoho-oauthtoken ${accessToken}`,
@@ -512,7 +497,7 @@ export class ZohoProvider implements ICalendarProvider {
                         },
                         validateStatus: () => true,
                     });
-
+                    
                     console.log(`[ZohoProvider] Occurrence retry result:`, retryRes.status, JSON.stringify(retryRes.data, null, 2));
                     if (retryRes.status < 400) return retryRes.data?.events?.[0];
                 }
@@ -592,7 +577,7 @@ export class ZohoProvider implements ICalendarProvider {
         // For single occurrence deletion (action === 0), delete specific occurrence from Zoho
         if (action === 0) {
             console.log(`[ZohoProvider] Single occurrence deletion - deleting from Zoho with recurrence ID`);
-
+            
             // Get the event to determine if it's recurring
             const event = await this.getEvent(accessToken, calendarId, fullUid);
             if (!event) {
@@ -605,10 +590,10 @@ export class ZohoProvider implements ICalendarProvider {
                 // Use occurrence date to create proper recurrence ID
                 let recurrenceId = "";
                 console.log(`[ZohoProvider] Event isallday: ${event.isallday}, occurrenceDate: ${occurrenceDate}`);
-
+                
                 if (occurrenceDate) {
                     const d = new Date(occurrenceDate);
-
+                    
                     // For all-day events: use YYYYMMDD format
                     // For timed events: use YYYYMMDDThhmmssZ format
                     if (event.isallday) {
@@ -640,9 +625,9 @@ export class ZohoProvider implements ICalendarProvider {
 
                 const params = new URLSearchParams();
                 params.append("eventdata", JSON.stringify(deleteData));
-
+                
                 const deleteUrl = `${ZOHO_CALENDAR_API}/calendars/${calendarId}/events/${fullUid}?${params.toString()}`;
-
+                
                 console.log(`[ZohoProvider] Deleting single occurrence: ${deleteUrl}`);
                 console.log(`[ZohoProvider] Delete data:`, JSON.stringify(deleteData, null, 2));
 
@@ -656,12 +641,12 @@ export class ZohoProvider implements ICalendarProvider {
                     // Don't throw error - local exception will still work
                     console.log(`[ZohoProvider] Continuing with local exception handling`);
                 }
-
+                
                 return; // Don't continue to series deletion logic
             } else {
                 // For single (non-recurring) events, just delete directly
                 console.log(`[ZohoProvider] Deleting single (non-recurring) event: ${fullUid}`);
-
+                
                 const deleteData: any = {
                     uid: fullUid
                 };
@@ -670,9 +655,9 @@ export class ZohoProvider implements ICalendarProvider {
 
                 const params = new URLSearchParams();
                 params.append("eventdata", JSON.stringify(deleteData));
-
+                
                 const deleteUrl = `${ZOHO_CALENDAR_API}/calendars/${calendarId}/events/${fullUid}?${params.toString()}`;
-
+                
                 console.log(`[ZohoProvider] Single event delete URL: ${deleteUrl}`);
                 console.log(`[ZohoProvider] Single event delete data:`, JSON.stringify(deleteData, null, 2));
 
@@ -685,7 +670,7 @@ export class ZohoProvider implements ICalendarProvider {
                     console.error(`[ZohoProvider] Failed to delete single event from Zoho:`, error.response?.data || error.message);
                     throw error;
                 }
-
+                
                 return; // Don't continue to series deletion logic
             }
         }

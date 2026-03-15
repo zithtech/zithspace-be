@@ -5,7 +5,6 @@ import { CalendarProviderFactory } from "./CalendarProviderFactory";
 import { CalendarEventData } from "./ICalendarProvider";
 import { createClient } from "redis";
 import { syncLogger } from "@/utils/logger";
-import { UnifiedAuthService } from "../UnifiedAuthService";
 
 // Singleton Redis client for distributed locking
 let redisClient: ReturnType<typeof createClient> | null = null;
@@ -25,8 +24,11 @@ async function getRedisClient() {
 }
 
 export class CalendarService {
+    /**
+     * Get the authorization URL for a specific provider.
+     */
     static async getAuthUrl(provider: CalendarProvider, userId: string): Promise<string> {
-        return UnifiedAuthService.getAuthUrl(provider, userId);
+        return CalendarProviderFactory.getProvider(provider).getAuthUrl(userId);
     }
 
     /**
@@ -59,17 +61,36 @@ export class CalendarService {
     //     });
     // }
 
+    /**
+ * Handle the OAuth callback and save integration details.
+ */
     static async handleCallback(provider: CalendarProvider, userId: string, tenantId: string, code: string, state: string) {
-        // Clear existing calendar data for this user to ensure a clean sync with the new connection
-        await prisma.calendarIntegration.deleteMany({ where: { userId } });
-        await prisma.calendarEvent.deleteMany({ where: { userId } });
+        const providerImpl = CalendarProviderFactory.getProvider(provider);
+        const result = await providerImpl.handleCallback(code, state);
 
-        // Delegate to UnifiedAuthService to handle both Calendar and Mail setup
-        await UnifiedAuthService.handleCallback(provider, code, state, userId, tenantId);
+        const expiry = new Date(Date.now() + result.expiresIn * 1000);
 
-        // Fetch and return the newly created integration
-        return await prisma.calendarIntegration.findUnique({
-            where: { userId_provider: { userId, provider } }
+        // FIRST, DELETE ANY EXISTING INTEGRATIONS AND EVENTS FOR THIS USER
+        await prisma.calendarIntegration.deleteMany({
+            where: { userId }
+        });
+
+        await prisma.calendarEvent.deleteMany({
+            where: { userId }
+        });
+
+        // THEN CREATE THE NEW ONE
+        return await prisma.calendarIntegration.create({
+            data: {
+                id: `${userId}_${provider}`,
+                userId,
+                tenantId,
+                provider,
+                accessToken: result.accessToken,
+                refreshToken: result.refreshToken,
+                tokenExpiry: expiry,
+                calendarId: result.calendarId,
+            },
         });
     }
 
@@ -273,18 +294,41 @@ export class CalendarService {
         return allEvents.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
     }
 
+    /**
+     * Get a valid access token for a user and provider, refreshing if necessary.
+     */
     static async getValidAccessToken(userId: string, provider: CalendarProvider): Promise<{ accessToken: string, calendarId?: string }> {
-        const accessToken = await UnifiedAuthService.getValidAccessToken(userId, provider);
-
         const integration = await prisma.calendarIntegration.findUnique({
             where: { userId_provider: { userId, provider } },
-            select: { calendarId: true }
         });
 
-        return {
-            accessToken,
-            calendarId: integration?.calendarId || undefined
-        };
+        if (!integration || !integration.accessToken) {
+            throw new Error(`${provider} integration not found`);
+        }
+
+        const fiveMinutes = 5 * 60 * 1000;
+        if (integration.tokenExpiry && integration.tokenExpiry.getTime() - Date.now() > fiveMinutes) {
+            return { accessToken: integration.accessToken, calendarId: integration.calendarId || undefined };
+        }
+
+        if (!integration.refreshToken) {
+            throw new Error(`${provider} refresh token not found`);
+        }
+
+        const providerImpl = CalendarProviderFactory.getProvider(provider);
+        const result = await providerImpl.refreshToken(integration.refreshToken);
+
+        const expiry = new Date(Date.now() + result.expiresIn * 1000);
+
+        await prisma.calendarIntegration.update({
+            where: { id: integration.id },
+            data: {
+                accessToken: result.accessToken,
+                tokenExpiry: expiry,
+            },
+        });
+
+        return { accessToken: result.accessToken, calendarId: integration.calendarId || undefined };
     }
 
     /**
@@ -909,7 +953,7 @@ export class CalendarService {
         await providerImpl.deleteEvent(accessToken, calendarId, targetExternalId, action, occurrenceDate);
 
         // 5. Local database cleanup
-
+        
         // Handle single occurrence deletion (action === 0) with occurrenceDate
         if (action === 0 && occurrenceDate && occurrenceDate !== null && occurrenceDate !== undefined) {
             // 5a. Find the true Master record to add the exception
@@ -1009,7 +1053,7 @@ export class CalendarService {
                     try {
                         // Delete all occurrences with the same base externalId
                         const baseExternalId = masterEvent.externalId.split('_occ_')[0].split('_RID')[0];
-
+                        
                         // Delete all forked occurrences
                         await prisma.calendarEvent.deleteMany({
                             where: {
@@ -1019,7 +1063,7 @@ export class CalendarService {
                                 externalId: { startsWith: baseExternalId }
                             }
                         });
-
+                        
                         return;
                     } catch (deleteError) {
                         console.error(`[CalendarService] Failed to delete entire recurring series from database:`, deleteError);
