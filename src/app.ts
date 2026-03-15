@@ -76,11 +76,9 @@ import departmentRoutes from "@/routes/departmentRoutes";
 import subDepartmentRoutes from "@/routes/subDepartmentRoutes";
 import positionRoutes from "@/routes/positionRoutes";
 import calendarRoutes from "@/routes/calendar"
-import mailRoutes from "@/routes/mail"
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
 import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
 import rbacRoutes from "@/routes/rbac";
-import { MailController } from "@/controllers/MailController";
 // Load environment
 dotenv.config();
 console.log("🚀 API Starting up...");
@@ -192,9 +190,6 @@ app.get("/api/direct-test", (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/tenants", tenantRoutes);
 app.use("/api/calendar", calendarRoutes);
-// Public attachment proxy (no auth/tenant middleware)
-app.get("/api/mail/attachments/download", MailController.downloadAttachment);
-app.use("/api/mail", mailRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/public/tickets", publicTicketRoutes);
 app.use("/api/tickets", ticketRoutes);
@@ -399,14 +394,6 @@ const server = app.listen(PORT, () => {
   // Start trash auto-purge cron job
   const { startTrashAutoPurgeJob } = require("@/jobs/trashAutoPurge");
   startTrashAutoPurgeJob();
-
-  // Start scheduled mail processor every minute
-  const { MailService } = require("@/services/mail/MailService");
-  setInterval(() => {
-    MailService.processScheduledEmails().catch((err: any) => {
-      console.error("[BackgroundWorker] Scheduled mail processing failed:", err);
-    });
-  }, 60000);
 
   // Start Calendar Sync Worker (scheduler + BullMQ processor)
   // TEMPORARILY DISABLED: Redis not available (ECONNREFUSED 127.0.0.1:6379)

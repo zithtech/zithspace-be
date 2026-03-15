@@ -72,11 +72,9 @@ const departmentRoutes_1 = __importDefault(require("@/routes/departmentRoutes"))
 const subDepartmentRoutes_1 = __importDefault(require("@/routes/subDepartmentRoutes"));
 const positionRoutes_1 = __importDefault(require("@/routes/positionRoutes"));
 const calendar_1 = __importDefault(require("@/routes/calendar"));
-const mail_1 = __importDefault(require("@/routes/mail"));
 const leaveOriginRoutes_1 = __importDefault(require("@/routes/leaveOriginRoutes"));
 const emailHistoryRoutes_1 = __importDefault(require("@/routes/emailHistoryRoutes"));
 const rbac_1 = __importDefault(require("@/routes/rbac"));
-const MailController_1 = require("@/controllers/MailController");
 // Load environment
 dotenv_1.default.config();
 console.log("🚀 API Starting up...");
@@ -165,9 +163,6 @@ app.get("/api/direct-test", (req, res) => {
 app.use("/api/auth", auth_1.default);
 app.use("/api/tenants", tenants_1.default);
 app.use("/api/calendar", calendar_1.default);
-// Public attachment proxy (no auth/tenant middleware)
-app.get("/api/mail/attachments/download", MailController_1.MailController.downloadAttachment);
-app.use("/api/mail", mail_1.default);
 app.use("/api/projects", projects_1.default);
 app.use("/api/public/tickets", publicTickets_1.default);
 app.use("/api/tickets", tickets_1.default);
@@ -350,13 +345,6 @@ const server = app.listen(PORT, () => {
     // Start trash auto-purge cron job
     const { startTrashAutoPurgeJob } = require("@/jobs/trashAutoPurge");
     startTrashAutoPurgeJob();
-    // Start scheduled mail processor every minute
-    const { MailService } = require("@/services/mail/MailService");
-    setInterval(() => {
-        MailService.processScheduledEmails().catch((err) => {
-            console.error("[BackgroundWorker] Scheduled mail processing failed:", err);
-        });
-    }, 60000);
     // Start Calendar Sync Worker (scheduler + BullMQ processor)
     // TEMPORARILY DISABLED: Redis not available (ECONNREFUSED 127.0.0.1:6379)
     // const { SyncWorker } = require("@/services/calendar/SyncWorker");
