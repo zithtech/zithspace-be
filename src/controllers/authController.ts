@@ -54,7 +54,7 @@ export class AuthController {
             },
             include: {
               tenant: true,
-              employee: true,
+              // employee: true,
               position: {
                 select: {
                   id: true,
@@ -87,7 +87,7 @@ export class AuthController {
       }
 
       // Check if tenant is active
-      if (!user.tenant.isActive) {
+      if (!(user as any).tenant.isActive) {
         res.status(403).json({
           success: false,
           error: "Account suspended",
@@ -101,7 +101,7 @@ export class AuthController {
         tenantId: user.tenantId,
         email: user.workEmail,
         role: user.role as any,
-        position: user.position?.title || null,
+        position: (user as any).position?.title || null,
         name: user.name,
       };
 
@@ -140,9 +140,9 @@ export class AuthController {
           workEmail: user.workEmail,
           personalEmail: user.personalEmail,
           role: user.role as any,
-          position: user.position?.title || null,
+          position: (user as any).position?.title || null,
           tenantId: user.tenantId,
-          tenantName: user.tenant.name,
+          tenantName: (user as any).tenant.name,
           isActive: user.isActive,
         },
         message: "Login successful",
@@ -231,12 +231,10 @@ export class AuthController {
         JWTUtils.generateTokenPair(authUser);
 
       // Replace old refresh token with new one
-      await tenantAwarePrisma.withTenant(
-        decoded.tenantId,
-        async (client) => {
-          await client.refreshToken.deleteMany({
-            where: { id: storedToken.id },
-          });
+      await tenantAwarePrisma.withTenant(decoded.tenantId, async (client) => {
+        await client.refreshToken.deleteMany({
+          where: { id: storedToken.id },
+        });
 
         await client.refreshToken.create({
           data: {
@@ -336,7 +334,7 @@ export class AuthController {
               tenantId: req.user!.tenantId,
             },
             include: {
-              employee: true,
+              //employee: true,
               reportsTo: {
                 select: {
                   id: true,
@@ -386,15 +384,15 @@ export class AuthController {
           personalEmail: user.personalEmail,
           phone: user.phone,
           role: user.role,
-          position: user.position,
-          positionTitle: user.position?.title,
+          position: user.positionId,
+          positionTitle: (user as any).position?.title,
           dateOfBirth: user.dateOfBirth,
           workDays: user.workDays,
           isActive: user.isActive,
-          reportsTo: user.reportsTo,
-          employeeId: user.employeeId,
-          employee: user?.employee || {}, // Include linked employee data if available
-          tenant: user.tenant,
+          reportsTo: (user as any).reportsTo,
+          employeeId: (user as any).employee?.id || null,
+          employee: (user as any).employee || {}, // Include linked employee data if available
+          tenant: (user as any).tenant,
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
         },
@@ -539,7 +537,6 @@ export class AuthController {
       } as ApiResponse);
     }
   }
-
   /**
    * Get new profile including employee info
    */
@@ -563,7 +560,7 @@ export class AuthController {
               tenantId: req.user!.tenantId,
             },
             include: {
-              employee: true, // Assuming `employee` is the relation in Prisma
+              // employee: true, // Assuming `employee` is the relation in Prisma
               reportsTo: {
                 select: {
                   id: true,
@@ -620,14 +617,14 @@ export class AuthController {
           personalEmail: user.personalEmail,
           phone: user.phone,
           role: user.role,
-          position: user.position,
-          positionTitle: user.position?.title,
+          position: (user as any).position,
+          positionTitle: (user as any).position?.title,
           dateOfBirth: user.dateOfBirth,
           workDays: user.workDays,
           isActive: user.isActive,
-          reportsTo: user.reportsTo,
-          tenant: user.tenant,
-          employeeId: user.employee?.id || null, // Employee ID from linked table
+          reportsTo: (user as any).reportsTo,
+          tenant: (user as any).tenant,
+          employeeId: (user as any).employee?.id || null, // Employee ID from linked table
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
           permissions: Array.from(permSet),
