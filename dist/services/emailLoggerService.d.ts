@@ -46,17 +46,17 @@ export declare class EmailLoggerService {
     }): Promise<{
         data: ({
             customer: {
+                companyName: string;
                 id: string;
                 email: string;
-                companyName: string;
             };
             sentByUserRel: {
                 name: string;
                 id: string;
             };
         } & {
-            tenantId: string;
             status: string;
+            tenantId: string;
             id: string;
             dueDate: string | null;
             metadata: import("@prisma/client/runtime/library").JsonValue | null;
@@ -96,6 +96,8 @@ export declare class EmailLoggerService {
      */
     static getEmailById(id: string, tenantId: string): Promise<{
         customer: {
+            companyName: string;
+            country: string | null;
             tenantId: string;
             createdAt: Date;
             updatedAt: Date;
@@ -105,9 +107,7 @@ export declare class EmailLoggerService {
             email: string | null;
             phone: string | null;
             city: string | null;
-            country: string | null;
             address: string | null;
-            companyName: string;
             taxId: string | null;
         };
         sentByUserRel: {
@@ -115,8 +115,8 @@ export declare class EmailLoggerService {
             id: string;
         };
     } & {
-        tenantId: string;
         status: string;
+        tenantId: string;
         id: string;
         dueDate: string | null;
         metadata: import("@prisma/client/runtime/library").JsonValue | null;
@@ -169,8 +169,8 @@ export declare class EmailLoggerService {
      * Update email status (for tracking opens/clicks)
      */
     static updateStatus(id: string, tenantId: string, status: 'OPENED' | 'CLICKED', metadata?: any): Promise<{
-        tenantId: string;
         status: string;
+        tenantId: string;
         id: string;
         dueDate: string | null;
         metadata: import("@prisma/client/runtime/library").JsonValue | null;

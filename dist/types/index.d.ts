@@ -10,6 +10,19 @@ export interface Tenant {
     createdAt: Date;
     updatedAt: Date;
 }
+export interface Position {
+    id: string;
+    tenantId: string;
+    code: string;
+    title: string;
+    departmentId: string;
+    subDepartmentId?: string;
+    gradeId: string;
+    description?: string;
+    isActive: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+}
 export interface User {
     id: string;
     tenantId: string;
@@ -19,7 +32,8 @@ export interface User {
     phone: string;
     passwordHash: string;
     role: string;
-    position: string;
+    positionId?: string;
+    position?: Position;
     reportsToId?: string;
     dateOfBirth?: Date;
     workDays: number[];
@@ -200,7 +214,7 @@ export interface AuthUser {
     tenantId: string;
     email: string;
     role: string;
-    position: string;
+    position: string | null;
     name: string;
     sessionId?: string;
 }
@@ -209,7 +223,7 @@ export interface JWTPayload {
     tenantId: string;
     email: string;
     role: string;
-    position: string;
+    position: string | null;
     sessionId?: string;
     iat?: number;
     exp?: number;
@@ -233,7 +247,7 @@ export interface LoginResponse {
         workEmail: string;
         personalEmail: string;
         role: string;
-        position: string;
+        position: string | null;
         tenantId: string;
         tenantName: string;
         isActive: boolean;
@@ -314,7 +328,7 @@ export interface CreateUserData {
     phone: string;
     password: string;
     role?: string;
-    position: string;
+    positionId?: string;
     reportsToId?: string;
     dateOfBirth?: Date;
     workDays?: number[];
@@ -327,7 +341,7 @@ export interface UpdateUserData {
     personalEmail?: string;
     phone?: string;
     role?: string;
-    position?: string;
+    positionId?: string;
     reportsToId?: string;
     dateOfBirth?: Date;
     workDays?: number[];
@@ -585,6 +599,7 @@ export type CreateTimesheetData = {
     weekStart: string;
     weekEnd: string;
     rows: CreateTimesheetRowData[];
+    leaveCount?: number;
 };
 export type UpdateTimesheetRowData = {
     id?: string;
@@ -603,4 +618,80 @@ export type UpdateTimesheetData = {
     status?: "DRAFT" | "SUBMITTED" | "APPROVED" | "REJECTED";
     rejectReason?: string;
     rows?: UpdateTimesheetRowData[];
+    leaveCount?: number;
 };
+export interface CreateClientV2Data {
+    companyName: string;
+    clientType: string;
+    legalName?: string;
+    parentId?: string;
+    companySize?: string;
+    industry?: string;
+    contractValue?: number;
+    yearOfIncorporation?: string;
+    duration?: string;
+    gstVatTaxId?: string;
+    registrationNumber?: string;
+    country?: string;
+    website?: string;
+    defaultCurrency?: string;
+    billingAddress?: string;
+    riskLevel?: string;
+    status?: string;
+    pan?: string;
+    vatNumber?: string;
+    dunsNumber?: string;
+    msmeRegistration?: string;
+    paymentTerms?: string;
+    creditLimit?: number;
+    billingContactEmail?: string;
+    accountsPayableName?: string;
+    tdsApplicable?: boolean;
+    reverseCharge?: boolean;
+    accountManagerId?: string;
+    salesOwnerId?: string;
+    deliveryOwnerId?: string;
+    clientSegment?: string;
+    contractStartDate?: Date;
+    contractEndDate?: Date;
+    renewalType?: string;
+    slaLevel?: string;
+    bankName?: string;
+    bankAccountNumber?: string;
+    ifscSwift?: string;
+    currencyOfPayment?: string;
+    preferredPaymentMode?: string;
+    isActive?: boolean;
+}
+export interface UpdateClientV2Data extends Partial<CreateClientV2Data> {
+}
+export interface CreateClientContactV2Data {
+    firstName: string;
+    lastName: string;
+    officialEmail: string;
+    displayName?: string;
+    designation?: string;
+    department?: string;
+    contactType?: string;
+    isPrimary?: boolean;
+    secondaryEmail?: string;
+    mobileNumber?: string;
+    alternatePhone?: string;
+    officeLandline?: string;
+    extensionNumber?: string;
+    preferredComm?: string;
+    status?: string;
+}
+export interface UpdateClientContactV2Data extends Partial<CreateClientContactV2Data> {
+}
+export interface CreateEmployeeClientAllocationV2Data {
+    employeeId: string;
+    projectId?: string;
+    billingType: string;
+    billAmount?: number;
+    startDate: Date;
+    endDate?: Date;
+    status?: string;
+}
+export interface UpdateEmployeeClientAllocationV2Data extends Partial<CreateEmployeeClientAllocationV2Data> {
+}

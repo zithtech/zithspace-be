@@ -1,8 +1,13 @@
-import { Router } from 'express';
-import { TicketController } from '@/controllers/ticketController';
-import { TicketCodeController } from '@/controllers/ticketCodeController';
-import { authenticateToken, requireAuth, requireAdmin } from '@/middleware/auth';
-import { resolveTenant } from '@/middleware/tenantContext';
+import { Router } from "express";
+import { TicketController } from "@/controllers/ticketController";
+import { TicketCodeController } from "@/controllers/ticketCodeController";
+import {
+  authenticateToken,
+  requireAuth,
+} from "@/middleware/auth";
+import { requirePermission } from '@/middleware/permission';
+import { Permissions } from '@/types/permissions';
+import { resolveTenant } from "@/middleware/tenantContext";
 
 const router = Router();
 
@@ -18,7 +23,7 @@ router.use(requireAuth);
  * @desc    Get dashboard statistics (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/dashboard/stats', TicketController.getDashboardStats);
+router.get("/dashboard/stats", requirePermission(Permissions.TICKET_READ), TicketController.getDashboardStats);
 
 /**
  * @route   GET /api/tickets/kanban
@@ -26,7 +31,7 @@ router.get('/dashboard/stats', TicketController.getDashboardStats);
  * @access  Private (authenticated users within tenant)
  * @query   projectId, assigneeId, priority, search, limitPerColumn
  */
-router.get('/kanban', TicketController.getKanbanTickets);
+router.get("/kanban", requirePermission(Permissions.TICKET_READ), TicketController.getKanbanTickets);
 
 /**
  * @route   GET /api/tickets
@@ -34,7 +39,7 @@ router.get('/kanban', TicketController.getKanbanTickets);
  * @access  Private (authenticated users within tenant)
  * @query   page, limit, status, priority, projectId, assigneeId, createdById, search, sortBy, sortOrder, startDate, endDate
  */
-router.get('/', TicketController.getTickets);
+router.get("/", requirePermission(Permissions.TICKET_READ), TicketController.getTickets);
 
 /**
  * @route   GET /api/tickets/my
@@ -42,7 +47,7 @@ router.get('/', TicketController.getTickets);
  * @access  Private (authenticated users within tenant)
  * @query   page, limit, status, priority
  */
-router.get('/my', TicketController.getMyTickets);
+router.get("/my", requirePermission(Permissions.TICKET_READ), TicketController.getMyTickets);
 
 /**
  * @route   GET /api/tickets/epics
@@ -50,7 +55,7 @@ router.get('/my', TicketController.getMyTickets);
  * @access  Private (authenticated users within tenant)
  * @query   projectId, status
  */
-router.get('/epics', TicketController.getEpics);
+router.get("/epics", requirePermission(Permissions.TICKET_READ), TicketController.getEpics);
 
 /**
  * @route   GET /api/tickets/:id/epic-progress
@@ -58,7 +63,7 @@ router.get('/epics', TicketController.getEpics);
  * @access  Private (authenticated users within tenant)
  * @param   id - Epic ticket ID
  */
-router.get('/:id/epic-progress', TicketController.getEpicProgress);
+router.get("/:id/epic-progress", requirePermission(Permissions.TICKET_READ), TicketController.getEpicProgress);
 
 /**
  * @route   GET /api/tickets/:id/sub-tasks
@@ -66,7 +71,7 @@ router.get('/:id/epic-progress', TicketController.getEpicProgress);
  * @access  Private (authenticated users within tenant)
  * @param   id - Parent ticket ID
  */
-router.get('/:id/sub-tasks', TicketController.getSubTasks);
+router.get("/:id/sub-tasks", requirePermission(Permissions.TICKET_READ), TicketController.getSubTasks);
 
 /**
  * @route   GET /api/tickets/:id/comments
@@ -74,7 +79,7 @@ router.get('/:id/sub-tasks', TicketController.getSubTasks);
  * @access  Private (authenticated users within tenant)
  * @param   id - Ticket ID
  */
-router.get('/:id/comments', TicketController.getComments);
+router.get("/:id/comments", requirePermission(Permissions.TICKET_READ), TicketController.getComments);
 
 /**
  * @route   GET /api/tickets/:id/workflow
@@ -82,7 +87,7 @@ router.get('/:id/comments', TicketController.getComments);
  * @access  Private (authenticated users within tenant)
  * @param   id - Ticket ID
  */
-router.get('/:id/workflow', TicketController.getWorkflowSteps);
+router.get("/:id/workflow", requirePermission(Permissions.TICKET_READ), TicketController.getWorkflowSteps);
 
 /**
  * @route   GET /api/tickets/:id/activity
@@ -90,7 +95,7 @@ router.get('/:id/workflow', TicketController.getWorkflowSteps);
  * @access  Private (authenticated users within tenant)
  * @param   id - Ticket ID
  */
-router.get('/:id/activity', TicketController.getActivityLog);
+router.get("/:id/activity", requirePermission(Permissions.TICKET_READ), TicketController.getActivityLog);
 
 /**
  * @route   GET /api/tickets/:id
@@ -98,7 +103,7 @@ router.get('/:id/activity', TicketController.getActivityLog);
  * @access  Private (authenticated users within tenant)
  * @param   id - Ticket ID
  */
-router.get('/:id', TicketController.getTicketById);
+router.get("/:id", requirePermission(Permissions.TICKET_READ), TicketController.getTicketById);
 
 // Code Integration Routes
 
@@ -106,31 +111,39 @@ router.get('/:id', TicketController.getTicketById);
  * @route   GET /api/tickets/:id/code
  * @desc    Get all code metadata (branches, PRs)
  */
-router.get('/:id/code', TicketCodeController.getTicketCodeMetadata);
+router.get("/:id/code", requirePermission(Permissions.TICKET_READ), TicketCodeController.getTicketCodeMetadata);
 
 /**
  * @route   POST /api/tickets/:id/code/branches
  * @desc    Link a branch
  */
-router.post('/:id/code/branches', TicketCodeController.addBranch);
+router.post("/:id/code/branches", requirePermission(Permissions.TICKET_UPDATE), TicketCodeController.addBranch);
 
 /**
  * @route   DELETE /api/tickets/:id/code/branches/:branchId
  * @desc    Unlink a branch
  */
-router.delete('/:id/code/branches/:branchId', TicketCodeController.removeBranch);
+router.delete(
+  "/:id/code/branches/:branchId",
+  requirePermission(Permissions.TICKET_UPDATE),
+  TicketCodeController.removeBranch,
+);
 
 /**
  * @route   POST /api/tickets/:id/code/pull-requests
  * @desc    Link a PR
  */
-router.post('/:id/code/pull-requests', TicketCodeController.addPullRequest);
+router.post("/:id/code/pull-requests", requirePermission(Permissions.TICKET_UPDATE), TicketCodeController.addPullRequest);
 
 /**
  * @route   DELETE /api/tickets/:id/code/pull-requests/:prId
  * @desc    Unlink a PR
  */
-router.delete('/:id/code/pull-requests/:prId', TicketCodeController.removePullRequest);
+router.delete(
+  "/:id/code/pull-requests/:prId",
+  requirePermission(Permissions.TICKET_UPDATE),
+  TicketCodeController.removePullRequest,
+);
 
 /**
  * @route   POST /api/tickets/upload-image
@@ -138,7 +151,7 @@ router.delete('/:id/code/pull-requests/:prId', TicketCodeController.removePullRe
  * @access  Private (authenticated users within tenant)
  * @body    { image: string (base64), ticketId?: string }
  */
-router.post('/upload-image', TicketController.uploadImage);
+router.post("/upload-image", requirePermission(Permissions.TICKET_CREATE), TicketController.uploadImage);
 
 /**
  * @route   POST /api/tickets
@@ -146,7 +159,7 @@ router.post('/upload-image', TicketController.uploadImage);
  * @access  Private (authenticated users within tenant)
  * @body    CreateTicketData
  */
-router.post('/', TicketController.createTicket);
+router.post("/", requirePermission(Permissions.TICKET_CREATE), TicketController.createTicket);
 
 /**
  * @route   PUT /api/tickets/:id
@@ -155,7 +168,7 @@ router.post('/', TicketController.createTicket);
  * @param   id - Ticket ID
  * @body    UpdateTicketData
  */
-router.put('/:id', TicketController.updateTicket);
+router.put("/:id", requirePermission(Permissions.TICKET_UPDATE), TicketController.updateTicket);
 
 /**
  * @route   DELETE /api/tickets/:id
@@ -163,7 +176,7 @@ router.put('/:id', TicketController.updateTicket);
  * @access  Private (admin only)
  * @param   id - Ticket ID
  */
-router.delete('/:id', requireAdmin, TicketController.deleteTicket);
+router.delete("/:id", requirePermission(Permissions.TICKET_DELETE), TicketController.deleteTicket);
 
 /**
  * @route   PATCH /api/tickets/bulk/status
@@ -171,7 +184,7 @@ router.delete('/:id', requireAdmin, TicketController.deleteTicket);
  * @access  Private (authenticated users within tenant)
  * @body    { ticketIds: string[], status: string }
  */
-router.patch('/bulk/status', TicketController.bulkUpdateStatus);
+router.patch("/bulk/status", requirePermission(Permissions.TICKET_MANAGE), TicketController.bulkUpdateStatus);
 
 /**
  * @route   GET /api/tickets/projects/:projectId/stats
@@ -179,7 +192,11 @@ router.patch('/bulk/status', TicketController.bulkUpdateStatus);
  * @access  Private (project members only)
  * @param   projectId - Project ID
  */
-router.get('/projects/:projectId/stats', TicketController.getTicketStatsByProject);
+router.get(
+  "/projects/:projectId/stats",
+  requirePermission(Permissions.TICKET_READ),
+  TicketController.getTicketStatsByProject,
+);
 
 /**
  * @route   PUT /api/tickets/:id/workflow
@@ -188,7 +205,7 @@ router.get('/projects/:projectId/stats', TicketController.getTicketStatsByProjec
  * @param   id - Ticket ID
  * @body    { stepName: string, updates: any }
  */
-router.put('/:id/workflow', TicketController.updateWorkflowStep);
+router.put("/:id/workflow", requirePermission(Permissions.TICKET_UPDATE), TicketController.updateWorkflowStep);
 
 /**
  * @route   POST /api/tickets/:id/comments
@@ -197,7 +214,7 @@ router.put('/:id/workflow', TicketController.updateWorkflowStep);
  * @param   id - Ticket ID
  * @body    { comment: string, attachments?: any[] }
  */
-router.post('/:id/comments', TicketController.addComment);
+router.post("/:id/comments", requirePermission(Permissions.TICKET_UPDATE), TicketController.addComment);
 
 /**
  * @route   PUT /api/tickets/:ticketId/comments/:commentId
@@ -207,7 +224,7 @@ router.post('/:id/comments', TicketController.addComment);
  * @param   commentId - Comment ID
  * @body    { comment: string }
  */
-router.put('/:ticketId/comments/:commentId', TicketController.updateComment);
+router.put("/:ticketId/comments/:commentId", requirePermission(Permissions.TICKET_UPDATE), TicketController.updateComment);
 
 /**
  * @route   DELETE /api/tickets/:ticketId/comments/:commentId
@@ -216,7 +233,7 @@ router.put('/:ticketId/comments/:commentId', TicketController.updateComment);
  * @param   ticketId - Ticket ID
  * @param   commentId - Comment ID
  */
-router.delete('/:ticketId/comments/:commentId', TicketController.deleteComment);
+router.delete("/:ticketId/comments/:commentId", requirePermission(Permissions.TICKET_UPDATE), TicketController.deleteComment);
 
 /**
  * @route   GET /api/tickets/:id/links
@@ -224,7 +241,7 @@ router.delete('/:ticketId/comments/:commentId', TicketController.deleteComment);
  * @access  Private (authenticated users within tenant)
  * @param   id - Ticket ID
  */
-router.get('/:id/links', TicketController.getRelatedLinks);
+router.get("/:id/links", requirePermission(Permissions.TICKET_READ), TicketController.getRelatedLinks);
 
 /**
  * @route   POST /api/tickets/:id/links
@@ -233,7 +250,7 @@ router.get('/:id/links', TicketController.getRelatedLinks);
  * @param   id - Ticket ID
  * @body    { type, description, url }
  */
-router.post('/:id/links', TicketController.addRelatedLink);
+router.post("/:id/links", requirePermission(Permissions.TICKET_UPDATE), TicketController.addRelatedLink);
 
 /**
  * @route   PUT /api/tickets/:ticketId/links/:linkId
@@ -243,7 +260,7 @@ router.post('/:id/links', TicketController.addRelatedLink);
  * @param   linkId - Link ID
  * @body    { description, url }
  */
-router.put('/:ticketId/links/:linkId', TicketController.updateRelatedLink);
+router.put("/:ticketId/links/:linkId", requirePermission(Permissions.TICKET_UPDATE), TicketController.updateRelatedLink);
 
 /**
  * @route   DELETE /api/tickets/:ticketId/links/:linkId
@@ -252,7 +269,7 @@ router.put('/:ticketId/links/:linkId', TicketController.updateRelatedLink);
  * @param   ticketId - Ticket ID
  * @param   linkId - Link ID
  */
-router.delete('/:ticketId/links/:linkId', TicketController.deleteRelatedLink);
+router.delete("/:ticketId/links/:linkId", requirePermission(Permissions.TICKET_UPDATE), TicketController.deleteRelatedLink);
 
 /**
  * @route   POST /api/tickets/:id/attachments
@@ -261,7 +278,7 @@ router.delete('/:ticketId/links/:linkId', TicketController.deleteRelatedLink);
  * @param   id - Ticket ID
  * @body    { file: string (base64), fileName: string }
  */
-router.post('/:id/attachments', TicketController.uploadAttachment);
+router.post("/:id/attachments", requirePermission(Permissions.TICKET_UPDATE), TicketController.uploadAttachment);
 
 /**
  * @route   GET /api/tickets/:id/attachments
@@ -269,7 +286,7 @@ router.post('/:id/attachments', TicketController.uploadAttachment);
  * @access  Private (authenticated users within tenant)
  * @param   id - Ticket ID
  */
-router.get('/:id/attachments', TicketController.getAttachments);
+router.get("/:id/attachments", requirePermission(Permissions.TICKET_READ), TicketController.getAttachments);
 
 /**
  * @route   DELETE /api/tickets/:ticketId/attachments/:attachmentId
@@ -278,6 +295,10 @@ router.get('/:id/attachments', TicketController.getAttachments);
  * @param   ticketId - Ticket ID
  * @param   attachmentId - Attachment ID
  */
-router.delete('/:ticketId/attachments/:attachmentId', TicketController.deleteAttachment);
+router.delete(
+  "/:ticketId/attachments/:attachmentId",
+  requirePermission(Permissions.TICKET_UPDATE),
+  TicketController.deleteAttachment,
+);
 
 export default router;

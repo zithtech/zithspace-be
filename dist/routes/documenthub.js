@@ -4,6 +4,8 @@ const express_1 = require("express");
 const auth_1 = require("@/middleware/auth");
 const tenantContext_1 = require("@/middleware/tenantContext");
 const documentHubController_1 = require("@/controllers/documentHubController");
+const permission_1 = require("@/middleware/permission");
+const permissions_1 = require("@/types/permissions");
 const router = (0, express_1.Router)();
 // Apply tenant context resolution to all routes
 router.use(tenantContext_1.resolveTenant);
@@ -15,91 +17,49 @@ router.use(auth_1.requireAuth);
  * @desc    Get all document hubs
  * @access  Public (all users)
  */
-router.get("/", documentHubController_1.DocumentHubController.getAllDocumentHubs);
-/**
- * @route   GET /api/documenthub/trash
- * @desc    Get trash items (hubs and documents)
- * @access  Public (all users)
- */
-router.get("/trash", documentHubController_1.DocumentHubController.getTrash);
+router.get("/", (0, permission_1.requirePermission)(permissions_1.Permissions.DOCUMENT_READ), documentHubController_1.DocumentHubController.getAllDocumentHubs);
 /**
  * @route   POST /api/documenthub
  * @desc    Create documenthub (tenant-aware)
  * @access  Public (all users)
  * @body    CreateAttendanceData
  */
-router.post("/", documentHubController_1.DocumentHubController.createDocumentHub);
+router.post("/", (0, permission_1.requirePermission)(permissions_1.Permissions.DOCUMENT_CREATE), documentHubController_1.DocumentHubController.createDocumentHub);
 /**
  * @route   GET /api/documenthub/:id
  * @desc    Get documenthub by id
  * @access  Public (all users)
  */
-router.get("/:id", documentHubController_1.DocumentHubController.getDocumentHubById);
-/**
- * @route   DELETE /api/documenthub/:id
- * @desc    Soft delete documenthub
- * @access  Public (all users)
- */
-router.delete("/:id", documentHubController_1.DocumentHubController.deleteDocumentHub);
-/**
- * @route   POST /api/documenthub/:id/restore
- * @desc    Restore documenthub
- * @access  Public (all users)
- */
-router.post("/:id/restore", documentHubController_1.DocumentHubController.restoreDocumentHub);
+router.get("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.DOCUMENT_READ), documentHubController_1.DocumentHubController.getDocumentHubById);
 /**
  * @route   POST /api/documenthub/node
  * @desc    Create document tree node
  * @access  Public (all users)
  */
-router.post("/node", documentHubController_1.DocumentHubController.createTreeNode);
+router.post("/node", (0, permission_1.requirePermission)(permissions_1.Permissions.DOCUMENT_CREATE), documentHubController_1.DocumentHubController.createTreeNode);
 /**
  * @route   PUT /api/documenthub/node/:id
  * @desc    Update document tree node
  * @access  Public (all users)
  */
-router.put("/node/:id", documentHubController_1.DocumentHubController.updateTreeNode);
+router.put("/node/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.DOCUMENT_UPDATE), documentHubController_1.DocumentHubController.updateTreeNode);
 /**
  * @route   GET /api/documenthub/document/:id
  * @desc    Get document by id
  * @access  Public (all users)
  */
-router.get("/document/:id", documentHubController_1.DocumentHubController.getDocument);
+router.get("/document/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.DOCUMENT_READ), documentHubController_1.DocumentHubController.getDocument);
 /**
  * @route   PUT /api/documenthub/document/:id
  * @desc    Update document by id
  * @access  Public (all users)
  */
-router.put("/document/:id", documentHubController_1.DocumentHubController.updateDocument);
-/**
- * @route   DELETE /api/documenthub/document/:id
- * @desc    Soft delete document
- * @access  Public (all users)
- */
-router.delete("/document/:id", documentHubController_1.DocumentHubController.deleteDocument);
-/**
- * @route   POST /api/documenthub/document/:id/restore
- * @desc    Restore document
- * @access  Public (all users)
- */
-router.post("/document/:id/restore", documentHubController_1.DocumentHubController.restoreDocument);
+router.put("/document/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.DOCUMENT_UPDATE), documentHubController_1.DocumentHubController.updateDocument);
 /**
  * @route   GET /api/documenthub/document/:id/history
  * @desc    Get document history
  * @access  Public (all users)
  */
-router.get("/document/:id/history", documentHubController_1.DocumentHubController.getDocumentHistory);
-/**
- * @route   PUT /api/documenthub/document/:id/share
- * @desc    Set document visibility (private/internal/public)
- * @access  Authenticated users
- */
-router.put("/document/:id/share", documentHubController_1.DocumentHubController.shareDocument);
-/**
- * @route   DELETE /api/documenthub/document/:id/share
- * @desc    Revoke document sharing (set to private)
- * @access  Authenticated users
- */
-router.delete("/document/:id/share", documentHubController_1.DocumentHubController.revokeShare);
+router.get("/document/:id/history", (0, permission_1.requirePermission)(permissions_1.Permissions.DOCUMENT_READ), documentHubController_1.DocumentHubController.getDocumentHistory);
 exports.default = router;
 //# sourceMappingURL=documenthub.js.map

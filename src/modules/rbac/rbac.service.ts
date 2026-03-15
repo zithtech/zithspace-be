@@ -1,0 +1,239 @@
+import { prisma } from '@/config/database';
+
+interface CacheEntry {
+  permissions: Set<string>;
+  expiresAt: number;
+}
+
+/**
+ * RBACService — resolves a user's effective permission set.
+ *
+ * Permissions are loaded by joining:
+ *   UserRole → Role → RolePermission → Permission
+ *
+ * Results are cached per (tenantId:userId) for CACHE_TTL ms.
+ * Cache is invalidated explicitly whenever roles change.
+ *
+ * Special case: users with User.role === 'super_admin' bypass all checks —
+ * their permission set is treated as "all permissions" without a DB query.
+ */
+export class RBACService {
+  private static cache = new Map<string, CacheEntry>();
+  private static readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+  // ─── Public API ────────────────────────────────────────────────────────────
+
+  /**
+   * Returns the full permission set for a user as a Set<string>.
+   * Uses cache; loads from DB on miss.
+   */
+  static async getUserPermissions(
+    userId: string,
+    tenantId: string,
+    legacyRole?: string,
+  ): Promise<Set<string>> {
+    // Super admin shortcut — skip cache and DB
+    if (legacyRole === 'super_admin') {
+      return RBACService.getSuperAdminPermissions();
+    }
+
+    const key = `${tenantId}:${userId}`;
+    const cached = RBACService.cache.get(key);
+
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.permissions;
+    }
+
+    const permissions = await RBACService.loadFromDB(userId, tenantId, legacyRole);
+    RBACService.setCache(key, permissions);
+    return permissions;
+  }
+
+  /**
+   * Returns true if the user has the given permission.
+   */
+  static async hasPermission(
+    userId: string,
+    tenantId: string,
+    permission: string,
+    legacyRole?: string,
+  ): Promise<boolean> {
+    const perms = await RBACService.getUserPermissions(userId, tenantId, legacyRole);
+    return perms.has(permission);
+  }
+
+  /**
+   * Returns true if the user has ALL of the given permissions.
+   */
+  static async hasAllPermissions(
+    userId: string,
+    tenantId: string,
+    permissions: string[],
+    legacyRole?: string,
+  ): Promise<boolean> {
+    const perms = await RBACService.getUserPermissions(userId, tenantId, legacyRole);
+    return permissions.every((p) => perms.has(p));
+  }
+
+  /**
+   * Returns true if the user has ANY of the given permissions.
+   */
+  static async hasAnyPermission(
+    userId: string,
+    tenantId: string,
+    permissions: string[],
+    legacyRole?: string,
+  ): Promise<boolean> {
+    const perms = await RBACService.getUserPermissions(userId, tenantId, legacyRole);
+    return permissions.some((p) => perms.has(p));
+  }
+
+  /**
+   * Invalidates the cache for a specific user.
+   * Call this whenever a user's roles are changed.
+   */
+  static invalidateUser(userId: string, tenantId: string): void {
+    RBACService.cache.delete(`${tenantId}:${userId}`);
+  }
+
+  /**
+   * Invalidates the cache for ALL users that have a given role.
+   * Call this whenever a role's permissions are changed.
+   */
+  static async invalidateRole(roleId: string): Promise<void> {
+    const userRoles = await prisma.userRole.findMany({
+      where: { roleId },
+      select: { userId: true, tenantId: true },
+    });
+
+    for (const { userId, tenantId } of userRoles) {
+      RBACService.invalidateUser(userId, tenantId);
+    }
+  }
+
+  /**
+   * Clears the entire cache. Use sparingly (e.g. permission list changes).
+   */
+  static clearCache(): void {
+    RBACService.cache.clear();
+  }
+
+  // ─── Internal helpers ──────────────────────────────────────────────────────
+
+  private static async loadFromDB(
+    userId: string,
+    tenantId: string,
+    legacyRole?: string,
+  ): Promise<Set<string>> {
+    const permissions = new Set<string>();
+
+    // Load from the new RBAC tables
+    const userRoles = await prisma.userRole.findMany({
+      where: {
+        userId,
+        tenantId,
+        role: { isActive: true },
+        OR: [
+          { expiresAt: null },
+          { expiresAt: { gt: new Date() } },
+        ],
+      },
+      include: {
+        role: {
+          include: {
+            rolePermissions: {
+              include: { permission: true },
+            },
+          },
+        },
+      },
+    });
+
+    for (const ur of userRoles) {
+      for (const rp of ur.role.rolePermissions) {
+        permissions.add(rp.permission.name);
+      }
+    }
+
+    // Fallback: if the user has no roles yet (pre-migration), apply legacy defaults
+    if (permissions.size === 0 && legacyRole) {
+      const legacyPerms = RBACService.getLegacyPermissions(legacyRole);
+      for (const p of legacyPerms) permissions.add(p);
+    }
+
+    return permissions;
+  }
+
+  private static async getSuperAdminPermissions(): Promise<Set<string>> {
+    // Fetch all permission names from DB (or return wildcard shorthand)
+    const all = await prisma.permission.findMany({ select: { name: true } });
+    return new Set(all.map((p) => p.name));
+  }
+
+  private static setCache(key: string, permissions: Set<string>): void {
+    RBACService.cache.set(key, {
+      permissions,
+      expiresAt: Date.now() + RBACService.CACHE_TTL,
+    });
+  }
+
+  /**
+   * Legacy fallback permissions for users not yet migrated to UserRole table.
+   * Mirrors the seed script defaults.
+   */
+  private static getLegacyPermissions(role: string): string[] {
+    switch (role) {
+      case 'admin':
+        return ADMIN_DEFAULT_PERMISSIONS;
+      case 'user':
+        return USER_DEFAULT_PERMISSIONS;
+      default:
+        return [];
+    }
+  }
+}
+
+// ─── Default permission sets (mirrors seed-rbac.ts) ──────────────────────────
+
+export const ADMIN_DEFAULT_PERMISSIONS: string[] = [
+  'user.create', 'user.read', 'user.update', 'user.delete', 'user.manage',
+  'project.create', 'project.read', 'project.update', 'project.delete', 'project.manage',
+  'ticket.create', 'ticket.read', 'ticket.update', 'ticket.delete',
+  'ticket.assign', 'ticket.archive', 'ticket.manage',
+  'attendance.create', 'attendance.read', 'attendance.update', 'attendance.manage',
+  'leave.create', 'leave.read', 'leave.update', 'leave.delete',
+  'leave.approve', 'leave.manage',
+  'shift.create', 'shift.read', 'shift.update', 'shift.delete', 'shift.manage',
+  'invoice.create', 'invoice.read', 'invoice.update', 'invoice.delete', 'invoice.manage',
+  'transaction.create', 'transaction.read', 'transaction.update', 'transaction.manage',
+  'client.create', 'client.read', 'client.update', 'client.delete', 'client.manage',
+  'settings.read', 'settings.update',
+  'role.read', 'role.assign',
+  'report.read',
+  'reimbursement.create', 'reimbursement.read', 'reimbursement.update',
+  'reimbursement.approve', 'reimbursement.manage',
+  'salary.read',
+  'document.create', 'document.read', 'document.update', 'document.delete', 'document.manage',
+  'onboarding.create', 'onboarding.read', 'onboarding.update', 'onboarding.manage',
+  'timesheet.create', 'timesheet.read', 'timesheet.update', 'timesheet.approve', 'timesheet.manage',
+  'org.read', 'org.manage',
+  'daily_update.create', 'daily_update.read', 'daily_update.manage',
+];
+
+export const USER_DEFAULT_PERMISSIONS: string[] = [
+  'user.read',
+  'project.read',
+  'ticket.create', 'ticket.read', 'ticket.update',
+  'attendance.read', 'attendance.update',
+  'leave.create', 'leave.read', 'leave.update',
+  'invoice.read',
+  'settings.read',
+  'report.read',
+  'transaction.read',
+  'reimbursement.create', 'reimbursement.read',
+  'document.create', 'document.read', 'document.update',
+  'onboarding.read',
+  'timesheet.create', 'timesheet.read', 'timesheet.update',
+  'org.read',
+  'daily_update.create', 'daily_update.read',
+];
