@@ -48,6 +48,7 @@ import documentHubRoutes from "@/routes/documenthub";
 import channelRoutes from "@/routes/channels";
 import messageRoutes from "@/routes/messages";
 import timesheetRoutes from "@/routes/timesheet";
+import timeTrackingRoutes from "@/routes/timeTracking";
 
 
 
@@ -199,6 +200,7 @@ app.use("/api/channels/:channelId/messages", messageRoutes);
 app.use("/api/files", fileDownloadRoutes);
 app.use('/api/email-history', emailHistoryRoutes);
 app.use("/api/timesheets", timesheetRoutes);
+app.use("/api/time-tracking", timeTrackingRoutes);
 
 // Public document access (no auth required)
 import { DocumentHubController } from "@/controllers/documentHubController";
