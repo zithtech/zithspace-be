@@ -8,6 +8,9 @@ import {
   updateRequisition,
   deleteRequisition,
   deleteRequisitions,
+  uploadAttachment,
+  getAttachments,
+  deleteAttachment,
 } from "../controllers/jobRequisition.controller";
 
 const router = Router();
@@ -25,5 +28,10 @@ router.get("/:id", getRequisitionById);
 router.put("/:id", updateRequisition);
 router.delete("/:id", deleteRequisition);
 router.delete("/bulk/delete", deleteRequisitions);
+
+// Attachment routes
+router.post("/:id/attachments", uploadAttachment);
+router.get("/:id/attachments", getAttachments);
+router.delete("/:id/attachments/:attachmentId", deleteAttachment);
 
 export default router;

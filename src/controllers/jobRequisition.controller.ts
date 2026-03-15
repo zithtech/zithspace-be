@@ -1,5 +1,7 @@
 import { Response } from "express";
 import { tenantAwarePrisma } from "@/config/database";
+import { uploadRequisitionAttachmentToR2, deleteFileFromR2 } from "@/utils/r2Client";
+import { nanoid } from "nanoid";
 import {
   AuthRequest,
   ApiResponse,
@@ -488,6 +490,255 @@ export const deleteRequisitions = async (
     res.status(500).json({
       success: false,
       error: "Failed to delete job requisitions",
+    } as ApiResponse);
+  }
+};
+
+/**
+ * Upload an attachment for a Job Requisition
+ */
+export const uploadAttachment = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    if (!req.tenantId || !req.user) {
+      res.status(403).json({
+        success: false,
+        error: "Tenant context and authentication required",
+      } as ApiResponse);
+      return;
+    }
+
+    const { id } = req.params;
+    const { file, fileName, category } = req.body;
+
+
+
+    if (!file || !fileName || !category) {
+      res.status(400).json({
+        success: false,
+        error: "File, fileName, and category are required",
+      } as ApiResponse);
+      return;
+    }
+
+    // Verify requisition exists
+    const requisition = await tenantAwarePrisma.withTenant(
+      req.tenantId,
+      async (client) => {
+        return await client.jobRequisition.findFirst({
+          where: { id, tenantId: req.tenantId },
+        });
+      }
+    );
+
+    if (!requisition) {
+      res.status(404).json({
+        success: false,
+        error: "Job requisition not found",
+      } as ApiResponse);
+      return;
+    }
+
+    // Upload to R2 under requisition_attachments folder
+    const { fileUrl, fileSize, fileType } = await uploadRequisitionAttachmentToR2(
+      file,
+      fileName,
+      req.tenantId,
+      id,
+      category
+    );
+    
+    // Wait for the R2 upload, then create metadata
+    const newAttachment = {
+      id: nanoid(),
+      requisitionId: id,
+      fileName,
+      fileUrl,
+      fileSize,
+      fileType,
+      category,
+      uploadedAt: new Date().toISOString(),
+      uploadedBy: {
+        id: req.user.id,
+        name: req.user.name,
+        workEmail: (req.user as any).workEmail || req.user.email || "",
+        position: (req.user as any).role || "" // We don't have position name easily available, using role
+      },
+      r2Key: fileUrl // R2 utils `deleteFileFromR2` extracts key from URL
+    };
+
+    // We need to parse existing attachments, update it, and save it
+    let currentAttachments: any[] = [];
+    if (requisition.attachments) {
+      if (typeof requisition.attachments === 'string') {
+        try { currentAttachments = JSON.parse(requisition.attachments); } catch(e) { currentAttachments = []; }
+      } else if (Array.isArray(requisition.attachments)) {
+        currentAttachments = requisition.attachments as any[];
+      }
+    }
+    
+    // Replace old attachment of same category, or add new
+    const updatedAttachments = currentAttachments.filter(a => a.category !== category);
+    updatedAttachments.push(newAttachment);
+
+    await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+      return await client.jobRequisition.update({
+        where: { id },
+        data: {
+          attachments: updatedAttachments,
+        },
+      });
+    });
+
+    res.status(201).json({ success: true, data: newAttachment });
+  } catch (error: any) {
+    console.error("Error uploading job requisition attachment:", error);
+    if (error.message && error.message.includes("5MB")) {
+      res.status(413).json({ success: false, error: "File too large. Max 5MB." });
+      return;
+    }
+    res.status(500).json({
+      success: false,
+      error: "Failed to upload attachment",
+    } as ApiResponse);
+  }
+};
+
+/**
+ * Get all attachments for a Job Requisition
+ */
+export const getAttachments = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    if (!req.tenantId || !req.user) {
+      res.status(403).json({
+        success: false,
+        error: "Tenant context and authentication required",
+      } as ApiResponse);
+      return;
+    }
+
+    const { id } = req.params;
+
+    const requisition = await tenantAwarePrisma.withTenant(
+      req.tenantId,
+      async (client) => {
+        return await client.jobRequisition.findFirst({
+          where: { id, tenantId: req.tenantId },
+          select: { attachments: true },
+        });
+      }
+    );
+
+    if (!requisition) {
+      res.status(404).json({
+        success: false,
+        error: "Job requisition not found",
+      } as ApiResponse);
+      return;
+    }
+
+    let attachments: any[] = [];
+    if (requisition.attachments) {
+      if (typeof requisition.attachments === 'string') {
+        try { attachments = JSON.parse(requisition.attachments); } catch(e) { attachments = []; }
+      } else if (Array.isArray(requisition.attachments)) {
+        attachments = requisition.attachments as any[];
+      }
+    }
+
+    res.status(200).json({ success: true, data: attachments });
+  } catch (error) {
+    console.error("Error fetching job requisition attachments:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch attachments",
+    } as ApiResponse);
+  }
+};
+
+/**
+ * Delete an attachment from a Job Requisition
+ */
+export const deleteAttachment = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    if (!req.tenantId || !req.user) {
+      res.status(403).json({
+        success: false,
+        error: "Tenant context and authentication required",
+      } as ApiResponse);
+      return;
+    }
+
+    const { id, attachmentId } = req.params;
+
+    const requisition = await tenantAwarePrisma.withTenant(
+      req.tenantId,
+      async (client) => {
+        return await client.jobRequisition.findFirst({
+          where: { id, tenantId: req.tenantId },
+        });
+      }
+    );
+
+    if (!requisition) {
+      res.status(404).json({
+        success: false,
+        error: "Job requisition not found",
+      } as ApiResponse);
+      return;
+    }
+
+    let currentAttachments: any[] = [];
+    if (requisition.attachments) {
+      if (typeof requisition.attachments === 'string') {
+        try { currentAttachments = JSON.parse(requisition.attachments); } catch(e) { currentAttachments = []; }
+      } else if (Array.isArray(requisition.attachments)) {
+        currentAttachments = requisition.attachments as any[];
+      }
+    }
+
+    const attachmentToDelete = currentAttachments.find(a => a.id === attachmentId);
+    
+    if (!attachmentToDelete) {
+      res.status(404).json({ success: false, error: "Attachment not found" });
+      return;
+    }
+
+    // Try deleting from R2
+    try {
+      if (attachmentToDelete.fileUrl) {
+        await deleteFileFromR2(attachmentToDelete.fileUrl, req.tenantId);
+      }
+    } catch (r2Error) {
+      console.error("Warning: Failed to delete file from R2, proceeding with DB removal", r2Error);
+      // We continue to remove it from DB even if R2 fails (e.g., file already gone)
+    }
+
+    const updatedAttachments = currentAttachments.filter(a => a.id !== attachmentId);
+
+    await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+      return await client.jobRequisition.update({
+        where: { id },
+        data: {
+          attachments: updatedAttachments,
+        },
+      });
+    });
+
+    res.status(200).json({ success: true, message: "Attachment deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting job requisition attachment:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to delete attachment",
     } as ApiResponse);
   }
 };
