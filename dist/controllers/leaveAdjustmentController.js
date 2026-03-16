@@ -15,7 +15,7 @@ const createLeaveAdjustment = async (req, res) => {
                 error: "Unauthorized or missing tenant context",
             });
         }
-        const { employeeId, leaveTypeId, adjustmentType, amount, unit, reason, approvedById, compOffWorkDate, expiryDate, } = req.body;
+        const { userId, employeeId, leaveTypeId, adjustmentType, amount, unit, reason, approvedById, compOffWorkDate, expiryDate, } = req.body;
         const numericAmount = parseFloat(amount);
         if (isNaN(numericAmount) || numericAmount < 0) {
             return res.status(400).json({
@@ -26,6 +26,7 @@ const createLeaveAdjustment = async (req, res) => {
             const adjustment = await tx.leaveAdjustment.create({
                 data: {
                     tenantId,
+                    userId,
                     employeeId,
                     leaveTypeId,
                     adjustmentType,
