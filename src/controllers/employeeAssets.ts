@@ -20,24 +20,24 @@ export async function createEmployeeAssets(
 
       // If image is a base64 string, upload it to R2
       if (asset.image && asset.image.startsWith("data:")) {
-        imageUrl = await uploadEmployeeAssetToR2(
-          asset.image,
-          asset.imageName || "asset.png",
-          req.tenantId!,
+        imageUrl = await uploadEmployeeAssetToR2({
+          base64: asset.image,
+          fileName: asset.imageName || "asset.png",
+          tenantId: req.tenantId!,
           employeeId,
-        );
+        });
       }
 
       await tx.employeeAsset.create({
         data: {
           employeeId,
-          itemName: asset.item,
-          brandName: asset.brand,
-          modelName: asset.model,
-          modelNumber: asset.modelNumber,
-          uploadImage: imageUrl,
-          createdById: employeeId,
-          updatedById: employeeId,
+          itemName: asset.item || null,
+          brandName: asset.brand || null,
+          modelName: asset.model || null,
+          modelNumber: asset.modelNumber || null,
+          uploadImage: imageUrl || null,
+          createdById: employeeId || null,
+          updatedById: employeeId || null,
         },
       });
     }
@@ -220,12 +220,12 @@ export async function updateEmployeeAsset(
 
     // If a new image is provided as base64, upload it to R2
     if (asset.image && asset.image.startsWith("data:")) {
-      imageUrl = await uploadEmployeeAssetToR2(
-        asset.image,
-        asset.imageName || "asset.png",
-        req.tenantId!,
+      imageUrl = await uploadEmployeeAssetToR2({
+        base64: asset.image,
+        fileName: asset.imageName || "asset.png",
+        tenantId: req.tenantId!,
         employeeId,
-      );
+      });
     } else if (asset.image) {
       // If it's already a URL, use it
       imageUrl = asset.image;
@@ -293,12 +293,12 @@ export async function updateEmployeeAssets(
         let imageUrl = asset.image;
 
         if (asset.image && asset.image.startsWith("data:")) {
-          imageUrl = await uploadEmployeeAssetToR2(
-            asset.image,
-            asset.imageName || "asset.png",
-            req.tenantId!,
+          imageUrl = await uploadEmployeeAssetToR2({
+            base64: asset.image,
+            fileName: asset.imageName || "asset.png",
+            tenantId: req.tenantId!,
             employeeId,
-          );
+          });
         }
 
         await prisma.employeeAsset.create({
@@ -327,12 +327,12 @@ export async function updateEmployeeAssets(
         let imageUrl = existingAsset.uploadImage;
 
         if (asset.image && asset.image.startsWith("data:")) {
-          imageUrl = await uploadEmployeeAssetToR2(
-            asset.image,
-            asset.imageName || "asset.png",
-            req.tenantId!,
+          imageUrl = await uploadEmployeeAssetToR2({
+            base64: asset.image,
+            fileName: asset.imageName || "asset.png",
+            tenantId: req.tenantId!,
             employeeId,
-          );
+          });
         } else if (asset.image) {
           imageUrl = asset.image;
         }

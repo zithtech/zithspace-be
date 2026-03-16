@@ -1,4 +1,6 @@
-import "module-alias/register";
+if (process.env.NODE_ENV !== "development") {
+  require("module-alias/register");
+}
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
@@ -8,8 +10,6 @@ import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
 import session from "express-session";
-
-
 
 // Import configurations
 import { connectDatabase, disconnectDatabase } from "@/config/database";
@@ -26,6 +26,7 @@ import projectRoutes from "@/routes/projects";
 import ticketRoutes from "@/routes/tickets";
 import attendanceRoutes from "@/routes/attendance";
 import clientRoutes from "@/routes/clients";
+import clientV2Routes from "@/routes/clientsV2";
 import memberRoutes from "@/routes/members";
 import shiftRoutes from "@/routes/shifts";
 import transactionRoutes from "@/routes/transactions";
@@ -60,6 +61,9 @@ import employeeTimelineRoutes from "@/routes/employeeTimeline";
 
 // main
 import employeeOnboardingRoutes from "@/routes/onboardingRoutes";
+import newProfileRoutes from "@/routes/auth";
+import publicTicketRoutes from "@/routes/publicTickets";
+import employeeSettingsRoutes from "./routes/employeeSettingsRoutes";
 
 import timesheetRoutes from "@/routes/timesheet";
 
@@ -72,32 +76,37 @@ import repositoryRoutes from "@/routes/repositoryRoutes";
 import departmentRoutes from "@/routes/departmentRoutes";
 import subDepartmentRoutes from "@/routes/subDepartmentRoutes";
 import positionRoutes from "@/routes/positionRoutes";
-import calenderRoutes from "@/routes/calendar"
+import calendarRoutes from "@/routes/calendar"
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
 import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
 import leaveRequestRoutes from "@/routes/leaveRequestRoutes";
 import leaveBalanceRoutes from "@/routes/leaveBalanceRoutes";
 
 
+import rbacRoutes from "@/routes/rbac";
 // Load environment
 dotenv.config();
+console.log("🚀 API Starting up...");
+console.log("📅 Mounting calendar routes at /api/calendar");
 // Create Express application
 const app = express();
 
 // Body parsing middleware
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(express.json({ limit: "30mb" }));
+app.use(express.urlencoded({ extended: true, limit: "30mb" }));
 
-app.use(session({
-  secret: process.env.SESSION_SECRET || "your-fallback-secret-key",
-  resave: false,
-  saveUninitialized: false,
-  cookie: {
-    secure: process.env.NODE_ENV === "production", // true in production
-    httpOnly: true,
-    maxAge: 24 * 60 * 60 * 1000 // 24 hours
-  }
-}));
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || "your-fallback-secret-key",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === "production", // true in production
+      httpOnly: true,
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    },
+  }),
+);
 
 // Connect to PostgreSQL
 
@@ -173,9 +182,6 @@ app.get("/health", (req, res) => {
   });
 });
 
-
-
-
 // app.use("/api", optionalTenantContext);
 
 // API routes
@@ -183,15 +189,18 @@ app.use("/api/leave-adjustments", leaveAdjustmentRoutes);
 app.use("/api/company-government-holidays", companyGovernmentHolidayRouter);
 app.use("/api/leave-origins", leaveOriginRoutes);
 app.use("/api/fixed-holidays", fixedHolidayRoutes);
+app.get("/api/direct-test", (req, res) => {
+  res.json({ success: true, message: "Direct app.get works" });
+});
 app.use("/api/auth", authRoutes);
 app.use("/api/tenants", tenantRoutes);
+app.use("/api/calendar", calendarRoutes);
 app.use("/api/projects", projectRoutes);
-import publicTicketRoutes from "@/routes/publicTickets";
-
 app.use("/api/public/tickets", publicTicketRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/clients", clientRoutes);
+app.use("/api/clients-v2", clientV2Routes);
 app.use("/api/members", memberRoutes);
 app.use("/api/shifts", shiftRoutes);
 app.use("/api/transactions", transactionRoutes);
@@ -224,7 +233,7 @@ app.use("/api/channels", channelRoutes);
 app.use("/api/channels/:channelId/messages", messageRoutes);
 app.use("/api/email-history", emailHistoryRoutes);
 app.use("/api/timesheets", timesheetRoutes);
-app.use("/api/zoho", calenderRoutes);
+app.use("/api/zoho", calendarRoutes);
 app.use("/api/leave-allocation", leaveAllocationRoutes);
 app.use("/api/leave-request", leaveRequestRoutes);
 app.use("/api/leave-balances", leaveBalanceRoutes);
@@ -242,6 +251,11 @@ app.use("/api/employee-timelines", employeeTimelineRoutes);
 //app.use("/api/employee-employment-details", employeeEmploymentDetailsRoutes);
 // main
 app.use("/api/onboarding", employeeOnboardingRoutes);
+app.use("/api/profile/new", newProfileRoutes);
+app.use("/api/employeesettings", employeeSettingsRoutes);
+
+// RBAC management API
+app.use("/api/rbac", rbacRoutes);
 
 // app.use("/api/addresses", addressRoutes);
 //app.use("/api/employee_address", addressRoutes);
@@ -434,7 +448,6 @@ const gracefulShutdown = async (signal: string) => {
 
     try {
       await disconnectDatabase();
-
 
       console.log("Database connections closed");
     } catch (error) {

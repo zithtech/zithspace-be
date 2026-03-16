@@ -1,5 +1,10 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.encrypt = encrypt;
+exports.decrypt = decrypt;
 exports.createBankPayrollDetails = createBankPayrollDetails;
 exports.getBankPayrollDetails = getBankPayrollDetails;
 exports.getAllBankPayrollDetails = getAllBankPayrollDetails;
@@ -8,6 +13,34 @@ exports.deleteBankPayrollDetails = deleteBankPayrollDetails;
 exports.deleteBankDetails = deleteBankDetails;
 exports.deletePayrollDetails = deletePayrollDetails;
 const database_1 = require("@/config/database");
+const crypto_1 = __importDefault(require("crypto"));
+const algorithm = "aes-256-cbc";
+const secretKey = process.env.SECRET_KEY; // 32 chars
+function encrypt(text) {
+    const iv = crypto_1.default.randomBytes(16);
+    const cipher = crypto_1.default.createCipheriv(algorithm, Buffer.from(secretKey), iv);
+    let encrypted = cipher.update(text);
+    encrypted = Buffer.concat([encrypted, cipher.final()]);
+    return iv.toString("base64") + ":" + encrypted.toString("base64");
+}
+function decrypt(text) {
+    try {
+        const parts = text.split(":");
+        if (parts.length !== 2) {
+            return text;
+        }
+        const iv = Buffer.from(parts.shift(), "base64");
+        const encryptedText = Buffer.from(parts.join(":"), "base64");
+        const decipher = crypto_1.default.createDecipheriv(algorithm, Buffer.from(secretKey), iv);
+        let decrypted = decipher.update(encryptedText);
+        decrypted = Buffer.concat([decrypted, decipher.final()]);
+        return decrypted.toString();
+    }
+    catch (error) {
+        console.error("Decryption failed for text, returning original. Error:", error);
+        return text;
+    }
+}
 // ✅ CREATE Bank & Payroll Details
 async function createBankPayrollDetails(req, employeeId, tx = database_1.prisma) {
     try {
@@ -16,25 +49,31 @@ async function createBankPayrollDetails(req, employeeId, tx = database_1.prisma)
         if (!bank || Object.keys(bank).length === 0) {
             return;
         }
+        const encrtyptedAccountNumber = encrypt(bank.accountNumber);
+        const encrtyptedIfscCode = encrypt(bank.ifscCode);
+        // Verify employee exists and belongs to tenant
         await tx.employeeBankDetail.create({
             data: {
                 employeeId,
                 bankName: bank.bankName,
                 branchName: bank.branchName,
                 accountHolderName: bank.accountHolderName,
-                accountNumber: bank.accountNumber,
+                accountNumber: encrtyptedAccountNumber,
                 accountType: bank.accountType,
-                ifscCode: bank.ifscCode,
+                ifscCode: encrtyptedIfscCode,
                 createdById: employeeId,
                 updatedById: employeeId,
             },
         });
+        const encrtyptedUanNumber = encrypt(bank.uanNumber);
+        const encrtyptedPfNumber = encrypt(bank.pfNumber);
+        const encrtyptedEsiNumber = encrypt(bank.esiNumber);
         await tx.employeePayrollDetail.create({
             data: {
                 employeeId,
-                uanNumber: bank.uanNumber,
-                pfNumber: bank.pfNumber,
-                esiNumber: bank.esiNumber,
+                uanNumber: encrtyptedUanNumber,
+                pfNumber: encrtyptedPfNumber,
+                esiNumber: encrtyptedEsiNumber,
                 taxRegime: bank.taxRegime,
                 paymentType: bank.paymentType,
                 createdById: employeeId,
@@ -76,12 +115,20 @@ async function getBankPayrollDetails(req, employeeId) {
             bankName: bankDetails?.bankName || null,
             branchName: bankDetails?.branchName || null,
             accountHolderName: bankDetails?.accountHolderName || null,
-            accountNumber: bankDetails?.accountNumber || null,
+            accountNumber: bankDetails?.accountNumber
+                ? decrypt(bankDetails.accountNumber)
+                : null,
             accountType: bankDetails?.accountType || null,
-            ifscCode: bankDetails?.ifscCode || null,
-            uanNumber: payrollDetails?.uanNumber || null,
-            pfNumber: payrollDetails?.pfNumber || null,
-            esiNumber: payrollDetails?.esiNumber || null,
+            ifscCode: bankDetails?.ifscCode ? decrypt(bankDetails.ifscCode) : null,
+            uanNumber: payrollDetails?.uanNumber
+                ? decrypt(payrollDetails.uanNumber)
+                : null,
+            pfNumber: payrollDetails?.pfNumber
+                ? decrypt(payrollDetails.pfNumber)
+                : null,
+            esiNumber: payrollDetails?.esiNumber
+                ? decrypt(payrollDetails.esiNumber)
+                : null,
             taxRegime: payrollDetails?.taxRegime || null,
             paymentType: payrollDetails?.paymentType || null,
         };
@@ -120,12 +167,20 @@ async function getAllBankPayrollDetails(req) {
                 bankName: bankDetail?.bankName || null,
                 branchName: bankDetail?.branchName || null,
                 accountHolderName: bankDetail?.accountHolderName || null,
-                accountNumber: bankDetail?.accountNumber || null,
+                accountNumber: bankDetail?.accountNumber
+                    ? decrypt(bankDetail.accountNumber)
+                    : null,
                 accountType: bankDetail?.accountType || null,
-                ifscCode: bankDetail?.ifscCode || null,
-                uanNumber: payrollDetail?.uanNumber || null,
-                pfNumber: payrollDetail?.pfNumber || null,
-                esiNumber: payrollDetail?.esiNumber || null,
+                ifscCode: bankDetail?.ifscCode ? decrypt(bankDetail.ifscCode) : null,
+                uanNumber: payrollDetail?.uanNumber
+                    ? decrypt(payrollDetail.uanNumber)
+                    : null,
+                pfNumber: payrollDetail?.pfNumber
+                    ? decrypt(payrollDetail.pfNumber)
+                    : null,
+                esiNumber: payrollDetail?.esiNumber
+                    ? decrypt(payrollDetail.esiNumber)
+                    : null,
                 taxRegime: payrollDetail?.taxRegime || null,
                 paymentType: payrollDetail?.paymentType || null,
             };
@@ -155,6 +210,12 @@ async function updateBankPayrollDetails(req, employeeId, tx = database_1.prisma)
         if (!employee) {
             throw new Error("Employee not found");
         }
+        const encrtyptedAccountNumber = bank.accountNumber
+            ? encrypt(bank.accountNumber)
+            : bank.accountNumber;
+        const encrtyptedIfscCode = bank.ifscCode
+            ? encrypt(bank.ifscCode)
+            : bank.ifscCode;
         // ✅ Update or Create Bank Details
         const existingBankDetails = await tx.employeeBankDetail.findFirst({
             where: { employeeId },
@@ -167,9 +228,9 @@ async function updateBankPayrollDetails(req, employeeId, tx = database_1.prisma)
                     bankName: bank.bankName,
                     branchName: bank.branchName,
                     accountHolderName: bank.accountHolderName,
-                    accountNumber: bank.accountNumber,
+                    accountNumber: encrtyptedAccountNumber,
                     accountType: bank.accountType,
-                    ifscCode: bank.ifscCode,
+                    ifscCode: encrtyptedIfscCode,
                     updatedById: employeeId,
                 },
             });
@@ -181,14 +242,23 @@ async function updateBankPayrollDetails(req, employeeId, tx = database_1.prisma)
                     bankName: bank.bankName,
                     branchName: bank.branchName,
                     accountHolderName: bank.accountHolderName,
-                    accountNumber: bank.accountNumber,
+                    accountNumber: encrtyptedAccountNumber,
                     accountType: bank.accountType,
-                    ifscCode: bank.ifscCode,
+                    ifscCode: encrtyptedIfscCode,
                     createdById: employeeId,
                     updatedById: employeeId,
                 },
             });
         }
+        const encrtyptedUanNumber = bank.uanNumber
+            ? encrypt(bank.uanNumber)
+            : bank.uanNumber;
+        const encrtyptedPfNumber = bank.pfNumber
+            ? encrypt(bank.pfNumber)
+            : bank.pfNumber;
+        const encrtyptedEsiNumber = bank.esiNumber
+            ? encrypt(bank.esiNumber)
+            : bank.esiNumber;
         // ✅ Update or Create Payroll Details
         const existingPayrollDetails = await tx.employeePayrollDetail.findFirst({
             where: { employeeId },
@@ -197,9 +267,9 @@ async function updateBankPayrollDetails(req, employeeId, tx = database_1.prisma)
             await tx.employeePayrollDetail.update({
                 where: { id: existingPayrollDetails.id },
                 data: {
-                    uanNumber: bank.uanNumber,
-                    pfNumber: bank.pfNumber,
-                    esiNumber: bank.esiNumber,
+                    uanNumber: encrtyptedUanNumber,
+                    pfNumber: encrtyptedPfNumber,
+                    esiNumber: encrtyptedEsiNumber,
                     taxRegime: bank.taxRegime,
                     paymentType: bank.paymentType,
                     updatedById: employeeId,
@@ -210,9 +280,9 @@ async function updateBankPayrollDetails(req, employeeId, tx = database_1.prisma)
             await tx.employeePayrollDetail.create({
                 data: {
                     employeeId,
-                    uanNumber: bank.uanNumber,
-                    pfNumber: bank.pfNumber,
-                    esiNumber: bank.esiNumber,
+                    uanNumber: encrtyptedUanNumber,
+                    pfNumber: encrtyptedPfNumber,
+                    esiNumber: encrtyptedEsiNumber,
                     taxRegime: bank.taxRegime,
                     paymentType: bank.paymentType,
                     createdById: employeeId,

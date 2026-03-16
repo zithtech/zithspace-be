@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { BucketController } from '@/controllers/bucketController';
 import { authenticateToken, requireAuth } from '@/middleware/auth';
 import { resolveTenant } from '@/middleware/tenantContext';
+import { requirePermission } from '@/middleware/permission';
+import { Permissions } from '@/types/permissions';
 
 const router = Router();
 
@@ -18,7 +20,7 @@ router.use(requireAuth);
  * @access  Private (authenticated users within tenant)
  * @query   projectId, includeShared
  */
-router.get('/', BucketController.getBuckets);
+router.get('/', requirePermission(Permissions.PROJECT_READ), BucketController.getBuckets);
 
 /**
  * @route   GET /api/buckets/:id/tickets
@@ -27,7 +29,7 @@ router.get('/', BucketController.getBuckets);
  * @param   id - Bucket ID
  * @query   page, limit
  */
-router.get('/:id/tickets', BucketController.getBucketTickets);
+router.get('/:id/tickets', requirePermission(Permissions.PROJECT_READ), BucketController.getBucketTickets);
 
 /**
  * @route   GET /api/buckets/:id
@@ -35,7 +37,7 @@ router.get('/:id/tickets', BucketController.getBucketTickets);
  * @access  Private (bucket owner or members)
  * @param   id - Bucket ID
  */
-router.get('/:id', BucketController.getBucketById);
+router.get('/:id', requirePermission(Permissions.PROJECT_READ), BucketController.getBucketById);
 
 /**
  * @route   POST /api/buckets
@@ -43,7 +45,7 @@ router.get('/:id', BucketController.getBucketById);
  * @access  Private (authenticated users within tenant)
  * @body    { name: string, description?: string, color?: string, projectId?: string, isShared?: boolean }
  */
-router.post('/', BucketController.createBucket);
+router.post('/', requirePermission(Permissions.PROJECT_CREATE), BucketController.createBucket);
 
 /**
  * @route   PUT /api/buckets/:id
@@ -52,7 +54,7 @@ router.post('/', BucketController.createBucket);
  * @param   id - Bucket ID
  * @body    { name?: string, description?: string, color?: string, isShared?: boolean }
  */
-router.put('/:id', BucketController.updateBucket);
+router.put('/:id', requirePermission(Permissions.PROJECT_UPDATE), BucketController.updateBucket);
 
 /**
  * @route   DELETE /api/buckets/:id
@@ -60,7 +62,7 @@ router.put('/:id', BucketController.updateBucket);
  * @access  Private (bucket owner only)
  * @param   id - Bucket ID
  */
-router.delete('/:id', BucketController.deleteBucket);
+router.delete('/:id', requirePermission(Permissions.PROJECT_DELETE), BucketController.deleteBucket);
 
 /**
  * @route   POST /api/buckets/:id/members
@@ -69,7 +71,7 @@ router.delete('/:id', BucketController.deleteBucket);
  * @param   id - Bucket ID
  * @body    { userId: string, role?: string }
  */
-router.post('/:id/members', BucketController.addBucketMember);
+router.post('/:id/members', requirePermission(Permissions.PROJECT_MANAGE), BucketController.addBucketMember);
 
 /**
  * @route   DELETE /api/buckets/:id/members/:memberId
@@ -78,7 +80,7 @@ router.post('/:id/members', BucketController.addBucketMember);
  * @param   id - Bucket ID
  * @param   memberId - Member ID
  */
-router.delete('/:id/members/:memberId', BucketController.removeBucketMember);
+router.delete('/:id/members/:memberId', requirePermission(Permissions.PROJECT_MANAGE), BucketController.removeBucketMember);
 
 /**
  * @route   POST /api/buckets/:id/assign
@@ -87,7 +89,7 @@ router.delete('/:id/members/:memberId', BucketController.removeBucketMember);
  * @param   id - Bucket ID
  * @body    { ticketIds: string[] }
  */
-router.post('/:id/assign', BucketController.assignTicketsToBucket);
+router.post('/:id/assign', requirePermission(Permissions.TICKET_UPDATE), BucketController.assignTicketsToBucket);
 
 /**
  * @route   POST /api/buckets/:id/unassign
@@ -96,6 +98,6 @@ router.post('/:id/assign', BucketController.assignTicketsToBucket);
  * @param   id - Bucket ID
  * @body    { ticketIds: string[] }
  */
-router.post('/:id/unassign', BucketController.unassignTicketsFromBucket);
+router.post('/:id/unassign', requirePermission(Permissions.TICKET_UPDATE), BucketController.unassignTicketsFromBucket);
 
 export default router;
