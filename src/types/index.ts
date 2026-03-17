@@ -588,6 +588,11 @@ export interface CreateAttendanceData {
   notes?: string;
 }
 
+export interface AttendanceSessionInput {
+  clockIn: Date;
+  clockOut?: Date;
+}
+
 export interface AttendanceFilters {
   userId?: string;
   dateFrom?: Date;

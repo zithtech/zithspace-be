@@ -95,6 +95,11 @@ export class AttendanceController {
                   position: true,
                 },
               },
+              sessions: {
+                orderBy: {
+                  clockIn: "asc",
+                },
+              },
             },
             orderBy: [orderBy, { createdAt: "desc" }],
             skip,
@@ -170,6 +175,11 @@ export class AttendanceController {
                   position: true,
                 },
               },
+              sessions: {
+                orderBy: {
+                  clockIn: "asc",
+                },
+              },
             },
           });
         }
@@ -220,119 +230,70 @@ export class AttendanceController {
       const userId = targetUserId || req.user.id;
 
       const today = new Date();
-      const startOfToday = new Date(today);
-      startOfToday.setHours(0, 0, 0, 0);
-      const endOfToday = new Date(today);
-      endOfToday.setHours(23, 59, 59, 999);
-
+      const start = new Date(today);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(today);
+      end.setHours(23, 59, 59, 999);
+  
       await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-        // Check if already clocked in today
-        const existingAttendance = await client.attendance.findFirst({
+  
+        let attendance = await client.attendance.findFirst({
           where: {
             userId,
             tenantId: req.tenantId,
-            date: { gte: startOfToday, lte: endOfToday },
-          },
-          include: {
-            shift: true,
-            user: {
-              include: {
-                assignedShift: true,
-              },
-            },
+            date: { gte: start, lte: end },
           },
         });
-
-        if (existingAttendance && existingAttendance.clockIn) {
-          throw new ValidationError("Already clocked in today");
-        }
-
-        // Validate user exists and belongs to tenant
-        const user = await client.user.findFirst({
-          where: {
-            id: userId,
-            tenantId: req.tenantId,
-            isActive: true,
-          },
-        });
-
-        if (!user) {
-          throw new NotFoundError("User not found in this tenant");
-        }
-
-        const clockInTime = new Date();
-
-        let attendanceRecord;
-        if (existingAttendance) {
-          // Update existing record
-          attendanceRecord = await client.attendance.update({
-            where: { id: existingAttendance.id },
-            data: {
-              clockIn: clockInTime,
-              status: "present",
-            },
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  name: true,
-                  workEmail: true,
-                  position: true,
-                },
-              },
-            },
-          });
-        } else {
-          // Create new attendance record
-          attendanceRecord = await client.attendance.create({
+  
+        if (!attendance) {
+          attendance = await client.attendance.create({
             data: {
               tenantId: req.tenantId,
               userId,
-              date: startOfToday,
-              clockIn: clockInTime,
+              date: start,
               status: "present",
-            },
-            include: {
-              user: {
-                select: {
-                  id: true,
-                  name: true,
-                  workEmail: true,
-                  position: true,
-                },
-              },
             },
           });
         }
-
-        // Transform data to use 'member' instead of 'user'
-        const attendance = {
-          ...attendanceRecord,
-          member: attendanceRecord.user,
-          user: undefined,
-        };
-
-        res.status(200).json({
+  
+        const openSession = await client.attendanceSession.findFirst({
+          where: {
+            attendanceId: attendance.id,
+            clockOut: null,
+          },
+        });
+  
+        if (openSession) {
+          throw new ValidationError("Already clocked in. Please clock out first.");
+        }
+  
+        const now = new Date();
+  
+        await client.attendanceSession.create({
+          data: {
+            attendanceId: attendance.id,
+            clockIn: now,
+          },
+        });
+  
+        if (!attendance.clockIn) {
+          await client.attendance.update({
+            where: { id: attendance.id },
+            data: { clockIn: now },
+          });
+        }
+  
+        return res.json({
           success: true,
-          data: attendance,
           message: "Clocked in successfully",
-        } as ApiResponse);
+        });
       });
+  
     } catch (error: any) {
-      console.error("Clock in error:", error);
-
-      if (error instanceof ValidationError || error instanceof NotFoundError) {
-        res.status(error instanceof NotFoundError ? 404 : 400).json({
-          success: false,
-          error: error.message,
-        } as ApiResponse);
-        return;
-      }
-
-      res.status(500).json({
+       res.status(400).json({
         success: false,
-        error: "Failed to clock in",
-      } as ApiResponse);
+        error: error.message,
+      });
     }
   }
 
@@ -342,99 +303,214 @@ export class AttendanceController {
   static async clockOut(req: AuthRequest, res: Response): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
-        res.status(400).json({
+         res.status(400).json({
           success: false,
           error: "Tenant context and authentication required",
-        } as ApiResponse);
-        return;
+        });
       }
-
-      const { userId: targetUserId } = req.body;
-      const userId = targetUserId || req.user.id;
-
+  
+      const userId = req.body.userId || req.user.id;
+  
       const today = new Date();
-      const startOfToday = new Date(today);
-      startOfToday.setHours(0, 0, 0, 0);
-      const endOfToday = new Date(today);
-      endOfToday.setHours(23, 59, 59, 999);
-
+      const start = new Date(today);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(today);
+      end.setHours(23, 59, 59, 999);
+  
       await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-        // Find today's attendance record
+  
         const attendance = await client.attendance.findFirst({
           where: {
             userId,
             tenantId: req.tenantId,
-            date: { gte: startOfToday, lte: endOfToday },
+            date: { gte: start, lte: end },
           },
         });
-
-        if (!attendance || !attendance.clockIn) {
-          throw new ValidationError("No clock in record found for today");
+  
+        if (!attendance) {
+          throw new ValidationError("No attendance record found for today");
         }
-
-        if (attendance.clockOut) {
-          throw new ValidationError("Already clocked out today");
+  
+        const openSession = await client.attendanceSession.findFirst({
+          where: {
+            attendanceId: attendance.id,
+            clockOut: null,
+          },
+          orderBy: { clockIn: "desc" },
+        });
+  
+        if (!openSession) {
+          throw new ValidationError("No active clock-in session found");
         }
-
-        const clockOutTime = new Date();
-
-        // Calculate work minutes
-        const totalWorkMinutes = Math.floor(
-          (clockOutTime.getTime() - attendance.clockIn.getTime()) / 60000
+  
+        const now = new Date();
+  
+        const sessionMinutes = Math.floor(
+          (now.getTime() - openSession.clockIn.getTime()) / 60000
         );
-
-        // Calculate effective work minutes (total - breaks)
-        const effectiveWorkMinutes =
-          totalWorkMinutes - attendance.totalBreakMinutes;
-
-        const attendanceRecord = await client.attendance.update({
+  
+        await client.attendanceSession.update({
+          where: { id: openSession.id },
+          data: {
+            clockOut: now,
+            workMinutes: sessionMinutes,
+          },
+        });
+  
+        const sessions = await client.attendanceSession.findMany({
+          where: { attendanceId: attendance.id },
+        });
+  
+        const totalWorkMinutes = sessions.reduce(
+          (sum, s) => sum + (s.workMinutes || 0),
+          0
+        );
+  
+        const STANDARD_MINUTES = 480;
+        const overtimeMinutes =
+          totalWorkMinutes > STANDARD_MINUTES
+            ? totalWorkMinutes - STANDARD_MINUTES
+            : 0;
+  
+        const updated = await client.attendance.update({
           where: { id: attendance.id },
           data: {
-            clockOut: clockOutTime,
+            clockOut: now,
             totalWorkMinutes,
-            effectiveWorkMinutes,
+            effectiveWorkMinutes: totalWorkMinutes,
+            overtimeMinutes,
           },
           include: {
+            sessions: true,
             user: {
               select: { id: true, name: true, workEmail: true, position: true },
             },
           },
         });
-
-        // Transform data to use 'member' instead of 'user'
-        const updatedAttendance = {
-          ...attendanceRecord,
-          member: attendanceRecord.user,
-          user: undefined,
-        };
-
-        res.status(200).json({
+  
+        return res.json({
           success: true,
-          data: updatedAttendance,
           message: "Clocked out successfully",
-        } as ApiResponse);
+          data: {
+            ...updated,
+            member: updated.user,
+            user: undefined,
+          },
+        });
       });
+  
     } catch (error: any) {
-      console.error("Clock out error:", error);
-
-      if (error instanceof ValidationError || error instanceof NotFoundError) {
-        res.status(error instanceof NotFoundError ? 404 : 400).json({
-          success: false,
-          error: error.message,
-        } as ApiResponse);
-        return;
-      }
-
-      res.status(500).json({
+       res.status(400).json({
         success: false,
-        error: "Failed to clock out",
-      } as ApiResponse);
+        error: error.message,
+      });
     }
   }
 
   /**
    * Get today's attendance for current user (tenant-aware)
    */
+  // static async getTodayAttendance(
+  //   req: AuthRequest,
+  //   res: Response
+  // ): Promise<void> {
+  //   try {
+  //     if (!req.tenantId || !req.user) {
+  //       res.status(400).json({
+  //         success: false,
+  //         error: "Tenant context and authentication required",
+  //       } as ApiResponse);
+  //       return;
+  //     }
+
+  //     const userId = req.user.id;
+
+  //     const today = new Date();
+  //     const startOfToday = new Date(today);
+  //     startOfToday.setHours(0, 0, 0, 0);
+  //     const endOfToday = new Date(today);
+  //     endOfToday.setHours(23, 59, 59, 999);
+
+  //     const result = await tenantAwarePrisma.withTenant(
+  //       req.tenantId,
+  //       async (client) => {
+  //         // Get user info with assigned shift
+  //         const user = await client.user.findUnique({
+  //           where: { id: userId },
+  //           include: {
+  //             assignedShift: true,
+  //           },
+  //         });
+
+  //         if (!user) {
+  //           throw new NotFoundError("User not found");
+  //         }
+
+  //         // Get attendance with shift data
+  //         const attendance = await client.attendance.findFirst({
+  //           where: {
+  //             userId,
+  //             tenantId: req.tenantId,
+  //             date: { gte: startOfToday, lte: endOfToday },
+  //           },
+  //           include: {
+  //             shift: true,
+  //           },
+  //         });
+
+  //         // Get shift info (from attendance or user's assigned shift)
+  //         const shift = attendance?.shift || user.assignedShift;
+
+  //         // Calculate work minutes if clocked in
+  //         let totalWorkMinutes = 0;
+  //         if (attendance?.clockIn) {
+  //           const endTime = attendance.clockOut || new Date();
+  //           totalWorkMinutes = Math.floor(
+  //             (endTime.getTime() - attendance.clockIn.getTime()) / 60000
+  //           );
+  //         }
+
+  //         // Build response - always return data even if no attendance record
+  //         const responseData = {
+  //           id: attendance?.id || null,
+  //           userId: userId,
+  //           date: startOfToday,
+  //           clockIn: attendance?.clockIn || null,
+  //           clockOut: attendance?.clockOut || null,
+  //           status: attendance?.status?.toLowerCase() || "not_clocked_in",
+  //           shift: shift
+  //             ? {
+  //                 id: shift.id,
+  //                 name: shift.name,
+  //                 startTime: shift.startTime,
+  //                 endTime: shift.endTime,
+  //                 isFlexible: false,
+  //               }
+  //             : null,
+  //           totalWorkMinutes,
+  //           isClockIn: !!attendance?.clockIn,
+  //           clockInTime: attendance?.clockIn || null,
+  //           clockOutTime: attendance?.clockOut || null,
+  //           canClockIn: !attendance?.clockIn,
+  //           canClockOut: !!attendance?.clockIn && !attendance?.clockOut,
+  //         };
+
+  //         return responseData;
+  //       }
+  //     );
+
+  //     res.status(200).json({
+  //       success: true,
+  //       data: result,
+  //     } as ApiResponse);
+  //   } catch (error) {
+  //     console.error("Get today attendance error:", error);
+  //     res.status(500).json({
+  //       success: false,
+  //       error: "Failed to fetch today's attendance",
+  //     } as ApiResponse);
+  //   }
+  // }
   static async getTodayAttendance(
     req: AuthRequest,
     res: Response
@@ -447,31 +523,28 @@ export class AttendanceController {
         } as ApiResponse);
         return;
       }
-
+  
       const userId = req.user.id;
-
+  
       const today = new Date();
       const startOfToday = new Date(today);
       startOfToday.setHours(0, 0, 0, 0);
       const endOfToday = new Date(today);
       endOfToday.setHours(23, 59, 59, 999);
-
+  
       const result = await tenantAwarePrisma.withTenant(
         req.tenantId,
         async (client) => {
-          // Get user info with assigned shift
+          // 1️⃣ Get user with assigned shift
           const user = await client.user.findUnique({
             where: { id: userId },
-            include: {
-              assignedShift: true,
-            },
+            include: { assignedShift: true },
           });
-
+  
           if (!user) {
             throw new NotFoundError("User not found");
           }
-
-          // Get attendance with shift data
+  
           const attendance = await client.attendance.findFirst({
             where: {
               userId,
@@ -479,29 +552,47 @@ export class AttendanceController {
               date: { gte: startOfToday, lte: endOfToday },
             },
             include: {
+              sessions: {
+                orderBy: { clockIn: "asc" }
+              },
               shift: true,
             },
           });
-
-          // Get shift info (from attendance or user's assigned shift)
+  
           const shift = attendance?.shift || user.assignedShift;
-
-          // Calculate work minutes if clocked in
+  
           let totalWorkMinutes = 0;
-          if (attendance?.clockIn) {
-            const endTime = attendance.clockOut || new Date();
-            totalWorkMinutes = Math.floor(
-              (endTime.getTime() - attendance.clockIn.getTime()) / 60000
-            );
+          let firstClockIn: Date | null = null;
+          let lastClockOut: Date | null = null;
+          let activeSession = null;
+  
+          if (attendance?.sessions?.length) {
+            firstClockIn = attendance.sessions[0].clockIn;
+  
+            for (const session of attendance.sessions) {
+              if (session.clockOut) {
+                totalWorkMinutes += session.workMinutes || 0;
+                lastClockOut = session.clockOut;
+              } else {
+                // Active session
+                activeSession = session;
+  
+                const now = new Date();
+                totalWorkMinutes += Math.floor(
+                  (now.getTime() - session.clockIn.getTime()) / 60000
+                );
+              }
+            }
           }
-
-          // Build response - always return data even if no attendance record
-          const responseData = {
+  
+          const isClockedIn = !!activeSession;
+  
+          return {
             id: attendance?.id || null,
-            userId: userId,
+            userId,
             date: startOfToday,
-            clockIn: attendance?.clockIn || null,
-            clockOut: attendance?.clockOut || null,
+            clockIn: firstClockIn,
+            clockOut: lastClockOut,
             status: attendance?.status?.toLowerCase() || "not_clocked_in",
             shift: shift
               ? {
@@ -513,17 +604,16 @@ export class AttendanceController {
                 }
               : null,
             totalWorkMinutes,
-            isClockIn: !!attendance?.clockIn,
-            clockInTime: attendance?.clockIn || null,
-            clockOutTime: attendance?.clockOut || null,
-            canClockIn: !attendance?.clockIn,
-            canClockOut: !!attendance?.clockIn && !attendance?.clockOut,
+            isClockIn: !isClockedIn,
+            clockInTime: activeSession?.clockIn || firstClockIn || null,
+            clockOutTime: lastClockOut || null,
+            canClockIn: !isClockedIn,
+            canClockOut: isClockedIn,
+            sessions:attendance?.sessions || []
           };
-
-          return responseData;
         }
       );
-
+  
       res.status(200).json({
         success: true,
         data: result,
