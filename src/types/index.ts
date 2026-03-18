@@ -864,3 +864,63 @@ export interface CreateEmployeeClientAllocationV2Data {
 }
 
 export interface UpdateEmployeeClientAllocationV2Data extends Partial<CreateEmployeeClientAllocationV2Data> {}
+
+// ==========================================
+// SQUAD TYPES
+// ==========================================
+
+export interface Squad {
+  id: string;
+  tenantId: string;
+  squadName: string;
+  squadCode: string;
+  squadStatus: boolean;
+  isArchived: boolean;
+  isDeleted: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  createdById: string;
+  updatedById?: string;
+  // Relations
+  squadMembers?: SquadMember[];
+  createdBy?: User;
+  updatedBy?: User;
+  _count?: {
+    squadMembers?: number;
+  };
+}
+
+export interface SquadMember {
+  id: string;
+  tenantId: string;
+  squadId: string;
+  squadMemberId: string;
+  memberType: "HEAD" | "SUB_HEAD" | "MEMBER" | string;
+  status: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  createdById: string;
+  updatedById?: string;
+  // Relations
+  member?: User;
+  squad?: Squad;
+}
+
+export interface CreateSquadData {
+  squadName: string;
+  squadCode: string;
+  headIds: string[];
+  subHeadIds: string[];
+  memberIds: string[];
+  squadStatus?: boolean;
+}
+
+export interface UpdateSquadData {
+  squadName?: string;
+  squadCode?: string;
+  headIds?: string[];
+  subHeadIds?: string[];
+  memberIds?: string[];
+  squadStatus?: boolean;
+  isArchived?: boolean;
+}

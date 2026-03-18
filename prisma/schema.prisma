@@ -8,15 +8,15 @@ datasource db {
 }
 
 model Tenant {
-  id                    String                     @id @default(uuid())
+  id                    String                 @id @default(uuid())
   name                  String
-  subdomain             String                     @unique
-  planType              String                     @default("basic") @map("plan_type")
-  maxUsers              Int                        @default(10) @map("max_users")
-  isActive              Boolean                    @default(true) @map("is_active")
-  settings              Json?                      @default("{}")
-  createdAt             DateTime                   @default(now()) @map("created_at")
-  updatedAt             DateTime                   @updatedAt @map("updated_at")
+  subdomain             String                 @unique
+  planType              String                 @default("basic") @map("plan_type")
+  maxUsers              Int                    @default(10) @map("max_users")
+  isActive              Boolean                @default(true) @map("is_active")
+  settings              Json?                  @default("{}")
+  createdAt             DateTime               @default(now()) @map("created_at")
+  updatedAt             DateTime               @updatedAt @map("updated_at")
   attendance            Attendance[]
   attendanceBreaks      AttendanceBreak[]
   buckets               Bucket[]
@@ -33,28 +33,26 @@ model Tenant {
   departments           Department[]
   subDepartments        SubDepartment[]
   positions             Position[]
-  
-  salaryComponents      SalaryComponent[]
-  companies             Company[]
-  holidays              CompanyGovernmentHoliday[]
-  projects              Project[]
-  releasePlans          ReleasePlan[]
-  
+
+  salaryComponents SalaryComponent[]
+  companies        Company[]
+  holidays         CompanyGovernmentHoliday[]
+  projects         Project[]
+  releasePlans     ReleasePlan[]
 
   reimbursementCategories ReimbursementCategory[]
   emailLogs               EmailLog[]
 
   employees         Employee[]
   employeeAddresses EmployeeAddress[]
-  employeeSetting EmployeeSetting[]
+  employeeSetting   EmployeeSetting[]
 
   calendarIntegrations CalendarIntegration[]
   calendarEvents       CalendarEvent[]
 
-
-
-
-
+  squads       Squad[]
+  squadMembers SquadMember[]
+  candidates CandidateDetails[]
 
   shifts Shift[]
 
@@ -81,11 +79,11 @@ model Tenant {
   documents            Document[]
   documenttree         DocumentTree[]
   documentHistory      DocumentHistory[]
-  exceptions CalendarEventException[]
+  exceptions           CalendarEventException[]
   // ZithTech Calls Relations
-  channels Channel[]
-  meetings Meeting[]
-  Client   Client[]
+  channels             Channel[]
+  meetings             Meeting[]
+  Client               Client[]
 
   // Client V2 Relations
   clientsV2                   ClientV2[]
@@ -122,9 +120,8 @@ model User {
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
-  
-  employeeId        String?   @map("employee_id") 
-  employee          Employee? @relation(fields: [employeeId], references: [id]) 
+  employeeId String?   @map("employee_id")
+  employee   Employee? @relation(fields: [employeeId], references: [id])
 
   createdSalaryComponents SalaryComponent[] @relation("SalaryComponentCreator")
   updatedSalaryComponents SalaryComponent[] @relation("SalaryComponentUpdater")
@@ -132,6 +129,14 @@ model User {
   updatedCompanies        Company[]         @relation("CompanyUpdater")
   createdCustomers        Customer[]        @relation("CustomerCreatedBy")
   updatedCustomers        Customer[]        @relation("CustomerUpdatedBy")
+
+  createdSquads Squad[] @relation("SquadCreator")
+  updatedSquads Squad[] @relation("SquadUpdater")
+
+  squadMemberships SquadMember[] @relation("SquadMemberUser")
+
+  createdSquadMembers SquadMember[] @relation("SquadMemberCreator")
+  updatedSquadMembers SquadMember[] @relation("SquadMemberUpdater")
 
   enteredAttendance            Attendance[]               @relation("AttendanceEnteredBy")
   attendance                   Attendance[]
@@ -238,25 +243,24 @@ model User {
   updatedSettingsProfiles SettingsProfile[] @relation("SettingsProfileUpdatedBy")
 
   // ===== Invoice Relations =====
-  createdInvoices        Invoice[]        @relation("InvoiceCreatedBy")
-  updatedInvoices        Invoice[]        @relation("InvoiceUpdatedBy")
-  deletedInvoices        Invoice[]        @relation("InvoiceDeletedBy")
-  createdInvoiceItems    InvoiceItem[]    @relation("InvoiceItemCreatedBy")
-  updatedInvoiceItems    InvoiceItem[]    @relation("InvoiceItemUpdatedBy")
-  deletedInvoiceItems    InvoiceItem[]    @relation("InvoiceItemDeletedBy")
-  createdInvoicePayments InvoicePayment[] @relation("InvoicePaymentCreatedBy")
-  updatedInvoicePayments InvoicePayment[] @relation("InvoicePaymentUpdatedBy")
-  sentEmails             EmailLog[]       @relation("EmailSentBy")
-  createdExceptions CalendarEventException[] @relation("ExceptionCreatedBy")
-  updatedExceptions CalendarEventException[] @relation("ExceptionUpdatedBy")
-  exceptions    CalendarEventException[]
-  calendarIntegrations CalendarIntegration[]
-  calendarEvents       CalendarEvent[]
-  createdCalendarIntegrations CalendarIntegration[] @relation("CreatedByUser")
-  updatedCalendarIntegrations CalendarIntegration[] @relation("UpdatedByUser")
-  createdCalendarEvents CalendarEvent[] @relation("CreatedByUser")
-  updatedCalendarEvents CalendarEvent[] @relation("UpdatedByUser")
-
+  createdInvoices             Invoice[]                @relation("InvoiceCreatedBy")
+  updatedInvoices             Invoice[]                @relation("InvoiceUpdatedBy")
+  deletedInvoices             Invoice[]                @relation("InvoiceDeletedBy")
+  createdInvoiceItems         InvoiceItem[]            @relation("InvoiceItemCreatedBy")
+  updatedInvoiceItems         InvoiceItem[]            @relation("InvoiceItemUpdatedBy")
+  deletedInvoiceItems         InvoiceItem[]            @relation("InvoiceItemDeletedBy")
+  createdInvoicePayments      InvoicePayment[]         @relation("InvoicePaymentCreatedBy")
+  updatedInvoicePayments      InvoicePayment[]         @relation("InvoicePaymentUpdatedBy")
+  sentEmails                  EmailLog[]               @relation("EmailSentBy")
+  createdExceptions           CalendarEventException[] @relation("ExceptionCreatedBy")
+  updatedExceptions           CalendarEventException[] @relation("ExceptionUpdatedBy")
+  exceptions                  CalendarEventException[]
+  calendarIntegrations        CalendarIntegration[]
+  calendarEvents              CalendarEvent[]
+  createdCalendarIntegrations CalendarIntegration[]    @relation("CreatedByUser")
+  updatedCalendarIntegrations CalendarIntegration[]    @relation("UpdatedByUser")
+  createdCalendarEvents       CalendarEvent[]          @relation("CreatedByUser")
+  updatedCalendarEvents       CalendarEvent[]          @relation("UpdatedByUser")
 
   // ===== Chat & Meeting Relations =====
   createdChannels       Channel[]            @relation("ChannelCreator")
@@ -272,10 +276,11 @@ model User {
   // ===== RBAC Relations =====
   userRoles UserRole[]
 
+
+
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
   @@unique([tenantId, phone])
- 
   @@map("users")
 }
 
@@ -707,21 +712,21 @@ model TicketActivityLog {
 }
 
 model Client {
-  id            String   @id @default(uuid())
-  tenantId      String   @map("tenant_id")
-  name          String
-  email         String?
-  phone         String?
-  company       String?
-  address       String?
-  contactPerson String?  @map("contact_person")
-  isActive      Boolean  @default(true) @map("is_active")
-  notes         String?
-  createdById   String   @map("created_by_id")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
-  createdBy     User     @relation("ClientCreator", fields: [createdById], references: [id])
-  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id              String           @id @default(uuid())
+  tenantId        String           @map("tenant_id")
+  name            String
+  email           String?
+  phone           String?
+  company         String?
+  address         String?
+  contactPerson   String?          @map("contact_person")
+  isActive        Boolean          @default(true) @map("is_active")
+  notes           String?
+  createdById     String           @map("created_by_id")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  createdBy       User             @relation("ClientCreator", fields: [createdById], references: [id])
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   jobRequisitions JobRequisition[]
 
   @@unique([tenantId, email])
@@ -2024,7 +2029,7 @@ model Employee {
   work_email     String   @db.VarChar(150)
   personal_email String?  @db.VarChar(150)
   status         Boolean  @default(true)
-  profile_pic     String?  @db.VarChar(255) 
+  profile_pic    String?  @db.VarChar(255)
 
   created_by String  @db.Uuid
   updated_by String? @db.Uuid
@@ -2033,7 +2038,7 @@ model Employee {
   updated_at DateTime @updatedAt
 
   tenant                   Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  users     User[] 
+  users                    User[]
   addresses                EmployeeAddress[]
   emergencyContacts        EmployeeEmergencyContact[]
   employeeIdentity         EmployeeIdentity?
@@ -2140,8 +2145,7 @@ model EmployeeEmergencyContact {
 }
 
 model EmployeeIdentity {
-
-  id              String   @id @default(uuid()) @db.Uuid
+  id String @id @default(uuid()) @db.Uuid
 
   employeeId String @unique @map("employee_id") @db.Uuid
 
@@ -2171,12 +2175,12 @@ model EmployeeWorkDetail {
   workShift       String? @map("work_shift") @db.VarChar(50)
   workJoiningDate String? @map("work_joining_date") @db.VarChar(30)
 
-  workType   String?  @map("work_type") @db.VarChar(50)
-  hybridMode String?  @map("hybrid_mode") @db.VarChar(20)
-  fixedDays  String[] @default([]) @map("fixed_days")
-  totalDays     Int?    @map("total_days")
-  totalHours    Int?    @map("total_hours")
-  notice_period String? @db.VarChar(100)
+  workType      String?  @map("work_type") @db.VarChar(50)
+  hybridMode    String?  @map("hybrid_mode") @db.VarChar(20)
+  fixedDays     String[] @default([]) @map("fixed_days")
+  totalDays     Int?     @map("total_days")
+  totalHours    Int?     @map("total_hours")
+  notice_period String?  @db.VarChar(100)
 
   createdById String  @map("created_by_id") @db.Uuid
   updatedById String? @map("updated_by_id") @db.Uuid
@@ -2185,8 +2189,8 @@ model EmployeeWorkDetail {
   updatedAt DateTime @updatedAt @map("updated_at")
   employee  Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
-    @@map("employee_work_details")
-  }
+  @@map("employee_work_details")
+}
 
 model EmployeeTimeline {
   id String @id @default(uuid()) @db.Uuid
@@ -2398,71 +2402,71 @@ model EmployeeAsset {
 
   @@map("employee_assets")
 }
-model EmployeeSetting {
-  id              String   @id @default(uuid()) @db.Uuid
-  tenantId        String   @unique @db.Uuid @map("tenant_id")
-  employeePrefix  String   @db.VarChar(20) @map("employee_prefix")
 
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+model EmployeeSetting {
+  id             String @id @default(uuid()) @db.Uuid
+  tenantId       String @unique @map("tenant_id") @db.Uuid
+  employeePrefix String @map("employee_prefix") @db.VarChar(20)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("employee_settings")
 }
 
-
-
 enum CalendarProvider {
   GOOGLE
   MICROSOFT
   ZOHO
+
   @@map("calendar_provider")
 }
 
 model CalendarIntegration {
- id        String @id  // TEXT id
+  id String @id // TEXT id
 
-  userId    String  @map("user_id")
-  tenantId  String  @map("tenant_id")
-  provider  CalendarProvider
+  userId   String           @map("user_id")
+  tenantId String           @map("tenant_id")
+  provider CalendarProvider
 
   // COMMON TOKENS
-  accessToken   String?  @map("access_token")
-  refreshToken  String?   @map("refresh_token")
-  tokenExpiry   DateTime? @db.Timestamptz(6) @map("token_expiry")
-  calendarId    String? @map("calendar_id")
+  accessToken  String?   @map("access_token")
+  refreshToken String?   @map("refresh_token")
+  tokenExpiry  DateTime? @map("token_expiry") @db.Timestamptz(6)
+  calendarId   String?   @map("calendar_id")
 
   // GOOGLE
-  googleSyncToken     String?  @map("google_sync_token")
-  googleChannelId     String? @map("google_channel_id")
-  googleResourceId    String? @map("google_resource_id")
-  googleChannelExpiry DateTime? @db.Timestamptz(6) @map("google_channel_expiry")
+  googleSyncToken     String?   @map("google_sync_token")
+  googleChannelId     String?   @map("google_channel_id")
+  googleResourceId    String?   @map("google_resource_id")
+  googleChannelExpiry DateTime? @map("google_channel_expiry") @db.Timestamptz(6)
 
   // MICROSOFT
-  microsoftDeltaLink           String?  @map("microsoft_delta_link")
-  microsoftSubscriptionId      String? @map("microsoft_subscription_id")
-  microsoftSubscriptionExpiry  DateTime? @db.Timestamptz(6) @map("microsoft_subscription_expiry")
-  microsoftClientState         String? @map("microsoft_client_state")
+  microsoftDeltaLink          String?   @map("microsoft_delta_link")
+  microsoftSubscriptionId     String?   @map("microsoft_subscription_id")
+  microsoftSubscriptionExpiry DateTime? @map("microsoft_subscription_expiry") @db.Timestamptz(6)
+  microsoftClientState        String?   @map("microsoft_client_state")
 
   // ZOHO
-  zohoLastSync DateTime? @db.Timestamptz(6) @map("zoho_last_sync")
+  zohoLastSync DateTime? @map("zoho_last_sync") @db.Timestamptz(6)
 
   // SYNC STATE
-  isSyncing       Boolean   @default(false) @map("is_syncing")
-  lastSyncStatus  String?   @map("last_sync_status") // 'SUCCESS', 'FAILED', 'NEEDS_REAUTH'
-  lastSyncAt      DateTime? @db.Timestamptz(6) @map("last_sync_at")
-  nextSyncDueAt   DateTime? @default(now()) @db.Timestamptz(6) @map("next_sync_due_at")
-  syncErrorCount  Int       @default(0) @map("sync_error_count")
+  isSyncing      Boolean   @default(false) @map("is_syncing")
+  lastSyncStatus String?   @map("last_sync_status") // 'SUCCESS', 'FAILED', 'NEEDS_REAUTH'
+  lastSyncAt     DateTime? @map("last_sync_at") @db.Timestamptz(6)
+  nextSyncDueAt  DateTime? @default(now()) @map("next_sync_due_at") @db.Timestamptz(6)
+  syncErrorCount Int       @default(0) @map("sync_error_count")
 
   createdById String? @map("created_by_id")
   updatedById String? @map("updated_by_id")
 
   // Audit
-  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
-  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
-  createdBy User? @relation("CreatedByUser", fields: [createdById], references: [id])
-  updatedBy User? @relation("UpdatedByUser", fields: [updatedById], references: [id])
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy User?    @relation("CreatedByUser", fields: [createdById], references: [id])
+  updatedBy User?    @relation("UpdatedByUser", fields: [updatedById], references: [id])
 
   // Relations
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -2473,44 +2477,42 @@ model CalendarIntegration {
   @@map("calendar_integrations")
 }
 
-
-
 model CalendarEvent {
-  id        String @id  // TEXT id
+  id String @id // TEXT id
 
-  provider    CalendarProvider
-  externalId  String  @map("external_id")
+  provider   CalendarProvider
+  externalId String           @map("external_id")
 
-  tenantId    String  @map("tenant_id")
-  userId      String  @map("user_id")
+  tenantId String @map("tenant_id")
+  userId   String @map("user_id")
 
-  calendarId  String?  @map("calendar_id")
+  calendarId String? @map("calendar_id")
 
   title       String
   description String?
   location    String?
 
-  startTime   DateTime @db.Timestamptz(6)  @map("start_time")
-  endTime     DateTime @db.Timestamptz(6)  @map("end_time")
+  startTime DateTime @map("start_time") @db.Timestamptz(6)
+  endTime   DateTime @map("end_time") @db.Timestamptz(6)
 
-  isAllDay    Boolean  @default(false)  @map("is_all_day")
-  isRecurring Boolean  @default(false)  @map("is_recurring")
-  rrule       String?
-  exdate      Json?
-  calendar    String?   @map("calendar_name") @db.VarChar(255)
-  isDeleted   Boolean   @default(false) @map("is_deleted")
-  sourceType  String?   @map("source_type") @db.VarChar(100)  
-  attendees   Json?
-  meetingLink String?  @map("meeting_link")
-  organizerEmail String? @map("organizer_email")
-  createdById String?  @map("created_by_id")
-  updatedById String?  @map("updated_by_id")
-  exceptions CalendarEventException[]
+  isAllDay       Boolean                  @default(false) @map("is_all_day")
+  isRecurring    Boolean                  @default(false) @map("is_recurring")
+  rrule          String?
+  exdate         Json?
+  calendar       String?                  @map("calendar_name") @db.VarChar(255)
+  isDeleted      Boolean                  @default(false) @map("is_deleted")
+  sourceType     String?                  @map("source_type") @db.VarChar(100)
+  attendees      Json?
+  meetingLink    String?                  @map("meeting_link")
+  organizerEmail String?                  @map("organizer_email")
+  createdById    String?                  @map("created_by_id")
+  updatedById    String?                  @map("updated_by_id")
+  exceptions     CalendarEventException[]
   // Audit
-  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
-  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
-  createdBy User? @relation("CreatedByUser", fields: [createdById], references: [id])
-  updatedBy User? @relation("UpdatedByUser", fields: [updatedById], references: [id])
+  createdAt      DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy      User?                    @relation("CreatedByUser", fields: [createdById], references: [id])
+  updatedBy      User?                    @relation("UpdatedByUser", fields: [updatedById], references: [id])
 
   // Relations
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -2526,27 +2528,26 @@ model CalendarEvent {
 model CalendarEventException {
   id String @id @default(cuid())
 
-  eventId   String   @map("event_id")
-  tenantId  String   @map("tenant_id")
-  userId    String   @map("user_id")
+  eventId  String @map("event_id")
+  tenantId String @map("tenant_id")
+  userId   String @map("user_id")
 
-   overrideTitle       String? @map("override_title")
+  overrideTitle       String? @map("override_title")
   overrideDescription String? @map("override_description")
   overrideLocation    String? @map("override_location")
   overrideMeetingLink String? @map("override_meeting_link")
-  overrideAttendees   Json?  @map("override_attendees")
-
+  overrideAttendees   Json?   @map("override_attendees")
 
   // Audit fields
   createdById String  @map("created_by")
   updatedById String? @map("updated_by")
 
   // The original occurrence date (before modification)
-  originalDate DateTime @db.Timestamptz(6) @map("original_date")
+  originalDate DateTime @map("original_date") @db.Timestamptz(6)
 
   // If occurrence is modified
-  newStartTime DateTime? @db.Timestamptz(6) @map("new_start_time")
-  newEndTime   DateTime? @db.Timestamptz(6) @map("new_end_time")
+  newStartTime DateTime? @map("new_start_time") @db.Timestamptz(6)
+  newEndTime   DateTime? @map("new_end_time") @db.Timestamptz(6)
 
   // If occurrence is deleted
   isCancelled Boolean @default(false) @map("is_cancelled")
@@ -2554,24 +2555,22 @@ model CalendarEventException {
   // Provider instance ID
   externalInstanceId String? @map("external_instance_id")
 
-  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
-  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   // Relations
   event  CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
   user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  createdBy User @relation("ExceptionCreatedBy", fields: [createdById], references: [id])
+  createdBy User  @relation("ExceptionCreatedBy", fields: [createdById], references: [id])
   updatedBy User? @relation("ExceptionUpdatedBy", fields: [updatedById], references: [id])
 
+  @@unique([eventId, originalDate])
   @@index([eventId])
   @@index([tenantId])
-  @@unique([eventId, originalDate])
   @@map("calendar_event_exceptions")
 }
-
-
 
 // =====================================================
 //  RBAC — Role-Based Access Control
@@ -2580,10 +2579,10 @@ model CalendarEventException {
 /// All possible permission strings in the system.
 /// Seeded once on migration; never modified at runtime.
 model Permission {
-  id          String   @id @default(uuid())
-  name        String   @unique           // e.g. "ticket.create"
-  resource    String                     // e.g. "ticket"
-  action      String                     // e.g. "create"
+  id          String  @id @default(uuid())
+  name        String  @unique // e.g. "ticket.create"
+  resource    String // e.g. "ticket"
+  action      String // e.g. "create"
   description String?
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -2599,14 +2598,14 @@ model Permission {
 model Role {
   id          String  @id @default(uuid())
   tenantId    String  @map("tenant_id")
-  name        String                     // e.g. "HR Manager"
-  slug        String                     // e.g. "hr_manager"
+  name        String // e.g. "HR Manager"
+  slug        String // e.g. "hr_manager"
   description String?
-  isSystem    Boolean @default(false) @map("is_system")   // protected from deletion
-  isActive    Boolean @default(true)  @map("is_active")
+  isSystem    Boolean @default(false) @map("is_system") // protected from deletion
+  isActive    Boolean @default(true) @map("is_active")
 
   createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt       @map("updated_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   rolePermissions RolePermission[]
@@ -2655,10 +2654,10 @@ model AuthorizationLog {
   id         String  @id @default(uuid())
   tenantId   String  @map("tenant_id")
   userId     String? @map("user_id")
-  permission String                     // permission checked
+  permission String // permission checked
   resource   String
   resourceId String? @map("resource_id")
-  result     String                     // "granted" | "denied"
+  result     String // "granted" | "denied"
   reason     String?
   ipAddress  String? @map("ip_address")
   userAgent  String? @map("user_agent")
@@ -2816,88 +2815,265 @@ model EmployeeClientAllocationV2 {
 }
 
 model JobRequisition {
-  id                   String    @id @default(uuid())
-  tenantId             String    @map("tenant_id")
-  ticketId             String    @map("ticket_id") 
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+  ticketId String @map("ticket_id")
 
   // Basic Job Information
-  jobTitle             String    @map("job_title")
-  jobCode              String?   @map("job_code")
-  clientId             String?   @map("client_id")
-  clientContactPerson  String?   @map("client_contact_person")
-  openingsCount        Int       @default(1) @map("openings_count")
-  jobType              String    @map("job_type") 
-  priority             String    @default("Medium") 
-  status               String    @default("Open") 
+  jobTitle            String  @map("job_title")
+  jobCode             String? @map("job_code")
+  clientId            String? @map("client_id")
+  clientContactPerson String? @map("client_contact_person")
+  openingsCount       Int     @default(1) @map("openings_count")
+  jobType             String  @map("job_type")
+  priority            String  @default("Medium")
+  status              String  @default("Open")
 
   // Candidate Requirements
-  experience           String?
-  mandatorySkills      String[]  @map("mandatory_skills")
-  secondarySkills      String[]  @map("secondary_skills")
-  education            String?
-  certification        String?
-  communicationSkills  String?   @map("communication_skills")
+  experience          String?
+  mandatorySkills     String[] @map("mandatory_skills")
+  secondarySkills     String[] @map("secondary_skills")
+  education           String?
+  certification       String?
+  communicationSkills String?  @map("communication_skills")
 
   // Job Description
-  jobRole              String?   @map("job_role")
-  jobDetails           String?   @map("job_details")
-  responsibilities     String?
-  interviewProcess     Json?     @default("[]") @map("interview_process")
+  jobRole          String? @map("job_role")
+  jobDetails       String? @map("job_details")
+  responsibilities String?
+  interviewProcess Json?   @default("[]") @map("interview_process")
 
   // Visa & Work Authorization
-  allowedVisaTypes     String[]  @map("allowed_visa_types")
-  excludedVisaTypes    String[]  @map("excluded_visa_types")
-  securityClearance    Boolean   @default(false) @map("security_clearance")
+  allowedVisaTypes  String[] @map("allowed_visa_types")
+  excludedVisaTypes String[] @map("excluded_visa_types")
+  securityClearance Boolean  @default(false) @map("security_clearance")
 
   // Location & Work Mode
-  jobLocation          String?   @map("job_location")
-  workMode             String    @default("Remote") @map("work_mode") 
-  timeZone             String?   @map("time_zone")
-  relocationAllowed    Boolean   @default(false) @map("relocation_allowed")
+  jobLocation       String? @map("job_location")
+  workMode          String  @default("Remote") @map("work_mode")
+  timeZone          String? @map("time_zone")
+  relocationAllowed Boolean @default(false) @map("relocation_allowed")
 
   // Billing & Rate Information
-  maxBillRate          Decimal?  @db.Decimal(10, 2) @map("max_bill_rate")
-  recruiterRate        Decimal?  @db.Decimal(10, 2) @map("recruiter_rate")
-  minPayRate           Decimal?  @db.Decimal(10, 2) @map("min_pay_rate")
-  overtimeMultiplier   Decimal?  @db.Decimal(4, 2)  @map("overtime_multiplier")
+  maxBillRate        Decimal? @map("max_bill_rate") @db.Decimal(10, 2)
+  recruiterRate      Decimal? @map("recruiter_rate") @db.Decimal(10, 2)
+  minPayRate         Decimal? @map("min_pay_rate") @db.Decimal(10, 2)
+  overtimeMultiplier Decimal? @map("overtime_multiplier") @db.Decimal(4, 2)
 
   // Hiring Timeline
-  startDate            DateTime? @map("start_date")
-  submissionDeadline   DateTime? @map("submission_deadline")
-  interviewStartDate   DateTime? @map("interview_start_date")
-  expectedClosureDate  DateTime? @map("expected_closure_date")
+  startDate           DateTime? @map("start_date")
+  submissionDeadline  DateTime? @map("submission_deadline")
+  interviewStartDate  DateTime? @map("interview_start_date")
+  expectedClosureDate DateTime? @map("expected_closure_date")
 
   // Recruiter Assignment
-  accountManagerId     String?   @map("account_manager_id")
-  deliveryManagerId    String?   @map("delivery_manager_id")
-  maxSubmissionsPerRec Int?      @map("max_submissions") 
+  accountManagerId     String? @map("account_manager_id")
+  deliveryManagerId    String? @map("delivery_manager_id")
+  maxSubmissionsPerRec Int?    @map("max_submissions")
 
   // Candidate Submission Rules
-  maxTotalSubmissions  Int?      @map("max_total_submissions")
-  exclusiveCandidate   Boolean   @default(false) @map("exclusive_candidate")
-  blindCvRequired      Boolean   @default(false) @map("blind_cv_required")
-  sourceFormat         String?   @map("source_format")
+  maxTotalSubmissions Int?    @map("max_total_submissions")
+  exclusiveCandidate  Boolean @default(false) @map("exclusive_candidate")
+  blindCvRequired     Boolean @default(false) @map("blind_cv_required")
+  sourceFormat        String? @map("source_format")
 
   // Screening Questions & Attachments & Notes
-  screeningQuestions   Json?     @default("[]") @map("screening_questions")
-  attachments          Json?     @default("[]")
-  internalNotes        String?   @map("internal_notes")
+  screeningQuestions Json?   @default("[]") @map("screening_questions")
+  attachments        Json?   @default("[]")
+  internalNotes      String? @map("internal_notes")
 
-  // Metadata
-  createdById          String    @map("created_by_id")
-  createdAt            DateTime  @default(now()) @map("created_at")
-  updatedAt            DateTime  @updatedAt @map("updated_at")
+  // Metadatay
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   // Relations
-  tenant               Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  client               Client?   @relation(fields: [clientId], references: [id])
-  createdBy            User      @relation("RequisitionCreator", fields: [createdById], references: [id])
-  accountManager       User?     @relation("RequisitionAccountManager", fields: [accountManagerId], references: [id])
-  deliveryManager      User?     @relation("RequisitionDeliveryManager", fields: [deliveryManagerId], references: [id])
-  assignedRecruiters   User[]    @relation("RequisitionRecruiters")
+  tenant             Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client             Client? @relation(fields: [clientId], references: [id])
+  createdBy          User    @relation("RequisitionCreator", fields: [createdById], references: [id])
+  accountManager     User?   @relation("RequisitionAccountManager", fields: [accountManagerId], references: [id])
+  deliveryManager    User?   @relation("RequisitionDeliveryManager", fields: [deliveryManagerId], references: [id])
+  assignedRecruiters User[]  @relation("RequisitionRecruiters")
 
   @@unique([tenantId, ticketId])
   @@index([tenantId, status])
   @@index([clientId])
   @@map("job_requisitions")
+}
+
+model Squad {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+
+  squadName String @map("squad_name") @db.VarChar(100)
+  squadCode String @map("squad_code") @db.VarChar(50)
+
+  squadStatus Boolean @default(true) @map("squad_status")
+  isArchived  Boolean @default(false) @map("is_archived")
+  isDeleted   Boolean @default(false) @map("is_deleted")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  createdById String  @map("created_by_id") @db.Uuid
+  updatedById String? @map("updated_by_id") @db.Uuid
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdBy User  @relation("SquadCreator", fields: [createdById], references: [id])
+  updatedBy User? @relation("SquadUpdater", fields: [updatedById], references: [id])
+
+  squadMembers SquadMember[]
+
+  @@map("squad")
+}
+
+model SquadMember {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  squadId  String @map("squad_id") @db.Uuid
+
+  squadMemberId String @map("squad_member_id") @db.Uuid
+  memberType    String @map("member_type") @db.VarChar(50)
+
+  status Boolean @default(true)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  createdById String  @map("created_by_id") @db.Uuid
+  updatedById String? @map("updated_by_id") @db.Uuid
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  squad Squad @relation(fields: [squadId], references: [id], onDelete: Cascade)
+
+  member User @relation("SquadMemberUser", fields: [squadMemberId], references: [id])
+
+  createdBy User  @relation("SquadMemberCreator", fields: [createdById], references: [id])
+  updatedBy User? @relation("SquadMemberUpdater", fields: [updatedById], references: [id])
+
+  @@map("squad_members")
+}
+  model CandidateDetails {
+    id            String   @id @default(uuid())
+
+    tenantId      String   @map("tenant_id")
+    tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+    fullName      String   @map("full_name")
+    email         String   @unique
+    contactNo     String   @map("contact_no")
+
+    addressLine1  String   @map("address_line1")
+    addressLine2  String?  @map("address_line2")
+
+    city          String
+    state         String
+    zipCode       String   @map("zip_code")
+    country       String
+
+    linkedinUrl   String?  @map("linkedin_url")
+    githubUrl     String?  @map("github_url")
+    portfolioUrl  String?  @map("portfolio_url")
+
+  internalRecruiterNotes String? @db.VarChar(1000) @map("internal_recruiter_notes")
+
+
+
+      availability CandidateAvailability[]
+      currentEmployerContact CurrentEmployerContact[]
+      workAuthorizations WorkAuthorization[]
+      interviewAvailabilities CandidateInterviewAvailability[]
+      documents CandidateDocuments[]
+
+    createdAt     DateTime @default(now()) @map("created_at")
+    updatedAt     DateTime @updatedAt @map("updated_at")
+
+    @@map("candidate_details")
+  }
+model CandidateAvailability {
+  id               String   @id @default(uuid())
+
+candidateId      String  @map("candidate_id")
+ candidate   CandidateDetails @relation(fields: [candidateId], references: [id])
+
+  availableToJoin  Boolean?  @map("available_to_join")
+  joiningDate      DateTime? @map("joining_date")
+  noticePeriod     Int?      @map("notice_period")
+
+  createdAt        DateTime? @default(now()) @map("created_at")
+  updatedAt        DateTime? @updatedAt @map("updated_at")
+
+  @@map("candidate_availability")
+}
+
+model CurrentEmployerContact {
+  id                          String   @id   // TEXT primary key
+
+  candidateId                 String  @map("candidate_id")
+  candidate                   CandidateDetails @relation(fields: [candidateId], references: [id])
+
+  reportingManagerName        String?  @map("reporting_manager_name")
+  reportingManagerEmail       String?  @map("reporting_manager_email")
+  reportingManagerPhone       String?  @map("reporting_manager_phone")
+
+  currentEmployerCompanyName  String?  @map("current_employer_companyname")
+  currentEmployerCompanyWebsite String? @map("current_employer_company_website")
+
+  createdAt                   DateTime? @default(now()) @map("created_at")
+  updatedAt                   DateTime? @updatedAt @map("updated_at")
+
+  @@map("current_employer_contact")
+}
+model WorkAuthorization {
+  id                       String   @id   // TEXT primary key
+
+  candidateId              String   @map("candidate_id")
+  candidate                CandidateDetails @relation(fields: [candidateId], references: [id])
+
+  workAuthorizationType    String?  @map("work_authorization_type")
+  visaValidationType       String?  @map("visa_validation_type")
+
+  willingTransferVisa      Boolean  @default(false) @map("willing_transfer_visa")
+
+  ssnNumber                String?  @map("ssn_number")
+  passportNumber           String?  @map("passport_number")
+
+  createdAt                DateTime? @default(now()) @map("created_at")
+  updatedAt                DateTime? @updatedAt @map("updated_at")
+
+  @@map("work_authorization")
+}
+
+model CandidateInterviewAvailability {
+  id             String   @id   
+
+  candidateId    String   @map("candidate_id")
+  candidate      CandidateDetails @relation(fields: [candidateId], references: [id])
+
+  interviewDate  DateTime? @map("interview_date")
+
+  startTime      DateTime? @map("start_time")
+  endTime        DateTime? @map("end_time")
+
+  createdAt      DateTime? @default(now()) @map("created_at")
+  updatedAt      DateTime? @updatedAt @map("updated_at")
+
+  @@map("candidate_interview_availability")
+}
+model CandidateDocuments {
+  id            String   @id   // TEXT primary key
+
+  candidateId   String   @map("candidate_id")
+  candidate     CandidateDetails @relation(fields: [candidateId], references: [id])
+
+  documentType  String   @map("document_type")   // resume, aadhar, etc
+  documentUrl   String   @map("document_url")    // R2 URL
+
+  createdAt     DateTime? @default(now()) @map("created_at")
+  updatedAt     DateTime? @updatedAt @map("updated_at")
+
+  @@map("candidate_documents")
 }
