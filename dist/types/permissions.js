@@ -53,6 +53,11 @@ exports.Permissions = {
     INVOICE_UPDATE: 'invoice.update',
     INVOICE_DELETE: 'invoice.delete',
     INVOICE_MANAGE: 'invoice.manage',
+    // ─── Invoice Templates ───────────────────────────────────────────
+    INVOICE_TEMPLATE_CREATE: 'invoice_template.create',
+    INVOICE_TEMPLATE_READ: 'invoice_template.read',
+    INVOICE_TEMPLATE_UPDATE: 'invoice_template.update',
+    INVOICE_TEMPLATE_DELETE: 'invoice_template.delete',
     // ─── Transactions / Accounts ─────────────────────────────────────
     TRANSACTION_CREATE: 'transaction.create',
     TRANSACTION_READ: 'transaction.read',
@@ -123,6 +128,7 @@ exports.PERMISSIONS_BY_RESOURCE = {
     leave: [exports.Permissions.LEAVE_CREATE, exports.Permissions.LEAVE_READ, exports.Permissions.LEAVE_UPDATE, exports.Permissions.LEAVE_DELETE, exports.Permissions.LEAVE_APPROVE, exports.Permissions.LEAVE_MANAGE],
     shift: [exports.Permissions.SHIFT_CREATE, exports.Permissions.SHIFT_READ, exports.Permissions.SHIFT_UPDATE, exports.Permissions.SHIFT_DELETE, exports.Permissions.SHIFT_MANAGE],
     invoice: [exports.Permissions.INVOICE_CREATE, exports.Permissions.INVOICE_READ, exports.Permissions.INVOICE_UPDATE, exports.Permissions.INVOICE_DELETE, exports.Permissions.INVOICE_MANAGE],
+    invoice_template: [exports.Permissions.INVOICE_TEMPLATE_CREATE, exports.Permissions.INVOICE_TEMPLATE_READ, exports.Permissions.INVOICE_TEMPLATE_UPDATE, exports.Permissions.INVOICE_TEMPLATE_DELETE],
     transaction: [exports.Permissions.TRANSACTION_CREATE, exports.Permissions.TRANSACTION_READ, exports.Permissions.TRANSACTION_UPDATE, exports.Permissions.TRANSACTION_DELETE, exports.Permissions.TRANSACTION_MANAGE],
     client: [exports.Permissions.CLIENT_CREATE, exports.Permissions.CLIENT_READ, exports.Permissions.CLIENT_UPDATE, exports.Permissions.CLIENT_DELETE, exports.Permissions.CLIENT_MANAGE],
     settings: [exports.Permissions.SETTINGS_READ, exports.Permissions.SETTINGS_UPDATE, exports.Permissions.SETTINGS_MANAGE],

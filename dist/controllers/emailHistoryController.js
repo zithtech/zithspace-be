@@ -145,7 +145,7 @@ class EmailHistoryController {
                     id: invoice.id,
                     invoiceNumber: invoice.invoiceNumber,
                     customerName: invoice.customerSnapshot?.companyName || 'Unknown',
-                    total: invoice.total,
+                    total: invoice.grandTotal,
                     status: invoice.status
                 }
             });
