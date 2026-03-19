@@ -8,23 +8,24 @@ datasource db {
 }
 
 model Tenant {
-  id                    String                     @id @default(uuid())
-  name                  String
-  subdomain             String                     @unique
-  planType              String                     @default("basic") @map("plan_type")
-  maxUsers              Int                        @default(10) @map("max_users")
-  isActive              Boolean                    @default(true) @map("is_active")
-  settings              Json?                      @default("{}")
-  createdAt             DateTime                   @default(now()) @map("created_at")
-  updatedAt             DateTime                   @updatedAt @map("updated_at")
-  attendance            Attendance[]
-  attendanceBreaks      AttendanceBreak[]
-  buckets               Bucket[]
-  customers             Customer[]
-  dropdownOptions       DropdownOption[]
-  leaves                Leave[]
-  leaveTypes            LeaveType[]
-  leaveAdjustments      LeaveAdjustment[]
+  id               String            @id @default(uuid())
+  name             String
+  subdomain        String            @unique
+  planType         String            @default("basic") @map("plan_type")
+  maxUsers         Int               @default(10) @map("max_users")
+  isActive         Boolean           @default(true) @map("is_active")
+  settings         Json?             @default("{}")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  attendance       Attendance[]
+  timeTrackingLogs TimeTrackingLog[]
+  attendanceBreaks AttendanceBreak[]
+  buckets          Bucket[]
+  customers        Customer[]
+  dropdownOptions  DropdownOption[]
+  leaves           Leave[]
+  leaveTypes          LeaveType[]
+  leaveAdjustments    LeaveAdjustment[]
   leaveOriginStructures LeaveOriginStructure[]
   originLeaveTypes      OriginLeaveType[]
   fixedHolidays         FixedHoliday[]
@@ -96,6 +97,9 @@ model Tenant {
 
   // RBAC
   roles Role[]
+  
+  // Time Tracking
+  timeTrackingEntries TimeTrackingEntry[]
 
   @@map("tenants")
 }
@@ -279,6 +283,9 @@ model User {
 
   // ===== RBAC Relations =====
   userRoles UserRole[]
+  
+  // Time Tracking
+  timeTrackingEntries TimeTrackingEntry[]
 
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
@@ -486,6 +493,9 @@ model Project {
   // Client V2 Relations
   employeeClientAllocationsV2 EmployeeClientAllocationV2[]
   clientProjects              ClientProject[]
+  
+  // Time Tracking
+  timeTrackingEntries TimeTrackingEntry[]
 
   @@unique([tenantId, code])
   @@map("projects")
@@ -597,6 +607,9 @@ model Ticket {
   subTasks   Ticket[] @relation("ParentSubTasks")
   archivedBy User?    @relation("TicketArchivedBy", fields: [archivedById], references: [id])
   deletedBy  User?    @relation("TicketDeletedBy", fields: [deletedById], references: [id])
+  
+  // Time Tracking
+  timeTrackingEntries TimeTrackingEntry[]
 
   @@unique([tenantId, ticketNumber])
   @@index([epicId])
@@ -2959,4 +2972,54 @@ model InvoiceTemplateField {
 
   @@index([templateId])
   @@map("invoice_template_fields")
+
+}
+
+
+model TimeTrackingEntry {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  userId      String   @map("user_id")
+  projectId   String?  @map("project_id")
+  ticketId    String?  @map("ticket_id")
+  
+  description String?
+  billable    Boolean  @default(false)
+  billingRate Decimal? @map("billing_rate") @db.Decimal(10, 2)
+  
+  startTime   DateTime @map("start_time")
+  endTime     DateTime? @map("end_time")
+  duration    Int?     // Duration in seconds
+  status      String   @default("RUNNING") // RUNNING, STOPPED
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  ticket      Ticket?  @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  logs        TimeTrackingLog[]
+
+  @@index([tenantId, userId])
+  @@index([projectId])
+  @@map("time_tracking_entries")
+}
+
+model TimeTrackingLog {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  timeTrackingId  String   @map("time_tracking_id")
+  
+  action          String   // e.g., "STARTED", "PAUSED", "RESUMED", "STOPPED"
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  timeTrackingEntry TimeTrackingEntry @relation(fields: [timeTrackingId], references: [id], onDelete: Cascade)
+  tenant            Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([timeTrackingId])
+  @@index([tenantId])
+  @@map("time_tracking_logs")
 }

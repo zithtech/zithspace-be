@@ -6,10 +6,6 @@ import { syncLogger } from "@/utils/logger";
 export class SyncWorker {
     private static isRunning = false;
 
-    /**
-     * Start the sync scheduler. Polls every 5 minutes for integrations due for sync
-     * and enqueues them into the BullMQ queue instead of calling directly.
-     */
     static start() {
         nodeCron.schedule("*/5 * * * *", () => {
             // this.pollAndEnqueue().catch(err => {

@@ -9,10 +9,6 @@ const database_1 = require("@/config/database");
 const calendarSyncQueue_1 = require("./calendarSyncQueue");
 const logger_1 = require("@/utils/logger");
 class SyncWorker {
-    /**
-     * Start the sync scheduler. Polls every 5 minutes for integrations due for sync
-     * and enqueues them into the BullMQ queue instead of calling directly.
-     */
     static start() {
         node_cron_1.default.schedule("*/5 * * * *", () => {
             // this.pollAndEnqueue().catch(err => {
