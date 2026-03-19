@@ -16,6 +16,7 @@ import { connectDatabase, disconnectDatabase } from "@/config/database";
 import salaryComponentRoutes from "@/routes/salaryComponentRoutes";
 import gradeRoutes from "@/routes/gradeRoutes";
 import companyRoutes from "./routes/companyRoutes";
+import mailTemplateRoutes from "./routes/mailTemplateRoutes";
 
 // Import middlewares
 import { optionalTenantContext } from "@/middleware/tenantContext";
@@ -180,6 +181,7 @@ app.get("/health", (req, res) => {
 // app.use("/api", optionalTenantContext);
 
 // API routes
+app.use("/api/mail-templates", mailTemplateRoutes);
 app.use("/api/leave-adjustments", leaveAdjustmentRoutes);
 app.use("/api/company-government-holidays", companyGovernmentHolidayRouter);
 app.use("/api/leave-origins", leaveOriginRoutes);
