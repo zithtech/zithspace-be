@@ -45,15 +45,8 @@ export declare class EmailLoggerService {
         limit: number;
     }): Promise<{
         data: ({
-            customer: {
-                companyName: string;
-                id: string;
-                email: string;
-            };
-            sentByUserRel: {
-                name: string;
-                id: string;
-            };
+            customer: never;
+            sentByUserRel: never;
         } & {
             status: string;
             tenantId: string;
@@ -71,6 +64,7 @@ export declare class EmailLoggerService {
             subject: string;
             html: string;
             plainText: string | null;
+            customerId: string | null;
             customerName: string | null;
             customerEmail: string | null;
             hasAttachment: boolean;
@@ -80,9 +74,8 @@ export declare class EmailLoggerService {
             sentAt: Date;
             openedAt: Date | null;
             clickedAt: Date | null;
-            sentByUser: string | null;
-            customerId: string | null;
             sentBy: string;
+            sentByUser: string | null;
         })[];
         pagination: {
             page: number;
@@ -95,25 +88,8 @@ export declare class EmailLoggerService {
      * Get a single email log by ID
      */
     static getEmailById(id: string, tenantId: string): Promise<{
-        customer: {
-            companyName: string;
-            country: string | null;
-            tenantId: string;
-            createdAt: Date;
-            updatedAt: Date;
-            createdBy: string;
-            updatedBy: string | null;
-            id: string;
-            email: string | null;
-            phone: string | null;
-            city: string | null;
-            address: string | null;
-            taxId: string | null;
-        };
-        sentByUserRel: {
-            name: string;
-            id: string;
-        };
+        customer: never;
+        sentByUserRel: never;
     } & {
         status: string;
         tenantId: string;
@@ -131,6 +107,7 @@ export declare class EmailLoggerService {
         subject: string;
         html: string;
         plainText: string | null;
+        customerId: string | null;
         customerName: string | null;
         customerEmail: string | null;
         hasAttachment: boolean;
@@ -140,9 +117,8 @@ export declare class EmailLoggerService {
         sentAt: Date;
         openedAt: Date | null;
         clickedAt: Date | null;
-        sentByUser: string | null;
-        customerId: string | null;
         sentBy: string;
+        sentByUser: string | null;
     }>;
     /**
      * Get all unique modules that have sent emails
@@ -185,6 +161,7 @@ export declare class EmailLoggerService {
         subject: string;
         html: string;
         plainText: string | null;
+        customerId: string | null;
         customerName: string | null;
         customerEmail: string | null;
         hasAttachment: boolean;
@@ -194,8 +171,7 @@ export declare class EmailLoggerService {
         sentAt: Date;
         openedAt: Date | null;
         clickedAt: Date | null;
-        sentByUser: string | null;
-        customerId: string | null;
         sentBy: string;
+        sentByUser: string | null;
     }>;
 }

@@ -23,17 +23,17 @@ export declare function getAllBankPayrollDetails(req: AuthRequest): Promise<{
     employeeCode: string;
     firstName: string;
     lastName: string;
-    bankName: string;
-    branchName: string;
-    accountHolderName: string;
+    bankName: any;
+    branchName: any;
+    accountHolderName: any;
     accountNumber: string;
-    accountType: string;
+    accountType: any;
     ifscCode: string;
     uanNumber: string;
     pfNumber: string;
     esiNumber: string;
-    taxRegime: string;
-    paymentType: string;
+    taxRegime: any;
+    paymentType: any;
 }[]>;
 export declare function updateBankPayrollDetails(req: AuthRequest, employeeId: string, tx?: any): Promise<{
     success: boolean;

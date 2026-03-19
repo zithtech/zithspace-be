@@ -28,15 +28,7 @@ export declare function getAllEmployeesAssets(req: AuthRequest): Promise<{
     employeeCode: string;
     firstName: string;
     lastName: string;
-    assets: {
-        id: string;
-        item: string;
-        brand: string;
-        model: string;
-        modelNumber: string;
-        image: string;
-        createdAt: Date;
-    }[];
+    assets: any;
 }[]>;
 export declare function updateEmployeeAsset(req: AuthRequest, employeeId: string, assetId: string): Promise<{
     success: boolean;

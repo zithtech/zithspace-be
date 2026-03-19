@@ -14,12 +14,12 @@ export declare function getPersonalDetails(req: AuthRequest, employeeId: string)
     personalEmail: string;
     address: {
         current: {
-            c_flat: string;
-            c_area: string;
-            c_city: string;
-            c_state: string;
-            c_country: string;
-            c_pincode: string;
+            c_flat: any;
+            c_area: any;
+            c_city: any;
+            c_state: any;
+            c_country: any;
+            c_pincode: any;
         } | {
             c_flat?: undefined;
             c_area?: undefined;
@@ -29,12 +29,12 @@ export declare function getPersonalDetails(req: AuthRequest, employeeId: string)
             c_pincode?: undefined;
         };
         permanent: {
-            p_flat: string;
-            p_area: string;
-            p_city: string;
-            p_state: string;
-            p_country: string;
-            p_pincode: string;
+            p_flat: any;
+            p_area: any;
+            p_city: any;
+            p_state: any;
+            p_country: any;
+            p_pincode: any;
         } | {
             p_flat?: undefined;
             p_area?: undefined;
@@ -44,9 +44,9 @@ export declare function getPersonalDetails(req: AuthRequest, employeeId: string)
             p_pincode?: undefined;
         };
     };
-    relationship: string;
-    relationName: string;
-    relationMobile: string;
+    relationship: any;
+    relationName: any;
+    relationMobile: any;
     aadhaar: string;
     pan: string;
     passport: string;
@@ -123,11 +123,11 @@ export declare function deletePersonalDetails(req: AuthRequest, employeeId: stri
         mobile: string;
         work_email: string;
         personal_email: string | null;
-        profile_pic: string | null;
         created_by: string;
         updated_by: string | null;
         created_at: Date;
         updated_at: Date;
+        profile_pic: string | null;
     };
 }>;
 export declare function hardDeletePersonalDetails(req: AuthRequest, employeeId: string): Promise<{
