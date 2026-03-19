@@ -103,6 +103,8 @@ model Tenant {
   employeeClientAllocationsV2 EmployeeClientAllocationV2[]
   ClientProject               ClientProject[]
 
+  candidates                  Candidate[]
+
   // RBAC
   roles Role[]
   
@@ -314,6 +316,17 @@ model User {
   // Client V2 Relations
   createdClientsV2          ClientV2[]         @relation("ClientV2Creator")
   uploadedClientDocumentsV2 ClientDocumentV2[] @relation("ClientDocumentV2Uploader")
+
+  createdCandidates         Candidate[]        @relation("CandidateCreator")
+  updatedCandidates         Candidate[]        @relation("CandidateUpdater")
+  createdCandidateWorkExps  CandidateWorkExperience[] @relation("CandidateWorkExpCreator")
+  updatedCandidateWorkExps  CandidateWorkExperience[] @relation("CandidateWorkExpUpdater")
+  createdCandidateSkills    CandidateSkillMatrix[]    @relation("CandidateSkillCreator")
+  updatedCandidateSkills    CandidateSkillMatrix[]    @relation("CandidateSkillUpdater")
+  createdCandidateEdus      CandidateEducation[]      @relation("CandidateEduCreator")
+  updatedCandidateEdus      CandidateEducation[]      @relation("CandidateEduUpdater")
+  createdCandidateIntvs     CandidateInterviewSlot[]  @relation("CandidateIntvCreator")
+  updatedCandidateIntvs     CandidateInterviewSlot[]  @relation("CandidateIntvUpdater")
 
   // ===== RBAC Relations =====
   userRoles UserRole[]
@@ -3612,4 +3625,174 @@ model EmployeeExit {
   updatedBy User?    @relation("EmployeeExitUpdatedBy", fields: [updatedById], references: [id])
 
   @@map("employee_exits")
+}
+
+model Candidate {
+  id                      String    @id @default(uuid())
+  tenantId                String    @map("tenant_id")
+  
+  // Personal Details
+  fullName                String    @map("full_name")
+  email                   String
+  phoneNumber             String    @map("phone_number")
+  country                 String?
+  state                   String?
+  city                    String?
+  timezone                String?
+  linkedinUrl             String?   @map("linkedin_url")
+  githubUrl               String?   @map("github_url")
+  portfolioUrl            String?   @map("portfolio_url")
+  preferredContactMethod  String?   @map("preferred_contact_method")
+
+  // Career Summary
+  currentRole             String?   @map("current_role")
+  yearsOfExperience       Decimal?  @map("years_of_experience") @db.Decimal(5, 2)
+  primarySkills           String[]  @map("primary_skills") @default([])
+  secondarySkills         String[]  @map("secondary_skills") @default([])
+  professionalSummary     String?   @map("professional_summary") @db.Text
+
+  // Work Authorization
+  workAuthorizationType   String?   @map("work_authorization_type")
+  visaValidityDate        DateTime? @map("visa_validity_date") @db.Date
+  willingToTransferVisa   Boolean   @default(false) @map("willing_to_transfer_visa")
+
+  // Employment Preferences
+  preferredEmploymentType String?   @map("preferred_employment_type")
+  expectedRate            Decimal?  @map("expected_rate") @db.Decimal(15, 2)
+  rateUnit                String?   @map("rate_unit")
+  willingToRelocate       String?   @map("willing_to_relocate")
+  preferredWorkMode       String?   @map("preferred_work_mode")
+
+  // Availability
+  earliestAvailable       String?   @map("earliest_available")
+  joiningDate             DateTime? @map("joining_date") @db.Date
+  noticePeriod            Int?      @map("notice_period")
+
+  // Candidate Documents (Storing as single URLs or Json Array of URLs for files)
+  resumeUrl               String?   @map("resume_url") @db.Text
+  passportUrl             String?   @map("passport_url") @db.Text
+  drivingLicenseUrl       String?   @map("driving_license_url") @db.Text
+  visaDocumentUrl         String?   @map("visa_document_url") @db.Text
+  identityProofUrl        String?   @map("identity_proof_url") @db.Text
+  certificationsUrls      Json?     @map("certifications_urls") @default("[]")
+
+  // Internal Recruiter Notes & Tags
+  internalNotes           String?   @map("internal_notes") @db.Text
+  candidateTags           String[]  @map("candidate_tags") @default([])
+  isActive                Boolean   @default(true) @map("is_active")
+
+  // Configuration & Rating
+  statusConfig            String    @default("New") @map("status_config")
+  actionConfig            String    @default("New") @map("action_config")
+  skillRate               String    @default("New") @map("skill_rate")
+
+  // Audit
+  createdById             String    @map("created_by_id")
+  updatedById             String?   @map("updated_by_id")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  tenant                  Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy               User                       @relation("CandidateCreator", fields: [createdById], references: [id])
+  updatedBy               User?                      @relation("CandidateUpdater", fields: [updatedById], references: [id])
+  workExperiences         CandidateWorkExperience[]
+  skills                  CandidateSkillMatrix[]
+  educations              CandidateEducation[]
+  interviewSlots          CandidateInterviewSlot[]
+
+  @@index([tenantId])
+  @@index([email])
+  @@map("candidates")
+}
+
+model CandidateWorkExperience {
+  id               String    @id @default(uuid())
+  candidateId      String    @map("candidate_id")
+  companyName      String    @map("company_name")
+  companyWebsite   String?   @map("company_website")
+  jobTitle         String    @map("job_title")
+  startDate        DateTime  @map("start_date") @db.Date
+  endDate          DateTime? @map("end_date") @db.Date
+  location         String?
+  employmentType   String?   @map("employment_type")
+  workMode         String?   @map("work_mode")
+  skillsUsed       String[]  @map("skills_used") @default([])
+  responsibilities String?   @db.Text
+
+  createdById      String    @map("created_by_id")
+  updatedById      String?   @map("updated_by_id")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  candidate        Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  createdBy        User      @relation("CandidateWorkExpCreator", fields: [createdById], references: [id])
+  updatedBy        User?     @relation("CandidateWorkExpUpdater", fields: [updatedById], references: [id])
+
+  @@index([candidateId])
+  @@map("candidate_work_experiences")
+}
+
+model CandidateSkillMatrix {
+  id                String    @id @default(uuid())
+  candidateId       String    @map("candidate_id")
+  skillName         String[]  @map("skill_name") @default([]) // Array to handle tags mode
+  yearsOfExperience Decimal   @map("years_of_experience") @db.Decimal(5, 2)
+  lastUsedYear      DateTime  @map("last_used_year") @db.Date
+
+  createdById       String    @map("created_by_id")
+  updatedById       String?   @map("updated_by_id")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  candidate         Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  createdBy         User      @relation("CandidateSkillCreator", fields: [createdById], references: [id])
+  updatedBy         User?     @relation("CandidateSkillUpdater", fields: [updatedById], references: [id])
+
+  @@index([candidateId])
+  @@map("candidate_skill_matrices")
+}
+
+model CandidateEducation {
+  id             String    @id @default(uuid())
+  candidateId    String    @map("candidate_id")
+  degreeName     String    @map("degree_name")
+  specialization String?
+  university     String
+  location       String?
+  startDate      DateTime  @map("start_date") @db.Date
+  endDate        DateTime? @map("end_date") @db.Date
+
+  createdById    String    @map("created_by_id")
+  updatedById    String?   @map("updated_by_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  candidate      Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  createdBy      User      @relation("CandidateEduCreator", fields: [createdById], references: [id])
+  updatedBy      User?     @relation("CandidateEduUpdater", fields: [updatedById], references: [id])
+
+  @@index([candidateId])
+  @@map("candidate_educations")
+}
+
+model CandidateInterviewSlot {
+  id            String    @id @default(uuid())
+  candidateId   String    @map("candidate_id")
+  interviewDate DateTime  @map("interview_date") @db.Date
+  startTime     String    @map("start_time")
+  endTime       String    @map("end_time")
+  timezone      String?   @map("timezone")
+
+  createdById   String    @map("created_by_id")
+  updatedById   String?   @map("updated_by_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  candidate     Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  createdBy     User      @relation("CandidateIntvCreator", fields: [createdById], references: [id])
+  updatedBy     User?     @relation("CandidateIntvUpdater", fields: [updatedById], references: [id])
+
+  @@index([candidateId])
+  @@map("candidate_interview_slots")
 }

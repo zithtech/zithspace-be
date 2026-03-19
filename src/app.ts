@@ -85,6 +85,7 @@ import exitTypeRoutes from "@/routes/exitType.routes";
 import reasonForExitRoutes from "@/routes/reasonForExit.routes";
 import exitApprovalWorkflowRoutes from "@/routes/exitApprovalWorkflow.routes";
 
+import candidateRoutes from "@/routes/candidateRoutes";
 // Load environment
 dotenv.config();
 console.log("🚀 API Starting up...");
@@ -247,6 +248,7 @@ app.use("/api/leave-balances", leaveBalanceRoutes);
 
 
 app.use("/api/time-tracking", timeTrackingRoutes);
+app.use("/api/candidates", candidateRoutes);
 
 app.use("/api/employee-work-details", employeeWorkDetailRoutes);
 app.use("/api/employee-timelines", employeeTimelineRoutes);
