@@ -73,6 +73,23 @@ class EmployeeOnboardingController {
             });
         }
     }
+    // ✅ GET Upcoming Birthdays (Current Month)
+    static async getUpcomingBirthdays(req, res) {
+        try {
+            const birthdays = await (0, createEmployeeDetailes_1.getUpcomingBirthdays)(req);
+            res.status(200).json({
+                success: true,
+                data: birthdays,
+            });
+        }
+        catch (err) {
+            console.error("Get Upcoming Birthdays Error:", err);
+            res.status(500).json({
+                success: false,
+                error: err.message || "Internal Server Error",
+            });
+        }
+    }
     // ✅ GET Employee By ID (Full Details)
     static async getById(req, res) {
         try {

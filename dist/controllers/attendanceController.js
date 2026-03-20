@@ -18,7 +18,7 @@ class AttendanceController {
             }
             const { page = 1, limit = 20, userId, member, // Alias for userId (used by frontend)
             date, status, startDate, endDate, search, // Search by member name
-            sortBy = 'date', sortOrder = 'desc' } = req.query;
+            sortBy = "date", sortOrder = "desc", } = req.query;
             // Build filter query
             const where = {
                 tenantId: req.tenantId,
@@ -34,8 +34,8 @@ class AttendanceController {
                 where.user = {
                     name: {
                         contains: search,
-                        mode: 'insensitive'
-                    }
+                        mode: "insensitive",
+                    },
                 };
             }
             if (date) {
@@ -772,6 +772,69 @@ class AttendanceController {
             res.status(500).json({
                 success: false,
                 error: "Failed to update attendance record",
+            });
+        }
+    }
+    /**
+     * Get last 5 working days average for current user
+     */
+    static async getLast5DaysAverage(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const userId = req.user.id;
+            const result = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+                const records = await client.attendance.findMany({
+                    where: {
+                        userId,
+                        tenantId: req.tenantId,
+                        clockIn: { not: null },
+                        clockOut: { not: null }, // only completed days
+                    },
+                    orderBy: { date: "desc" },
+                    take: 5,
+                });
+                if (records.length === 0) {
+                    return {
+                        last5Days: [],
+                        averageMinutes: 0,
+                        averageHours: 0,
+                    };
+                }
+                const processedRecords = records.map((record) => {
+                    const minutes = Math.floor((record.clockOut.getTime() - record.clockIn.getTime()) / 60000);
+                    return {
+                        date: record.date,
+                        clockIn: record.clockIn,
+                        clockOut: record.clockOut,
+                        minutes,
+                        hours: Number((minutes / 60).toFixed(2)),
+                    };
+                });
+                const totalMinutes = processedRecords.reduce((sum, r) => sum + r.minutes, 0);
+                const averageMinutes = Math.floor(totalMinutes / processedRecords.length);
+                const averageHours = Number((averageMinutes / 60).toFixed(2));
+                return {
+                    last5Days: processedRecords,
+                    averageMinutes,
+                    averageHours,
+                };
+            });
+            res.status(200).json({
+                success: true,
+                data: result,
+            });
+        }
+        catch (error) {
+            console.error("Last 5 days average error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to fetch last 5 days average",
             });
         }
     }
