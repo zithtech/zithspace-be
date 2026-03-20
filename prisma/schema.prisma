@@ -96,9 +96,12 @@ model Tenant {
 
   // RBAC
   roles Role[]
-  
-  // Time Tracking
-  timeTrackingEntries TimeTrackingEntry[]
+
+  exitNoticePolicies ExitNoticePolicy[]
+    exitTypes  ExitType[]
+      reasonForExits ReasonForExit[]
+      employeeExits EmployeeExit[]
+       exitApprovalWorkflows ExitApprovalWorkflow[]
 
   @@map("tenants")
 }
@@ -135,6 +138,15 @@ model User {
   updatedCompanies        Company[]         @relation("CompanyUpdater")
   createdCustomers        Customer[]        @relation("CustomerCreatedBy")
   updatedCustomers        Customer[]        @relation("CustomerUpdatedBy")
+  
+  createdExitTypes ExitType[] @relation("ExitNoticePolicyCreator")
+  updatedExitTypes ExitType[] @relation("ExitNoticePolicyUpdater")
+  createdReasonForExits ReasonForExit[] @relation("ReasonForExitCreator")
+  updatedReasonForExits ReasonForExit[] @relation("ReasonForExitUpdater")
+    createdEmployeeExits EmployeeExit[]
+    createdExitApprovalWorkflows ExitApprovalWorkflow[] @relation("ExitApprovalWorkflowCreatedBy")
+  updatedExitApprovalWorkflows ExitApprovalWorkflow[] @relation("ExitApprovalWorkflowUpdatedBy")
+
 
   enteredAttendance            Attendance[]               @relation("AttendanceEnteredBy")
   attendance                   Attendance[]
@@ -282,6 +294,9 @@ model User {
 
   // ===== RBAC Relations =====
   userRoles UserRole[]
+
+  createdExitPolicies ExitNoticePolicy[] @relation("ExitNoticePolicyCreator")
+  updatedExitPolicies ExitNoticePolicy[] @relation("ExitNoticePolicyUpdater")
   
   // Time Tracking
   timeTrackingEntries TimeTrackingEntry[]
@@ -410,6 +425,7 @@ model Position {
   createdBy     User           @relation("PositionCreator", fields: [createdById], references: [id])
   updatedBy     User?          @relation("PositionUpdater", fields: [updatedById], references: [id])
   users         User[]         @relation("UserPosition")
+  workDetail       EmployeeWorkDetail[]
 
   @@unique([tenantId, code])
   @@map("positions")
@@ -2042,6 +2058,7 @@ model Employee {
   payrollUpdated EmployeePayrollDetail[] @relation("EmployeePayrollDetailUpdatedBy")
 
   experiences EmployeeExperience[]
+  employeeExits EmployeeExit[]
 
   createdExperiences EmployeeExperience[] @relation("EmployeeExperienceCreatedBy")
   updatedExperiences EmployeeExperience[] @relation("EmployeeExperienceUpdatedBy")
@@ -2166,9 +2183,11 @@ model EmployeeWorkDetail {
   totalDays     Int?    @map("total_days")
   totalHours    Int?    @map("total_hours")
   notice_period String? @db.VarChar(100)
+  positionId     String?  @db.Uuid @map("position_id") 
 
   createdById String  @map("created_by_id") @db.Uuid
   updatedById String? @map("updated_by_id") @db.Uuid
+  position   Position? @relation(fields: [positionId], references: [id])
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -2372,6 +2391,11 @@ model EmployeeAsset {
   brandName   String @map("brand_name") @db.VarChar(30)
   modelName   String @map("model_name") @db.VarChar(30)
   modelNumber String @map("model_number") @db.VarChar(30)
+
+  returnStatus String?   @map("return_status") @db.Text
+  condition    String?   @db.Text
+  deduction    Int?      @db.Integer
+  remarks      String?   @db.Text
 
   uploadImage String? @map("upload_image") @db.Text
 
