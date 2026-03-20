@@ -75,6 +75,10 @@ const positionRoutes_1 = __importDefault(require("@/routes/positionRoutes"));
 const calendar_1 = __importDefault(require("@/routes/calendar"));
 const leaveOriginRoutes_1 = __importDefault(require("@/routes/leaveOriginRoutes"));
 const emailHistoryRoutes_1 = __importDefault(require("@/routes/emailHistoryRoutes"));
+const reimbursementConfig_1 = __importDefault(require("@/routes/reimbursementConfig"));
+const reimbursementsettingsRoutes_1 = __importDefault(require("@/routes/reimbursementsettingsRoutes"));
+const reimbursementcreateRoutes_1 = __importDefault(require("@/routes/reimbursementcreateRoutes")); // the file we created earlier
+// import managerReimbursementRoutes from "./routes/managerReimbursementRoutes";
 const rbac_1 = __importDefault(require("@/routes/rbac"));
 // Load environment
 dotenv_1.default.config();
@@ -179,7 +183,8 @@ app.use("/api/user", user_1.default);
 app.use("/api/daily-updates", dailyUpdates_1.default);
 app.use("/api/dashboard", dashboard_1.default);
 app.use("/api/leaves", leaves_1.default);
-app.use("/api/reimbursement-category", reimbursementCategory_1.default);
+// app.use("/api/reimbursement-category", reimbursement);
+app.use("/api/reimbursement-categories", reimbursementCategory_1.default); // plural form
 app.use("/api/repositories", repositoryRoutes_1.default);
 app.use("/api/leave-types", leaveTypeRoutes_1.default);
 app.use("/api/customers", customerRoutes_1.default);
@@ -213,6 +218,11 @@ app.use("/api/employee-timelines", employeeTimeline_1.default);
 //app.use("/api/employee-employment-details", employeeEmploymentDetailsRoutes);
 // main
 app.use("/api/onboarding", onboardingRoutes_1.default);
+app.use("/api/reimbursement-configurations", reimbursementConfig_1.default);
+app.use("/api/reimbursement-settings", reimbursementsettingsRoutes_1.default);
+// Reimbursements (with file upload)
+app.use("/api/reimbursements", reimbursementcreateRoutes_1.default);
+// app.use("/api/manager/reimbursements", managerReimbursementRoutes);
 app.use("/api/profile/new", auth_2.default);
 app.use("/api/employeesettings", employeeSettingsRoutes_1.default);
 // RBAC management API

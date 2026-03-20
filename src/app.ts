@@ -79,6 +79,10 @@ import positionRoutes from "@/routes/positionRoutes";
 import calendarRoutes from "@/routes/calendar"
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
 import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
+import reimbursementConfigurationRoutes from "@/routes/reimbursementConfig";
+import reimbursementsettingsRoutes from "@/routes/reimbursementsettingsRoutes";
+import reimbursementRoutes from "@/routes/reimbursementcreateRoutes"; // the file we created earlier
+// import managerReimbursementRoutes from "./routes/managerReimbursementRoutes";
 import rbacRoutes from "@/routes/rbac";
 // Load environment
 dotenv.config();
@@ -206,7 +210,8 @@ app.use("/api/user", userRoutes);
 app.use("/api/daily-updates", dailyUpdateRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/leaves", leaveRoutes);
-app.use("/api/reimbursement-category", reimbursement);
+// app.use("/api/reimbursement-category", reimbursement);
+app.use("/api/reimbursement-categories", reimbursement);  // plural form
 app.use("/api/repositories", repositoryRoutes);
 app.use("/api/leave-types", leaveTypeRoutes);
 app.use("/api/customers", customerRoutes);
@@ -242,6 +247,11 @@ app.use("/api/employee-timelines", employeeTimelineRoutes);
 //app.use("/api/employee-employment-details", employeeEmploymentDetailsRoutes);
 // main
 app.use("/api/onboarding", employeeOnboardingRoutes);
+app.use("/api/reimbursement-configurations", reimbursementConfigurationRoutes);
+app.use("/api/reimbursement-settings", reimbursementsettingsRoutes);
+// Reimbursements (with file upload)
+app.use("/api/reimbursements", reimbursementRoutes);
+// app.use("/api/manager/reimbursements", managerReimbursementRoutes);
 app.use("/api/profile/new", newProfileRoutes);
 app.use("/api/employeesettings", employeeSettingsRoutes);
 
