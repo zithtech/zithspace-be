@@ -106,6 +106,12 @@ export declare function getAllEmployees(req: AuthRequest): Promise<{
     status: any;
     created_at: any;
 }[]>;
+export declare function getUpcomingBirthdays(req: AuthRequest): Promise<{
+    id: string;
+    firstName: string;
+    lastName: string;
+    dateOfBirth: Date;
+}[]>;
 export declare function updatePersonalDetails(req: AuthRequest, employeeId: string, tx?: any): Promise<any>;
 export declare function deletePersonalDetails(req: AuthRequest, employeeId: string): Promise<{
     success: boolean;
@@ -123,7 +129,6 @@ export declare function deletePersonalDetails(req: AuthRequest, employeeId: stri
         mobile: string;
         work_email: string;
         personal_email: string | null;
-        profile_pic: string | null;
         created_by: string;
         updated_by: string | null;
         created_at: Date;

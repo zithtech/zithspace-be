@@ -47,47 +47,53 @@ class InvoiceController {
     static calculateTotals(items, discount = 0, taxInclusive = false) {
         let subtotal = 0;
         let taxTotal = 0;
-        console.log("Calculating totals with:", {
-            itemsCount: items.length,
-            discount,
-            taxInclusive
-        });
+        let lineDiscountTotal = 0;
+        const getVal = (obj, keys) => {
+            if (!obj)
+                return 0;
+            for (const k of keys) {
+                const val = obj[k] ?? obj[k.toLowerCase()] ?? obj[k.charAt(0).toUpperCase() + k.slice(1).toLowerCase()];
+                if (val !== undefined && val !== null && val !== '')
+                    return Number(val);
+            }
+            return 0;
+        };
         items.forEach((item, index) => {
-            const qty = Number(item.qty || 0);
-            const price = Number(item.price || 0);
-            const taxRate = Number(item.tax || 0);
+            const qty = Number(item.quantity || item.qty || 0);
+            const price = Number(item.rate || item.price || 0);
+            const taxRateValue = getVal(item.extraFields, ['taxRate', 'tax', 'tax_rate', 'VAT', 'GST']);
+            const taxRate = Number(item.taxRate || item.tax || taxRateValue || 0);
+            const discountValue = getVal(item.extraFields, ['discount', 'dis', 'disc']);
+            const d = Number(discountValue || 0);
+            lineDiscountTotal += d;
             const linePrice = qty * price;
-            console.log(`Item ${index}: qty=${qty}, price=${price}, tax=${taxRate}, linePrice=${linePrice}`);
+            // 💡 Apply line-level discount BEFORE tax if we want consistent subtotal + tax = total
+            const discountedBase = Math.max(0, linePrice - d);
             if (taxInclusive && taxRate > 0) {
-                // TAX INCLUSIVE: price already includes tax
-                const netAmount = linePrice / (1 + taxRate / 100);
-                const lineTax = linePrice - netAmount;
+                const netAmount = discountedBase / (1 + taxRate / 100);
+                const lineTax = discountedBase - netAmount;
                 subtotal += netAmount;
                 taxTotal += lineTax;
-                console.log(`  Tax Inclusive: net=${netAmount.toFixed(2)}, tax=${lineTax.toFixed(2)}`);
             }
             else {
-                // TAX EXCLUSIVE: tax added on top
-                const lineTax = linePrice * (taxRate / 100);
-                subtotal += linePrice;
+                const lineTax = discountedBase * (taxRate / 100);
+                subtotal += discountedBase;
                 taxTotal += lineTax;
-                console.log(`  Tax Exclusive: line=${linePrice.toFixed(2)}, tax=${lineTax.toFixed(2)}`);
             }
         });
-        // Apply discount
-        const discountAmount = Number(discount || 0);
-        const totalBeforeDiscount = subtotal + taxTotal;
-        const total = Math.max(0, totalBeforeDiscount - discountAmount);
-        const balanceDue = total;
+        const globalDiscountAmount = Number(discount || 0);
+        const totalBeforeGlobalDiscount = subtotal + taxTotal;
+        const grandTotal = Math.max(0, totalBeforeGlobalDiscount - globalDiscountAmount);
         const result = {
             subtotal: Number(subtotal.toFixed(2)),
             taxTotal: Number(taxTotal.toFixed(2)),
-            discount: discountAmount,
-            total: Number(total.toFixed(2)),
-            balanceDue: Number(balanceDue.toFixed(2)),
+            discountTotal: Number((globalDiscountAmount + lineDiscountTotal).toFixed(2)),
+            totalBeforeDiscount: Number(totalBeforeGlobalDiscount.toFixed(2)),
+            grandTotal: Number(grandTotal.toFixed(2)),
+            balanceDue: Number(grandTotal.toFixed(2)),
         };
         console.log("Final calculated totals:", result);
-        console.log("Breakdown: subtotal + taxTotal =", subtotal + taxTotal, "- discount", discountAmount, "= total", total);
+        console.log("Breakdown: subtotal + taxTotal =", subtotal + taxTotal, "- globaldiscount", globalDiscountAmount, "= total", grandTotal);
         return result;
     }
     /** ====================
@@ -283,9 +289,10 @@ class InvoiceController {
             }
             console.log('Tenant ID:', req.tenantId);
             console.log('User ID:', req.user.id);
+            console.log('📦 INCOMING PAYLOAD:', JSON.stringify(req.body, null, 2));
             // Extract all fields from request body
-            const { items, discount = 0, customerId, customerSnapshot, settingsProfileId, taxInclusive = false, status = 'DRAFT', currency = 'USD', invoiceDate, dueDate, invoiceType = 'STANDARD', notes = '', terms = '', description = '', // ✅ Added description field
-            ...otherData } = req.body;
+            const { items: legacyItems, lineItems: modernItems, discount = 0, customerId, customerSnapshot, settingsProfileId, taxInclusive = false, status = 'DRAFT', currency = 'USD', invoiceDate, dueDate, invoiceType = 'STANDARD', notes = '', terms = '', description = '', templateId, projectId, metadata = {}, ...otherData } = req.body;
+            const items = modernItems || legacyItems;
             // Validate required fields
             if (!items || !items.length) {
                 throw new types_1.ValidationError('Invoice must have at least one item');
@@ -390,67 +397,152 @@ class InvoiceController {
             // 6️⃣ CREATE INVOICE IN DATABASE (WITH TRANSACTION)
             console.log('💾 CREATING INVOICE IN DATABASE (with transaction)...');
             const newInvoice = await database_1.prisma.$transaction(async (tx) => {
-                // Prepare invoice data
-                const invoiceData = {
-                    tenantId: req.tenantId,
-                    invoiceNumber,
-                    customerId,
-                    invoiceDate: new Date(invoiceDate),
-                    dueDate: new Date(dueDate),
-                    invoiceType: invoiceType.toUpperCase(),
-                    status: status.toUpperCase(),
-                    currency: currency.toUpperCase(),
-                    // Calculated fields
-                    subtotal: new client_1.Prisma.Decimal(totals.subtotal),
-                    taxTotal: new client_1.Prisma.Decimal(totals.taxTotal),
-                    total: new client_1.Prisma.Decimal(totals.total),
-                    discount: new client_1.Prisma.Decimal(totals.discount),
-                    paidAmount: new client_1.Prisma.Decimal(0),
-                    balanceDue: new client_1.Prisma.Decimal(totals.balanceDue),
-                    // Optional fields with defaults
-                    taxInclusive: Boolean(taxInclusive),
-                    settingsProfileId: profile.id,
-                    customerSnapshot: finalSnapshot,
-                    notes: notes || '',
-                    terms: terms || '',
-                    description: description || '', // ✅ Added description field
-                    // Audit fields
-                    createdBy: req.user.id,
-                    createdAt: new Date(),
-                    updatedAt: new Date(),
-                    // Soft delete fields (explicitly set to null)
-                    deletedAt: null,
-                    deletedBy: null
+                // Helper to get value from extraFields
+                const getVal = (obj, keys) => {
+                    if (!obj)
+                        return 0;
+                    for (const k of keys) {
+                        const val = obj[k] ?? obj[k.toLowerCase()] ?? obj[k.charAt(0).toUpperCase() + k.slice(1).toLowerCase()];
+                        if (val !== undefined && val !== null && val !== '')
+                            return Number(val);
+                    }
+                    return 0;
                 };
-                console.log('📋 Creating invoice with data:', {
-                    ...invoiceData,
-                    subtotal: invoiceData.subtotal.toString(),
-                    total: invoiceData.total.toString()
-                });
-                // Create invoice
+                const { attachments = [] } = req.body;
                 const createdInvoice = await tx.invoice.create({
                     data: {
-                        ...invoiceData,
-                        items: {
-                            create: items.map((item, index) => ({
-                                item: item.item || item.description || `Item ${index + 1}`,
-                                description: item.description || '',
-                                qty: Number(item.qty || 1),
-                                price: new client_1.Prisma.Decimal(Number(item.price || 0)),
-                                tax: new client_1.Prisma.Decimal(Number(item.tax || 0)),
-                                tenantId: req.tenantId,
-                                createdBy: req.user.id,
-                                createdAt: new Date(),
-                                updatedAt: new Date(),
-                                deletedAt: null,
-                                deletedBy: null
+                        tenantId: req.tenantId,
+                        invoiceNumber,
+                        customerId,
+                        invoiceDate: new Date(invoiceDate),
+                        dueDate: new Date(dueDate),
+                        invoiceType: invoiceType.toUpperCase(),
+                        status: status.toUpperCase(),
+                        currency: currency.toUpperCase(),
+                        // Calculated fields
+                        subtotal: new client_1.Prisma.Decimal(totals.subtotal),
+                        taxTotal: new client_1.Prisma.Decimal(totals.taxTotal),
+                        grandTotal: new client_1.Prisma.Decimal(totals.grandTotal),
+                        discountTotal: new client_1.Prisma.Decimal(totals.discountTotal),
+                        paidAmount: new client_1.Prisma.Decimal(0),
+                        balanceDue: new client_1.Prisma.Decimal(totals.balanceDue),
+                        // Optional fields with defaults
+                        taxInclusive: Boolean(taxInclusive),
+                        settingsProfileId: profile.id,
+                        customerSnapshot: finalSnapshot,
+                        notes: notes || '',
+                        terms: terms || '',
+                        description: description || '', // ✅ Added description field
+                        templateId: templateId || null,
+                        projectId: projectId || null,
+                        metadata: metadata || {},
+                        // Audit fields
+                        createdBy: req.user.id,
+                        createdAt: new Date(),
+                        updatedAt: new Date(),
+                        // Soft delete fields (explicitly set to null)
+                        deletedAt: null,
+                        deletedBy: null,
+                        // Line Items
+                        lineItems: {
+                            create: items.map((item, index) => {
+                                const qty = Number(item.quantity || item.qty || 1);
+                                const rate = Number(item.rate || item.price || 0);
+                                const taxRateValue = getVal(item.extraFields, ['taxRate', 'tax', 'tax_rate', 'VAT', 'GST']);
+                                const tr = Number(item.taxRate || item.tax || taxRateValue || 0);
+                                const discountValue = getVal(item.extraFields, ['discount', 'dis', 'disc']);
+                                const d = Number(discountValue || 0);
+                                const linePrice = qty * rate;
+                                // Apply line-level discount before tax
+                                const discountedBase = Math.max(0, linePrice - d);
+                                let lineSubtotal = discountedBase;
+                                let lineTaxAmount = 0;
+                                let lineTotal = 0;
+                                if (taxInclusive) {
+                                    const netAmount = discountedBase / (1 + tr / 100);
+                                    lineTaxAmount = discountedBase - netAmount;
+                                    lineSubtotal = netAmount;
+                                    lineTotal = discountedBase;
+                                }
+                                else {
+                                    lineTaxAmount = discountedBase * (tr / 100);
+                                    lineSubtotal = discountedBase;
+                                    lineTotal = discountedBase + lineTaxAmount;
+                                }
+                                return {
+                                    tenantId: req.tenantId,
+                                    itemName: item.itemName || item.item || item.description || `Item ${index + 1}`,
+                                    description: item.description || '',
+                                    quantity: new client_1.Prisma.Decimal(qty),
+                                    rate: new client_1.Prisma.Decimal(rate),
+                                    taxRate: new client_1.Prisma.Decimal(tr),
+                                    subtotal: new client_1.Prisma.Decimal(lineSubtotal),
+                                    taxAmount: new client_1.Prisma.Decimal(lineTaxAmount),
+                                    total: new client_1.Prisma.Decimal(lineTotal),
+                                    extraFields: {
+                                        ...(item.extraFields || {}),
+                                        ...(item.projectName ? { projectName: item.projectName } : {})
+                                    },
+                                    projectId: item.projectId || null,
+                                    rowNumber: index + 1,
+                                    createdBy: req.user.id,
+                                    createdAt: new Date(),
+                                    updatedAt: new Date(),
+                                    deletedAt: null,
+                                    deletedBy: null
+                                };
+                            })
+                        },
+                        // Aggregated Taxes
+                        taxes: {
+                            create: (() => {
+                                const taxGroups = new Map();
+                                items.forEach((item) => {
+                                    const tr = Number(item.taxRate || item.tax || getVal(item.extraFields, ['taxRate', 'tax', 'tax_rate']) || 0);
+                                    if (tr > 0) {
+                                        const qty = Number(item.quantity || item.qty || 1);
+                                        const rate = Number(item.rate || item.price || 0);
+                                        const discountValue = getVal(item.extraFields, ['discount', 'dis', 'disc']);
+                                        const d = Number(discountValue || 0);
+                                        const discountedBase = Math.max(0, (qty * rate) - d);
+                                        let lineTaxAmount = 0;
+                                        if (taxInclusive) {
+                                            const netAmount = discountedBase / (1 + tr / 100);
+                                            lineTaxAmount = discountedBase - netAmount;
+                                        }
+                                        else {
+                                            lineTaxAmount = discountedBase * (tr / 100);
+                                        }
+                                        const key = `Tax ${tr}%`;
+                                        const existing = taxGroups.get(key) || { rate: tr, amount: 0 };
+                                        existing.amount += lineTaxAmount;
+                                        taxGroups.set(key, existing);
+                                    }
+                                });
+                                return Array.from(taxGroups.entries()).map(([name, data]) => ({
+                                    tenantId: req.tenantId,
+                                    taxName: name,
+                                    taxRate: new client_1.Prisma.Decimal(data.rate),
+                                    taxAmount: new client_1.Prisma.Decimal(data.amount),
+                                    createdBy: req.user.id
+                                }));
+                            })(),
+                        },
+                        // Attachments
+                        attachments: {
+                            create: attachments.map((att) => ({
+                                fileName: att.fileName || 'Attachment',
+                                fileUrl: att.fileUrl,
+                                uploadedBy: req.user.id
                             }))
                         }
                     },
                     include: {
-                        items: true,
+                        lineItems: true,
                         customer: true,
-                        settingsProfile: true
+                        settingsProfile: true,
+                        taxes: true,
+                        attachments: true
                     }
                 });
                 return createdInvoice;
@@ -462,15 +554,24 @@ class InvoiceController {
                 id: newInvoice.id,
                 invoiceNumber: newInvoice.invoiceNumber,
                 status: newInvoice.status,
-                total: newInvoice.total.toString()
+                total: newInvoice.grandTotal.toString()
             });
             // 7️⃣ GENERATE PDF (outside transaction)
             console.log('📄 GENERATING PDF...');
             try {
                 const publicUrl = await (0, pdfService_1.generateAndUploadInvoicePDF)(newInvoice, profile);
-                await database_1.prisma.invoice.update({
-                    where: { id: newInvoice.id },
-                    data: { pdfUrl: publicUrl }
+                // Skip updating invoice.pdfUrl as per user request (deprecated)
+                // await prisma.invoice.update({
+                //   where: { id: newInvoice.id },
+                //   data: { pdfUrl: publicUrl }
+                // });
+                await database_1.prisma.invoiceAttachment.create({
+                    data: {
+                        invoiceId: newInvoice.id,
+                        fileName: `Invoice_${newInvoice.invoiceNumber}.pdf`,
+                        fileUrl: publicUrl,
+                        uploadedBy: req.user.id
+                    }
                 });
                 console.log('✅ PDF generated and uploaded:', publicUrl);
                 newInvoice.pdfUrl = publicUrl;
@@ -516,7 +617,9 @@ class InvoiceController {
                 throw new types_1.ValidationError('Tenant context and authentication required');
             }
             const { id } = req.params;
-            const { items = [], discount = 0, customerSnapshot, taxInclusive = false, ...updateData } = req.body;
+            console.log(`📦 UPDATE PAYLOAD FOR ${id}:`, JSON.stringify(req.body, null, 2));
+            const { items: legacyItems, lineItems: modernItems, discount = 0, customerSnapshot, taxInclusive = false, templateId, projectId, attachments = [], metadata = {}, ...updateData } = req.body;
+            const items = modernItems || legacyItems || [];
             if (!items.length) {
                 throw new types_1.ValidationError('Invoice must have at least one item');
             }
@@ -535,7 +638,7 @@ class InvoiceController {
                     throw new types_1.NotFoundError('Invoice not found');
                 // Delete removed items (soft delete)
                 const incomingItemIds = items.filter((i) => i.id).map((i) => i.id);
-                await tx.invoiceItem.updateMany({
+                await tx.invoiceLineItem.updateMany({
                     where: {
                         invoiceId: id,
                         id: { notIn: incomingItemIds },
@@ -550,25 +653,72 @@ class InvoiceController {
                     }
                 });
                 // Prepare item operations
-                const itemOperations = items.map((item) => {
+                const usedIds = new Set();
+                const itemOperations = items.map((item, index) => {
+                    const getVal = (obj, keys) => {
+                        if (!obj)
+                            return 0;
+                        for (const k of keys) {
+                            const val = obj[k] ?? obj[k.toLowerCase()] ?? obj[k.charAt(0).toUpperCase() + k.slice(1).toLowerCase()];
+                            if (val !== undefined && val !== null && val !== '')
+                                return Number(val);
+                        }
+                        return 0;
+                    };
+                    const qty = Number(item.quantity || item.qty || 1);
+                    const rate = Number(item.rate || item.price || 0);
+                    const taxRateValue = getVal(item.extraFields, ['taxRate', 'tax', 'tax_rate', 'VAT', 'GST']);
+                    const tr = Number(item.taxRate || item.tax || taxRateValue || 0);
+                    const discountValue = getVal(item.extraFields, ['discount', 'dis', 'disc']);
+                    const d = Number(discountValue || 0);
+                    const linePrice = qty * rate;
+                    // Apply line-level discount before tax
+                    const discountedBase = Math.max(0, linePrice - d);
+                    let lineSubtotal = discountedBase;
+                    let lineTaxAmount = 0;
+                    let lineTotal = 0;
+                    if (taxInclusive) {
+                        const netAmount = discountedBase / (1 + tr / 100);
+                        lineTaxAmount = discountedBase - netAmount;
+                        lineSubtotal = netAmount;
+                        lineTotal = discountedBase;
+                    }
+                    else {
+                        lineTaxAmount = discountedBase * (tr / 100);
+                        lineSubtotal = discountedBase;
+                        lineTotal = discountedBase + lineTaxAmount;
+                    }
                     const itemData = {
-                        item: item.item || item.description || 'Untitled Item',
+                        itemName: item.itemName || item.item || item.description || 'Untitled Item',
                         description: item.description || '',
-                        qty: Number(item.qty || 1),
-                        price: new client_1.Prisma.Decimal(Number(item.price || 0)),
-                        tax: new client_1.Prisma.Decimal(Number(item.tax || 0)),
+                        projectId: item.projectId || null,
+                        quantity: new client_1.Prisma.Decimal(qty),
+                        rate: new client_1.Prisma.Decimal(rate),
+                        taxRate: new client_1.Prisma.Decimal(tr),
+                        extraFields: {
+                            ...(item.extraFields || {}),
+                            ...(item.projectName ? { projectName: item.projectName } : {})
+                        },
+                        rowNumber: index + 1,
+                        subtotal: new client_1.Prisma.Decimal(lineSubtotal),
+                        taxAmount: new client_1.Prisma.Decimal(lineTaxAmount),
+                        total: new client_1.Prisma.Decimal(lineTotal),
                         tenantId: req.tenantId,
                         updatedBy: req.user.id,
                         updatedAt: new Date(),
                         deletedAt: null,
                         deletedBy: null
                     };
-                    return item.id
-                        ? tx.invoiceItem.update({
+                    // Check if ID is present and NOT already used in this transaction
+                    const isReturningItem = item.id && !usedIds.has(item.id);
+                    if (item.id)
+                        usedIds.add(item.id);
+                    return isReturningItem
+                        ? tx.invoiceLineItem.update({
                             where: { id: item.id },
                             data: itemData
                         })
-                        : tx.invoiceItem.create({
+                        : tx.invoiceLineItem.create({
                             data: {
                                 ...itemData,
                                 invoiceId: id,
@@ -578,22 +728,86 @@ class InvoiceController {
                         });
                 });
                 await Promise.all(itemOperations);
+                // Update taxes
+                await tx.invoiceTax.deleteMany({ where: { invoiceId: id } });
+                const taxGroups = new Map();
+                const getVal = (obj, keys) => {
+                    if (!obj)
+                        return 0;
+                    for (const k of keys) {
+                        const val = obj[k] ?? obj[k.toLowerCase()] ?? obj[k.charAt(0).toUpperCase() + k.slice(1).toLowerCase()];
+                        if (val !== undefined && val !== null && val !== '')
+                            return Number(val);
+                    }
+                    return 0;
+                };
+                items.forEach((item) => {
+                    const taxRateValue = getVal(item.extraFields, ['taxRate', 'tax', 'tax_rate', 'VAT', 'GST']);
+                    const tr = Number(item.taxRate || item.tax || taxRateValue || 0);
+                    if (tr > 0) {
+                        const qty = Number(item.quantity || item.qty || 1);
+                        const rate = Number(item.rate || item.price || 0);
+                        const discountValue = getVal(item.extraFields, ['discount', 'dis', 'disc']);
+                        const d = Number(discountValue || 0);
+                        const discountedBase = Math.max(0, (qty * rate) - d);
+                        let lineTaxAmount = 0;
+                        if (taxInclusive) {
+                            const netAmount = discountedBase / (1 + tr / 100);
+                            lineTaxAmount = discountedBase - netAmount;
+                        }
+                        else {
+                            lineTaxAmount = discountedBase * (tr / 100);
+                        }
+                        const key = `Tax ${tr}%`;
+                        const existing = taxGroups.get(key) || { rate: tr, amount: 0 };
+                        existing.amount += lineTaxAmount;
+                        taxGroups.set(key, existing);
+                    }
+                });
+                await tx.invoiceTax.createMany({
+                    data: Array.from(taxGroups.entries()).map(([name, data]) => ({
+                        tenantId: req.tenantId,
+                        invoiceId: id,
+                        taxName: name,
+                        taxRate: new client_1.Prisma.Decimal(data.rate),
+                        taxAmount: new client_1.Prisma.Decimal(data.amount),
+                        createdBy: req.user.id
+                    }))
+                });
+                // Update attachments
+                await tx.invoiceAttachment.deleteMany({ where: { invoiceId: id } });
+                await tx.invoiceAttachment.createMany({
+                    data: attachments.map((att) => ({
+                        invoiceId: id,
+                        fileName: att.fileName || 'Attachment',
+                        fileUrl: att.fileUrl,
+                        uploadedBy: req.user.id
+                    }))
+                });
                 // Update invoice
                 return await tx.invoice.update({
                     where: { id },
                     data: {
                         ...updateData,
+                        templateId: templateId || null,
+                        projectId: projectId || null,
                         taxInclusive,
-                        discount: new client_1.Prisma.Decimal(totals.discount),
+                        discountTotal: new client_1.Prisma.Decimal(totals.discountTotal),
                         subtotal: new client_1.Prisma.Decimal(totals.subtotal),
                         taxTotal: new client_1.Prisma.Decimal(totals.taxTotal),
-                        total: new client_1.Prisma.Decimal(totals.total),
+                        grandTotal: new client_1.Prisma.Decimal(totals.grandTotal),
                         balanceDue: new client_1.Prisma.Decimal(totals.balanceDue),
+                        metadata: metadata || {},
                         customerSnapshot,
                         updatedBy: req.user.id,
                         updatedAt: new Date()
                     },
-                    include: { items: true, customer: true },
+                    include: {
+                        lineItems: true,
+                        customer: true,
+                        taxes: true,
+                        attachments: true
+                    },
                 });
             }, { maxWait: 10000, timeout: 30000 });
             // Regenerate PDF
@@ -610,9 +824,18 @@ class InvoiceController {
                     }
                 });
                 const publicUrl = await (0, pdfService_1.generateAndUploadInvoicePDF)(updatedInvoice, profile);
-                await database_1.prisma.invoice.update({
-                    where: { id: updatedInvoice.id },
-                    data: { pdfUrl: publicUrl }
+                // Skip updating invoice.pdfUrl (deprecated)
+                // await prisma.invoice.update({
+                //   where: { id: updatedInvoice.id },
+                //   data: { pdfUrl: publicUrl }
+                // });
+                await database_1.prisma.invoiceAttachment.create({
+                    data: {
+                        invoiceId: updatedInvoice.id,
+                        fileName: `Invoice_${updatedInvoice.invoiceNumber}.pdf`,
+                        fileUrl: publicUrl,
+                        uploadedBy: req.user.id
+                    }
                 });
                 updatedInvoice.pdfUrl = publicUrl;
                 console.log("PDF successfully updated in R2");
@@ -651,20 +874,29 @@ class InvoiceController {
                 },
                 include: {
                     customer: true,
-                    items: true,
+                    lineItems: true,
                     createdByUser: true,
-                    updatedByUser: true
+                    updatedByUser: true,
+                    taxes: true,
+                    attachments: true
                 }
             });
-            if (!invoice)
-                throw new types_1.NotFoundError('Invoice not found');
-            console.log("Retrieved invoice discount:", invoice.discount);
+            if (!invoice) {
+                res.status(404).json({ success: false, message: 'Invoice not found' });
+                return;
+            }
+            console.log(`🔍 FETCHED INVOICE ${id}:`, {
+                invoiceNumber: invoice.invoiceNumber,
+                templateId: invoice.templateId,
+                lineItemsCount: invoice.lineItems.length
+            });
+            console.log("Retrieved invoice discount:", invoice.discountTotal);
             console.log("Invoice totals:", {
                 subtotal: invoice.subtotal,
                 taxTotal: invoice.taxTotal,
-                total: invoice.total,
+                total: invoice.grandTotal,
                 balanceDue: invoice.balanceDue,
-                discount: invoice.discount
+                discount: invoice.discountTotal
             });
             res.status(200).json({ success: true, data: invoice });
         }
@@ -686,17 +918,30 @@ class InvoiceController {
                     id,
                     tenantId: req.tenantId,
                     deletedAt: null
-                }
+                },
+                include: { attachments: true }
             });
             if (!existing)
                 throw new types_1.NotFoundError('Invoice not found');
-            // 1. DELETE FROM R2 (If a PDF URL exists)
+            // 1. DELETE FROM R2 
+            // a. Cleanup attachments (including PDFs)
+            if (existing.attachments?.length > 0) {
+                for (const att of existing.attachments) {
+                    try {
+                        await (0, r2Client_1.deleteFileFromR2)(att.fileUrl, req.tenantId);
+                    }
+                    catch (r2Error) {
+                        console.error(`Failed to cleanup R2 file ${att.fileUrl} during invoice deletion:`, r2Error);
+                    }
+                }
+            }
+            // b. Legacy Cleanup (If a PDF URL exists on the invoice record itself)
             if (existing.pdfUrl) {
                 try {
                     await (0, r2Client_1.deleteFileFromR2)(existing.pdfUrl, req.tenantId);
                 }
                 catch (r2Error) {
-                    console.error('Failed to cleanup R2 file during invoice deletion:', r2Error);
+                    console.error('Failed to cleanup legacy R2 PDF during invoice deletion:', r2Error);
                 }
             }
             const now = new Date();
@@ -704,7 +949,7 @@ class InvoiceController {
             // 2. SOFT DELETE FROM DATABASE - Fixed typing
             await database_1.prisma.$transaction([
                 // Soft delete invoice items
-                database_1.prisma.invoiceItem.updateMany({
+                database_1.prisma.invoiceLineItem.updateMany({
                     where: {
                         invoiceId: id,
                         tenantId: req.tenantId
@@ -765,11 +1010,15 @@ class InvoiceController {
                 },
                 include: {
                     customer: true,
-                    settingsProfile: true
+                    settingsProfile: true,
+                    attachments: true
                 }
             });
             if (!invoice)
                 throw new types_1.NotFoundError('Invoice not found');
+            // Find PDF in attachments if not provided in body
+            const pdfAttachment = invoice.attachments?.find((a) => a.fileName.toLowerCase().endsWith('.pdf') || a.fileUrl.toLowerCase().endsWith('.pdf'));
+            const finalPdfUrl = pdfUrl || pdfAttachment?.fileUrl || invoice.pdfUrl;
             // 2. Determine recipient and customer details
             const snapshot = invoice.customerSnapshot;
             const recipientEmail = to || snapshot?.email || invoice.customer?.email;
@@ -778,7 +1027,7 @@ class InvoiceController {
                 throw new types_1.ValidationError("No recipient email address found for this customer.");
             }
             // 3. Format amount and due date
-            const amount = `${invoice.currency} ${Number(invoice.total).toLocaleString()}`;
+            const amount = `${invoice.currency} ${Number(invoice.grandTotal).toLocaleString()}`;
             const dueDate = new Date(invoice.dueDate).toLocaleDateString('en-US', {
                 year: 'numeric',
                 month: 'long',
@@ -794,7 +1043,7 @@ class InvoiceController {
                 amount: amount,
                 dueDate: dueDate,
                 customMessage: message,
-                pdfUrl: pdfUrl || invoice.pdfUrl
+                pdfUrl: finalPdfUrl
             });
             if (!emailSuccess) {
                 throw new Error("Failed to send email via SMTP provider");
@@ -833,7 +1082,7 @@ class InvoiceController {
                 // Optional metadata
                 metadata: {
                     invoiceDate: invoice.invoiceDate,
-                    total: invoice.total,
+                    total: invoice.grandTotal,
                     description: invoice.description
                 }
             });
@@ -900,7 +1149,7 @@ class InvoiceController {
                         customerId: invoice.customerId,
                         customerName: invoice.customerSnapshot?.companyName || invoice.customer?.companyName || 'Unknown',
                         customerEmail: failedRecipient,
-                        amount: `${invoice.currency} ${Number(invoice.total).toLocaleString()}`,
+                        amount: `${invoice.currency} ${Number(invoice.grandTotal).toLocaleString()}`,
                         dueDate: new Date(invoice.dueDate).toLocaleDateString('en-US', {
                             year: 'numeric',
                             month: 'long',
@@ -946,7 +1195,7 @@ class InvoiceController {
                     balanceDue: true,
                     invoiceNumber: true,
                     settingsProfileId: true,
-                    total: true,
+                    grandTotal: true,
                     firstPaymentDate: true,
                     lastPaymentDate: true,
                     fullyPaidDate: true,
@@ -964,7 +1213,7 @@ class InvoiceController {
                 APPROVAL: ["SENT", "CANCELLED"],
                 SENT: ["PAID", "PARTIALLY_PAID", "OVERDUE", "CANCELLED"],
                 OVERDUE: ["PAID", "PARTIALLY_PAID", "CANCELLED"],
-                PARTIALLY_PAID: ["PAID", "OVERDUE", "CANCELLED"],
+                PARTIALLY_PAID: ["PARTIALLY_PAID", "PAID", "OVERDUE", "CANCELLED"],
                 PAID: [],
                 CANCELLED: []
             };
@@ -978,9 +1227,9 @@ class InvoiceController {
             const currentBalance = invoice.balanceDue instanceof client_1.Prisma.Decimal
                 ? invoice.balanceDue.toNumber()
                 : Number(invoice.balanceDue);
-            const invoiceTotal = invoice.total instanceof client_1.Prisma.Decimal
-                ? invoice.total.toNumber()
-                : Number(invoice.total);
+            const invoiceTotal = invoice.grandTotal instanceof client_1.Prisma.Decimal
+                ? invoice.grandTotal.toNumber()
+                : Number(invoice.grandTotal);
             let newPaid = currentPaid;
             let newBalance = currentBalance;
             // 4️⃣ Handle payment info if marking as PAID or PARTIALLY_PAID
@@ -1052,7 +1301,7 @@ class InvoiceController {
                     data: updateData,
                     include: {
                         customer: true,
-                        items: {
+                        lineItems: {
                             where: { deletedAt: null } // ✅ Only include non-deleted items
                         },
                         payments: true
@@ -1145,7 +1394,12 @@ class InvoiceController {
                 res.status(404).json({ success: false, error: 'Invoice not found' });
                 return;
             }
-            let pdfUrl = invoice.pdfUrl;
+            const attachments = await database_1.prisma.invoiceAttachment.findMany({
+                where: { invoiceId: id }
+            });
+            // Find latest PDF attachment
+            const pdfAttachment = attachments.find(a => a.fileName.toLowerCase().endsWith('.pdf') || a.fileUrl.toLowerCase().endsWith('.pdf'));
+            let pdfUrl = pdfAttachment?.fileUrl || invoice.pdfUrl;
             // 🔁 Generate PDF if missing
             if (!pdfUrl) {
                 const profile = await database_1.prisma.settingsProfile.findFirst({
@@ -1162,9 +1416,13 @@ class InvoiceController {
                     throw new Error('Settings profile not found for PDF generation');
                 }
                 pdfUrl = await (0, pdfService_1.generateAndUploadInvoicePDF)(invoice, profile);
-                await database_1.prisma.invoice.update({
-                    where: { id: invoice.id },
-                    data: { pdfUrl }
+                await database_1.prisma.invoiceAttachment.create({
+                    data: {
+                        invoiceId: invoice.id,
+                        fileName: `Invoice_${invoice.invoiceNumber}.pdf`,
+                        fileUrl: pdfUrl,
+                        uploadedBy: req.user.id
+                    }
                 });
             }
             // 🧠 IMPORTANT: Backend fetches the PDF
@@ -1204,7 +1462,7 @@ class InvoiceController {
                     invoiceNumber: true,
                     invoiceDate: true,
                     dueDate: true,
-                    total: true,
+                    grandTotal: true,
                     paidAmount: true,
                     balanceDue: true,
                     status: true,
@@ -1245,7 +1503,7 @@ class InvoiceController {
             });
             // 3️⃣ Calculate running totals for detailed history
             let runningPaid = 0;
-            let runningBalance = Number(invoice.total);
+            let runningBalance = Number(invoice.grandTotal);
             const paymentHistory = payments.map((payment) => {
                 const paymentAmount = Number(payment.amount);
                 const paymentDate = payment.paymentDate;
@@ -1307,13 +1565,13 @@ class InvoiceController {
             const totalPaid = completedPayments.reduce((sum, p) => sum + Number(p.amount), 0);
             const totalRefunded = refundedPayments.reduce((sum, p) => sum + Number(p.amount), 0);
             const netPaid = totalPaid - totalRefunded;
-            const currentBalance = Math.max(0, Number(invoice.total) - netPaid);
+            const currentBalance = Math.max(0, Number(invoice.grandTotal) - netPaid);
             const summary = {
                 invoiceNumber: invoice.invoiceNumber,
                 customerName: invoice.customerSnapshot?.companyName || invoice.customer?.companyName,
                 invoiceDate: invoice.invoiceDate,
                 dueDate: invoice.dueDate,
-                totalAmount: Number(invoice.total).toFixed(2),
+                totalAmount: Number(invoice.grandTotal).toFixed(2),
                 totalPaid: totalPaid.toFixed(2),
                 totalRefunded: totalRefunded.toFixed(2),
                 netPaid: netPaid.toFixed(2),
@@ -1384,13 +1642,19 @@ class InvoiceController {
                 res.status(404).json({ success: false, error: "Invoice not found" });
                 return;
             }
+            // 2. Look for PDF in attachments first
+            const attachments = await database_1.prisma.invoiceAttachment.findMany({
+                where: { invoiceId: invoice.id }
+            });
+            const pdfAttachment = attachments.find(a => a.fileName.toLowerCase().endsWith('.pdf') || a.fileUrl.toLowerCase().endsWith('.pdf'));
+            const finalPdfUrl = pdfAttachment?.fileUrl || invoice.pdfUrl;
             console.log('📋 Invoice found:', {
                 number: invoice.invoiceNumber,
-                pdfUrl: invoice.pdfUrl,
+                pdfUrl: finalPdfUrl,
                 created: invoice.createdAt
             });
             // 2. If no PDF URL, it was never generated
-            if (!invoice.pdfUrl) {
+            if (!finalPdfUrl) {
                 res.json({
                     success: true,
                     status: 'NO_PDF_URL',
@@ -1399,12 +1663,12 @@ class InvoiceController {
                 return;
             }
             // 3. Test if the PDF URL actually works
-            console.log('🔗 Testing PDF URL:', invoice.pdfUrl);
+            console.log('🔗 Testing PDF URL:', finalPdfUrl);
             let pdfExists = false;
             let statusCode = 0;
             let errorMessage = '';
             try {
-                const response = await fetch(invoice.pdfUrl, { method: 'HEAD' });
+                const response = await fetch(finalPdfUrl, { method: 'HEAD' });
                 statusCode = response.status;
                 pdfExists = response.ok;
                 console.log('✅ PDF URL test result:', {
@@ -1461,7 +1725,7 @@ class InvoiceController {
             // Restore invoice and items
             await database_1.prisma.$transaction([
                 // Restore invoice items
-                database_1.prisma.invoiceItem.updateMany({
+                database_1.prisma.invoiceLineItem.updateMany({
                     where: {
                         invoiceId: id,
                         tenantId: req.tenantId
@@ -1496,7 +1760,7 @@ class InvoiceController {
                 },
                 include: {
                     customer: true,
-                    items: {
+                    lineItems: {
                         where: { deletedAt: null }
                     },
                     settingsProfile: true
@@ -1541,11 +1805,17 @@ class InvoiceController {
             }
             // Permanently delete from database
             await database_1.prisma.$transaction([
-                database_1.prisma.invoiceItem.deleteMany({
+                database_1.prisma.invoiceLineItem.deleteMany({
                     where: { invoiceId: id, tenantId: req.tenantId }
                 }),
                 database_1.prisma.invoicePayment.deleteMany({
                     where: { invoiceId: id, tenantId: req.tenantId }
+                }),
+                database_1.prisma.invoiceTax.deleteMany({
+                    where: { invoiceId: id, tenantId: req.tenantId }
+                }),
+                database_1.prisma.invoiceAttachment.deleteMany({
+                    where: { invoiceId: id }
                 }),
                 database_1.prisma.invoice.delete({
                     where: { id, tenantId: req.tenantId }
@@ -1609,6 +1879,219 @@ class InvoiceController {
             res.status(500).json({
                 success: false,
                 error: error.message || 'Failed to fetch deleted invoices'
+            });
+        }
+    }
+    /**
+     * Bulk restore soft-deleted invoices
+     */
+    static async bulkRestoreInvoices(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                throw new types_1.ValidationError('Tenant context and authentication required');
+            }
+            const { ids } = req.body;
+            if (!ids || !Array.isArray(ids) || ids.length === 0) {
+                throw new types_1.ValidationError('Invoice IDs array is required');
+            }
+            // Verify invoices exist in trash and belong to tenant
+            const invoices = await database_1.prisma.invoice.findMany({
+                where: {
+                    id: { in: ids },
+                    tenantId: req.tenantId,
+                    deletedAt: { not: null }
+                }
+            });
+            if (invoices.length === 0) {
+                throw new types_1.NotFoundError('No valid deleted invoices found to restore');
+            }
+            const invoiceIdsToRestore = invoices.map(i => i.id);
+            // Restore invoices and items in transaction
+            await database_1.prisma.$transaction([
+                database_1.prisma.invoiceLineItem.updateMany({
+                    where: {
+                        invoiceId: { in: invoiceIdsToRestore },
+                        tenantId: req.tenantId
+                    },
+                    data: {
+                        deletedAt: null,
+                        deletedBy: null,
+                        updatedAt: new Date(),
+                        updatedBy: req.user.id
+                    }
+                }),
+                database_1.prisma.invoice.updateMany({
+                    where: {
+                        id: { in: invoiceIdsToRestore },
+                        tenantId: req.tenantId
+                    },
+                    data: {
+                        deletedAt: null,
+                        deletedBy: null,
+                        status: 'DRAFT',
+                        updatedAt: new Date(),
+                        updatedBy: req.user.id
+                    }
+                })
+            ]);
+            res.status(200).json({
+                success: true,
+                data: { restoredCount: invoices.length },
+                message: `${invoices.length} invoice(s) restored successfully`
+            });
+        }
+        catch (error) {
+            console.error('Bulk restore invoices error:', error);
+            res.status(error instanceof types_1.NotFoundError ? 404 : 400).json({
+                success: false,
+                error: error.message || 'Failed to restore invoices'
+            });
+        }
+    }
+    /**
+     * Bulk permanent delete invoices from database
+     */
+    static async bulkPermanentDeleteInvoices(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                throw new types_1.ValidationError('Tenant context and authentication required');
+            }
+            const { ids } = req.body;
+            if (!ids || !Array.isArray(ids) || ids.length === 0) {
+                throw new types_1.ValidationError('Invoice IDs array is required');
+            }
+            const invoices = await database_1.prisma.invoice.findMany({
+                where: {
+                    id: { in: ids },
+                    tenantId: req.tenantId,
+                    deletedAt: { not: null }
+                }
+            });
+            if (invoices.length === 0) {
+                throw new types_1.NotFoundError('No valid deleted invoices found to permanently delete');
+            }
+            const invoiceIdsToDelete = invoices.map(i => i.id);
+            // Permanently delete from database in transaction
+            await database_1.prisma.$transaction([
+                database_1.prisma.invoiceLineItem.deleteMany({
+                    where: { invoiceId: { in: invoiceIdsToDelete }, tenantId: req.tenantId }
+                }),
+                database_1.prisma.invoicePayment.deleteMany({
+                    where: { invoiceId: { in: invoiceIdsToDelete }, tenantId: req.tenantId }
+                }),
+                database_1.prisma.invoiceTax.deleteMany({
+                    where: { invoiceId: { in: invoiceIdsToDelete }, tenantId: req.tenantId }
+                }),
+                database_1.prisma.invoiceAttachment.deleteMany({
+                    where: { invoiceId: { in: invoiceIdsToDelete } }
+                }),
+                database_1.prisma.invoice.deleteMany({
+                    where: { id: { in: invoiceIdsToDelete }, tenantId: req.tenantId }
+                })
+            ]);
+            res.status(200).json({
+                success: true,
+                data: { deletedCount: invoices.length },
+                message: `${invoices.length} invoice(s) permanently deleted`
+            });
+        }
+        catch (error) {
+            console.error('Bulk permanent delete invoices error:', error);
+            res.status(error instanceof types_1.NotFoundError ? 404 : 400).json({
+                success: false,
+                error: error.message || 'Failed to permanently delete invoices'
+            });
+        }
+    }
+    /**
+     * Bulk soft-delete invoices (Move to Trash)
+     */
+    static async bulkDeleteInvoices(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                throw new types_1.ValidationError('Tenant context and authentication required');
+            }
+            const { ids } = req.body;
+            if (!ids || !Array.isArray(ids) || ids.length === 0) {
+                throw new types_1.ValidationError('Invoice IDs array is required');
+            }
+            const now = new Date();
+            const userId = req.user.id;
+            // 1. Fetch invoices to cleanup R2
+            const invoices = await database_1.prisma.invoice.findMany({
+                where: {
+                    id: { in: ids },
+                    tenantId: req.tenantId,
+                    deletedAt: null
+                },
+                include: { attachments: true }
+            });
+            if (invoices.length === 0) {
+                throw new types_1.NotFoundError('No valid invoices found to delete');
+            }
+            const validIds = invoices.map(i => i.id);
+            // 2. Cleanup R2 for all invoices in bulk
+            for (const inv of invoices) {
+                // Cleanup attachments
+                if (inv.attachments?.length > 0) {
+                    for (const att of inv.attachments) {
+                        try {
+                            await (0, r2Client_1.deleteFileFromR2)(att.fileUrl, req.tenantId);
+                        }
+                        catch (r2Error) {
+                            console.error(`Failed to cleanup R2 file ${att.fileUrl} during bulk deletion:`, r2Error);
+                        }
+                    }
+                }
+                // Cleanup legacy PDF
+                if (inv.pdfUrl) {
+                    try {
+                        await (0, r2Client_1.deleteFileFromR2)(inv.pdfUrl, req.tenantId);
+                    }
+                    catch (r2Error) {
+                        console.error('Failed to cleanup legacy R2 PDF during bulk deletion:', r2Error);
+                    }
+                }
+            }
+            // 3. Update database in transaction
+            await database_1.prisma.$transaction([
+                database_1.prisma.invoiceLineItem.updateMany({
+                    where: {
+                        invoiceId: { in: validIds },
+                        tenantId: req.tenantId
+                    },
+                    data: {
+                        deletedAt: now,
+                        deletedBy: userId,
+                        updatedAt: now,
+                        updatedBy: userId
+                    }
+                }),
+                database_1.prisma.invoice.updateMany({
+                    where: {
+                        id: { in: validIds },
+                        tenantId: req.tenantId
+                    },
+                    data: {
+                        deletedAt: now,
+                        deletedBy: userId,
+                        status: 'CANCELLED',
+                        updatedAt: now,
+                        updatedBy: userId
+                    }
+                })
+            ]);
+            res.status(200).json({
+                success: true,
+                data: { deletedCount: invoices.length },
+                message: `${invoices.length} invoice(s) moved to trash successfully`
+            });
+        }
+        catch (error) {
+            console.error('Bulk delete invoices error:', error);
+            res.status(error instanceof types_1.NotFoundError ? 404 : 400).json({
+                success: false,
+                error: error.message || 'Failed to move invoices to trash'
             });
         }
     }

@@ -35,8 +35,9 @@ async function generateAndUploadInvoicePDF(invoice, profile) {
             margin: { top: '0mm', right: '0mm', bottom: '0mm', left: '0mm' }, // Template has internal padding
             preferCSSPageSize: true
         });
-        // 5. Define File Path
-        const fileName = `${invoice.tenantId}/invoices/Invoice-${invoice.invoiceNumber}.pdf`;
+        // 5. Define File Path with timestamp to break cache
+        const timestamp = Date.now();
+        const fileName = `${invoice.tenantId}/invoices/Invoice-${invoice.invoiceNumber}-${timestamp}.pdf`;
         // 6. Upload to R2
         await r2Client_1.s3Client.send(new client_s3_1.PutObjectCommand({
             Bucket: 'zithspace',

@@ -217,12 +217,12 @@ static async updateCustomer(req: AuthRequest, res: Response): Promise<void> {
     }
 
     // Normalize updates: convert empty strings to null, ignore undefined
-    const normalizedUpdates: Partial<UpdateCustomerData> = {};
+    const normalizedUpdates: any = {};
     Object.entries(updates).forEach(([key, value]) => {
       if (value === "") {
-        normalizedUpdates[key as keyof UpdateCustomerData] = undefined;
+        normalizedUpdates[key] = null;
       } else if (value !== undefined) {
-        normalizedUpdates[key as keyof UpdateCustomerData] = value;
+        normalizedUpdates[key] = value;
       }
     });
 

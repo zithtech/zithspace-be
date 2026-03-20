@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { UserController } from '@/controllers/userController';
+import { UserPreferenceController } from '@/controllers/userPreferenceController';
 import { authenticateToken, requireAuth } from '@/middleware/auth';
 import { requirePermission } from '@/middleware/permission';
 import { Permissions } from '@/types/permissions';
@@ -36,6 +37,20 @@ router.put('/profile', UserController.updateUserProfile);
  * @body    ChangePasswordData
  */
 router.post('/change-password', UserController.changePassword);
+
+/**
+ * @route   GET /api/user/preferences
+ * @desc    Get user preferences
+ * @access  Private (authenticated users)
+ */
+router.get('/preferences', UserPreferenceController.getPreferences);
+
+/**
+ * @route   PATCH /api/user/preferences
+ * @desc    Update user preferences
+ * @access  Private (authenticated users)
+ */
+router.patch('/preferences', UserPreferenceController.updatePreferences);
 
 /**
  * @route   POST /api/user/reset-password/:userId
