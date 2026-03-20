@@ -369,9 +369,7 @@ export class TimesheetController {
 
               taskName: rowData.taskName,
               projectName: rowData.projectName,
-              updatedBy: {
-                connect: { id: req.user.id }, // dynamically using logged-in user ID
-              },
+              updatedById: req.user.id,
             },
           });
         }

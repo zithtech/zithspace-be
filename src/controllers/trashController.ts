@@ -73,9 +73,7 @@ export class TrashController {
             priority: true,
             type: true,
             deletedAt: true,
-            deletedBy: {
-              select: { id: true, name: true, workEmail: true },
-            },
+            deletedById: true,
             project: {
               select: { id: true, name: true, code: true },
             },

@@ -34,7 +34,7 @@ export const createLeaveAdjustment = async (req: AuthRequest, res: Response) => 
       data: {
         tenantId,
         userId,
-        leaveType,
+        leave_type_id: leaveType,
         adjustmentType,
         amount: numericAmount,
         unit,
@@ -143,7 +143,7 @@ export const updateLeaveAdjustment = async (req: AuthRequest, res: Response) => 
     const leaveAdjustment = await prisma.leaveAdjustment.update({
       where: { id },
       data: {
-        leaveType,
+        leave_type_id: leaveType,
         adjustmentType,
         amount: numericAmount,
         unit,

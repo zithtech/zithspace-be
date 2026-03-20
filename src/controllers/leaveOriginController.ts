@@ -85,7 +85,7 @@ export const updateLeaveOriginStructure = async (req: Request, res: Response) =>
         return prisma.originLeaveType.update({
           where: { id: type.id },
           data: {
-            leaveType: type.leaveType,
+            leave_type_id: type.leaveType,
             unit: type.unit,
             period: type.period,
             carryForward: type.carryForward ?? false,
@@ -99,7 +99,7 @@ export const updateLeaveOriginStructure = async (req: Request, res: Response) =>
           data: {
             tenantId,
             leaveOriginId: id,
-            leaveType: type.leaveType,
+            leave_type_id: type.leaveType,
             unit: type.unit,
             period: type.period,
             carryForward: type.carryForward ?? false,
@@ -160,7 +160,7 @@ export const createOriginLeaveType = async (req: Request, res: Response) => {
       data: {
         tenantId,
         leaveOriginId,
-        leaveType,
+        leave_type_id: leaveType,
         unit,
         period,
         carryForward,
@@ -280,7 +280,7 @@ export const updateOriginLeaveType = async (req: Request, res: Response) => {
     const updated = await prisma.originLeaveType.update({
       where: { id },
       data: {
-        leaveType,
+        leave_type_id: leaveType,
         unit,
         period,
         carryForward,

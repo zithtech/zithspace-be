@@ -79,6 +79,7 @@ model Tenant {
   user_roles                           UserRole[]
   users                                User[]
   vendor_basic_information             vendor_basic_information[]
+  emailLogs                            EmailLog[]
 
   @@map("tenants")
 }
@@ -198,6 +199,12 @@ model User {
   vendor_basic_information_vendor_basic_information_updated_by_idTousers                         vendor_basic_information[]             @relation("vendor_basic_information_updated_by_idTousers")
   zoho_events_zoho_events_updated_byTousers                                                      zoho_events[]                          @relation("zoho_events_updated_byTousers")
   zoho_events_zoho_events_user_idTousers                                                         zoho_events[]                          @relation("zoho_events_user_idTousers")
+  sentEmailLogs                                                                                  EmailLog[]                             @relation("EmailLogSentBy")
+  timesheetsAsUser                                                                               Timesheet[]                            @relation("TimesheetUser")
+  sprintCompletionLogs                                                                           SprintCompletionLog[]          @relation("SprintLogPerformedBy")
+  timesheetsCreated                                                                              Timesheet[]                            @relation("TimesheetCreatedBy")
+  timesheetsApproved                                                                             Timesheet[]                            @relation("TimesheetApprovedBy")
+  timesheetsUpdated                                                                              Timesheet[]                            @relation("TimesheetUpdatedBy")
 
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
@@ -867,8 +874,9 @@ model Customer {
   updatedBy   String?   @map("updated_by")
   gstin       String?   @db.VarChar(30)
   pan         String?   @db.VarChar(30)
-  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant      Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   invoices    Invoice[]
+  emailLogs   EmailLog[]
 
   @@map("customers")
 }
@@ -917,6 +925,7 @@ model SprintCompletionLog {
   performedById   String   @map("performed_by_id") @db.VarChar(255)
   performedAt     DateTime @default(now()) @map("performed_at") @db.Timestamp(6)
   metadata        Json?    @default("{}")
+  performedBy     User     @relation("SprintLogPerformedBy", fields: [performedById], references: [id])
 
   @@index([performedAt], map: "idx_sprint_completion_logs_performed_at")
   @@index([projectId], map: "idx_sprint_completion_logs_project_id")
@@ -1324,6 +1333,11 @@ model Timesheet {
   createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt    DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
   leaveCount   Int              @default(0) @map("leave_count")
+  approvedBy   User?            @relation("TimesheetApprovedBy", fields: [approvedById], references: [id])
+  createdBy    User             @relation("TimesheetCreatedBy", fields: [createdById], references: [id])
+  updatedBy    User?            @relation("TimesheetUpdatedBy", fields: [updatedById], references: [id])
+  user         User             @relation("TimesheetUser", fields: [userId], references: [id])
+  rows         TimesheetRow[]
 
   @@unique([userId, weekStart], map: "uq_timesheet_user_week")
   @@index([userId], map: "idx_timesheets_user_id")
@@ -1347,6 +1361,7 @@ model TimesheetRow {
   projectId   String?  @db.Uuid
   taskId      String?  @db.Uuid
   dayorder    Int?
+  timesheet   Timesheet @relation(fields: [timesheetId], references: [id], onDelete: Cascade)
 
   @@index([createdById], map: "idx_timesheet_rows_created_by")
   @@index([timesheetId], map: "idx_timesheet_rows_timesheet_id")
@@ -1475,6 +1490,9 @@ model EmailLog {
   sentBy         String    @map("sent_by")
   sentByUser     String?   @map("sent_by_user")
   metadata       Json?
+  customer       Customer? @relation(fields: [customerId], references: [id])
+  sentByUserRel  User      @relation("EmailLogSentBy", fields: [sentBy], references: [id])
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([module, moduleId])
   @@index([module, sentAt])
@@ -1794,7 +1812,8 @@ model CalendarEvent {
   createdById    String?          @map("created_by_id")
   updatedById    String?          @map("updated_by_id")
   organizerEmail String?          @map("organizer_email")
-  isDeleted      Boolean          @default(false) @map("is_deleted")
+  isDeleted      Boolean                  @default(false) @map("is_deleted")
+  exceptions     CalendarEventException[]
 
   @@unique([provider, externalId, tenantId], map: "calendar_events_unique_provider_external_tenant")
   @@index([startTime], map: "idx_calendar_events_start_time")
@@ -1821,7 +1840,8 @@ model CalendarEventException {
   overrideDescription String?   @map("override_description")
   overrideLocation    String?   @map("override_location")
   overrideMeetingLink String?   @map("override_meeting_link")
-  overrideAttendees   Json?     @map("override_attendees")
+  overrideAttendees   Json?         @map("override_attendees")
+  event               CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
 
   @@unique([eventId, originalDate], map: "unique_event_occurrence")
   @@index([eventId], map: "idx_exception_event_id")
@@ -3914,21 +3934,9 @@ enum visibilitytype {
 }
 
 
-model dinesh {
-id String @id @default(uuid())
-name String
-createdAt DateTime @default(now()) @map("created_at")
-@@map("dinesh")
-}
 
 
 
-model deekay {
-id String @id @default(uuid())
-name String
-createdAt DateTime @default(now()) @map("created_at")
-@@map("deekay")
-}
 
 
 

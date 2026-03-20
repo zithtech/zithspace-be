@@ -17,17 +17,17 @@ class ReimbursementCategoryController {
         code,
         name,
         description,
-        maxRequestsPerMonth,
-        monthlyLimitAmount,
-        yearlyLimitAmount,
-        allowedRoles,
-        approvalFlow,
-        attachmentRequired,
-        autoApproveUnderAmount,
-        isActive,
+        max_per_request,
+        monthly_limit,
+        yearly_limit,
+        eligible_roles,
+        approval_flow,
+        attachment_required,
+        auto_approve_under_amount,
+        is_active,
       } = req.body;
 
-      if (!code || !name || !allowedRoles || !approvalFlow) {
+      if (!code || !name || !eligible_roles || !approval_flow) {
         res.status(400).json({
           success: false,
           error: "Missing required fields",
@@ -35,24 +35,24 @@ class ReimbursementCategoryController {
         return;
       }
 
-      const category = await prisma.reimbursementCategory.create({
+      const category = await prisma.reimbursement_categories.create({
         data: {
-          tenantId,
+          tenant_id,
           code,
           name,
           description,
 
-          maxRequestsPerMonth,
-          monthlyLimitAmount,
-          yearlyLimitAmount,
+          max_per_request,
+          monthly_limit,
+          yearly_limit,
 
-          allowedRoles,
-          approvalFlow,
+          eligible_roles,
+          approval_flow,
 
-          attachmentRequired: attachmentRequired ?? false,
-          autoApproveUnderAmount,
+          attachment_required: attachment_required ?? false,
+          auto_approve_under_amount,
 
-          isActive: isActive ?? true,
+          is_active: isActive ?? true,
 
           createdBy: userId,
           updatedBy: userId,
@@ -80,10 +80,10 @@ class ReimbursementCategoryController {
     try {
       const tenantId = req.tenantId!;
 
-      const categories = await prisma.reimbursementCategory.findMany({
+      const categories = await prisma.reimbursement_categories.findMany({
         where: {
-          tenantId,
-          isActive: true,
+          tenant_id,
+          is_active: true,
         },
         orderBy: {
           createdAt: "desc",
@@ -111,10 +111,10 @@ class ReimbursementCategoryController {
       const tenantId = req.tenantId!;
       const { id } = req.params;
 
-      const category = await prisma.reimbursementCategory.findFirst({
+      const category = await prisma.reimbursement_categories.findFirst({
         where: {
           id,
-          tenantId,
+          tenant_id,
         },
       });
 
@@ -147,7 +147,7 @@ class ReimbursementCategoryController {
       const userId = req.user!.id;
       const { id } = req.params;
 
-      const existing = await prisma.reimbursementCategory.findFirst({
+      const existing = await prisma.reimbursement_categories.findFirst({
         where: { id, tenantId },
       });
 
@@ -159,24 +159,24 @@ class ReimbursementCategoryController {
         return;
       }
 
-      const updated = await prisma.reimbursementCategory.update({
+      const updated = await prisma.reimbursement_categories.update({
         where: { id },
         data: {
           code: req.body.code,
           name: req.body.name,
           description: req.body.description,
 
-          maxRequestsPerMonth: req.body.maxRequestsPerMonth,
-          monthlyLimitAmount: req.body.monthlyLimitAmount,
-          yearlyLimitAmount: req.body.yearlyLimitAmount,
+          max_per_request: req.body.max_per_request,
+          monthly_limit: req.body.monthly_limit,
+          yearly_limit: req.body.yearly_limit,
 
-          allowedRoles: req.body.allowedRoles,
-          approvalFlow: req.body.approvalFlow,
+          eligible_roles: req.body.eligible_roles,
+          approval_flow: req.body.approval_flow,
 
-          attachmentRequired: req.body.attachmentRequired,
-          autoApproveUnderAmount: req.body.autoApproveUnderAmount,
+          attachment_required: req.body.attachment_required,
+          auto_approve_under_amount: req.body.auto_approve_under_amount,
 
-          isActive: req.body.isActive,
+          is_active: req.body.is_active,
 
           updatedBy: userId,
         },
@@ -205,7 +205,7 @@ class ReimbursementCategoryController {
       const userId = req.user!.id;
       const { id } = req.params;
 
-      const category = await prisma.reimbursementCategory.findFirst({
+      const category = await prisma.reimbursement_categories.findFirst({
         where: { id, tenantId },
       });
 
@@ -217,10 +217,10 @@ class ReimbursementCategoryController {
         return;
       }
 
-      await prisma.reimbursementCategory.update({
+      await prisma.reimbursement_categories.update({
         where: { id },
         data: {
-          isActive: false,
+          is_active: false,
           updatedBy: userId,
         },
       });

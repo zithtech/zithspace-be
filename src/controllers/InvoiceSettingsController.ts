@@ -65,8 +65,7 @@ export class InvoiceSettingsController {
           include: {
             general: true,
             invoice: true,
-            payment: true,
-            createdByUser: { select: { name: true } }
+            payment: true
           }
         }),
         prisma.settingsProfile.count({ where })
@@ -151,13 +150,13 @@ export class InvoiceSettingsController {
         name,
         isActive: false,
         tenant: { connect: { id: req.tenantId } },
-        createdByUser: { connect: { id: req.user.id } },
+        createdBy: req.user.id,
 
         general: {
           create: {
             ...general,
             tenant: { connect: { id: req.tenantId } },
-            createdByUser: { connect: { id: req.user.id } },
+            createdBy: req.user.id,
           }
         },
 
@@ -165,7 +164,7 @@ export class InvoiceSettingsController {
           create: {
             ...parsedInvoiceData, // This now contains dynamic padding, resetYearly, etc.
             tenant: { connect: { id: req.tenantId } },
-            createdByUser: { connect: { id: req.user.id } },
+            createdBy: req.user.id,
           }
         },
 
@@ -173,7 +172,7 @@ export class InvoiceSettingsController {
           create: {
             ...payment,
             tenant: { connect: { id: req.tenantId } },
-            createdByUser: { connect: { id: req.user.id } },
+            createdBy: req.user.id,
           }
         },
       },
@@ -223,17 +222,17 @@ export class InvoiceSettingsController {
       where: { id },
       data: { 
         name,
-        updatedByUser: { connect: { id: req.user.id } },
-        
+        updatedBy: req.user.id,
+
         // Update General Settings
         general: general ? {
           update: {
             where: { id: existing.generalId },
-            data: { 
-              ...general, 
+            data: {
+              ...general,
               id: undefined, // Strip ID so Prisma doesn't try to overwrite PK
               tenantId: undefined,
-              updatedByUser: { connect: { id: req.user.id } } 
+              updatedBy: req.user.id
             }
           }
         } : undefined,
@@ -242,11 +241,11 @@ export class InvoiceSettingsController {
         invoice: invoice ? {
           update: {
             where: { id: existing.invoiceId },
-            data: { 
-              ...invoice, 
+            data: {
+              ...invoice,
               id: undefined,
               tenantId: undefined,
-              updatedByUser: { connect: { id: req.user.id } } 
+              updatedBy: req.user.id
             }
           }
         } : undefined,
@@ -255,11 +254,11 @@ export class InvoiceSettingsController {
         payment: payment ? {
           update: {
             where: { id: existing.paymentId },
-            data: { 
-              ...payment, 
+            data: {
+              ...payment,
               id: undefined,
               tenantId: undefined,
-              updatedByUser: { connect: { id: req.user.id } } 
+              updatedBy: req.user.id 
             }
           }
         } : undefined,
@@ -325,8 +324,8 @@ static async hardDeleteProfile(req: AuthRequest, res: Response): Promise<void> {
     const updatedProfile = await prisma.settingsProfile.update({
       where: { id, tenantId: req.tenantId },
       data: { 
-        isActive: isActive, 
-        updatedByUser: { connect: { id: req.user.id } } 
+        isActive: isActive,
+        updatedBy: req.user.id 
       }
     });
 

@@ -471,8 +471,8 @@ static async createInvoice(req: AuthRequest, res: Response): Promise<void> {
         // Calculated fields
         subtotal: new Prisma.Decimal(totals.subtotal),
         taxTotal: new Prisma.Decimal(totals.taxTotal),
-        total: new Prisma.Decimal(totals.total),
-        discount: new Prisma.Decimal(totals.discount),
+        grand_total: new Prisma.Decimal(totals.total),
+        discount_total: new Prisma.Decimal(totals.discount),
         paidAmount: new Prisma.Decimal(0),
         balanceDue: new Prisma.Decimal(totals.balanceDue),
         
@@ -497,35 +497,41 @@ static async createInvoice(req: AuthRequest, res: Response): Promise<void> {
       console.log('📋 Creating invoice with data:', {
         ...invoiceData,
         subtotal: invoiceData.subtotal.toString(),
-        total: invoiceData.total.toString()
+        total: invoiceData.grand_total.toString()
       });
 
       // Create invoice
       const createdInvoice = await tx.invoice.create({
         data: {
           ...invoiceData,
-          items: {
-            create: items.map((item: any, index: number) => ({
-              item: item.item || item.description || `Item ${index + 1}`,
-              description: item.description || '',
-              qty: Number(item.qty || 1),
-              price: new Prisma.Decimal(Number(item.price || 0)),
-              tax: new Prisma.Decimal(Number(item.tax || 0)),
-              tenantId: req.tenantId,
-              createdBy: req.user.id,
-              createdAt: new Date(),
-              updatedAt: new Date(),
-              deletedAt: null,
-              deletedBy: null
-            }))
-          }
         },
-        include: { 
-          items: true, 
+        include: {
           customer: true,
           settingsProfile: true
         }
       });
+
+      // Create invoice line items separately
+      if (items && items.length > 0) {
+        await tx.invoice_line_items.createMany({
+          data: items.map((item: any, index: number) => ({
+            id: require('crypto').randomUUID(),
+            invoice_id: createdInvoice.id,
+            item_name: item.item || item.description || `Item ${index + 1}`,
+            description: item.description || '',
+            quantity: new Prisma.Decimal(Number(item.qty || 1)),
+            rate: new Prisma.Decimal(Number(item.price || 0)),
+            tax_rate: new Prisma.Decimal(Number(item.tax || 0)),
+            tenant_id: req.tenantId,
+            created_by: req.user.id,
+            updated_by: req.user.id,
+            created_at: new Date(),
+            updated_at: new Date(),
+            deleted_at: null,
+            deleted_by: null
+          }))
+        });
+      }
 
       return createdInvoice;
     }, {
@@ -537,7 +543,7 @@ static async createInvoice(req: AuthRequest, res: Response): Promise<void> {
       id: newInvoice.id,
       invoiceNumber: newInvoice.invoiceNumber,
       status: newInvoice.status,
-      total: newInvoice.total.toString()
+      total: newInvoice.grand_total.toString()
     });
 
     // 7️⃣ GENERATE PDF (outside transaction)
@@ -636,48 +642,49 @@ static async createInvoice(req: AuthRequest, res: Response): Promise<void> {
 
         // Delete removed items (soft delete)
         const incomingItemIds = items.filter((i: any) => i.id).map((i: any) => i.id);
-        await tx.invoiceItem.updateMany({
-          where: { 
-            invoiceId: id, 
-            id: { notIn: incomingItemIds }, 
-            tenantId: req.tenantId,
-            deletedAt: null // Only update non-deleted items
+        await tx.invoice_line_items.updateMany({
+          where: {
+            invoice_id: id,
+            id: { notIn: incomingItemIds },
+            tenant_id: req.tenantId,
+            deleted_at: null // Only update non-deleted items
           },
           data: {
-            deletedAt: new Date(),
-            deletedBy: req.user.id,
-            updatedAt: new Date(),
-            updatedBy: req.user.id
+            deleted_at: new Date(),
+            deleted_by: req.user.id,
+            updated_at: new Date(),
+            updated_by: req.user.id
           }
         });
 
         // Prepare item operations
         const itemOperations = items.map((item: any) => {
           const itemData = {
-            item: item.item || item.description || 'Untitled Item',
+            item_name: item.item || item.description || 'Untitled Item',
             description: item.description || '',
-            qty: Number(item.qty || 1),
-            price: new Prisma.Decimal(Number(item.price || 0)),
-            tax: new Prisma.Decimal(Number(item.tax || 0)),
-            tenantId: req.tenantId,
-            updatedBy: req.user.id,
-            updatedAt: new Date(),
-            deletedAt: null,
-            deletedBy: null
+            quantity: new Prisma.Decimal(Number(item.qty || 1)),
+            rate: new Prisma.Decimal(Number(item.price || 0)),
+            tax_rate: new Prisma.Decimal(Number(item.tax || 0)),
+            tenant_id: req.tenantId,
+            updated_by: req.user.id,
+            updated_at: new Date(),
+            deleted_at: null,
+            deleted_by: null
           };
 
-          return item.id 
-            ? tx.invoiceItem.update({ 
-                where: { id: item.id }, 
-                data: itemData 
+          return item.id
+            ? tx.invoice_line_items.update({
+                where: { id: item.id },
+                data: itemData
               })
-            : tx.invoiceItem.create({ 
-                data: { 
-                  ...itemData, 
-                  invoiceId: id, 
-                  createdBy: req.user.id,
-                  createdAt: new Date()
-                } 
+            : tx.invoice_line_items.create({
+                data: {
+                  ...itemData,
+                  id: require('crypto').randomUUID(),
+                  invoice_id: id,
+                  created_by: req.user.id,
+                  created_at: new Date()
+                }
               });
         });
 
@@ -689,16 +696,16 @@ static async createInvoice(req: AuthRequest, res: Response): Promise<void> {
           data: {
             ...updateData,
             taxInclusive,
-            discount: new Prisma.Decimal(totals.discount),
+            discount_total: new Prisma.Decimal(totals.discount),
             subtotal: new Prisma.Decimal(totals.subtotal),
             taxTotal: new Prisma.Decimal(totals.taxTotal),
-            total: new Prisma.Decimal(totals.total),
+            grand_total: new Prisma.Decimal(totals.total),
             balanceDue: new Prisma.Decimal(totals.balanceDue),
             customerSnapshot,
             updatedBy: req.user.id,
             updatedAt: new Date()
           },
-          include: { items: true, customer: true },
+          include: { customer: true } as any,
         });
       },
       { maxWait: 10000, timeout: 30000 }
@@ -767,23 +774,22 @@ static async createInvoice(req: AuthRequest, res: Response): Promise<void> {
           { invoiceNumber: id }   // Try searching by Display Number
         ]
       },
-      include: { 
-        customer: true, 
-        items: true, 
-        createdByUser: true, 
-        updatedByUser: true 
-      }
+      include: {
+        customer: true,
+        createdByUser: true,
+        updatedByUser: true
+      } as any
     });
 
     if (!invoice) throw new NotFoundError('Invoice not found');
-    
-    console.log("Retrieved invoice discount:", invoice.discount);
+
+    console.log("Retrieved invoice discount:", (invoice as any).discount_total);
     console.log("Invoice totals:", {
       subtotal: invoice.subtotal,
       taxTotal: invoice.taxTotal,
-      total: invoice.total,
+      total: (invoice as any).grand_total,
       balanceDue: invoice.balanceDue,
-      discount: invoice.discount
+      discount: (invoice as any).discount_total
     });
     
     res.status(200).json({ success: true, data: invoice } as ApiResponse);
@@ -828,16 +834,16 @@ static async deleteInvoice(req: AuthRequest, res: Response): Promise<void> {
     // 2. SOFT DELETE FROM DATABASE - Fixed typing
     await prisma.$transaction([
       // Soft delete invoice items
-      prisma.invoiceItem.updateMany({
-        where: { 
-          invoiceId: id, 
-          tenantId: req.tenantId 
+      prisma.invoice_line_items.updateMany({
+        where: {
+          invoice_id: id,
+          tenant_id: req.tenantId
         },
         data: {
-          deletedAt: now,
-          deletedBy: userId,
-          updatedAt: now,
-          updatedBy: userId
+          deleted_at: now,
+          deleted_by: userId,
+          updated_at: now,
+          updated_by: userId
         }
       }),
       // Soft delete invoice
@@ -1102,7 +1108,7 @@ static async updateStatus(req: AuthRequest, res: Response): Promise<void> {
         balanceDue: true,
         invoiceNumber: true,
         settingsProfileId: true,
-        total: true,
+        grand_total: true,
         firstPaymentDate: true,
         lastPaymentDate: true,
         fullyPaidDate: true,
@@ -1139,9 +1145,9 @@ static async updateStatus(req: AuthRequest, res: Response): Promise<void> {
       ? invoice.balanceDue.toNumber()
       : Number(invoice.balanceDue);
 
-    const invoiceTotal = invoice.total instanceof Prisma.Decimal
-      ? invoice.total.toNumber()
-      : Number(invoice.total);
+    const invoiceTotal = invoice.grand_total instanceof Prisma.Decimal
+      ? invoice.grand_total.toNumber()
+      : Number(invoice.grand_total);
 
     let newPaid = currentPaid;
     let newBalance = currentBalance;
@@ -1229,11 +1235,8 @@ static async updateStatus(req: AuthRequest, res: Response): Promise<void> {
         data: updateData,
         include: {
           customer: true,
-          items: {
-            where: { deletedAt: null } // ✅ Only include non-deleted items
-          },
           payments: true
-        }
+        } as any
       });
 
       if (paymentEntry) {
@@ -1421,7 +1424,7 @@ static async getPaymentHistory(req: AuthRequest, res: Response): Promise<void> {
         invoiceNumber: true,
         invoiceDate: true,
         dueDate: true,
-        total: true,
+        grand_total: true,
         paidAmount: true,
         balanceDue: true,
         status: true,
@@ -1452,20 +1455,12 @@ static async getPaymentHistory(req: AuthRequest, res: Response): Promise<void> {
         invoiceId, 
         tenantId: req.tenantId 
       },
-      include: {
-        createdByUser: { 
-          select: { 
-            id: true, 
-            name: true
-          } 
-        }
-      },
       orderBy: { paymentDate: 'asc' }
     });
 
     // 3️⃣ Calculate running totals for detailed history
     let runningPaid = 0;
-    let runningBalance = Number(invoice.total);
+    let runningBalance = Number(invoice.grand_total);
     
     const paymentHistory = payments.map((payment) => {
       const paymentAmount = Number(payment.amount);
@@ -1516,7 +1511,7 @@ static async getPaymentHistory(req: AuthRequest, res: Response): Promise<void> {
         balanceAfter: balanceAfterValue.toFixed(2),
         totalPaid: runningPaid.toFixed(2),
         balanceDue: runningBalance.toFixed(2),
-        processedBy: payment.createdByUser?.name || 'System',
+        processedBy: (payment as any).createdByUser?.name || 'System',
         paymentDate: paymentDate,
         createdAt: payment.createdAt,
         updatedAt: payment.updatedAt
@@ -1532,14 +1527,14 @@ static async getPaymentHistory(req: AuthRequest, res: Response): Promise<void> {
     const totalPaid = completedPayments.reduce((sum, p) => sum + Number(p.amount), 0);
     const totalRefunded = refundedPayments.reduce((sum, p) => sum + Number(p.amount), 0);
     const netPaid = totalPaid - totalRefunded;
-    const currentBalance = Math.max(0, Number(invoice.total) - netPaid);
+    const currentBalance = Math.max(0, Number(invoice.grand_total) - netPaid);
 
     const summary = {
       invoiceNumber: invoice.invoiceNumber,
-      customerName: (invoice.customerSnapshot as any)?.companyName || invoice.customer?.companyName,
+      customerName: (invoice.customerSnapshot as any)?.companyName || (invoice.customer as any)?.companyName,
       invoiceDate: invoice.invoiceDate,
       dueDate: invoice.dueDate,
-      totalAmount: Number(invoice.total).toFixed(2),
+      totalAmount: Number(invoice.grand_total).toFixed(2),
       totalPaid: totalPaid.toFixed(2),
       totalRefunded: totalRefunded.toFixed(2),
       netPaid: netPaid.toFixed(2),
@@ -1573,7 +1568,6 @@ static async getPaymentHistory(req: AuthRequest, res: Response): Promise<void> {
           referenceId: p.referenceId,
           balanceBefore: p.balanceBefore,
           balanceAfter: p.balanceAfter,
-          createdByUser: p.createdByUser,
           createdAt: p.createdAt,
           updatedAt: p.updatedAt
         }))
@@ -1710,16 +1704,16 @@ static async restoreInvoice(req: AuthRequest, res: Response): Promise<void> {
     // Restore invoice and items
     await prisma.$transaction([
       // Restore invoice items
-      prisma.invoiceItem.updateMany({
-        where: { 
-          invoiceId: id, 
-          tenantId: req.tenantId 
+      prisma.invoice_line_items.updateMany({
+        where: {
+          invoice_id: id,
+          tenant_id: req.tenantId
         },
-        data: { 
-          deletedAt: null,
-          deletedBy: null,
-          updatedAt: new Date(),
-          updatedBy: req.user.id
+        data: {
+          deleted_at: null,
+          deleted_by: null,
+          updated_at: new Date(),
+          updated_by: req.user.id
         }
       }),
       // Restore invoice
@@ -1746,9 +1740,6 @@ static async restoreInvoice(req: AuthRequest, res: Response): Promise<void> {
       },
       include: {
         customer: true,
-        items: {
-          where: { deletedAt: null }
-        },
         settingsProfile: true
       }
     });
@@ -1798,8 +1789,8 @@ static async permanentDeleteInvoice(req: AuthRequest, res: Response): Promise<vo
 
     // Permanently delete from database
     await prisma.$transaction([
-      prisma.invoiceItem.deleteMany({
-        where: { invoiceId: id, tenantId: req.tenantId }
+      prisma.invoice_line_items.deleteMany({
+        where: { invoice_id: id, tenant_id: req.tenantId }
       }),
       prisma.invoicePayment.deleteMany({
         where: { invoiceId: id, tenantId: req.tenantId }
@@ -1842,11 +1833,8 @@ static async getDeletedInvoices(req: AuthRequest, res: Response): Promise<void> 
     const [invoices, total] = await Promise.all([
       prisma.invoice.findMany({
         where,
-        include: { 
-          customer: true,
-          deletedByUser: {
-            select: { id: true, name: true }
-          }
+        include: {
+          customer: true
         },
         orderBy: { deletedAt: 'desc' },
         skip,
