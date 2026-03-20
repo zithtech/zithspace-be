@@ -78,6 +78,7 @@ const leaveOriginRoutes_1 = __importDefault(require("@/routes/leaveOriginRoutes"
 const emailHistoryRoutes_1 = __importDefault(require("@/routes/emailHistoryRoutes"));
 const leaveRequestRoutes_1 = __importDefault(require("@/routes/leaveRequestRoutes"));
 const leaveBalanceRoutes_1 = __importDefault(require("@/routes/leaveBalanceRoutes"));
+const payroll_1 = __importDefault(require("@/routes/payroll"));
 const rbac_1 = __importDefault(require("@/routes/rbac"));
 // Load environment
 dotenv_1.default.config();
@@ -195,6 +196,7 @@ app.use("/api/sprint-completion", sprintCompletion_1.default);
 app.use("/api/salary-components", salaryComponentRoutes_1.default);
 app.use("/api/companies", companyRoutes_1.default);
 app.use("/api/grades", gradeRoutes_1.default);
+app.use("/api/payroll", payroll_1.default);
 app.use("/api/departments", departmentRoutes_1.default);
 app.use("/api/sub-departments", subDepartmentRoutes_1.default);
 app.use("/api/positions", positionRoutes_1.default);
