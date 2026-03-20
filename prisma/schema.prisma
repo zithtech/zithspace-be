@@ -61,6 +61,7 @@ model Tenant {
 
   sprintCompletionLogs SprintCompletionLog[]
   statusUpdates        StatusUpdate[]
+  jobRequisitions      JobRequisition[]
   ticketActivityLog    TicketActivityLog[]
   ticketAttachments    TicketAttachment[]
   ticketComments       TicketComment[]
@@ -182,6 +183,10 @@ model User {
   reportToTickets              Ticket[]                   @relation("TicketReportTo")
   archivedTickets              Ticket[]                   @relation("TicketArchivedBy")
   deletedTickets               Ticket[]                   @relation("TicketDeletedBy")
+  createdRequisitions          JobRequisition[]           @relation("RequisitionCreator")
+  managedAccountRequisitions   JobRequisition[]           @relation("RequisitionAccountManager")
+  managedDeliveryRequisitions  JobRequisition[]           @relation("RequisitionDeliveryManager")
+  assignedRequisitions         JobRequisition[]           @relation("RequisitionRecruiters")
   createdBuckets               Bucket[]                   @relation("BucketCreator")
   bucketMemberships            BucketMember[]
   createdFixedHolidays         FixedHoliday[]             @relation("FixedHolidayCreator")
@@ -725,6 +730,7 @@ model Client {
   updatedAt     DateTime @updatedAt @map("updated_at")
   createdBy     User     @relation("ClientCreator", fields: [createdById], references: [id])
   tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  jobRequisitions JobRequisition[]
 
   @@unique([tenantId, email])
   @@map("clients")
@@ -2841,6 +2847,93 @@ model EmployeeClientAllocationV2 {
   project  Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@map("employee_client_allocations_v2")
+}
+
+model JobRequisition {
+  id                   String    @id @default(uuid())
+  tenantId             String    @map("tenant_id")
+  ticketId             String    @map("ticket_id") 
+
+  // Basic Job Information
+  jobTitle             String    @map("job_title")
+  jobCode              String?   @map("job_code")
+  clientId             String?   @map("client_id")
+  clientContactPerson  String?   @map("client_contact_person")
+  openingsCount        Int       @default(1) @map("openings_count")
+  jobType              String    @map("job_type") 
+  priority             String    @default("Medium") 
+  status               String    @default("Open") 
+
+  // Candidate Requirements
+  experience           String?
+  mandatorySkills      String[]  @map("mandatory_skills")
+  secondarySkills      String[]  @map("secondary_skills")
+  education            String?
+  certification        String?
+  communicationSkills  String?   @map("communication_skills")
+
+  // Job Description
+  jobRole              String?   @map("job_role")
+  jobDetails           String?   @map("job_details")
+  responsibilities     String?
+  interviewProcess     Json?     @default("[]") @map("interview_process")
+
+  // Visa & Work Authorization
+  allowedVisaTypes     String[]  @map("allowed_visa_types")
+  excludedVisaTypes    String[]  @map("excluded_visa_types")
+  securityClearance    Boolean   @default(false) @map("security_clearance")
+
+  // Location & Work Mode
+  jobLocation          String?   @map("job_location")
+  workMode             String    @default("Remote") @map("work_mode") 
+  timeZone             String?   @map("time_zone")
+  relocationAllowed    Boolean   @default(false) @map("relocation_allowed")
+
+  // Billing & Rate Information
+  maxBillRate          Decimal?  @db.Decimal(10, 2) @map("max_bill_rate")
+  recruiterRate        Decimal?  @db.Decimal(10, 2) @map("recruiter_rate")
+  minPayRate           Decimal?  @db.Decimal(10, 2) @map("min_pay_rate")
+  overtimeMultiplier   Decimal?  @db.Decimal(4, 2)  @map("overtime_multiplier")
+
+  // Hiring Timeline
+  startDate            DateTime? @map("start_date")
+  submissionDeadline   DateTime? @map("submission_deadline")
+  interviewStartDate   DateTime? @map("interview_start_date")
+  expectedClosureDate  DateTime? @map("expected_closure_date")
+
+  // Recruiter Assignment
+  accountManagerId     String?   @map("account_manager_id")
+  deliveryManagerId    String?   @map("delivery_manager_id")
+  maxSubmissionsPerRec Int?      @map("max_submissions") 
+
+  // Candidate Submission Rules
+  maxTotalSubmissions  Int?      @map("max_total_submissions")
+  exclusiveCandidate   Boolean   @default(false) @map("exclusive_candidate")
+  blindCvRequired      Boolean   @default(false) @map("blind_cv_required")
+  sourceFormat         String?   @map("source_format")
+
+  // Screening Questions & Attachments & Notes
+  screeningQuestions   Json?     @default("[]") @map("screening_questions")
+  attachments          Json?     @default("[]")
+  internalNotes        String?   @map("internal_notes")
+
+  // Metadata
+  createdById          String    @map("created_by_id")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  tenant               Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client               Client?   @relation(fields: [clientId], references: [id])
+  createdBy            User      @relation("RequisitionCreator", fields: [createdById], references: [id])
+  accountManager       User?     @relation("RequisitionAccountManager", fields: [accountManagerId], references: [id])
+  deliveryManager      User?     @relation("RequisitionDeliveryManager", fields: [deliveryManagerId], references: [id])
+  assignedRecruiters   User[]    @relation("RequisitionRecruiters")
+
+  @@unique([tenantId, ticketId])
+  @@index([tenantId, status])
+  @@index([clientId])
+  @@map("job_requisitions")
 }
 
 

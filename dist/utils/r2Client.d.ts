@@ -22,6 +22,15 @@ export declare function uploadFileToR2(base64File: string, fileName: string, ten
     fileType: string;
 }>;
 /**
+ * Upload a job requisition attachment to Cloudflare R2
+ * Stores under: {tenantId}/requisition_attachments/{requisitionId}/{category}/{uniqueId}_{fileName}
+ */
+export declare function uploadRequisitionAttachmentToR2(base64File: string, fileName: string, tenantId: string, requisitionId: string, category: string): Promise<{
+    fileUrl: string;
+    fileSize: number;
+    fileType: string;
+}>;
+/**
  * Upload employee document to Cloudflare R2
  * @param base64File - Base64 encoded file string
  * @param fileName - Original file name
