@@ -66,6 +66,7 @@ import publicTicketRoutes from "@/routes/publicTickets";
 import employeeSettingsRoutes from "./routes/employeeSettingsRoutes";
 
 import timesheetRoutes from "@/routes/timesheet";
+import timeTrackingRoutes from "@/routes/timeTracking";
 
 import companyGovernmentHolidayRouter from "./routes/companyGovernmentHoliday.routes";
 import leaveAdjustmentRoutes from "./routes/leaveAdjustmentRoutes";
@@ -239,6 +240,7 @@ app.use("/api/leave-request", leaveRequestRoutes);
 app.use("/api/leave-balances", leaveBalanceRoutes);
 
 
+app.use("/api/time-tracking", timeTrackingRoutes);
 
 // onboarding
 // app.use("/api/employees", employeeRoutes);

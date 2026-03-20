@@ -63,6 +63,7 @@ const auth_2 = __importDefault(require("@/routes/auth"));
 const publicTickets_1 = __importDefault(require("@/routes/publicTickets"));
 const employeeSettingsRoutes_1 = __importDefault(require("./routes/employeeSettingsRoutes"));
 const timesheet_1 = __importDefault(require("@/routes/timesheet"));
+const timeTracking_1 = __importDefault(require("@/routes/timeTracking"));
 const companyGovernmentHoliday_routes_1 = __importDefault(require("./routes/companyGovernmentHoliday.routes"));
 const leaveAdjustmentRoutes_1 = __importDefault(require("./routes/leaveAdjustmentRoutes"));
 const leaveAllocationRoutes_1 = __importDefault(require("@/routes/leaveAllocationRoutes"));
@@ -207,6 +208,7 @@ app.use("/api/zoho", calendar_1.default);
 app.use("/api/leave-allocation", leaveAllocationRoutes_1.default);
 app.use("/api/leave-request", leaveRequestRoutes_1.default);
 app.use("/api/leave-balances", leaveBalanceRoutes_1.default);
+app.use("/api/time-tracking", timeTracking_1.default);
 // onboarding
 // app.use("/api/employees", employeeRoutes);
 // app.use("/api/employee-addresses", employeeAddressRoutes);
