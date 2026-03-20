@@ -100,13 +100,11 @@ model Tenant {
 
   // RBAC
   roles Role[]
+  
+  // Time Tracking
+  timeTrackingEntries TimeTrackingEntry[]
 
-  exitNoticePolicies ExitNoticePolicy[]
-    exitTypes  ExitType[]
-      reasonForExits ReasonForExit[]
-      employeeExits EmployeeExit[]
-       exitApprovalWorkflows ExitApprovalWorkflow[]
-
+  userPreferences UserPreference[]
   @@map("tenants")
 }
 
@@ -329,6 +327,7 @@ model User {
   @@unique([tenantId, personalEmail])
   @@unique([tenantId, phone])
  
+  userPreference UserPreference?
   @@map("users")
 }
 
@@ -3410,91 +3409,16 @@ model TimeTrackingLog {
   @@map("time_tracking_logs")
 }
 
+model UserPreference {
+  id               String   @id @default(uuid())
+  userId           String   @unique @map("user_id")
+  tenantId         String   @map("tenant_id")
+  sidebarCollapsed Boolean  @default(true) @map("sidebar_collapsed")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
-enum TransactionType {
-  monthly_credit
-  yearly_credit
-  carry_forward_credit
-  adjustment_credit
-  leave_debit
-  leave_encashment_debit
-  expiry_debit
-  reversal
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  @@map("transaction_type")
-}
-
-model LeaveLedger {
-  id              String          @id @default(uuid())
-  tenantId        String          @map("tenant_id")
-  employeeId      String          @map("employee_id") @db.Uuid
-  leaveTypeId     String          @map("leave_type_id")
-  transactionType TransactionType @map("transaction_type")
-  referenceId     String?         @map("reference_id")
-  units           Decimal         @db.Decimal(6, 2)
-  balanceAfter    Decimal         @map("balance_after") @db.Decimal(6, 2)
-  transactionDate DateTime        @map("transaction_date") @db.Date
-  expiryDate      DateTime?       @map("expiry_date") @db.Date
-  policyVersion   Int             @map("policy_version")
-  createdAt       DateTime        @default(now()) @map("created_at")
-  updatedAt       DateTime        @updatedAt @map("updated_at")
-  createdById     String?         @map("created_by_id")
-  updatedById     String?         @map("updated_by_id")
-
-  // Relations
-  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  employee  Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  leaveType LeaveType        @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
-  reference OriginLeaveType? @relation(fields: [referenceId], references: [id], onDelete: SetNull)
-  createdBy User?            @relation("LeaveLedgerCreator", fields: [createdById], references: [id])
-  updatedBy User?            @relation("LeaveLedgerUpdater", fields: [updatedById], references: [id])
-
-  @@index([tenantId])
-  @@index([employeeId])
-  @@index([leaveTypeId])
-  @@index([referenceId])
-  @@index([transactionDate])
-  @@map("leave_ledger")
-}
-
-enum LeaveRequestStatus {
-  PENDING
-  APPROVED
-  REJECTED
-  CANCELLED
-
-  @@map("leave_request_status")
-}
-
-model LeaveRequest {
-  id          String             @id @default(uuid())
-  tenantId    String             @map("tenant_id")
-  employeeId  String             @map("employee_id") @db.Uuid
-  leaveTypeId String?          @map("leave_type_id")
-  fromDate    DateTime           @map("from_date") @db.Date
-  toDate      DateTime           @map("to_date") @db.Date
-  totalUnits  Decimal            @map("total_units") @db.Decimal(5, 2)
-  status      LeaveRequestStatus @default(PENDING)
-  reason      String?
-  appliedAt   DateTime           @default(now()) @map("applied_at")
-  approvedAt  DateTime?          @map("approved_at")
-  approvedById  String?            @map("approved_by_id")
-
-  createdById String   @map("created_by_id")
-  updatedById String?  @map("updated_by_id")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  // Relations
-  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  employee       Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  leaveType     LeaveType? @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
-  approvedByUser User?     @relation("LeaveRequestApprover", fields: [approvedById], references: [id])
-  createdByUser  User      @relation("LeaveRequestCreator", fields: [createdById], references: [id])
-  updatedByUser  User?     @relation("LeaveRequestUpdater", fields: [updatedById], references: [id])
-
-  @@index([tenantId, employeeId, status])
-  @@index([leaveTypeId])
-  @@index([createdById])
-  @@map("leave_requests")
+  @@map("user_preferences")
 }
