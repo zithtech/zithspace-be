@@ -619,6 +619,8 @@ export interface CreateCustomerData {
   city?: string;
   country?: string;
   taxId?: string;
+  gstin?: string;
+  pan?: string;
 }
 
 // Data allowed to update a customer
@@ -630,6 +632,8 @@ export interface UpdateCustomerData {
   city?: string;
   country?: string;
   taxId?: string;
+  gstin?: string;
+  pan?: string;
 }
 
 // ==========================================
