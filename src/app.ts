@@ -80,6 +80,8 @@ import calendarRoutes from "@/routes/calendar"
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
 import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
 import rbacRoutes from "@/routes/rbac";
+import recruitmentStatusRoutes from "@/routes/recruitmentStatus.routes";
+import recruitmentActionRoutes from "@/routes/recruitmentAction.routes";
 // Load environment
 dotenv.config();
 console.log("🚀 API Starting up...");
@@ -230,6 +232,9 @@ app.use("/api/channels/:channelId/messages", messageRoutes);
 app.use("/api/email-history", emailHistoryRoutes);
 app.use("/api/timesheets", timesheetRoutes);
 app.use("/api/time-tracking", timeTrackingRoutes);
+
+app.use("/api/recruitment-statuses", recruitmentStatusRoutes);
+app.use("/api/recruitment-actions", recruitmentActionRoutes);
 
 // onboarding
 // app.use("/api/employees", employeeRoutes);
