@@ -52,6 +52,9 @@ model Tenant {
   calendarEvents       CalendarEvent[]
 
 
+ implementationBasicInformations ImplementationBasicInformation[]
+  recruitmentClients RecruitmentClientBasicInformation[]
+  vendors VendorBasicInformation[]
 
 
 
@@ -125,6 +128,31 @@ model User {
   
   employeeId        String?   @map("employee_id") 
   employee          Employee? @relation(fields: [employeeId], references: [id]) 
+
+
+  createdContacts ImplementationContactPerson[] @relation("CreatedByUser")
+  updatedContacts ImplementationContactPerson[] @relation("UpdatedByUser")
+
+  createdBusinessDetails ImplementationBusinessDetailes[] @relation("BusinessCreatedBy")
+  updatedBusinessDetails ImplementationBusinessDetailes[] @relation("BusinessUpdatedBy")
+
+  createdRelations ImplementationRelations[] @relation("RelationsCreatedBy")
+  updatedRelations ImplementationRelations[] @relation("RelationsUpdatedBy")
+
+   createdDocuments ImplementationDocument[] @relation("DocumentCreatedBy")
+  updatedDocuments ImplementationDocument[] @relation("DocumentUpdatedBy")
+
+  createdRecruitmentClients RecruitmentClientBasicInformation[] @relation("CreatedRecruitmentClient")
+  updatedRecruitmentClients RecruitmentClientBasicInformation[] @relation("UpdatedRecruitmentClient")
+
+ createRecruitmentBusinessDetails RecruitmentClientBusinessDetails[] @relation("CreatedBusinessDetails")
+  updateRecruitmentBusinessDetails RecruitmentClientBusinessDetails[] @relation("UpdatedBusinessDetails")
+
+   createdVendors VendorBasicInformation[] @relation("VendorCreatedBy")
+  updatedVendors VendorBasicInformation[] @relation("VendorUpdatedBy")
+
+ 
+
 
   createdSalaryComponents SalaryComponent[] @relation("SalaryComponentCreator")
   updatedSalaryComponents SalaryComponent[] @relation("SalaryComponentUpdater")
@@ -2860,6 +2888,9 @@ model JobRequisition {
   recruiterRate        Decimal?  @db.Decimal(10, 2) @map("recruiter_rate")
   minPayRate           Decimal?  @db.Decimal(10, 2) @map("min_pay_rate")
   overtimeMultiplier   Decimal?  @db.Decimal(4, 2)  @map("overtime_multiplier")
+implementationId      String?   @map("implementation_id")
+recruitmentClientId   String?   @map("recruitment_client_id")
+vendorIds             String?  @map("vendor_ids")
 
   // Hiring Timeline
   startDate            DateTime? @map("start_date")
@@ -2883,6 +2914,8 @@ model JobRequisition {
   attachments          Json?     @default("[]")
   internalNotes        String?   @map("internal_notes")
 
+ jobRequisitionContacts JobRequisitionContact[]
+
   // Metadata
   createdById          String    @map("created_by_id")
   createdAt            DateTime  @default(now()) @map("created_at")
@@ -2900,4 +2933,382 @@ model JobRequisition {
   @@index([tenantId, status])
   @@index([clientId])
   @@map("job_requisitions")
+}
+model JobRequisitionContact {
+  id               String   @id @default(uuid())
+
+  jobRequisitionId String   @map("job_requisition_id")
+
+  // 🔹 Only Contact ID
+  contactId        String   @map("contact_id")
+
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  // 🔹 Relation (only JobRequisition)
+  jobRequisition   JobRequisition @relation(fields: [jobRequisitionId], references: [id], onDelete: Cascade)
+
+  @@index([jobRequisitionId])
+  @@index([contactId])
+
+  @@map("job_requisition_contacts")
+}
+
+
+model ImplementationBasicInformation {
+  id             String   @id @default(cuid()) @db.Text
+
+  tenantId       String   @map("tenant_id") @db.Text
+  tenant         Tenant  @relation(fields: [tenantId], references: [id])
+
+  companyName    String?   @map("company_name")
+  industry       String?
+
+  website        String?
+  companyEmail   String?   @map("company_email")
+  companyPhone   String?  @map("company_phone")
+ status Boolean       @default(true)
+
+  street         String?
+  city           String?
+  state          String?
+  country        String?
+  notes          String?   
+  zipCode        String?   @map("zip_code")
+  clientIds      String[]  @map("client_ids") @db.Text
+  vendorIds      String[]  @map("vendor_ids") @db.Text
+
+  contactPersons ImplementationContactPerson[]
+   businessDetails ImplementationBusinessDetailes[] 
+    relations ImplementationRelations[]
+    documents ImplementationDocument[]
+
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("implementation-basic-information")
+}
+
+model ImplementationContactPerson {
+  id                 String   @id @default(cuid()) @db.Text
+
+  implementationId   String   @map("implementation_id") @db.Text
+  implementation ImplementationBasicInformation @relation(fields: [implementationId], references: [id])
+
+  personName         String   @map("person_name")
+  designation        String?
+  email              String?
+  phone              String?
+  linkedInUrl        String?  @map("linkedin_url")
+
+  createdById        String   @map("created_by_id") @db.Text
+  createdBy          User     @relation("CreatedByUser", fields: [createdById], references: [id])
+
+  updatedById        String   @map("updated_by_id") @db.Text
+  updatedBy          User     @relation("UpdatedByUser", fields: [updatedById], references: [id])
+
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@map("implementation_contact_person")
+}
+model ImplementationBusinessDetailes {
+  id                   String   @id @default(cuid()) @db.Text
+
+  implementationId     String   @map("implementation_id") @db.Text
+  implementation ImplementationBasicInformation @relation(fields: [implementationId], references: [id])
+  registrationNumber   String?  @map("registration_number")
+  taxId                String?  @map("tax_id")
+  businessType         String?  @map("business_type")
+  yearEstabliliesh     Int?     @map("year_establiliesh")
+  totalEmployees       Int?     @map("total_employees")
+
+  createdById          String   @map("created_by_id") @db.Text
+  createdBy            User     @relation("BusinessCreatedBy", fields: [createdById], references: [id])
+
+  updatedById          String   @map("updated_by_id") @db.Text
+  updatedBy            User     @relation("BusinessUpdatedBy", fields: [updatedById], references: [id])
+
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@map("implementation_business_detailes")
+}
+
+model ImplementationRelations {
+  id                        String   @id @default(cuid()) @db.Text
+
+  implementationId          String   @map("implementation_id") @db.Text
+  implementation            ImplementationBasicInformation @relation(fields: [implementationId], references: [id])
+
+  linkedVendor              String?  @map("linked_vendor")
+  linkedClient              String?  @map("linked_client")
+
+  supportsVisaSponsorship   Boolean  @map("supports_visa_sponsorship")
+  visaTypesSupported        String?  @map("visa_types_supported")
+
+  createdById               String   @map("created_by_id") @db.Text
+  createdBy                 User     @relation("RelationsCreatedBy", fields: [createdById], references: [id])
+
+  updatedById               String   @map("updated_by_id") @db.Text
+  updatedBy                 User     @relation("RelationsUpdatedBy", fields: [updatedById], references: [id])
+
+  createdAt                 DateTime @default(now()) @map("created_at")
+  updatedAt                 DateTime @updatedAt @map("updated_at")
+
+  @@map("implementation_relations")
+}
+
+model ImplementationDocument {
+  id                String   @id @default(cuid()) @db.Text
+
+  implementationId  String   @map("implementation_id") @db.Text
+  implementation    ImplementationBasicInformation @relation(fields: [implementationId], references: [id])
+
+  documentType      String?   @map("document_type")
+  documentUrl       String?  @map("document_url")
+
+  createdById       String   @map("created_by_id") @db.Text
+  createdBy         User     @relation("DocumentCreatedBy", fields: [createdById], references: [id])
+
+  updatedById       String   @map("updated_by_id") @db.Text
+  updatedBy         User     @relation("DocumentUpdatedBy", fields: [updatedById], references: [id])
+
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@map("implementation_document")
+}
+
+
+
+model RecruitmentClientBasicInformation {
+  id            String   @id @default(cuid()) @db.Text
+
+  // Tenant رابطه
+  tenantId      String   @map("tenant_id") @db.Text
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+  clientName    String?  @map("client_name")
+  accountType   String?  @map("account_type")
+  industry      String?
+
+  website       String?
+  companyEmail  String?  @map("company_email")
+  companyPhone  String?  @map("company_phone")
+
+  street        String?
+  city          String?
+  state         String?
+  zipCode       String?  @map("zip_code")
+  country       String?
+
+  status        Boolean  @default(true)
+  notes         String?
+
+  implementationPartnerId String[] @map("implementation_partner_id") @db.Text
+  primeVendorId          String[] @map("prime_vendor_id") @db.Text
+
+  businessDetails RecruitmentClientBusinessDetails[] @relation("ClientToBusinessDetails")
+  // Audit fields
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  
+ hiringPreferences RecruitmentClientHiringPreference[] @relation("RecruitmentToHiringPreferences")
+
+contacts RecruitmentClientContact[] @relation("ClientToContacts")
+clientRelationships RecruitmentClientRelationship[] @relation("ClientToRelations")
+
+  createdById   String?  @map("created_by_id") @db.Text
+  createdBy     User?    @relation("CreatedRecruitmentClient", fields: [createdById], references: [id])
+
+  updatedById   String?  @map("updated_by_id") @db.Text
+  updatedBy     User?    @relation("UpdatedRecruitmentClient", fields: [updatedById], references: [id])
+
+  @@map("recruitment_client_basic_information")
+}
+
+model RecruitmentClientBusinessDetails {
+  id String @id @default(cuid()) @db.Text
+
+  recruitmentClientId String @map("recruitment_client_id") @db.Text
+  recruitmentClient RecruitmentClientBasicInformation @relation("ClientToBusinessDetails", fields: [recruitmentClientId], references: [id])
+
+  companyName String? @map("company_name")
+  yearEstablished Int? @map("year_established")
+  revenueRange String? @map("revenue_range")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  createdById String? @map("created_by_id") @db.Text
+  createdBy User? @relation("CreatedBusinessDetails", fields: [createdById], references: [id])
+
+  updatedById String? @map("updated_by_id") @db.Text
+  updatedBy User? @relation("UpdatedBusinessDetails", fields: [updatedById], references: [id])
+
+  @@map("recruitment_client_business_detailes")
+}
+
+model RecruitmentClientContact {
+  id                     String   @id @default(cuid()) @db.Text
+
+  recruitmentClientId    String   @map("recruitment_client_id") @db.Text
+  recruitmentClient      RecruitmentClientBasicInformation @relation("ClientToContacts", fields: [recruitmentClientId], references: [id])
+
+  personName             String   @map("person_name")
+  designation            String?
+  email                  String?
+  phone                  String?
+  linkedInUrl            String?  @map("linkedin_url")
+
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  @@map("recruitment_client_contact")
+}
+
+model RecruitmentClientRelationship {
+  id                      String   @id @default(cuid()) @db.Text
+
+  recruitmentClientId     String   @map("recruitment_client_id") @db.Text
+  recruitmentClient       RecruitmentClientBasicInformation @relation("ClientToRelations", fields: [recruitmentClientId], references: [id])
+
+  linkedVendor            String?  @map("linked_vendor")
+  linkedClient            String?  @map("linked_client")
+  supportsVisaSponsorship Boolean  @map("supports_visa_sponsorship")
+  visaTypesSupported      String?  @map("visa_types_supported")
+
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  @@map("recruitment_client_relationship")
+}
+
+
+model RecruitmentClientHiringPreference {
+  id String @id @default(cuid()) @db.Text
+
+   recruitmentId String @map("recruitment_id") @db.Text
+  recruitment RecruitmentClientBasicInformation @relation("RecruitmentToHiringPreferences", fields: [recruitmentId], references: [id])
+
+  employmentType String? @map("employment_type")
+  workType String? @map("work_type")
+  hiringLocation String? @map("hiring_location")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("recruitment_client_hirring_preference")
+}
+
+
+model VendorBasicInformation {
+  id             String   @id @default(cuid()) @db.Text
+
+  tenantId       String   @map("tenant_id") @db.Text
+  tenant         Tenant   @relation(fields: [tenantId], references: [id])
+
+  companyName    String?  @map("company_name")
+  industry       String?
+
+  website        String?
+  companyEmail   String?  @map("company_email")
+  companyPhone   String?  @map("company_phone")
+
+  status         Boolean  @default(true)
+
+  street         String?
+  city           String?
+  state          String?
+  country        String?
+  zipCode        String?  @map("zip_code")
+  notes          String?
+   documents VendorDocument[]
+ contactPersons VendorContactPerson[]
+  businessDetails       VendorBusinessDetailes[]
+
+    implementationIds String[] @map("implementation_id")
+  clientIds         String[] @map("client_id")
+
+relations VendorRelations[] @relation("VendorToRelations")
+
+  createdById     String? @map("created_by_id") @db.Text
+  createdBy       User?   @relation("VendorCreatedBy", fields: [createdById], references: [id])
+
+  updatedById     String? @map("updated_by_id") @db.Text
+  updatedBy       User?   @relation("VendorUpdatedBy", fields: [updatedById], references: [id])
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("vendor-basic-information")
+}
+
+model VendorContactPerson {
+  id               String   @id @default(cuid()) @db.Text
+
+  vendorId         String   @map("vendor_id") @db.Text
+  vendor           VendorBasicInformation @relation(fields: [vendorId], references: [id])
+
+  personName       String   @map("person_name")
+  designation      String?
+  email            String?
+  phone            String?
+  linkedInUrl      String?  @map("linkedin_url")
+
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@map("vendor_contact_person")
+}
+
+model VendorBusinessDetailes {
+  id                   String   @id @default(cuid()) @db.Text
+
+  vendorId             String   @map("vendor_id") @db.Text
+  vendor               VendorBasicInformation @relation(fields: [vendorId], references: [id])
+
+  registrationNumber   String?  @map("registration_number")
+  taxId                String?  @map("tax_id")
+  businessType         String?  @map("business_type")
+  yearEstabliliesh     Int?     @map("year_establiliesh")
+  totalEmployees       Int?     @map("total_employees")
+
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@map("vendor_business_detailes")
+}
+
+model VendorRelations {
+  id                        String   @id @default(cuid()) @db.Text
+
+  vendorId                  String   @map("vendor_id") @db.Text
+  vendor VendorBasicInformation @relation("VendorToRelations", fields: [vendorId], references: [id])
+
+  linkedVendor              String?  @map("linked_vendor")
+  linkedClient              String?  @map("linked_client")
+
+  supportsVisaSponsorship   Boolean  @map("supports_visa_sponsorship")
+  visaTypesSupported        String?  @map("visa_types_supported")
+
+  createdAt                 DateTime @default(now()) @map("created_at")
+  updatedAt                 DateTime @updatedAt @map("updated_at")
+
+  @@map("vendor_relations")
+}
+model VendorDocument {
+  id              String   @id @default(cuid()) @db.Text
+
+  vendorId        String   @map("vendor_id") @db.Text
+  vendor          VendorBasicInformation @relation(fields: [vendorId], references: [id])
+
+  documentType    String?  @map("document_type")
+  documentUrl     String?  @map("document_url")
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("vendor_document")
 }

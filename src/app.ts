@@ -65,6 +65,9 @@ import employeeOnboardingRoutes from "@/routes/onboardingRoutes";
 import newProfileRoutes from "@/routes/auth";
 import publicTicketRoutes from "@/routes/publicTickets";
 import employeeSettingsRoutes from "./routes/employeeSettingsRoutes";
+import implementationPartnerRoutes from "@/routes/implementationPartner";
+import recruitmentClientRoutes from "@/routes/recruitmentClient";
+import vendorRoutes from "@/routes/vendor";
 
 import timesheetRoutes from "@/routes/timesheet";
 
@@ -247,6 +250,13 @@ app.use("/api/employeesettings", employeeSettingsRoutes);
 
 // RBAC management API
 app.use("/api/rbac", rbacRoutes);
+
+// Implementation Partner API
+app.use("/api/implementation-partner", implementationPartnerRoutes);
+
+// Recruitment Client API
+app.use("/api/recruitment-client", recruitmentClientRoutes);
+app.use("/api/vendor", vendorRoutes);
 
 // app.use("/api/addresses", addressRoutes);
 //app.use("/api/employee_address", addressRoutes);
