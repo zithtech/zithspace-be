@@ -79,8 +79,17 @@ export class RecruitmentStatusController {
       const updatedById = req.user.id;
       const { name, category, color, appliesTo, isDefault, isFinalStage, isActive } = req.body;
 
-      const updatedStatus = await prisma.recruitmentStatus.update({
+      const existing = await prisma.recruitmentStatus.findFirst({
         where: { id, tenantId: req.tenantId },
+      });
+
+      if (!existing) {
+        res.status(404).json({ success: false, error: "Status not found" } as ApiResponse);
+        return;
+      }
+
+      const updatedStatus = await prisma.recruitmentStatus.update({
+        where: { id },
         data: { name, category, color, appliesTo, isDefault, isFinalStage, isActive, updatedById },
       });
 
@@ -108,7 +117,16 @@ export class RecruitmentStatusController {
       }
       const { id } = req.params;
 
-      await prisma.recruitmentStatus.delete({ where: { id, tenantId: req.tenantId } });
+      const existing = await prisma.recruitmentStatus.findFirst({
+        where: { id, tenantId: req.tenantId },
+      });
+
+      if (!existing) {
+        res.status(404).json({ success: false, error: "Status not found" } as ApiResponse);
+        return;
+      }
+
+      await prisma.recruitmentStatus.delete({ where: { id } });
       res.status(200).json({ success: true, message: "Status deleted successfully" } as ApiResponse);
     } catch (error: any) {
       console.error("Error deleting recruitment status:", error);

@@ -77,8 +77,17 @@ export class RecruitmentActionController {
       const updatedById = req.user.id;
       const { name, type, icon, color, isActive } = req.body;
 
-      const updatedAction = await prisma.recruitmentAction.update({
+      const existing = await prisma.recruitmentAction.findFirst({
         where: { id, tenantId: req.tenantId },
+      });
+
+      if (!existing) {
+        res.status(404).json({ success: false, error: "Action not found" } as ApiResponse);
+        return;
+      }
+
+      const updatedAction = await prisma.recruitmentAction.update({
+        where: { id },
         data: { name, type, icon, color, isActive, updatedById },
       });
 
@@ -106,7 +115,16 @@ export class RecruitmentActionController {
       }
       const { id } = req.params;
 
-      await prisma.recruitmentAction.delete({ where: { id, tenantId: req.tenantId } });
+      const existing = await prisma.recruitmentAction.findFirst({
+        where: { id, tenantId: req.tenantId },
+      });
+
+      if (!existing) {
+        res.status(404).json({ success: false, error: "Action not found" } as ApiResponse);
+        return;
+      }
+
+      await prisma.recruitmentAction.delete({ where: { id } });
       res.status(200).json({ success: true, message: "Action deleted successfully" } as ApiResponse);
     } catch (error: any) {
       console.error("Error deleting recruitment action:", error);
