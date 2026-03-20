@@ -89,8 +89,7 @@ import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
 import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
 import leaveRequestRoutes from "@/routes/leaveRequestRoutes";
 import leaveBalanceRoutes from "@/routes/leaveBalanceRoutes";
-
-
+import payrollRoutes from "@/routes/payroll";
 import reimbursementConfigurationRoutes from "@/routes/reimbursementConfig";
 import reimbursementsettingsRoutes from "@/routes/reimbursementsettingsRoutes";
 import reimbursementRoutes from "@/routes/reimbursementcreateRoutes"; // the file we created earlier
@@ -239,6 +238,7 @@ app.use("/api/sprint-completion", sprintCompletionRoutes);
 app.use("/api/salary-components", salaryComponentRoutes);
 app.use("/api/companies", companyRoutes);
 app.use("/api/grades", gradeRoutes);
+app.use("/api/payroll", payrollRoutes);
 
 app.use("/api/departments", departmentRoutes);
 app.use("/api/sub-departments", subDepartmentRoutes);
