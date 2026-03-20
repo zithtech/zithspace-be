@@ -8,23 +8,24 @@ datasource db {
 }
 
 model Tenant {
-  id                    String                     @id @default(uuid())
-  name                  String
-  subdomain             String                     @unique
-  planType              String                     @default("basic") @map("plan_type")
-  maxUsers              Int                        @default(10) @map("max_users")
-  isActive              Boolean                    @default(true) @map("is_active")
-  settings              Json?                      @default("{}")
-  createdAt             DateTime                   @default(now()) @map("created_at")
-  updatedAt             DateTime                   @updatedAt @map("updated_at")
-  attendance            Attendance[]
-  attendanceBreaks      AttendanceBreak[]
-  buckets               Bucket[]
-  customers             Customer[]
-  dropdownOptions       DropdownOption[]
-  leaves                Leave[]
-  leaveTypes            LeaveType[]
-  leaveAdjustments      LeaveAdjustment[]
+  id               String            @id @default(uuid())
+  name             String
+  subdomain        String            @unique
+  planType         String            @default("basic") @map("plan_type")
+  maxUsers         Int               @default(10) @map("max_users")
+  isActive         Boolean           @default(true) @map("is_active")
+  settings         Json?             @default("{}")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+  attendance       Attendance[]
+  timeTrackingLogs TimeTrackingLog[]
+  attendanceBreaks AttendanceBreak[]
+  buckets          Bucket[]
+  customers        Customer[]
+  dropdownOptions  DropdownOption[]
+  leaves           Leave[]
+  leaveTypes          LeaveType[]
+  leaveAdjustments    LeaveAdjustment[]
   leaveOriginStructures LeaveOriginStructure[]
   originLeaveTypes      OriginLeaveType[]
   fixedHolidays         FixedHoliday[]
@@ -209,6 +210,10 @@ model User {
   // Updated timesheets
   updatedTimesheets Timesheet[] @relation("TimesheetUpdater")
 
+
+  createdReimbursements Reimbursement[]         @relation("ReimbursementCreatedBy")
+  updatedReimbursements Reimbursement[]         @relation("ReimbursementUpdatedBy")
+
   // ---------------- TIMESHEET ROWS ----------------
 
   createdTimesheetRows TimesheetRow[] @relation("TimesheetRowCreator")
@@ -275,6 +280,14 @@ model User {
   createdMeetings       Meeting[]            @relation("MeetingCreator")
   meetingParticipations MeetingParticipant[]
 
+   //  ADD THESE TWO LINES
+  reimbursementsCreated  ReimbursementConfiguration[] @relation("ReimbursementCreatedBy")
+  reimbursementsUpdated  ReimbursementConfiguration[] @relation("ReimbursementUpdatedBy")
+
+
+
+  employeeId        String?   @map("employee_id") 
+  employee          Employee? @relation(fields: [employeeId], references: [id])
   // Client V2 Relations
   createdClientsV2          ClientV2[]         @relation("ClientV2Creator")
   uploadedClientDocumentsV2 ClientDocumentV2[] @relation("ClientDocumentV2Uploader")
@@ -284,6 +297,9 @@ model User {
 
   createdExitPolicies ExitNoticePolicy[] @relation("ExitNoticePolicyCreator")
   updatedExitPolicies ExitNoticePolicy[] @relation("ExitNoticePolicyUpdater")
+  
+  // Time Tracking
+  timeTrackingEntries TimeTrackingEntry[]
 
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
@@ -292,40 +308,7 @@ model User {
   @@map("users")
 }
 
-model ReimbursementCategory {
-  id       String @id @default(uuid())
-  tenantId String @map("tenant_id")
 
-  code        String  @db.VarChar(50)
-  name        String  @db.VarChar(100)
-  description String?
-
-  maxRequestsPerMonth Int?     @map("max_requests_per_month")
-  monthlyLimitAmount  Decimal? @map("monthly_limit_amount") @db.Decimal(12, 2)
-  yearlyLimitAmount   Decimal? @map("yearly_limit_amount") @db.Decimal(12, 2)
-
-  allowedRoles String[] @map("allowed_roles")
-  approvalFlow Json?    @map("approval_flow")
-
-  attachmentRequired     Boolean  @default(false) @map("attachment_required")
-  autoApproveUnderAmount Decimal? @map("auto_approve_under_amount") @db.Decimal(12, 2)
-
-  isActive Boolean @default(true) @map("is_active")
-
-  createdAt DateTime @default(now()) @map("created_at")
-  createdBy String   @map("created_by")
-
-  updatedAt DateTime @updatedAt @map("updated_at")
-  updatedBy String?  @map("updated_by")
-
-  // Relations
-  tenant        Tenant @relation(fields: [tenantId], references: [id])
-  createdByUser User   @relation("ReimbursementCategoryCreatedBy", fields: [createdBy], references: [id])
-  updatedByUser User?  @relation("ReimbursementCategoryUpdatedBy", fields: [updatedBy], references: [id])
-
-  @@unique([tenantId, code])
-  @@map("reimbursement_category")
-}
 
 model Grade {
   id          String   @id @default(uuid())
@@ -492,6 +475,9 @@ model Project {
   // Client V2 Relations
   employeeClientAllocationsV2 EmployeeClientAllocationV2[]
   clientProjects              ClientProject[]
+  
+  // Time Tracking
+  timeTrackingEntries TimeTrackingEntry[]
 
   @@unique([tenantId, code])
   @@map("projects")
@@ -603,6 +589,9 @@ model Ticket {
   subTasks   Ticket[] @relation("ParentSubTasks")
   archivedBy User?    @relation("TicketArchivedBy", fields: [archivedById], references: [id])
   deletedBy  User?    @relation("TicketDeletedBy", fields: [deletedById], references: [id])
+  
+  // Time Tracking
+  timeTrackingEntries TimeTrackingEntry[]
 
   @@unique([tenantId, ticketNumber])
   @@index([epicId])
@@ -2042,8 +2031,9 @@ model Employee {
   created_by String  @db.Uuid
   updated_by String? @db.Uuid
 
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+  users           User[]
 
   tenant                   Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   users     User[] 
@@ -2077,7 +2067,9 @@ model Employee {
   createdDocuments EmployeeDocument[] @relation("CreatedByEmployee")
   updatedDocuments EmployeeDocument[] @relation("UpdatedByEmployee")
 
-  contacts EmployeeContact[]
+
+ contacts EmployeeContact[] 
+
 
   contactsCreated EmployeeContact[] @relation("EmployeeContactCreatedBy")
 
@@ -2836,134 +2828,300 @@ model EmployeeClientAllocationV2 {
   @@map("employee_client_allocations_v2")
 }
 
-model ExitNoticePolicy {
-  id                      String   @id @default(uuid())
-  tenantId                String   @map("tenant_id")
-  policyName              String   @map("policy_name")
-  code                    String
-  description             String?
-  levelType               String   @map("level_type") // e.g., 'Grades', 'Positions'
-  levelId                 String   @map("level_id") // Grade ID or Position ID
-  noticePeriodDays        Int      @map("notice_period_days")
-  buyoutCalculatingType   String?  @map("buyout_calculating_type") // E.g. 'Basic', 'Gross' etc.
-  probationPeriodDays     Int?     @map("probotion_period_days") // note: matched req spelling for DB field
-  probationNoticeDays     Int?     @map("probation_notice_days")
-  status                  Boolean  @default(true)
-  createdById             String   @map("created_by_id")
-  updatedById             String?  @map("updated_by_id")
-  createdAt               DateTime @default(now()) @map("created_at")
-  updatedAt               DateTime @updatedAt @map("updated_at")
 
-  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdBy User   @relation("ExitNoticePolicyCreator", fields: [createdById], references: [id])
-  updatedBy User?  @relation("ExitNoticePolicyUpdater", fields: [updatedById], references: [id])
 
-  @@unique([tenantId, code])
-  @@map("exit_notice_policies")
-}
-
-model ExitType {
-  id           String   @id @db.Text
-  tenantId     String   @map("tenant_id") @db.Text
-
-  name         String   @db.Text
-  code         String   @unique @db.Text
-  is_active    Boolean  @default(true)
-
-  createdById  String   @map("created_by_id") @db.Text
-  updatedById  String?  @map("updated_by_id") @db.Text
-
-  created_at   DateTime @default(now())
-  updated_at   DateTime @updatedAt
-
-  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdBy User   @relation("ExitNoticePolicyCreator", fields: [createdById], references: [id])
-  updatedBy User?  @relation("ExitNoticePolicyUpdater", fields: [updatedById], references: [id])
-
-  @@map("exit_types")
-}
-model ReasonForExit {
-  id           String   @id @db.Text
-  tenantId     String   @map("tenant_id") @db.Text
-
-  name         String   @db.Text
-  code         String   @unique @db.Text
-  is_active    Boolean  @default(true)
-
-  createdById  String   @map("created_by_id") @db.Text
-  updatedById  String?  @map("updated_by_id") @db.Text
-
-  created_at   DateTime @default(now())
-  updated_at   DateTime @updatedAt
-
-  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-
-  createdBy    User     @relation("ReasonForExitCreator", fields: [createdById], references: [id])
-  updatedBy    User?    @relation("ReasonForExitUpdater", fields: [updatedById], references: [id])
-
-  @@map("reason_for_exits")
-}
-model EmployeeExit {
-  id                     String   @id @db.Text
-
-  tenantId               String   @map("tenant_id") @db.Text
-  employeeId             String   @map("employee_id") @db.Uuid
-
-  departmentId           String?  @map("department_id") @db.Text
-  positionId             String?  @map("position_id") @db.Text
-  reportingManagerId     String?  @map("reporting_manager_id") @db.Uuid
-
-  exitTypeId             String?  @map("exit_type_id") @db.Text
-  exitReasonId           String?  @map("exit_reason_id") @db.Text
-
-  resignationDate        DateTime @map("resignation_date")
-  proposedLastWorkingDay DateTime @map("proposed_last_working_day")
-  noticePeriodDay        DateTime @map("notice_period_day")
-
-  waiveNoticePeriod      Boolean  @map("waive_notice_period")
-  buyoutRequired         Boolean  @map("buyout_required")
-  buyoutAmount           Decimal? @map("buyout_amount") @db.Decimal(15,2)
-
-  leaveAdjectment        String?  @map("leave_adjectment") @db.Text
-  explanation            String?  @db.VarChar(1000)
-
-  status                 String   @db.Text
-
-  createdById            String   @map("created_by_id") @db.Text
-
-  createdAt              DateTime @map("created_at") @default(now())
-  updatedAt              DateTime @map("update_at") @updatedAt
-
-  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  employee   Employee @relation(fields: [employeeId], references: [id])
-  createdBy  User     @relation(fields: [createdById], references: [id])
-
-  @@map("employee_exit_request")
-}
-
-model ExitApprovalWorkflow {
+model ReimbursementConfiguration {
   id            String   @id @default(uuid())
+
   tenantId      String   @map("tenant_id")
 
-  stepOrder     Int?     @map("step_order")
-  roleIds       String[] @map("role")
+  origin        String
+  subOrigin   String @map("sub_origin")
+  categoryType  String   @map("category_type")
 
-  mandatory     Boolean?
-  approvalType  String?  @map("approval_type") @db.VarChar(50)
+  amount        Decimal  @db.Decimal(10,2)
+  period        String   // "MONTH" or "YEAR"
 
-  levelType     String?  @map("level_type") @db.VarChar(50)
-  levelId       String?  @map("level_id")
+  status        String
+  createdBy     User    @relation("ReimbursementCreatedBy", fields: [createdById], references: [id])
+  updatedBy     User?   @relation("ReimbursementUpdatedBy", fields: [updatedById], references: [id])
 
-  createdById   String?  @map("created_by_id")
+ 
+
+  createdById   String   @map("created_by_id")
   updatedById   String?  @map("updated_by_id")
 
-  createdAt     DateTime? @default(now()) @map("created_at")
-  updatedAt     DateTime? @updatedAt @map("updated_at")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
 
-  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  @@map("reimbursement_configurations")
+}
 
-  createdBy     User?    @relation("ExitApprovalWorkflowCreatedBy", fields: [createdById], references: [id])
-  updatedBy     User?    @relation("ExitApprovalWorkflowUpdatedBy", fields: [updatedById], references: [id])
 
-  @@map("exit_approval_workflow")
+
+
+
+
+
+
+
+
+
+
+
+model ReimbursementCategory {
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+
+  code        String  @db.VarChar(50)
+  name        String  @db.VarChar(100)
+  description String?
+
+  maxRequestsPerMonth Int?     @map("max_requests_per_month")
+  monthlyLimitAmount  Decimal? @map("monthly_limit_amount") @db.Decimal(12, 2)
+  yearlyLimitAmount   Decimal? @map("yearly_limit_amount") @db.Decimal(12, 2)
+
+  allowedRoles String[] @map("allowed_roles")
+  approvalFlow Json?    @map("approval_flow")
+
+  attachmentRequired     Boolean  @default(false) @map("attachment_required")
+  autoApproveUnderAmount Decimal? @map("auto_approve_under_amount") @db.Decimal(12, 2)
+
+  isActive Boolean @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  createdBy String   @map("created_by")
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedBy String?  @map("updated_by")
+
+  // Relations
+  tenant        Tenant @relation(fields: [tenantId], references: [id])
+  createdByUser User   @relation("ReimbursementCategoryCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser User?  @relation("ReimbursementCategoryUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@unique([tenantId, code])
+  @@map("reimbursement_settings_categories")
+}
+enum ReimbursementStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED    // 👈 Add this
+  REJECTED 
+  PAID 
+  PARTIALLY_APPROVED
+  PARTIALLY_PAID
+
+   @@map("reimbursementcreate_status")
+}
+
+model Reimbursement {
+  id           String   @id @default(uuid()) @db.Uuid
+
+  tenantId     String   @db.Uuid @map("tenant_id")
+
+  status       ReimbursementStatus @default(DRAFT)
+  
+
+  totalAmount  Decimal  @db.Decimal(10,2)@map("total_amount")
+  createdBy     User    @relation("ReimbursementCreatedBy", fields: [createdById], references: [id])
+  updatedBy     User?   @relation("ReimbursementUpdatedBy", fields: [updatedById], references: [id])
+
+  createdById   String   @db.Uuid @map("created_by_id")   // ✅ logged-in user creating
+  updatedById   String?  @db.Uuid @map("updated_by_id")   // ✅ logged-in user updating
+
+  submittedAt  DateTime? @map("submitted_at")
+  submittedBy  String?   @db.Uuid @map("submitted_by")
+
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  items        ReimbursementItem[]
+
+  @@index([tenantId])
+  @@map("reimbursements")
+}
+enum ApproverStatus {
+  SUBMITTED
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+
+  @@map("approver_status")
+}
+
+model ReimbursementItem {
+  id              String   @id @default(uuid()) @db.Uuid
+
+  reimbursementId String   @db.Uuid @map("reimbursement_id")
+  reimbursement   Reimbursement @relation(fields: [reimbursementId], references: [id], onDelete: Cascade)
+
+ 
+  status          ReimbursementStatus @default(SUBMITTED)
+
+  category        String   @db.VarChar(100)
+  date            DateTime @db.Date
+  billNo          String   @db.VarChar(100) @map("bill_no")
+  amount          Decimal  @db.Decimal(10,2)
+  description     String?  @db.Text
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  approvers       ReimbursementItemApprover[]
+
+  attachments     Attachment[]
+
+  @@index([reimbursementId])
+  @@map("reimbursement_items")
+}
+model ReimbursementItemApprover {
+  id                   String   @id @default(uuid())
+
+  tenantId             String   @db.Uuid @map("tenant_id")
+  reimbursementItemId  String   @db.Uuid @map("reimbursement_item_id")
+  level                Int
+
+  approverType         String   @map("approver_type")   // MANAGER / HR / FINANCE (optional)
+  approverId           String    @map("approver_id")    // User ID who will approve
+
+  status               ApproverStatus @default(PENDING)
+
+  actedAt              DateTime?   @map("acted_at")  // When approved/rejected
+  remarks              String?      // Optional comment
+  createdAt            DateTime    @map("created_at")   @default(now())
+  updatedAt            DateTime    @map("updated_at")   @updatedAt
+
+  reimbursementItem    ReimbursementItem @relation(fields: [reimbursementItemId], references: [id])
+
+  @@index([reimbursementItemId])
+  @@index([approverId])
+  @@map("reimbursement_item_approvers")
+}
+model Attachment {
+  id                  String   @id @default(uuid()) @db.Uuid
+
+
+  reimbursementItemId String   @db.Uuid @map("reimbursement_item_id")
+  reimbursementItem   ReimbursementItem @relation(fields: [reimbursementItemId], references: [id], onDelete: Cascade)
+
+  fileName            String   @db.VarChar(255) @map("file_name")
+  fileUrl             String   @db.Text @map("file_url")
+  fileSize            Int      @map("file_size")
+  fileType            String   @db.VarChar(100)  @map("file_type")
+
+  uploadedBy          String   @db.Uuid @map("uploaded_by")
+  uploadedAt          DateTime @default(now()) @map("uploaded_at")
+
+  @@index([reimbursementItemId])
+  @@map("attachments")
+}
+model ReimbursementPolicy {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId          String    @map("tenant_id")
+  originType   String   @map("origin_type")
+  originId     String   @db.Uuid @map("origin_id")
+  isActive     Boolean  @default(true) @map("is_active")
+
+  createdById  String   @db.Uuid @map("created_by_id")
+  updatedById  String?  @db.Uuid @map("updated_by_id")
+
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  
+  rules        ReimbursementPolicyRule[]
+
+  @@map("reimbursement_policies")
+}
+model ReimbursementPolicyRule {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId          String    @map("tenant_id")
+
+  policyId     String   @db.Uuid @map("policy_id")
+  categoryId   String   @map("category_id")
+
+  maxAmount    Decimal  @db.Decimal(12,2) @map("max_amount")
+  periodType   String   @map("period_type") // MONTH | YEAR
+
+  isActive     Boolean  @default(true) @map("is_active")
+
+  createdById  String   @db.Uuid @map("created_by_id")
+  updatedById  String?  @db.Uuid @map("updated_by_id")
+
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  
+  policy       ReimbursementPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  approvers    ReimbursementPolicyApprover[]
+
+  @@map("reimbursement_policy_rules")
+}
+
+model ReimbursementPolicyApprover {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id")
+  policyRuleId  String   @db.Uuid @map("policy_rule_id")
+
+  level         Int
+  approverType  String   @map("approver_type")
+  approverId    String  @map("approver_id")
+  createdById   String   @db.Uuid @map("created_by_id")
+  updatedById   String?  @db.Uuid @map("updated_by_id")
+
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+ 
+  rule          ReimbursementPolicyRule @relation(fields: [policyRuleId], references: [id], onDelete: Cascade)
+
+  @@map("reimbursement_policy_approvers")
+}
+
+model TimeTrackingEntry {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  userId      String   @map("user_id")
+  projectId   String?  @map("project_id")
+  ticketId    String?  @map("ticket_id")
+  
+  description String?
+  billable    Boolean  @default(false)
+  billingRate Decimal? @map("billing_rate") @db.Decimal(10, 2)
+  
+  startTime   DateTime @map("start_time")
+  endTime     DateTime? @map("end_time")
+  duration    Int?     // Duration in seconds
+  status      String   @default("RUNNING") // RUNNING, STOPPED
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  ticket      Ticket?  @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+  logs        TimeTrackingLog[]
+
+  @@index([tenantId, userId])
+  @@index([projectId])
+  @@map("time_tracking_entries")
+}
+
+model TimeTrackingLog {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  timeTrackingId  String   @map("time_tracking_id")
+  
+  action          String   // e.g., "STARTED", "PAUSED", "RESUMED", "STOPPED"
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  timeTrackingEntry TimeTrackingEntry @relation(fields: [timeTrackingId], references: [id], onDelete: Cascade)
+  tenant            Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([timeTrackingId])
+  @@index([tenantId])
+  @@map("time_tracking_logs")
 }
