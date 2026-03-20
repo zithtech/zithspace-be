@@ -98,17 +98,19 @@ export declare class EmailLoggerService {
         customer: {
             companyName: string;
             country: string | null;
+            pan: string | null;
             tenantId: string;
             createdAt: Date;
             updatedAt: Date;
-            createdBy: string;
-            updatedBy: string | null;
             id: string;
             email: string | null;
             phone: string | null;
+            createdBy: string;
+            updatedBy: string | null;
             city: string | null;
             address: string | null;
             taxId: string | null;
+            gstin: string | null;
         };
         sentByUserRel: {
             name: string;

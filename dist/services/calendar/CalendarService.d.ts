@@ -11,7 +11,37 @@ export declare class CalendarService {
     /**
  * Handle the OAuth callback and save integration details.
  */
-    static handleCallback(provider: CalendarProvider, userId: string, tenantId: string, code: string, state: string): Promise<any>;
+    static handleCallback(provider: CalendarProvider, userId: string, tenantId: string, code: string, state: string): Promise<{
+        tenantId: string;
+        refreshToken: string | null;
+        createdAt: Date | null;
+        updatedAt: Date | null;
+        createdById: string | null;
+        updatedById: string | null;
+        id: string;
+        userId: string;
+        accessToken: string | null;
+        created_by: string | null;
+        updated_by: string | null;
+        calendarId: string | null;
+        provider: import(".prisma/client").$Enums.CalendarProvider;
+        tokenExpiry: Date | null;
+        googleSyncToken: string | null;
+        googleChannelId: string | null;
+        googleResourceId: string | null;
+        googleChannelExpiry: Date | null;
+        microsoftDeltaLink: string | null;
+        microsoftSubscriptionId: string | null;
+        microsoftSubscriptionExpiry: Date | null;
+        microsoftClientState: string | null;
+        zohoLastSync: Date | null;
+        isSyncing: boolean;
+        lastSyncStatus: string | null;
+        lastSyncAt: Date | null;
+        nextSyncDueAt: Date;
+        syncErrorCount: number;
+        mail_account_id: string | null;
+    }>;
     /**
      * Fetch events for a user/tenant, expanding recurring ones at runtime.
      */
@@ -31,7 +61,33 @@ export declare class CalendarService {
     /**
      * Create an event on the external provider and save locally.
      */
-    static createEvent(userId: string, tenantId: string, provider: CalendarProvider, eventData: CalendarEventData): Promise<any>;
+    static createEvent(userId: string, tenantId: string, provider: CalendarProvider, eventData: CalendarEventData): Promise<{
+        tenantId: string;
+        createdAt: Date | null;
+        updatedAt: Date | null;
+        createdById: string | null;
+        updatedById: string | null;
+        id: string;
+        userId: string;
+        title: string;
+        description: string | null;
+        isDeleted: boolean;
+        startTime: Date;
+        endTime: Date;
+        location: string | null;
+        calendarId: string | null;
+        provider: import(".prisma/client").$Enums.CalendarProvider;
+        isRecurring: boolean | null;
+        externalId: string;
+        isAllDay: boolean | null;
+        rrule: string | null;
+        exdate: import("@prisma/client/runtime/library").JsonValue | null;
+        calendar: string | null;
+        sourceType: string | null;
+        attendees: import("@prisma/client/runtime/library").JsonValue | null;
+        meetingLink: string | null;
+        organizerEmail: string | null;
+    }>;
     private static expandRecurringEvent;
     /**
      * Update an event on the external provider and save locally.
