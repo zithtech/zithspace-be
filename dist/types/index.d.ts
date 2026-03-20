@@ -254,6 +254,14 @@ export interface LoginResponse {
     };
     message: string;
 }
+export interface AuthUser {
+    id: string;
+    email: string;
+    role: string;
+}
+export interface AuthUser {
+    employeeId?: string;
+}
 export interface AuthRequest extends Request {
     user?: AuthUser;
     tenantId?: string;
