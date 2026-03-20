@@ -4,7 +4,7 @@ export declare function createEmploymentDetails(req: AuthRequest, employeeId: st
     message: string;
 }>;
 export declare function getEmploymentDetails(req: AuthRequest, employeeId: string): Promise<{
-    department: string;
+    positionId: string;
     team: string;
     employeeType: string;
     workLocation: string;
@@ -14,7 +14,7 @@ export declare function getEmploymentDetails(req: AuthRequest, employeeId: strin
     fixedDays: string[];
     totalDays: number;
     totalHours: number;
-    noticePeriod: string;
+    noticePeriod: any;
     employeeJoiningDate: string;
     employeeGrade: string;
     promotionStatus: string;
@@ -28,13 +28,13 @@ export declare function getAllEmploymentDetails(req: AuthRequest): Promise<{
     employeeCode: string;
     firstName: string;
     lastName: string;
-    department: string;
+    positionId: string;
     team: string;
     employeeType: string;
     workLocation: string;
     workShift: string;
     employeeJoiningDate: string;
-    noticePeriod: string;
+    noticePeriod: any;
     workType: string;
     hybridMode: string;
     fixedDays: string[];

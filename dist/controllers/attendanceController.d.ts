@@ -38,6 +38,10 @@ export declare class AttendanceController {
      */
     static updateAttendance(req: AuthRequest, res: Response): Promise<void>;
     /**
+     * Get last 5 working days average for current user
+     */
+    static getLast5DaysAverage(req: AuthRequest, res: Response): Promise<void>;
+    /**
      * Create manual attendance entry (tenant-aware)
      */
     static createAttendance(req: AuthRequest, res: Response): Promise<void>;

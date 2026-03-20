@@ -49,6 +49,10 @@ import fixedHolidayRoutes from "@/routes/fixedHolidays";
 import documentHubRoutes from "@/routes/documenthub";
 import channelRoutes from "@/routes/channels";
 import messageRoutes from "@/routes/messages";
+import averageAttendenceRoutes from "@/routes/attendance";
+
+import shortcutRoutes from "@/routes/shortcut.routes";
+
 // Onboarding
 // import employeeRoutes from "@/routes/employeeRoutes";
 // import employeeAddressRoutes from "@/routes/employeeAddress";
@@ -67,6 +71,7 @@ import publicTicketRoutes from "@/routes/publicTickets";
 import employeeSettingsRoutes from "./routes/employeeSettingsRoutes";
 
 import timesheetRoutes from "@/routes/timesheet";
+import timeTrackingRoutes from "@/routes/timeTracking";
 
 import companyGovernmentHolidayRouter from "./routes/companyGovernmentHoliday.routes";
 import leaveAdjustmentRoutes from "./routes/leaveAdjustmentRoutes";
@@ -77,9 +82,15 @@ import departmentRoutes from "@/routes/departmentRoutes";
 import subDepartmentRoutes from "@/routes/subDepartmentRoutes";
 import positionRoutes from "@/routes/positionRoutes";
 import calendarRoutes from "@/routes/calendar"
+import employeeExitRoutes from "@/routes/employeeExit.routes";
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
 import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
+import reimbursementConfigurationRoutes from "@/routes/reimbursementConfig";
+import reimbursementsettingsRoutes from "@/routes/reimbursementsettingsRoutes";
+import reimbursementRoutes from "@/routes/reimbursementcreateRoutes"; // the file we created earlier
+// import managerReimbursementRoutes from "./routes/managerReimbursementRoutes";
 import rbacRoutes from "@/routes/rbac";
+import employeeAssetRoutes from "@/routes/employeeAssets.routes";
 // Load environment
 dotenv.config();
 console.log("🚀 API Starting up...");
@@ -207,7 +218,8 @@ app.use("/api/user", userRoutes);
 app.use("/api/daily-updates", dailyUpdateRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/leaves", leaveRoutes);
-app.use("/api/reimbursement-category", reimbursement);
+// app.use("/api/reimbursement-category", reimbursement);
+app.use("/api/reimbursement-categories", reimbursement);  // plural form
 app.use("/api/repositories", repositoryRoutes);
 app.use("/api/leave-types", leaveTypeRoutes);
 app.use("/api/customers", customerRoutes);
@@ -230,23 +242,33 @@ app.use("/api/channels", channelRoutes);
 app.use("/api/channels/:channelId/messages", messageRoutes);
 app.use("/api/email-history", emailHistoryRoutes);
 app.use("/api/timesheets", timesheetRoutes);
+app.use("/api/time-tracking", timeTrackingRoutes);
 
-// onboarding
-// app.use("/api/employees", employeeRoutes);
-// app.use("/api/employee-addresses", employeeAddressRoutes);
-// app.use("/api/employee-emergency-contacts", employeeEmergencyContactRoutes);
-// app.use("/api/employee-identities", employeeIdentityRoutes);
 app.use("/api/employee-work-details", employeeWorkDetailRoutes);
 app.use("/api/employee-timelines", employeeTimelineRoutes);
-//app.use("/api/employee-details", employeeDetailsRoutes);
-//app.use("/api/employee-employment-details", employeeEmploymentDetailsRoutes);
-// main
+
 app.use("/api/onboarding", employeeOnboardingRoutes);
+app.use("/api/reimbursement-configurations", reimbursementConfigurationRoutes);
+app.use("/api/reimbursement-settings", reimbursementsettingsRoutes);
+// Reimbursements (with file upload)
+app.use("/api/reimbursements", reimbursementRoutes);
+// app.use("/api/manager/reimbursements", managerReimbursementRoutes);
 app.use("/api/profile/new", newProfileRoutes);
 app.use("/api/employeesettings", employeeSettingsRoutes);
+import noticePolicyRoutes from "./routes/noticePolicy.routes";
+import exitTypeRoutes from "./routes/exitType.routes";
+import reasonForExitRoutes from "./routes/reasonForExit.routes";
+import exitApprovalWorkflowRoutes from "./routes/exitApprovalWorkflow.routes";
+app.use("/api/exit/notice-policy", noticePolicyRoutes);
+app.use("/api/exit/exit-type", exitTypeRoutes);
+app.use("/api/exit/reason-for-exit", reasonForExitRoutes);
+app.use("/api/exit/approval-workflow", exitApprovalWorkflowRoutes);
+app.use("/api/exit/request", employeeExitRoutes);
 
 // RBAC management API
 app.use("/api/rbac", rbacRoutes);
+app.use("/api/employee-assets", employeeAssetRoutes);
+app.use("/api/shortcuts", shortcutRoutes);
 
 // app.use("/api/addresses", addressRoutes);
 //app.use("/api/employee_address", addressRoutes);
