@@ -63,6 +63,7 @@ const auth_2 = __importDefault(require("@/routes/auth"));
 const publicTickets_1 = __importDefault(require("@/routes/publicTickets"));
 const employeeSettingsRoutes_1 = __importDefault(require("./routes/employeeSettingsRoutes"));
 const timesheet_1 = __importDefault(require("@/routes/timesheet"));
+const timeTracking_1 = __importDefault(require("@/routes/timeTracking"));
 const companyGovernmentHoliday_routes_1 = __importDefault(require("./routes/companyGovernmentHoliday.routes"));
 const leaveAdjustmentRoutes_1 = __importDefault(require("./routes/leaveAdjustmentRoutes"));
 const reimbursementCategory_1 = __importDefault(require("@/routes/reimbursementCategory"));
@@ -205,6 +206,7 @@ app.use("/api/channels", channels_1.default);
 app.use("/api/channels/:channelId/messages", messages_1.default);
 app.use("/api/email-history", emailHistoryRoutes_1.default);
 app.use("/api/timesheets", timesheet_1.default);
+app.use("/api/time-tracking", timeTracking_1.default);
 // onboarding
 // app.use("/api/employees", employeeRoutes);
 // app.use("/api/employee-addresses", employeeAddressRoutes);
