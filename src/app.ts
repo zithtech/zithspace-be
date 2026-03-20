@@ -48,6 +48,10 @@ import fixedHolidayRoutes from "@/routes/fixedHolidays";
 import documentHubRoutes from "@/routes/documenthub";
 import channelRoutes from "@/routes/channels";
 import messageRoutes from "@/routes/messages";
+import averageAttendenceRoutes from "@/routes/attendance";
+
+import shortcutRoutes from "@/routes/shortcut.routes";
+
 // Onboarding
 // import employeeRoutes from "@/routes/employeeRoutes";
 // import employeeAddressRoutes from "@/routes/employeeAddress";
@@ -238,16 +242,9 @@ app.use("/api/email-history", emailHistoryRoutes);
 app.use("/api/timesheets", timesheetRoutes);
 app.use("/api/time-tracking", timeTrackingRoutes);
 
-// onboarding
-// app.use("/api/employees", employeeRoutes);
-// app.use("/api/employee-addresses", employeeAddressRoutes);
-// app.use("/api/employee-emergency-contacts", employeeEmergencyContactRoutes);
-// app.use("/api/employee-identities", employeeIdentityRoutes);
 app.use("/api/employee-work-details", employeeWorkDetailRoutes);
 app.use("/api/employee-timelines", employeeTimelineRoutes);
-//app.use("/api/employee-details", employeeDetailsRoutes);
-//app.use("/api/employee-employment-details", employeeEmploymentDetailsRoutes);
-// main
+
 app.use("/api/onboarding", employeeOnboardingRoutes);
 app.use("/api/reimbursement-configurations", reimbursementConfigurationRoutes);
 app.use("/api/reimbursement-settings", reimbursementsettingsRoutes);
@@ -269,6 +266,7 @@ app.use("/api/exit/request", employeeExitRoutes);
 // RBAC management API
 app.use("/api/rbac", rbacRoutes);
 app.use("/api/employee-assets", employeeAssetRoutes);
+app.use("/api/shortcuts", shortcutRoutes);
 
 // app.use("/api/addresses", addressRoutes);
 //app.use("/api/employee_address", addressRoutes);

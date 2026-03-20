@@ -47,6 +47,7 @@ const fixedHolidays_1 = __importDefault(require("@/routes/fixedHolidays"));
 const documenthub_1 = __importDefault(require("@/routes/documenthub"));
 const channels_1 = __importDefault(require("@/routes/channels"));
 const messages_1 = __importDefault(require("@/routes/messages"));
+const shortcut_routes_1 = __importDefault(require("@/routes/shortcut.routes"));
 // Onboarding
 // import employeeRoutes from "@/routes/employeeRoutes";
 // import employeeAddressRoutes from "@/routes/employeeAddress";
@@ -216,9 +217,6 @@ app.use("/api/time-tracking", timeTracking_1.default);
 // app.use("/api/employee-identities", employeeIdentityRoutes);
 app.use("/api/employee-work-details", employeeWorkDetailes_1.default);
 app.use("/api/employee-timelines", employeeTimeline_1.default);
-//app.use("/api/employee-details", employeeDetailsRoutes);
-//app.use("/api/employee-employment-details", employeeEmploymentDetailsRoutes);
-// main
 app.use("/api/onboarding", onboardingRoutes_1.default);
 app.use("/api/reimbursement-configurations", reimbursementConfig_1.default);
 app.use("/api/reimbursement-settings", reimbursementsettingsRoutes_1.default);
@@ -239,6 +237,7 @@ app.use("/api/exit/request", employeeExit_routes_1.default);
 // RBAC management API
 app.use("/api/rbac", rbac_1.default);
 app.use("/api/employee-assets", employeeAssets_routes_1.default);
+app.use("/api/shortcuts", shortcut_routes_1.default);
 // app.use("/api/addresses", addressRoutes);
 //app.use("/api/employee_address", addressRoutes);
 app.get("/api/health", (req, res) => {
