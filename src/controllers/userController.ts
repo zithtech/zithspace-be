@@ -1,15 +1,15 @@
-import { Response } from 'express';
+import { Response } from "express";
 import { prisma } from "@/config/database";
-import { 
-  AuthRequest, 
-  ApiResponse, 
-  NotFoundError, 
+import {
+  AuthRequest,
+  ApiResponse,
+  NotFoundError,
   ValidationError,
   CreateUserData,
   UpdateUserData,
-  ChangePasswordData
-} from '@/types';
-import bcrypt from 'bcryptjs';
+  ChangePasswordData,
+} from "@/types";
+import bcrypt from "bcryptjs";
 
 export class UserController {
   /**
@@ -20,7 +20,7 @@ export class UserController {
       if (!req.tenantId || !req.user) {
         res.status(400).json({
           success: false,
-          error: 'Tenant context and authentication required',
+          error: "Tenant context and authentication required",
         } as ApiResponse);
         return;
       }
@@ -30,10 +30,10 @@ export class UserController {
         limit = 20,
         role,
         position,
-        isActive = 'true',
+        isActive = "true",
         search,
-        sortBy = 'createdAt',
-        sortOrder = 'desc'
+        sortBy = "createdAt",
+        sortOrder = "desc",
       } = req.query;
 
       // Build filter query
@@ -43,51 +43,54 @@ export class UserController {
 
       if (role) where.role = role;
       if (position) where.position = { title: position }; // Filter by position title if string passed
-      if (isActive !== 'all') where.isActive = isActive === 'true';
+      if (isActive !== "all") where.isActive = isActive === "true";
 
       if (search) {
         where.OR = [
-          { name: { contains: search as string, mode: 'insensitive' } },
-          { workEmail: { contains: search as string, mode: 'insensitive' } },
-          { personalEmail: { contains: search as string, mode: 'insensitive' } }
+          { name: { contains: search as string, mode: "insensitive" } },
+          { workEmail: { contains: search as string, mode: "insensitive" } },
+          {
+            personalEmail: { contains: search as string, mode: "insensitive" },
+          },
         ];
       }
 
       // Build sort object
       const orderBy: any = {};
-      orderBy[sortBy as string] = sortOrder === 'desc' ? 'desc' : 'asc';
+      orderBy[sortBy as string] = sortOrder === "desc" ? "desc" : "asc";
 
       // Execute query with pagination
       const skip = (Number(page) - 1) * Number(limit);
-      
+
       const [members, total] = await Promise.all([
-       
-          await prisma.user.findMany({
-            where,
-            select: {
-              id: true,
-              name: true,
-              workEmail: true,
-              personalEmail: true,
-              phone: true,
-              role: true,
-              position: { select: { id: true, title: true } },
-              isActive: true,
-              lastLoginAt: true,
-              createdAt: true,
-              updatedAt: true,
-              reportsTo: {
-                select: { id: true, name: true, position: { select: { title: true } } }
-              }
+        await prisma.user.findMany({
+          where,
+          select: {
+            id: true,
+            name: true,
+            workEmail: true,
+            personalEmail: true,
+            phone: true,
+            role: true,
+            position: { select: { id: true, title: true } },
+            isActive: true,
+            lastLoginAt: true,
+            createdAt: true,
+            updatedAt: true,
+            reportsTo: {
+              select: {
+                id: true,
+                name: true,
+                position: { select: { title: true } },
+              },
             },
-            orderBy,
-            skip,
-            take: Number(limit),
-          }),
-    
-        
-           await prisma.user.count({ where })
-      
+          },
+          orderBy,
+          skip,
+          take: Number(limit),
+        }),
+
+        await prisma.user.count({ where }),
       ]);
 
       const totalPages = Math.ceil(total / Number(limit));
@@ -101,14 +104,14 @@ export class UserController {
           total,
           pages: totalPages,
           hasNext: Number(page) < totalPages,
-          hasPrev: Number(page) > 1
-        }
+          hasPrev: Number(page) > 1,
+        },
       } as ApiResponse);
     } catch (error) {
-      console.error('Get members error:', error);
+      console.error("Get members error:", error);
       res.status(500).json({
         success: false,
-        error: 'Failed to fetch members'
+        error: "Failed to fetch members",
       } as ApiResponse);
     }
   }
@@ -121,7 +124,7 @@ export class UserController {
       if (!req.tenantId || !req.user) {
         res.status(400).json({
           success: false,
-          error: 'Tenant context and authentication required',
+          error: "Tenant context and authentication required",
         } as ApiResponse);
         return;
       }
@@ -129,49 +132,52 @@ export class UserController {
       const { id } = req.params;
 
       const member = await prisma.user.findFirst({
-          where: {
-            id,
-            tenantId: req.tenantId,
+        where: {
+          id,
+          tenantId: req.tenantId,
+        },
+        select: {
+          id: true,
+          name: true,
+          workEmail: true,
+          personalEmail: true,
+          phone: true,
+          role: true,
+          position: { select: { id: true, title: true } },
+          reportsToId: true,
+          dateOfBirth: true,
+          workDays: true,
+          isActive: true,
+          lastLoginAt: true,
+          createdAt: true,
+          updatedAt: true,
+          reportsTo: {
+            select: {
+              id: true,
+              name: true,
+              position: { select: { title: true } },
+            },
           },
-          select: {
-            id: true,
-            name: true,
-            workEmail: true,
-            personalEmail: true,
-            phone: true,
-            role: true,
-            position: { select: { id: true, title: true } },
-            reportsToId: true,
-            dateOfBirth: true,
-            workDays: true,
-            isActive: true,
-            lastLoginAt: true,
-            createdAt: true,
-            updatedAt: true,
-            reportsTo: {
-              select: { id: true, name: true, position: { select: { title: true } } }
-            }
-          }
-        });
- 
+        },
+      });
 
       if (!member) {
         res.status(404).json({
           success: false,
-          error: 'Member not found'
+          error: "Member not found",
         } as ApiResponse);
         return;
       }
 
       res.status(200).json({
         success: true,
-        data: member
+        data: member,
       } as ApiResponse);
     } catch (error) {
-      console.error('Get member by ID error:', error);
+      console.error("Get member by ID error:", error);
       res.status(500).json({
         success: false,
-        error: 'Failed to fetch member'
+        error: "Failed to fetch member",
       } as ApiResponse);
     }
   }
@@ -184,7 +190,7 @@ export class UserController {
       if (!req.tenantId || !req.user) {
         res.status(400).json({
           success: false,
-          error: 'Tenant context and authentication required',
+          error: "Tenant context and authentication required",
         } as ApiResponse);
         return;
       }
@@ -192,117 +198,130 @@ export class UserController {
       const userData: any = req.body;
 
       // Validate required fields
-      if (!userData.name || !userData.workEmail || !userData.password || !userData.positionId) {
+      if (
+        !userData.name ||
+        !userData.workEmail ||
+        !userData.password ||
+        !userData.positionId
+      ) {
         res.status(400).json({
           success: false,
-          error: 'Name, work email, password, and position are required'
+          error: "Name, work email, password, and position are required",
         } as ApiResponse);
         return;
       }
 
-    
-        // Check if user already exists within tenant
-        const existingUser = await prisma.user.findFirst({
+      // Check if user already exists within tenant
+      const existingUser = await prisma.user.findFirst({
+        where: {
+          tenantId: req.tenantId,
+          OR: [
+            { workEmail: userData.workEmail.toLowerCase() },
+            { personalEmail: userData.personalEmail?.toLowerCase() },
+            { phone: userData.phone },
+          ],
+        },
+      });
+
+      if (existingUser) {
+        throw new ValidationError(
+          "User with this email or phone already exists in this tenant",
+        );
+      }
+
+      // Validate reports to user if provided
+      if (userData.reportsToId) {
+        const reportsToUser = await prisma.user.findFirst({
           where: {
+            id: userData.reportsToId,
             tenantId: req.tenantId,
-            OR: [
-              { workEmail: userData.workEmail.toLowerCase() },
-              { personalEmail: userData.personalEmail?.toLowerCase() },
-              { phone: userData.phone }
-            ],
-          }
-        });
-
-        if (existingUser) {
-          throw new ValidationError('User with this email or phone already exists in this tenant');
-        }
-
-        // Validate reports to user if provided
-        if (userData.reportsToId) {
-          const reportsToUser = await prisma.user.findFirst({
-            where: {
-              id: userData.reportsToId,
-              tenantId: req.tenantId,
-              isActive: true,
-            }
-          });
-
-          if (!reportsToUser) {
-            throw new ValidationError('Reports to user not found in this tenant');
-          }
-        }
-
-        // Hash password
-        const passwordHash = await bcrypt.hash(userData.password, 12);
-
-        // Validate assigned shift if provided
-        if (userData.assignedShiftId) {
-          const shift = await prisma.shift.findFirst({
-            where: {
-              id: userData.assignedShiftId,
-              tenantId: req.tenantId,
-              isActive: true,
-            }
-          });
-
-          if (!shift) {
-            throw new ValidationError('Assigned shift not found or inactive in this tenant');
-          }
-        }
-
-        // Create user
-        const newUser = await prisma.user.create({
-          data: {
-            tenantId: req.tenantId,
-            name: userData.name,
-            workEmail: userData.workEmail.toLowerCase(),
-            personalEmail: userData.personalEmail?.toLowerCase(),
-            phone: userData.phone,
-            passwordHash,
-            role: userData.role || 'user',
-            positionId: userData.positionId,
-            reportsToId: userData.reportsToId,
-            dateOfBirth: userData.dateOfBirth ? new Date(userData.dateOfBirth) : null,
-            workDays: userData.workDays || [1, 2, 3, 4, 5], // Default to weekdays
-            assignedShiftId: userData.assignedShiftId, // FIXED: Process shift assignment
-            isActive: userData.isActive !== undefined ? userData.isActive : true, // FIXED: Process isActive
-          },
-          select: {
-            id: true,
-            name: true,
-            workEmail: true,
-            personalEmail: true,
-            phone: true,
-            role: true,
-            position: { select: { id: true, title: true } },
             isActive: true,
-            createdAt: true,
-            reportsTo: {
-              select: { id: true, name: true, position: { select: { title: true } } }
-            }
-          }
+          },
         });
 
-        res.status(201).json({
-          success: true,
-          data: newUser,
-          message: 'Member created successfully'
-        } as ApiResponse);
+        if (!reportsToUser) {
+          throw new ValidationError("Reports to user not found in this tenant");
+        }
+      }
 
+      // Hash password
+      const passwordHash = await bcrypt.hash(userData.password, 12);
+
+      // Validate assigned shift if provided
+      if (userData.assignedShiftId) {
+        const shift = await prisma.shift.findFirst({
+          where: {
+            id: userData.assignedShiftId,
+            tenantId: req.tenantId,
+            isActive: true,
+          },
+        });
+
+        if (!shift) {
+          throw new ValidationError(
+            "Assigned shift not found or inactive in this tenant",
+          );
+        }
+      }
+
+      // Create user
+      const newUser = await prisma.user.create({
+        data: {
+          tenantId: req.tenantId,
+          name: userData.name,
+          workEmail: userData.workEmail.toLowerCase(),
+          personalEmail: userData.personalEmail?.toLowerCase(),
+          phone: userData.phone,
+          passwordHash,
+          role: userData.role || "user",
+          positionId: userData.positionId,
+          reportsToId: userData.reportsToId,
+          dateOfBirth: userData.dateOfBirth
+            ? new Date(userData.dateOfBirth)
+            : null,
+          workDays: userData.workDays || [1, 2, 3, 4, 5], // Default to weekdays
+          assignedShiftId: userData.assignedShiftId, // FIXED: Process shift assignment
+          isActive: userData.isActive !== undefined ? userData.isActive : true, // FIXED: Process isActive
+        },
+        select: {
+          id: true,
+          name: true,
+          workEmail: true,
+          personalEmail: true,
+          phone: true,
+          role: true,
+          position: { select: { id: true, title: true } },
+          isActive: true,
+          createdAt: true,
+          reportsTo: {
+            select: {
+              id: true,
+              name: true,
+              position: { select: { title: true } },
+            },
+          },
+        },
+      });
+
+      res.status(201).json({
+        success: true,
+        data: newUser,
+        message: "Member created successfully",
+      } as ApiResponse);
     } catch (error: any) {
-      console.error('Create member error:', error);
-      
+      console.error("Create member error:", error);
+
       if (error instanceof ValidationError) {
         res.status(400).json({
           success: false,
-          error: error.message
+          error: error.message,
         } as ApiResponse);
         return;
       }
 
       res.status(500).json({
         success: false,
-        error: 'Failed to create member'
+        error: "Failed to create member",
       } as ApiResponse);
     }
   }
@@ -315,7 +334,7 @@ export class UserController {
       if (!req.tenantId || !req.user) {
         res.status(400).json({
           success: false,
-          error: 'Tenant context and authentication required',
+          error: "Tenant context and authentication required",
         } as ApiResponse);
         return;
       }
@@ -328,117 +347,130 @@ export class UserController {
       delete (updates as any).tenantId;
       delete (updates as any).createdAt;
 
-     
-        // Check if user exists and belongs to tenant
-        const existingUser = await prisma.user.findFirst({
+      // Check if user exists and belongs to tenant
+      const existingUser = await prisma.user.findFirst({
+        where: {
+          id,
+          tenantId: req.tenantId,
+        },
+      });
+
+      if (!existingUser) {
+        throw new NotFoundError("User not found in this tenant");
+      }
+
+      // Check for email conflicts within tenant if email is being updated
+      if (
+        updates.workEmail &&
+        updates.workEmail.toLowerCase() !== existingUser.workEmail
+      ) {
+        const duplicateUser = await prisma.user.findFirst({
           where: {
-            id,
+            workEmail: updates.workEmail.toLowerCase(),
             tenantId: req.tenantId,
-          }
+            id: { not: id },
+          },
         });
 
-        if (!existingUser) {
-          throw new NotFoundError('User not found in this tenant');
+        if (duplicateUser) {
+          throw new ValidationError("Work email already exists in this tenant");
         }
+      }
 
-        // Check for email conflicts within tenant if email is being updated
-        if (updates.workEmail && updates.workEmail.toLowerCase() !== existingUser.workEmail) {
-          const duplicateUser = await prisma.user.findFirst({
-            where: {
-              workEmail: updates.workEmail.toLowerCase(),
-              tenantId: req.tenantId,
-              id: { not: id }
-            }
-          });
-
-          if (duplicateUser) {
-            throw new ValidationError('Work email already exists in this tenant');
-          }
-        }
-
-        // Validate reports to user if provided
-        if (updates.reportsToId) {
-          const reportsToUser = await prisma.user.findFirst({
-            where: {
-              id: updates.reportsToId,
-              tenantId: req.tenantId,
-              isActive: true,
-            }
-          });
-
-          if (!reportsToUser) {
-            throw new ValidationError('Reports to user not found in this tenant');
-          }
-        }
-
-        // Validate assigned shift if provided
-        if (updates.assignedShiftId) {
-          const shift = await prisma.shift.findFirst({
-            where: {
-              id: updates.assignedShiftId,
-              tenantId: req.tenantId,
-              isActive: true,
-            }
-          });
-
-          if (!shift) {
-            throw new ValidationError('Assigned shift not found or inactive in this tenant');
-          }
-        }
-
-        // Convert dates if provided
-        if (updates.dateOfBirth) updates.dateOfBirth = new Date(updates.dateOfBirth);
-        if (updates.workEmail) updates.workEmail = updates.workEmail.toLowerCase();
-        if (updates.personalEmail) updates.personalEmail = updates.personalEmail.toLowerCase();
-
-        // Update shift assignment tracking if shift is being changed
-        const updateData: any = { ...updates, updatedAt: new Date() };
-        if (updates.assignedShiftId && updates.assignedShiftId !== existingUser.assignedShiftId) {
-          updateData.shiftAssignedById = req.user!.id;
-          updateData.shiftAssignedDate = new Date();
-        }
-
-        const updatedUser = await prisma.user.update({
-          where: { id },
-          data: updateData,
-          select: {
-            id: true,
-            name: true,
-            workEmail: true,
-            personalEmail: true,
-            phone: true,
-            role: true,
-            position: { select: { id: true, title: true } },
-            workDays: true,
+      // Validate reports to user if provided
+      if (updates.reportsToId) {
+        const reportsToUser = await prisma.user.findFirst({
+          where: {
+            id: updates.reportsToId,
+            tenantId: req.tenantId,
             isActive: true,
-            updatedAt: true,
-            assignedShift: {
-              select: {
-                id: true,
-                name: true,
-                startTime: true,
-                endTime: true,
-              }
-            },
-            reportsTo: {
-              select: { id: true, name: true, position: { select: { title: true } } }
-            }
-          }
+          },
         });
 
-        res.status(200).json({
-          success: true,
-          data: updatedUser,
-          message: 'Member updated successfully'
-        } as ApiResponse);
+        if (!reportsToUser) {
+          throw new ValidationError("Reports to user not found in this tenant");
+        }
+      }
 
+      // Validate assigned shift if provided
+      if (updates.assignedShiftId) {
+        const shift = await prisma.shift.findFirst({
+          where: {
+            id: updates.assignedShiftId,
+            tenantId: req.tenantId,
+            isActive: true,
+          },
+        });
+
+        if (!shift) {
+          throw new ValidationError(
+            "Assigned shift not found or inactive in this tenant",
+          );
+        }
+      }
+
+      // Convert dates if provided
+      if (updates.dateOfBirth)
+        updates.dateOfBirth = new Date(updates.dateOfBirth);
+      if (updates.workEmail)
+        updates.workEmail = updates.workEmail.toLowerCase();
+      if (updates.personalEmail)
+        updates.personalEmail = updates.personalEmail.toLowerCase();
+
+      // Update shift assignment tracking if shift is being changed
+      const updateData: any = { ...updates, updatedAt: new Date() };
+      if (
+        updates.assignedShiftId &&
+        updates.assignedShiftId !== existingUser.assignedShiftId
+      ) {
+        updateData.shiftAssignedById = req.user!.id;
+        updateData.shiftAssignedDate = new Date();
+      }
+
+      const updatedUser = await prisma.user.update({
+        where: { id },
+        data: updateData,
+        select: {
+          id: true,
+          name: true,
+          workEmail: true,
+          personalEmail: true,
+          phone: true,
+          role: true,
+          position: { select: { id: true, title: true } },
+          workDays: true,
+          isActive: true,
+          updatedAt: true,
+          assignedShift: {
+            select: {
+              id: true,
+              name: true,
+              startTime: true,
+              endTime: true,
+            },
+          },
+          reportsTo: {
+            select: {
+              id: true,
+              name: true,
+              position: { select: { title: true } },
+            },
+          },
+        },
+      });
+
+      res.status(200).json({
+        success: true,
+        data: updatedUser,
+        message: "Member updated successfully",
+      } as ApiResponse);
     } catch (error: any) {
-      console.error('Update member error:', error);
-      
+      console.error("Update member error:", error);
+
       if (error instanceof NotFoundError) {
         res.status(404).json({
           success: false,
-          error: error.message
+          error: error.message,
         } as ApiResponse);
         return;
       }
@@ -446,14 +478,14 @@ export class UserController {
       if (error instanceof ValidationError) {
         res.status(400).json({
           success: false,
-          error: error.message
+          error: error.message,
         } as ApiResponse);
         return;
       }
 
       res.status(500).json({
         success: false,
-        error: 'Failed to update member'
+        error: "Failed to update member",
       } as ApiResponse);
     }
   }
@@ -466,61 +498,59 @@ export class UserController {
       if (!req.tenantId || !req.user) {
         res.status(400).json({
           success: false,
-          error: 'Tenant context and authentication required',
+          error: "Tenant context and authentication required",
         } as ApiResponse);
         return;
       }
 
       const { id } = req.params;
 
-     
-        const existingUser = await prisma.user.findFirst({
-          where: {
-            id,
-            tenantId: req.tenantId,
-          }
-        });
+      const existingUser = await prisma.user.findFirst({
+        where: {
+          id,
+          tenantId: req.tenantId,
+        },
+      });
 
-        if (!existingUser) {
-          throw new NotFoundError('User not found in this tenant');
-        }
+      if (!existingUser) {
+        throw new NotFoundError("User not found in this tenant");
+      }
 
-        // Soft delete
-        const updatedUser = await prisma.user.update({
-          where: { id },
-          data: {
-            isActive: false,
-            updatedAt: new Date()
-          },
-          select: {
-            id: true,
-            name: true,
-            workEmail: true,
-            isActive: true,
-            updatedAt: true
-          }
-        });
+      // Soft delete
+      const updatedUser = await prisma.user.update({
+        where: { id },
+        data: {
+          isActive: false,
+          updatedAt: new Date(),
+        },
+        select: {
+          id: true,
+          name: true,
+          workEmail: true,
+          isActive: true,
+          updatedAt: true,
+        },
+      });
 
-        res.status(200).json({
-          success: true,
-          data: updatedUser,
-          message: 'Member deactivated successfully'
-        } as ApiResponse);
-
+      res.status(200).json({
+        success: true,
+        data: updatedUser,
+        message: "Member deactivated successfully",
+      } as ApiResponse);
     } catch (error: any) {
-      console.error('Delete member error:', error);
-      
+      console.error("Delete member error:", error);
+
       if (error instanceof NotFoundError) {
         res.status(404).json({
           success: false,
-          error: error.message
+          error: error.message,
         } as ApiResponse);
         return;
       }
 
       res.status(500).json({
         success: false,
-        error: 'Failed to deactivate member'
+        error: "Failed to deactivate member",
       } as ApiResponse);
     }
   }
@@ -533,60 +563,58 @@ export class UserController {
       if (!req.tenantId || !req.user) {
         res.status(400).json({
           success: false,
-          error: 'Tenant context and authentication required',
+          error: "Tenant context and authentication required",
         } as ApiResponse);
         return;
       }
 
       const { id } = req.params;
 
-     
-        const existingUser = await prisma.user.findFirst({
-          where: {
-            id,
-            tenantId: req.tenantId,
-          }
-        });
+      const existingUser = await prisma.user.findFirst({
+        where: {
+          id,
+          tenantId: req.tenantId,
+        },
+      });
 
-        if (!existingUser) {
-          throw new NotFoundError('User not found in this tenant');
-        }
+      if (!existingUser) {
+        throw new NotFoundError("User not found in this tenant");
+      }
 
-        const updatedUser = await prisma.user.update({
-          where: { id },
-          data: {
-            isActive: true,
-            updatedAt: new Date()
-          },
-          select: {
-            id: true,
-            name: true,
-            workEmail: true,
-            isActive: true,
-            updatedAt: true
-          }
-        });
+      const updatedUser = await prisma.user.update({
+        where: { id },
+        data: {
+          isActive: true,
+          updatedAt: new Date(),
+        },
+        select: {
+          id: true,
+          name: true,
+          workEmail: true,
+          isActive: true,
+          updatedAt: true,
+        },
+      });
 
-        res.status(200).json({
-          success: true,
-          data: updatedUser,
-          message: 'Member activated successfully'
-        } as ApiResponse);
-
+      res.status(200).json({
+        success: true,
+        data: updatedUser,
+        message: "Member activated successfully",
+      } as ApiResponse);
     } catch (error: any) {
-      console.error('Activate member error:', error);
-      
+      console.error("Activate member error:", error);
+
       if (error instanceof NotFoundError) {
         res.status(404).json({
           success: false,
-          error: error.message
+          error: error.message,
         } as ApiResponse);
         return;
       }
 
       res.status(500).json({
         success: false,
-        error: 'Failed to activate member'
+        error: "Failed to activate member",
       } as ApiResponse);
     }
   }
@@ -599,56 +627,59 @@ export class UserController {
       if (!req.tenantId || !req.user) {
         res.status(400).json({
           success: false,
-          error: 'Tenant context and authentication required',
+          error: "Tenant context and authentication required",
         } as ApiResponse);
         return;
       }
 
       const userId = req.user.id;
 
-     const user = await prisma.user.findFirst({
-          where: {
-            id: userId,
-            tenantId: req.tenantId,
+      const user = await prisma.user.findFirst({
+        where: {
+          id: userId,
+          tenantId: req.tenantId,
+        },
+        select: {
+          id: true,
+          name: true,
+          workEmail: true,
+          personalEmail: true,
+          phone: true,
+          role: true,
+          position: { select: { id: true, title: true } },
+          dateOfBirth: true,
+          workDays: true,
+          isActive: true,
+          lastLoginAt: true,
+          createdAt: true,
+          updatedAt: true,
+          reportsTo: {
+            select: {
+              id: true,
+              name: true,
+              position: { select: { title: true } },
+            },
           },
-          select: {
-            id: true,
-            name: true,
-            workEmail: true,
-            personalEmail: true,
-            phone: true,
-            role: true,
-            position: { select: { id: true, title: true } },
-            dateOfBirth: true,
-            workDays: true,
-            isActive: true,
-            lastLoginAt: true,
-            createdAt: true,
-            updatedAt: true,
-            reportsTo: {
-              select: { id: true, name: true, position: { select: { title: true } } }
-            }
-          }
-        });
-
+        },
+      });
 
       if (!user) {
         res.status(404).json({
           success: false,
-          error: 'User not found'
+          error: "User not found",
         } as ApiResponse);
         return;
       }
 
       res.status(200).json({
         success: true,
-        data: user
+        data: user,
       } as ApiResponse);
     } catch (error) {
-      console.error('Get user profile error:', error);
+      console.error("Get user profile error:", error);
       res.status(500).json({
         success: false,
-        error: 'Failed to fetch user profile'
+        error: "Failed to fetch user profile",
       } as ApiResponse);
     }
   }
@@ -656,12 +687,15 @@ export class UserController {
   /**
    * Update user profile (current user - tenant-aware)
    */
-  static async updateUserProfile(req: AuthRequest, res: Response): Promise<void> {
+  static async updateUserProfile(
+    req: AuthRequest,
+    res: Response,
+  ): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
         res.status(400).json({
           success: false,
-          error: 'Tenant context and authentication required',
+          error: "Tenant context and authentication required",
         } as ApiResponse);
         return;
       }
@@ -676,53 +710,57 @@ export class UserController {
       delete updateData.tenantId;
       delete updateData.createdAt;
 
-      
-        // Convert dates if provided
-        if (updateData.dateOfBirth) updateData.dateOfBirth = new Date(updateData.dateOfBirth);
-        if (updateData.personalEmail) updateData.personalEmail = updateData.personalEmail.toLowerCase();
+      // Convert dates if provided
+      if (updateData.dateOfBirth)
+        updateData.dateOfBirth = new Date(updateData.dateOfBirth);
+      if (updateData.personalEmail)
+        updateData.personalEmail = updateData.personalEmail.toLowerCase();
 
-        const updatedUser = await prisma.user.update({
-          where: { id: userId },
-          data: {
-            ...updateData,
-            updatedAt: new Date()
+      const updatedUser = await prisma.user.update({
+        where: { id: userId },
+        data: {
+          ...updateData,
+          updatedAt: new Date(),
+        },
+        select: {
+          id: true,
+          name: true,
+          workEmail: true,
+          personalEmail: true,
+          phone: true,
+          position: { select: { id: true, title: true } },
+          dateOfBirth: true,
+          workDays: true,
+          updatedAt: true,
+          reportsTo: {
+            select: {
+              id: true,
+              name: true,
+              position: { select: { title: true } },
+            },
           },
-          select: {
-            id: true,
-            name: true,
-            workEmail: true,
-            personalEmail: true,
-            phone: true,
-            position: { select: { id: true, title: true } },
-            dateOfBirth: true,
-            workDays: true,
-            updatedAt: true,
-            reportsTo: {
-              select: { id: true, name: true, position: { select: { title: true } } }
-            }
-          }
-        });
+        },
+      });
 
-        res.status(200).json({
-          success: true,
-          data: updatedUser,
-          message: 'Profile updated successfully'
-        } as ApiResponse);
-    
+      res.status(200).json({
+        success: true,
+        data: updatedUser,
+        message: "Profile updated successfully",
+      } as ApiResponse);
     } catch (error: any) {
-      console.error('Update user profile error:', error);
+      console.error("Update user profile error:", error);
 
-      if (error.code === 'P2002') {
+      if (error.code === "P2002") {
         res.status(409).json({
           success: false,
-          error: 'Email or phone already exists'
+          error: "Email or phone already exists",
         } as ApiResponse);
         return;
       }
 
       res.status(500).json({
         success: false,
-        error: 'Failed to update profile'
+        error: "Failed to update profile",
       } as ApiResponse);
     }
   }
@@ -735,19 +773,23 @@ export class UserController {
       if (!req.tenantId || !req.user) {
         res.status(400).json({
           success: false,
-          error: 'Tenant context and authentication required',
+          error: "Tenant context and authentication required",
         } as ApiResponse);
         return;
       }
 
       const userId = req.user.id;
-      const { currentPassword, newPassword, confirmPassword }: ChangePasswordData = req.body;
+      const {
+        currentPassword,
+        newPassword,
+        confirmPassword,
+      }: ChangePasswordData = req.body;
 
       // Validate input
       if (!currentPassword || !newPassword || !confirmPassword) {
         res.status(400).json({
           success: false,
-          error: 'All password fields are required'
+          error: "All password fields are required",
         } as ApiResponse);
         return;
       }
@@ -755,7 +797,7 @@ export class UserController {
       if (newPassword !== confirmPassword) {
         res.status(400).json({
           success: false,
-          error: 'New password and confirm password do not match'
+          error: "New password and confirm password do not match",
         } as ApiResponse);
         return;
       }
@@ -763,61 +805,62 @@ export class UserController {
       if (newPassword.length < 6) {
         res.status(400).json({
           success: false,
-          error: 'New password must be at least 6 characters long'
+          error: "New password must be at least 6 characters long",
         } as ApiResponse);
         return;
       }
 
-     
-        // Get user with password
-        const user = await prisma.user.findFirst({
-          where: {
-            id: userId,
-            tenantId: req.tenantId,
-          }
-        });
+      // Get user with password
+      const user = await prisma.user.findFirst({
+        where: {
+          id: userId,
+          tenantId: req.tenantId,
+        },
+      });
 
-        if (!user) {
-          throw new NotFoundError('User not found');
-        }
+      if (!user) {
+        throw new NotFoundError("User not found");
+      }
 
-        // Verify current password
-        const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.passwordHash);
-        if (!isCurrentPasswordValid) {
-          throw new ValidationError('Current password is incorrect');
-        }
+      // Verify current password
+      const isCurrentPasswordValid = await bcrypt.compare(
+        currentPassword,
+        user.passwordHash,
+      );
+      if (!isCurrentPasswordValid) {
+        throw new ValidationError("Current password is incorrect");
+      }
 
-        // Hash new password
-        const newPasswordHash = await bcrypt.hash(newPassword, 12);
+      // Hash new password
+      const newPasswordHash = await bcrypt.hash(newPassword, 12);
 
-        // Update password
-        await prisma.user.update({
-          where: { id: userId },
-          data: {
-            passwordHash: newPasswordHash,
-            updatedAt: new Date()
-          }
-        });
+      // Update password
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          passwordHash: newPasswordHash,
+          updatedAt: new Date(),
+        },
+      });
 
-        res.status(200).json({
-          success: true,
-          message: 'Password changed successfully'
-        } as ApiResponse);
-  
+      res.status(200).json({
+        success: true,
+        message: "Password changed successfully",
+      } as ApiResponse);
     } catch (error: any) {
-      console.error('Change password error:', error);
-      
+      console.error("Change password error:", error);
+
       if (error instanceof ValidationError || error instanceof NotFoundError) {
         res.status(error instanceof NotFoundError ? 404 : 400).json({
           success: false,
-          error: error.message
+          error: error.message,
         } as ApiResponse);
         return;
       }
 
       res.status(500).json({
         success: false,
-        error: 'Failed to change password'
+        error: "Failed to change password",
       } as ApiResponse);
     }
   }
@@ -825,12 +868,15 @@ export class UserController {
   /**
    * Reset user password (admin only - tenant-aware)
    */
-  static async resetUserPassword(req: AuthRequest, res: Response): Promise<void> {
+  static async resetUserPassword(
+    req: AuthRequest,
+    res: Response,
+  ): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
         res.status(400).json({
           success: false,
-          error: 'Tenant context and authentication required',
+          error: "Tenant context and authentication required",
         } as ApiResponse);
         return;
       }
@@ -841,54 +887,52 @@ export class UserController {
       if (!newPassword || newPassword.length < 6) {
         res.status(400).json({
           success: false,
-          error: 'New password must be at least 6 characters long'
+          error: "New password must be at least 6 characters long",
         } as ApiResponse);
         return;
       }
 
-      
-        const user = await prisma.user.findFirst({
-          where: {
-            id: userId,
-            tenantId: req.tenantId,
-          }
-        });
+      const user = await prisma.user.findFirst({
+        where: {
+          id: userId,
+          tenantId: req.tenantId,
+        },
+      });
 
-        if (!user) {
-          throw new NotFoundError('User not found in this tenant');
-        }
+      if (!user) {
+        throw new NotFoundError("User not found in this tenant");
+      }
 
-        // Hash new password
-        const newPasswordHash = await bcrypt.hash(newPassword, 12);
+      // Hash new password
+      const newPasswordHash = await bcrypt.hash(newPassword, 12);
 
-        // Update password
-        await prisma.user.update({
-          where: { id: userId },
-          data: {
-            passwordHash: newPasswordHash,
-            updatedAt: new Date()
-          }
-        });
+      // Update password
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          passwordHash: newPasswordHash,
+          updatedAt: new Date(),
+        },
+      });
 
-        res.status(200).json({
-          success: true,
-          message: 'User password reset successfully'
-        } as ApiResponse);
-    
+      res.status(200).json({
+        success: true,
+        message: "User password reset successfully",
+      } as ApiResponse);
     } catch (error: any) {
-      console.error('Reset user password error:', error);
-      
+      console.error("Reset user password error:", error);
+
       if (error instanceof NotFoundError) {
         res.status(404).json({
           success: false,
-          error: error.message
+          error: error.message,
         } as ApiResponse);
         return;
       }
 
       res.status(500).json({
         success: false,
-        error: 'Failed to reset user password'
+        error: "Failed to reset user password",
       } as ApiResponse);
     }
   }
@@ -896,12 +940,15 @@ export class UserController {
   /**
    * Get members for dropdown/select (tenant-aware)
    */
-  static async getMembersForSelect(req: AuthRequest, res: Response): Promise<void> {
+  static async getMembersForSelect(
+    req: AuthRequest,
+    res: Response,
+  ): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
         res.status(400).json({
           success: false,
-          error: 'Tenant context and authentication required',
+          error: "Tenant context and authentication required",
         } as ApiResponse);
         return;
       }
@@ -916,19 +963,19 @@ export class UserController {
       if (role) where.role = role;
       if (position) where.position = { title: position };
 
-      const members =await prisma.user.findMany({
-          where,
-          select: {
-            id: true,
-            name: true,
-            workEmail: true,
-            position: { select: { id: true, title: true } },
-            role: true,
-          },
-          orderBy: { name: 'asc' }
-        });
-     
-      const formattedMembers = members.map(member => ({
+      const members = await prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          name: true,
+          workEmail: true,
+          position: { select: { id: true, title: true } },
+          role: true,
+        },
+        orderBy: { name: "asc" },
+      });
+
+      const formattedMembers = members.map((member) => ({
         value: member.id,
         label: member.name,
         email: member.workEmail,
@@ -938,13 +985,13 @@ export class UserController {
 
       res.status(200).json({
         success: true,
-        data: formattedMembers
+        data: formattedMembers,
       } as ApiResponse);
     } catch (error) {
-      console.error('Get members for select error:', error);
+      console.error("Get members for select error:", error);
       res.status(500).json({
         success: false,
-        error: 'Failed to fetch members'
+        error: "Failed to fetch members",
       } as ApiResponse);
     }
   }
@@ -957,7 +1004,7 @@ export class UserController {
       if (!req.tenantId || !req.user) {
         res.status(400).json({
           success: false,
-          error: 'Tenant context and authentication required',
+          error: "Tenant context and authentication required",
         } as ApiResponse);
         return;
       }
@@ -968,90 +1015,92 @@ export class UserController {
       if (!shiftId) {
         res.status(400).json({
           success: false,
-          error: 'Shift ID is required'
+          error: "Shift ID is required",
         } as ApiResponse);
         return;
       }
 
- 
-        // Verify member exists and belongs to tenant
-        const member = await prisma.user.findFirst({
-          where: {
-            id,
-            tenantId: req.tenantId,
-          }
-        });
+      // Verify member exists and belongs to tenant
+      const member = await prisma.user.findFirst({
+        where: {
+          id,
+          tenantId: req.tenantId,
+        },
+      });
 
-        if (!member) {
-          throw new NotFoundError('Member not found in this tenant');
-        }
+      if (!member) {
+        throw new NotFoundError("Member not found in this tenant");
+      }
 
-        // Verify shift exists and belongs to tenant
-        const shift = await prisma.shift.findFirst({
-          where: {
-            id: shiftId,
-            tenantId: req.tenantId,
-            isActive: true,
-          }
-        });
+      // Verify shift exists and belongs to tenant
+      const shift = await prisma.shift.findFirst({
+        where: {
+          id: shiftId,
+          tenantId: req.tenantId,
+          isActive: true,
+        },
+      });
 
-        if (!shift) {
-          throw new ValidationError('Shift not found or inactive in this tenant');
-        }
+      if (!shift) {
+        throw new ValidationError("Shift not found or inactive in this tenant");
+      }
 
-        // Update member with shift assignment
-             const updatedMember  = await prisma.user.update({
-          where: { id },
-          data: {
-            assignedShiftId: shiftId,
-            shiftAssignedById: req.user!.id,
-            shiftAssignedDate: new Date(),
-            updatedAt: new Date(),
+      // Update member with shift assignment
+      const updatedMember = await prisma.user.update({
+        where: { id },
+        data: {
+          assignedShiftId: shiftId,
+          shiftAssignedById: req.user!.id,
+          shiftAssignedDate: new Date(),
+          updatedAt: new Date(),
+        },
+        select: {
+          id: true,
+          name: true,
+          workEmail: true,
+          personalEmail: true,
+          phone: true,
+          role: true,
+          position: { select: { id: true, title: true } },
+          isActive: true,
+          updatedAt: true,
+          assignedShift: {
+            select: {
+              id: true,
+              name: true,
+              startTime: true,
+              endTime: true,
+            },
           },
-          select: {
-            id: true,
-            name: true,
-            workEmail: true,
-            personalEmail: true,
-            phone: true,
-            role: true,
-            position: { select: { id: true, title: true } },
-            isActive: true,
-            updatedAt: true,
-            assignedShift: {
-              select: {
-                id: true,
-                name: true,
-                startTime: true,
-                endTime: true,
-              }
+          shiftAssignedBy: {
+            select: {
+              id: true,
+              name: true,
+              position: { select: { title: true } },
             },
-            shiftAssignedBy: {
-              select: {
-                id: true,
-                name: true,
-                position: { select: { title: true } },
-              }
+          },
+          reportsTo: {
+            select: {
+              id: true,
+              name: true,
+              position: { select: { title: true } },
             },
-            reportsTo: {
-              select: { id: true, name: true, position: { select: { title: true } } }
-            }
-          }
-        });
-   
+          },
+        },
+      });
 
       res.status(200).json({
         success: true,
         data: updatedMember,
-        message: 'Shift assigned successfully'
+        message: "Shift assigned successfully",
       } as ApiResponse);
     } catch (error: any) {
-      console.error('Assign shift error:', error);
-      
+      console.error("Assign shift error:", error);
+
       if (error instanceof NotFoundError) {
         res.status(404).json({
           success: false,
-          error: error.message
+          error: error.message,
         } as ApiResponse);
         return;
       }
@@ -1059,14 +1108,14 @@ export class UserController {
       if (error instanceof ValidationError) {
         res.status(400).json({
           success: false,
-          error: error.message
+          error: error.message,
         } as ApiResponse);
         return;
       }
 
       res.status(500).json({
         success: false,
-        error: 'Failed to assign shift'
+        error: "Failed to assign shift",
       } as ApiResponse);
     }
   }

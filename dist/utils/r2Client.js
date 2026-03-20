@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.s3Client = void 0;
 exports.uploadImageToR2 = uploadImageToR2;
 exports.uploadFileToR2 = uploadFileToR2;
+exports.uploadRequisitionAttachmentToR2 = uploadRequisitionAttachmentToR2;
 exports.uploadEmployeeDocumentToR2 = uploadEmployeeDocumentToR2;
 exports.uploadClientDocumentToR2 = uploadClientDocumentToR2;
 exports.uploadEmployeeAssetToR2 = uploadEmployeeAssetToR2;
@@ -143,6 +144,50 @@ async function uploadFileToR2(base64File, fileName, tenantId, ticketId) {
     catch (error) {
         console.error("R2 file upload error:", error);
         throw new Error(`Failed to upload file: ${error.message}`);
+    }
+}
+/**
+ * Upload a job requisition attachment to Cloudflare R2
+ * Stores under: {tenantId}/requisition_attachments/{requisitionId}/{category}/{uniqueId}_{fileName}
+ */
+async function uploadRequisitionAttachmentToR2(base64File, fileName, tenantId, requisitionId, category) {
+    try {
+        const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+        if (!matches) {
+            throw new Error("Invalid file format. Expected base64 encoded file.");
+        }
+        const contentType = matches[1];
+        const base64Data = matches[2];
+        const buffer = Buffer.from(base64Data, "base64");
+        // Validate file size (max 5MB)
+        const fileSizeInBytes = buffer.length;
+        const fileSizeInMB = fileSizeInBytes / (1024 * 1024);
+        if (fileSizeInMB > 5) {
+            throw new Error("File size exceeds 5MB limit");
+        }
+        const uniqueId = (0, nanoid_1.nanoid)(12);
+        const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+        const folderPath = `${tenantId}/requisition_attachments/${requisitionId}/${category}`;
+        const storedFileName = `${folderPath}/${uniqueId}_${sanitizedFileName}`;
+        const params = {
+            Bucket: BUCKET_NAME,
+            Key: storedFileName,
+            Body: buffer,
+            ContentType: contentType,
+            CacheControl: "public, max-age=31536000",
+            ContentDisposition: `attachment; filename="${sanitizedFileName}"`,
+        };
+        await exports.s3Client.send(new client_s3_1.PutObjectCommand(params));
+        const fileUrl = `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/${storedFileName}`;
+        return {
+            fileUrl,
+            fileSize: fileSizeInBytes,
+            fileType: contentType,
+        };
+    }
+    catch (error) {
+        console.error("R2 requisition attachment upload error:", error);
+        throw new Error(`Failed to upload requisition attachment: ${error.message}`);
     }
 }
 /**

@@ -24,6 +24,7 @@ import authRoutes from "@/routes/auth";
 import tenantRoutes from "@/routes/tenants";
 import projectRoutes from "@/routes/projects";
 import ticketRoutes from "@/routes/tickets";
+import recruitmentRoutes from "./routes/jobRequisition.routes";
 import attendanceRoutes from "@/routes/attendance";
 import clientRoutes from "@/routes/clients";
 import clientV2Routes from "@/routes/clientsV2";
@@ -40,6 +41,7 @@ import leaveTypeRoutes from "@/routes/leaveTypeRoutes";
 import customerRoutes from "@/routes/customerRoutes";
 import invoiceSettingRoutes from "@/routes/invoiceSettingsRoutes";
 import invoice from "@/routes/invoice";
+import invoiceTemplate from "@/routes/invoiceTemplate";
 //import invoicedownload from "@/routes/invoiceDownload"
 import bucketRoutes from "@/routes/buckets";
 import trashRoutes from "@/routes/trash";
@@ -48,6 +50,10 @@ import fixedHolidayRoutes from "@/routes/fixedHolidays";
 import documentHubRoutes from "@/routes/documenthub";
 import channelRoutes from "@/routes/channels";
 import messageRoutes from "@/routes/messages";
+import averageAttendenceRoutes from "@/routes/attendance";
+
+import shortcutRoutes from "@/routes/shortcut.routes";
+
 // Onboarding
 // import employeeRoutes from "@/routes/employeeRoutes";
 // import employeeAddressRoutes from "@/routes/employeeAddress";
@@ -70,6 +76,7 @@ import timeTrackingRoutes from "@/routes/timeTracking";
 
 import companyGovernmentHolidayRouter from "./routes/companyGovernmentHoliday.routes";
 import leaveAdjustmentRoutes from "./routes/leaveAdjustmentRoutes";
+import leaveAllocationRoutes from "@/routes/leaveAllocationRoutes";
 import reimbursement from "@/routes/reimbursementCategory";
 import employmentTypeRoutes from "@/routes/employmentTypeRoutes";
 import repositoryRoutes from "@/routes/repositoryRoutes";
@@ -77,9 +84,19 @@ import departmentRoutes from "@/routes/departmentRoutes";
 import subDepartmentRoutes from "@/routes/subDepartmentRoutes";
 import positionRoutes from "@/routes/positionRoutes";
 import calendarRoutes from "@/routes/calendar"
+import employeeExitRoutes from "@/routes/employeeExit.routes";
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
 import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
+import leaveRequestRoutes from "@/routes/leaveRequestRoutes";
+import leaveBalanceRoutes from "@/routes/leaveBalanceRoutes";
+
+
+import reimbursementConfigurationRoutes from "@/routes/reimbursementConfig";
+import reimbursementsettingsRoutes from "@/routes/reimbursementsettingsRoutes";
+import reimbursementRoutes from "@/routes/reimbursementcreateRoutes"; // the file we created earlier
+// import managerReimbursementRoutes from "./routes/managerReimbursementRoutes";
 import rbacRoutes from "@/routes/rbac";
+import employeeAssetRoutes from "@/routes/employeeAssets.routes";
 // Load environment
 dotenv.config();
 console.log("🚀 API Starting up...");
@@ -165,7 +182,7 @@ const limiter = rateLimit({
 
 // app.use(limiter);
 
-connectDatabase().catch(console.error);
+// connectDatabase().catch(console.error);
 
 // Health check endpoint (no tenant context required)
 app.get("/health", (req, res) => {
@@ -194,6 +211,7 @@ app.use("/api/calendar", calendarRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/public/tickets", publicTicketRoutes);
 app.use("/api/tickets", ticketRoutes);
+app.use("/api/recruitment", recruitmentRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/clients", clientRoutes);
 app.use("/api/clients-v2", clientV2Routes);
@@ -206,12 +224,14 @@ app.use("/api/user", userRoutes);
 app.use("/api/daily-updates", dailyUpdateRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/leaves", leaveRoutes);
-app.use("/api/reimbursement-category", reimbursement);
+// app.use("/api/reimbursement-category", reimbursement);
+app.use("/api/reimbursement-categories", reimbursement);  // plural form
 app.use("/api/repositories", repositoryRoutes);
 app.use("/api/leave-types", leaveTypeRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/invoicesetting", invoiceSettingRoutes);
 app.use("/api/invoices", invoice);
+app.use("/api/invoice-templates", invoiceTemplate);
 //app.use("/api/invoice",invoicedownload)
 app.use("/api/buckets", bucketRoutes);
 app.use("/api/trash", trashRoutes);
@@ -229,24 +249,39 @@ app.use("/api/channels", channelRoutes);
 app.use("/api/channels/:channelId/messages", messageRoutes);
 app.use("/api/email-history", emailHistoryRoutes);
 app.use("/api/timesheets", timesheetRoutes);
+app.use("/api/zoho", calendarRoutes);
+app.use("/api/leave-allocation", leaveAllocationRoutes);
+app.use("/api/leave-request", leaveRequestRoutes);
+app.use("/api/leave-balances", leaveBalanceRoutes);
+
+
 app.use("/api/time-tracking", timeTrackingRoutes);
 
-// onboarding
-// app.use("/api/employees", employeeRoutes);
-// app.use("/api/employee-addresses", employeeAddressRoutes);
-// app.use("/api/employee-emergency-contacts", employeeEmergencyContactRoutes);
-// app.use("/api/employee-identities", employeeIdentityRoutes);
 app.use("/api/employee-work-details", employeeWorkDetailRoutes);
 app.use("/api/employee-timelines", employeeTimelineRoutes);
-//app.use("/api/employee-details", employeeDetailsRoutes);
-//app.use("/api/employee-employment-details", employeeEmploymentDetailsRoutes);
-// main
+
 app.use("/api/onboarding", employeeOnboardingRoutes);
+app.use("/api/reimbursement-configurations", reimbursementConfigurationRoutes);
+app.use("/api/reimbursement-settings", reimbursementsettingsRoutes);
+// Reimbursements (with file upload)
+app.use("/api/reimbursements", reimbursementRoutes);
+// app.use("/api/manager/reimbursements", managerReimbursementRoutes);
 app.use("/api/profile/new", newProfileRoutes);
 app.use("/api/employeesettings", employeeSettingsRoutes);
+import noticePolicyRoutes from "./routes/noticePolicy.routes";
+import exitTypeRoutes from "./routes/exitType.routes";
+import reasonForExitRoutes from "./routes/reasonForExit.routes";
+import exitApprovalWorkflowRoutes from "./routes/exitApprovalWorkflow.routes";
+app.use("/api/exit/notice-policy", noticePolicyRoutes);
+app.use("/api/exit/exit-type", exitTypeRoutes);
+app.use("/api/exit/reason-for-exit", reasonForExitRoutes);
+app.use("/api/exit/approval-workflow", exitApprovalWorkflowRoutes);
+app.use("/api/exit/request", employeeExitRoutes);
 
 // RBAC management API
 app.use("/api/rbac", rbacRoutes);
+app.use("/api/employee-assets", employeeAssetRoutes);
+app.use("/api/shortcuts", shortcutRoutes);
 
 // app.use("/api/addresses", addressRoutes);
 //app.use("/api/employee_address", addressRoutes);
@@ -379,31 +414,56 @@ app.use((err: any, req: any, res: any, next: any): void => {
 });
 
 // Start server
-const PORT = parseInt(process.env.PORT || "5000");
+let server: any;
 
-const server = app.listen(PORT, () => {
-  console.log(`Zithmi Backend V2 (Multi-Tenant) running on port ${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV}`);
-  console.log(`Health check: http://localhost:${PORT}/health`);
-  console.log(`Multi-tenant API: http://localhost:${PORT}/api/health`);
-  console.log(`Database: PostgreSQL with Prisma`);
-  console.log(`Features: Multi-tenant, RLS, Enhanced Auth, JWT`);
+const startServer = async () => {
+  try {
 
-  // Initialize Socket.io
-  const { socketService } = require("@/services/socketService");
-  socketService.initialize(server);
+    // Connect PostgreSQL
+    await connectDatabase();
+    // console.log("Database connected");
 
-  // Start trash auto-purge cron job
-  const { startTrashAutoPurgeJob } = require("@/jobs/trashAutoPurge");
-  startTrashAutoPurgeJob();
+    // Connect RabbitMQ
+    // await connectRabbitMQ();
+    // console.log("RabbitMQ connected");
 
-  // Start Calendar Sync Worker (scheduler + BullMQ processor)
-  // TEMPORARILY DISABLED: Redis not available (ECONNREFUSED 127.0.0.1:6379)
-  // const { SyncWorker } = require("@/services/calendar/SyncWorker");
-  // const { startSyncProcessor } = require("@/services/calendar/calendarSyncProcessor");
-  // SyncWorker.start();
-  // startSyncProcessor();
-});
+    // Start workers
+    // const { startWorker } = require("@/workers/leaveAllocationWorker");
+    // await startWorker();
+    const PORT = parseInt(process.env.PORT || "5000");
+
+    server = app.listen(PORT, () => {
+      // console.log(`Zithmi Backend running on port ${PORT}`);
+      // console.log(`Environment: ${process.env.NODE_ENV}`);
+      // console.log(`Health check: http://localhost:${PORT}/health`);
+    });
+
+  } catch (error) {
+    console.error("Server startup failed:", error);
+    process.exit(1);
+  }
+};
+
+startServer();
+
+// const PORT = parseInt(process.env.PORT || "5000");
+
+// const server = app.listen(PORT, () => {
+//   console.log(`Zithmi Backend V2 (Multi-Tenant) running on port ${PORT}`);
+//   console.log(`Environment: ${process.env.NODE_ENV}`);
+//   console.log(`Health check: http://localhost:${PORT}/health`);
+//   console.log(`Multi-tenant API: http://localhost:${PORT}/api/health`);
+//   console.log(`Database: PostgreSQL with Prisma`);
+//   console.log(`Features: Multi-tenant, RLS, Enhanced Auth, JWT`);
+
+//   // Initialize Socket.io
+//   const { socketService } = require("@/services/socketService");
+//   socketService.initialize(server);
+
+//   // Start trash auto-purge cron job
+//   const { startTrashAutoPurgeJob } = require("@/jobs/trashAutoPurge");
+//   startTrashAutoPurgeJob();
+// });
 
 // Graceful shutdown
 const gracefulShutdown = async (signal: string) => {

@@ -6,6 +6,7 @@ import {
   createPersonalDetails,
   getPersonalDetails,
   getAllEmployees,
+  getUpcomingBirthdays,
   updatePersonalDetails,
   deletePersonalDetails,
 } from "./createEmployeeDetailes";
@@ -119,6 +120,23 @@ export class EmployeeOnboardingController {
       });
     } catch (err: any) {
       console.error("Get All Employees Error:", err);
+      res.status(500).json({
+        success: false,
+        error: err.message || "Internal Server Error",
+      });
+    }
+  }
+
+  // ✅ GET Upcoming Birthdays (Current Month)
+  static async getUpcomingBirthdays(req: AuthRequest, res: Response) {
+    try {
+      const birthdays = await getUpcomingBirthdays(req);
+      res.status(200).json({
+        success: true,
+        data: birthdays,
+      });
+    } catch (err: any) {
+      console.error("Get Upcoming Birthdays Error:", err);
       res.status(500).json({
         success: false,
         error: err.message || "Internal Server Error",

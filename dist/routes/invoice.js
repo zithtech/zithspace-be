@@ -26,10 +26,16 @@ router.post('/', (0, permission_1.requirePermission)(permissions_1.Permissions.I
 router.patch('/:id/status', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_UPDATE), (req, res) => InvoiceController_1.InvoiceController.updateStatus(req, res));
 // Soft delete invoice
 router.delete('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_DELETE), (req, res) => InvoiceController_1.InvoiceController.deleteInvoice(req, res));
+// Bulk soft delete invoices (Move to Trash)
+router.post('/bulk-delete', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_DELETE), (req, res) => InvoiceController_1.InvoiceController.bulkDeleteInvoices(req, res));
 // Restore soft-deleted invoice
 router.patch('/:id/restore', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_MANAGE), (req, res) => InvoiceController_1.InvoiceController.restoreInvoice(req, res));
+// Bulk restore soft-deleted invoices
+router.post('/bulk-restore', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_MANAGE), (req, res) => InvoiceController_1.InvoiceController.bulkRestoreInvoices(req, res));
 // Permanently delete invoice (hard delete) - Admin only
 router.delete('/:id/permanent', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_MANAGE), (req, res) => InvoiceController_1.InvoiceController.permanentDeleteInvoice(req, res));
+// Bulk permanently delete invoices
+router.post('/bulk-permanent-delete', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_MANAGE), (req, res) => InvoiceController_1.InvoiceController.bulkPermanentDeleteInvoices(req, res));
 // Update invoice
 router.put('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_UPDATE), (req, res) => InvoiceController_1.InvoiceController.updateInvoice(req, res));
 // Download invoice PDF

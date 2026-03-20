@@ -12,9 +12,9 @@ class EmployeeWorkDetailController {
                     .json({ success: false, error: "Unauthorized" });
                 return;
             }
-            const { employeeId, department, team, employeeType, workLocation, workShift, } = req.body;
+            const { employeeId, positionId, team, employeeType, workLocation, workShift, positionId } = req.body;
             if (!employeeId ||
-                !department ||
+                !positionId ||
                 !team ||
                 !employeeType ||
                 !workLocation ||
@@ -38,13 +38,15 @@ class EmployeeWorkDetailController {
             }
             const workDetail = await database_1.prisma.employeeWorkDetail.create({
                 data: {
-                    employeeId,
+                    employee: { connect: { id: employeeId } },
                     department,
                     team,
                     employeeType,
                     workLocation,
                     workShift,
                     createdById: req.user.id,
+                    position: { connect: { id: positionId }
+                    }
                 },
             });
             res.status(201).json({
@@ -65,8 +67,21 @@ class EmployeeWorkDetailController {
     static async getWorkDetailByEmployee(req, res) {
         try {
             const { employeeId } = req.params;
+            const tenantId = req.headers["x-tenant-id"];
+            if (!tenantId) {
+                res.status(400).json({ success: false, error: "Tenant ID is required" });
+                return;
+            }
+            // 1. Get work details with position and department
             const workDetail = await database_1.prisma.employeeWorkDetail.findFirst({
                 where: { employeeId },
+                include: {
+                    position: {
+                        include: {
+                            department: true,
+                        },
+                    },
+                },
             });
             if (!workDetail) {
                 res.status(404).json({
@@ -75,9 +90,47 @@ class EmployeeWorkDetailController {
                 });
                 return;
             }
+            // 2. Get reporting manager from employee_project_mappings
+            const projectMapping = await database_1.prisma.employeeProjectMapping.findFirst({
+                where: { employeeId },
+                orderBy: { createdAt: 'desc' }
+            });
+            let reportingManagerName = null;
+            if (projectMapping?.reportingManager) {
+                // Try to find the manager's name if it's an ID
+                const manager = await database_1.prisma.employee.findUnique({
+                    where: { id: projectMapping.reportingManager },
+                    select: { first_name: true, last_name: true }
+                });
+                if (manager) {
+                    reportingManagerName = `${manager.first_name} ${manager.last_name}`;
+                }
+                else {
+                    // Fallback to value if not found in employee table (maybe it's already a name)
+                    reportingManagerName = projectMapping.reportingManager;
+                }
+            }
+            // 3. Get Notice Period from ExitNoticePolicy
+            // Logic: Match positionId or gradeId
+            const noticePolicy = await database_1.prisma.exitNoticePolicy.findFirst({
+                where: {
+                    tenantId,
+                    OR: [
+                        { levelType: 'Positions', levelId: workDetail.positionId },
+                        { levelType: 'Grades', levelId: workDetail.position?.gradeId || '' }
+                    ],
+                    status: true
+                }
+            });
             res.status(200).json({
                 success: true,
-                data: workDetail,
+                data: {
+                    ...workDetail,
+                    reportingManagerId: projectMapping?.reportingManager || null,
+                    reportingManagerName: reportingManagerName,
+                    department: workDetail.position?.department || null,
+                    noticePeriodDays: noticePolicy?.noticePeriodDays || 0
+                },
             });
         }
         catch (error) {
@@ -138,7 +191,7 @@ class EmployeeWorkDetailController {
             const updated = await database_1.prisma.employeeWorkDetail.update({
                 where: { id },
                 data: {
-                    department: req.body.department,
+                    positionId: req.body.positionId,
                     team: req.body.team,
                     employeeType: req.body.employeeType,
                     workLocation: req.body.workLocation,

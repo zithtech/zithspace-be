@@ -45,4 +45,16 @@ export declare class InvoiceController {
      * Get all soft-deleted invoices
      */
     static getDeletedInvoices(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Bulk restore soft-deleted invoices
+     */
+    static bulkRestoreInvoices(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Bulk permanent delete invoices from database
+     */
+    static bulkPermanentDeleteInvoices(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Bulk soft-delete invoices (Move to Trash)
+     */
+    static bulkDeleteInvoices(req: AuthRequest, res: Response): Promise<void>;
 }
