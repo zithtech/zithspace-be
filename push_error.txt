@@ -1,0 +1,13 @@
+Environment variables loaded from .env
+Prisma schema loaded from prisma\schema.prisma
+Datasource "db": PostgreSQL database "development", schema "public" at "ep-orange-dew-ahbq6zxx-pooler.c-3.us-east-1.aws.neon.tech"
+Error: ERROR: foreign key constraint "users_employee_id_fkey" cannot be implemented
+DETAIL: Key columns "employee_id" and "id" are of incompatible types: text and uuid.
+   0: sql_schema_connector::apply_migration::migration_step
+           with step=AddForeignKey { foreign_key_id: ForeignKeyId(1) }
+             at schema-engine\connectors\sql-schema-connector\src\apply_migration.rs:21
+   1: sql_schema_connector::apply_migration::apply_migration
+             at schema-engine\connectors\sql-schema-connector\src\apply_migration.rs:10
+   2: schema_core::state::SchemaPush
+             at schema-engine\core\src\state.rs:504
+

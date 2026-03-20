@@ -158,6 +158,7 @@ export const optionalAuth = async (
         position: user.position?.title || null,
         name: user.name,
         sessionId: decoded.sessionId,
+        
       };
     }
 

@@ -26,14 +26,14 @@ export class AttendanceController {
         page = 1,
         limit = 20,
         userId,
-        member,  // Alias for userId (used by frontend)
+        member, // Alias for userId (used by frontend)
         date,
         status,
         startDate,
         endDate,
-        search,  // Search by member name
-        sortBy = 'date',
-        sortOrder = 'desc'
+        search, // Search by member name
+        sortBy = "date",
+        sortOrder = "desc",
       } = req.query;
 
       // Build filter query
@@ -44,7 +44,7 @@ export class AttendanceController {
       // Handle userId or member parameter (member is alias for userId)
       const targetUserId = userId || member;
       if (targetUserId) where.userId = targetUserId;
-      
+
       if (status) where.status = status;
 
       // Handle search by member name
@@ -52,8 +52,8 @@ export class AttendanceController {
         where.user = {
           name: {
             contains: search as string,
-            mode: 'insensitive'
-          }
+            mode: "insensitive",
+          },
         };
       }
 
@@ -140,7 +140,7 @@ export class AttendanceController {
    */
   static async getAttendanceById(
     req: AuthRequest,
-    res: Response
+    res: Response,
   ): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
@@ -172,7 +172,7 @@ export class AttendanceController {
               },
             },
           });
-        }
+        },
       );
 
       if (!attendanceRecord) {
@@ -380,7 +380,7 @@ export class AttendanceController {
 
         // Calculate work minutes
         const totalWorkMinutes = Math.floor(
-          (clockOutTime.getTime() - attendance.clockIn.getTime()) / 60000
+          (clockOutTime.getTime() - attendance.clockIn.getTime()) / 60000,
         );
 
         // Calculate effective work minutes (total - breaks)
@@ -437,7 +437,7 @@ export class AttendanceController {
    */
   static async getTodayAttendance(
     req: AuthRequest,
-    res: Response
+    res: Response,
   ): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
@@ -491,7 +491,7 @@ export class AttendanceController {
           if (attendance?.clockIn) {
             const endTime = attendance.clockOut || new Date();
             totalWorkMinutes = Math.floor(
-              (endTime.getTime() - attendance.clockIn.getTime()) / 60000
+              (endTime.getTime() - attendance.clockIn.getTime()) / 60000,
             );
           }
 
@@ -521,7 +521,7 @@ export class AttendanceController {
           };
 
           return responseData;
-        }
+        },
       );
 
       res.status(200).json({
@@ -542,7 +542,7 @@ export class AttendanceController {
    */
   static async getDashboardSummary(
     req: AuthRequest,
-    res: Response
+    res: Response,
   ): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
@@ -629,7 +629,7 @@ export class AttendanceController {
             wfhToday: statusCounts.wfh,
             attendanceRate,
           };
-        }
+        },
       );
 
       res.status(200).json({
@@ -650,7 +650,7 @@ export class AttendanceController {
    */
   static async getPresentMembers(
     req: AuthRequest,
-    res: Response
+    res: Response,
   ): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
@@ -697,10 +697,10 @@ export class AttendanceController {
             const workMinutes = record.clockOut
               ? Math.floor(
                   (record.clockOut.getTime() - record.clockIn!.getTime()) /
-                    60000
+                    60000,
                 )
               : Math.floor(
-                  (new Date().getTime() - record.clockIn!.getTime()) / 60000
+                  (new Date().getTime() - record.clockIn!.getTime()) / 60000,
                 );
 
             return {
@@ -720,7 +720,7 @@ export class AttendanceController {
               workHours: workMinutes,
             };
           });
-        }
+        },
       );
 
       res.status(200).json({
@@ -741,7 +741,7 @@ export class AttendanceController {
    */
   static async getMyAttendanceSummary(
     req: AuthRequest,
-    res: Response
+    res: Response,
   ): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
@@ -757,17 +757,17 @@ export class AttendanceController {
 
       const targetDate = new Date(
         Number(year) || new Date().getFullYear(),
-        Number(month) - 1 || new Date().getMonth()
+        Number(month) - 1 || new Date().getMonth(),
       );
       const startOfMonth = new Date(
         targetDate.getFullYear(),
         targetDate.getMonth(),
-        1
+        1,
       );
       const endOfMonth = new Date(
         targetDate.getFullYear(),
         targetDate.getMonth() + 1,
-        0
+        0,
       );
       endOfMonth.setHours(23, 59, 59, 999);
 
@@ -819,7 +819,7 @@ export class AttendanceController {
             month: targetDate.getMonth() + 1,
             year: targetDate.getFullYear(),
           };
-        }
+        },
       );
 
       res.status(200).json({
@@ -840,7 +840,7 @@ export class AttendanceController {
    */
   static async updateAttendance(
     req: AuthRequest,
-    res: Response
+    res: Response,
   ): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
@@ -924,11 +924,97 @@ export class AttendanceController {
   }
 
   /**
+   * Get last 5 working days average for current user
+   */
+
+  static async getLast5DaysAverage(
+    req: AuthRequest,
+    res: Response,
+  ): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        });
+        return;
+      }
+
+      const userId = req.user.id;
+
+      const result = await tenantAwarePrisma.withTenant(
+        req.tenantId,
+        async (client) => {
+          const records = await client.attendance.findMany({
+            where: {
+              userId,
+              tenantId: req.tenantId,
+              clockIn: { not: null },
+              clockOut: { not: null }, // only completed days
+            },
+            orderBy: { date: "desc" },
+            take: 5,
+          });
+
+          if (records.length === 0) {
+            return {
+              last5Days: [],
+              averageMinutes: 0,
+              averageHours: 0,
+            };
+          }
+
+          const processedRecords = records.map((record) => {
+            const minutes = Math.floor(
+              (record.clockOut!.getTime() - record.clockIn!.getTime()) / 60000,
+            );
+
+            return {
+              date: record.date,
+              clockIn: record.clockIn,
+              clockOut: record.clockOut,
+              minutes,
+              hours: Number((minutes / 60).toFixed(2)),
+            };
+          });
+
+          const totalMinutes = processedRecords.reduce(
+            (sum, r) => sum + r.minutes,
+            0,
+          );
+
+          const averageMinutes = Math.floor(
+            totalMinutes / processedRecords.length,
+          );
+          const averageHours = Number((averageMinutes / 60).toFixed(2));
+
+          return {
+            last5Days: processedRecords,
+            averageMinutes,
+            averageHours,
+          };
+        },
+      );
+
+      res.status(200).json({
+        success: true,
+        data: result,
+      });
+    } catch (error) {
+      console.error("Last 5 days average error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to fetch last 5 days average",
+      });
+    }
+  }
+
+  /**
    * Create manual attendance entry (tenant-aware)
    */
   static async createAttendance(
     req: AuthRequest,
-    res: Response
+    res: Response,
   ): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
@@ -981,7 +1067,7 @@ export class AttendanceController {
 
         if (existingAttendance) {
           throw new ValidationError(
-            "Attendance record already exists for this date"
+            "Attendance record already exists for this date",
           );
         }
 

@@ -10,6 +10,10 @@ export declare function getEmployeeAssets(req: AuthRequest, employeeId: string):
     model: string;
     modelNumber: string;
     image: string;
+    returnStatus: string;
+    condition: string;
+    deduction: number;
+    remarks: string;
     createdAt: Date;
     updatedAt: Date;
 }[]>;
@@ -20,6 +24,10 @@ export declare function getSingleEmployeeAsset(req: AuthRequest, employeeId: str
     model: string;
     modelNumber: string;
     image: string;
+    returnStatus: string;
+    condition: string;
+    deduction: number;
+    remarks: string;
     createdAt: Date;
     updatedAt: Date;
 }>;
@@ -35,6 +43,10 @@ export declare function getAllEmployeesAssets(req: AuthRequest): Promise<{
         model: string;
         modelNumber: string;
         image: string;
+        returnStatus: string;
+        condition: string;
+        deduction: number;
+        remarks: string;
         createdAt: Date;
     }[];
 }[]>;
@@ -48,6 +60,10 @@ export declare function updateEmployeeAsset(req: AuthRequest, employeeId: string
         model: string;
         modelNumber: string;
         image: string;
+        returnStatus: string;
+        condition: string;
+        deduction: number;
+        remarks: string;
     };
 }>;
 export declare function updateEmployeeAssets(req: AuthRequest, employeeId: string): Promise<{

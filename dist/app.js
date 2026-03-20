@@ -23,6 +23,7 @@ const auth_1 = __importDefault(require("@/routes/auth"));
 const tenants_1 = __importDefault(require("@/routes/tenants"));
 const projects_1 = __importDefault(require("@/routes/projects"));
 const tickets_1 = __importDefault(require("@/routes/tickets"));
+const jobRequisition_routes_1 = __importDefault(require("./routes/jobRequisition.routes"));
 const attendance_1 = __importDefault(require("@/routes/attendance"));
 const clients_1 = __importDefault(require("@/routes/clients"));
 const clientsV2_1 = __importDefault(require("@/routes/clientsV2"));
@@ -47,6 +48,7 @@ const fixedHolidays_1 = __importDefault(require("@/routes/fixedHolidays"));
 const documenthub_1 = __importDefault(require("@/routes/documenthub"));
 const channels_1 = __importDefault(require("@/routes/channels"));
 const messages_1 = __importDefault(require("@/routes/messages"));
+const shortcut_routes_1 = __importDefault(require("@/routes/shortcut.routes"));
 // Onboarding
 // import employeeRoutes from "@/routes/employeeRoutes";
 // import employeeAddressRoutes from "@/routes/employeeAddress";
@@ -63,6 +65,7 @@ const auth_2 = __importDefault(require("@/routes/auth"));
 const publicTickets_1 = __importDefault(require("@/routes/publicTickets"));
 const employeeSettingsRoutes_1 = __importDefault(require("./routes/employeeSettingsRoutes"));
 const timesheet_1 = __importDefault(require("@/routes/timesheet"));
+const timeTracking_1 = __importDefault(require("@/routes/timeTracking"));
 const companyGovernmentHoliday_routes_1 = __importDefault(require("./routes/companyGovernmentHoliday.routes"));
 const leaveAdjustmentRoutes_1 = __importDefault(require("./routes/leaveAdjustmentRoutes"));
 const leaveAllocationRoutes_1 = __importDefault(require("@/routes/leaveAllocationRoutes"));
@@ -73,11 +76,17 @@ const departmentRoutes_1 = __importDefault(require("@/routes/departmentRoutes"))
 const subDepartmentRoutes_1 = __importDefault(require("@/routes/subDepartmentRoutes"));
 const positionRoutes_1 = __importDefault(require("@/routes/positionRoutes"));
 const calendar_1 = __importDefault(require("@/routes/calendar"));
+const employeeExit_routes_1 = __importDefault(require("@/routes/employeeExit.routes"));
 const leaveOriginRoutes_1 = __importDefault(require("@/routes/leaveOriginRoutes"));
 const emailHistoryRoutes_1 = __importDefault(require("@/routes/emailHistoryRoutes"));
 const leaveRequestRoutes_1 = __importDefault(require("@/routes/leaveRequestRoutes"));
 const leaveBalanceRoutes_1 = __importDefault(require("@/routes/leaveBalanceRoutes"));
+const reimbursementConfig_1 = __importDefault(require("@/routes/reimbursementConfig"));
+const reimbursementsettingsRoutes_1 = __importDefault(require("@/routes/reimbursementsettingsRoutes"));
+const reimbursementcreateRoutes_1 = __importDefault(require("@/routes/reimbursementcreateRoutes")); // the file we created earlier
+// import managerReimbursementRoutes from "./routes/managerReimbursementRoutes";
 const rbac_1 = __importDefault(require("@/routes/rbac"));
+const employeeAssets_routes_1 = __importDefault(require("@/routes/employeeAssets.routes"));
 // Load environment
 dotenv_1.default.config();
 console.log("🚀 API Starting up...");
@@ -169,6 +178,7 @@ app.use("/api/calendar", calendar_1.default);
 app.use("/api/projects", projects_1.default);
 app.use("/api/public/tickets", publicTickets_1.default);
 app.use("/api/tickets", tickets_1.default);
+app.use("/api/recruitment", jobRequisition_routes_1.default);
 app.use("/api/attendance", attendance_1.default);
 app.use("/api/clients", clients_1.default);
 app.use("/api/clients-v2", clientsV2_1.default);
@@ -181,7 +191,8 @@ app.use("/api/user", user_1.default);
 app.use("/api/daily-updates", dailyUpdates_1.default);
 app.use("/api/dashboard", dashboard_1.default);
 app.use("/api/leaves", leaves_1.default);
-app.use("/api/reimbursement-category", reimbursementCategory_1.default);
+// app.use("/api/reimbursement-category", reimbursement);
+app.use("/api/reimbursement-categories", reimbursementCategory_1.default); // plural form
 app.use("/api/repositories", repositoryRoutes_1.default);
 app.use("/api/leave-types", leaveTypeRoutes_1.default);
 app.use("/api/customers", customerRoutes_1.default);
@@ -207,6 +218,7 @@ app.use("/api/zoho", calendar_1.default);
 app.use("/api/leave-allocation", leaveAllocationRoutes_1.default);
 app.use("/api/leave-request", leaveRequestRoutes_1.default);
 app.use("/api/leave-balances", leaveBalanceRoutes_1.default);
+app.use("/api/time-tracking", timeTracking_1.default);
 // onboarding
 // app.use("/api/employees", employeeRoutes);
 // app.use("/api/employee-addresses", employeeAddressRoutes);
@@ -214,14 +226,27 @@ app.use("/api/leave-balances", leaveBalanceRoutes_1.default);
 // app.use("/api/employee-identities", employeeIdentityRoutes);
 app.use("/api/employee-work-details", employeeWorkDetailes_1.default);
 app.use("/api/employee-timelines", employeeTimeline_1.default);
-//app.use("/api/employee-details", employeeDetailsRoutes);
-//app.use("/api/employee-employment-details", employeeEmploymentDetailsRoutes);
-// main
 app.use("/api/onboarding", onboardingRoutes_1.default);
+app.use("/api/reimbursement-configurations", reimbursementConfig_1.default);
+app.use("/api/reimbursement-settings", reimbursementsettingsRoutes_1.default);
+// Reimbursements (with file upload)
+app.use("/api/reimbursements", reimbursementcreateRoutes_1.default);
+// app.use("/api/manager/reimbursements", managerReimbursementRoutes);
 app.use("/api/profile/new", auth_2.default);
 app.use("/api/employeesettings", employeeSettingsRoutes_1.default);
+const noticePolicy_routes_1 = __importDefault(require("./routes/noticePolicy.routes"));
+const exitType_routes_1 = __importDefault(require("./routes/exitType.routes"));
+const reasonForExit_routes_1 = __importDefault(require("./routes/reasonForExit.routes"));
+const exitApprovalWorkflow_routes_1 = __importDefault(require("./routes/exitApprovalWorkflow.routes"));
+app.use("/api/exit/notice-policy", noticePolicy_routes_1.default);
+app.use("/api/exit/exit-type", exitType_routes_1.default);
+app.use("/api/exit/reason-for-exit", reasonForExit_routes_1.default);
+app.use("/api/exit/approval-workflow", exitApprovalWorkflow_routes_1.default);
+app.use("/api/exit/request", employeeExit_routes_1.default);
 // RBAC management API
 app.use("/api/rbac", rbac_1.default);
+app.use("/api/employee-assets", employeeAssets_routes_1.default);
+app.use("/api/shortcuts", shortcut_routes_1.default);
 // app.use("/api/addresses", addressRoutes);
 //app.use("/api/employee_address", addressRoutes);
 app.get("/api/health", (req, res) => {
