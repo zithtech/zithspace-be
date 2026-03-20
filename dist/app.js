@@ -68,6 +68,7 @@ const timesheet_1 = __importDefault(require("@/routes/timesheet"));
 const timeTracking_1 = __importDefault(require("@/routes/timeTracking"));
 const companyGovernmentHoliday_routes_1 = __importDefault(require("./routes/companyGovernmentHoliday.routes"));
 const leaveAdjustmentRoutes_1 = __importDefault(require("./routes/leaveAdjustmentRoutes"));
+const leaveAllocationRoutes_1 = __importDefault(require("@/routes/leaveAllocationRoutes"));
 const reimbursementCategory_1 = __importDefault(require("@/routes/reimbursementCategory"));
 const employmentTypeRoutes_1 = __importDefault(require("@/routes/employmentTypeRoutes"));
 const repositoryRoutes_1 = __importDefault(require("@/routes/repositoryRoutes"));
@@ -78,6 +79,8 @@ const calendar_1 = __importDefault(require("@/routes/calendar"));
 const employeeExit_routes_1 = __importDefault(require("@/routes/employeeExit.routes"));
 const leaveOriginRoutes_1 = __importDefault(require("@/routes/leaveOriginRoutes"));
 const emailHistoryRoutes_1 = __importDefault(require("@/routes/emailHistoryRoutes"));
+const leaveRequestRoutes_1 = __importDefault(require("@/routes/leaveRequestRoutes"));
+const leaveBalanceRoutes_1 = __importDefault(require("@/routes/leaveBalanceRoutes"));
 const reimbursementConfig_1 = __importDefault(require("@/routes/reimbursementConfig"));
 const reimbursementsettingsRoutes_1 = __importDefault(require("@/routes/reimbursementsettingsRoutes"));
 const reimbursementcreateRoutes_1 = __importDefault(require("@/routes/reimbursementcreateRoutes")); // the file we created earlier
@@ -149,7 +152,7 @@ const limiter = (0, express_rate_limit_1.default)({
     legacyHeaders: false,
 });
 // app.use(limiter);
-(0, database_1.connectDatabase)().catch(console.error);
+// connectDatabase().catch(console.error);
 // Health check endpoint (no tenant context required)
 app.get("/health", (req, res) => {
     res.status(200).json({
@@ -211,6 +214,10 @@ app.use("/api/channels", channels_1.default);
 app.use("/api/channels/:channelId/messages", messages_1.default);
 app.use("/api/email-history", emailHistoryRoutes_1.default);
 app.use("/api/timesheets", timesheet_1.default);
+app.use("/api/zoho", calendar_1.default);
+app.use("/api/leave-allocation", leaveAllocationRoutes_1.default);
+app.use("/api/leave-request", leaveRequestRoutes_1.default);
+app.use("/api/leave-balances", leaveBalanceRoutes_1.default);
 app.use("/api/time-tracking", timeTracking_1.default);
 // onboarding
 // app.use("/api/employees", employeeRoutes);
@@ -356,27 +363,46 @@ app.use((err, req, res, next) => {
     });
 });
 // Start server
-const PORT = parseInt(process.env.PORT || "5000");
-const server = app.listen(PORT, () => {
-    console.log(`Zithmi Backend V2 (Multi-Tenant) running on port ${PORT}`);
-    console.log(`Environment: ${process.env.NODE_ENV}`);
-    console.log(`Health check: http://localhost:${PORT}/health`);
-    console.log(`Multi-tenant API: http://localhost:${PORT}/api/health`);
-    console.log(`Database: PostgreSQL with Prisma`);
-    console.log(`Features: Multi-tenant, RLS, Enhanced Auth, JWT`);
-    // Initialize Socket.io
-    const { socketService } = require("@/services/socketService");
-    socketService.initialize(server);
-    // Start trash auto-purge cron job
-    const { startTrashAutoPurgeJob } = require("@/jobs/trashAutoPurge");
-    startTrashAutoPurgeJob();
-    // Start Calendar Sync Worker (scheduler + BullMQ processor)
-    // TEMPORARILY DISABLED: Redis not available (ECONNREFUSED 127.0.0.1:6379)
-    // const { SyncWorker } = require("@/services/calendar/SyncWorker");
-    // const { startSyncProcessor } = require("@/services/calendar/calendarSyncProcessor");
-    // SyncWorker.start();
-    // startSyncProcessor();
-});
+let server;
+const startServer = async () => {
+    try {
+        // Connect PostgreSQL
+        await (0, database_1.connectDatabase)();
+        // console.log("Database connected");
+        // Connect RabbitMQ
+        // await connectRabbitMQ();
+        // console.log("RabbitMQ connected");
+        // Start workers
+        // const { startWorker } = require("@/workers/leaveAllocationWorker");
+        // await startWorker();
+        const PORT = parseInt(process.env.PORT || "5000");
+        server = app.listen(PORT, () => {
+            // console.log(`Zithmi Backend running on port ${PORT}`);
+            // console.log(`Environment: ${process.env.NODE_ENV}`);
+            // console.log(`Health check: http://localhost:${PORT}/health`);
+        });
+    }
+    catch (error) {
+        console.error("Server startup failed:", error);
+        process.exit(1);
+    }
+};
+startServer();
+// const PORT = parseInt(process.env.PORT || "5000");
+// const server = app.listen(PORT, () => {
+//   console.log(`Zithmi Backend V2 (Multi-Tenant) running on port ${PORT}`);
+//   console.log(`Environment: ${process.env.NODE_ENV}`);
+//   console.log(`Health check: http://localhost:${PORT}/health`);
+//   console.log(`Multi-tenant API: http://localhost:${PORT}/api/health`);
+//   console.log(`Database: PostgreSQL with Prisma`);
+//   console.log(`Features: Multi-tenant, RLS, Enhanced Auth, JWT`);
+//   // Initialize Socket.io
+//   const { socketService } = require("@/services/socketService");
+//   socketService.initialize(server);
+//   // Start trash auto-purge cron job
+//   const { startTrashAutoPurgeJob } = require("@/jobs/trashAutoPurge");
+//   startTrashAutoPurgeJob();
+// });
 // Graceful shutdown
 const gracefulShutdown = async (signal) => {
     console.log(`\n${signal} received. Shutting down gracefully...`);

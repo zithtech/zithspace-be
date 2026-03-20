@@ -27,7 +27,9 @@ model Tenant {
   leaveTypes          LeaveType[]
   leaveAdjustments    LeaveAdjustment[]
   leaveOriginStructures LeaveOriginStructure[]
+  leaveRequests         LeaveRequest[]
   originLeaveTypes      OriginLeaveType[]
+  leaveLedgerEntries    LeaveLedger[]
   fixedHolidays         FixedHoliday[]
   employmentTypes       EmploymentType[]
   grades                Grade[]
@@ -128,10 +130,10 @@ model User {
   lastLoginAt       DateTime? @map("last_login_at")
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
-
-  
   employeeId        String?   @map("employee_id") 
-  employee          Employee? @relation(fields: [employeeId], references: [id]) 
+  employee          Employee? @relation(fields: [employeeId], references: [id])
+  leaveAdjustments             LeaveAdjustment[]          @relation("UserLeaveAdjustments")
+
 
   createdSalaryComponents SalaryComponent[] @relation("SalaryComponentCreator")
   updatedSalaryComponents SalaryComponent[] @relation("SalaryComponentUpdater")
@@ -148,6 +150,8 @@ model User {
     createdExitApprovalWorkflows ExitApprovalWorkflow[] @relation("ExitApprovalWorkflowCreatedBy")
   updatedExitApprovalWorkflows ExitApprovalWorkflow[] @relation("ExitApprovalWorkflowUpdatedBy")
 
+  createdLedgers          LeaveLedger[] @relation("LeaveLedgerCreator")
+  updatedLedgers          LeaveLedger[] @relation("LeaveLedgerUpdater")
 
   enteredAttendance            Attendance[]               @relation("AttendanceEnteredBy")
   attendance                   Attendance[]
@@ -156,8 +160,10 @@ model User {
   createdLeaveTypes            LeaveType[]                @relation("LeaveTypeCreator")
   updatedLeaveTypes            LeaveType[]                @relation("LeaveTypeUpdater")
   leaves                       Leave[]                    @relation("UserLeaves")
-  leaveAdjustments             LeaveAdjustment[]          @relation("UserLeaveAdjustments")
   approvedAdjustments          LeaveAdjustment[]          @relation("LeaveAdjustmentApprover")
+  approvedLeaveRequests        LeaveRequest[]             @relation("LeaveRequestApprover")
+  createdLeaveRequests         LeaveRequest[]             @relation("LeaveRequestCreator")
+  updatedLeaveRequests         LeaveRequest[]             @relation("LeaveRequestUpdater")
   createdLeaveAdjustments      LeaveAdjustment[]          @relation("LeaveAdjustmentCreator")
   updatedLeaveAdjustments      LeaveAdjustment[]          @relation("LeaveAdjustmentUpdater")
   createdLeaveOriginStructures LeaveOriginStructure[]     @relation("LeaveOriginStructureCreator")
@@ -934,6 +940,10 @@ model LeaveType {
   tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   createdBy        User?    @relation("LeaveTypeCreator", fields: [createdById], references: [id])
   updatedBy        User?    @relation("LeaveTypeUpdater", fields: [updatedById], references: [id])
+   originLeaveTypes  OriginLeaveType[]
+  leaveLedgerEntries LeaveLedger[]
+  leaveRequests      LeaveRequest[]
+  leaveAdjustments   LeaveAdjustment[]
 
   @@unique([tenantId, code])
   @@map("leave_types")
@@ -966,8 +976,8 @@ model Leave {
 model LeaveAdjustment {
   id              String    @id @default(uuid())
   tenantId        String    @map("tenant_id")
-  userId          String    @map("user_id")
-  leaveType       String    @map("leave_type")
+  userId          String?    @map("user_id")
+  employeeId      String?    @map("employee_id") @db.Uuid
   adjustmentType  String    @map("adjustment_type")
   amount          Decimal   @db.Decimal(5, 2)
   unit            String    @default("Days")
@@ -979,12 +989,16 @@ model LeaveAdjustment {
   updatedById     String?   @map("updated_by_id")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
+  leaveTypeId     String    @map("leave_type_id")
 
+  
   tenant     Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user       User   @relation("UserLeaveAdjustments", fields: [userId], references: [id], onDelete: Cascade)
+  employee   Employee? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   approvedBy User?  @relation("LeaveAdjustmentApprover", fields: [approvedById], references: [id])
   createdBy  User   @relation("LeaveAdjustmentCreator", fields: [createdById], references: [id])
   updatedBy  User?  @relation("LeaveAdjustmentUpdater", fields: [updatedById], references: [id])
+  leaveType  LeaveType @relation(fields: [leaveTypeId], references: [id])
+  user       User?   @relation("UserLeaveAdjustments", fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("leave_adjustments")
 }
@@ -1874,11 +1888,13 @@ model OriginLeaveType {
   tenantId      String @map("tenant_id")
   leaveOriginId String @map("leave_origin_id")
 
-  leaveType    String? @map("leave_type")
+  leaveTypeId  String    @map("leave_type_id")
+  leaveType    LeaveType @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
   unit         Decimal @db.Decimal(5, 2)
   period       String
   carryForward Boolean @default(false) @map("carry_forward")
   status       String  @default("Active")
+  accrualInterval Int @default(1) @map("accrual_interval")   // ⭐ NEW
 
   createdById String   @map("created_by_id")
   updatedById String?  @map("updated_by_id")
@@ -1889,6 +1905,7 @@ model OriginLeaveType {
   leaveOriginStructure LeaveOriginStructure @relation(fields: [leaveOriginId], references: [id], onDelete: Cascade)
   createdBy            User                 @relation("OriginLeaveTypeCreator", fields: [createdById], references: [id])
   updatedBy            User?                @relation("OriginLeaveTypeUpdater", fields: [updatedById], references: [id])
+  leaveLedgerEntries   LeaveLedger[]
 
   @@map("origin_leave_types")
 }
@@ -2087,6 +2104,9 @@ model Employee {
 
   updatedAssets EmployeeAsset[] @relation("EmployeeAssetUpdatedBy")
 
+  leaveLedgerEntries LeaveLedger[]
+  leaveAdjustments   LeaveAdjustment[]
+  leaveRequests      LeaveRequest[]
   // Client V2 Relations
   managedClients    ClientV2[]                   @relation("AccountManager")
   salesClients      ClientV2[]                   @relation("SalesOwner")
@@ -2155,7 +2175,7 @@ model EmployeeIdentity {
 
   id              String   @id @default(uuid()) @db.Uuid
 
-  employeeId String @unique @map("employee_id") @db.Uuid
+  employeeId  String @unique @map("employee_id") @db.Uuid
 
   aadhaarNumber  String  @map("aadhaar_number") @db.VarChar(12)
   panNumber      String  @map("pan_number") @db.VarChar(10)
@@ -2175,13 +2195,14 @@ model EmployeeWorkDetail {
   id String @id @default(uuid()) @db.Uuid
 
   employeeId String @map("employee_id") @db.Uuid
-
-  department      String? @db.VarChar(100)
-  team            String? @db.VarChar(100)
-  employeeType    String? @map("employee_type") @db.VarChar(50)
-  workLocation    String  @map("work_location") @db.VarChar(100)
-  workShift       String? @map("work_shift") @db.VarChar(50)
-  workJoiningDate String? @map("work_joining_date") @db.VarChar(30)
+ 
+  department     String   @db.VarChar(100)
+  positionId     String?  @db.Uuid @map("position_id")   // ✅ ADD THIS
+  team           String   @db.VarChar(100)
+  employeeType   String   @db.VarChar(50)  @map("employee_type")
+  workLocation   String   @db.VarChar(100) @map("work_location")
+ workShift       Json?   @map("work_shift")
+  workJoiningDate  String?  @db.VarChar(30)  @map("work_joining_date")  
 
   workType   String?  @map("work_type") @db.VarChar(50)
   hybridMode String?  @map("hybrid_mode") @db.VarChar(20)
@@ -2195,9 +2216,10 @@ model EmployeeWorkDetail {
   updatedById String? @map("updated_by_id") @db.Uuid
   position   Position? @relation(fields: [positionId], references: [id])
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  employee  Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt      @map("updated_at")
+  employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+position   Position? @relation(fields: [positionId], references: [id])
 
     @@map("employee_work_details")
   }
@@ -3232,4 +3254,93 @@ model TimeTrackingLog {
   @@index([timeTrackingId])
   @@index([tenantId])
   @@map("time_tracking_logs")
+}
+
+
+enum TransactionType {
+  monthly_credit
+  yearly_credit
+  carry_forward_credit
+  adjustment_credit
+  leave_debit
+  leave_encashment_debit
+  expiry_debit
+  reversal
+
+  @@map("transaction_type")
+}
+
+model LeaveLedger {
+  id              String          @id @default(uuid())
+  tenantId        String          @map("tenant_id")
+  employeeId      String          @map("employee_id") @db.Uuid
+  leaveTypeId     String          @map("leave_type_id")
+  transactionType TransactionType @map("transaction_type")
+  referenceId     String?         @map("reference_id")
+  units           Decimal         @db.Decimal(6, 2)
+  balanceAfter    Decimal         @map("balance_after") @db.Decimal(6, 2)
+  transactionDate DateTime        @map("transaction_date") @db.Date
+  expiryDate      DateTime?       @map("expiry_date") @db.Date
+  policyVersion   Int             @map("policy_version")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  createdById     String?         @map("created_by_id")
+  updatedById     String?         @map("updated_by_id")
+
+  // Relations
+  tenant    Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee  Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType LeaveType        @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+  reference OriginLeaveType? @relation(fields: [referenceId], references: [id], onDelete: SetNull)
+  createdBy User?            @relation("LeaveLedgerCreator", fields: [createdById], references: [id])
+  updatedBy User?            @relation("LeaveLedgerUpdater", fields: [updatedById], references: [id])
+
+  @@index([tenantId])
+  @@index([employeeId])
+  @@index([leaveTypeId])
+  @@index([referenceId])
+  @@index([transactionDate])
+  @@map("leave_ledger")
+}
+
+enum LeaveRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+
+  @@map("leave_request_status")
+}
+
+model LeaveRequest {
+  id          String             @id @default(uuid())
+  tenantId    String             @map("tenant_id")
+  employeeId  String             @map("employee_id") @db.Uuid
+  leaveTypeId String?          @map("leave_type_id")
+  fromDate    DateTime           @map("from_date") @db.Date
+  toDate      DateTime           @map("to_date") @db.Date
+  totalUnits  Decimal            @map("total_units") @db.Decimal(5, 2)
+  status      LeaveRequestStatus @default(PENDING)
+  reason      String?
+  appliedAt   DateTime           @default(now()) @map("applied_at")
+  approvedAt  DateTime?          @map("approved_at")
+  approvedById  String?            @map("approved_by_id")
+
+  createdById String   @map("created_by_id")
+  updatedById String?  @map("updated_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  tenant         Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee       Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType     LeaveType? @relation(fields: [leaveTypeId], references: [id], onDelete: Cascade)
+  approvedByUser User?     @relation("LeaveRequestApprover", fields: [approvedById], references: [id])
+  createdByUser  User      @relation("LeaveRequestCreator", fields: [createdById], references: [id])
+  updatedByUser  User?     @relation("LeaveRequestUpdater", fields: [updatedById], references: [id])
+
+  @@index([tenantId, employeeId, status])
+  @@index([leaveTypeId])
+  @@index([createdById])
+  @@map("leave_requests")
 }

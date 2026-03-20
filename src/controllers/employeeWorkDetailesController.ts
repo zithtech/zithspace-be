@@ -63,7 +63,8 @@ export class EmployeeWorkDetailController {
           workLocation,
           workShift,
           createdById: req.user.id,
-          position: positionId ? { connect: { id: positionId } } : undefined,
+          position: { connect: { id: positionId }
+    }
         },
       });
 
