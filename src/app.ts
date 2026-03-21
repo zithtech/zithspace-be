@@ -103,25 +103,7 @@ console.log("📅 Mounting calendar routes at /api/calendar");
 // Create Express application
 const app = express();
 
-// Body parsing middleware
-app.use(express.json({ limit: "30mb" }));
-app.use(express.urlencoded({ extended: true, limit: "30mb" }));
-
-app.use(
-  session({
-    secret: process.env.SESSION_SECRET || "your-fallback-secret-key",
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      secure: process.env.NODE_ENV === "production", // true in production
-      httpOnly: true,
-      maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    },
-  }),
-);
-
-// Connect to PostgreSQL
-
+// CORS must be first — before any other middleware — so headers are set on all responses
 const allowedOrigins = [
   "http://localhost:3000", // Local development
   "http://localhost:3005", // Local development for internal app
@@ -153,6 +135,25 @@ app.use(
     credentials: true,
   }),
 );
+
+// Body parsing middleware
+app.use(express.json({ limit: "30mb" }));
+app.use(express.urlencoded({ extended: true, limit: "30mb" }));
+
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || "your-fallback-secret-key",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === "production", // true in production
+      httpOnly: true,
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    },
+  }),
+);
+
+// Connect to PostgreSQL
 
 // Cookie parsing middleware
 app.use(cookieParser());
@@ -303,11 +304,6 @@ app.all("/socket.io/*", (req, res) => {
     message: "Socket.io not configured on this server",
     note: "WebSocket connections are not required for this application",
   });
-});
-
-// Handle preflight requests
-app.options("*", (req, res) => {
-  res.status(200).end();
 });
 
 // 404 handler
