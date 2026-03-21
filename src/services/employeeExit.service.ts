@@ -11,8 +11,8 @@ export class EmployeeExitService {
     return await prisma.employeeExit.create({
       data: {
         id: uuidv4(),
-        tenant: { connect: { id: tenantId } },
-        employee: { connect: { id: data.employeeId } },
+        tenantId,
+        employeeId: data.employeeId,
         departmentId: data.departmentId || null,
         positionId: data.positionId || null,
         reportingManagerId: data.reportingManagerId && data.reportingManagerId !== "" ? data.reportingManagerId : null,
@@ -26,7 +26,7 @@ export class EmployeeExitService {
         buyoutAmount: data.buyoutAmount ? new Prisma.Decimal(data.buyoutAmount) : null,
         explanation: data.explanation || null,
         status: data.status || "PENDING",
-        createdBy: { connect: { id: createdById } },
+        createdById,
       },
     });
   }

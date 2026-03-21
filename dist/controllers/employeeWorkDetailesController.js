@@ -118,7 +118,7 @@ class EmployeeWorkDetailController {
                         { levelType: 'Positions', levelId: workDetail.positionId },
                         { levelType: 'Grades', levelId: workDetail.position?.gradeId || '' }
                     ],
-                    status: true
+                    status: 'active'
                 }
             });
             res.status(200).json({
