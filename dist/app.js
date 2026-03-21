@@ -82,11 +82,11 @@ const leaveOriginRoutes_1 = __importDefault(require("@/routes/leaveOriginRoutes"
 const emailHistoryRoutes_1 = __importDefault(require("@/routes/emailHistoryRoutes"));
 const leaveRequestRoutes_1 = __importDefault(require("@/routes/leaveRequestRoutes"));
 const leaveBalanceRoutes_1 = __importDefault(require("@/routes/leaveBalanceRoutes"));
+const payroll_1 = __importDefault(require("@/routes/payroll"));
 const reimbursementConfig_1 = __importDefault(require("@/routes/reimbursementConfig"));
 const reimbursementsettingsRoutes_1 = __importDefault(require("@/routes/reimbursementsettingsRoutes"));
 const reimbursementcreateRoutes_1 = __importDefault(require("@/routes/reimbursementcreateRoutes")); // the file we created earlier
 // import managerReimbursementRoutes from "./routes/managerReimbursementRoutes";
-const payroll_1 = __importDefault(require("@/routes/payroll"));
 const rbac_1 = __importDefault(require("@/routes/rbac"));
 const employeeAssets_routes_1 = __importDefault(require("@/routes/employeeAssets.routes"));
 // Load environment
@@ -223,11 +223,6 @@ app.use("/api/leave-allocation", leaveAllocationRoutes_1.default);
 app.use("/api/leave-request", leaveRequestRoutes_1.default);
 app.use("/api/leave-balances", leaveBalanceRoutes_1.default);
 app.use("/api/time-tracking", timeTracking_1.default);
-// onboarding
-// app.use("/api/employees", employeeRoutes);
-// app.use("/api/employee-addresses", employeeAddressRoutes);
-// app.use("/api/employee-emergency-contacts", employeeEmergencyContactRoutes);
-// app.use("/api/employee-identities", employeeIdentityRoutes);
 app.use("/api/employee-work-details", employeeWorkDetailes_1.default);
 app.use("/api/employee-timelines", employeeTimeline_1.default);
 app.use("/api/onboarding", onboardingRoutes_1.default);

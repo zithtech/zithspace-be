@@ -27,7 +27,7 @@ model Tenant {
   leaveTypes          LeaveType[]
   leaveAdjustments    LeaveAdjustment[]
   leaveOriginStructures LeaveOriginStructure[]
-  leaveRequests         LeaveRequest[]
+  // leaveRequests      LeaveRequest[]   // model not yet defined
   originLeaveTypes      OriginLeaveType[]
   leaveLedgerEntries    LeaveLedger[]
   fixedHolidays         FixedHoliday[]
@@ -141,13 +141,13 @@ model User {
   createdCustomers        Customer[]        @relation("CustomerCreatedBy")
   updatedCustomers        Customer[]        @relation("CustomerUpdatedBy")
   
-  createdExitTypes ExitType[] @relation("ExitNoticePolicyCreator")
-  updatedExitTypes ExitType[] @relation("ExitNoticePolicyUpdater")
-  createdReasonForExits ReasonForExit[] @relation("ReasonForExitCreator")
-  updatedReasonForExits ReasonForExit[] @relation("ReasonForExitUpdater")
-    createdEmployeeExits EmployeeExit[]
-    createdExitApprovalWorkflows ExitApprovalWorkflow[] @relation("ExitApprovalWorkflowCreatedBy")
-  updatedExitApprovalWorkflows ExitApprovalWorkflow[] @relation("ExitApprovalWorkflowUpdatedBy")
+  // createdExitTypes ExitType[] @relation("ExitNoticePolicyCreator")         // model not yet defined
+  // updatedExitTypes ExitType[] @relation("ExitNoticePolicyUpdater")
+  // createdReasonForExits ReasonForExit[] @relation("ReasonForExitCreator")  // model not yet defined
+  // updatedReasonForExits ReasonForExit[] @relation("ReasonForExitUpdater")
+  // createdEmployeeExits EmployeeExit[]                                       // model not yet defined
+  // createdExitApprovalWorkflows ExitApprovalWorkflow[] @relation("ExitApprovalWorkflowCreatedBy")  // model not yet defined
+  // updatedExitApprovalWorkflows ExitApprovalWorkflow[] @relation("ExitApprovalWorkflowUpdatedBy")
 
   createdLedgers          LeaveLedger[] @relation("LeaveLedgerCreator")
   updatedLedgers          LeaveLedger[] @relation("LeaveLedgerUpdater")
@@ -160,9 +160,9 @@ model User {
   updatedLeaveTypes            LeaveType[]                @relation("LeaveTypeUpdater")
   leaves                       Leave[]                    @relation("UserLeaves")
   approvedAdjustments          LeaveAdjustment[]          @relation("LeaveAdjustmentApprover")
-  approvedLeaveRequests        LeaveRequest[]             @relation("LeaveRequestApprover")
-  createdLeaveRequests         LeaveRequest[]             @relation("LeaveRequestCreator")
-  updatedLeaveRequests         LeaveRequest[]             @relation("LeaveRequestUpdater")
+  // approvedLeaveRequests     LeaveRequest[]  @relation("LeaveRequestApprover")   // model not yet defined
+  // createdLeaveRequests      LeaveRequest[]  @relation("LeaveRequestCreator")
+  // updatedLeaveRequests      LeaveRequest[]  @relation("LeaveRequestUpdater")
   createdLeaveAdjustments      LeaveAdjustment[]          @relation("LeaveAdjustmentCreator")
   updatedLeaveAdjustments      LeaveAdjustment[]          @relation("LeaveAdjustmentUpdater")
   createdLeaveOriginStructures LeaveOriginStructure[]     @relation("LeaveOriginStructureCreator")
@@ -302,14 +302,8 @@ model User {
   createdMeetings       Meeting[]            @relation("MeetingCreator")
   meetingParticipations MeetingParticipant[]
 
-   //  ADD THESE TWO LINES
-  reimbursementsCreated  ReimbursementConfiguration[] @relation("ReimbursementCreatedBy")
-  reimbursementsUpdated  ReimbursementConfiguration[] @relation("ReimbursementUpdatedBy")
-
-
-
-  employeeId        String?   @map("employee_id") 
-  employee          Employee? @relation(fields: [employeeId], references: [id])
+  reimbursementConfigsCreated  ReimbursementConfiguration[] @relation("ReimbursementConfigCreatedBy")
+  reimbursementConfigsUpdated  ReimbursementConfiguration[] @relation("ReimbursementConfigUpdatedBy")
   // Client V2 Relations
   createdClientsV2          ClientV2[]         @relation("ClientV2Creator")
   uploadedClientDocumentsV2 ClientDocumentV2[] @relation("ClientDocumentV2Uploader")
@@ -317,8 +311,8 @@ model User {
   // ===== RBAC Relations =====
   userRoles UserRole[]
 
-  createdExitPolicies ExitNoticePolicy[] @relation("ExitNoticePolicyCreator")
-  updatedExitPolicies ExitNoticePolicy[] @relation("ExitNoticePolicyUpdater")
+  // createdExitPolicies ExitNoticePolicy[] @relation("ExitNoticePolicyCreator")  // model not yet defined
+  // updatedExitPolicies ExitNoticePolicy[] @relation("ExitNoticePolicyUpdater")
   
   // Time Tracking
   timeTrackingEntries TimeTrackingEntry[]
@@ -954,7 +948,7 @@ model LeaveType {
   updatedBy        User?    @relation("LeaveTypeUpdater", fields: [updatedById], references: [id])
    originLeaveTypes  OriginLeaveType[]
   leaveLedgerEntries LeaveLedger[]
-  leaveRequests      LeaveRequest[]
+  // leaveRequests   LeaveRequest[]    // model not yet defined
   leaveAdjustments   LeaveAdjustment[]
 
   @@unique([tenantId, code])
@@ -2009,7 +2003,7 @@ model OriginLeaveType {
   leaveOriginStructure LeaveOriginStructure @relation(fields: [leaveOriginId], references: [id], onDelete: Cascade)
   createdBy            User                 @relation("OriginLeaveTypeCreator", fields: [createdById], references: [id])
   updatedBy            User?                @relation("OriginLeaveTypeUpdater", fields: [updatedById], references: [id])
-  leaveLedgerEntries   LeaveLedger[]
+  // leaveLedgerEntries LeaveLedger[]   // LeaveLedger has no originLeaveTypeId field
 
   @@map("origin_leave_types")
 }
@@ -2163,7 +2157,6 @@ model Employee {
   users           User[]
 
   tenant                   Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  users     User[] 
   addresses                EmployeeAddress[]
   emergencyContacts        EmployeeEmergencyContact[]
   employeeIdentity         EmployeeIdentity?
@@ -2185,7 +2178,7 @@ model Employee {
   payrollUpdated EmployeePayrollDetail[] @relation("EmployeePayrollDetailUpdatedBy")
 
   experiences EmployeeExperience[]
-  employeeExits EmployeeExit[]
+  // employeeExits EmployeeExit[]  // model not yet defined
 
   createdExperiences EmployeeExperience[] @relation("EmployeeExperienceCreatedBy")
   updatedExperiences EmployeeExperience[] @relation("EmployeeExperienceUpdatedBy")
@@ -2210,7 +2203,7 @@ model Employee {
 
   leaveLedgerEntries LeaveLedger[]
   leaveAdjustments   LeaveAdjustment[]
-  leaveRequests      LeaveRequest[]
+  // leaveRequests   LeaveRequest[]    // model not yet defined
   // Client V2 Relations
   managedClients    ClientV2[]                   @relation("AccountManager")
   salesClients      ClientV2[]                   @relation("SalesOwner")
@@ -2314,16 +2307,14 @@ model EmployeeWorkDetail {
   totalDays     Int?    @map("total_days")
   totalHours    Int?    @map("total_hours")
   notice_period String? @db.VarChar(100)
-  positionId     String?  @db.Uuid @map("position_id") 
 
   createdById String  @map("created_by_id") @db.Uuid
   updatedById String? @map("updated_by_id") @db.Uuid
-  position   Position? @relation(fields: [positionId], references: [id])
+  position    Position? @relation(fields: [positionId], references: [id])
 
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt      @map("updated_at")
-  employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-position   Position? @relation(fields: [positionId], references: [id])
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt      @map("updated_at")
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
     @@map("employee_work_details")
   }
@@ -3007,17 +2998,15 @@ model LeaveLedger {
   updatedById     String?         @map("updated_by_id")
 
   // Relations
-  tenant               Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  client               Client?   @relation(fields: [clientId], references: [id])
-  createdBy            User      @relation("RequisitionCreator", fields: [createdById], references: [id])
-  accountManager       User?     @relation("RequisitionAccountManager", fields: [accountManagerId], references: [id])
-  deliveryManager      User?     @relation("RequisitionDeliveryManager", fields: [deliveryManagerId], references: [id])
-  assignedRecruiters   User[]    @relation("RequisitionRecruiters")
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee  Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id])
+  createdBy User?     @relation("LeaveLedgerCreator", fields: [createdById], references: [id])
+  updatedBy User?     @relation("LeaveLedgerUpdater", fields: [updatedById], references: [id])
 
-  @@unique([tenantId, ticketId])
-  @@index([tenantId, status])
-  @@index([clientId])
-  @@map("job_requisitions")
+  @@index([tenantId, employeeId])
+  @@index([tenantId, leaveTypeId])
+  @@map("leave_ledger")
 }
 
 model InvoiceTemplate {
@@ -3141,6 +3130,20 @@ model JobRequisition {
   createdAt            DateTime  @default(now()) @map("created_at")
   updatedAt            DateTime  @updatedAt @map("updated_at")
 
+  // Relations
+  tenant             Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client             Client?   @relation(fields: [clientId], references: [id])
+  createdBy          User      @relation("RequisitionCreator", fields: [createdById], references: [id])
+  accountManager     User?     @relation("RequisitionAccountManager", fields: [accountManagerId], references: [id])
+  deliveryManager    User?     @relation("RequisitionDeliveryManager", fields: [deliveryManagerId], references: [id])
+  assignedRecruiters User[]    @relation("RequisitionRecruiters")
+
+  @@unique([tenantId, ticketId])
+  @@index([tenantId, status])
+  @@index([clientId])
+  @@map("job_requisitions")
+}
+
 model ReimbursementConfiguration {
   id            String   @id @default(uuid())
 
@@ -3154,10 +3157,8 @@ model ReimbursementConfiguration {
   period        String   // "MONTH" or "YEAR"
 
   status        String
-  createdBy     User    @relation("ReimbursementCreatedBy", fields: [createdById], references: [id])
-  updatedBy     User?   @relation("ReimbursementUpdatedBy", fields: [updatedById], references: [id])
-
- 
+  createdBy     User    @relation("ReimbursementConfigCreatedBy", fields: [createdById], references: [id])
+  updatedBy     User?   @relation("ReimbursementConfigUpdatedBy", fields: [updatedById], references: [id])
 
   createdById   String   @map("created_by_id")
   updatedById   String?  @map("updated_by_id")
@@ -3449,131 +3450,4 @@ model UserPreference {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("user_preferences")
-}
-model ReimbursementItem {
-  id              String   @id @default(uuid()) @db.Uuid
-
-  reimbursementId String   @db.Uuid @map("reimbursement_id")
-  reimbursement   Reimbursement @relation(fields: [reimbursementId], references: [id], onDelete: Cascade)
-
- 
-  status          ReimbursementStatus @default(SUBMITTED)
-
-  category        String   @db.VarChar(100)
-  date            DateTime @db.Date
-  billNo          String   @db.VarChar(100) @map("bill_no")
-  amount          Decimal  @db.Decimal(10,2)
-  description     String?  @db.Text
-
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-  approvers       ReimbursementItemApprover[]
-
-  attachments     Attachment[]
-
-  @@index([reimbursementId])
-  @@map("reimbursement_items")
-}
-model ReimbursementItemApprover {
-  id                   String   @id @default(uuid())
-
-  tenantId             String   @db.Uuid @map("tenant_id")
-  reimbursementItemId  String   @db.Uuid @map("reimbursement_item_id")
-  level                Int
-
-  approverType         String   @map("approver_type")   // MANAGER / HR / FINANCE (optional)
-  approverId           String    @map("approver_id")    // User ID who will approve
-
-  status               ApproverStatus @default(PENDING)
-
-  actedAt              DateTime?   @map("acted_at")  // When approved/rejected
-  remarks              String?      // Optional comment
-  createdAt            DateTime    @map("created_at")   @default(now())
-  updatedAt            DateTime    @map("updated_at")   @updatedAt
-
-  reimbursementItem    ReimbursementItem @relation(fields: [reimbursementItemId], references: [id])
-
-  @@index([reimbursementItemId])
-  @@index([approverId])
-  @@map("reimbursement_item_approvers")
-}
-model Attachment {
-  id                  String   @id @default(uuid()) @db.Uuid
-
-
-  reimbursementItemId String   @db.Uuid @map("reimbursement_item_id")
-  reimbursementItem   ReimbursementItem @relation(fields: [reimbursementItemId], references: [id], onDelete: Cascade)
-
-  fileName            String   @db.VarChar(255) @map("file_name")
-  fileUrl             String   @db.Text @map("file_url")
-  fileSize            Int      @map("file_size")
-  fileType            String   @db.VarChar(100)  @map("file_type")
-
-  uploadedBy          String   @db.Uuid @map("uploaded_by")
-  uploadedAt          DateTime @default(now()) @map("uploaded_at")
-
-  @@index([reimbursementItemId])
-  @@map("attachments")
-}
-model ReimbursementPolicy {
-  id           String   @id @default(uuid()) @db.Uuid
-  tenantId          String    @map("tenant_id")
-  originType   String   @map("origin_type")
-  originId     String   @db.Uuid @map("origin_id")
-  isActive     Boolean  @default(true) @map("is_active")
-
-  createdById  String   @db.Uuid @map("created_by_id")
-  updatedById  String?  @db.Uuid @map("updated_by_id")
-
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
-
-  
-  rules        ReimbursementPolicyRule[]
-
-  @@map("reimbursement_policies")
-}
-model ReimbursementPolicyRule {
-  id           String   @id @default(uuid()) @db.Uuid
-  tenantId          String    @map("tenant_id")
-
-  policyId     String   @db.Uuid @map("policy_id")
-  categoryId   String   @map("category_id")
-
-  maxAmount    Decimal  @db.Decimal(12,2) @map("max_amount")
-  periodType   String   @map("period_type") // MONTH | YEAR
-
-  isActive     Boolean  @default(true) @map("is_active")
-
-  createdById  String   @db.Uuid @map("created_by_id")
-  updatedById  String?  @db.Uuid @map("updated_by_id")
-
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
-
-  
-  policy       ReimbursementPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
-  approvers    ReimbursementPolicyApprover[]
-
-  @@map("reimbursement_policy_rules")
-}
-
-model ReimbursementPolicyApprover {
-  id            String   @id @default(uuid()) @db.Uuid
-  tenantId      String   @map("tenant_id")
-  policyRuleId  String   @db.Uuid @map("policy_rule_id")
-
-  level         Int
-  approverType  String   @map("approver_type")
-  approverId    String  @map("approver_id")
-  createdById   String   @db.Uuid @map("created_by_id")
-  updatedById   String?  @db.Uuid @map("updated_by_id")
-
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
-
- 
-  rule          ReimbursementPolicyRule @relation(fields: [policyRuleId], references: [id], onDelete: Cascade)
-
-  @@map("reimbursement_policy_approvers")
 }
