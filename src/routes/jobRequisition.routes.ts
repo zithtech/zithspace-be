@@ -12,6 +12,7 @@ import {
   getAttachments,
   deleteAttachment,
 } from "../controllers/jobRequisition.controller";
+import {analyzeResume} from "../controllers/resumeAnalyzerController";
 
 const router = Router();
 
@@ -33,5 +34,8 @@ router.delete("/bulk/delete", deleteRequisitions);
 router.post("/:id/attachments", uploadAttachment);
 router.get("/:id/attachments", getAttachments);
 router.delete("/:id/attachments/:attachmentId", deleteAttachment);
+
+//Resume Analyzer
+router.post("/resume",analyzeResume)
 
 export default router;
