@@ -4,11 +4,11 @@ export declare function createEmploymentDetails(req: AuthRequest, employeeId: st
     message: string;
 }>;
 export declare function getEmploymentDetails(req: AuthRequest, employeeId: string): Promise<{
-    positionId: string;
+    positionId: any;
     team: string;
     employeeType: string;
     workLocation: string;
-    workShift: import("@prisma/client/runtime/library").JsonValue;
+    workShift: string;
     workType: string;
     hybridMode: string;
     fixedDays: string[];
@@ -28,11 +28,11 @@ export declare function getAllEmploymentDetails(req: AuthRequest): Promise<{
     employeeCode: string;
     firstName: string;
     lastName: string;
-    positionId: string;
+    positionId: any;
     team: string;
     employeeType: string;
     workLocation: string;
-    workShift: string | number | true | import("@prisma/client/runtime/library").JsonObject | import("@prisma/client/runtime/library").JsonArray;
+    workShift: string;
     employeeJoiningDate: string;
     noticePeriod: string;
     workType: string;
