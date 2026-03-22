@@ -86,6 +86,7 @@ import exitApprovalWorkflowRoutes from "@/routes/exitApprovalWorkflow.routes";
 
 import recruitmentStatusRoutes from "@/routes/recruitmentStatus.routes";
 import recruitmentActionRoutes from "@/routes/recruitmentAction.routes";
+import candidateRoutes from "@/routes/candidateRoutes";
 // Load environment
 dotenv.config();
 console.log("🚀 API Starting up...");
@@ -248,14 +249,11 @@ app.use("/api/leave-balances", leaveBalanceRoutes);
 
 app.use("/api/time-tracking", timeTrackingRoutes);
 
+app.use("/api/candidates", candidateRoutes);
+
 app.use("/api/recruitment-statuses", recruitmentStatusRoutes);
 app.use("/api/recruitment-actions", recruitmentActionRoutes);
 
-// onboarding
-// app.use("/api/employees", employeeRoutes);
-// app.use("/api/employee-addresses", employeeAddressRoutes);
-// app.use("/api/employee-emergency-contacts", employeeEmergencyContactRoutes);
-// app.use("/api/employee-identities", employeeIdentityRoutes);
 app.use("/api/employee-work-details", employeeWorkDetailRoutes);
 app.use("/api/employee-timelines", employeeTimelineRoutes);
 

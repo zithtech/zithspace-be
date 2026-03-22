@@ -7,6 +7,7 @@ exports.uploadRequisitionAttachmentToR2 = uploadRequisitionAttachmentToR2;
 exports.uploadEmployeeDocumentToR2 = uploadEmployeeDocumentToR2;
 exports.uploadClientDocumentToR2 = uploadClientDocumentToR2;
 exports.uploadEmployeeAssetToR2 = uploadEmployeeAssetToR2;
+exports.uploadCandidateDocumentToR2 = uploadCandidateDocumentToR2;
 exports.deleteFileFromR2 = deleteFileFromR2;
 exports.deleteImageFromR2 = deleteImageFromR2;
 exports.extractImageUrlsFromHtml = extractImageUrlsFromHtml;
@@ -301,6 +302,41 @@ async function uploadEmployeeAssetToR2({ base64, fileName = "asset.png", tenantI
     catch (error) {
         console.error(`R2 ${folder} image upload error:`, error);
         throw new Error(`Failed to upload ${folder} image: ${error.message}`);
+    }
+}
+/**
+ * Upload candidate document to Cloudflare R2
+ * @param base64File - Base64 encoded file string
+ * @param fileName - Original file name
+ * @param tenantId - Tenant ID
+ * @param candidateId - Candidate ID
+ * @param documentType - Type of document (e.g., resume)
+ * @returns Public URL of uploaded document
+ */
+async function uploadCandidateDocumentToR2(base64File, fileName, tenantId, candidateId, documentType) {
+    try {
+        const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+        if (!matches) {
+            throw new Error("Invalid file format. Expected base64 encoded file.");
+        }
+        const contentType = matches[1];
+        const base64Data = matches[2];
+        const buffer = Buffer.from(base64Data, "base64");
+        const uniqueId = (0, nanoid_1.nanoid)(12);
+        const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+        const key = `${tenantId}/candidates/${candidateId}/documents/${documentType}/${uniqueId}_${sanitizedFileName}`;
+        const params = {
+            Bucket: BUCKET_NAME,
+            Key: key,
+            Body: buffer,
+            ContentType: contentType,
+        };
+        await exports.s3Client.send(new client_s3_1.PutObjectCommand(params));
+        return `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/${key}`;
+    }
+    catch (error) {
+        console.error("R2 candidate document upload error:", error);
+        throw new Error(`Failed to upload candidate document: ${error.message}`);
     }
 }
 /**
