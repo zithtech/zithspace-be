@@ -68,7 +68,9 @@ class DashboardController {
                             select: {
                                 id: true,
                                 name: true,
-                                position: true,
+                                position: {
+                                    select: { title: true },
+                                },
                             },
                         },
                         ticket: {
@@ -126,7 +128,9 @@ class DashboardController {
                         select: {
                             id: true,
                             name: true,
-                            position: true,
+                            position: {
+                                select: { title: true },
+                            },
                             workDays: true,
                         },
                     });
@@ -141,7 +145,9 @@ class DashboardController {
                                 select: {
                                     id: true,
                                     name: true,
-                                    position: true,
+                                    position: {
+                                        select: { title: true },
+                                    },
                                 },
                             },
                         },
@@ -189,12 +195,12 @@ class DashboardController {
                             : 0,
                         presentList: presentList.map((u) => ({
                             name: u.name,
-                            position: u.position,
+                            position: u.position?.title || "Member",
                             id: u.id,
                         })),
                         absentList: absentList.map((u) => ({
                             name: u.name,
-                            position: u.position,
+                            position: u.position?.title || "Member",
                             id: u.id,
                         })),
                     };
@@ -265,7 +271,9 @@ class DashboardController {
                             select: {
                                 id: true,
                                 name: true,
-                                position: true,
+                                position: {
+                                    select: { title: true },
+                                },
                             },
                         },
                     },
@@ -337,11 +345,16 @@ class DashboardController {
                             select: {
                                 id: true,
                                 name: true,
-                                position: true,
+                                position: {
+                                    select: { title: true },
+                                },
                             },
                         });
                         return {
-                            user: topUser,
+                            user: {
+                                ...topUser,
+                                position: topUser.position?.title || "Member"
+                            },
                             completedTickets: completedTickets[0]._count.id,
                         };
                     }
@@ -459,7 +472,15 @@ class DashboardController {
             const onLeaveList = [];
             const onPermissionList = [];
             const workingFromHomeList = [];
-            todayLeaves.forEach((leave) => {
+            // 11. Today's Approved Leaves (people on leave/permission today)
+            const formattedTodayLeaves = todayLeaves.map((leave) => ({
+                ...leave,
+                user: {
+                    ...leave.user,
+                    position: leave.user.position?.title || "Member",
+                },
+            }));
+            formattedTodayLeaves.forEach((leave) => {
                 const leaveData = {
                     id: leave.id,
                     user: leave.user,

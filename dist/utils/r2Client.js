@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.s3Client = void 0;
 exports.uploadImageToR2 = uploadImageToR2;
 exports.uploadFileToR2 = uploadFileToR2;
+exports.uploadDealFileToR2 = uploadDealFileToR2;
 exports.uploadEmployeeDocumentToR2 = uploadEmployeeDocumentToR2;
 exports.uploadClientDocumentToR2 = uploadClientDocumentToR2;
 exports.uploadEmployeeAssetToR2 = uploadEmployeeAssetToR2;
@@ -14,11 +15,11 @@ const client_s3_1 = require("@aws-sdk/client-s3");
 const nanoid_1 = require("nanoid");
 // Cloudflare R2 Configuration
 const REGION = "auto";
-const BUCKET_NAME = process.env.CF_R2_BUCKET_NAME || "zithspace";
-const ACCOUNT_ID = process.env.CF_R2_ACCOUNT_ID;
-const ACCESS_KEY_ID = process.env.CF_R2_ACCESS_KEY_ID;
-const SECRET_ACCESS_KEY = process.env.CF_R2_SECRET_ACCESS_KEY;
-const PUBLIC_URL = process.env.CF_R2_PUBLIC_URL;
+const BUCKET_NAME = (process.env.CF_R2_BUCKET_NAME || "zithspace").replace(/['"]/g, "");
+const ACCOUNT_ID = (process.env.CF_R2_ACCOUNT_ID || "").replace(/['"]/g, "");
+const ACCESS_KEY_ID = (process.env.CF_R2_ACCESS_KEY_ID || "").replace(/['"]/g, "");
+const SECRET_ACCESS_KEY = (process.env.CF_R2_SECRET_ACCESS_KEY || "").replace(/['"]/g, "");
+const PUBLIC_URL = (process.env.CF_R2_PUBLIC_URL || "").replace(/['"]/g, "");
 // Validate required environment variables
 if (!ACCOUNT_ID || !ACCESS_KEY_ID || !SECRET_ACCESS_KEY) {
     console.error("Missing required R2 environment variables");
@@ -26,7 +27,7 @@ if (!ACCOUNT_ID || !ACCESS_KEY_ID || !SECRET_ACCESS_KEY) {
 // Create S3 client for R2
 exports.s3Client = new client_s3_1.S3Client({
     region: REGION,
-    endpoint: `https://a7b954c93286b9aecbd1cd369b491aa0.r2.cloudflarestorage.com`,
+    endpoint: `https://${ACCOUNT_ID}.r2.cloudflarestorage.com`,
     credentials: {
         accessKeyId: ACCESS_KEY_ID,
         secretAccessKey: SECRET_ACCESS_KEY,
@@ -143,6 +144,47 @@ async function uploadFileToR2(base64File, fileName, tenantId, ticketId) {
     catch (error) {
         console.error("R2 file upload error:", error);
         throw new Error(`Failed to upload file: ${error.message}`);
+    }
+}
+/**
+ * Upload any file type to Cloudflare R2 for Deals
+ * @param base64File - Base64 encoded file string
+ * @param fileName - Original file name
+ * @param tenantId - Tenant ID
+ * @param dealId - Deal ID
+ * @returns Object with file URL and metadata
+ */
+async function uploadDealFileToR2(base64File, fileName, tenantId, dealId) {
+    try {
+        const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+        if (!matches) {
+            throw new Error("Invalid file format. Expected base64 encoded file.");
+        }
+        const contentType = matches[1];
+        const base64Data = matches[2];
+        const buffer = Buffer.from(base64Data, "base64");
+        const fileSizeInBytes = buffer.length;
+        const uniqueId = (0, nanoid_1.nanoid)(12);
+        const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+        const folderPath = `${tenantId}/deals/${dealId}/files`;
+        const storedFileName = `${folderPath}/${uniqueId}_${sanitizedFileName}`;
+        await exports.s3Client.send(new client_s3_1.PutObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: storedFileName,
+            Body: buffer,
+            ContentType: contentType,
+            ContentDisposition: `attachment; filename="${sanitizedFileName}"`,
+        }));
+        const fileUrl = `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/${storedFileName}`;
+        return {
+            fileUrl,
+            fileSize: fileSizeInBytes,
+            fileType: contentType,
+        };
+    }
+    catch (error) {
+        console.error("R2 deal file upload error:", error);
+        throw new Error(`Failed to upload deal file: ${error.message}`);
     }
 }
 /**

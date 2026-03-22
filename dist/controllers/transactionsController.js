@@ -52,7 +52,16 @@ class TransactionsController {
                         where,
                         include: {
                             user: {
-                                select: { id: true, name: true, workEmail: true, position: true }
+                                select: {
+                                    id: true,
+                                    name: true,
+                                    workEmail: true,
+                                    position: {
+                                        select: {
+                                            title: true,
+                                        },
+                                    },
+                                },
                             }
                         },
                         orderBy: [
@@ -116,7 +125,16 @@ class TransactionsController {
                     },
                     include: {
                         user: {
-                            select: { id: true, name: true, workEmail: true, position: true }
+                            select: {
+                                id: true,
+                                name: true,
+                                workEmail: true,
+                                position: {
+                                    select: {
+                                        title: true,
+                                    },
+                                },
+                            },
                         }
                     }
                 });
@@ -213,7 +231,16 @@ class TransactionsController {
                     },
                     include: {
                         user: {
-                            select: { id: true, name: true, workEmail: true, position: true }
+                            select: {
+                                id: true,
+                                name: true,
+                                workEmail: true,
+                                position: {
+                                    select: {
+                                        title: true,
+                                    },
+                                },
+                            },
                         }
                     }
                 });
@@ -311,7 +338,16 @@ class TransactionsController {
                     },
                     include: {
                         user: {
-                            select: { id: true, name: true, workEmail: true, position: true }
+                            select: {
+                                id: true,
+                                name: true,
+                                workEmail: true,
+                                position: {
+                                    select: {
+                                        title: true,
+                                    },
+                                },
+                            },
                         }
                     }
                 });

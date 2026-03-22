@@ -80,6 +80,8 @@ import calendarRoutes from "@/routes/calendar"
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
 import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
 import rbacRoutes from "@/routes/rbac";
+import pipelineStageRoutes from "@/routes/pipelineStageRoutes";
+import dealRoutes from "@/routes/dealRoutes";
 // Load environment
 dotenv.config();
 console.log("🚀 API Starting up...");
@@ -247,6 +249,8 @@ app.use("/api/employeesettings", employeeSettingsRoutes);
 
 // RBAC management API
 app.use("/api/rbac", rbacRoutes);
+app.use("/api/pipeline-stages", pipelineStageRoutes);
+app.use("/api/deals", dealRoutes);
 
 // app.use("/api/addresses", addressRoutes);
 //app.use("/api/employee_address", addressRoutes);

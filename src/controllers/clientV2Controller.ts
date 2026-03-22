@@ -581,6 +581,38 @@ export class ClientV2Controller {
             res.status(500).json({ success: false, error: 'Failed to fetch employees' } as ApiResponse);
         }
     }
+
+    static async getClientsForSelect(req: AuthRequest, res: Response): Promise<void> {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({ success: false, error: 'Tenant context required' } as ApiResponse);
+                return;
+            }
+
+            const clients = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                return await prisma.clientV2.findMany({
+                    where: { tenantId: req.tenantId, isActive: true },
+                    select: {
+                        id: true,
+                        companyName: true,
+                        clientCode: true,
+                    },
+                    orderBy: { companyName: 'asc' }
+                });
+            });
+
+            const formatted = clients.map(c => ({
+                value: c.id,
+                label: `${c.companyName} (${c.clientCode})`,
+                company: c.companyName
+            }));
+
+            res.status(200).json({ success: true, data: formatted } as ApiResponse);
+        } catch (error) {
+            console.error('getClientsForSelect V2 error:', error);
+            res.status(500).json({ success: false, error: 'Failed to fetch clients' } as ApiResponse);
+        }
+    }
 }
 
 export default ClientV2Controller;

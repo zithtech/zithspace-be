@@ -291,18 +291,22 @@ export class SettingsController {
         where: {
           projectId,
           tenantId: req.tenantId,
-          status: { in: ['planning', 'active'] },
-          OR: [
-            { releaseDate: null },
-            { releaseDate: { gte: new Date() } }
-          ]
+          status: { in: ['planning', 'active', 'planned'] }
         },
         select: {
           id: true,
           version: true,
           description: true,
           status: true,
-          releaseDate: true
+          releaseDate: true,
+          startDate: true,
+          endDate: true,
+          _count: {
+            select: {
+              tickets: true,
+              sprintTickets: true
+            }
+          }
         },
         orderBy: { releaseDate: 'asc' }
       });
@@ -313,7 +317,11 @@ export class SettingsController {
         label: plan.version,
         description: plan.description,
         status: plan.status,
-        releaseDate: plan.releaseDate
+        releaseDate: plan.releaseDate,
+        startDate: plan.startDate,
+        endDate: plan.endDate,
+        totalTickets: plan._count.sprintTickets,
+        completedTickets: 0 // We'd need to filter by status for this, but for now let's just send the count
       }));
 
       res.status(200).json({

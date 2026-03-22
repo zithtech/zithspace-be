@@ -100,7 +100,9 @@ export class DashboardController {
               select: {
                 id: true,
                 name: true,
-                position: true,
+                position: {
+                  select: { title: true },
+                },
               },
             },
             ticket: {
@@ -162,7 +164,9 @@ export class DashboardController {
             select: {
               id: true,
               name: true,
-              position: true,
+              position: {
+                select: { title: true },
+              },
               workDays: true,
             },
           });
@@ -178,7 +182,9 @@ export class DashboardController {
                 select: {
                   id: true,
                   name: true,
-                  position: true,
+                  position: {
+                    select: { title: true },
+                  },
                 },
               },
             },
@@ -231,12 +237,12 @@ export class DashboardController {
                 : 0,
             presentList: presentList.map((u) => ({
               name: u.name,
-              position: u.position,
+              position: (u.position as any)?.title || "Member",
               id: u.id,
             })),
             absentList: absentList.map((u) => ({
               name: u.name,
-              position: u.position,
+              position: (u.position as any)?.title || "Member",
               id: u.id,
             })),
           };
@@ -316,7 +322,9 @@ export class DashboardController {
               select: {
                 id: true,
                 name: true,
-                position: true,
+                position: {
+                  select: { title: true },
+                },
               },
             },
           },
@@ -394,12 +402,17 @@ export class DashboardController {
               select: {
                 id: true,
                 name: true,
-                position: true,
+                position: {
+                  select: { title: true },
+                },
               },
             });
 
             return {
-              user: topUser,
+              user: {
+                ...topUser,
+                position: (topUser.position as any)?.title || "Member"
+              },
               completedTickets: completedTickets[0]._count.id,
             };
           }
@@ -540,7 +553,16 @@ export class DashboardController {
       const onPermissionList: any[] = [];
       const workingFromHomeList: any[] = [];
 
-      todayLeaves.forEach((leave) => {
+      // 11. Today's Approved Leaves (people on leave/permission today)
+      const formattedTodayLeaves = todayLeaves.map((leave: any) => ({
+        ...leave,
+        user: {
+          ...leave.user,
+          position: (leave.user.position as any)?.title || "Member",
+        },
+      }));
+
+      formattedTodayLeaves.forEach((leave: any) => {
         const leaveData = {
           id: leave.id,
           user: leave.user,

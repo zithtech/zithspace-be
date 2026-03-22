@@ -64,7 +64,16 @@ export class ProjectController {
           where,
           include: {
             projectManager: {
-              select: { id: true, name: true, workEmail: true, position: true },
+              select: {
+                id: true,
+                name: true,
+                workEmail: true,
+                position: {
+                  select: {
+                    title: true,
+                  },
+                },
+              },
             },
             members: {
               select: {
@@ -73,7 +82,9 @@ export class ProjectController {
                     id: true,
                     name: true,
                     workEmail: true,
-                    position: true,
+                    position: {
+                      select: { title: true },
+                    },
                   },
                 },
               },
@@ -139,7 +150,11 @@ export class ProjectController {
               id: true,
               name: true,
               workEmail: true,
-              position: true,
+              position: {
+                select: {
+                  title: true,
+                },
+              },
             },
           },
           members: {
@@ -149,7 +164,11 @@ export class ProjectController {
                   id: true,
                   name: true,
                   workEmail: true,
-                  position: true,
+                  position: {
+                    select: {
+                      title: true,
+                    },
+                  },
                 },
               },
             },
@@ -159,7 +178,11 @@ export class ProjectController {
               id: true,
               name: true,
               workEmail: true,
-              position: true,
+              position: {
+                select: {
+                  title: true,
+                },
+              },
             },
           },
         },
@@ -304,7 +327,14 @@ export class ProjectController {
         },
         include: {
           projectManager: {
-            select: { id: true, name: true, workEmail: true, position: true },
+            select: {
+              id: true,
+              name: true,
+              workEmail: true,
+              position: {
+                select: { title: true },
+              },
+            },
           },
           members: {
             select: {
@@ -313,7 +343,9 @@ export class ProjectController {
                   id: true,
                   name: true,
                   workEmail: true,
-                  position: true,
+                  position: {
+                    select: { title: true },
+                  },
                 },
               },
             },
@@ -473,7 +505,14 @@ export class ProjectController {
         data: updateData,
         include: {
           projectManager: {
-            select: { id: true, name: true, workEmail: true, position: true },
+            select: {
+              id: true,
+              name: true,
+              workEmail: true,
+              position: {
+                select: { title: true },
+              },
+            },
           },
           members: {
             select: {
@@ -482,7 +521,9 @@ export class ProjectController {
                   id: true,
                   name: true,
                   workEmail: true,
-                  position: true,
+                  position: {
+                    select: { title: true },
+                  },
                 },
               },
             },
@@ -814,7 +855,15 @@ export class ProjectController {
           members: {
             take: 5, // Limit mostly members for UI
             select: {
-              user: { select: { id: true, name: true, position: true } },
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  position: {
+                    select: { title: true },
+                  },
+                },
+              },
             },
           },
           _count: {
@@ -1076,7 +1125,9 @@ export class ProjectController {
                   id: true,
                   name: true,
                   workEmail: true,
-                  position: true,
+                  position: {
+                    select: { title: true },
+                  },
                 },
               },
             },
@@ -1136,7 +1187,11 @@ export class ProjectController {
               id: true,
               name: true,
               workEmail: true,
-              position: true,
+              position: {
+                select: {
+                  title: true,
+                },
+              },
             },
           },
           members: {
@@ -1146,7 +1201,11 @@ export class ProjectController {
                   id: true,
                   name: true,
                   workEmail: true,
-                  position: true,
+                  position: {
+                    select: {
+                      title: true,
+                    },
+                  },
                 },
               },
             },
@@ -1159,22 +1218,31 @@ export class ProjectController {
       }
 
       // Combine project manager and team members
-      const allMembers = [
-        {
+      const allMembers: any[] = [];
+
+      if (project.projectManager) {
+        allMembers.push({
           value: project.projectManager.id,
           label: project.projectManager.name,
-          position: project.projectManager.position,
+          position: (project.projectManager.position as any)?.title || "Project Manager",
           workEmail: project.projectManager.workEmail,
           isProjectManager: true,
-        },
-        ...project.members.map((member) => ({
-          value: member.user.id,
-          label: member.user.name,
-          position: member.user.position,
-          workEmail: member.user.workEmail,
-          isProjectManager: false,
-        })),
-      ];
+        });
+      }
+
+      if (project.members) {
+        project.members.forEach((member) => {
+          if (member.user) {
+            allMembers.push({
+              value: member.user.id,
+              label: member.user.name,
+              position: (member.user.position as any)?.title || "Team Member",
+              workEmail: member.user.workEmail,
+              isProjectManager: false,
+            });
+          }
+        });
+      }
 
       // Remove duplicates (in case project manager is also in members list)
       const uniqueMembers = allMembers.filter(
@@ -1418,7 +1486,9 @@ export class ProjectController {
                   id: true,
                   name: true,
                   workEmail: true,
-                  position: true,
+                  position: {
+                    select: { title: true },
+                  },
                 },
               },
             },

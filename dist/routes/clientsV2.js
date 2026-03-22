@@ -20,6 +20,11 @@ router.use(auth_1.requireAuth);
  */
 router.get('/', clientV2Controller_1.ClientV2Controller.getClients);
 /**
+ * @route   GET /api/clients-v2/select
+ * @desc    Get clients for dropdown/select (tenant-aware)
+ */
+router.get('/select', clientV2Controller_1.ClientV2Controller.getClientsForSelect);
+/**
  * @route   GET /api/clients-v2/:id
  * @desc    Get client v2 by ID (tenant-aware)
  * @access  Private (authenticated users within tenant)

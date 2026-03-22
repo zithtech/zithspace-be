@@ -22,6 +22,19 @@ export declare function uploadFileToR2(base64File: string, fileName: string, ten
     fileType: string;
 }>;
 /**
+ * Upload any file type to Cloudflare R2 for Deals
+ * @param base64File - Base64 encoded file string
+ * @param fileName - Original file name
+ * @param tenantId - Tenant ID
+ * @param dealId - Deal ID
+ * @returns Object with file URL and metadata
+ */
+export declare function uploadDealFileToR2(base64File: string, fileName: string, tenantId: string, dealId: string): Promise<{
+    fileUrl: string;
+    fileSize: number;
+    fileType: string;
+}>;
+/**
  * Upload employee document to Cloudflare R2
  * @param base64File - Base64 encoded file string
  * @param fileName - Original file name

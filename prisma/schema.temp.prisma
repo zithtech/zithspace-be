@@ -1,0 +1,3441 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model AssignedRecruiters {
+  A String
+  B String
+
+  @@unique([A, B], map: "_AssignedRecruiters_AB_unique")
+  @@index([B], map: "_AssignedRecruiters_B_index")
+  @@map("_AssignedRecruiters")
+}
+
+model RequisitionRecruiters {
+  A String
+  B String
+
+  @@unique([A, B], map: "_RequisitionRecruiters_AB_unique")
+  @@index([B], map: "_RequisitionRecruiters_B_index")
+  @@map("_RequisitionRecruiters")
+}
+
+model attachments {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reimbursement_item_id String   @db.Uuid
+  file_name             String   @db.VarChar(255)
+  file_url              String
+  file_size             Int
+  file_type             String   @db.VarChar(100)
+  uploaded_by           String   @db.Uuid
+  uploaded_at           DateTime @default(now()) @db.Timestamp(6)
+}
+
+model attendance {
+  id                                    String              @id
+  tenant_id                             String
+  user_id                               String
+  date                                  DateTime
+  clock_in                              DateTime?
+  clock_out                             DateTime?
+  status                                String              @default("present")
+  shift_id                              String?
+  total_work_minutes                    Int                 @default(0)
+  total_break_minutes                   Int                 @default(0)
+  effective_work_minutes                Int                 @default(0)
+  overtime_minutes                      Int                 @default(0)
+  late_minutes                          Int                 @default(0)
+  is_manual_entry                       Boolean             @default(false)
+  entered_by_id                         String?
+  notes                                 String?
+  created_at                            DateTime            @default(now())
+  updated_at                            DateTime
+  users_attendance_entered_by_idTousers users?              @relation("attendance_entered_by_idTousers", fields: [entered_by_id], references: [id])
+  shifts                                shifts?             @relation(fields: [shift_id], references: [id])
+  tenants                               tenants             @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  users_attendance_user_idTousers       users               @relation("attendance_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade)
+  attendance_breaks                     attendance_breaks[]
+
+  @@unique([tenant_id, user_id, date], map: "attendance_unique_user_date")
+}
+
+model attendance_breaks {
+  id               String     @id
+  tenant_id        String
+  attendance_id    String
+  break_type       String
+  start_time       DateTime
+  end_time         DateTime?
+  duration_minutes Int        @default(0)
+  created_at       DateTime   @default(now())
+  updated_at       DateTime
+  attendance       attendance @relation(fields: [attendance_id], references: [id], onDelete: Cascade)
+  tenants          tenants    @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+}
+
+model attendance_sessions {
+  id            String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  attendance_id String
+  clock_in      DateTime  @db.Timestamp(6)
+  clock_out     DateTime? @db.Timestamp(6)
+  work_minutes  Int       @default(0)
+  created_at    DateTime  @default(now()) @db.Timestamp(6)
+  updated_at    DateTime  @default(now()) @db.Timestamp(6)
+
+  @@index([attendance_id], map: "idx_attendance_sessions_attendance_id")
+}
+
+model authorization_logs {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id   String
+  user_id     String?
+  permission  String
+  resource    String
+  resource_id String?
+  result      String
+  reason      String?
+  ip_address  String?
+  user_agent  String?
+  endpoint    String?
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([created_at], map: "auth_logs_created_at_idx")
+  @@index([tenant_id, user_id], map: "auth_logs_tenant_user_idx")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model bucket_members {
+  id        String   @id
+  bucket_id String
+  user_id   String
+  role      String   @default("member")
+  added_at  DateTime @default(now())
+
+  @@unique([bucket_id, user_id], map: "unique_bucket_member")
+  @@index([bucket_id], map: "idx_bucket_members_bucket_id")
+  @@index([user_id], map: "idx_bucket_members_user_id")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model buckets {
+  id            String   @id
+  tenant_id     String
+  project_id    String?
+  name          String
+  description   String?
+  color         String?  @default("#6366f1")
+  is_shared     Boolean  @default(false)
+  created_by_id String
+  created_at    DateTime @default(now())
+  updated_at    DateTime
+
+  @@unique([tenant_id, project_id, name], map: "unique_bucket_per_project")
+  @@index([created_by_id], map: "idx_buckets_created_by_id")
+  @@index([project_id], map: "idx_buckets_project_id")
+  @@index([tenant_id], map: "idx_buckets_tenant_id")
+}
+
+model calendar_event_exceptions {
+  id                    String    @id
+  event_id              String
+  tenant_id             String
+  user_id               String
+  created_by            String
+  updated_by            String?
+  original_date         DateTime  @db.Timestamptz(6)
+  new_start_time        DateTime? @db.Timestamptz(6)
+  new_end_time          DateTime? @db.Timestamptz(6)
+  is_cancelled          Boolean   @default(false)
+  external_instance_id  String?
+  created_at            DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime  @default(now()) @db.Timestamptz(6)
+  override_title        String?
+  override_description  String?
+  override_location     String?
+  override_meeting_link String?
+  override_attendees    Json?
+
+  @@unique([event_id, original_date], map: "unique_event_occurrence")
+  @@index([event_id], map: "idx_exception_event_id")
+  @@index([tenant_id], map: "idx_exception_tenant_id")
+  @@index([user_id], map: "idx_exception_user_id")
+}
+
+model calendar_events {
+  id              String    @id
+  provider        String
+  external_id     String
+  tenant_id       String
+  user_id         String
+  calendar_id     String?
+  title           String
+  description     String?
+  location        String?
+  start_time      DateTime  @db.Timestamptz(6)
+  end_time        DateTime  @db.Timestamptz(6)
+  is_all_day      Boolean?  @default(false)
+  is_recurring    Boolean?  @default(false)
+  rrule           String?
+  exdate          Json?
+  calendar_name   String?   @db.VarChar(255)
+  source_type     String?   @db.VarChar(100)
+  attendees       Json?
+  meeting_link    String?
+  created_at      DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime? @default(now()) @db.Timestamptz(6)
+  created_by_id   String?
+  updated_by_id   String?
+  organizer_email String?
+  is_deleted      Boolean   @default(false)
+
+  @@unique([provider, external_id, tenant_id], map: "calendar_events_unique_provider_external_tenant")
+  @@index([start_time], map: "idx_calendar_events_start_time")
+  @@index([tenant_id], map: "idx_calendar_events_tenant")
+  @@index([user_id], map: "idx_calendar_events_user")
+}
+
+model calendar_integrations {
+  id                            String    @id
+  user_id                       String
+  tenant_id                     String
+  provider                      String
+  access_token                  String?
+  refresh_token                 String?
+  token_expiry                  DateTime? @db.Timestamptz(6)
+  calendar_id                   String?
+  google_sync_token             String?
+  google_channel_id             String?
+  google_resource_id            String?
+  google_channel_expiry         DateTime? @db.Timestamptz(6)
+  microsoft_delta_link          String?
+  microsoft_subscription_id     String?
+  microsoft_subscription_expiry DateTime? @db.Timestamptz(6)
+  microsoft_client_state        String?
+  zoho_last_sync                DateTime? @db.Timestamptz(6)
+  created_at                    DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at                    DateTime? @default(now()) @db.Timestamptz(6)
+  created_by                    String?
+  updated_by                    String?
+  created_by_id                 String?
+  updated_by_id                 String?
+  is_syncing                    Boolean   @default(false)
+  last_sync_status              String?
+  last_sync_at                  DateTime? @db.Timestamptz(6)
+  next_sync_due_at              DateTime  @default(now()) @db.Timestamptz(6)
+  sync_error_count              Int       @default(0)
+
+  @@unique([user_id, provider], map: "calendar_integrations_unique_user_provider")
+  @@index([provider], map: "idx_calendar_integrations_provider")
+  @@index([tenant_id], map: "idx_calendar_integrations_tenant")
+}
+
+/// The underlying table does not contain a valid unique identifier and can therefore currently not be handled by Prisma Client.
+model candidate_availability {
+  id                String?   @default(dbgenerated("gen_random_uuid()"))
+  candidate_id      String?
+  available_to_join Boolean?
+  joining_date      DateTime? @db.Timestamp(6)
+  notice_period     Int?
+  created_at        DateTime? @default(now()) @db.Timestamp(6)
+  updated_at        DateTime? @default(now()) @db.Timestamp(6)
+
+  @@ignore
+}
+
+model candidate_details {
+  id                       String               @id @default(dbgenerated("gen_random_uuid()"))
+  tenant_id                String
+  full_name                String               @db.VarChar(255)
+  email                    String               @unique @db.VarChar(255)
+  contact_no               String               @db.VarChar(20)
+  address_line1            String
+  address_line2            String?
+  city                     String               @db.VarChar(100)
+  state                    String               @db.VarChar(100)
+  zip_code                 String               @db.VarChar(20)
+  country                  String               @db.VarChar(100)
+  linkedin_url             String?
+  github_url               String?
+  portfolio_url            String?
+  created_at               DateTime?            @default(now()) @db.Timestamp(6)
+  updated_at               DateTime?            @default(now()) @db.Timestamp(6)
+  internal_recruiter_notes String?              @db.VarChar(1000)
+  work_authorization       work_authorization[]
+}
+
+model candidate_documents {
+  id            String    @id
+  candidate_id  String
+  document_type String
+  document_url  String
+  created_at    DateTime? @default(now()) @db.Timestamp(6)
+  updated_at    DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model candidate_educations {
+  id             String    @id
+  candidate_id   String
+  degree_name    String
+  specialization String?
+  university     String
+  location       String?
+  start_date     DateTime  @db.Date
+  end_date       DateTime? @db.Date
+  created_by_id  String
+  updated_by_id  String?
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @default(now())
+
+  @@index([candidate_id])
+}
+
+model candidate_interview_availability {
+  id             String    @id
+  candidate_id   String
+  interview_date DateTime? @db.Timestamp(6)
+  start_time     DateTime? @db.Timestamp(6)
+  end_time       DateTime? @db.Timestamp(6)
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+  updated_at     DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model candidate_interview_slots {
+  id             String   @id
+  candidate_id   String
+  interview_date DateTime @db.Date
+  start_time     String
+  end_time       String
+  created_by_id  String
+  updated_by_id  String?
+  created_at     DateTime @default(now())
+  updated_at     DateTime @default(now())
+  timezone       String?
+
+  @@index([candidate_id])
+}
+
+model candidate_skill_matrices {
+  id                  String   @id
+  candidate_id        String
+  skill_name          String[] @default([])
+  years_of_experience Decimal  @db.Decimal(5, 2)
+  last_used_year      DateTime @db.Date
+  created_by_id       String
+  updated_by_id       String?
+  created_at          DateTime @default(now())
+  updated_at          DateTime @default(now())
+
+  @@index([candidate_id])
+}
+
+model candidate_work_experiences {
+  id               String    @id
+  candidate_id     String
+  company_name     String
+  company_website  String?
+  job_title        String
+  start_date       DateTime  @db.Date
+  end_date         DateTime? @db.Date
+  location         String?
+  employment_type  String?
+  work_mode        String?
+  skills_used      String[]  @default([])
+  responsibilities String?
+  created_by_id    String
+  updated_by_id    String?
+  created_at       DateTime  @default(now())
+  updated_at       DateTime  @default(now())
+
+  @@index([candidate_id])
+}
+
+model candidates {
+  id                        String    @id
+  tenant_id                 String
+  full_name                 String
+  email                     String
+  phone_number              String
+  country                   String?
+  state                     String?
+  city                      String?
+  timezone                  String?
+  linkedin_url              String?
+  github_url                String?
+  portfolio_url             String?
+  preferred_contact_method  String?
+  current_role              String?
+  years_of_experience       Decimal?  @db.Decimal(5, 2)
+  primary_skills            String[]  @default([])
+  secondary_skills          String[]  @default([])
+  professional_summary      String?
+  work_authorization_type   String?
+  visa_validity_date        DateTime? @db.Date
+  willing_to_transfer_visa  Boolean   @default(false)
+  preferred_employment_type String?
+  expected_rate             Decimal?  @db.Decimal(15, 2)
+  rate_unit                 String?
+  willing_to_relocate       String?
+  preferred_work_mode       String?
+  earliest_available        String?
+  joining_date              DateTime? @db.Date
+  notice_period             Int?
+  resume_url                String?
+  passport_url              String?
+  driving_license_url       String?
+  visa_document_url         String?
+  identity_proof_url        String?
+  certifications_urls       Json?     @default("[]")
+  internal_notes            String?
+  candidate_tags            String[]  @default([])
+  created_by_id             String
+  updated_by_id             String?
+  created_at                DateTime  @default(now())
+  updated_at                DateTime  @default(now())
+  is_active                 Boolean   @default(true)
+  status_config             String    @default("New")
+  action_config             String    @default("New")
+  skill_rate                String    @default("New")
+
+  @@index([email])
+  @@index([tenant_id])
+}
+
+model channel_members {
+  id           String    @id
+  channel_id   String
+  user_id      String
+  role         String    @default("member")
+  joined_at    DateTime  @default(now())
+  last_read_at DateTime?
+  channels     channels  @relation(fields: [channel_id], references: [id], onDelete: Cascade)
+  users        users     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([channel_id, user_id])
+}
+
+model channel_messages {
+  id          String   @id
+  channel_id  String
+  user_id     String
+  content     String
+  type        String   @default("text")
+  attachments Json     @default("[]")
+  is_edited   Boolean  @default(false)
+  is_deleted  Boolean  @default(false)
+  created_at  DateTime @default(now())
+  updated_at  DateTime
+  channels    channels @relation(fields: [channel_id], references: [id], onDelete: Cascade)
+  users       users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([channel_id, created_at])
+}
+
+model channels {
+  id               String             @id
+  tenant_id        String
+  name             String?
+  description      String?
+  type             String             @default("CHANNEL")
+  is_archived      Boolean            @default(false)
+  last_message_at  DateTime?
+  created_by_id    String
+  created_at       DateTime           @default(now())
+  updated_at       DateTime
+  channel_members  channel_members[]
+  channel_messages channel_messages[]
+  users            users              @relation(fields: [created_by_id], references: [id])
+  tenants          tenants            @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  meetings         meetings[]
+}
+
+model client_contacts_v2 {
+  id                           String   @id
+  tenant_id                    String
+  client_id                    String
+  first_name                   String
+  last_name                    String
+  display_name                 String?
+  designation                  String?
+  department                   String?
+  contact_type                 String?
+  is_primary                   Boolean  @default(false)
+  official_email               String
+  secondary_email              String?
+  mobile_number                String?
+  alternate_phone              String?
+  office_landline              String?
+  extension_number             String?
+  preferred_communication_mode String?
+  status                       String   @default("Active")
+  created_at                   DateTime @default(now())
+  updated_at                   DateTime
+}
+
+model client_documents_v2 {
+  id             String   @id
+  tenant_id      String
+  client_id      String
+  category       String
+  document_type  String
+  file_name      String
+  file_url       String
+  version        Int      @default(1)
+  tags           String[] @default([])
+  uploaded_by_id String
+  created_at     DateTime @default(now())
+  updated_at     DateTime
+}
+
+model client_projects {
+  id           String     @id
+  tenant_id    String
+  client_id    String
+  project_id   String
+  created_at   DateTime   @default(now())
+  updated_at   DateTime
+  billing_type String?
+  budget       Decimal?   @db.Decimal(15, 2)
+  budget_type  String?    @db.VarChar(50)
+  clients_v2   clients_v2 @relation(fields: [client_id], references: [id], onDelete: Cascade)
+  projects     projects   @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  tenants      tenants    @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+
+  @@unique([client_id, project_id])
+}
+
+model clients {
+  id             String   @id
+  tenant_id      String
+  name           String
+  email          String?
+  phone          String?
+  company        String?
+  address        String?
+  contact_person String?
+  is_active      Boolean  @default(true)
+  notes          String?
+  created_by_id  String
+  created_at     DateTime @default(now())
+  updated_at     DateTime
+  users          users    @relation(fields: [created_by_id], references: [id])
+  tenants        tenants  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+
+  @@unique([tenant_id, email])
+}
+
+model clients_v2 {
+  id                        String            @id
+  tenant_id                 String
+  client_code               String            @unique
+  company_name              String
+  legal_name                String?
+  client_type               String
+  parent_id                 String?
+  company_size              String?
+  industry                  String?
+  contract_value            Decimal?          @db.Decimal(15, 2)
+  year_of_incorporation     String?
+  duration                  String?
+  gst_vat_tax_id            String?
+  registration_number       String?
+  country                   String?
+  website                   String?
+  default_currency          String?           @default("USD")
+  billing_address           String?
+  risk_level                String?
+  status                    String            @default("Prospect")
+  pan                       String?
+  vat_number                String?
+  duns_number               String?
+  msme_registration         String?
+  payment_terms             String?
+  credit_limit              Decimal?          @db.Decimal(15, 2)
+  billing_contact_email     String?
+  accounts_payable_name     String?
+  tds_applicable            Boolean           @default(false)
+  reverse_charge_applicable Boolean           @default(false)
+  account_manager_id        String?           @db.Uuid
+  sales_owner_id            String?           @db.Uuid
+  delivery_owner_id         String?           @db.Uuid
+  client_segment            String?
+  contract_start_date       DateTime?
+  contract_end_date         DateTime?
+  renewal_type              String?
+  sla_level                 String?
+  bank_name                 String?
+  bank_account_number       String?
+  ifsc_swift                String?
+  currency_of_payment       String?
+  preferred_payment_mode    String?
+  is_active                 Boolean           @default(true)
+  created_by_id             String
+  created_at                DateTime          @default(now())
+  updated_at                DateTime
+  client_projects           client_projects[]
+
+  @@unique([tenant_id, client_code])
+}
+
+model companies {
+  id            Int      @id @default(autoincrement())
+  tenant_id     String
+  name          String
+  email         String?
+  phone         String?
+  plot_no       String?
+  floor_no      String?
+  building_name String?
+  street        String?
+  area          String?
+  city          String?
+  pincode       String?
+  country       String?
+  cin           String?
+  gst           String?
+  is_active     Boolean  @default(false)
+  logo          String?
+  created_at    DateTime @default(now())
+  updated_at    DateTime
+  created_by_id String?
+  updated_by_id String?
+
+  @@unique([tenant_id, name], map: "uq_companies_tenant_name")
+}
+
+model company_government_holidays {
+  id                                                     String        @id
+  tenant_id                                              String
+  holiday_name                                           String
+  country                                                String
+  from_date                                              DateTime
+  to_date                                                DateTime
+  base_leave                                             Int
+  extra_leave                                            Int
+  total_leave                                            Int
+  type                                                   String
+  is_floater                                             Boolean       @default(false)
+  rule                                                   String?
+  status                                                 HolidayStatus @default(ACTIVE)
+  created_by_id                                          String
+  updated_by_id                                          String?
+  created_at                                             DateTime      @default(now())
+  updated_at                                             DateTime
+  users_company_government_holidays_created_by_idTousers users         @relation("company_government_holidays_created_by_idTousers", fields: [created_by_id], references: [id])
+  tenants                                                tenants       @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  users_company_government_holidays_updated_by_idTousers users?        @relation("company_government_holidays_updated_by_idTousers", fields: [updated_by_id], references: [id])
+
+  @@index([created_by_id])
+  @@index([tenant_id, from_date])
+  @@index([tenant_id])
+}
+
+model current_employer_contact {
+  id                               String    @id
+  candidate_id                     String
+  reporting_manager_name           String?
+  reporting_manager_email          String?
+  reporting_manager_phone          String?
+  current_employer_companyname     String?
+  current_employer_company_website String?
+  created_at                       DateTime? @default(now()) @db.Timestamp(6)
+  updated_at                       DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model customers {
+  id           String   @id
+  tenant_id    String
+  company_name String
+  email        String?  @unique
+  phone        String?
+  address      String?
+  city         String?
+  country      String?
+  tax_id       String?
+  created_at   DateTime @default(now())
+  updated_at   DateTime
+  created_by   String
+  updated_by   String?
+  gstin        String?  @db.VarChar(30)
+  pan          String?  @db.VarChar(30)
+  tenants      tenants  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+}
+
+model deductions {
+  id                Int           @id @default(autoincrement())
+  name              String
+  type              DeductionType
+  value             Float
+  salaryStructureId Int
+}
+
+model departments {
+  id                                     String            @id
+  tenant_id                              String
+  code                                   String
+  name                                   String
+  employment_type                        String?
+  description                            String?
+  head_id                                String?
+  is_active                              Boolean           @default(true)
+  created_by_id                          String
+  updated_by_id                          String?
+  created_at                             DateTime          @default(now())
+  updated_at                             DateTime
+  users_departments_created_by_idTousers users             @relation("departments_created_by_idTousers", fields: [created_by_id], references: [id])
+  users_departments_head_idTousers       users?            @relation("departments_head_idTousers", fields: [head_id], references: [id])
+  tenants                                tenants           @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  users_departments_updated_by_idTousers users?            @relation("departments_updated_by_idTousers", fields: [updated_by_id], references: [id])
+  positions                              positions[]
+  sub_departments                        sub_departments[]
+
+  @@unique([tenant_id, code])
+  @@unique([tenant_id, name])
+}
+
+model document_history {
+  id          String   @id
+  documentId  String
+  tenantId    String
+  content     Json
+  createdById String
+  createdAt   DateTime @default(now())
+
+  @@index([createdById], map: "document_history_createdbyid_idx")
+  @@index([documentId], map: "document_history_documentid_idx")
+}
+
+model document_hub {
+  id          String   @id
+  tenantId    String
+  name        String
+  projectId   String?
+  ticketId    String?
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+
+  @@index([createdById], map: "idx_documenthub_created_by_id")
+  @@index([projectId], map: "idx_documenthub_project_id")
+  @@index([tenantId], map: "idx_documenthub_tenant_id")
+  @@index([ticketId], map: "idx_documenthub_ticket_id")
+}
+
+model documents {
+  id            String   @id
+  documentHubId String
+  title         String
+  content       Json
+  createdById   String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime
+  tenantId      String
+}
+
+model documenttree {
+  id            String           @id
+  tenantId      String
+  documentHubId String
+  title         String
+  type          DocumentNodeType
+  parentId      String?
+  documentId    String?          @unique(map: "documenttree_documentid_key")
+  position      Int              @default(0)
+  createdById   String
+  createdAt     DateTime         @default(now())
+}
+
+model dropdown_options {
+  id         String   @id
+  tenant_id  String
+  category   String
+  value      String
+  label      String
+  order      Int      @default(0)
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime
+  tenants    tenants  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+
+  @@unique([tenant_id, category, value])
+}
+
+model earnings {
+  id                Int     @id @default(autoincrement())
+  name              String
+  percentage        Float
+  description       String?
+  salaryStructureId Int
+}
+
+model email_logs {
+  id              String    @id
+  tenant_id       String
+  module          String
+  module_id       String
+  module_number   String?
+  to_email        String
+  from_email      String
+  from_name       String?
+  subject         String
+  html            String
+  plain_text      String?
+  customer_id     String?
+  customer_name   String?
+  customer_email  String?
+  amount          String?
+  due_date        String?
+  currency        String?   @default("USD")
+  has_attachment  Boolean   @default(false)
+  attachment_url  String?
+  attachment_name String?
+  status          String    @default("SENT")
+  error_message   String?
+  sent_at         DateTime  @default(now())
+  opened_at       DateTime?
+  clicked_at      DateTime?
+  sent_by         String
+  sent_by_user    String?
+  metadata        Json?
+
+  @@index([customer_id])
+  @@index([module, module_id])
+  @@index([module, sent_at])
+  @@index([sent_at])
+  @@index([status])
+  @@index([tenant_id, sent_at], map: "email_logs_tenant_sent_at_idx")
+  @@index([to_email])
+}
+
+model email_templates {
+  id            String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  tenant_id     String
+  template_name String    @db.VarChar(255)
+  module        String    @db.VarChar(100)
+  trigger_event String    @db.VarChar(100)
+  description   String?
+  subject       String    @db.VarChar(255)
+  email_body    String
+  status        Boolean   @default(true)
+  deleted_at    DateTime? @db.Timestamp(6)
+  created_by    String
+  updated_by    String?
+  created_at    DateTime? @default(now()) @db.Timestamp(6)
+  updated_at    DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model employee_additional_details {
+  id               String   @id @db.Uuid
+  employee_id      String   @db.Uuid
+  created_by_id    String?  @db.Uuid
+  updated_by_id    String?  @db.Uuid
+  promotion_status String?  @db.VarChar(50)
+  employee_grade   String?  @db.VarChar(50)
+  created_at       DateTime @default(now())
+  updated_at       DateTime
+}
+
+model employee_addresses {
+  id            String            @id @db.Uuid
+  employee_id   String            @db.Uuid
+  tenant_id     String
+  address_type  address_type_enum
+  door_no       String?           @db.VarChar(50)
+  area          String?           @db.VarChar(150)
+  city          String?           @db.VarChar(100)
+  state         String?           @db.VarChar(100)
+  pincode       String?           @db.VarChar(10)
+  country       String?           @db.VarChar(100)
+  created_by_id String?           @db.Uuid
+  updated_by_id String?           @db.Uuid
+  created_at    DateTime          @default(now())
+  updated_at    DateTime
+}
+
+model employee_assets {
+  id            String   @id @db.Uuid
+  employee_id   String   @db.Uuid
+  created_by_id String   @db.Uuid
+  updated_by_id String?  @db.Uuid
+  item_name     String   @db.VarChar(30)
+  brand_name    String   @db.VarChar(30)
+  model_name    String   @db.VarChar(30)
+  model_number  String   @db.VarChar(30)
+  upload_image  String?
+  created_at    DateTime @default(now())
+  updated_at    DateTime
+}
+
+model employee_bank_details {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  employee_id         String    @db.Uuid
+  created_by_id       String?   @db.Uuid
+  updated_by_id       String?   @db.Uuid
+  bank_name           String?   @db.VarChar(150)
+  account_holder_name String?   @db.VarChar(150)
+  account_number      String?   @db.VarChar(255)
+  ifsc_code           String?   @db.VarChar(255)
+  branch_name         String?   @db.VarChar(150)
+  account_type        String?   @db.VarChar(50)
+  created_at          DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime? @default(now()) @db.Timestamptz(6)
+}
+
+model employee_client_allocations_v2 {
+  id           String    @id
+  tenant_id    String
+  employee_id  String    @db.Uuid
+  client_id    String
+  project_id   String?
+  billing_type String
+  bill_amount  Decimal   @default(0) @db.Decimal(10, 2)
+  start_date   DateTime
+  end_date     DateTime?
+  status       String    @default("Active")
+  created_at   DateTime  @default(now())
+  updated_at   DateTime
+}
+
+model employee_contacts {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  employee_id         String    @db.Uuid
+  contact_person_type String?   @db.VarChar(50)
+  name                String?   @db.VarChar(150)
+  mobile              String?   @db.VarChar(15)
+  created_by_id       String?   @db.Uuid
+  updated_by_id       String?   @db.Uuid
+  created_at          DateTime? @default(now()) @db.Timestamp(6)
+  updated_at          DateTime? @default(now()) @db.Timestamp(6)
+  email               String?   @db.VarChar(255)
+}
+
+model employee_documents {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  employee_id   String    @db.Uuid
+  created_by_id String?   @db.Uuid
+  updated_by_id String?   @db.Uuid
+  document_type String    @db.VarChar(50)
+  document_url  String
+  uploaded_at   DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model employee_emergency_contacts {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  employee_id   String    @db.Uuid
+  relationship  String?   @db.VarChar(50)
+  name          String?   @db.VarChar(150)
+  mobile        String?   @db.VarChar(15)
+  created_by_id String?
+  updated_by_id String?
+  created_at    DateTime? @default(now()) @db.Timestamp(6)
+  updated_at    DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model employee_experience {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  employee_id       String    @db.Uuid
+  company_name      String?   @db.VarChar(150)
+  location          String?   @db.VarChar(100)
+  industry          String?   @db.VarChar(100)
+  company_address   String?
+  joining_date      DateTime? @db.Date
+  last_working_date DateTime? @db.Date
+  designation       String?   @db.VarChar(100)
+  employment_type   String?   @db.VarChar(50)
+  created_by_id     String?   @db.Uuid
+  updated_by_id     String?   @db.Uuid
+  created_at        DateTime? @default(now()) @db.Timestamp(6)
+  updated_at        DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model employee_field_configs {
+  id            Int      @id @default(autoincrement())
+  tenant_id     String
+  company_id    Int
+  system_key    String
+  display_name  String
+  is_visible    Boolean  @default(true)
+  created_at    DateTime @default(now()) @db.Timestamp(6)
+  updated_at    DateTime @default(now()) @db.Timestamp(6)
+  created_by_id String?
+  updated_by_id String?
+
+  @@unique([tenant_id, company_id, system_key], map: "uq_employee_field_tenant_company_system_key")
+}
+
+model employee_identities {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  employee_id     String    @db.Uuid
+  aadhaar_number  String?   @db.VarChar(255)
+  pan_number      String?   @db.VarChar(255)
+  passport_number String?   @db.VarChar(255)
+  created_by_id   String?   @db.Uuid
+  updated_by_id   String?   @db.Uuid
+  created_at      DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime? @default(now()) @db.Timestamptz(6)
+}
+
+model employee_payroll_details {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  employee_id   String    @unique @db.Uuid
+  created_by_id String?   @db.Uuid
+  updated_by_id String?   @db.Uuid
+  uan_number    String?   @db.VarChar(255)
+  pf_number     String?   @db.VarChar(255)
+  esi_number    String?   @db.VarChar(255)
+  tax_regime    String?   @db.VarChar(20)
+  payment_type  String?   @db.VarChar(50)
+  created_at    DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime? @default(now()) @db.Timestamptz(6)
+}
+
+model employee_project_mappings {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  employee_id       String    @db.Uuid
+  reporting_manager String?   @db.VarChar(50)
+  created_by_id     String?   @db.Uuid
+  updated_by_id     String?   @db.Uuid
+  project_name      String?   @db.VarChar(150)
+  created_at        DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime? @default(now()) @db.Timestamptz(6)
+}
+
+model employee_salary {
+  id                      String    @id(map: "employee_compensation_pkey") @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id               String
+  salary_structure_id     Int       @default(autoincrement())
+  employee_id             String    @db.Uuid
+  current_annual_ctc      Decimal   @db.Decimal(15, 2)
+  current_monthly_ctc     Decimal   @db.Decimal(15, 2)
+  additional_pf_pct       Decimal?  @default(0.00) @db.Decimal(5, 2)
+  is_additional_pf_active Boolean?  @default(false)
+  nps_contribution_pct    Decimal?  @default(0.00) @db.Decimal(5, 2)
+  insurance_topup         Decimal?  @default(0.00) @db.Decimal(12, 2)
+  fbp_choices             Json?     @default("{}")
+  salary_timeline         Json?     @default("[]")
+  is_active               Boolean?  @default(true)
+  updated_at              DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model employee_settings {
+  id              String    @id(map: "company_settings_pkey") @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenant_id       String    @unique(map: "company_settings_tenant_id_key") @db.Uuid
+  employee_prefix String    @db.VarChar(20)
+  created_at      DateTime? @default(now()) @db.Timestamp(6)
+  updated_at      DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model employee_timelines {
+  id                       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  employee_id              String    @db.Uuid
+  joining_date             DateTime? @db.Date
+  training_completion_date DateTime? @db.Date
+  created_by_id            String?   @db.Uuid
+  updated_by_id            String?   @db.Uuid
+  created_at               DateTime? @default(now()) @db.Timestamp(6)
+  updated_at               DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model employee_work_details {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  employee_id       String    @db.Uuid
+  department        String?   @db.VarChar(100)
+  team              String?   @db.VarChar(100)
+  employee_type     String?   @db.VarChar(50)
+  work_location     String?   @db.VarChar(100)
+  work_shift        Json?
+  created_by_id     String?   @db.Uuid
+  updated_by_id     String?   @db.Uuid
+  created_at        DateTime? @default(now()) @db.Timestamp(6)
+  updated_at        DateTime? @default(now()) @db.Timestamp(6)
+  work_type         String?   @db.VarChar(50)
+  hybrid_mode       String?   @db.VarChar(20)
+  fixed_days        String[]
+  total_days        Int?
+  total_hours       Int?
+  work_joining_date String?   @db.VarChar(30)
+  position_id       String?   @db.Uuid
+  notice_period     String?   @db.VarChar(10)
+}
+
+model employees {
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id         String
+  employee_code     String              @db.VarChar(30)
+  first_name        String              @db.VarChar(100)
+  last_name         String              @db.VarChar(100)
+  gender            String              @db.VarChar(20)
+  date_of_birth     DateTime            @db.Date
+  blood_group       String?             @db.VarChar(10)
+  mobile            String              @db.VarChar(15)
+  work_email        String              @db.VarChar(150)
+  personal_email    String?             @db.VarChar(150)
+  status            Boolean             @default(true)
+  created_by        String              @db.Uuid
+  updated_by        String?             @db.Uuid
+  created_at        DateTime            @default(now()) @db.Timestamp(6)
+  updated_at        DateTime            @default(now()) @db.Timestamp(6)
+  profile_pic       String?             @db.VarChar(255)
+  leave_adjustments leave_adjustments[]
+}
+
+model employment_types {
+  id                                          String   @id
+  tenant_id                                   String
+  name                                        String
+  description                                 String?
+  is_active                                   Boolean  @default(true)
+  created_by_id                               String
+  updated_by_id                               String?
+  created_at                                  DateTime @default(now())
+  updated_at                                  DateTime
+  code                                        String
+  users_employment_types_created_by_idTousers users    @relation("employment_types_created_by_idTousers", fields: [created_by_id], references: [id])
+  tenants                                     tenants  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  users_employment_types_updated_by_idTousers users?   @relation("employment_types_updated_by_idTousers", fields: [updated_by_id], references: [id])
+
+  @@unique([tenant_id, code])
+  @@unique([tenant_id, name])
+}
+
+model environments {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id  String
+  name       String
+  code       String
+  status     String   @default("ACTIVE")
+  created_by String
+  updated_by String?
+  created_at DateTime @default(now())
+  updated_at DateTime @default(now())
+
+  @@unique([tenant_id, code], map: "environments_tenant_code_unique")
+  @@index([tenant_id], map: "environments_tenant_idx")
+}
+
+model exit_notice_policies {
+  id                           String   @id
+  tenant_id                    String
+  policy_name                  String
+  description                  String?
+  level_type                   String
+  level_id                     String
+  notice_period_days           Int
+  probation_notice_period_days Int
+  notice_buyout_allowed        Boolean  @default(false)
+  buyout_calculation_type      String?
+  status                       String   @default("active")
+  created_at                   DateTime @default(now())
+  updated_at                   DateTime
+
+  @@unique([tenant_id, policy_name])
+}
+
+model feature_tiers {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  feature_id String    @db.Uuid
+  code       String    @unique @db.VarChar(50)
+  tier_name  String    @db.VarChar(100)
+  price      Decimal   @default(0.00) @db.Decimal(10, 2)
+  is_active  Boolean?  @default(true)
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at DateTime? @default(now()) @db.Timestamptz(6)
+}
+
+model features {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  sub_module_id String    @db.Uuid
+  code          String    @unique @db.VarChar(50)
+  name          String    @db.VarChar(100)
+  description   String?
+  is_default    Boolean?  @default(false)
+  is_billable   Boolean?  @default(false)
+  is_active     Boolean?  @default(true)
+  created_at    DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime? @default(now()) @db.Timestamptz(6)
+}
+
+model fixed_holidays {
+  id                                        String   @id
+  tenant_id                                 String
+  holiday_name                              String
+  country                                   String
+  state                                     String[]
+  from_date                                 DateTime
+  to_date                                   DateTime
+  type                                      String
+  rule                                      String
+  created_at                                DateTime @default(now())
+  updated_at                                DateTime
+  created_by_id                             String?
+  updated_by_id                             String?
+  users_fixed_holidays_created_by_idTousers users?   @relation("fixed_holidays_created_by_idTousers", fields: [created_by_id], references: [id])
+  tenants                                   tenants  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  users_fixed_holidays_updated_by_idTousers users?   @relation("fixed_holidays_updated_by_idTousers", fields: [updated_by_id], references: [id])
+}
+
+model general_settings {
+  id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id     String
+  company_name  String
+  address       Json
+  primary_color String
+  currency      Currency
+  date_format   DateFormat
+  company_logo  String?
+  signature     String?
+  created_by    String
+  updated_by    String?
+  created_at    DateTime?  @default(now()) @db.Timestamp(6)
+  updated_at    DateTime?  @default(now()) @db.Timestamp(6)
+  gstin         String?    @db.VarChar(30)
+  pan           String?    @db.VarChar(30)
+
+  @@index([tenant_id], map: "idx_general_settings_tenant_id")
+}
+
+model grades {
+  id                                String      @id
+  tenant_id                         String
+  code                              String
+  name                              String
+  level_order                       Int
+  description                       String?
+  is_active                         Boolean     @default(true)
+  created_by_id                     String
+  updated_by_id                     String?
+  created_at                        DateTime    @default(now())
+  updated_at                        DateTime
+  codes                             String?
+  users_grades_created_by_idTousers users       @relation("grades_created_by_idTousers", fields: [created_by_id], references: [id])
+  tenants                           tenants     @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  users_grades_updated_by_idTousers users?      @relation("grades_updated_by_idTousers", fields: [updated_by_id], references: [id])
+  positions                         positions[]
+
+  @@unique([tenant_id, code])
+}
+
+model implementation_basic_information {
+  id            String    @id @default(dbgenerated("gen_random_uuid()"))
+  tenant_id     String
+  company_name  String?
+  industry      String?
+  website       String?
+  company_email String?
+  company_phone String?
+  street        String?
+  city          String?
+  state         String?
+  country       String?
+  zip_code      String?
+  created_at    DateTime? @default(now()) @db.Timestamp(6)
+  updated_at    DateTime? @default(now()) @db.Timestamp(6)
+  notes         String?
+  status        Boolean   @default(true)
+
+  @@map("implementation-basic-information")
+}
+
+model implementation_business_detailes {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()"))
+  implementation_id   String
+  registration_number String?
+  tax_id              String?
+  business_type       String?
+  year_establiliesh   Int?
+  total_employees     Int?
+  created_by_id       String
+  updated_by_id       String
+  created_at          DateTime? @default(now()) @db.Timestamp(6)
+  updated_at          DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model implementation_contact_person {
+  id                String    @id @default(dbgenerated("gen_random_uuid()"))
+  implementation_id String
+  person_name       String
+  designation       String?
+  email             String?
+  phone             String?
+  linkedin_url      String?
+  created_by_id     String
+  updated_by_id     String
+  created_at        DateTime? @default(now()) @db.Timestamp(6)
+  updated_at        DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model implementation_document {
+  id                String    @id
+  implementation_id String
+  document_type     String?
+  document_url      String?
+  created_by_id     String
+  updated_by_id     String
+  created_at        DateTime? @default(now()) @db.Timestamp(6)
+  updated_at        DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model implementation_relations {
+  id                        String    @id @default(dbgenerated("gen_random_uuid()"))
+  implementation_id         String
+  linked_vendor             String?
+  linked_client             String?
+  supports_visa_sponsorship Boolean
+  visa_types_supported      String?
+  created_by_id             String
+  updated_by_id             String
+  created_at                DateTime? @default(now()) @db.Timestamp(6)
+  updated_at                DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model invoice_activity_logs {
+  id           String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  invoice_id   String
+  action       String    @db.VarChar(100)
+  performed_by String
+  metadata     Json?
+  created_at   DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@index([invoice_id], map: "idx_invoice_activity_logs_invoice_id")
+}
+
+model invoice_attachments {
+  id          String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  invoice_id  String
+  file_name   String
+  file_url    String
+  uploaded_by String
+  uploaded_at DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@index([invoice_id], map: "idx_invoice_attachments_invoice_id")
+}
+
+model invoice_line_items {
+  id           String    @id(map: "invoice_items_pkey")
+  tenant_id    String
+  invoice_id   String
+  item_name    String
+  description  String?
+  quantity     Decimal   @default(1) @db.Decimal(12, 2)
+  rate         Decimal   @default(0) @db.Decimal(12, 2)
+  tax_rate     Decimal   @default(0) @db.Decimal(6, 2)
+  created_by   String
+  updated_by   String?
+  created_at   DateTime  @default(now()) @db.Timestamp(6)
+  updated_at   DateTime  @default(now()) @db.Timestamp(6)
+  deleted_at   DateTime? @db.Timestamp(6)
+  deleted_by   String?
+  row_number   Int?
+  project_id   String?
+  hours        Decimal?  @db.Decimal(12, 2)
+  subtotal     Decimal?  @db.Decimal(14, 2)
+  tax_amount   Decimal?  @db.Decimal(14, 2)
+  total        Decimal?  @db.Decimal(14, 2)
+  extra_fields Json?
+
+  @@index([invoice_id], map: "idx_invoice_items_invoice_id")
+  @@index([tenant_id], map: "idx_invoice_items_tenant_id")
+  @@index([invoice_id], map: "idx_invoice_line_items_invoice_id")
+  @@index([invoice_id, row_number], map: "idx_invoice_line_items_invoice_row")
+  @@index([tenant_id], map: "idx_invoice_line_items_tenant_id")
+}
+
+model invoice_payments {
+  id             String          @id
+  tenant_id      String
+  invoice_id     String
+  amount         Decimal         @db.Decimal(15, 2)
+  description    String?
+  payment_date   DateTime        @default(now()) @db.Timestamp(6)
+  payment_method payment_method?
+  status         payment_status  @default(PENDING)
+  created_by     String
+  created_at     DateTime        @default(now()) @db.Timestamp(6)
+  updated_by     String?
+  updated_at     DateTime        @default(now()) @db.Timestamp(6)
+  reference_id   String?         @db.VarChar(255)
+  balance_before Decimal?        @db.Decimal(15, 2)
+  balance_after  Decimal?        @db.Decimal(15, 2)
+
+  @@index([invoice_id], map: "idx_invoice_payments_invoice_id")
+  @@index([payment_date], map: "idx_invoice_payments_payment_date")
+  @@index([tenant_id], map: "idx_invoice_payments_tenant_id")
+  @@index([tenant_id, invoice_id], map: "idx_invoice_payments_tenant_invoice")
+}
+
+model invoice_settings {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id       String
+  format          String    @default("INV-{YYYY}-{###}")
+  next_number     Int       @default(1)
+  reset_yearly    Boolean   @default(true)
+  last_reset_year Int       @default(2026)
+  created_by      String
+  updated_by      String?
+  created_at      DateTime? @default(now()) @db.Timestamp(6)
+  updated_at      DateTime? @default(now()) @db.Timestamp(6)
+  padding         Int       @default(4)
+
+  @@index([tenant_id], map: "idx_invoice_settings_tenant_id")
+}
+
+model invoice_taxes {
+  id         String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  tenant_id  String
+  invoice_id String
+  tax_name   String    @db.VarChar(100)
+  tax_rate   Decimal   @db.Decimal(6, 2)
+  tax_amount Decimal   @db.Decimal(14, 2)
+  deleted_at DateTime? @db.Timestamp(6)
+  deleted_by String?
+  created_by String
+  updated_by String?
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+  updated_at DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([invoice_id], map: "idx_invoice_taxes_invoice_id")
+  @@index([tenant_id], map: "idx_invoice_taxes_tenant_id")
+}
+
+model invoice_template_fields {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  template_id String    @db.Uuid
+  field_key   String    @db.VarChar(100)
+  field_label String    @db.VarChar(200)
+  field_type  String    @db.VarChar(50)
+  field_order Int
+  is_required Boolean?  @default(false)
+  is_system   Boolean?  @default(false)
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+  options     Json?     @default("[]")
+}
+
+model invoice_templates {
+  id           String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id    String
+  name         String     @db.VarChar(200)
+  description  String?
+  billing_type String     @db.VarChar(50)
+  is_default   Boolean?   @default(false)
+  is_active    Boolean?   @default(true)
+  created_by   String
+  created_at   DateTime?  @default(now()) @db.Timestamp(6)
+  updated_at   DateTime?  @default(now()) @db.Timestamp(6)
+  users        users      @relation(fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invoice_templates_created_by")
+  tenants      tenants    @relation(fields: [tenant_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_invoice_templates_tenant")
+  invoices     invoices[]
+}
+
+model invoices {
+  id                  String               @id
+  tenant_id           String
+  invoice_number      String               @unique
+  customer_id         String
+  customer_snapshot   Json?
+  invoice_date        DateTime             @db.Timestamp(6)
+  due_date            DateTime             @db.Timestamp(6)
+  invoice_type        invoice_type         @default(STANDARD)
+  currency            String
+  recurring_frequency recurring_frequency?
+  tax_inclusive       Boolean              @default(false)
+  discount_total      Decimal              @default(0) @db.Decimal(15, 2)
+  subtotal            Decimal              @db.Decimal(15, 2)
+  tax_total           Decimal              @db.Decimal(15, 2)
+  grand_total         Decimal              @db.Decimal(15, 2)
+  paid_amount         Decimal              @default(0) @db.Decimal(15, 2)
+  balance_due         Decimal              @db.Decimal(15, 2)
+  notes               String?
+  terms               String?
+  created_by          String
+  updated_by          String?
+  created_at          DateTime             @default(now()) @db.Timestamp(6)
+  updated_at          DateTime             @default(now()) @db.Timestamp(6)
+  settings_profile_id String?
+  sent_at             DateTime?            @db.Timestamp(6)
+  paid_at             DateTime?            @db.Timestamp(6)
+  cancelled_at        DateTime?            @db.Timestamp(6)
+  pdf_url             String?
+  status              invoice_status       @default(DRAFT)
+  description         String?
+  first_payment_date  DateTime?            @db.Timestamp(6)
+  last_payment_date   DateTime?            @db.Timestamp(6)
+  fully_paid_date     DateTime?            @db.Timestamp(6)
+  deleted_at          DateTime?            @db.Timestamp(6)
+  deleted_by          String?
+  project_id          String?
+  template_id         String?              @db.Uuid
+  metadata            Json?
+  invoice_templates   invoice_templates?   @relation(fields: [template_id], references: [id], onUpdate: NoAction, map: "fk_invoices_template")
+
+  @@index([customer_id], map: "idx_invoices_customer_id")
+  @@index([first_payment_date], map: "idx_invoices_first_payment_date")
+  @@index([last_payment_date], map: "idx_invoices_last_payment_date")
+  @@index([status], map: "idx_invoices_status")
+  @@index([template_id], map: "idx_invoices_template_id")
+}
+
+model job_requisitions {
+  id                    String    @id
+  tenant_id             String
+  ticket_id             String
+  job_title             String
+  job_code              String?
+  client_id             String?
+  client_contact_person String?
+  openings_count        Int       @default(1)
+  job_type              String
+  priority              String    @default("Medium")
+  status                String    @default("Open")
+  experience            String?
+  mandatory_skills      String[]
+  secondary_skills      String[]
+  education             String?
+  certification         String?
+  communication_skills  String?
+  allowed_visa_types    String[]
+  excluded_visa_types   String[]
+  security_clearance    Boolean   @default(false)
+  job_location          String?
+  work_mode             String    @default("Remote")
+  time_zone             String?
+  max_bill_rate         Decimal?  @db.Decimal(10, 2)
+  min_pay_rate          Decimal?  @db.Decimal(10, 2)
+  recruiter_rate        Decimal?  @db.Decimal(10, 2)
+  start_date            DateTime?
+  submission_deadline   DateTime?
+  interview_start_date  DateTime?
+  expected_closure_date DateTime?
+  job_details           String?
+  internal_notes        String?
+  created_by_id         String
+  account_manager_id    String?
+  delivery_manager_id   String?
+  created_at            DateTime  @default(now())
+  updated_at            DateTime
+  interview_process     Json?
+  attachments           Json?     @default("[]")
+  blind_cv_required     Boolean   @default(false)
+  exclusive_candidate   Boolean   @default(false)
+  job_role              String?
+  max_submissions       Int?
+  max_total_submissions Int?
+  overtime_multiplier   Decimal?  @db.Decimal(4, 2)
+  relocation_allowed    Boolean   @default(false)
+  responsibilities      String?
+  screening_questions   Json?     @default("[]")
+  source_format         String?
+
+  @@unique([tenant_id, ticket_id])
+  @@index([client_id])
+  @@index([tenant_id, status])
+}
+
+model leave_adjustments {
+  id                                            String     @id
+  tenant_id                                     String
+  user_id                                       String?
+  adjustment_type                               String
+  amount                                        Decimal    @db.Decimal(5, 2)
+  unit                                          String     @default("Days")
+  reason                                        String
+  approved_by_id                                String?
+  comp_off_work_date                            DateTime?
+  expiry_date                                   DateTime?
+  created_by_id                                 String
+  updated_by_id                                 String?
+  created_at                                    DateTime   @default(now())
+  updated_at                                    DateTime
+  leave_type_id                                 String?
+  employee_id                                   String?    @db.Uuid
+  is_taken                                      Boolean    @default(false)
+  users_leave_adjustments_approved_by_idTousers users?     @relation("leave_adjustments_approved_by_idTousers", fields: [approved_by_id], references: [id])
+  users_leave_adjustments_created_by_idTousers  users      @relation("leave_adjustments_created_by_idTousers", fields: [created_by_id], references: [id])
+  employees                                     employees? @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+  tenants                                       tenants    @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  users_leave_adjustments_updated_by_idTousers  users?     @relation("leave_adjustments_updated_by_idTousers", fields: [updated_by_id], references: [id])
+  users_leave_adjustments_user_idTousers        users?     @relation("leave_adjustments_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade)
+}
+
+model leave_carry_forwards {
+  id            String   @id
+  tenant_id     String
+  leave_type_id String
+  sub_origin_id String
+  is_taken      Boolean  @default(false)
+  created_by_id String
+  updated_by_id String?
+  created_at    DateTime @default(now())
+  updated_at    DateTime
+
+  @@index([leave_type_id])
+  @@index([sub_origin_id])
+  @@index([tenant_id])
+}
+
+model leave_ledger {
+  id               String    @id
+  tenant_id        String
+  employee_id      String    @db.Uuid
+  leave_type_id    String
+  transaction_type String
+  reference_id     String?
+  units            Decimal   @db.Decimal(6, 2)
+  balance_after    Decimal   @db.Decimal(6, 2)
+  transaction_date DateTime  @db.Date
+  expiry_date      DateTime? @db.Date
+  policy_version   Int
+  created_at       DateTime  @default(now())
+  updated_at       DateTime
+  created_by_id    String?
+  updated_by_id    String?
+
+  @@index([employee_id])
+  @@index([leave_type_id])
+  @@index([reference_id])
+  @@index([tenant_id])
+  @@index([transaction_date])
+}
+
+model leave_origin_structures {
+  id                                                 String               @id
+  tenant_id                                          String
+  origin                                             String
+  created_by_id                                      String
+  updated_by_id                                      String?
+  created_at                                         DateTime             @default(now())
+  updated_at                                         DateTime
+  sub_origin_id                                      String
+  users_leave_origin_structures_created_by_idTousers users                @relation("leave_origin_structures_created_by_idTousers", fields: [created_by_id], references: [id])
+  tenants                                            tenants              @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  users_leave_origin_structures_updated_by_idTousers users?               @relation("leave_origin_structures_updated_by_idTousers", fields: [updated_by_id], references: [id])
+  origin_leave_types                                 origin_leave_types[]
+
+  @@unique([tenant_id, origin, sub_origin_id], map: "leave_origin_structures_tenant_id_origin_sub_origin_key")
+}
+
+model leave_requests {
+  id             String    @id
+  tenant_id      String
+  employee_id    String    @db.Uuid
+  leave_type_id  String?
+  from_date      DateTime  @db.Date
+  to_date        DateTime  @db.Date
+  total_units    Decimal   @db.Decimal(5, 2)
+  status         String    @default("PENDING")
+  applied_at     DateTime  @default(now())
+  approved_at    DateTime?
+  approved_by_id String?
+  created_by_id  String
+  updated_by_id  String?
+  created_at     DateTime  @default(now())
+  updated_at     DateTime
+  reason         String?
+
+  @@index([created_by_id])
+  @@index([leave_type_id])
+  @@index([tenant_id, employee_id, status])
+}
+
+model leave_types {
+  id                                     String   @id
+  tenant_id                              String
+  name                                   String
+  code                                   String
+  description                            String?
+  type                                   String
+  is_paid                                Boolean  @default(true)
+  requires_approval                      Boolean  @default(true)
+  is_active                              Boolean  @default(true)
+  created_by_id                          String?
+  updated_by_id                          String?
+  created_at                             DateTime @default(now())
+  updated_at                             DateTime
+  days                                   Int?     @default(1)
+  hours                                  Decimal? @db.Decimal(4, 2)
+  users_leave_types_created_by_idTousers users?   @relation("leave_types_created_by_idTousers", fields: [created_by_id], references: [id])
+  tenants                                tenants  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  users_leave_types_updated_by_idTousers users?   @relation("leave_types_updated_by_idTousers", fields: [updated_by_id], references: [id])
+
+  @@unique([tenant_id, code])
+}
+
+model leaves {
+  id                                 String    @id
+  tenant_id                          String
+  user_id                            String
+  type                               String
+  start_date                         DateTime
+  end_date                           DateTime
+  duration                           Decimal   @db.Decimal(5, 2)
+  duration_type                      String
+  reason                             String
+  status                             String    @default("pending")
+  approved_by_id                     String?
+  approved_at                        DateTime?
+  rejection_reason                   String?
+  attachments                        Json      @default("[]")
+  created_at                         DateTime  @default(now())
+  updated_at                         DateTime
+  users_leaves_approved_by_idTousers users?    @relation("leaves_approved_by_idTousers", fields: [approved_by_id], references: [id])
+  tenants                            tenants   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  users_leaves_user_idTousers        users     @relation("leaves_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade)
+}
+
+model mail_settings {
+  id         String   @id
+  tenant_id  String
+  name       String
+  host       String
+  port       Int      @default(465)
+  secure     Boolean  @default(true)
+  user       String
+  password   String
+  from_name  String
+  from_email String
+  redis_url  String
+  is_active  Boolean  @default(false)
+  created_by String?
+  updated_by String?
+  created_at DateTime @default(now()) @db.Timestamp(6)
+  updated_at DateTime @default(now()) @db.Timestamp(6)
+
+  @@unique([tenant_id, name], map: "mail_settings_unique_name_per_tenant")
+  @@index([tenant_id, is_active], map: "mail_settings_active_idx")
+  @@index([tenant_id], map: "mail_settings_tenant_idx")
+}
+
+model meeting_participants {
+  id         String    @id
+  meeting_id String
+  user_id    String
+  status     String    @default("joined")
+  role       String    @default("participant")
+  joined_at  DateTime  @default(now())
+  left_at    DateTime?
+  meetings   meetings  @relation(fields: [meeting_id], references: [id], onDelete: Cascade)
+  users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([meeting_id])
+}
+
+model meetings {
+  id                   String                 @id
+  tenant_id            String
+  channel_id           String
+  title                String
+  status               String                 @default("scheduled")
+  started_at           DateTime?
+  ended_at             DateTime?
+  created_by_id        String
+  created_at           DateTime               @default(now())
+  updated_at           DateTime
+  meeting_participants meeting_participants[]
+  channels             channels               @relation(fields: [channel_id], references: [id], onDelete: Cascade)
+  users                users                  @relation(fields: [created_by_id], references: [id])
+  tenants              tenants                @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+}
+
+model module_features {
+  id            String        @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  module_id     String        @db.Uuid
+  name          String        @db.VarChar(255)
+  type          feature_type? @default(INCLUDED)
+  price_monthly Decimal?      @default(0.00) @db.Decimal(10, 2)
+  price_yearly  Decimal?      @default(0.00) @db.Decimal(10, 2)
+  status        Boolean?      @default(true)
+  created_at    DateTime?     @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime?     @default(now()) @db.Timestamptz(6)
+
+  @@index([module_id], map: "idx_module_features_module")
+}
+
+model modules {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code        String    @unique @db.VarChar(50)
+  name        String    @db.VarChar(100)
+  description String?
+  is_active   Boolean?  @default(true)
+  created_at  DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime? @default(now()) @db.Timestamptz(6)
+}
+
+model origin_leave_types {
+  id                                            String                  @id
+  tenant_id                                     String
+  leave_origin_id                               String
+  unit                                          Decimal                 @db.Decimal(5, 2)
+  period                                        String
+  carry_forward                                 Boolean                 @default(false)
+  status                                        String                  @default("Active")
+  created_by_id                                 String
+  updated_by_id                                 String?
+  created_at                                    DateTime                @default(now())
+  updated_at                                    DateTime
+  leave_type_id                                 String?
+  users_origin_leave_types_created_by_idTousers users                   @relation("origin_leave_types_created_by_idTousers", fields: [created_by_id], references: [id])
+  leave_origin_structures                       leave_origin_structures @relation(fields: [leave_origin_id], references: [id], onDelete: Cascade)
+  tenants                                       tenants                 @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  users_origin_leave_types_updated_by_idTousers users?                  @relation("origin_leave_types_updated_by_idTousers", fields: [updated_by_id], references: [id])
+}
+
+model password_reset_tokens {
+  id         String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  user_id    String?   @db.Uuid
+  token      String    @db.VarChar(255)
+  expires_at DateTime  @db.Timestamptz(6)
+  used       Boolean?  @default(false)
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+}
+
+model payment_settings {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id      String
+  bank_name      String
+  account_number String
+  ifsc_code      String
+  branch_name    String
+  qr_code        String?
+  created_by     String
+  updated_by     String?
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+  updated_at     DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([tenant_id], map: "idx_payment_settings_tenant_id")
+}
+
+model payslip_fields {
+  id            Int        @id @default(autoincrement())
+  tenant_id     String     @db.VarChar(255)
+  label         String     @db.VarChar(100)
+  value         String?
+  type          field_type
+  options       String?
+  status        Boolean    @default(true)
+  created_at    DateTime   @default(now()) @db.Timestamp(6)
+  updated_at    DateTime   @default(now()) @db.Timestamp(6)
+  created_by_id String?    @db.VarChar(255)
+  updated_by_id String?    @db.VarChar(255)
+
+  @@unique([tenant_id, label], map: "uq_payslip_field_tenant_label")
+}
+
+model payslips {
+  id            Int       @id @default(autoincrement())
+  tenant_id     String    @db.VarChar(255)
+  employee_id   String    @db.VarChar(255)
+  company_id    Int
+  from_date     DateTime  @db.Timestamp(6)
+  to_date       DateTime  @db.Timestamp(6)
+  snapshot      Json
+  pdf_url       String
+  created_at    DateTime? @default(now()) @db.Timestamp(6)
+  created_by_id String?   @db.VarChar(255)
+
+  @@index([tenant_id, employee_id], map: "idx_payslips_tenant_employee")
+  @@index([tenant_id, from_date, to_date], map: "idx_payslips_tenant_period")
+}
+
+model permissions {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String   @unique(map: "permissions_name_unique")
+  resource    String
+  action      String
+  description String?
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([resource])
+}
+
+model pipeline_stages {
+  id          String   @id
+  tenant_id   String
+  name        String
+  color       String   @default("#1677ff")
+  probability Int      @default(0)
+  is_final    Boolean  @default(false)
+  order       Int      @default(0)
+  created_at  DateTime @default(now())
+  updated_at  DateTime
+  tenants     tenants  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+
+  @@unique([tenant_id, name])
+}
+
+model plan_mappings {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  plan_id         String    @db.Uuid
+  module_id       String    @db.Uuid
+  sub_module_id   String?   @db.Uuid
+  feature_id      String?   @db.Uuid
+  feature_tier_id String?   @db.Uuid
+  created_at      DateTime? @default(now()) @db.Timestamp(6)
+
+  @@unique([plan_id, module_id, sub_module_id, feature_id, feature_tier_id], map: "unique_mapping")
+}
+
+model plans {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name       String    @db.VarChar(100)
+  code       String    @unique @db.VarChar(50)
+  status     Boolean?  @default(true)
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at DateTime? @default(now()) @db.Timestamptz(6)
+}
+
+model positions {
+  id                                   String           @id
+  tenant_id                            String
+  code                                 String
+  title                                String
+  department_id                        String
+  sub_department_id                    String?
+  grade_id                             String
+  description                          String?
+  is_active                            Boolean          @default(true)
+  created_by_id                        String
+  updated_by_id                        String?
+  created_at                           DateTime         @default(now())
+  updated_at                           DateTime
+  users_positions_created_by_idTousers users            @relation("positions_created_by_idTousers", fields: [created_by_id], references: [id])
+  departments                          departments      @relation(fields: [department_id], references: [id])
+  grades                               grades           @relation(fields: [grade_id], references: [id])
+  sub_departments                      sub_departments? @relation(fields: [sub_department_id], references: [id])
+  tenants                              tenants          @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  users_positions_updated_by_idTousers users?           @relation("positions_updated_by_idTousers", fields: [updated_by_id], references: [id])
+  users_users_position_idTopositions   users[]          @relation("users_position_idTopositions")
+
+  @@unique([tenant_id, code])
+}
+
+model project_members {
+  id         String   @id
+  project_id String
+  user_id    String
+  role       String   @default("member")
+  joined_at  DateTime @default(now())
+  projects   projects @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  users      users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([project_id, user_id])
+}
+
+model projects {
+  id                                       String                  @id
+  tenant_id                                String
+  name                                     String
+  code                                     String?                 @unique
+  description                              String
+  status                                   String                  @default("active")
+  start_date                               DateTime
+  end_date                                 DateTime?
+  project_manager_id                       String
+  repositories                             Json?                   @default("[]")
+  workflow_template                        String[]
+  default_priority                         String                  @default("medium")
+  total_tickets                            Int                     @default(0)
+  completed_tickets                        Int                     @default(0)
+  in_progress_tickets                      Int                     @default(0)
+  created_by_id                            String
+  created_at                               DateTime                @default(now())
+  updated_at                               DateTime
+  client_projects                          client_projects[]
+  project_members                          project_members[]
+  users_projects_created_by_idTousers      users                   @relation("projects_created_by_idTousers", fields: [created_by_id], references: [id])
+  users_projects_project_manager_idTousers users                   @relation("projects_project_manager_idTousers", fields: [project_manager_id], references: [id])
+  tenants                                  tenants                 @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  release_plans                            release_plans[]
+  tickets                                  tickets[]
+  time_tracking_entries                    time_tracking_entries[]
+  work_entries                             work_entries[]
+
+  @@unique([tenant_id, code])
+}
+
+model recruitment_client_basic_information {
+  id                                                              String                                  @id
+  tenant_id                                                       String
+  client_name                                                     String?
+  account_type                                                    String?
+  industry                                                        String?
+  website                                                         String?
+  company_email                                                   String?
+  company_phone                                                   String?
+  street                                                          String?
+  city                                                            String?
+  state                                                           String?
+  zip_code                                                        String?
+  country                                                         String?
+  status                                                          Boolean?                                @default(true)
+  notes                                                           String?
+  created_at                                                      DateTime?                               @default(now()) @db.Timestamp(6)
+  updated_at                                                      DateTime?                               @default(now()) @db.Timestamp(6)
+  created_by_id                                                   String?
+  updated_by_id                                                   String?
+  users_recruitment_client_basic_information_created_by_idTousers users?                                  @relation("recruitment_client_basic_information_created_by_idTousers", fields: [created_by_id], references: [id], onUpdate: NoAction, map: "fk_created_by")
+  tenants                                                         tenants                                 @relation(fields: [tenant_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_tenant")
+  users_recruitment_client_basic_information_updated_by_idTousers users?                                  @relation("recruitment_client_basic_information_updated_by_idTousers", fields: [updated_by_id], references: [id], onUpdate: NoAction, map: "fk_updated_by")
+  recruitment_client_business_detailes                            recruitment_client_business_detailes[]
+  recruitment_client_contact                                      recruitment_client_contact[]
+  recruitment_client_hirring_preference                           recruitment_client_hirring_preference[]
+  recruitment_client_relationship                                 recruitment_client_relationship[]
+}
+
+model recruitment_client_business_detailes {
+  id                                                              String                               @id
+  recruitment_client_id                                           String
+  company_name                                                    String?
+  year_established                                                Int?
+  revenue_range                                                   String?
+  created_at                                                      DateTime?                            @default(now()) @db.Timestamp(6)
+  updated_at                                                      DateTime?                            @default(now()) @db.Timestamp(6)
+  created_by_id                                                   String?
+  updated_by_id                                                   String?
+  users_recruitment_client_business_detailes_created_by_idTousers users?                               @relation("recruitment_client_business_detailes_created_by_idTousers", fields: [created_by_id], references: [id], onUpdate: NoAction, map: "fk_created_by")
+  recruitment_client_basic_information                            recruitment_client_basic_information @relation(fields: [recruitment_client_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_recruitment_client")
+  users_recruitment_client_business_detailes_updated_by_idTousers users?                               @relation("recruitment_client_business_detailes_updated_by_idTousers", fields: [updated_by_id], references: [id], onUpdate: NoAction, map: "fk_updated_by")
+}
+
+model recruitment_client_contact {
+  id                                   String                               @id
+  recruitment_client_id                String
+  person_name                          String
+  designation                          String?
+  email                                String?
+  phone                                String?
+  linkedin_url                         String?
+  created_at                           DateTime?                            @default(now()) @db.Timestamp(6)
+  updated_at                           DateTime?                            @default(now()) @db.Timestamp(6)
+  recruitment_client_basic_information recruitment_client_basic_information @relation(fields: [recruitment_client_id], references: [id], onDelete: Cascade, map: "fk_recruitment_client")
+}
+
+model recruitment_client_hirring_preference {
+  id                                   String                               @id
+  recruitment_id                       String
+  employment_type                      String?
+  work_type                            String?
+  hiring_location                      String?
+  created_at                           DateTime?                            @default(now()) @db.Timestamp(6)
+  updated_at                           DateTime?                            @default(now()) @db.Timestamp(6)
+  recruitment_client_basic_information recruitment_client_basic_information @relation(fields: [recruitment_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_recruitment")
+}
+
+model recruitment_client_relationship {
+  id                                   String                               @id
+  recruitment_client_id                String
+  implementation_partner_id            String?
+  prime_vendor_id                      String?
+  contacts                             String[]
+  created_at                           DateTime?                            @default(now()) @db.Timestamp(6)
+  updated_at                           DateTime?                            @default(now()) @db.Timestamp(6)
+  recruitment_client_basic_information recruitment_client_basic_information @relation(fields: [recruitment_client_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_recruitment_client_relationship")
+}
+
+model refresh_tokens {
+  id         String   @id
+  token      String   @unique
+  user_id    String
+  expires_at DateTime
+  created_at DateTime @default(now())
+  users      users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+}
+
+model reimbursement_approvals {
+  id                       String   @id(map: "reimbursement_approval_pkey")
+  tenant_id                String
+  reimbursement_request_id String
+  approver_id              String
+  role                     String
+  status                   String
+  comments                 String?
+  created_at               DateTime @default(now())
+  updated_at               DateTime
+}
+
+model reimbursement_attachments {
+  id                        String    @id @default(dbgenerated("gen_random_uuid()"))
+  tenant_id                 String
+  file_name                 String
+  file_size                 Int
+  file_type                 String
+  file_url                  String
+  uploaded_by_id            String
+  uploaded_at               DateTime? @default(now()) @db.Timestamp(6)
+  created_at                DateTime? @default(now()) @db.Timestamp(6)
+  updated_at                DateTime? @default(now()) @db.Timestamp(6)
+  reimbursement_request_id  String?
+  reimbursement_item_id     String?
+  reimbursement_category_id String?
+  reimbursement_approval_id String?
+
+  @@index([reimbursement_item_id], map: "idx_ra_item")
+  @@index([reimbursement_request_id], map: "idx_ra_request")
+}
+
+model reimbursement_categories {
+  id                  String   @id
+  tenant_id           String
+  name                String
+  max_per_request     Decimal? @db.Decimal(10, 2)
+  monthly_limit       Decimal? @db.Decimal(10, 2)
+  yearly_limit        Decimal? @db.Decimal(10, 2)
+  eligible_roles      String[] @default([])
+  approval_roles      String[] @default([])
+  accept_roles        String[] @default([])
+  attachment_required Boolean  @default(false)
+  is_active           Boolean  @default(true)
+  created_by_id       String?
+  updated_by_id       String?
+  created_at          DateTime @default(now())
+  updated_at          DateTime @default(now())
+  description         String?
+  code                String?  @db.VarChar(50)
+
+  @@unique([tenant_id, name])
+}
+
+model reimbursement_configurations {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id     String    @db.VarChar(255)
+  origin        String    @db.VarChar(255)
+  sub_origin    String?   @db.VarChar(255)
+  category_type String    @db.VarChar(255)
+  amount        Decimal   @db.Decimal(10, 2)
+  period        String    @db.VarChar(20)
+  status        String    @db.VarChar(50)
+  created_by_id String    @db.VarChar(255)
+  updated_by_id String?   @db.VarChar(255)
+  created_at    DateTime? @default(now()) @db.Timestamp(6)
+  updated_at    DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model reimbursement_item {
+  id                       String   @id @default(dbgenerated("gen_random_uuid()"))
+  tenant_id                String
+  reimbursement_request_id String
+  title                    String?
+  date                     DateTime
+  amount                   Decimal  @db.Decimal(10, 2)
+  bill_no                  String?
+  description              String?
+  status                   String?
+  created_at               DateTime @default(now())
+  updated_at               DateTime @default(now())
+
+  @@index([date], map: "idx_item_date")
+  @@index([reimbursement_request_id], map: "idx_item_request")
+  @@index([tenant_id], map: "idx_item_tenant")
+}
+
+model reimbursement_item_approvers {
+  id                    String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id             String              @db.Uuid
+  reimbursement_item_id String              @db.Uuid
+  level                 Int
+  approver_type         String?             @db.VarChar(50)
+  approver_id           String              @db.Uuid
+  status                String              @default("PENDING")
+  acted_at              DateTime?           @db.Timestamp(6)
+  remarks               String?
+  created_at            DateTime            @default(now()) @db.Timestamp(6)
+  updated_at            DateTime            @default(now()) @db.Timestamp(6)
+  reimbursement_items   reimbursement_items @relation(fields: [reimbursement_item_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_reimbursement_item")
+}
+
+model reimbursement_items {
+  id                           String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reimbursement_id             String                         @db.Uuid
+  category                     String                         @db.VarChar(100)
+  date                         DateTime                       @db.Date
+  bill_no                      String                         @db.VarChar(100)
+  amount                       Decimal                        @db.Decimal(10, 2)
+  description                  String?
+  created_at                   DateTime                       @default(now()) @db.Timestamp(6)
+  updated_at                   DateTime                       @default(now()) @db.Timestamp(6)
+  status                       String?                        @default("SUBMITTED")
+  reimbursement_item_approvers reimbursement_item_approvers[]
+}
+
+model reimbursement_policies {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  origin_type   String    @db.VarChar(50)
+  origin_id     String    @db.Uuid
+  is_active     Boolean?  @default(true)
+  created_by_id String    @db.Uuid
+  updated_by_id String?   @db.Uuid
+  created_at    DateTime? @default(now()) @db.Timestamp(6)
+  updated_at    DateTime? @default(now()) @db.Timestamp(6)
+  tenant_id     String?   @db.VarChar(255)
+
+  @@index([origin_type, origin_id], map: "idx_reimbursement_policies_origin")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model reimbursement_policy_approvers {
+  id               String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  policy_rule_id   String          @db.Uuid
+  level            Int
+  approver_type    String          @db.VarChar(50)
+  approver_id      String?
+  created_by_id    String          @db.Uuid
+  updated_by_id    String?         @db.Uuid
+  created_at       DateTime?       @default(now()) @db.Timestamp(6)
+  updated_at       DateTime?       @default(now()) @db.Timestamp(6)
+  tenant_id        String?         @db.VarChar(255)
+  reimbursement_id String?         @db.Uuid
+  reimbursements   reimbursements? @relation(fields: [reimbursement_id], references: [id], onUpdate: NoAction, map: "fk_reimbursement")
+
+  @@index([policy_rule_id], map: "idx_policy_approvers_rule_id")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model reimbursement_policy_rules {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  policy_id     String    @db.Uuid
+  category_id   String    @db.VarChar(255)
+  max_amount    Decimal   @db.Decimal(12, 2)
+  period_type   String    @db.VarChar(10)
+  is_active     Boolean?  @default(true)
+  created_by_id String    @db.Uuid
+  updated_by_id String?   @db.Uuid
+  created_at    DateTime? @default(now()) @db.Timestamp(6)
+  updated_at    DateTime? @default(now()) @db.Timestamp(6)
+  tenant_id     String?   @db.VarChar(255)
+
+  @@index([policy_id], map: "idx_policy_rules_policy_id")
+}
+
+model reimbursement_requests {
+  id                        String    @id @default(dbgenerated("gen_random_uuid()"))
+  tenant_id                 String
+  request_id                String
+  user_id                   String
+  category                  String
+  department                String
+  policy                    String?
+  amount                    Decimal   @db.Decimal(10, 2)
+  status                    String    @default("DRAFT")
+  finance_status            String?
+  submitted_at              DateTime?
+  activity_log              Json      @default("[]")
+  created_at                DateTime  @default(now())
+  updated_at                DateTime  @default(now())
+  reimbursement_category_id String?
+  year                      Int       @default(dbgenerated("EXTRACT(year FROM CURRENT_TIMESTAMP)"))
+
+  @@unique([tenant_id, request_id])
+  @@unique([tenant_id, year, request_id])
+  @@index([reimbursement_category_id], map: "idx_reimbursement_requests_category")
+  @@index([status], map: "idx_reimbursement_requests_status")
+  @@index([tenant_id, year, created_at], map: "idx_reimbursement_requests_tenant_year")
+  @@index([user_id], map: "idx_reimbursement_requests_user")
+}
+
+model reimbursement_settings_categories {
+  id                        String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  tenant_id                 String
+  code                      String    @db.VarChar(50)
+  name                      String    @db.VarChar(100)
+  description               String?
+  max_requests_per_month    Int?
+  monthly_limit_amount      Decimal?  @db.Decimal(12, 2)
+  yearly_limit_amount       Decimal?  @db.Decimal(12, 2)
+  allowed_roles             String[]
+  approval_flow             Json?
+  attachment_required       Boolean?  @default(false)
+  auto_approve_under_amount Decimal?  @db.Decimal(12, 2)
+  is_active                 Boolean?  @default(true)
+  created_at                DateTime? @default(now()) @db.Timestamp(6)
+  created_by                String
+  updated_at                DateTime? @default(now()) @db.Timestamp(6)
+  updated_by                String?
+
+  @@unique([tenant_id, code])
+}
+
+model reimbursements {
+  id                             String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id                      String                           @db.Uuid
+  status                         reimbursementcreate_status       @default(DRAFT)
+  total_amount                   Decimal                          @db.Decimal(10, 2)
+  submitted_at                   DateTime?                        @db.Timestamp(6)
+  submitted_by                   String?                          @db.Uuid
+  created_at                     DateTime                         @default(now()) @db.Timestamp(6)
+  updated_at                     DateTime                         @default(now()) @db.Timestamp(6)
+  created_by_id                  String                           @db.Uuid
+  updated_by_id                  String?                          @db.Uuid
+  reimbursement_policy_approvers reimbursement_policy_approvers[]
+}
+
+model release_notes {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  project_id       String
+  version          String   @db.VarChar(50)
+  title            String   @db.VarChar(255)
+  release_date     DateTime @db.Timestamp(6)
+  environment      String   @default("DEV") @db.VarChar(10)
+  summary          Json?
+  key_insights     Json?
+  new_features     Json?
+  improvements     Json?
+  bug_fixes        Json?
+  breaking_changes Json?
+  api_changes      Json?
+  database_changes Json?
+  known_issues     Json?
+  linked_tickets   String[]
+  repositories     String[]
+  pull_requests    String[]
+  visibility       String[]
+  status           String   @default("DRAFT") @db.VarChar(10)
+  created_at       DateTime @default(now()) @db.Timestamp(6)
+  updated_at       DateTime @default(now()) @db.Timestamp(6)
+  tenant_id        String?
+  created_by       String   @default("system") @db.VarChar(255)
+  updated_by       String?  @db.VarChar(255)
+}
+
+model release_plans {
+  id                                             String    @id
+  tenant_id                                      String
+  project_id                                     String
+  version                                        String
+  description                                    String?
+  status                                         String    @default("planned")
+  release_date                                   DateTime?
+  created_by_id                                  String
+  created_at                                     DateTime  @default(now())
+  updated_at                                     DateTime
+  type                                           String    @default("release_plan")
+  goal                                           String?
+  started_at                                     DateTime?
+  completed_at                                   DateTime?
+  committed_points                               Int       @default(0)
+  completed_points                               Int       @default(0)
+  end_date                                       DateTime?
+  start_date                                     DateTime?
+  users                                          users     @relation(fields: [created_by_id], references: [id])
+  projects                                       projects  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  tenants                                        tenants   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  tickets_tickets_demo_plan_idTorelease_plans    tickets[] @relation("tickets_demo_plan_idTorelease_plans")
+  tickets_tickets_release_plan_idTorelease_plans tickets[] @relation("tickets_release_plan_idTorelease_plans")
+  tickets_tickets_sprint_plan_idTorelease_plans  tickets[] @relation("tickets_sprint_plan_idTorelease_plans")
+
+  @@unique([tenant_id, project_id, version])
+  @@index([project_id, type, status])
+}
+
+model releasenotes_settings {
+  id            String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id     String
+  name          String
+  code          String
+  status        environment_status @default(ACTIVE)
+  color         String?
+  order         Int?               @default(0)
+  created_by_id String
+  updated_by_id String?
+  created_at    DateTime?          @default(now()) @db.Timestamp(6)
+  updated_at    DateTime?          @default(now()) @db.Timestamp(6)
+}
+
+model repositories {
+  id                   String                 @id @default(dbgenerated("gen_random_uuid()"))
+  tenant_id            String
+  name                 String
+  url                  String
+  description          String?
+  is_active            Boolean?               @default(true)
+  created_at           DateTime?              @default(now())
+  updated_at           DateTime
+  tenants              tenants                @relation(fields: [tenant_id], references: [id])
+  ticket_branches      ticket_branches[]
+  ticket_pull_requests ticket_pull_requests[]
+
+  @@unique([tenant_id, name])
+}
+
+model role_permissions {
+  role_id       String   @db.Uuid
+  permission_id String   @db.Uuid
+  granted_at    DateTime @default(now()) @db.Timestamptz(6)
+  granted_by_id String?
+
+  @@id([role_id, permission_id])
+}
+
+model roles {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id   String
+  name        String
+  slug        String
+  description String?
+  is_system   Boolean  @default(false)
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([tenant_id, slug], map: "roles_tenant_slug_unique")
+  @@index([tenant_id])
+}
+
+model salary_components {
+  key            Int            @id @default(autoincrement())
+  tenant_id      String         @db.VarChar(255)
+  component_name String         @db.VarChar(100)
+  component_code String         @db.VarChar(50)
+  type           component_type @default(Earning)
+  status         Boolean        @default(true)
+  created_at     DateTime       @default(now()) @db.Timestamp(6)
+  updated_at     DateTime       @default(now()) @db.Timestamp(6)
+  created_by_id  String?        @db.VarChar(255)
+  updated_by_id  String?        @db.VarChar(255)
+
+  @@unique([tenant_id, component_code], map: "uq_salary_component_tenant_code")
+}
+
+model salary_structures {
+  id                Int             @id @default(autoincrement())
+  name              String
+  description       String
+  grossSalary       Int
+  deductionsEnabled Boolean?        @default(false)
+  visibility        VisibilityType? @default(PUBLIC)
+  companyId         Int?
+  roleId            Int?
+  tenant_id         String
+  created_at        DateTime?       @default(now())
+  updated_at        DateTime?       @default(now())
+  created_by_id     String?
+  updated_by_id     String?
+  isActive          Boolean?        @default(false)
+}
+
+model settings_profiles {
+  id         String    @id @default(dbgenerated("gen_random_uuid()"))
+  tenant_id  String
+  name       String
+  is_active  Boolean?  @default(false)
+  general_id String    @db.Uuid
+  invoice_id String    @db.Uuid
+  payment_id String    @db.Uuid
+  created_by String
+  updated_by String?
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+  updated_at DateTime? @default(now()) @db.Timestamp(6)
+
+  @@index([general_id], map: "idx_settings_profiles_general_id")
+  @@index([invoice_id], map: "idx_settings_profiles_invoice_id")
+  @@index([payment_id], map: "idx_settings_profiles_payment_id")
+  @@index([tenant_id], map: "idx_settings_profiles_tenant_id")
+}
+
+model shifts {
+  id                 String       @id
+  tenant_id          String
+  name               String
+  start_time         String
+  end_time           String
+  working_minutes    Int          @default(480)
+  grace_minutes      Int          @default(15)
+  overtime_threshold Int          @default(60)
+  break_minutes      Int          @default(60)
+  description        String?
+  color              String       @default("#007bff")
+  is_active          Boolean      @default(true)
+  created_at         DateTime     @default(now())
+  updated_at         DateTime
+  attendance         attendance[]
+  tenants            tenants      @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  users              users[]
+
+  @@unique([tenant_id, name])
+}
+
+model shortcuts {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title         String    @db.VarChar(255)
+  path          String    @db.VarChar(255)
+  created_by_id String    @db.Uuid
+  updated_by_id String?   @db.Uuid
+  created_at    DateTime? @default(now()) @db.Timestamp(6)
+  updated_at    DateTime? @default(now()) @db.Timestamp(6)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model sprint_completion_logs {
+  id               String   @id @db.VarChar(255)
+  tenant_id        String   @db.VarChar(255)
+  sprint_plan_id   String   @db.VarChar(255)
+  project_id       String   @db.VarChar(255)
+  ticket_id        String   @db.VarChar(255)
+  action           String   @db.VarChar(100)
+  destination_id   String?  @db.VarChar(255)
+  destination_type String?  @db.VarChar(50)
+  performed_by_id  String   @db.VarChar(255)
+  performed_at     DateTime @default(now()) @db.Timestamp(6)
+  metadata         Json?    @default("{}")
+
+  @@index([performed_at], map: "idx_sprint_completion_logs_performed_at")
+  @@index([project_id], map: "idx_sprint_completion_logs_project_id")
+  @@index([sprint_plan_id], map: "idx_sprint_completion_logs_sprint_plan_id")
+  @@index([tenant_id], map: "idx_sprint_completion_logs_tenant_id")
+  @@index([ticket_id], map: "idx_sprint_completion_logs_ticket_id")
+}
+
+model squad {
+  id                               String          @id @default(dbgenerated("gen_random_uuid()"))
+  tenant_id                        String
+  squad_name                       String          @db.VarChar(100)
+  squad_code                       String          @db.VarChar(50)
+  squad_status                     Boolean?        @default(true)
+  is_archived                      Boolean?        @default(false)
+  is_deleted                       Boolean?        @default(false)
+  created_at                       DateTime?       @default(now()) @db.Timestamp(6)
+  updated_at                       DateTime?       @default(now()) @db.Timestamp(6)
+  created_by_id                    String
+  updated_by_id                    String?
+  users_squad_created_by_idTousers users           @relation("squad_created_by_idTousers", fields: [created_by_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_squad_created_by")
+  tenants                          tenants         @relation(fields: [tenant_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_squad_tenant")
+  users_squad_updated_by_idTousers users?          @relation("squad_updated_by_idTousers", fields: [updated_by_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_squad_updated_by")
+  squad_members                    squad_members[]
+}
+
+model squad_members {
+  id                                         String    @id @default(dbgenerated("gen_random_uuid()"))
+  tenant_id                                  String
+  squad_id                                   String
+  squad_member_id                            String
+  member_type                                String    @db.VarChar(50)
+  status                                     Boolean?  @default(true)
+  created_at                                 DateTime? @default(now()) @db.Timestamp(6)
+  updated_at                                 DateTime? @default(now()) @db.Timestamp(6)
+  created_by_id                              String
+  updated_by_id                              String?
+  users_squad_members_created_by_idTousers   users     @relation("squad_members_created_by_idTousers", fields: [created_by_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_squad_members_created_by")
+  squad                                      squad     @relation(fields: [squad_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_squad_members_squad")
+  tenants                                    tenants   @relation(fields: [tenant_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_squad_members_tenant")
+  users_squad_members_updated_by_idTousers   users?    @relation("squad_members_updated_by_idTousers", fields: [updated_by_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_squad_members_updated_by")
+  users_squad_members_squad_member_idTousers users     @relation("squad_members_squad_member_idTousers", fields: [squad_member_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_squad_members_user")
+}
+
+model status_updates {
+  id                 String         @id
+  user_id            String
+  tenant_id          String
+  date               DateTime       @db.Date
+  project_updates    Json           @default("[]")
+  mood               String?
+  total_hours_worked Decimal?       @db.Decimal(5, 2)
+  general_notes      String?
+  submitted_at       DateTime       @default(now())
+  created_at         DateTime       @default(now())
+  updated_at         DateTime
+  is_missed          Boolean        @default(false)
+  missed_updateAt    DateTime?
+  updateType         String?        @default("BOD") @db.VarChar(10)
+  tenants            tenants        @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  users              users          @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  work_entries       work_entries[]
+
+  @@index([tenant_id, date])
+  @@index([user_id, date])
+}
+
+model sub_departments {
+  id                                         String      @id
+  tenant_id                                  String
+  parent_department_id                       String
+  code                                       String
+  name                                       String
+  description                                String?
+  is_active                                  Boolean     @default(true)
+  created_by_id                              String
+  updated_by_id                              String?
+  created_at                                 DateTime    @default(now())
+  updated_at                                 DateTime
+  positions                                  positions[]
+  users_sub_departments_created_by_idTousers users       @relation("sub_departments_created_by_idTousers", fields: [created_by_id], references: [id])
+  departments                                departments @relation(fields: [parent_department_id], references: [id], onDelete: Cascade)
+  tenants                                    tenants     @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  users_sub_departments_updated_by_idTousers users?      @relation("sub_departments_updated_by_idTousers", fields: [updated_by_id], references: [id])
+
+  @@unique([tenant_id, code])
+}
+
+model sub_modules {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code        String    @unique @db.VarChar(50)
+  module_id   String    @db.Uuid
+  name        String    @db.VarChar(100)
+  description String?
+  order_index Int?      @default(0)
+  is_active   Boolean?  @default(true)
+  created_at  DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime? @default(now()) @db.Timestamptz(6)
+}
+
+model tenant_mappings {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id       String
+  module_id       String    @db.Uuid
+  sub_module_id   String?   @db.Uuid
+  feature_id      String?   @db.Uuid
+  feature_tier_id String?   @db.Uuid
+  is_active       Boolean?  @default(true)
+  created_at      DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@unique([tenant_id, module_id, sub_module_id, feature_id, feature_tier_id], map: "unique_tenant_mapping")
+  @@index([tenant_id], map: "idx_tenant_mappings_tenant_id")
+}
+
+model tenant_modules {
+  id         String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  tenant_id  String
+  module_id  String    @db.Uuid
+  is_enabled Boolean?  @default(true)
+  created_at DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@unique([tenant_id, module_id])
+  @@index([tenant_id], map: "idx_tenant_modules_tenant")
+}
+
+model tenants {
+  id                                   String                                 @id
+  name                                 String
+  subdomain                            String                                 @unique
+  plan_type                            String                                 @default("basic")
+  max_users                            Int                                    @default(10)
+  is_active                            Boolean                                @default(true)
+  settings                             Json?                                  @default("{}")
+  created_at                           DateTime                               @default(now())
+  updated_at                           DateTime
+  is_trial                             Boolean?                               @default(false)
+  trial_ends_at                        DateTime?                              @db.Timestamptz(6)
+  attendance                           attendance[]
+  attendance_breaks                    attendance_breaks[]
+  channels                             channels[]
+  client_projects                      client_projects[]
+  clients                              clients[]
+  company_government_holidays          company_government_holidays[]
+  customers                            customers[]
+  departments                          departments[]
+  dropdown_options                     dropdown_options[]
+  employment_types                     employment_types[]
+  fixed_holidays                       fixed_holidays[]
+  grades                               grades[]
+  invoice_templates                    invoice_templates[]
+  leave_adjustments                    leave_adjustments[]
+  leave_origin_structures              leave_origin_structures[]
+  leave_types                          leave_types[]
+  leaves                               leaves[]
+  meetings                             meetings[]
+  origin_leave_types                   origin_leave_types[]
+  pipeline_stages                      pipeline_stages[]
+  positions                            positions[]
+  projects                             projects[]
+  recruitment_client_basic_information recruitment_client_basic_information[]
+  release_plans                        release_plans[]
+  repositories                         repositories[]
+  shifts                               shifts[]
+  squad                                squad[]
+  squad_members                        squad_members[]
+  status_updates                       status_updates[]
+  sub_departments                      sub_departments[]
+  ticket_activity_log                  ticket_activity_log[]
+  ticket_attachments                   ticket_attachments[]
+  ticket_comments                      ticket_comments[]
+  ticket_related_links                 ticket_related_links[]
+  ticket_workflow_steps                ticket_workflow_steps[]
+  tickets                              tickets[]
+  time_tracking_entries                time_tracking_entries[]
+  time_tracking_logs                   time_tracking_logs[]
+  transactions                         transactions[]
+  users                                users[]
+  vendor_basic_information             vendor_basic_information[]
+}
+
+model ticket_activity_log {
+  id              String   @id
+  tenant_id       String
+  ticket_id       String
+  action          String
+  performed_by_id String
+  timestamp       DateTime @default(now())
+  details         Json     @default("{}")
+  created_at      DateTime @default(now())
+  users           users    @relation(fields: [performed_by_id], references: [id], onDelete: Cascade)
+  tenants         tenants  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  tickets         tickets  @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
+}
+
+model ticket_attachments {
+  id             String   @id
+  tenant_id      String
+  ticket_id      String
+  file_name      String
+  file_size      Int
+  file_type      String
+  file_url       String
+  uploaded_by_id String
+  uploaded_at    DateTime @default(now())
+  created_at     DateTime @default(now())
+  updated_at     DateTime
+  tenants        tenants  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  tickets        tickets  @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
+  users          users    @relation(fields: [uploaded_by_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id, ticket_id], map: "idx_attachment_tenant_ticket")
+  @@index([ticket_id], map: "idx_attachment_ticket")
+  @@index([tenant_id, ticket_id])
+  @@index([ticket_id])
+}
+
+model ticket_branches {
+  id            String       @id @default(dbgenerated("gen_random_uuid()"))
+  ticket_id     String
+  repository_id String
+  name          String
+  url           String?
+  is_default    Boolean?     @default(false)
+  created_at    DateTime?    @default(now())
+  repositories  repositories @relation(fields: [repository_id], references: [id], onDelete: Cascade)
+  tickets       tickets      @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
+
+  @@index([repository_id])
+  @@index([ticket_id])
+}
+
+model ticket_comments {
+  id          String   @id
+  tenant_id   String
+  ticket_id   String
+  user_id     String
+  comment     String
+  attachments Json     @default("[]")
+  timestamp   DateTime @default(now())
+  created_at  DateTime @default(now())
+  updated_at  DateTime
+  tenants     tenants  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  tickets     tickets  @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
+  users       users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+}
+
+model ticket_pull_requests {
+  id            String       @id @default(dbgenerated("gen_random_uuid()"))
+  ticket_id     String
+  repository_id String
+  title         String?
+  url           String
+  number        Int?
+  state         String?      @default("open")
+  created_at    DateTime?    @default(now())
+  updated_at    DateTime
+  branch_name   String?
+  branch_url    String?
+  repositories  repositories @relation(fields: [repository_id], references: [id], onDelete: Cascade)
+  tickets       tickets      @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
+
+  @@index([repository_id])
+  @@index([ticket_id])
+}
+
+model ticket_related_links {
+  id          String   @id
+  tenant_id   String
+  ticket_id   String
+  link_type   String
+  title       String
+  description String
+  url         String
+  added_by_id String
+  added_at    DateTime @default(now())
+  created_at  DateTime @default(now())
+  updated_at  DateTime
+  users       users    @relation(fields: [added_by_id], references: [id], onDelete: Cascade)
+  tenants     tenants  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  tickets     tickets  @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
+}
+
+model ticket_workflow_steps {
+  id                String    @id
+  tenant_id         String
+  ticket_id         String
+  step_name         String
+  status            String    @default("not_started")
+  assigned_to       String[]  @default([])
+  approvers         String[]  @default([])
+  approval_status   Json      @default("[]")
+  documents         Json      @default("[]")
+  notes             String?
+  start_date        DateTime?
+  end_date          DateTime?
+  completed_at      DateTime?
+  scheduled_meeting Json?
+  branch_name       String?
+  test_results      Json      @default("[]")
+  created_at        DateTime  @default(now())
+  updated_at        DateTime
+  tenants           tenants   @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  tickets           tickets   @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model tickets {
+  id                                                   String                  @id
+  tenant_id                                            String
+  project_id                                           String
+  release_plan_id                                      String?
+  title                                                String
+  description                                          String?
+  ticket_number                                        String
+  status                                               String                  @default("not_started")
+  priority                                             String                  @default("Medium (P2)")
+  type                                                 String                  @default("Task")
+  platform                                             String                  @default("Development")
+  stack                                                String?
+  task_level                                           String                  @default("Medium")
+  story_point                                          Int                     @default(1)
+  estimate_hours                                       Decimal                 @default(0) @db.Decimal(5, 2)
+  assignee_id                                          String?
+  report_to_id                                         String?
+  created_by_id                                        String
+  parent_tickets                                       String[]                @default([])
+  parent_ticket_notes                                  String?
+  current_workflow_step                                String                  @default("Scope Document")
+  start_date                                           DateTime?
+  end_date                                             DateTime?
+  due_date                                             DateTime?
+  completed_at                                         DateTime?
+  tags                                                 String[]                @default([])
+  metadata                                             Json?                   @default("{}")
+  created_at                                           DateTime                @default(now())
+  updated_at                                           DateTime
+  epic_id                                              String?
+  parent_id                                            String?
+  rank                                                 String?
+  demo_plan_id                                         String?
+  sprint_plan_id                                       String?
+  is_archived                                          Boolean                 @default(false)
+  archived_at                                          DateTime?
+  archived_by_id                                       String?                 @db.VarChar(255)
+  bucket_id                                            String?                 @db.VarChar(255)
+  is_deleted                                           Boolean?                @default(false)
+  deleted_at                                           DateTime?               @db.Timestamp(6)
+  deleted_by_id                                        String?                 @db.VarChar(255)
+  ticket_activity_log                                  ticket_activity_log[]
+  ticket_attachments                                   ticket_attachments[]
+  ticket_branches                                      ticket_branches[]
+  ticket_comments                                      ticket_comments[]
+  ticket_pull_requests                                 ticket_pull_requests[]
+  ticket_related_links                                 ticket_related_links[]
+  ticket_workflow_steps                                ticket_workflow_steps[]
+  users_tickets_assignee_idTousers                     users?                  @relation("tickets_assignee_idTousers", fields: [assignee_id], references: [id])
+  users_tickets_created_by_idTousers                   users                   @relation("tickets_created_by_idTousers", fields: [created_by_id], references: [id])
+  release_plans_tickets_demo_plan_idTorelease_plans    release_plans?          @relation("tickets_demo_plan_idTorelease_plans", fields: [demo_plan_id], references: [id])
+  tickets_tickets_epic_idTotickets                     tickets?                @relation("tickets_epic_idTotickets", fields: [epic_id], references: [id])
+  other_tickets_tickets_epic_idTotickets               tickets[]               @relation("tickets_epic_idTotickets")
+  tickets_tickets_parent_idTotickets                   tickets?                @relation("tickets_parent_idTotickets", fields: [parent_id], references: [id])
+  other_tickets_tickets_parent_idTotickets             tickets[]               @relation("tickets_parent_idTotickets")
+  projects                                             projects                @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  release_plans_tickets_release_plan_idTorelease_plans release_plans?          @relation("tickets_release_plan_idTorelease_plans", fields: [release_plan_id], references: [id])
+  users_tickets_report_to_idTousers                    users?                  @relation("tickets_report_to_idTousers", fields: [report_to_id], references: [id])
+  release_plans_tickets_sprint_plan_idTorelease_plans  release_plans?          @relation("tickets_sprint_plan_idTorelease_plans", fields: [sprint_plan_id], references: [id])
+  tenants                                              tenants                 @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  time_tracking_entries                                time_tracking_entries[]
+  work_entries                                         work_entries[]
+
+  @@unique([tenant_id, ticket_number])
+  @@index([bucket_id], map: "idx_tickets_bucket_id")
+  @@index([is_deleted, deleted_at], map: "idx_tickets_is_deleted_deleted_at")
+  @@index([project_id, is_archived], map: "idx_tickets_project_archived")
+  @@index([project_id, is_deleted], map: "idx_tickets_project_is_deleted")
+  @@index([status, is_archived], map: "idx_tickets_status_archived")
+  @@index([tenant_id, is_archived], map: "idx_tickets_tenant_archived")
+  @@index([tenant_id, is_deleted], map: "idx_tickets_tenant_is_deleted")
+  @@index([epic_id])
+  @@index([parent_id])
+  @@index([project_id, demo_plan_id])
+  @@index([project_id, release_plan_id])
+  @@index([project_id, sprint_plan_id])
+}
+
+model time_tracking_entries {
+  id                 String               @id
+  tenant_id          String
+  user_id            String
+  project_id         String?
+  ticket_id          String?
+  description        String?
+  billable           Boolean              @default(false)
+  billing_rate       Decimal?             @db.Decimal(10, 2)
+  start_time         DateTime
+  end_time           DateTime?
+  duration           Int?
+  status             String               @default("RUNNING")
+  created_at         DateTime             @default(now())
+  updated_at         DateTime
+  projects           projects?            @relation(fields: [project_id], references: [id])
+  tenants            tenants              @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  tickets            tickets?             @relation(fields: [ticket_id], references: [id])
+  users              users                @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  time_tracking_logs time_tracking_logs[]
+
+  @@index([project_id])
+  @@index([tenant_id, user_id])
+}
+
+model time_tracking_logs {
+  id                    String                @id
+  tenant_id             String
+  time_tracking_id      String
+  action                String
+  created_at            DateTime              @default(now())
+  tenants               tenants               @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  time_tracking_entries time_tracking_entries @relation(fields: [time_tracking_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
+  @@index([time_tracking_id])
+}
+
+model timesheet_rows {
+  id            String   @id
+  tenant_id     String
+  timesheet_id  String
+  day           DateTime @db.Date
+  project_name  String
+  task_name     String
+  description   String?
+  hours         Float
+  billable      Boolean  @default(false)
+  created_by_id String
+  updated_by_id String?
+  created_at    DateTime @default(now()) @db.Timestamp(6)
+  updated_at    DateTime @default(now()) @db.Timestamp(6)
+  projectId     String?  @db.Uuid
+  taskId        String?  @db.Uuid
+  dayorder      Int?
+
+  @@index([created_by_id], map: "idx_timesheet_rows_created_by")
+  @@index([timesheet_id], map: "idx_timesheet_rows_timesheet_id")
+  @@index([updated_by_id], map: "idx_timesheet_rows_updated_by")
+}
+
+model timesheets {
+  id             String           @id
+  tenant_id      String
+  user_id        String
+  week_start     DateTime         @db.Timestamp(6)
+  week_end       DateTime         @db.Timestamp(6)
+  status         timesheet_status @default(DRAFT)
+  total_hours    Float
+  reject_reason  String?
+  approved_by_id String?
+  created_by_id  String
+  updated_by_id  String?
+  created_at     DateTime         @default(now()) @db.Timestamp(6)
+  updated_at     DateTime         @default(now()) @db.Timestamp(6)
+  leave_count    Int              @default(0)
+
+  @@unique([user_id, week_start], map: "uq_timesheet_user_week")
+  @@index([user_id], map: "idx_timesheets_user_id")
+}
+
+model transactions {
+  id          String   @id
+  tenant_id   String
+  user_id     String
+  type        String
+  amount      Decimal  @db.Decimal(10, 2)
+  description String
+  category    String?
+  date        DateTime
+  metadata    Json?    @default("{}")
+  created_at  DateTime @default(now())
+  updated_at  DateTime
+  tenants     tenants  @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  users       users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+}
+
+model user_roles {
+  user_id        String
+  role_id        String    @db.Uuid
+  tenant_id      String
+  assigned_at    DateTime  @default(now()) @db.Timestamptz(6)
+  assigned_by_id String?
+  expires_at     DateTime? @db.Timestamptz(6)
+
+  @@id([user_id, role_id])
+  @@index([user_id, tenant_id], map: "user_roles_user_tenant_idx")
+}
+
+model users {
+  id                                                                                             String                                 @id
+  tenant_id                                                                                      String
+  name                                                                                           String
+  work_email                                                                                     String
+  personal_email                                                                                 String
+  phone                                                                                          String
+  password_hash                                                                                  String
+  role                                                                                           String                                 @default("user")
+  reports_to_id                                                                                  String?
+  date_of_birth                                                                                  DateTime?
+  work_days                                                                                      Int[]                                  @default([1, 2, 3, 4, 5])
+  assigned_shift_id                                                                              String?
+  shift_assigned_by_id                                                                           String?
+  shift_assigned_date                                                                            DateTime?
+  is_active                                                                                      Boolean                                @default(true)
+  last_login_at                                                                                  DateTime?
+  created_at                                                                                     DateTime                               @default(now())
+  updated_at                                                                                     DateTime
+  department                                                                                     String?
+  company_id                                                                                     Int?
+  zoho_access_token                                                                              String?                                @db.VarChar
+  zoho_refresh_token                                                                             String?                                @db.VarChar
+  zoho_token_expiry                                                                              DateTime?                              @db.Timestamptz(6)
+  zoho_calendar_id                                                                               String?                                @db.VarChar
+  position_id                                                                                    String?
+  position                                                                                       String?
+  zoho_last_sync                                                                                 DateTime?                              @db.Timestamptz(6)
+  employee_id                                                                                    String?                                @db.Uuid
+  attendance_attendance_entered_by_idTousers                                                     attendance[]                           @relation("attendance_entered_by_idTousers")
+  attendance_attendance_user_idTousers                                                           attendance[]                           @relation("attendance_user_idTousers")
+  channel_members                                                                                channel_members[]
+  channel_messages                                                                               channel_messages[]
+  channels                                                                                       channels[]
+  clients                                                                                        clients[]
+  company_government_holidays_company_government_holidays_created_by_idTousers                   company_government_holidays[]          @relation("company_government_holidays_created_by_idTousers")
+  company_government_holidays_company_government_holidays_updated_by_idTousers                   company_government_holidays[]          @relation("company_government_holidays_updated_by_idTousers")
+  departments_departments_created_by_idTousers                                                   departments[]                          @relation("departments_created_by_idTousers")
+  departments_departments_head_idTousers                                                         departments[]                          @relation("departments_head_idTousers")
+  departments_departments_updated_by_idTousers                                                   departments[]                          @relation("departments_updated_by_idTousers")
+  employment_types_employment_types_created_by_idTousers                                         employment_types[]                     @relation("employment_types_created_by_idTousers")
+  employment_types_employment_types_updated_by_idTousers                                         employment_types[]                     @relation("employment_types_updated_by_idTousers")
+  fixed_holidays_fixed_holidays_created_by_idTousers                                             fixed_holidays[]                       @relation("fixed_holidays_created_by_idTousers")
+  fixed_holidays_fixed_holidays_updated_by_idTousers                                             fixed_holidays[]                       @relation("fixed_holidays_updated_by_idTousers")
+  grades_grades_created_by_idTousers                                                             grades[]                               @relation("grades_created_by_idTousers")
+  grades_grades_updated_by_idTousers                                                             grades[]                               @relation("grades_updated_by_idTousers")
+  invoice_templates                                                                              invoice_templates[]
+  leave_adjustments_leave_adjustments_approved_by_idTousers                                      leave_adjustments[]                    @relation("leave_adjustments_approved_by_idTousers")
+  leave_adjustments_leave_adjustments_created_by_idTousers                                       leave_adjustments[]                    @relation("leave_adjustments_created_by_idTousers")
+  leave_adjustments_leave_adjustments_updated_by_idTousers                                       leave_adjustments[]                    @relation("leave_adjustments_updated_by_idTousers")
+  leave_adjustments_leave_adjustments_user_idTousers                                             leave_adjustments[]                    @relation("leave_adjustments_user_idTousers")
+  leave_origin_structures_leave_origin_structures_created_by_idTousers                           leave_origin_structures[]              @relation("leave_origin_structures_created_by_idTousers")
+  leave_origin_structures_leave_origin_structures_updated_by_idTousers                           leave_origin_structures[]              @relation("leave_origin_structures_updated_by_idTousers")
+  leave_types_leave_types_created_by_idTousers                                                   leave_types[]                          @relation("leave_types_created_by_idTousers")
+  leave_types_leave_types_updated_by_idTousers                                                   leave_types[]                          @relation("leave_types_updated_by_idTousers")
+  leaves_leaves_approved_by_idTousers                                                            leaves[]                               @relation("leaves_approved_by_idTousers")
+  leaves_leaves_user_idTousers                                                                   leaves[]                               @relation("leaves_user_idTousers")
+  meeting_participants                                                                           meeting_participants[]
+  meetings                                                                                       meetings[]
+  origin_leave_types_origin_leave_types_created_by_idTousers                                     origin_leave_types[]                   @relation("origin_leave_types_created_by_idTousers")
+  origin_leave_types_origin_leave_types_updated_by_idTousers                                     origin_leave_types[]                   @relation("origin_leave_types_updated_by_idTousers")
+  positions_positions_created_by_idTousers                                                       positions[]                            @relation("positions_created_by_idTousers")
+  positions_positions_updated_by_idTousers                                                       positions[]                            @relation("positions_updated_by_idTousers")
+  project_members                                                                                project_members[]
+  projects_projects_created_by_idTousers                                                         projects[]                             @relation("projects_created_by_idTousers")
+  projects_projects_project_manager_idTousers                                                    projects[]                             @relation("projects_project_manager_idTousers")
+  recruitment_client_basic_information_recruitment_client_basic_information_created_by_idTousers recruitment_client_basic_information[] @relation("recruitment_client_basic_information_created_by_idTousers")
+  recruitment_client_basic_information_recruitment_client_basic_information_updated_by_idTousers recruitment_client_basic_information[] @relation("recruitment_client_basic_information_updated_by_idTousers")
+  recruitment_client_business_detailes_recruitment_client_business_detailes_created_by_idTousers recruitment_client_business_detailes[] @relation("recruitment_client_business_detailes_created_by_idTousers")
+  recruitment_client_business_detailes_recruitment_client_business_detailes_updated_by_idTousers recruitment_client_business_detailes[] @relation("recruitment_client_business_detailes_updated_by_idTousers")
+  refresh_tokens                                                                                 refresh_tokens[]
+  release_plans                                                                                  release_plans[]
+  squad_squad_created_by_idTousers                                                               squad[]                                @relation("squad_created_by_idTousers")
+  squad_squad_updated_by_idTousers                                                               squad[]                                @relation("squad_updated_by_idTousers")
+  squad_members_squad_members_created_by_idTousers                                               squad_members[]                        @relation("squad_members_created_by_idTousers")
+  squad_members_squad_members_updated_by_idTousers                                               squad_members[]                        @relation("squad_members_updated_by_idTousers")
+  squad_members_squad_members_squad_member_idTousers                                             squad_members[]                        @relation("squad_members_squad_member_idTousers")
+  status_updates                                                                                 status_updates[]
+  sub_departments_sub_departments_created_by_idTousers                                           sub_departments[]                      @relation("sub_departments_created_by_idTousers")
+  sub_departments_sub_departments_updated_by_idTousers                                           sub_departments[]                      @relation("sub_departments_updated_by_idTousers")
+  ticket_activity_log                                                                            ticket_activity_log[]
+  ticket_attachments                                                                             ticket_attachments[]
+  ticket_comments                                                                                ticket_comments[]
+  ticket_related_links                                                                           ticket_related_links[]
+  tickets_tickets_assignee_idTousers                                                             tickets[]                              @relation("tickets_assignee_idTousers")
+  tickets_tickets_created_by_idTousers                                                           tickets[]                              @relation("tickets_created_by_idTousers")
+  tickets_tickets_report_to_idTousers                                                            tickets[]                              @relation("tickets_report_to_idTousers")
+  time_tracking_entries                                                                          time_tracking_entries[]
+  transactions                                                                                   transactions[]
+  shifts                                                                                         shifts?                                @relation(fields: [assigned_shift_id], references: [id])
+  positions_users_position_idTopositions                                                         positions?                             @relation("users_position_idTopositions", fields: [position_id], references: [id])
+  users_users_reports_to_idTousers                                                               users?                                 @relation("users_reports_to_idTousers", fields: [reports_to_id], references: [id])
+  other_users_users_reports_to_idTousers                                                         users[]                                @relation("users_reports_to_idTousers")
+  users_users_shift_assigned_by_idTousers                                                        users?                                 @relation("users_shift_assigned_by_idTousers", fields: [shift_assigned_by_id], references: [id])
+  other_users_users_shift_assigned_by_idTousers                                                  users[]                                @relation("users_shift_assigned_by_idTousers")
+  tenants                                                                                        tenants                                @relation(fields: [tenant_id], references: [id], onDelete: Cascade)
+  vendor_basic_information_vendor_basic_information_created_by_idTousers                         vendor_basic_information[]             @relation("vendor_basic_information_created_by_idTousers")
+  vendor_basic_information_vendor_basic_information_updated_by_idTousers                         vendor_basic_information[]             @relation("vendor_basic_information_updated_by_idTousers")
+  zoho_events_zoho_events_updated_byTousers                                                      zoho_events[]                          @relation("zoho_events_updated_byTousers")
+  zoho_events_zoho_events_user_idTousers                                                         zoho_events[]                          @relation("zoho_events_user_idTousers")
+
+  @@unique([tenant_id, personal_email])
+  @@unique([tenant_id, phone])
+  @@unique([tenant_id, work_email])
+}
+
+model vendor_basic_information {
+  id                                                  String                     @id
+  tenant_id                                           String
+  company_name                                        String?
+  industry                                            String?
+  website                                             String?
+  company_email                                       String?
+  company_phone                                       String?
+  status                                              Boolean?                   @default(true)
+  street                                              String?
+  city                                                String?
+  state                                               String?
+  country                                             String?
+  zip_code                                            String?
+  notes                                               String?
+  created_by_id                                       String?
+  updated_by_id                                       String?
+  created_at                                          DateTime?                  @default(now()) @db.Timestamp(6)
+  updated_at                                          DateTime?                  @default(now()) @db.Timestamp(6)
+  users_vendor_basic_information_created_by_idTousers users?                     @relation("vendor_basic_information_created_by_idTousers", fields: [created_by_id], references: [id], onUpdate: NoAction, map: "fk_vendor_created_by")
+  tenants                                             tenants                    @relation(fields: [tenant_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_vendor_tenant")
+  users_vendor_basic_information_updated_by_idTousers users?                     @relation("vendor_basic_information_updated_by_idTousers", fields: [updated_by_id], references: [id], onUpdate: NoAction, map: "fk_vendor_updated_by")
+  vendor_business_detailes                            vendor_business_detailes[]
+  vendor_contact_person                               vendor_contact_person[]
+  vendor_document                                     vendor_document[]
+  vendor_relations                                    vendor_relations[]
+
+  @@map("vendor-basic-information")
+}
+
+model vendor_business_detailes {
+  id                       String                   @id
+  vendor_id                String
+  registration_number      String?
+  tax_id                   String?
+  business_type            String?
+  year_establiliesh        Int?
+  total_employees          Int?
+  created_at               DateTime?                @default(now()) @db.Timestamp(6)
+  updated_at               DateTime?                @default(now()) @db.Timestamp(6)
+  vendor_basic_information vendor_basic_information @relation(fields: [vendor_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_vendor_business")
+}
+
+model vendor_contact_person {
+  id                       String                   @id
+  vendor_id                String
+  person_name              String
+  designation              String?
+  email                    String?
+  phone                    String?
+  linkedin_url             String?
+  created_at               DateTime?                @default(now()) @db.Timestamp(6)
+  updated_at               DateTime?                @default(now()) @db.Timestamp(6)
+  vendor_basic_information vendor_basic_information @relation(fields: [vendor_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_vendor_contact")
+}
+
+model vendor_document {
+  id                       String                   @id @default(dbgenerated("gen_random_uuid()"))
+  vendor_id                String
+  document_type            String?
+  document_url             String?
+  created_at               DateTime?                @default(now()) @db.Timestamp(6)
+  updated_at               DateTime?                @default(now()) @db.Timestamp(6)
+  vendor_basic_information vendor_basic_information @relation(fields: [vendor_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_vendor")
+}
+
+model vendor_relations {
+  id                        String                   @id
+  vendor_id                 String
+  linked_vendor             String?
+  linked_client             String?
+  supports_visa_sponsorship Boolean
+  visa_types_supported      String?
+  created_at                DateTime?                @default(now()) @db.Timestamp(6)
+  updated_at                DateTime?                @default(now()) @db.Timestamp(6)
+  vendor_basic_information  vendor_basic_information @relation(fields: [vendor_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_vendor_relations_vendor")
+}
+
+model work_authorization {
+  id                      String            @id
+  candidate_id            String
+  work_authorization_type String?
+  visa_validation_type    String?
+  willing_transfer_visa   Boolean?          @default(false)
+  ssn_number              String?
+  passport_number         String?
+  created_at              DateTime?         @default(now()) @db.Timestamp(6)
+  updated_at              DateTime?         @default(now()) @db.Timestamp(6)
+  candidate_details       candidate_details @relation(fields: [candidate_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_candidate_work_auth")
+}
+
+model work_entries {
+  id               String         @id
+  status_update_id String
+  project_id       String
+  ticket_id        String?
+  start_time       DateTime
+  end_time         DateTime
+  hours_worked     Decimal        @db.Decimal(5, 2)
+  work_summary     String
+  status           String
+  blockers         String?
+  notes            String?
+  created_at       DateTime       @default(now())
+  updated_at       DateTime
+  projects         projects       @relation(fields: [project_id], references: [id])
+  status_updates   status_updates @relation(fields: [status_update_id], references: [id], onDelete: Cascade)
+  tickets          tickets?       @relation(fields: [ticket_id], references: [id])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model zithspace_admin_users {
+  id            String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  name          String    @db.VarChar(255)
+  email         String    @unique @db.VarChar(255)
+  password_hash String    @db.VarChar(255)
+  role          String?   @default("ADMIN") @db.VarChar(50)
+  is_verified   Boolean?  @default(false)
+  created_at    DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime? @default(now()) @db.Timestamptz(6)
+
+  @@index([email], map: "idx_users_email")
+}
+
+model zoho_events {
+  id                                  String    @id
+  event_id                            String
+  calendar_id                         String
+  title                               String
+  description                         String?
+  start_time                          DateTime  @db.Timestamptz(6)
+  end_time                            DateTime  @db.Timestamptz(6)
+  location                            String?
+  user_id                             String
+  updated_by                          String?
+  created_at                          DateTime? @default(now()) @db.Timestamptz(6)
+  updated_at                          DateTime? @default(now()) @db.Timestamptz(6)
+  attendees                           Json?
+  calendar_name                       String?   @db.VarChar(255)
+  exdate                              Json?
+  is_all_day                          Boolean   @default(false)
+  is_recurring                        Boolean   @default(false)
+  meeting_link                        String?   @db.VarChar(255)
+  rrule                               String?
+  source_type                         String?   @db.VarChar(100)
+  tenant_id                           String
+  users_zoho_events_updated_byTousers users?    @relation("zoho_events_updated_byTousers", fields: [updated_by], references: [id], onUpdate: NoAction, map: "fk_zoho_events_updated_by")
+  users_zoho_events_user_idTousers    users     @relation("zoho_events_user_idTousers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_zoho_events_user")
+
+  @@unique([event_id, user_id], map: "zoho_events_event_user_unique")
+  @@index([calendar_id], map: "idx_zoho_events_calendar_id")
+  @@index([start_time], map: "idx_zoho_events_start_time")
+  @@index([user_id], map: "idx_zoho_events_user_id")
+}
+
+enum Currency {
+  USD
+  INR
+  EUR
+  GBP
+  AUD
+  CAD
+  SGD
+}
+
+enum DateFormat {
+  DD_MM_YYYY
+  MM_DD_YYYY
+  YYYY_MM_DD
+}
+
+enum DeductionType {
+  BASIC_PERCENT
+  GROSS_PERCENT
+  FIXED
+}
+
+enum DocumentNodeType {
+  section
+  folder
+  file
+}
+
+enum HolidayStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum TimesheetStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+enum VisibilityType {
+  PUBLIC
+  PRIVATE
+}
+
+enum address_type_enum {
+  CURRENT
+  PERMANENT
+}
+
+enum approver_status {
+  PENDING
+  APPROVED
+  REJECTED
+  PAID
+  SUBMITTED
+}
+
+enum calendar_provider {
+  GOOGLE
+  MICROSOFT
+  ZOHO
+}
+
+enum component_type {
+  Earning
+  Deduction
+}
+
+enum deductiontype {
+  BASIC_PERCENT
+  GROSS_PERCENT
+  FIXED
+}
+
+enum environment {
+  DEV
+  QA
+  PROD
+}
+
+enum environment_status {
+  ACTIVE
+  INACTIVE
+  DEPRECATED
+}
+
+enum feature_type {
+  INCLUDED
+  ADD_ON
+}
+
+enum field_type {
+  text
+  number
+  date
+  dropdown
+}
+
+enum invoice_status {
+  DRAFT
+  PENDING
+  APPROVAL
+  SENT
+  SUBMITTED
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum invoice_type {
+  STANDARD
+  PROFORMA
+  CREDIT
+  TAX
+  DEBIT
+  RECURRING
+}
+
+enum leave_request_status {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum payment_method {
+  CASH
+  BANK_TRANSFER
+  CREDIT_CARD
+  DEBIT_CARD
+  CHECK
+  PAYPAL
+  STRIPE
+  OTHER
+}
+
+enum payment_status {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+enum recurring_frequency {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum reimbursement_status {
+  draft
+  submitted
+  approved
+  rejected
+  cancelled
+}
+
+enum reimbursementcreate_status {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  PAID
+  PARTIALLY_APPROVED
+  PARTIALLY_PAID
+}
+
+enum release_status {
+  DRAFT
+  RELEASED
+}
+
+enum timesheet_status {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+}
+
+enum transaction_type {
+  monthly_credit
+  yearly_credit
+  carry_forward_credit
+  adjustment_credit
+  leave_debit
+  leave_encashment_debit
+  expiry_debit
+  reversal
+}
+
+enum visibility {
+  INTERNAL
+  CLIENT
+  PUBLIC
+}
+
+enum visibilitytype {
+  PUBLIC
+  PRIVATE
+}
