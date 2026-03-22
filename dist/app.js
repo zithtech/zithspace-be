@@ -57,6 +57,9 @@ const onboardingRoutes_1 = __importDefault(require("@/routes/onboardingRoutes"))
 const auth_2 = __importDefault(require("@/routes/auth"));
 const publicTickets_1 = __importDefault(require("@/routes/publicTickets"));
 const employeeSettingsRoutes_1 = __importDefault(require("@/routes/employeeSettingsRoutes"));
+const implementationPartner_1 = __importDefault(require("@/routes/implementationPartner"));
+const recruitmentClient_1 = __importDefault(require("@/routes/recruitmentClient"));
+const vendor_1 = __importDefault(require("@/routes/vendor"));
 const timesheet_1 = __importDefault(require("@/routes/timesheet"));
 const timeTracking_1 = __importDefault(require("@/routes/timeTracking"));
 const companyGovernmentHoliday_routes_1 = __importDefault(require("@/routes/companyGovernmentHoliday.routes"));
@@ -249,6 +252,11 @@ app.use("/api/rbac", rbac_1.default);
 app.use("/api/candidate-form", candidateForm_routes_1.default);
 app.use("/api/employee-assets", employeeAssets_routes_1.default);
 app.use("/api/shortcuts", shortcut_routes_1.default);
+// Implementation Partner API
+app.use("/api/implementation-partner", implementationPartner_1.default);
+// Recruitment Client API
+app.use("/api/recruitment-client", recruitmentClient_1.default);
+app.use("/api/vendor", vendor_1.default);
 // app.use("/api/addresses", addressRoutes);
 //app.use("/api/employee_address", addressRoutes);
 app.get("/api/health", (req, res) => {

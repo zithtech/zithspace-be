@@ -16,7 +16,6 @@ async function test() {
     const tid = tenant.id;
     console.log('Using tenant ID:', tid);
 
-    try {
     const tables = [
         'recruitment_client_basic_information',
         'recruitment_client_business_details',
