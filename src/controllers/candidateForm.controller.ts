@@ -2,7 +2,7 @@ import { prisma } from "@/config/database";
 import { AuthRequest } from "@/types";
 import { uploadCandidateDocumentToR2 } from "@/utils/r2Client";
 import { Response } from "express";
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID as uuidv4 } from "crypto";
 
 // ✅ CREATE Candidate
 export async function submitCandidateForm(req: AuthRequest, res: Response) {
