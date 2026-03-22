@@ -73,11 +73,7 @@ export declare function uploadEmployeeAssetToR2({ base64, fileName, tenantId, em
  * @param fileName - Original file name
  * @param tenantId - Tenant ID
  * @param candidateId - Candidate ID
-<<<<<<< HEAD
- * @param documentType - Type of document (e.g., resume)
-=======
  * @param documentType - Type of document (e.g., resume, passport)
->>>>>>> feat/002-0394/squad_management--be
  * @returns Public URL of uploaded document
  */
 export declare function uploadCandidateDocumentToR2(base64File: string, fileName: string, tenantId: string, candidateId: string, documentType: string): Promise<string>;

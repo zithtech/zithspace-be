@@ -316,11 +316,7 @@ async function uploadEmployeeAssetToR2({ base64, fileName = "asset.png", tenantI
  * @param fileName - Original file name
  * @param tenantId - Tenant ID
  * @param candidateId - Candidate ID
-<<<<<<< HEAD
- * @param documentType - Type of document (e.g., resume)
-=======
  * @param documentType - Type of document (e.g., resume, passport)
->>>>>>> feat/002-0394/squad_management--be
  * @returns Public URL of uploaded document
  */
 async function uploadCandidateDocumentToR2(base64File, fileName, tenantId, candidateId, documentType) {
@@ -335,24 +331,14 @@ async function uploadCandidateDocumentToR2(base64File, fileName, tenantId, candi
         const uniqueId = (0, nanoid_1.nanoid)(12);
         const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
         const key = `${tenantId}/candidates/${candidateId}/documents/${documentType}/${uniqueId}_${sanitizedFileName}`;
-<<<<<<< HEAD
-        const params = {
-=======
         await exports.s3Client.send(new client_s3_1.PutObjectCommand({
->>>>>>> feat/002-0394/squad_management--be
             Bucket: BUCKET_NAME,
             Key: key,
             Body: buffer,
             ContentType: contentType,
-<<<<<<< HEAD
-        };
-        await exports.s3Client.send(new client_s3_1.PutObjectCommand(params));
-        return `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/${key}`;
-=======
         }));
         const baseUrl = PUBLIC_URL || "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
         return `${baseUrl}/${key}`;
->>>>>>> feat/002-0394/squad_management--be
     }
     catch (error) {
         console.error("R2 candidate document upload error:", error);
