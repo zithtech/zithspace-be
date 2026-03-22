@@ -8,24 +8,23 @@ datasource db {
 }
 
 model Tenant {
-  id               String            @id @default(uuid())
-  name             String
-  subdomain        String            @unique
-  planType         String            @default("basic") @map("plan_type")
-  maxUsers         Int               @default(10) @map("max_users")
-  isActive         Boolean           @default(true) @map("is_active")
-  settings         Json?             @default("{}")
-  createdAt        DateTime          @default(now()) @map("created_at")
-  updatedAt        DateTime          @updatedAt @map("updated_at")
-  attendance       Attendance[]
-  timeTrackingLogs TimeTrackingLog[]
-  attendanceBreaks AttendanceBreak[]
-  buckets          Bucket[]
-  customers        Customer[]
-  dropdownOptions  DropdownOption[]
-  leaves           Leave[]
-  leaveTypes          LeaveType[]
-  leaveAdjustments    LeaveAdjustment[]
+  id                    String                 @id @default(uuid())
+  name                  String
+  subdomain             String                 @unique
+  planType              String                 @default("basic") @map("plan_type")
+  maxUsers              Int                    @default(10) @map("max_users")
+  isActive              Boolean                @default(true) @map("is_active")
+  settings              Json?                  @default("{}")
+  createdAt             DateTime               @default(now()) @map("created_at")
+  updatedAt             DateTime               @updatedAt @map("updated_at")
+  attendance            Attendance[]
+  attendanceBreaks      AttendanceBreak[]
+  buckets               Bucket[]
+  customers             Customer[]
+  dropdownOptions       DropdownOption[]
+  leaves                Leave[]
+  leaveTypes            LeaveType[]
+  leaveAdjustments      LeaveAdjustment[]
   leaveOriginStructures LeaveOriginStructure[]
   leaveRequests      LeaveRequest[]
   exitTypes          ExitType[]
@@ -54,15 +53,17 @@ model Tenant {
 
   employees         Employee[]
   employeeAddresses EmployeeAddress[]
-  employeeSetting EmployeeSetting[]
+  employeeSetting   EmployeeSetting[]
 
   calendarIntegrations CalendarIntegration[]
   calendarEvents       CalendarEvent[]
   invoiceTemplates InvoiceTemplate[]
-
-
-
-
+  squads       Squad[]
+  squadMembers SquadMember[]
+  candidateDetails CandidateDetails[]
+  implementationBasicInformations ImplementationBasicInformation[]
+  recruitmentClients RecruitmentClientBasicInformation[]
+  vendors VendorBasicInformation[]
 
   shifts Shift[]
 
@@ -90,11 +91,11 @@ model Tenant {
   documents            Document[]
   documenttree         DocumentTree[]
   documentHistory      DocumentHistory[]
-  exceptions CalendarEventException[]
+  exceptions           CalendarEventException[]
   // ZithTech Calls Relations
-  channels Channel[]
-  meetings Meeting[]
-  Client   Client[]
+  channels             Channel[]
+  meetings             Meeting[]
+  Client               Client[]
 
   // Client V2 Relations
   clientsV2                   ClientV2[]
@@ -103,11 +104,17 @@ model Tenant {
   employeeClientAllocationsV2 EmployeeClientAllocationV2[]
   ClientProject               ClientProject[]
 
+  candidates                  Candidate[]
+
   // RBAC
   roles Role[]
   
   // Time Tracking
   timeTrackingEntries TimeTrackingEntry[]
+
+  // Recruitment Settings
+  recruitmentStatuses RecruitmentStatus[]
+  recruitmentActions  RecruitmentAction[]
 
   userPreferences UserPreference[]
   @@map("tenants")
@@ -139,12 +146,45 @@ model User {
   leaveAdjustments             LeaveAdjustment[]          @relation("UserLeaveAdjustments")
 
 
+
+  createdContacts ImplementationContactPerson[] @relation("CreatedByUser")
+  updatedContacts ImplementationContactPerson[] @relation("UpdatedByUser")
+
+  createdBusinessDetails ImplementationBusinessDetailes[] @relation("BusinessCreatedBy")
+  updatedBusinessDetails ImplementationBusinessDetailes[] @relation("BusinessUpdatedBy")
+
+  createdRelations ImplementationRelations[] @relation("RelationsCreatedBy")
+  updatedRelations ImplementationRelations[] @relation("RelationsUpdatedBy")
+
+   createdDocuments ImplementationDocument[] @relation("DocumentCreatedBy")
+  updatedDocuments ImplementationDocument[] @relation("DocumentUpdatedBy")
+
+  createdRecruitmentClients RecruitmentClientBasicInformation[] @relation("CreatedRecruitmentClient")
+  updatedRecruitmentClients RecruitmentClientBasicInformation[] @relation("UpdatedRecruitmentClient")
+
+ createRecruitmentBusinessDetails RecruitmentClientBusinessDetails[] @relation("CreatedBusinessDetails")
+  updateRecruitmentBusinessDetails RecruitmentClientBusinessDetails[] @relation("UpdatedBusinessDetails")
+
+   createdVendors VendorBasicInformation[] @relation("VendorCreatedBy")
+  updatedVendors VendorBasicInformation[] @relation("VendorUpdatedBy")
+
+ 
+
+
   createdSalaryComponents SalaryComponent[] @relation("SalaryComponentCreator")
   updatedSalaryComponents SalaryComponent[] @relation("SalaryComponentUpdater")
   createdCompanies        Company[]         @relation("CompanyCreator")
   updatedCompanies        Company[]         @relation("CompanyUpdater")
   createdCustomers        Customer[]        @relation("CustomerCreatedBy")
   updatedCustomers        Customer[]        @relation("CustomerUpdatedBy")
+
+  createdSquads Squad[] @relation("SquadCreator")
+  updatedSquads Squad[] @relation("SquadUpdater")
+
+  squadMemberships SquadMember[] @relation("SquadMemberUser")
+
+  createdSquadMembers SquadMember[] @relation("SquadMemberCreator")
+  updatedSquadMembers SquadMember[] @relation("SquadMemberUpdater")
   
   createdExitTypes ExitType[] @relation("ExitTypeCreator")
   updatedExitTypes ExitType[] @relation("ExitTypeUpdater")
@@ -315,6 +355,17 @@ model User {
   createdClientsV2          ClientV2[]         @relation("ClientV2Creator")
   uploadedClientDocumentsV2 ClientDocumentV2[] @relation("ClientDocumentV2Uploader")
 
+  createdCandidates         Candidate[]        @relation("CandidateCreator")
+  updatedCandidates         Candidate[]        @relation("CandidateUpdater")
+  createdCandidateWorkExps  CandidateWorkExperience[] @relation("CandidateWorkExpCreator")
+  updatedCandidateWorkExps  CandidateWorkExperience[] @relation("CandidateWorkExpUpdater")
+  createdCandidateSkills    CandidateSkillMatrix[]    @relation("CandidateSkillCreator")
+  updatedCandidateSkills    CandidateSkillMatrix[]    @relation("CandidateSkillUpdater")
+  createdCandidateEdus      CandidateEducation[]      @relation("CandidateEduCreator")
+  updatedCandidateEdus      CandidateEducation[]      @relation("CandidateEduUpdater")
+  createdCandidateIntvs     CandidateInterviewSlot[]  @relation("CandidateIntvCreator")
+  updatedCandidateIntvs     CandidateInterviewSlot[]  @relation("CandidateIntvUpdater")
+
   // ===== RBAC Relations =====
   userRoles UserRole[]
 
@@ -323,6 +374,14 @@ model User {
   
   // Time Tracking
   timeTrackingEntries TimeTrackingEntry[]
+
+    // ===== Recruitment Settings Relations =====
+  createdRecruitmentStatuses RecruitmentStatus[] @relation("RecruitmentStatusCreator")
+  updatedRecruitmentStatuses RecruitmentStatus[] @relation("RecruitmentStatusUpdater")
+  createdRecruitmentActions  RecruitmentAction[] @relation("RecruitmentActionCreator")
+  updatedRecruitmentActions  RecruitmentAction[] @relation("RecruitmentActionUpdater")
+
+
 
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
@@ -734,21 +793,21 @@ model TicketActivityLog {
 }
 
 model Client {
-  id            String   @id @default(uuid())
-  tenantId      String   @map("tenant_id")
-  name          String
-  email         String?
-  phone         String?
-  company       String?
-  address       String?
-  contactPerson String?  @map("contact_person")
-  isActive      Boolean  @default(true) @map("is_active")
-  notes         String?
-  createdById   String   @map("created_by_id")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
-  createdBy     User     @relation("ClientCreator", fields: [createdById], references: [id])
-  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id              String           @id @default(uuid())
+  tenantId        String           @map("tenant_id")
+  name            String
+  email           String?
+  phone           String?
+  company         String?
+  address         String?
+  contactPerson   String?          @map("contact_person")
+  isActive        Boolean          @default(true) @map("is_active")
+  notes           String?
+  createdById     String           @map("created_by_id")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  createdBy       User             @relation("ClientCreator", fields: [createdById], references: [id])
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   jobRequisitions JobRequisition[]
 
   @@unique([tenantId, email])
@@ -2154,7 +2213,7 @@ model Employee {
   work_email     String   @db.VarChar(150)
   personal_email String?  @db.VarChar(150)
   status         Boolean  @default(true)
-  profile_pic     String?  @db.VarChar(255) 
+  profile_pic    String?  @db.VarChar(255)
 
   created_by String  @db.Uuid
   updated_by String? @db.Uuid
@@ -2276,9 +2335,7 @@ model EmployeeEmergencyContact {
 }
 
 model EmployeeIdentity {
-
-  id              String   @id @default(uuid()) @db.Uuid
-
+  id String @id @default(uuid()) @db.Uuid
   employeeId  String @unique @map("employee_id") @db.Uuid
 
   aadhaarNumber  String  @map("aadhaar_number") @db.VarChar(12)
@@ -2308,12 +2365,12 @@ model EmployeeWorkDetail {
  workShift       Json?   @map("work_shift")
   workJoiningDate  String?  @db.VarChar(30)  @map("work_joining_date")  
 
-  workType   String?  @map("work_type") @db.VarChar(50)
-  hybridMode String?  @map("hybrid_mode") @db.VarChar(20)
-  fixedDays  String[] @default([]) @map("fixed_days")
-  totalDays     Int?    @map("total_days")
-  totalHours    Int?    @map("total_hours")
-  notice_period String? @db.VarChar(100)
+  workType      String?  @map("work_type") @db.VarChar(50)
+  hybridMode    String?  @map("hybrid_mode") @db.VarChar(20)
+  fixedDays     String[] @default([]) @map("fixed_days")
+  totalDays     Int?     @map("total_days")
+  totalHours    Int?     @map("total_hours")
+  notice_period String?  @db.VarChar(100)
 
   createdById String  @map("created_by_id") @db.Uuid
   updatedById String? @map("updated_by_id") @db.Uuid
@@ -2323,8 +2380,8 @@ model EmployeeWorkDetail {
   updatedAt   DateTime @updatedAt      @map("updated_at")
   employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
-    @@map("employee_work_details")
-  }
+  @@map("employee_work_details")
+}
 
 model EmployeeTimeline {
   id String @id @default(uuid()) @db.Uuid
@@ -2541,71 +2598,71 @@ model EmployeeAsset {
 
   @@map("employee_assets")
 }
-model EmployeeSetting {
-  id              String   @id @default(uuid()) @db.Uuid
-  tenantId        String   @unique @db.Uuid @map("tenant_id")
-  employeePrefix  String   @db.VarChar(20) @map("employee_prefix")
 
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+model EmployeeSetting {
+  id             String @id @default(uuid()) @db.Uuid
+  tenantId       String @unique @map("tenant_id") @db.Uuid
+  employeePrefix String @map("employee_prefix") @db.VarChar(20)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("employee_settings")
 }
 
-
-
 enum CalendarProvider {
   GOOGLE
   MICROSOFT
   ZOHO
+
   @@map("calendar_provider")
 }
 
 model CalendarIntegration {
- id        String @id  // TEXT id
+  id String @id // TEXT id
 
-  userId    String  @map("user_id")
-  tenantId  String  @map("tenant_id")
-  provider  CalendarProvider
+  userId   String           @map("user_id")
+  tenantId String           @map("tenant_id")
+  provider CalendarProvider
 
   // COMMON TOKENS
-  accessToken   String?  @map("access_token")
-  refreshToken  String?   @map("refresh_token")
-  tokenExpiry   DateTime? @db.Timestamptz(6) @map("token_expiry")
-  calendarId    String? @map("calendar_id")
+  accessToken  String?   @map("access_token")
+  refreshToken String?   @map("refresh_token")
+  tokenExpiry  DateTime? @map("token_expiry") @db.Timestamptz(6)
+  calendarId   String?   @map("calendar_id")
 
   // GOOGLE
-  googleSyncToken     String?  @map("google_sync_token")
-  googleChannelId     String? @map("google_channel_id")
-  googleResourceId    String? @map("google_resource_id")
-  googleChannelExpiry DateTime? @db.Timestamptz(6) @map("google_channel_expiry")
+  googleSyncToken     String?   @map("google_sync_token")
+  googleChannelId     String?   @map("google_channel_id")
+  googleResourceId    String?   @map("google_resource_id")
+  googleChannelExpiry DateTime? @map("google_channel_expiry") @db.Timestamptz(6)
 
   // MICROSOFT
-  microsoftDeltaLink           String?  @map("microsoft_delta_link")
-  microsoftSubscriptionId      String? @map("microsoft_subscription_id")
-  microsoftSubscriptionExpiry  DateTime? @db.Timestamptz(6) @map("microsoft_subscription_expiry")
-  microsoftClientState         String? @map("microsoft_client_state")
+  microsoftDeltaLink          String?   @map("microsoft_delta_link")
+  microsoftSubscriptionId     String?   @map("microsoft_subscription_id")
+  microsoftSubscriptionExpiry DateTime? @map("microsoft_subscription_expiry") @db.Timestamptz(6)
+  microsoftClientState        String?   @map("microsoft_client_state")
 
   // ZOHO
-  zohoLastSync DateTime? @db.Timestamptz(6) @map("zoho_last_sync")
+  zohoLastSync DateTime? @map("zoho_last_sync") @db.Timestamptz(6)
 
   // SYNC STATE
-  isSyncing       Boolean   @default(false) @map("is_syncing")
-  lastSyncStatus  String?   @map("last_sync_status") // 'SUCCESS', 'FAILED', 'NEEDS_REAUTH'
-  lastSyncAt      DateTime? @db.Timestamptz(6) @map("last_sync_at")
-  nextSyncDueAt   DateTime? @default(now()) @db.Timestamptz(6) @map("next_sync_due_at")
-  syncErrorCount  Int       @default(0) @map("sync_error_count")
+  isSyncing      Boolean   @default(false) @map("is_syncing")
+  lastSyncStatus String?   @map("last_sync_status") // 'SUCCESS', 'FAILED', 'NEEDS_REAUTH'
+  lastSyncAt     DateTime? @map("last_sync_at") @db.Timestamptz(6)
+  nextSyncDueAt  DateTime? @default(now()) @map("next_sync_due_at") @db.Timestamptz(6)
+  syncErrorCount Int       @default(0) @map("sync_error_count")
 
   createdById String? @map("created_by_id")
   updatedById String? @map("updated_by_id")
 
   // Audit
-  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
-  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
-  createdBy User? @relation("CreatedByUser", fields: [createdById], references: [id])
-  updatedBy User? @relation("UpdatedByUser", fields: [updatedById], references: [id])
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy User?    @relation("CreatedByUser", fields: [createdById], references: [id])
+  updatedBy User?    @relation("UpdatedByUser", fields: [updatedById], references: [id])
 
   // Relations
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -2616,44 +2673,42 @@ model CalendarIntegration {
   @@map("calendar_integrations")
 }
 
-
-
 model CalendarEvent {
-  id        String @id  // TEXT id
+  id String @id // TEXT id
 
-  provider    CalendarProvider
-  externalId  String  @map("external_id")
+  provider   CalendarProvider
+  externalId String           @map("external_id")
 
-  tenantId    String  @map("tenant_id")
-  userId      String  @map("user_id")
+  tenantId String @map("tenant_id")
+  userId   String @map("user_id")
 
-  calendarId  String?  @map("calendar_id")
+  calendarId String? @map("calendar_id")
 
   title       String
   description String?
   location    String?
 
-  startTime   DateTime @db.Timestamptz(6)  @map("start_time")
-  endTime     DateTime @db.Timestamptz(6)  @map("end_time")
+  startTime DateTime @map("start_time") @db.Timestamptz(6)
+  endTime   DateTime @map("end_time") @db.Timestamptz(6)
 
-  isAllDay    Boolean  @default(false)  @map("is_all_day")
-  isRecurring Boolean  @default(false)  @map("is_recurring")
-  rrule       String?
-  exdate      Json?
-  calendar    String?   @map("calendar_name") @db.VarChar(255)
-  isDeleted   Boolean   @default(false) @map("is_deleted")
-  sourceType  String?   @map("source_type") @db.VarChar(100)  
-  attendees   Json?
-  meetingLink String?  @map("meeting_link")
-  organizerEmail String? @map("organizer_email")
-  createdById String?  @map("created_by_id")
-  updatedById String?  @map("updated_by_id")
-  exceptions CalendarEventException[]
+  isAllDay       Boolean                  @default(false) @map("is_all_day")
+  isRecurring    Boolean                  @default(false) @map("is_recurring")
+  rrule          String?
+  exdate         Json?
+  calendar       String?                  @map("calendar_name") @db.VarChar(255)
+  isDeleted      Boolean                  @default(false) @map("is_deleted")
+  sourceType     String?                  @map("source_type") @db.VarChar(100)
+  attendees      Json?
+  meetingLink    String?                  @map("meeting_link")
+  organizerEmail String?                  @map("organizer_email")
+  createdById    String?                  @map("created_by_id")
+  updatedById    String?                  @map("updated_by_id")
+  exceptions     CalendarEventException[]
   // Audit
-  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
-  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
-  createdBy User? @relation("CreatedByUser", fields: [createdById], references: [id])
-  updatedBy User? @relation("UpdatedByUser", fields: [updatedById], references: [id])
+  createdAt      DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                 @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdBy      User?                    @relation("CreatedByUser", fields: [createdById], references: [id])
+  updatedBy      User?                    @relation("UpdatedByUser", fields: [updatedById], references: [id])
 
   // Relations
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -2669,27 +2724,26 @@ model CalendarEvent {
 model CalendarEventException {
   id String @id @default(cuid())
 
-  eventId   String   @map("event_id")
-  tenantId  String   @map("tenant_id")
-  userId    String   @map("user_id")
+  eventId  String @map("event_id")
+  tenantId String @map("tenant_id")
+  userId   String @map("user_id")
 
-   overrideTitle       String? @map("override_title")
+  overrideTitle       String? @map("override_title")
   overrideDescription String? @map("override_description")
   overrideLocation    String? @map("override_location")
   overrideMeetingLink String? @map("override_meeting_link")
-  overrideAttendees   Json?  @map("override_attendees")
-
+  overrideAttendees   Json?   @map("override_attendees")
 
   // Audit fields
   createdById String  @map("created_by")
   updatedById String? @map("updated_by")
 
   // The original occurrence date (before modification)
-  originalDate DateTime @db.Timestamptz(6) @map("original_date")
+  originalDate DateTime @map("original_date") @db.Timestamptz(6)
 
   // If occurrence is modified
-  newStartTime DateTime? @db.Timestamptz(6) @map("new_start_time")
-  newEndTime   DateTime? @db.Timestamptz(6) @map("new_end_time")
+  newStartTime DateTime? @map("new_start_time") @db.Timestamptz(6)
+  newEndTime   DateTime? @map("new_end_time") @db.Timestamptz(6)
 
   // If occurrence is deleted
   isCancelled Boolean @default(false) @map("is_cancelled")
@@ -2697,24 +2751,22 @@ model CalendarEventException {
   // Provider instance ID
   externalInstanceId String? @map("external_instance_id")
 
-  createdAt DateTime @default(now()) @db.Timestamptz(6) @map("created_at")
-  updatedAt DateTime @updatedAt @db.Timestamptz(6) @map("updated_at")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   // Relations
   event  CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
   user   User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  createdBy User @relation("ExceptionCreatedBy", fields: [createdById], references: [id])
+  createdBy User  @relation("ExceptionCreatedBy", fields: [createdById], references: [id])
   updatedBy User? @relation("ExceptionUpdatedBy", fields: [updatedById], references: [id])
 
+  @@unique([eventId, originalDate])
   @@index([eventId])
   @@index([tenantId])
-  @@unique([eventId, originalDate])
   @@map("calendar_event_exceptions")
 }
-
-
 
 // =====================================================
 //  RBAC — Role-Based Access Control
@@ -2723,10 +2775,10 @@ model CalendarEventException {
 /// All possible permission strings in the system.
 /// Seeded once on migration; never modified at runtime.
 model Permission {
-  id          String   @id @default(uuid())
-  name        String   @unique           // e.g. "ticket.create"
-  resource    String                     // e.g. "ticket"
-  action      String                     // e.g. "create"
+  id          String  @id @default(uuid())
+  name        String  @unique // e.g. "ticket.create"
+  resource    String // e.g. "ticket"
+  action      String // e.g. "create"
   description String?
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -2742,14 +2794,14 @@ model Permission {
 model Role {
   id          String  @id @default(uuid())
   tenantId    String  @map("tenant_id")
-  name        String                     // e.g. "HR Manager"
-  slug        String                     // e.g. "hr_manager"
+  name        String // e.g. "HR Manager"
+  slug        String // e.g. "hr_manager"
   description String?
-  isSystem    Boolean @default(false) @map("is_system")   // protected from deletion
-  isActive    Boolean @default(true)  @map("is_active")
+  isSystem    Boolean @default(false) @map("is_system") // protected from deletion
+  isActive    Boolean @default(true) @map("is_active")
 
   createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt       @map("updated_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   rolePermissions RolePermission[]
@@ -2798,10 +2850,10 @@ model AuthorizationLog {
   id         String  @id @default(uuid())
   tenantId   String  @map("tenant_id")
   userId     String? @map("user_id")
-  permission String                     // permission checked
+  permission String // permission checked
   resource   String
   resourceId String? @map("resource_id")
-  result     String                     // "granted" | "denied"
+  result     String // "granted" | "denied"
   reason     String?
   ipAddress  String? @map("ip_address")
   userAgent  String? @map("user_agent")
@@ -3065,77 +3117,82 @@ model InvoiceTemplateField {
 
 
 model JobRequisition {
-  id                   String    @id @default(uuid())
-  tenantId             String    @map("tenant_id")
-  ticketId             String    @map("ticket_id") 
+  id       String @id @default(uuid())
+  tenantId String @map("tenant_id")
+  ticketId String @map("ticket_id")
 
   // Basic Job Information
-  jobTitle             String    @map("job_title")
-  jobCode              String?   @map("job_code")
-  clientId             String?   @map("client_id")
-  clientContactPerson  String?   @map("client_contact_person")
-  openingsCount        Int       @default(1) @map("openings_count")
-  jobType              String    @map("job_type") 
-  priority             String    @default("Medium") 
-  status               String    @default("Open") 
+  jobTitle            String  @map("job_title")
+  jobCode             String? @map("job_code")
+  clientId            String? @map("client_id")
+  clientContactPerson String? @map("client_contact_person")
+  openingsCount       Int     @default(1) @map("openings_count")
+  jobType             String  @map("job_type")
+  priority            String  @default("Medium")
+  status              String  @default("Open")
 
   // Candidate Requirements
-  experience           String?
-  mandatorySkills      String[]  @map("mandatory_skills")
-  secondarySkills      String[]  @map("secondary_skills")
-  education            String?
-  certification        String?
-  communicationSkills  String?   @map("communication_skills")
+  experience          String?
+  mandatorySkills     String[] @map("mandatory_skills")
+  secondarySkills     String[] @map("secondary_skills")
+  education           String?
+  certification       String?
+  communicationSkills String?  @map("communication_skills")
 
   // Job Description
-  jobRole              String?   @map("job_role")
-  jobDetails           String?   @map("job_details")
-  responsibilities     String?
-  interviewProcess     Json?     @default("[]") @map("interview_process")
+  jobRole          String? @map("job_role")
+  jobDetails       String? @map("job_details")
+  responsibilities String?
+  interviewProcess Json?   @default("[]") @map("interview_process")
 
   // Visa & Work Authorization
-  allowedVisaTypes     String[]  @map("allowed_visa_types")
-  excludedVisaTypes    String[]  @map("excluded_visa_types")
-  securityClearance    Boolean   @default(false) @map("security_clearance")
+  allowedVisaTypes  String[] @map("allowed_visa_types")
+  excludedVisaTypes String[] @map("excluded_visa_types")
+  securityClearance Boolean  @default(false) @map("security_clearance")
 
   // Location & Work Mode
-  jobLocation          String?   @map("job_location")
-  workMode             String    @default("Remote") @map("work_mode") 
-  timeZone             String?   @map("time_zone")
-  relocationAllowed    Boolean   @default(false) @map("relocation_allowed")
+  jobLocation       String? @map("job_location")
+  workMode          String  @default("Remote") @map("work_mode")
+  timeZone          String? @map("time_zone")
+  relocationAllowed Boolean @default(false) @map("relocation_allowed")
 
   // Billing & Rate Information
-  maxBillRate          Decimal?  @db.Decimal(10, 2) @map("max_bill_rate")
-  recruiterRate        Decimal?  @db.Decimal(10, 2) @map("recruiter_rate")
-  minPayRate           Decimal?  @db.Decimal(10, 2) @map("min_pay_rate")
-  overtimeMultiplier   Decimal?  @db.Decimal(4, 2)  @map("overtime_multiplier")
+  maxBillRate        Decimal? @map("max_bill_rate") @db.Decimal(10, 2)
+  recruiterRate      Decimal? @map("recruiter_rate") @db.Decimal(10, 2)
+  minPayRate         Decimal? @map("min_pay_rate") @db.Decimal(10, 2)
+  overtimeMultiplier Decimal? @map("overtime_multiplier") @db.Decimal(4, 2)
+  implementationId   String?  @map("implementation_id")
+  recruitmentClientId String? @map("recruitment_client_id")
+  vendorIds          String?  @map("vendor_ids")
 
   // Hiring Timeline
-  startDate            DateTime? @map("start_date")
-  submissionDeadline   DateTime? @map("submission_deadline")
-  interviewStartDate   DateTime? @map("interview_start_date")
-  expectedClosureDate  DateTime? @map("expected_closure_date")
+  startDate           DateTime? @map("start_date")
+  submissionDeadline  DateTime? @map("submission_deadline")
+  interviewStartDate  DateTime? @map("interview_start_date")
+  expectedClosureDate DateTime? @map("expected_closure_date")
 
   // Recruiter Assignment
-  accountManagerId     String?   @map("account_manager_id")
-  deliveryManagerId    String?   @map("delivery_manager_id")
-  maxSubmissionsPerRec Int?      @map("max_submissions") 
+  accountManagerId     String? @map("account_manager_id")
+  deliveryManagerId    String? @map("delivery_manager_id")
+  maxSubmissionsPerRec Int?    @map("max_submissions")
 
   // Candidate Submission Rules
-  maxTotalSubmissions  Int?      @map("max_total_submissions")
-  exclusiveCandidate   Boolean   @default(false) @map("exclusive_candidate")
-  blindCvRequired      Boolean   @default(false) @map("blind_cv_required")
-  sourceFormat         String?   @map("source_format")
+  maxTotalSubmissions Int?    @map("max_total_submissions")
+  exclusiveCandidate  Boolean @default(false) @map("exclusive_candidate")
+  blindCvRequired     Boolean @default(false) @map("blind_cv_required")
+  sourceFormat        String? @map("source_format")
 
   // Screening Questions & Attachments & Notes
-  screeningQuestions   Json?     @default("[]") @map("screening_questions")
-  attachments          Json?     @default("[]")
-  internalNotes        String?   @map("internal_notes")
+  screeningQuestions Json?   @default("[]") @map("screening_questions")
+  attachments        Json?   @default("[]")
+  internalNotes      String? @map("internal_notes")
+
+  jobRequisitionContacts JobRequisitionContact[]
 
   // Metadata
-  createdById          String    @map("created_by_id")
-  createdAt            DateTime  @default(now()) @map("created_at")
-  updatedAt            DateTime  @updatedAt @map("updated_at")
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
 
   // Relations
   tenant             Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -3149,6 +3206,384 @@ model JobRequisition {
   @@index([tenantId, status])
   @@index([clientId])
   @@map("job_requisitions")
+}
+model JobRequisitionContact {
+  id               String   @id @default(uuid())
+
+  jobRequisitionId String   @map("job_requisition_id")
+
+  // 🔹 Only Contact ID
+  contactId        String   @map("contact_id")
+
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  // 🔹 Relation (only JobRequisition)
+  jobRequisition   JobRequisition @relation(fields: [jobRequisitionId], references: [id], onDelete: Cascade)
+
+  @@index([jobRequisitionId])
+  @@index([contactId])
+
+  @@map("job_requisition_contacts")
+}
+
+
+model ImplementationBasicInformation {
+  id             String   @id @default(cuid()) @db.Text
+
+  tenantId       String   @map("tenant_id") @db.Text
+  tenant         Tenant  @relation(fields: [tenantId], references: [id])
+
+  companyName    String?   @map("company_name")
+  industry       String?
+
+  website        String?
+  companyEmail   String?   @map("company_email")
+  companyPhone   String?  @map("company_phone")
+ status Boolean       @default(true)
+
+  street         String?
+  city           String?
+  state          String?
+  country        String?
+  notes          String?   
+  zipCode        String?   @map("zip_code")
+  clientIds      String[]  @map("client_ids") @db.Text
+  vendorIds      String[]  @map("vendor_ids") @db.Text
+
+  contactPersons ImplementationContactPerson[]
+   businessDetails ImplementationBusinessDetailes[] 
+    relations ImplementationRelations[]
+    documents ImplementationDocument[]
+
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("implementation-basic-information")
+}
+
+model ImplementationContactPerson {
+  id                 String   @id @default(cuid()) @db.Text
+
+  implementationId   String   @map("implementation_id") @db.Text
+  implementation ImplementationBasicInformation @relation(fields: [implementationId], references: [id])
+
+  personName         String   @map("person_name")
+  designation        String?
+  email              String?
+  phone              String?
+  linkedInUrl        String?  @map("linkedin_url")
+
+  createdById        String   @map("created_by_id") @db.Text
+  createdBy          User     @relation("CreatedByUser", fields: [createdById], references: [id])
+
+  updatedById        String   @map("updated_by_id") @db.Text
+  updatedBy          User     @relation("UpdatedByUser", fields: [updatedById], references: [id])
+
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@map("implementation_contact_person")
+}
+model ImplementationBusinessDetailes {
+  id                   String   @id @default(cuid()) @db.Text
+
+  implementationId     String   @map("implementation_id") @db.Text
+  implementation ImplementationBasicInformation @relation(fields: [implementationId], references: [id])
+  registrationNumber   String?  @map("registration_number")
+  taxId                String?  @map("tax_id")
+  businessType         String?  @map("business_type")
+  yearEstabliliesh     Int?     @map("year_establiliesh")
+  totalEmployees       Int?     @map("total_employees")
+
+  createdById          String   @map("created_by_id") @db.Text
+  createdBy            User     @relation("BusinessCreatedBy", fields: [createdById], references: [id])
+
+  updatedById          String   @map("updated_by_id") @db.Text
+  updatedBy            User     @relation("BusinessUpdatedBy", fields: [updatedById], references: [id])
+
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@map("implementation_business_detailes")
+}
+
+model ImplementationRelations {
+  id                        String   @id @default(cuid()) @db.Text
+
+  implementationId          String   @map("implementation_id") @db.Text
+  implementation            ImplementationBasicInformation @relation(fields: [implementationId], references: [id])
+
+  linkedVendor              String?  @map("linked_vendor")
+  linkedClient              String?  @map("linked_client")
+
+  supportsVisaSponsorship   Boolean  @map("supports_visa_sponsorship")
+  visaTypesSupported        String?  @map("visa_types_supported")
+
+  createdById               String   @map("created_by_id") @db.Text
+  createdBy                 User     @relation("RelationsCreatedBy", fields: [createdById], references: [id])
+
+  updatedById               String   @map("updated_by_id") @db.Text
+  updatedBy                 User     @relation("RelationsUpdatedBy", fields: [updatedById], references: [id])
+
+  createdAt                 DateTime @default(now()) @map("created_at")
+  updatedAt                 DateTime @updatedAt @map("updated_at")
+
+  @@map("implementation_relations")
+}
+
+model ImplementationDocument {
+  id                String   @id @default(cuid()) @db.Text
+
+  implementationId  String   @map("implementation_id") @db.Text
+  implementation    ImplementationBasicInformation @relation(fields: [implementationId], references: [id])
+
+  documentType      String?   @map("document_type")
+  documentUrl       String?  @map("document_url")
+
+  createdById       String   @map("created_by_id") @db.Text
+  createdBy         User     @relation("DocumentCreatedBy", fields: [createdById], references: [id])
+
+  updatedById       String   @map("updated_by_id") @db.Text
+  updatedBy         User     @relation("DocumentUpdatedBy", fields: [updatedById], references: [id])
+
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@map("implementation_document")
+}
+
+
+
+model RecruitmentClientBasicInformation {
+  id            String   @id @default(cuid()) @db.Text
+
+  // Tenant رابطه
+  tenantId      String   @map("tenant_id") @db.Text
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+  clientName    String?  @map("client_name")
+  accountType   String?  @map("account_type")
+  industry      String?
+
+  website       String?
+  companyEmail  String?  @map("company_email")
+  companyPhone  String?  @map("company_phone")
+
+  street        String?
+  city          String?
+  state         String?
+  zipCode       String?  @map("zip_code")
+  country       String?
+
+  status        Boolean  @default(true)
+  notes         String?
+
+  implementationPartnerId String[] @map("implementation_partner_id") @db.Text
+  primeVendorId          String[] @map("prime_vendor_id") @db.Text
+
+  businessDetails RecruitmentClientBusinessDetails[] @relation("ClientToBusinessDetails")
+  // Audit fields
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  
+ hiringPreferences RecruitmentClientHiringPreference[] @relation("RecruitmentToHiringPreferences")
+
+contacts RecruitmentClientContact[] @relation("ClientToContacts")
+clientRelationships RecruitmentClientRelationship[] @relation("ClientToRelations")
+
+  createdById   String?  @map("created_by_id") @db.Text
+  createdBy     User?    @relation("CreatedRecruitmentClient", fields: [createdById], references: [id])
+
+  updatedById   String?  @map("updated_by_id") @db.Text
+  updatedBy     User?    @relation("UpdatedRecruitmentClient", fields: [updatedById], references: [id])
+
+  @@map("recruitment_client_basic_information")
+}
+
+model RecruitmentClientBusinessDetails {
+  id String @id @default(cuid()) @db.Text
+
+  recruitmentClientId String @map("recruitment_client_id") @db.Text
+  recruitmentClient RecruitmentClientBasicInformation @relation("ClientToBusinessDetails", fields: [recruitmentClientId], references: [id])
+
+  companyName String? @map("company_name")
+  yearEstablished Int? @map("year_established")
+  revenueRange String? @map("revenue_range")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  createdById String? @map("created_by_id") @db.Text
+  createdBy User? @relation("CreatedBusinessDetails", fields: [createdById], references: [id])
+
+  updatedById String? @map("updated_by_id") @db.Text
+  updatedBy User? @relation("UpdatedBusinessDetails", fields: [updatedById], references: [id])
+
+  @@map("recruitment_client_business_detailes")
+}
+
+model RecruitmentClientContact {
+  id                     String   @id @default(cuid()) @db.Text
+
+  recruitmentClientId    String   @map("recruitment_client_id") @db.Text
+  recruitmentClient      RecruitmentClientBasicInformation @relation("ClientToContacts", fields: [recruitmentClientId], references: [id])
+
+  personName             String   @map("person_name")
+  designation            String?
+  email                  String?
+  phone                  String?
+  linkedInUrl            String?  @map("linkedin_url")
+
+  createdAt              DateTime @default(now()) @map("created_at")
+  updatedAt              DateTime @updatedAt @map("updated_at")
+
+  @@map("recruitment_client_contact")
+}
+
+model RecruitmentClientRelationship {
+  id                      String   @id @default(cuid()) @db.Text
+
+  recruitmentClientId     String   @map("recruitment_client_id") @db.Text
+  recruitmentClient       RecruitmentClientBasicInformation @relation("ClientToRelations", fields: [recruitmentClientId], references: [id])
+
+  linkedVendor            String?  @map("linked_vendor")
+  linkedClient            String?  @map("linked_client")
+  supportsVisaSponsorship Boolean  @map("supports_visa_sponsorship")
+  visaTypesSupported      String?  @map("visa_types_supported")
+
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  @@map("recruitment_client_relationship")
+}
+
+
+model RecruitmentClientHiringPreference {
+  id String @id @default(cuid()) @db.Text
+
+   recruitmentId String @map("recruitment_id") @db.Text
+  recruitment RecruitmentClientBasicInformation @relation("RecruitmentToHiringPreferences", fields: [recruitmentId], references: [id])
+
+  employmentType String? @map("employment_type")
+  workType String? @map("work_type")
+  hiringLocation String? @map("hiring_location")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("recruitment_client_hirring_preference")
+}
+
+
+model VendorBasicInformation {
+  id             String   @id @default(cuid()) @db.Text
+
+  tenantId       String   @map("tenant_id") @db.Text
+  tenant         Tenant   @relation(fields: [tenantId], references: [id])
+
+  companyName    String?  @map("company_name")
+  industry       String?
+
+  website        String?
+  companyEmail   String?  @map("company_email")
+  companyPhone   String?  @map("company_phone")
+
+  status         Boolean  @default(true)
+
+  street         String?
+  city           String?
+  state          String?
+  country        String?
+  zipCode        String?  @map("zip_code")
+  notes          String?
+   documents VendorDocument[]
+ contactPersons VendorContactPerson[]
+  businessDetails       VendorBusinessDetailes[]
+
+    implementationIds String[] @map("implementation_id")
+  clientIds         String[] @map("client_id")
+
+relations VendorRelations[] @relation("VendorToRelations")
+
+  createdById     String? @map("created_by_id") @db.Text
+  createdBy       User?   @relation("VendorCreatedBy", fields: [createdById], references: [id])
+
+  updatedById     String? @map("updated_by_id") @db.Text
+  updatedBy       User?   @relation("VendorUpdatedBy", fields: [updatedById], references: [id])
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("vendor-basic-information")
+}
+
+model VendorContactPerson {
+  id               String   @id @default(cuid()) @db.Text
+
+  vendorId         String   @map("vendor_id") @db.Text
+  vendor           VendorBasicInformation @relation(fields: [vendorId], references: [id])
+
+  personName       String   @map("person_name")
+  designation      String?
+  email            String?
+  phone            String?
+  linkedInUrl      String?  @map("linkedin_url")
+
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@map("vendor_contact_person")
+}
+
+model VendorBusinessDetailes {
+  id                   String   @id @default(cuid()) @db.Text
+
+  vendorId             String   @map("vendor_id") @db.Text
+  vendor               VendorBasicInformation @relation(fields: [vendorId], references: [id])
+
+  registrationNumber   String?  @map("registration_number")
+  taxId                String?  @map("tax_id")
+  businessType         String?  @map("business_type")
+  yearEstabliliesh     Int?     @map("year_establiliesh")
+  totalEmployees       Int?     @map("total_employees")
+
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  @@map("vendor_business_detailes")
+}
+
+model VendorRelations {
+  id                        String   @id @default(cuid()) @db.Text
+
+  vendorId                  String   @map("vendor_id") @db.Text
+  vendor VendorBasicInformation @relation("VendorToRelations", fields: [vendorId], references: [id])
+
+  linkedVendor              String?  @map("linked_vendor")
+  linkedClient              String?  @map("linked_client")
+
+  supportsVisaSponsorship   Boolean  @map("supports_visa_sponsorship")
+  visaTypesSupported        String?  @map("visa_types_supported")
+
+  createdAt                 DateTime @default(now()) @map("created_at")
+  updatedAt                 DateTime @updatedAt @map("updated_at")
+
+  @@map("vendor_relations")
+}
+model VendorDocument {
+  id              String   @id @default(cuid()) @db.Text
+
+  vendorId        String   @map("vendor_id") @db.Text
+  vendor          VendorBasicInformation @relation(fields: [vendorId], references: [id])
+
+  documentType    String?  @map("document_type")
+  documentUrl     String?  @map("document_url")
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("vendor_document")
 }
 
 model ReimbursementConfiguration {
@@ -3416,33 +3851,81 @@ model TimeTrackingEntry {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
+  // Relations
+  tenant  Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user    User                @relation(fields: [userId], references: [id])
+  project Project?            @relation(fields: [projectId], references: [id])
+  ticket  Ticket?             @relation(fields: [ticketId], references: [id])
+  logs    TimeTrackingLog[]
 
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project     Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  ticket      Ticket?  @relation(fields: [ticketId], references: [id], onDelete: SetNull)
-  logs        TimeTrackingLog[]
-
-  @@index([tenantId, userId])
-  @@index([projectId])
   @@map("time_tracking_entries")
 }
 
 model TimeTrackingLog {
-  id              String   @id @default(uuid())
-  tenantId        String   @map("tenant_id")
-  timeTrackingId  String   @map("time_tracking_id")
-  
-  action          String   // e.g., "STARTED", "PAUSED", "RESUMED", "STOPPED"
-  
-  createdAt       DateTime @default(now()) @map("created_at")
+  id               String   @id @default(uuid())
+  timeTrackingId   String   @map("time_tracking_id")
+  tenantId         String   @map("tenant_id")
+  action           String   @db.VarChar(50) // STARTED, PAUSED, RESUMED, STOPPED
+
+  createdAt        DateTime @default(now()) @map("created_at")
 
   timeTrackingEntry TimeTrackingEntry @relation(fields: [timeTrackingId], references: [id], onDelete: Cascade)
-  tenant            Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  @@index([timeTrackingId])
-  @@index([tenantId])
   @@map("time_tracking_logs")
+}
+
+model Squad {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+
+  squadName String @map("squad_name") @db.VarChar(100)
+  squadCode String @map("squad_code") @db.VarChar(50)
+
+  squadStatus Boolean @default(true) @map("squad_status")
+  isArchived  Boolean @default(false) @map("is_archived")
+  isDeleted   Boolean @default(false) @map("is_deleted")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  createdById String  @map("created_by_id") @db.Uuid
+  updatedById String? @map("updated_by_id") @db.Uuid
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdBy User  @relation("SquadCreator", fields: [createdById], references: [id])
+  updatedBy User? @relation("SquadUpdater", fields: [updatedById], references: [id])
+
+  squadMembers SquadMember[]
+
+  @@map("squad")
+}
+
+model SquadMember {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  squadId  String @map("squad_id") @db.Uuid
+
+  squadMemberId String @map("squad_member_id") @db.Uuid
+  memberType    String @map("member_type") @db.VarChar(50)
+
+  status Boolean @default(true)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  createdById String  @map("created_by_id") @db.Uuid
+  updatedById String? @map("updated_by_id") @db.Uuid
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  squad  Squad  @relation(fields: [squadId], references: [id], onDelete: Cascade)
+  member User   @relation("SquadMemberUser", fields: [squadMemberId], references: [id])
+
+  createdBy User  @relation("SquadMemberCreator", fields: [createdById], references: [id])
+  updatedBy User? @relation("SquadMemberUpdater", fields: [updatedById], references: [id])
+
+  @@map("squad_members")
 }
 
 model UserPreference {
@@ -3459,9 +3942,6 @@ model UserPreference {
   @@map("user_preferences")
 }
 
-// ============================================================
-// LEAVE REQUEST MODEL
-// ============================================================
 model LeaveRequest {
   id          String   @id @default(uuid())
   tenantId    String   @map("tenant_id")
@@ -3490,53 +3970,44 @@ model LeaveRequest {
   @@map("leave_requests")
 }
 
-// ============================================================
-// EXIT TYPE MODEL
-// ============================================================
 model ExitType {
-  id        String   @id @default(uuid())
-  tenantId  String   @map("tenant_id")
-  name      String   @db.VarChar(100)
-  code      String   @db.VarChar(50)
-  is_active Boolean  @default(true)
-  createdById String @map("created_by_id")
-  updatedById String? @map("updated_by_id")
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  name        String   @db.VarChar(100)
+  code        String   @db.VarChar(50)
+  is_active   Boolean  @default(true)
+  createdById String   @map("created_by_id")
+  updatedById String?  @map("updated_by_id")
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
 
-  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdBy User   @relation("ExitTypeCreator", fields: [createdById], references: [id])
-  updatedBy User?  @relation("ExitTypeUpdater", fields: [updatedById], references: [id])
+  tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy     User         @relation("ExitTypeCreator", fields: [createdById], references: [id])
+  updatedBy     User?        @relation("ExitTypeUpdater", fields: [updatedById], references: [id])
   employeeExits EmployeeExit[]
 
   @@map("exit_types")
 }
 
-// ============================================================
-// REASON FOR EXIT MODEL
-// ============================================================
 model ReasonForExit {
-  id        String   @id @default(uuid())
-  tenantId  String   @map("tenant_id")
-  name      String   @db.VarChar(100)
-  code      String   @db.VarChar(50)
-  is_active Boolean  @default(true)
-  createdById String @map("created_by_id")
-  updatedById String? @map("updated_by_id")
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  name        String   @db.VarChar(100)
+  code        String   @db.VarChar(50)
+  is_active   Boolean  @default(true)
+  createdById String   @map("created_by_id")
+  updatedById String?  @map("updated_by_id")
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
 
-  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  createdBy User   @relation("ReasonForExitCreator", fields: [createdById], references: [id])
-  updatedBy User?  @relation("ReasonForExitUpdater", fields: [updatedById], references: [id])
+  tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy     User         @relation("ReasonForExitCreator", fields: [createdById], references: [id])
+  updatedBy     User?        @relation("ReasonForExitUpdater", fields: [updatedById], references: [id])
   employeeExits EmployeeExit[]
 
   @@map("reasons_for_exit")
 }
 
-// ============================================================
-// EXIT NOTICE POLICY MODEL
-// ============================================================
 model ExitNoticePolicy {
   id                        String   @id @default(uuid())
   tenantId                  String   @map("tenant_id")
@@ -3557,20 +4028,17 @@ model ExitNoticePolicy {
   @@map("exit_notice_policies")
 }
 
-// ============================================================
-// EXIT APPROVAL WORKFLOW MODEL
-// ============================================================
 model ExitApprovalWorkflow {
-  id          String   @id @default(uuid())
-  tenantId    String   @map("tenant_id")
-  stepOrder   Int      @map("step_order")
-  approverType String  @map("approver_type") @db.VarChar(50)
-  approverId  String?  @map("approver_id")
-  isActive    Boolean  @default(true) @map("is_active")
-  createdById String   @map("created_by_id")
-  updatedById String?  @map("updated_by_id")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  stepOrder    Int      @map("step_order")
+  approverType String   @map("approver_type") @db.VarChar(50)
+  approverId   String?  @map("approver_id")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdById  String   @map("created_by_id")
+  updatedById  String?  @map("updated_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
 
   tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   createdBy User   @relation("ExitApprovalWorkflowCreatedBy", fields: [createdById], references: [id])
@@ -3579,37 +4047,376 @@ model ExitApprovalWorkflow {
   @@map("exit_approval_workflows")
 }
 
-// ============================================================
-// EMPLOYEE EXIT MODEL
-// ============================================================
 model EmployeeExit {
-  id                   String    @id @default(uuid())
-  tenantId             String    @map("tenant_id")
-  employeeId           String    @map("employee_id") @db.Uuid
-  departmentId         String?   @map("department_id")
-  positionId           String?   @map("position_id")
-  reportingManagerId   String?   @map("reporting_manager_id")
-  exitTypeId           String?   @map("exit_type_id")
-  exitReasonId         String?   @map("exit_reason_id")
-  resignationDate      DateTime  @map("resignation_date")
+  id                    String    @id @default(uuid())
+  tenantId              String    @map("tenant_id")
+  employeeId            String    @map("employee_id") @db.Uuid
+  departmentId          String?   @map("department_id")
+  positionId            String?   @map("position_id")
+  reportingManagerId    String?   @map("reporting_manager_id")
+  exitTypeId            String?   @map("exit_type_id")
+  exitReasonId          String?   @map("exit_reason_id")
+  resignationDate       DateTime  @map("resignation_date")
   proposedLastWorkingDay DateTime @map("proposed_last_working_day")
-  noticePeriodDay      DateTime  @map("notice_period_day")
-  waiveNoticePeriod    Boolean   @default(false) @map("waive_notice_period")
-  buyoutRequired       Boolean   @default(false) @map("buyout_required")
-  buyoutAmount         Decimal?  @map("buyout_amount") @db.Decimal(10, 2)
-  explanation          String?
-  status               String    @default("PENDING")
-  createdById          String    @map("created_by_id")
-  updatedById          String?   @map("updated_by_id")
-  createdAt            DateTime  @default(now()) @map("created_at")
-  updatedAt            DateTime  @updatedAt @map("updated_at")
+  noticePeriodDay       DateTime  @map("notice_period_day")
+  waiveNoticePeriod     Boolean   @default(false) @map("waive_notice_period")
+  buyoutRequired        Boolean   @default(false) @map("buyout_required")
+  buyoutAmount          Decimal?  @map("buyout_amount") @db.Decimal(10, 2)
+  explanation           String?
+  status                String    @default("PENDING")
+  createdById           String    @map("created_by_id")
+  updatedById           String?   @map("updated_by_id")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
 
-  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  exitType ExitType? @relation(fields: [exitTypeId], references: [id])
+  tenant     Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee   Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  exitType   ExitType?     @relation(fields: [exitTypeId], references: [id])
   exitReason ReasonForExit? @relation(fields: [exitReasonId], references: [id])
-  createdBy User     @relation("EmployeeExitCreatedBy", fields: [createdById], references: [id])
-  updatedBy User?    @relation("EmployeeExitUpdatedBy", fields: [updatedById], references: [id])
+  createdBy  User          @relation("EmployeeExitCreatedBy", fields: [createdById], references: [id])
+  updatedBy  User?         @relation("EmployeeExitUpdatedBy", fields: [updatedById], references: [id])
 
   @@map("employee_exits")
+}
+
+// ==========================================
+// Recruitment Settings Models
+// ==========================================
+
+model RecruitmentStatus {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  name         String   @map("status_name")
+  category     String
+  color        String
+  appliesTo    String[] @map("applies_to")
+  isDefault    Boolean  @default(false) @map("is_default")
+  isFinalStage Boolean  @default(false) @map("is_final_stage")
+  isActive     Boolean  @default(true)  @map("is_active")
+
+  createdById  String   @map("created_by_id")
+  updatedById  String?  @map("updated_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy    User     @relation("RecruitmentStatusCreator", fields: [createdById], references: [id])
+  updatedBy    User?    @relation("RecruitmentStatusUpdater", fields: [updatedById], references: [id])
+
+  @@unique([tenantId, name])
+  @@map("recruitment_statuses")
+}
+
+model RecruitmentAction {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  name        String   @map("action_name")
+  type        String   @map("action_type")
+  icon        String
+  color       String
+  isActive    Boolean  @default(true) @map("is_active")
+
+  createdById String   @map("created_by_id")
+  updatedById String?  @map("updated_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy   User     @relation("RecruitmentActionCreator", fields: [createdById], references: [id])
+  updatedBy   User?    @relation("RecruitmentActionUpdater", fields: [updatedById], references: [id])
+
+  @@unique([tenantId, name])
+  @@map("recruitment_actions")
+}
+
+model Candidate {
+  id                      String    @id @default(uuid())
+  tenantId                String    @map("tenant_id")
+  
+  // Personal Details
+  fullName                String    @map("full_name")
+  email                   String
+  phoneNumber             String    @map("phone_number")
+  country                 String?
+  state                   String?
+  city                    String?
+  timezone                String?
+  linkedinUrl             String?   @map("linkedin_url")
+  githubUrl               String?   @map("github_url")
+  portfolioUrl            String?   @map("portfolio_url")
+  preferredContactMethod  String?   @map("preferred_contact_method")
+
+  // Career Summary
+  currentRole             String?   @map("current_role")
+  yearsOfExperience       Decimal?  @map("years_of_experience") @db.Decimal(5, 2)
+  primarySkills           String[]  @map("primary_skills") @default([])
+  secondarySkills         String[]  @map("secondary_skills") @default([])
+  professionalSummary     String?   @map("professional_summary") @db.Text
+
+  // Work Authorization
+  workAuthorizationType   String?   @map("work_authorization_type")
+  visaValidityDate        DateTime? @map("visa_validity_date") @db.Date
+  willingToTransferVisa   Boolean   @default(false) @map("willing_to_transfer_visa")
+
+  // Employment Preferences
+  preferredEmploymentType String?   @map("preferred_employment_type")
+  expectedRate            Decimal?  @map("expected_rate") @db.Decimal(15, 2)
+  rateUnit                String?   @map("rate_unit")
+  willingToRelocate       String?   @map("willing_to_relocate")
+  preferredWorkMode       String?   @map("preferred_work_mode")
+
+  // Availability
+  earliestAvailable       String?   @map("earliest_available")
+  joiningDate             DateTime? @map("joining_date") @db.Date
+  noticePeriod            Int?      @map("notice_period")
+
+  // Candidate Documents (Storing as single URLs or Json Array of URLs for files)
+  resumeUrl               String?   @map("resume_url") @db.Text
+  passportUrl             String?   @map("passport_url") @db.Text
+  drivingLicenseUrl       String?   @map("driving_license_url") @db.Text
+  visaDocumentUrl         String?   @map("visa_document_url") @db.Text
+  identityProofUrl        String?   @map("identity_proof_url") @db.Text
+  certificationsUrls      Json?     @map("certifications_urls") @default("[]")
+
+  // Internal Recruiter Notes & Tags
+  internalNotes           String?   @map("internal_notes") @db.Text
+  candidateTags           String[]  @map("candidate_tags") @default([])
+  isActive                Boolean   @default(true) @map("is_active")
+
+  // Configuration & Rating
+  statusConfig            String    @default("New") @map("status_config")
+  actionConfig            String    @default("New") @map("action_config")
+  skillRate               String    @default("New") @map("skill_rate")
+
+  // Audit
+  createdById             String    @map("created_by_id")
+  updatedById             String?   @map("updated_by_id")
+  createdAt               DateTime  @default(now()) @map("created_at")
+  updatedAt               DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  tenant                  Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy               User                       @relation("CandidateCreator", fields: [createdById], references: [id])
+  updatedBy               User?                      @relation("CandidateUpdater", fields: [updatedById], references: [id])
+  workExperiences         CandidateWorkExperience[]
+  skills                  CandidateSkillMatrix[]
+  educations              CandidateEducation[]
+  interviewSlots          CandidateInterviewSlot[]
+
+  @@index([tenantId])
+  @@index([email])
+  @@map("candidates")
+}
+
+model CandidateWorkExperience {
+  id               String    @id @default(uuid())
+  candidateId      String    @map("candidate_id")
+  companyName      String    @map("company_name")
+  companyWebsite   String?   @map("company_website")
+  jobTitle         String    @map("job_title")
+  startDate        DateTime  @map("start_date") @db.Date
+  endDate          DateTime? @map("end_date") @db.Date
+  location         String?
+  employmentType   String?   @map("employment_type")
+  workMode         String?   @map("work_mode")
+  skillsUsed       String[]  @map("skills_used") @default([])
+  responsibilities String?   @db.Text
+
+  createdById      String    @map("created_by_id")
+  updatedById      String?   @map("updated_by_id")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  candidate        Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  createdBy        User      @relation("CandidateWorkExpCreator", fields: [createdById], references: [id])
+  updatedBy        User?     @relation("CandidateWorkExpUpdater", fields: [updatedById], references: [id])
+
+  @@index([candidateId])
+  @@map("candidate_work_experiences")
+}
+
+model CandidateSkillMatrix {
+  id                String    @id @default(uuid())
+  candidateId       String    @map("candidate_id")
+  skillName         String[]  @map("skill_name") @default([]) // Array to handle tags mode
+  yearsOfExperience Decimal   @map("years_of_experience") @db.Decimal(5, 2)
+  lastUsedYear      DateTime  @map("last_used_year") @db.Date
+
+  createdById       String    @map("created_by_id")
+  updatedById       String?   @map("updated_by_id")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  candidate         Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  createdBy         User      @relation("CandidateSkillCreator", fields: [createdById], references: [id])
+  updatedBy         User?     @relation("CandidateSkillUpdater", fields: [updatedById], references: [id])
+
+  @@index([candidateId])
+  @@map("candidate_skill_matrices")
+}
+
+model CandidateEducation {
+  id             String    @id @default(uuid())
+  candidateId    String    @map("candidate_id")
+  degreeName     String    @map("degree_name")
+  specialization String?
+  university     String
+  location       String?
+  startDate      DateTime  @map("start_date") @db.Date
+  endDate        DateTime? @map("end_date") @db.Date
+
+  createdById    String    @map("created_by_id")
+  updatedById    String?   @map("updated_by_id")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  candidate      Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  createdBy      User      @relation("CandidateEduCreator", fields: [createdById], references: [id])
+  updatedBy      User?     @relation("CandidateEduUpdater", fields: [updatedById], references: [id])
+
+  @@index([candidateId])
+  @@map("candidate_educations")
+}
+
+model CandidateInterviewSlot {
+  id            String    @id @default(uuid())
+  candidateId   String    @map("candidate_id")
+  interviewDate DateTime  @map("interview_date") @db.Date
+  startTime     String    @map("start_time")
+  endTime       String    @map("end_time")
+  timezone      String?   @map("timezone")
+
+  createdById   String    @map("created_by_id")
+  updatedById   String?   @map("updated_by_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  candidate     Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  createdBy     User      @relation("CandidateIntvCreator", fields: [createdById], references: [id])
+  updatedBy     User?     @relation("CandidateIntvUpdater", fields: [updatedById], references: [id])
+
+  @@index([candidateId])
+  @@map("candidate_interview_slots")
+}
+
+model CandidateDetails {
+    id            String   @id @default(uuid())
+
+    tenantId      String   @map("tenant_id")
+    tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+    fullName      String   @map("full_name")
+    email         String   @unique
+    contactNo     String   @map("contact_no")
+
+    addressLine1  String   @map("address_line1")
+    addressLine2  String?  @map("address_line2")
+
+    city          String
+    state         String
+    zipCode       String   @map("zip_code")
+    country       String
+
+    linkedinUrl   String?  @map("linkedin_url")
+    githubUrl     String?  @map("github_url")
+    portfolioUrl  String?  @map("portfolio_url")
+
+  internalRecruiterNotes String? @db.VarChar(1000) @map("internal_recruiter_notes")
+
+
+
+      availability CandidateAvailability[]
+      currentEmployerContact CurrentEmployerContact[]
+      workAuthorizations WorkAuthorization[]
+      interviewAvailabilities CandidateInterviewAvailability[]
+      documents CandidateDocuments[]
+
+    createdAt     DateTime @default(now()) @map("created_at")
+    updatedAt     DateTime @updatedAt @map("updated_at")
+
+    @@map("candidate_details")
+  }
+model CandidateAvailability {
+  id               String   @id @default(uuid())
+
+candidateId      String  @map("candidate_id")
+ candidate   CandidateDetails @relation(fields: [candidateId], references: [id])
+
+  availableToJoin  Boolean?  @map("available_to_join")
+  joiningDate      DateTime? @map("joining_date")
+  noticePeriod     Int?      @map("notice_period")
+
+  createdAt        DateTime? @default(now()) @map("created_at")
+  updatedAt        DateTime? @updatedAt @map("updated_at")
+
+  @@map("candidate_availability")
+}
+
+model CurrentEmployerContact {
+  id                          String   @id   // TEXT primary key
+
+  candidateId                 String  @map("candidate_id")
+  candidate                   CandidateDetails @relation(fields: [candidateId], references: [id])
+
+  reportingManagerName        String?  @map("reporting_manager_name")
+  reportingManagerEmail       String?  @map("reporting_manager_email")
+  reportingManagerPhone       String?  @map("reporting_manager_phone")
+
+  currentEmployerCompanyName  String?  @map("current_employer_companyname")
+  currentEmployerCompanyWebsite String? @map("current_employer_company_website")
+
+  createdAt                   DateTime? @default(now()) @map("created_at")
+  updatedAt                   DateTime? @updatedAt @map("updated_at")
+
+  @@map("current_employer_contact")
+}
+model WorkAuthorization {
+  id                       String   @id   // TEXT primary key
+
+  candidateId              String   @map("candidate_id")
+  candidate                CandidateDetails @relation(fields: [candidateId], references: [id])
+
+  workAuthorizationType    String?  @map("work_authorization_type")
+  visaValidationType       String?  @map("visa_validation_type")
+
+  willingTransferVisa      Boolean  @default(false) @map("willing_transfer_visa")
+
+  ssnNumber                String?  @map("ssn_number")
+  passportNumber           String?  @map("passport_number")
+
+  createdAt                DateTime? @default(now()) @map("created_at")
+  updatedAt                DateTime? @updatedAt @map("updated_at")
+
+  @@map("work_authorization")
+}
+
+model CandidateInterviewAvailability {
+  id             String   @id   
+
+  candidateId    String   @map("candidate_id")
+  candidate      CandidateDetails @relation(fields: [candidateId], references: [id])
+
+  interviewDate  DateTime? @map("interview_date")
+
+  startTime      DateTime? @map("start_time")
+  endTime        DateTime? @map("end_time")
+
+  createdAt      DateTime? @default(now()) @map("created_at")
+  updatedAt      DateTime? @updatedAt @map("updated_at")
+
+  @@map("candidate_interview_availability")
+}
+model CandidateDocuments {
+  id            String   @id   // TEXT primary key
+
+  candidateId   String   @map("candidate_id")
+  candidate     CandidateDetails @relation(fields: [candidateId], references: [id])
+
+  documentType  String   @map("document_type")   // resume, aadhar, etc
+  documentUrl   String   @map("document_url")    // R2 URL
+
+  createdAt     DateTime? @default(now()) @map("created_at")
+  updatedAt     DateTime? @updatedAt @map("updated_at")
+
+  @@map("candidate_documents")
 }

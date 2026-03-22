@@ -132,6 +132,13 @@ export const Permissions = {
   DAILY_UPDATE_CREATE: 'daily_update.create',
   DAILY_UPDATE_READ:   'daily_update.read',
   DAILY_UPDATE_MANAGE: 'daily_update.manage',
+
+  // ─── Squads ──────────────────────────────────────────────────────
+  SQUAD_CREATE: 'squad.create',
+  SQUAD_READ:   'squad.read',
+  SQUAD_UPDATE: 'squad.update',
+  SQUAD_DELETE: 'squad.delete',
+  SQUAD_MANAGE: 'squad.manage',
 } as const;
 
 export type Permission = (typeof Permissions)[keyof typeof Permissions];
@@ -160,6 +167,7 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
   timesheet:    [Permissions.TIMESHEET_CREATE, Permissions.TIMESHEET_READ, Permissions.TIMESHEET_UPDATE, Permissions.TIMESHEET_APPROVE, Permissions.TIMESHEET_MANAGE],
   org:          [Permissions.ORG_READ, Permissions.ORG_MANAGE],
   daily_update: [Permissions.DAILY_UPDATE_CREATE, Permissions.DAILY_UPDATE_READ, Permissions.DAILY_UPDATE_MANAGE],
+  squad:        [Permissions.SQUAD_CREATE, Permissions.SQUAD_READ, Permissions.SQUAD_UPDATE, Permissions.SQUAD_DELETE, Permissions.SQUAD_MANAGE],
 };
 
 /** Flat list of all permissions — used for seeding. */
