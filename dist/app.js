@@ -83,10 +83,12 @@ const noticePolicy_routes_1 = __importDefault(require("@/routes/noticePolicy.rou
 const exitType_routes_1 = __importDefault(require("@/routes/exitType.routes"));
 const reasonForExit_routes_1 = __importDefault(require("@/routes/reasonForExit.routes"));
 const exitApprovalWorkflow_routes_1 = __importDefault(require("@/routes/exitApprovalWorkflow.routes"));
+const candidateRoutes_1 = __importDefault(require("@/routes/candidateRoutes"));
 // Load environment
 dotenv_1.default.config();
 console.log("🚀 API Starting up...");
 console.log("📅 Mounting calendar routes at /api/calendar");
+console.log("🤖 DevBot deployment test — 2026-03-22");
 // Create Express application
 const app = (0, express_1.default)();
 // CORS must be first — before any other middleware — so headers are set on all responses
@@ -218,6 +220,7 @@ app.use("/api/leave-allocation", leaveAllocationRoutes_1.default);
 app.use("/api/leave-request", leaveRequestRoutes_1.default);
 app.use("/api/leave-balances", leaveBalanceRoutes_1.default);
 app.use("/api/time-tracking", timeTracking_1.default);
+app.use("/api/candidates", candidateRoutes_1.default);
 app.use("/api/employee-work-details", employeeWorkDetailes_1.default);
 app.use("/api/employee-timelines", employeeTimeline_1.default);
 app.use("/api/onboarding", onboardingRoutes_1.default);

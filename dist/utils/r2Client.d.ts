@@ -68,6 +68,16 @@ export declare function uploadEmployeeAssetToR2({ base64, fileName, tenantId, em
     folder?: string;
 }): Promise<string>;
 /**
+ * Upload candidate document to Cloudflare R2
+ * @param base64File - Base64 encoded file string
+ * @param fileName - Original file name
+ * @param tenantId - Tenant ID
+ * @param candidateId - Candidate ID
+ * @param documentType - Type of document (e.g., resume)
+ * @returns Public URL of uploaded document
+ */
+export declare function uploadCandidateDocumentToR2(base64File: string, fileName: string, tenantId: string, candidateId: string, documentType: string): Promise<string>;
+/**
  * Delete any file from Cloudflare R2
  * @param fileUrl - Full URL of the file to delete
  * @param tenantId - Tenant ID for validation
