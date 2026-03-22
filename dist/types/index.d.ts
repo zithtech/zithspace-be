@@ -254,6 +254,14 @@ export interface LoginResponse {
     };
     message: string;
 }
+export interface AuthUser {
+    id: string;
+    email: string;
+    role: string;
+}
+export interface AuthUser {
+    employeeId?: string;
+}
 export interface AuthRequest extends Request {
     user?: AuthUser;
     tenantId?: string;
@@ -508,6 +516,8 @@ export interface CreateCustomerData {
     city?: string;
     country?: string;
     taxId?: string;
+    gstin?: string;
+    pan?: string;
 }
 export interface UpdateCustomerData {
     companyName?: string;
@@ -517,6 +527,8 @@ export interface UpdateCustomerData {
     city?: string;
     country?: string;
     taxId?: string;
+    gstin?: string;
+    pan?: string;
 }
 export declare class ValidationError extends Error {
     readonly field?: string;

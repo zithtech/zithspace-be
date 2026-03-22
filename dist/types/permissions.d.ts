@@ -43,6 +43,10 @@ export declare const Permissions: {
     readonly INVOICE_UPDATE: "invoice.update";
     readonly INVOICE_DELETE: "invoice.delete";
     readonly INVOICE_MANAGE: "invoice.manage";
+    readonly INVOICE_TEMPLATE_CREATE: "invoice_template.create";
+    readonly INVOICE_TEMPLATE_READ: "invoice_template.read";
+    readonly INVOICE_TEMPLATE_UPDATE: "invoice_template.update";
+    readonly INVOICE_TEMPLATE_DELETE: "invoice_template.delete";
     readonly TRANSACTION_CREATE: "transaction.create";
     readonly TRANSACTION_READ: "transaction.read";
     readonly TRANSACTION_UPDATE: "transaction.update";

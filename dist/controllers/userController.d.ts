@@ -1,5 +1,5 @@
-import { Response } from 'express';
-import { AuthRequest } from '@/types';
+import { Response } from "express";
+import { AuthRequest } from "@/types";
 export declare class UserController {
     /**
      * Get all members/users with filtering and pagination (tenant-aware)
