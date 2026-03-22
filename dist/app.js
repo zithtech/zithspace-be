@@ -22,6 +22,7 @@ const companyRoutes_1 = __importDefault(require("./routes/companyRoutes"));
 const auth_1 = __importDefault(require("@/routes/auth"));
 const tenants_1 = __importDefault(require("@/routes/tenants"));
 const projects_1 = __importDefault(require("@/routes/projects"));
+const squad_1 = __importDefault(require("@/routes/squad"));
 const tickets_1 = __importDefault(require("@/routes/tickets"));
 const jobRequisition_routes_1 = __importDefault(require("./routes/jobRequisition.routes"));
 const attendance_1 = __importDefault(require("@/routes/attendance"));
@@ -78,6 +79,7 @@ const reimbursementConfig_1 = __importDefault(require("@/routes/reimbursementCon
 const reimbursementsettingsRoutes_1 = __importDefault(require("@/routes/reimbursementsettingsRoutes"));
 const reimbursementcreateRoutes_1 = __importDefault(require("@/routes/reimbursementcreateRoutes"));
 const rbac_1 = __importDefault(require("@/routes/rbac"));
+const candidateForm_routes_1 = __importDefault(require("@/routes/candidateForm.routes"));
 const employeeAssets_routes_1 = __importDefault(require("@/routes/employeeAssets.routes"));
 const noticePolicy_routes_1 = __importDefault(require("@/routes/noticePolicy.routes"));
 const exitType_routes_1 = __importDefault(require("@/routes/exitType.routes"));
@@ -177,6 +179,7 @@ app.use("/api/auth", auth_1.default);
 app.use("/api/tenants", tenants_1.default);
 app.use("/api/calendar", calendar_1.default);
 app.use("/api/projects", projects_1.default);
+app.use("/api/squads", squad_1.default);
 app.use("/api/public/tickets", publicTickets_1.default);
 app.use("/api/tickets", tickets_1.default);
 app.use("/api/recruitment", jobRequisition_routes_1.default);
@@ -242,6 +245,8 @@ app.use("/api/exit/approval-workflow", exitApprovalWorkflow_routes_1.default);
 app.use("/api/exit/request", employeeExit_routes_1.default);
 // RBAC management API
 app.use("/api/rbac", rbac_1.default);
+// Candidate Form API
+app.use("/api/candidate-form", candidateForm_routes_1.default);
 app.use("/api/employee-assets", employeeAssets_routes_1.default);
 app.use("/api/shortcuts", shortcut_routes_1.default);
 // app.use("/api/addresses", addressRoutes);

@@ -85,7 +85,8 @@ async function uploadImageToR2(base64Image, tenantId, ticketId) {
         };
         await exports.s3Client.send(new client_s3_1.PutObjectCommand(params));
         // Construct public URL
-        const imageUrl = `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/${fileName}`;
+        const baseUrl = PUBLIC_URL || "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+        const imageUrl = `${baseUrl}/${fileName}`;
         return imageUrl;
     }
     catch (error) {
@@ -135,7 +136,8 @@ async function uploadFileToR2(base64File, fileName, tenantId, ticketId) {
         };
         await exports.s3Client.send(new client_s3_1.PutObjectCommand(params));
         // Construct public URL
-        const fileUrl = `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/${storedFileName}`;
+        const baseUrl = PUBLIC_URL || "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+        const fileUrl = `${baseUrl}/${storedFileName}`;
         return {
             fileUrl,
             fileSize: fileSizeInBytes,
@@ -179,7 +181,8 @@ async function uploadRequisitionAttachmentToR2(base64File, fileName, tenantId, r
             ContentDisposition: `attachment; filename="${sanitizedFileName}"`,
         };
         await exports.s3Client.send(new client_s3_1.PutObjectCommand(params));
-        const fileUrl = `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/${storedFileName}`;
+        const baseUrl = PUBLIC_URL || "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+        const fileUrl = `${baseUrl}/${storedFileName}`;
         return {
             fileUrl,
             fileSize: fileSizeInBytes,
@@ -219,7 +222,8 @@ async function uploadEmployeeDocumentToR2(base64File, fileName, tenantId, employ
             ContentType: contentType,
         };
         await exports.s3Client.send(new client_s3_1.PutObjectCommand(params));
-        return `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/${key}`;
+        const baseUrl = PUBLIC_URL || "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+        return `${baseUrl}/${key}`;
     }
     catch (error) {
         console.error("R2 upload error:", error);
@@ -256,7 +260,8 @@ async function uploadClientDocumentToR2(base64File, fileName, tenantId, clientId
             ContentType: contentType,
         };
         await exports.s3Client.send(new client_s3_1.PutObjectCommand(params));
-        return `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/${key}`;
+        const baseUrl = PUBLIC_URL || "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+        return `${baseUrl}/${key}`;
     }
     catch (error) {
         console.error("R2 upload error (Client V2):", error);
@@ -297,7 +302,8 @@ async function uploadEmployeeAssetToR2({ base64, fileName = "asset.png", tenantI
             Body: buffer,
             ContentType: contentType,
         }));
-        return `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/${key}`;
+        const baseUrl = PUBLIC_URL || "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+        return `${baseUrl}/${key}`;
     }
     catch (error) {
         console.error(`R2 ${folder} image upload error:`, error);
@@ -310,7 +316,11 @@ async function uploadEmployeeAssetToR2({ base64, fileName = "asset.png", tenantI
  * @param fileName - Original file name
  * @param tenantId - Tenant ID
  * @param candidateId - Candidate ID
+<<<<<<< HEAD
  * @param documentType - Type of document (e.g., resume)
+=======
+ * @param documentType - Type of document (e.g., resume, passport)
+>>>>>>> feat/002-0394/squad_management--be
  * @returns Public URL of uploaded document
  */
 async function uploadCandidateDocumentToR2(base64File, fileName, tenantId, candidateId, documentType) {
@@ -325,14 +335,24 @@ async function uploadCandidateDocumentToR2(base64File, fileName, tenantId, candi
         const uniqueId = (0, nanoid_1.nanoid)(12);
         const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
         const key = `${tenantId}/candidates/${candidateId}/documents/${documentType}/${uniqueId}_${sanitizedFileName}`;
+<<<<<<< HEAD
         const params = {
+=======
+        await exports.s3Client.send(new client_s3_1.PutObjectCommand({
+>>>>>>> feat/002-0394/squad_management--be
             Bucket: BUCKET_NAME,
             Key: key,
             Body: buffer,
             ContentType: contentType,
+<<<<<<< HEAD
         };
         await exports.s3Client.send(new client_s3_1.PutObjectCommand(params));
         return `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/${key}`;
+=======
+        }));
+        const baseUrl = PUBLIC_URL || "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+        return `${baseUrl}/${key}`;
+>>>>>>> feat/002-0394/squad_management--be
     }
     catch (error) {
         console.error("R2 candidate document upload error:", error);

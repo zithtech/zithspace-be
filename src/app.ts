@@ -19,6 +19,7 @@ import companyRoutes from "./routes/companyRoutes";
 import authRoutes from "@/routes/auth";
 import tenantRoutes from "@/routes/tenants";
 import projectRoutes from "@/routes/projects";
+import squadRoutes from "@/routes/squad";
 import ticketRoutes from "@/routes/tickets";
 import recruitmentRoutes from "./routes/jobRequisition.routes";
 import attendanceRoutes from "@/routes/attendance";
@@ -78,6 +79,7 @@ import reimbursementConfigurationRoutes from "@/routes/reimbursementConfig";
 import reimbursementsettingsRoutes from "@/routes/reimbursementsettingsRoutes";
 import reimbursementRoutes from "@/routes/reimbursementcreateRoutes";
 import rbacRoutes from "@/routes/rbac";
+import candidateFormRoutes from "@/routes/candidateForm.routes";
 import employeeAssetRoutes from "@/routes/employeeAssets.routes";
 import noticePolicyRoutes from "@/routes/noticePolicy.routes";
 import exitTypeRoutes from "@/routes/exitType.routes";
@@ -201,6 +203,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/tenants", tenantRoutes);
 app.use("/api/calendar", calendarRoutes);
 app.use("/api/projects", projectRoutes);
+app.use("/api/squads", squadRoutes);
 app.use("/api/public/tickets", publicTicketRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/recruitment", recruitmentRoutes);
@@ -274,6 +277,9 @@ app.use("/api/exit/request", employeeExitRoutes);
 
 // RBAC management API
 app.use("/api/rbac", rbacRoutes);
+
+// Candidate Form API
+app.use("/api/candidate-form", candidateFormRoutes);
 app.use("/api/employee-assets", employeeAssetRoutes);
 app.use("/api/shortcuts", shortcutRoutes);
 
