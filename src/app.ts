@@ -100,7 +100,7 @@ console.log("🤖 DevBot deployment test — 2026-03-22");
 // Create Express application
 const app = express();
 
-// CORS must be first — before any other middleware — so headers are set on all responses
+
 const allowedOrigins = [
   "http://localhost:3000", // Local development
   "http://localhost:3005", // Local development for internal app
