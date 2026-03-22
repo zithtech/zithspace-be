@@ -60,7 +60,7 @@ model Tenant {
   invoiceTemplates InvoiceTemplate[]
   squads       Squad[]
   squadMembers SquadMember[]
-  candidates CandidateDetails[]
+  candidateDetails CandidateDetails[]
 
   shifts Shift[]
 
