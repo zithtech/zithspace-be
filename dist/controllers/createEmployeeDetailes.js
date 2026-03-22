@@ -8,6 +8,7 @@ exports.decrypt = decrypt;
 exports.createPersonalDetails = createPersonalDetails;
 exports.getPersonalDetails = getPersonalDetails;
 exports.getAllEmployees = getAllEmployees;
+exports.getUpcomingBirthdays = getUpcomingBirthdays;
 exports.updatePersonalDetails = updatePersonalDetails;
 exports.deletePersonalDetails = deletePersonalDetails;
 exports.hardDeletePersonalDetails = hardDeletePersonalDetails;
@@ -352,6 +353,52 @@ async function getAllEmployees(req) {
     catch (error) {
         console.error("Error in getAllEmployees:", error);
         throw new Error(`Failed to fetch employees: ${error.message}`);
+    }
+}
+// ✅ GET Upcoming Birthdays (Current Month)
+async function getUpcomingBirthdays(req) {
+    try {
+        if (!req.user?.id || !req.tenantId)
+            throw new Error("Unauthorized");
+        const employees = await database_1.prisma.employee.findMany({
+            where: {
+                tenantId: req.tenantId,
+                status: true,
+            },
+            select: {
+                id: true,
+                first_name: true,
+                last_name: true,
+                date_of_birth: true,
+            },
+        });
+        const today = new Date();
+        const currentMonth = today.getMonth();
+        const currentDate = today.getDate();
+        const upcomingBirthdays = employees
+            .filter((emp) => {
+            if (!emp.date_of_birth)
+                return false;
+            const dob = new Date(emp.date_of_birth);
+            // Check if birthday is in the current month and is today or upcoming
+            return dob.getMonth() === currentMonth && dob.getDate() >= currentDate;
+        })
+            .map((emp) => ({
+            id: emp.id,
+            firstName: emp.first_name,
+            lastName: emp.last_name,
+            dateOfBirth: emp.date_of_birth,
+        }))
+            .sort((a, b) => {
+            const dateA = new Date(a.dateOfBirth).getDate();
+            const dateB = new Date(b.dateOfBirth).getDate();
+            return dateA - dateB;
+        });
+        return upcomingBirthdays;
+    }
+    catch (error) {
+        console.error("Error in getUpcomingBirthdays:", error);
+        throw new Error(`Failed to fetch upcoming birthdays: ${error.message}`);
     }
 }
 // ✅ UPDATE Personal Details

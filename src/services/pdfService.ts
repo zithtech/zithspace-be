@@ -38,8 +38,9 @@ export async function generateAndUploadInvoicePDF(invoice: any, profile: any): P
       preferCSSPageSize: true
     });
 
-    // 5. Define File Path
-    const fileName = `${invoice.tenantId}/invoices/Invoice-${invoice.invoiceNumber}.pdf`;
+    // 5. Define File Path with timestamp to break cache
+    const timestamp = Date.now();
+    const fileName = `${invoice.tenantId}/invoices/Invoice-${invoice.invoiceNumber}-${timestamp}.pdf`;
     
     // 6. Upload to R2
     await s3Client.send(new PutObjectCommand({

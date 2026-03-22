@@ -74,7 +74,7 @@ export const convertNumberToWords = (num: number, currency: string = 'INR'): str
 export const generateInvoiceHtml = (invoice: any, profile: any) => {
   const general = profile?.general;
   const payment = profile?.payment;
-  const items = invoice.items || [];
+  const items = invoice.lineItems || invoice.items || [];
   const primaryColor = general?.primaryColor || "#1890ff";
   const customer = invoice.customerSnapshot || invoice.customer;
   const hasTax = Number(invoice.taxTotal) > 0;
@@ -83,7 +83,7 @@ export const generateInvoiceHtml = (invoice: any, profile: any) => {
     USD: '$', INR: '₹', EUR: '€', GBP: '£', AUD: 'A$', CAD: 'C$', SGD: 'S$'
   };
   const symbol = currencySymbols[invoice.currency] || '₹';
-  const amountWords = convertNumberToWords(Number(invoice.total), invoice.currency);
+  const amountWords = convertNumberToWords(Number(invoice.grandTotal || invoice.total), invoice.currency);
 
   const formatDate = (date: any) => {
     if (!date) return 'N/A';
@@ -99,13 +99,61 @@ export const generateInvoiceHtml = (invoice: any, profile: any) => {
       default: return `${day}/${month}/${year}`;
     }
   };
-  const totalQty = items.reduce((sum: number, i: any) => sum + Number(i.qty), 0);
+  const totalQty = items.reduce((sum: number, i: any) => sum + Number(i.quantity || i.qty || 0), 0);
 
   const fullAddress = [
     general?.address?.plot_no, general?.address?.floor_no, general?.address?.building_name, 
     general?.address?.area, general?.address?.street, general?.address?.city, 
     general?.address?.pincode, general?.address?.country
   ].filter(Boolean).join(', ');
+
+  let metadata = invoice.metadata || (invoice as any).metadata || {};
+  if (typeof metadata === 'string') {
+    try {
+      metadata = JSON.parse(metadata);
+    } catch (e) {
+      metadata = {};
+    }
+  }
+  const columnOrder = metadata.columnOrder || ["itemName", "projectId", "quantity", "rate", "taxRate"];
+  const columnLabels = metadata.columnLabels || {};
+  
+  // Detect extra field keys from line items
+  const extraFieldKeys = new Set<string>();
+  const systemKeys = new Set(['quantity', 'qty', 'rate', 'price', 'taxRate', 'tax', 'itemName', 'description', 'projectId', 'projectName']);
+  items.forEach((item: any) => {
+    if (item.extraFields && typeof item.extraFields === 'object') {
+      Object.keys(item.extraFields).forEach(key => {
+        if (!systemKeys.has(key)) extraFieldKeys.add(key);
+      });
+    }
+  });
+
+  const getColTitle = (key: string) => {
+    if (columnLabels[key]) return columnLabels[key];
+    if (key === 'itemName') return 'Item';
+    if (key === 'quantity' || key === 'qty') return 'Qty';
+    if (key === 'rate' || key === 'price') return 'Price';
+    if (key === 'taxRate' || key === 'tax') return 'Tax %';
+    if (key === 'projectId') return 'Project';
+    return key.replace(/_/g, ' ');
+  };
+
+  const finalColumns = columnOrder.map((key: string) => {
+    let normalized = key;
+    if (key === 'qty') normalized = 'quantity';
+    if (key === 'price') normalized = 'rate';
+    if (key === 'tax') normalized = 'taxRate';
+    return { key: normalized, title: getColTitle(key) };
+  }).filter((c: any) => {
+     if (c.key === 'taxRate' && !hasTax) return false;
+     // Hide description column as it's shown in the Item Name cell
+     if (c.key === 'description') return false; 
+     return true;
+  });
+
+  const qtyColIndex = finalColumns.findIndex(c => c.key === 'quantity');
+  const firstItemTaxRate = Number(items[0]?.taxRate || items[0]?.tax || 0);
 
   return `
     <!DOCTYPE html>
@@ -235,45 +283,73 @@ export const generateInvoiceHtml = (invoice: any, profile: any) => {
       <tr>
         <td class="px-14">
           <div class="main-content">
-            <!-- Your main invoice content remains the same -->
-            <div class="flex justify-between items-start mb-6">
-              <div class="flex gap-4">
-                ${general?.companyLogo ? `<img src="${general.companyLogo}" class="h-12 object-contain" />` : `<div class="w-10 h-10 bg-black flex items-center justify-center rounded-lg text-white font-bold text-lg">Z!</div>`}
-                <div>
-                  <h1 class="text-lg font-bold" style="color: ${primaryColor}">${general?.companyName || 'Zithspace'}</h1>
-                  <p class="text-[9px] text-gray-400 w-64 leading-tight">${fullAddress}</p>
+            <!-- Header with Invoice Title and Logo -->
+            <div class="flex justify-between items-start mb-2">
+              <!-- Left side - Invoice Title and Details -->
+              <div>
+                <div class="mb-3">
+                  <h1 class="text-[32px] font-bold leading-tight" style="color: ${primaryColor}">INVOICE</h1>
+                </div>
+                
+                <!-- Invoice Number and Dates -->
+                <div class="text-[11px] leading-relaxed">
+                  <div class="flex mb-0.5">
+                    <span class="font-bold w-[70px]">Invoice No:</span>
+                    <span>#${invoice.invoiceNumber || "---"}</span>
+                  </div>
+                  <div class="flex mb-0.5">
+                    <span class="font-bold w-[70px]">Invoice Date:</span>
+                    <span>${formatDate(invoice.invoiceDate)}</span>
+                  </div>
+                  <div class="flex mb-0.5">
+                    <span class="font-bold w-[70px]">Due Date:</span>
+                    <span>${formatDate(invoice.dueDate)}</span>
+                  </div>
                 </div>
               </div>
+
+              <!-- Right side - Logo with company name underneath -->
               <div class="text-right">
-                <h2 class="text-2xl font-bold tracking-tighter text-gray-800 uppercase m-0">INVOICE</h2>
-                <p class="text-[10px] font-semibold text-gray-400">Invoice # ${invoice.invoiceNumber}</p>
+                ${general?.companyLogo ? `<img src="${general.companyLogo}" class="h-16 w-auto object-contain mb-1 ml-auto" />` : ''}
+                ${general?.companyName ? `<div class="text-[12px] font-bold" style="color: ${primaryColor}">${general.companyName}</div>` : ''}
               </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-6 mb-6 avoid-break">
-              <div class="bg-gray-50/80 p-3 rounded-xl border border-gray-100">
-                <span class="text-[8px] font-bold text-gray-400 uppercase block mb-1">Bill To</span>
-                <p class="font-bold text-xs text-gray-800">${customer?.companyName || 'N/A'}</p>
-                <p class="text-[10px] text-gray-500 mt-0.5">${customer?.email || ''}</p>
-                <p class="text-[10px] text-gray-500 mt-0.5">${customer?.address || ''}</p>
-                <p class="text-[10px] text-gray-500 mt-0.5">${customer?.city || ''}, ${customer?.country || ''}</p>
+            <!-- Billed By and Billed To Cards -->
+            <div class="flex gap-4 mb-8 mt-6">
+              <!-- Billed By -->
+              <div class="flex-1 bg-[#f9f9f9] border border-[#e8e8e8] rounded-lg p-3">
+                <h3 class="text-[11px] font-bold mb-2 uppercase" style="color: ${primaryColor}">BILLED BY</h3>
+                <div class="text-[11px] font-bold mb-1">${general?.companyName || 'Your Company'}</div>
+                <p class="text-[10px] text-gray-500 leading-normal mb-1">${fullAddress || '---'}</p>
+                
+                ${general?.taxId ? `<div class="text-[9px] text-gray-500"><span class="text-gray-400">Tax ID: </span>${general.taxId}</div>` : ''}
+                ${general?.gstin ? `<div class="text-[9px] text-gray-500"><span class="text-gray-400">GSTIN: </span>${general.gstin}</div>` : ''}
+                ${general?.pan ? `<div class="text-[9px] text-gray-500"><span class="text-gray-400">PAN: </span>${general.pan}</div>` : ''}
               </div>
-              <div class="bg-gray-50/80 p-3 rounded-xl border border-gray-100 text-right">
-                <span class="text-[8px] font-bold text-gray-400 uppercase block mb-1">Invoice Info</span>
-                <div class="flex justify-between text-[10px] mb-1 pl-12"><span>Invoice Date:</span><b>${formatDate(invoice.invoiceDate)}</b></div>
-                <div class="flex justify-between text-[10px] mb-1 pl-12"><span>Due Date:</span><b>${formatDate(invoice.dueDate)}</b></div>
-                <div class="flex justify-between text-[10px] pl-12"><span>Type:</span><b style="color: ${primaryColor}">${invoice.invoiceType}</b></div>
+
+              <!-- Billed To -->
+              <div class="flex-1 bg-[#f9f9f9] border border-[#e8e8e8] rounded-lg p-3">
+                <h3 class="text-[11px] font-bold mb-2 uppercase" style="color: ${primaryColor}">BILLED TO</h3>
+                <div class="text-[11px] font-bold mb-1">${customer?.companyName || 'Customer Name'}</div>
+                <p class="text-[10px] text-gray-500 leading-normal mb-1">
+                  ${[customer?.address, customer?.city, customer?.country].filter(Boolean).join(', ') || '---'}
+                </p>
+                <p class="text-[10px] text-gray-500 mb-1">${customer?.email || ''}</p>
+
+                ${customer?.gstin ? `<div class="text-[9px] text-gray-500"><span class="text-gray-400">GSTIN: </span>${customer.gstin}</div>` : ''}
+                ${customer?.pan ? `<div class="text-[9px] text-gray-500"><span class="text-gray-400">PAN: </span>${customer.pan}</div>` : ''}
+                ${(customer?.taxId && !customer?.gstin) ? `<div class="text-[9px] text-gray-500"><span class="text-gray-400">Tax ID: </span>${customer.taxId}</div>` : ''}
               </div>
             </div>
 
-            <table class="item-table">
+            <table class="item-table text-[10px]">
               <thead>
                 <tr>
                   <th width="40">S.NO</th>
-                  <th class="text-left">Item</th>
-                  <th width="50" class="text-center">Qty</th>
-                  <th width="100" class="text-right">Price</th>
-                  ${hasTax ? `<th width="80" class="text-right">Tax</th>` : ''}
+                  ${finalColumns.map(col => `
+                    <th class="${col.key === 'itemName' ? 'text-left' : (col.key === 'quantity' ? 'text-center' : 'text-right')}">${col.title}</th>
+                  `).join('')}
                   <th width="100" class="text-right">Total</th>
                 </tr>
               </thead>
@@ -281,78 +357,109 @@ export const generateInvoiceHtml = (invoice: any, profile: any) => {
                 ${items.map((item: any, idx: number) => `
                   <tr>
                     <td class="text-center text-gray-400">${idx + 1}</td>
-                    <td>
-                      <p class="font-bold m-0 text-[11px]">${item.item}</p>
-                      ${item.description ? `<p class="text-[9px] text-gray-400 m-0 leading-tight">${item.description}</p>` : ''}
-                    </td>
-                    <td class="text-center">${item.qty}</td>
-                    <td class="text-right">${symbol} ${Number(item.price).toFixed(2)}</td>
-                    ${hasTax ? `<td class="text-right">${symbol} ${Number(item.tax || 0).toFixed(2)}</td>` : ''}
-                    <td class="text-right font-bold">${symbol} ${Number((item.qty * item.price) + Number(item.tax || 0)).toFixed(2)}</td>
+                    ${finalColumns.map(col => {
+                      if (col.key === 'itemName') {
+                        return `<td>
+                          <p class="font-bold m-0 text-[11px]">${item.itemName || item.item || ''}</p>
+                          ${item.description ? `<p class="text-[9px] text-gray-400 m-0 leading-tight">${item.description}</p>` : ''}
+                        </td>`;
+                      }
+                      if (col.key === 'quantity') return `<td class="text-center">${item.quantity || item.qty || 0}</td>`;
+                      if (col.key === 'rate') return `<td class="text-right">${symbol} ${Number(item.rate || item.price || 0).toFixed(2)}</td>`;
+                      if (col.key === 'taxRate') {
+                        const tr = Number(item.taxRate || item.tax || 0);
+                        return `<td class="text-right">${tr}%</td>`;
+                      }
+                      if (col.key === 'projectId') return `<td class="text-right">${item.projectName || item.extraFields?.projectName || item.projectId || '-'}</td>`;
+                      // For extra fields
+                      const val = item.extraFields?.[col.key] || '-';
+                      return `<td class="text-right">${val}</td>`;
+                    }).join('')}
+                    <td class="text-right font-bold">${symbol} ${Number(item.total || (Number(item.quantity || item.qty) * Number(item.rate || item.price)) + Number(item.taxAmount || item.tax || 0)).toFixed(2)}</td>
                   </tr>
                 `).join('')}
                 
                 <tr class="summary-row">
-                  <td colspan="2" class="text-right border-none pt-2 font-medium text-gray-500">Subtotal</td>
-                  <td colspan="${hasTax ? 3 : 2}" class="border-t border-gray-100"></td>
+                  <td colspan="${finalColumns.length + 1}" class="text-right border-none pt-2 font-medium text-gray-500">Subtotal</td>
                   <td class="text-right border-t border-gray-100 font-bold pt-2">${symbol} ${Number(invoice.subtotal).toFixed(2)}</td>
                 </tr>
+                
                 ${hasTax ? `
                 <tr class="summary-row">
-                  <td colspan="2" class="text-right border-none font-medium text-gray-500">Tax</td>
-                  <td colspan="3"></td>
-                  <td class="text-right font-bold">${symbol} ${Number(invoice.taxTotal).toFixed(2)}</td>
-                </tr>` : ''}
-                ${Number(invoice.discount) > 0 ? `
+                  <td colspan="${finalColumns.length + 1}" class="text-right border-none font-medium text-gray-500">CGST (${(firstItemTaxRate / 2).toFixed(2)}%)</td>
+                  <td class="text-right font-bold">${symbol} ${(Number(invoice.taxTotal) / 2).toFixed(2)}</td>
+                </tr>
                 <tr class="summary-row">
-                  <td colspan="2" class="text-right border-none font-medium text-gray-500">Discount</td>
-                  <td colspan="${hasTax ? 3 : 2}"></td>
-                  <td class="text-right font-bold text-red-500">-${symbol} ${Number(invoice.discount).toFixed(2)}</td>
+                  <td colspan="${finalColumns.length + 1}" class="text-right border-none font-medium text-gray-500">SGST (${(firstItemTaxRate / 2).toFixed(2)}%)</td>
+                  <td class="text-right font-bold">${symbol} ${(Number(invoice.taxTotal) / 2).toFixed(2)}</td>
                 </tr>` : ''}
+
+                ${Number(invoice.discountTotal || invoice.discount) > 0 ? `
                 <tr class="summary-row">
-                  <td colspan="2" class="text-right border-none font-bold text-gray-800 uppercase">Total</td>
-                  <td class="text-center font-bold text-base">${totalQty}</td>
-                  <td colspan="${hasTax ? 2 : 1}"></td>
-                  <td class="text-right font-bold text-lg" style="color: ${primaryColor}">${symbol} ${Number(invoice.total).toFixed(2)}</td>
+                  <td colspan="${finalColumns.length + 1}" class="text-right border-none font-medium text-gray-500">Discount</td>
+                  <td class="text-right font-bold text-red-500">-${symbol} ${Number(invoice.discountTotal || invoice.discount).toFixed(2)}</td>
+                </tr>` : ''}
+
+                <tr class="summary-row">
+                  ${qtyColIndex !== -1 ? `
+                    <td colspan="${qtyColIndex + 1}" class="text-right border-none font-bold text-gray-800 uppercase">Total</td>
+                    <td class="text-center font-bold text-base">${totalQty}</td>
+                    <td colspan="${finalColumns.length - qtyColIndex}" class="text-right font-bold text-lg" style="color: ${primaryColor}">${symbol} ${Number(invoice.grandTotal || invoice.total).toFixed(2)}</td>
+                  ` : `
+                    <td colspan="${finalColumns.length + 1}" class="text-right border-none font-bold text-gray-800 uppercase">Total</td>
+                    <td class="text-right font-bold text-lg" style="color: ${primaryColor}">${symbol} ${Number(invoice.grandTotal || invoice.total).toFixed(2)}</td>
+                  `}
                 </tr>
               </tbody>
             </table>
 
-            <div class="p-2 border rounded-lg bg-gray-50/50 mb-4 mt-4 avoid-break">
-              <p class="text-[9px]"><strong class="text-gray-900 uppercase text-[8px]">Amount in Words:</strong> ${amountWords}</p>
+            <div class="px-3 py-2 border border-gray-200 rounded-lg bg-gray-50/50 mb-4 mt-4 avoid-break">
+              <p class="text-[10px]"><strong class="text-gray-900 uppercase text-[9px]">Amount in Words:</strong> ${amountWords}</p>
             </div>
 
-            <div class="grid grid-cols-2 gap-8 avoid-break mt-4">
-              <div class="bg-gray-50/50 p-3 rounded-xl border border-gray-100 flex justify-between items-center">
-                <div class="text-[9px] space-y-1">
-                  <p class="font-bold text-gray-400 uppercase text-[8px] mb-1">Bank Details</p>
-                  <p><strong>Bank:</strong> ${payment?.bankName || 'N/A'}</p>
-                  <p><strong>A/C:</strong> ${payment?.accountNumber || 'N/A'}</p>
-                  <p><strong>IFSC:</strong> ${payment?.ifscCode || 'N/A'}</p>
-                  <p><strong>Branch:</strong> ${payment?.branchName || 'N/A'}</p>
+            <!-- Bank Details and Signature -->
+            <div class="grid ${general?.signature ? 'grid-cols-[2fr_1fr]' : 'grid-cols-1'} gap-4 avoid-break mt-4 border-t border-gray-100 pt-4">
+              <!-- Bank Details -->
+              <div class="bg-gray-50/50 p-3 rounded-lg border border-gray-100">
+                <h3 class="text-[11px] font-bold mb-3 uppercase" style="color: ${primaryColor}">Bank Details</h3>
+                <div class="flex gap-4 items-start">
+                  <div class="flex-1 text-[10px] space-y-1">
+                    <div class="flex"><span class="text-gray-400 w-32">Bank Name:</span><span>${payment?.bankName || 'N/A'}</span></div>
+                    <div class="flex"><span class="text-gray-400 w-32">Account Number:</span><span>${payment?.accountNumber || 'N/A'}</span></div>
+                    <div class="flex"><span class="text-gray-400 w-32">IFSC Code:</span><span>${payment?.ifscCode || 'N/A'}</span></div>
+                    <div class="flex"><span class="text-gray-400 w-32">Branch:</span><span>${payment?.branchName || 'N/A'}</span></div>
+                  </div>
+                  ${payment?.qrCode ? `
+                    <div class="text-center w-24">
+                      <img src="${payment.qrCode}" class="w-16 h-16 border rounded bg-white p-1 ml-auto" />
+                      <p class="text-[7px] text-gray-400 mt-1 uppercase">Scan to Pay</p>
+                    </div>` : ''}
                 </div>
-                ${payment?.qrCode ? `<div class="text-center"><img src="${payment.qrCode}" class="w-14 h-14 border rounded bg-white p-1" /><p class="text-[6px] text-gray-400 mt-1 uppercase">Scan to Pay</p></div>` : ''}
               </div>
-              <div class="bg-gray-50/50 p-3 rounded-xl border border-gray-100 text-center flex flex-col justify-between min-h-[100px]">
-                <p class="text-[8px] font-bold text-gray-400 uppercase">Authorized Signature</p>
-                ${general?.signature ? `<img src="${general.signature}" class="h-10 mx-auto mix-blend-multiply" />` : `<div class="h-10"></div>`}
+
+              <!-- Signature -->
+              ${general?.signature ? `
+              <div class="bg-gray-50/50 p-3 rounded-lg border border-gray-100 text-center flex flex-col justify-between min-h-[110px]">
+                <h3 class="text-[10px] font-bold text-[#1890ff] uppercase" style="color: ${primaryColor}">Authorized Signature</h3>
+                <img src="${general.signature}" class="h-12 mx-auto mix-blend-multiply" />
                 <div>
                   <div class="w-4/5 border-b border-gray-200 mx-auto"></div>
-                  <p class="text-[7px] text-gray-400 mt-1 uppercase italic font-medium">Digitally Signed</p>
+                  <p class="text-[8px] text-gray-400 mt-1 uppercase italic font-medium">Digitally Signed</p>
                 </div>
-              </div>
+              </div>` : ''}
             </div>
 
-            <div class="mt-6 grid grid-cols-2 gap-4 avoid-break">
+            <!-- Notes & Terms -->
+            <div class="mt-4 border-t border-gray-100 pt-4 grid grid-cols-2 gap-4 avoid-break">
               ${invoice.notes ? `
-              <div class="card-note">
-                <p class="font-bold text-gray-400 uppercase text-[8px] mb-1">Notes</p>
-                <p class="text-[9px] text-gray-600 leading-normal whitespace-pre-line">${invoice.notes}</p>
+              <div class="bg-gray-50 border border-gray-100 rounded-lg p-3 min-h-[100px]">
+                <h3 class="text-[10px] font-bold mb-2 uppercase" style="color: ${primaryColor}">Notes</h3>
+                <p class="text-[10px] text-gray-600 leading-normal whitespace-pre-line">${invoice.notes}</p>
               </div>` : ''}
               ${invoice.terms ? `
-              <div class="card-note">
-                <p class="font-bold text-gray-400 uppercase text-[8px] mb-1">Terms & Conditions</p>
-                <p class="text-[9px] text-gray-600 leading-normal whitespace-pre-line">${invoice.terms}</p>
+              <div class="bg-gray-50 border border-gray-100 rounded-lg p-3 min-h-[100px]">
+                <h3 class="text-[10px] font-bold mb-2 uppercase" style="color: ${primaryColor}">Terms & Conditions</h3>
+                <p class="text-[10px] text-gray-600 leading-normal whitespace-pre-line">${invoice.terms}</p>
               </div>` : ''}
             </div>
           </div>
