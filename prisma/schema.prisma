@@ -109,6 +109,10 @@ model Tenant {
   // Time Tracking
   timeTrackingEntries TimeTrackingEntry[]
 
+  // Recruitment Settings
+  recruitmentStatuses RecruitmentStatus[]
+  recruitmentActions  RecruitmentAction[]
+
   userPreferences UserPreference[]
   @@map("tenants")
 }
@@ -323,6 +327,12 @@ model User {
   
   // Time Tracking
   timeTrackingEntries TimeTrackingEntry[]
+
+    // ===== Recruitment Settings Relations =====
+  createdRecruitmentStatuses RecruitmentStatus[] @relation("RecruitmentStatusCreator")
+  updatedRecruitmentStatuses RecruitmentStatus[] @relation("RecruitmentStatusUpdater")
+  createdRecruitmentActions  RecruitmentAction[] @relation("RecruitmentActionCreator")
+  updatedRecruitmentActions  RecruitmentAction[] @relation("RecruitmentActionUpdater")
 
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
@@ -3612,4 +3622,54 @@ model EmployeeExit {
   updatedBy User?    @relation("EmployeeExitUpdatedBy", fields: [updatedById], references: [id])
 
   @@map("employee_exits")
+}
+
+// ==========================================
+// Recruitment Settings Models
+// ==========================================
+
+model RecruitmentStatus {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  name         String   @map("status_name")
+  category     String
+  color        String
+  appliesTo    String[] @map("applies_to")
+  isDefault    Boolean  @default(false) @map("is_default")
+  isFinalStage Boolean  @default(false) @map("is_final_stage")
+  isActive     Boolean  @default(true)  @map("is_active")
+
+  createdById  String   @map("created_by_id")
+  updatedById  String?  @map("updated_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy    User     @relation("RecruitmentStatusCreator", fields: [createdById], references: [id])
+  updatedBy    User?    @relation("RecruitmentStatusUpdater", fields: [updatedById], references: [id])
+
+  @@unique([tenantId, name])
+  @@map("recruitment_statuses")
+}
+
+model RecruitmentAction {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  name        String   @map("action_name")
+  type        String   @map("action_type")
+  icon        String
+  color       String
+  isActive    Boolean  @default(true) @map("is_active")
+
+  createdById String   @map("created_by_id")
+  updatedById String?  @map("updated_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy   User     @relation("RecruitmentActionCreator", fields: [createdById], references: [id])
+  updatedBy   User?    @relation("RecruitmentActionUpdater", fields: [updatedById], references: [id])
+
+  @@unique([tenantId, name])
+  @@map("recruitment_actions")
 }

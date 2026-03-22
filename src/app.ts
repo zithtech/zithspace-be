@@ -16,7 +16,6 @@ import salaryComponentRoutes from "@/routes/salaryComponentRoutes";
 import gradeRoutes from "@/routes/gradeRoutes";
 import companyRoutes from "./routes/companyRoutes";
 
-
 import authRoutes from "@/routes/auth";
 import tenantRoutes from "@/routes/tenants";
 import projectRoutes from "@/routes/projects";
@@ -68,7 +67,7 @@ import repositoryRoutes from "@/routes/repositoryRoutes";
 import departmentRoutes from "@/routes/departmentRoutes";
 import subDepartmentRoutes from "@/routes/subDepartmentRoutes";
 import positionRoutes from "@/routes/positionRoutes";
-import calendarRoutes from "@/routes/calendar"
+import calendarRoutes from "@/routes/calendar";
 import employeeExitRoutes from "@/routes/employeeExit.routes";
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
 import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
@@ -77,7 +76,7 @@ import leaveBalanceRoutes from "@/routes/leaveBalanceRoutes";
 import payrollRoutes from "@/routes/payroll";
 import reimbursementConfigurationRoutes from "@/routes/reimbursementConfig";
 import reimbursementsettingsRoutes from "@/routes/reimbursementsettingsRoutes";
-import reimbursementRoutes from "@/routes/reimbursementcreateRoutes"; 
+import reimbursementRoutes from "@/routes/reimbursementcreateRoutes";
 import rbacRoutes from "@/routes/rbac";
 import employeeAssetRoutes from "@/routes/employeeAssets.routes";
 import noticePolicyRoutes from "@/routes/noticePolicy.routes";
@@ -85,6 +84,8 @@ import exitTypeRoutes from "@/routes/exitType.routes";
 import reasonForExitRoutes from "@/routes/reasonForExit.routes";
 import exitApprovalWorkflowRoutes from "@/routes/exitApprovalWorkflow.routes";
 
+import recruitmentStatusRoutes from "@/routes/recruitmentStatus.routes";
+import recruitmentActionRoutes from "@/routes/recruitmentAction.routes";
 // Load environment
 dotenv.config();
 console.log("🚀 API Starting up...");
@@ -215,7 +216,7 @@ app.use("/api/daily-updates", dailyUpdateRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/leaves", leaveRoutes);
 // app.use("/api/reimbursement-category", reimbursement);
-app.use("/api/reimbursement-categories", reimbursement);  // plural form
+app.use("/api/reimbursement-categories", reimbursement); // plural form
 app.use("/api/repositories", repositoryRoutes);
 app.use("/api/leave-types", leaveTypeRoutes);
 app.use("/api/customers", customerRoutes);
@@ -245,9 +246,16 @@ app.use("/api/leave-allocation", leaveAllocationRoutes);
 app.use("/api/leave-request", leaveRequestRoutes);
 app.use("/api/leave-balances", leaveBalanceRoutes);
 
-
 app.use("/api/time-tracking", timeTrackingRoutes);
 
+app.use("/api/recruitment-statuses", recruitmentStatusRoutes);
+app.use("/api/recruitment-actions", recruitmentActionRoutes);
+
+// onboarding
+// app.use("/api/employees", employeeRoutes);
+// app.use("/api/employee-addresses", employeeAddressRoutes);
+// app.use("/api/employee-emergency-contacts", employeeEmergencyContactRoutes);
+// app.use("/api/employee-identities", employeeIdentityRoutes);
 app.use("/api/employee-work-details", employeeWorkDetailRoutes);
 app.use("/api/employee-timelines", employeeTimelineRoutes);
 
@@ -401,7 +409,6 @@ let server: any;
 
 const startServer = async () => {
   try {
-
     // Connect PostgreSQL
     await connectDatabase();
     // console.log("Database connected");
@@ -420,7 +427,6 @@ const startServer = async () => {
       // console.log(`Environment: ${process.env.NODE_ENV}`);
       // console.log(`Health check: http://localhost:${PORT}/health`);
     });
-
   } catch (error) {
     console.error("Server startup failed:", error);
     process.exit(1);

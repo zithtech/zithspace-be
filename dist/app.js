@@ -78,11 +78,16 @@ const reimbursementConfig_1 = __importDefault(require("@/routes/reimbursementCon
 const reimbursementsettingsRoutes_1 = __importDefault(require("@/routes/reimbursementsettingsRoutes"));
 const reimbursementcreateRoutes_1 = __importDefault(require("@/routes/reimbursementcreateRoutes"));
 const rbac_1 = __importDefault(require("@/routes/rbac"));
+<<<<<<< HEAD
 const employeeAssets_routes_1 = __importDefault(require("@/routes/employeeAssets.routes"));
 const noticePolicy_routes_1 = __importDefault(require("@/routes/noticePolicy.routes"));
 const exitType_routes_1 = __importDefault(require("@/routes/exitType.routes"));
 const reasonForExit_routes_1 = __importDefault(require("@/routes/reasonForExit.routes"));
 const exitApprovalWorkflow_routes_1 = __importDefault(require("@/routes/exitApprovalWorkflow.routes"));
+=======
+const recruitmentStatus_routes_1 = __importDefault(require("@/routes/recruitmentStatus.routes"));
+const recruitmentAction_routes_1 = __importDefault(require("@/routes/recruitmentAction.routes"));
+>>>>>>> feature/002-0401-status-actions--recruitment--suites-backend
 // Load environment
 dotenv_1.default.config();
 console.log("🚀 API Starting up...");
@@ -218,6 +223,16 @@ app.use("/api/leave-allocation", leaveAllocationRoutes_1.default);
 app.use("/api/leave-request", leaveRequestRoutes_1.default);
 app.use("/api/leave-balances", leaveBalanceRoutes_1.default);
 app.use("/api/time-tracking", timeTracking_1.default);
+<<<<<<< HEAD
+=======
+app.use("/api/recruitment-statuses", recruitmentStatus_routes_1.default);
+app.use("/api/recruitment-actions", recruitmentAction_routes_1.default);
+// onboarding
+// app.use("/api/employees", employeeRoutes);
+// app.use("/api/employee-addresses", employeeAddressRoutes);
+// app.use("/api/employee-emergency-contacts", employeeEmergencyContactRoutes);
+// app.use("/api/employee-identities", employeeIdentityRoutes);
+>>>>>>> feature/002-0401-status-actions--recruitment--suites-backend
 app.use("/api/employee-work-details", employeeWorkDetailes_1.default);
 app.use("/api/employee-timelines", employeeTimeline_1.default);
 app.use("/api/onboarding", onboardingRoutes_1.default);
