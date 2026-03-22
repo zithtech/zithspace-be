@@ -98,6 +98,7 @@ export declare class EmailLoggerService {
         customer: {
             companyName: string;
             country: string | null;
+            pan: string | null;
             tenantId: string;
             createdAt: Date;
             updatedAt: Date;
@@ -109,6 +110,7 @@ export declare class EmailLoggerService {
             city: string | null;
             address: string | null;
             taxId: string | null;
+            gstin: string | null;
         };
         sentByUserRel: {
             name: string;
