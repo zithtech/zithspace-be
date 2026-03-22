@@ -1,6 +1,6 @@
 import { ExitType, Prisma } from "@prisma/client";
 import { prisma } from "@/config/database";
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 
 export class ExitTypeService {
   async createType(
@@ -10,7 +10,7 @@ export class ExitTypeService {
   ): Promise<ExitType> {
     return await prisma.exitType.create({
       data: {
-        id: uuidv4(),
+        id: randomUUID(),
         name: data.name,
         code: data.code,
         is_active: data.is_active !== undefined ? data.is_active : true,

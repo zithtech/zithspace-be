@@ -3,7 +3,6 @@ if (process.env.NODE_ENV !== "development") {
 }
 import express from "express";
 import cors from "cors";
-import helmet from "helmet";
 import morgan from "morgan";
 import compression from "compression";
 import cookieParser from "cookie-parser";
@@ -17,8 +16,6 @@ import salaryComponentRoutes from "@/routes/salaryComponentRoutes";
 import gradeRoutes from "@/routes/gradeRoutes";
 import companyRoutes from "./routes/companyRoutes";
 
-// Import middlewares
-import { optionalTenantContext } from "@/middleware/tenantContext";
 
 import authRoutes from "@/routes/auth";
 import tenantRoutes from "@/routes/tenants";
@@ -42,7 +39,6 @@ import customerRoutes from "@/routes/customerRoutes";
 import invoiceSettingRoutes from "@/routes/invoiceSettingsRoutes";
 import invoice from "@/routes/invoice";
 import invoiceTemplate from "@/routes/invoiceTemplate";
-//import invoicedownload from "@/routes/invoiceDownload"
 import bucketRoutes from "@/routes/buckets";
 import trashRoutes from "@/routes/trash";
 import sprintCompletionRoutes from "@/routes/sprintCompletion";
@@ -50,31 +46,20 @@ import fixedHolidayRoutes from "@/routes/fixedHolidays";
 import documentHubRoutes from "@/routes/documenthub";
 import channelRoutes from "@/routes/channels";
 import messageRoutes from "@/routes/messages";
-import averageAttendenceRoutes from "@/routes/attendance";
-
 import shortcutRoutes from "@/routes/shortcut.routes";
-
-// Onboarding
-// import employeeRoutes from "@/routes/employeeRoutes";
-// import employeeAddressRoutes from "@/routes/employeeAddress";
-// import employeeEmergencyContactRoutes from "@/routes/emergencyContact";
-// import employeeIdentityRoutes from "@/routes/employeeIdentity";
 import employeeWorkDetailRoutes from "@/routes/employeeWorkDetailes";
 import employeeTimelineRoutes from "@/routes/employeeTimeline";
-// personal Detailes
-//import employeeDetailsRoutes from "@/routes/createEmployeeRoutes";
-//import employeeEmploymentDetailsRoutes from "@/routes/employeeEmploymentDetailes";
 
 // main
 import employeeOnboardingRoutes from "@/routes/onboardingRoutes";
 import newProfileRoutes from "@/routes/auth";
 import publicTicketRoutes from "@/routes/publicTickets";
-import employeeSettingsRoutes from "./routes/employeeSettingsRoutes";
+import employeeSettingsRoutes from "@/routes/employeeSettingsRoutes";
 
 import timesheetRoutes from "@/routes/timesheet";
 import timeTrackingRoutes from "@/routes/timeTracking";
 
-import companyGovernmentHolidayRouter from "./routes/companyGovernmentHoliday.routes";
+import companyGovernmentHolidayRouter from "@/routes/companyGovernmentHoliday.routes";
 import leaveAdjustmentRoutes from "./routes/leaveAdjustmentRoutes";
 import leaveAllocationRoutes from "@/routes/leaveAllocationRoutes";
 import reimbursement from "@/routes/reimbursementCategory";
@@ -92,14 +77,14 @@ import leaveBalanceRoutes from "@/routes/leaveBalanceRoutes";
 import payrollRoutes from "@/routes/payroll";
 import reimbursementConfigurationRoutes from "@/routes/reimbursementConfig";
 import reimbursementsettingsRoutes from "@/routes/reimbursementsettingsRoutes";
-import reimbursementRoutes from "@/routes/reimbursementcreateRoutes"; // the file we created earlier
-// import managerReimbursementRoutes from "./routes/managerReimbursementRoutes";
+import reimbursementRoutes from "@/routes/reimbursementcreateRoutes"; 
 import rbacRoutes from "@/routes/rbac";
 import employeeAssetRoutes from "@/routes/employeeAssets.routes";
-import noticePolicyRoutes from "./routes/noticePolicy.routes";
-import exitTypeRoutes from "./routes/exitType.routes";
-import reasonForExitRoutes from "./routes/reasonForExit.routes";
-import exitApprovalWorkflowRoutes from "./routes/exitApprovalWorkflow.routes";
+import noticePolicyRoutes from "@/routes/noticePolicy.routes";
+import exitTypeRoutes from "@/routes/exitType.routes";
+import reasonForExitRoutes from "@/routes/reasonForExit.routes";
+import exitApprovalWorkflowRoutes from "@/routes/exitApprovalWorkflow.routes";
+
 // Load environment
 dotenv.config();
 console.log("🚀 API Starting up...");

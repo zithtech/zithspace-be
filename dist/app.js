@@ -41,7 +41,6 @@ const customerRoutes_1 = __importDefault(require("@/routes/customerRoutes"));
 const invoiceSettingsRoutes_1 = __importDefault(require("@/routes/invoiceSettingsRoutes"));
 const invoice_1 = __importDefault(require("@/routes/invoice"));
 const invoiceTemplate_1 = __importDefault(require("@/routes/invoiceTemplate"));
-//import invoicedownload from "@/routes/invoiceDownload"
 const buckets_1 = __importDefault(require("@/routes/buckets"));
 const trash_1 = __importDefault(require("@/routes/trash"));
 const sprintCompletion_1 = __importDefault(require("@/routes/sprintCompletion"));
@@ -50,24 +49,16 @@ const documenthub_1 = __importDefault(require("@/routes/documenthub"));
 const channels_1 = __importDefault(require("@/routes/channels"));
 const messages_1 = __importDefault(require("@/routes/messages"));
 const shortcut_routes_1 = __importDefault(require("@/routes/shortcut.routes"));
-// Onboarding
-// import employeeRoutes from "@/routes/employeeRoutes";
-// import employeeAddressRoutes from "@/routes/employeeAddress";
-// import employeeEmergencyContactRoutes from "@/routes/emergencyContact";
-// import employeeIdentityRoutes from "@/routes/employeeIdentity";
 const employeeWorkDetailes_1 = __importDefault(require("@/routes/employeeWorkDetailes"));
 const employeeTimeline_1 = __importDefault(require("@/routes/employeeTimeline"));
-// personal Detailes
-//import employeeDetailsRoutes from "@/routes/createEmployeeRoutes";
-//import employeeEmploymentDetailsRoutes from "@/routes/employeeEmploymentDetailes";
 // main
 const onboardingRoutes_1 = __importDefault(require("@/routes/onboardingRoutes"));
 const auth_2 = __importDefault(require("@/routes/auth"));
 const publicTickets_1 = __importDefault(require("@/routes/publicTickets"));
-const employeeSettingsRoutes_1 = __importDefault(require("./routes/employeeSettingsRoutes"));
+const employeeSettingsRoutes_1 = __importDefault(require("@/routes/employeeSettingsRoutes"));
 const timesheet_1 = __importDefault(require("@/routes/timesheet"));
 const timeTracking_1 = __importDefault(require("@/routes/timeTracking"));
-const companyGovernmentHoliday_routes_1 = __importDefault(require("./routes/companyGovernmentHoliday.routes"));
+const companyGovernmentHoliday_routes_1 = __importDefault(require("@/routes/companyGovernmentHoliday.routes"));
 const leaveAdjustmentRoutes_1 = __importDefault(require("./routes/leaveAdjustmentRoutes"));
 const leaveAllocationRoutes_1 = __importDefault(require("@/routes/leaveAllocationRoutes"));
 const reimbursementCategory_1 = __importDefault(require("@/routes/reimbursementCategory"));
@@ -85,14 +76,13 @@ const leaveBalanceRoutes_1 = __importDefault(require("@/routes/leaveBalanceRoute
 const payroll_1 = __importDefault(require("@/routes/payroll"));
 const reimbursementConfig_1 = __importDefault(require("@/routes/reimbursementConfig"));
 const reimbursementsettingsRoutes_1 = __importDefault(require("@/routes/reimbursementsettingsRoutes"));
-const reimbursementcreateRoutes_1 = __importDefault(require("@/routes/reimbursementcreateRoutes")); // the file we created earlier
-// import managerReimbursementRoutes from "./routes/managerReimbursementRoutes";
+const reimbursementcreateRoutes_1 = __importDefault(require("@/routes/reimbursementcreateRoutes"));
 const rbac_1 = __importDefault(require("@/routes/rbac"));
 const employeeAssets_routes_1 = __importDefault(require("@/routes/employeeAssets.routes"));
-const noticePolicy_routes_1 = __importDefault(require("./routes/noticePolicy.routes"));
-const exitType_routes_1 = __importDefault(require("./routes/exitType.routes"));
-const reasonForExit_routes_1 = __importDefault(require("./routes/reasonForExit.routes"));
-const exitApprovalWorkflow_routes_1 = __importDefault(require("./routes/exitApprovalWorkflow.routes"));
+const noticePolicy_routes_1 = __importDefault(require("@/routes/noticePolicy.routes"));
+const exitType_routes_1 = __importDefault(require("@/routes/exitType.routes"));
+const reasonForExit_routes_1 = __importDefault(require("@/routes/reasonForExit.routes"));
+const exitApprovalWorkflow_routes_1 = __importDefault(require("@/routes/exitApprovalWorkflow.routes"));
 // Load environment
 dotenv_1.default.config();
 console.log("🚀 API Starting up...");

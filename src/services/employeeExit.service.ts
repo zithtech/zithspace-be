@@ -1,6 +1,6 @@
 import { prisma } from "@/config/database";
 import { EmployeeExit, Prisma } from "@prisma/client";
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 
 export class EmployeeExitService {
   async createExitRequest(
@@ -10,7 +10,7 @@ export class EmployeeExitService {
   ): Promise<EmployeeExit> {
     return await prisma.employeeExit.create({
       data: {
-        id: uuidv4(),
+        id: randomUUID(),
         tenantId,
         employeeId: data.employeeId,
         departmentId: data.departmentId || null,
