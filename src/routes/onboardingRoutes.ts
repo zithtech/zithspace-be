@@ -18,6 +18,8 @@ router.use(requireAuth);
 // ROUTES
 router.post("/", requirePermission(Permissions.ONBOARDING_CREATE), asyncHandler(EmployeeOnboardingController.create));
 router.get("/", requirePermission(Permissions.ONBOARDING_READ), asyncHandler(EmployeeOnboardingController.getAll));
+// Must be placed before /:employeeId to prevent 'birthdays' from being treated as an employeeId parameter
+router.get("/birthdays", requirePermission(Permissions.ONBOARDING_READ), asyncHandler(EmployeeOnboardingController.getUpcomingBirthdays));
 router.get("/:employeeId", requirePermission(Permissions.ONBOARDING_READ), asyncHandler(EmployeeOnboardingController.getById));
 router.put("/:employeeId", requirePermission(Permissions.ONBOARDING_UPDATE), asyncHandler(EmployeeOnboardingController.update));
 router.delete(

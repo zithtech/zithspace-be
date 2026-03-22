@@ -336,7 +336,7 @@ export class AuthController {
               tenantId: req.user!.tenantId,
             },
             include: {
-              employee: true,
+              employee:true,
               reportsTo: {
                 select: {
                   id: true,
@@ -393,7 +393,7 @@ export class AuthController {
           isActive: user.isActive,
           reportsTo: user.reportsTo,
           employeeId: user.employeeId,
-          employee: user?.employee || {}, // Include linked employee data if available
+          employee: user.employee || {}, 
           tenant: user.tenant,
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
