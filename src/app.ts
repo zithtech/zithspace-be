@@ -89,6 +89,7 @@ import exitApprovalWorkflowRoutes from "@/routes/exitApprovalWorkflow.routes";
 dotenv.config();
 console.log("🚀 API Starting up...");
 console.log("📅 Mounting calendar routes at /api/calendar");
+console.log("🤖 DevBot deployment test — 2026-03-22");
 // Create Express application
 const app = express();
 
