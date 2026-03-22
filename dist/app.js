@@ -76,6 +76,8 @@ const calendar_1 = __importDefault(require("@/routes/calendar"));
 const leaveOriginRoutes_1 = __importDefault(require("@/routes/leaveOriginRoutes"));
 const emailHistoryRoutes_1 = __importDefault(require("@/routes/emailHistoryRoutes"));
 const rbac_1 = __importDefault(require("@/routes/rbac"));
+const recruitmentStatus_routes_1 = __importDefault(require("@/routes/recruitmentStatus.routes"));
+const recruitmentAction_routes_1 = __importDefault(require("@/routes/recruitmentAction.routes"));
 // Load environment
 dotenv_1.default.config();
 console.log("🚀 API Starting up...");
@@ -202,6 +204,8 @@ app.use("/api/channels/:channelId/messages", messages_1.default);
 app.use("/api/email-history", emailHistoryRoutes_1.default);
 app.use("/api/timesheets", timesheet_1.default);
 app.use("/api/time-tracking", timeTracking_1.default);
+app.use("/api/recruitment-statuses", recruitmentStatus_routes_1.default);
+app.use("/api/recruitment-actions", recruitmentAction_routes_1.default);
 // onboarding
 // app.use("/api/employees", employeeRoutes);
 // app.use("/api/employee-addresses", employeeAddressRoutes);
