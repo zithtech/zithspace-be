@@ -2172,7 +2172,6 @@ model Employee {
   users           User[]
 
   tenant                   Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  users     User[] 
   addresses                EmployeeAddress[]
   emergencyContacts        EmployeeEmergencyContact[]
   employeeIdentity         EmployeeIdentity?
@@ -3419,18 +3418,234 @@ model TimeTrackingEntry {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   // Relations
+  tenant  Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user    User                @relation(fields: [userId], references: [id])
+  project Project?            @relation(fields: [projectId], references: [id])
+  ticket  Ticket?             @relation(fields: [ticketId], references: [id])
+  logs    TimeTrackingLog[]
+
+  @@map("time_tracking_entries")
+}
+
+model TimeTrackingLog {
+  id               String   @id @default(uuid())
+  timeTrackingId   String   @map("time_tracking_id")
+  tenantId         String   @map("tenant_id")
+  action           String   @db.VarChar(50) // STARTED, PAUSED, RESUMED, STOPPED
+
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  timeTrackingEntry TimeTrackingEntry @relation(fields: [timeTrackingId], references: [id], onDelete: Cascade)
+
+  @@map("time_tracking_logs")
+}
+
+model Squad {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+
+  squadName String @map("squad_name") @db.VarChar(100)
+  squadCode String @map("squad_code") @db.VarChar(50)
+
+  squadStatus Boolean @default(true) @map("squad_status")
+  isArchived  Boolean @default(false) @map("is_archived")
+  isDeleted   Boolean @default(false) @map("is_deleted")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  createdById String  @map("created_by_id") @db.Uuid
+  updatedById String? @map("updated_by_id") @db.Uuid
+
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  squad Squad @relation(fields: [squadId], references: [id], onDelete: Cascade)
+  createdBy User  @relation("SquadCreator", fields: [createdById], references: [id])
+  updatedBy User? @relation("SquadUpdater", fields: [updatedById], references: [id])
 
-  member User @relation("SquadMemberUser", fields: [squadMemberId], references: [id])
+  squadMembers SquadMember[]
+
+  @@map("squad")
+}
+
+model SquadMember {
+  id       String @id @default(uuid()) @db.Uuid
+  tenantId String @map("tenant_id") @db.Uuid
+  squadId  String @map("squad_id") @db.Uuid
+
+  squadMemberId String @map("squad_member_id") @db.Uuid
+  memberType    String @map("member_type") @db.VarChar(50)
+
+  status Boolean @default(true)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  createdById String  @map("created_by_id") @db.Uuid
+  updatedById String? @map("updated_by_id") @db.Uuid
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  squad  Squad  @relation(fields: [squadId], references: [id], onDelete: Cascade)
+  member User   @relation("SquadMemberUser", fields: [squadMemberId], references: [id])
 
   createdBy User  @relation("SquadMemberCreator", fields: [createdById], references: [id])
   updatedBy User? @relation("SquadMemberUpdater", fields: [updatedById], references: [id])
 
   @@map("squad_members")
 }
-  model CandidateDetails {
+
+model UserPreference {
+  id               String   @id @default(uuid())
+  userId           String   @unique @map("user_id")
+  tenantId         String   @map("tenant_id")
+  sidebarCollapsed Boolean  @default(true) @map("sidebar_collapsed")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
+}
+
+model LeaveRequest {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  employeeId  String   @map("employee_id") @db.Uuid
+  leaveTypeId String?  @map("leave_type_id")
+  fromDate    DateTime @map("from_date") @db.Date
+  toDate      DateTime @map("to_date") @db.Date
+  totalUnits  Decimal  @map("total_units") @db.Decimal(5, 2)
+  status      String   @default("PENDING")
+  reason      String?
+  appliedAt   DateTime @default(now()) @map("applied_at")
+  approvedById String? @map("approved_by_id")
+  approvedAt  DateTime? @map("approved_at")
+  createdById String   @map("created_by_id")
+  updatedById String?  @map("updated_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant         Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee       Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType      LeaveType? @relation(fields: [leaveTypeId], references: [id])
+  approvedByUser User?      @relation("LeaveRequestApprover", fields: [approvedById], references: [id])
+  createdBy      User       @relation("LeaveRequestCreator", fields: [createdById], references: [id])
+  updatedBy      User?      @relation("LeaveRequestUpdater", fields: [updatedById], references: [id])
+
+  @@map("leave_requests")
+}
+
+model ExitType {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  name        String   @db.VarChar(100)
+  code        String   @db.VarChar(50)
+  is_active   Boolean  @default(true)
+  createdById String   @map("created_by_id")
+  updatedById String?  @map("updated_by_id")
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy     User         @relation("ExitTypeCreator", fields: [createdById], references: [id])
+  updatedBy     User?        @relation("ExitTypeUpdater", fields: [updatedById], references: [id])
+  employeeExits EmployeeExit[]
+
+  @@map("exit_types")
+}
+
+model ReasonForExit {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  name        String   @db.VarChar(100)
+  code        String   @db.VarChar(50)
+  is_active   Boolean  @default(true)
+  createdById String   @map("created_by_id")
+  updatedById String?  @map("updated_by_id")
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy     User         @relation("ReasonForExitCreator", fields: [createdById], references: [id])
+  updatedBy     User?        @relation("ReasonForExitUpdater", fields: [updatedById], references: [id])
+  employeeExits EmployeeExit[]
+
+  @@map("reasons_for_exit")
+}
+
+model ExitNoticePolicy {
+  id                        String   @id @default(uuid())
+  tenantId                  String   @map("tenant_id")
+  policyName                String   @map("policy_name")
+  description               String?
+  levelType                 String   @map("level_type")
+  levelId                   String   @map("level_id")
+  noticePeriodDays          Int      @map("notice_period_days")
+  probationNoticePeriodDays Int      @default(0) @map("probation_notice_period_days")
+  noticeBuyoutAllowed       Boolean  @default(false) @map("notice_buyout_allowed")
+  buyoutCalculationType     String?  @map("buyout_calculation_type")
+  status                    String   @default("active")
+  createdAt                 DateTime @default(now()) @map("created_at")
+  updatedAt                 DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("exit_notice_policies")
+}
+
+model ExitApprovalWorkflow {
+  id           String   @id @default(uuid())
+  tenantId     String   @map("tenant_id")
+  stepOrder    Int      @map("step_order")
+  approverType String   @map("approver_type") @db.VarChar(50)
+  approverId   String?  @map("approver_id")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdById  String   @map("created_by_id")
+  updatedById  String?  @map("updated_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User   @relation("ExitApprovalWorkflowCreatedBy", fields: [createdById], references: [id])
+  updatedBy User?  @relation("ExitApprovalWorkflowUpdatedBy", fields: [updatedById], references: [id])
+
+  @@map("exit_approval_workflows")
+}
+
+model EmployeeExit {
+  id                    String    @id @default(uuid())
+  tenantId              String    @map("tenant_id")
+  employeeId            String    @map("employee_id") @db.Uuid
+  departmentId          String?   @map("department_id")
+  positionId            String?   @map("position_id")
+  reportingManagerId    String?   @map("reporting_manager_id")
+  exitTypeId            String?   @map("exit_type_id")
+  exitReasonId          String?   @map("exit_reason_id")
+  resignationDate       DateTime  @map("resignation_date")
+  proposedLastWorkingDay DateTime @map("proposed_last_working_day")
+  noticePeriodDay       DateTime  @map("notice_period_day")
+  waiveNoticePeriod     Boolean   @default(false) @map("waive_notice_period")
+  buyoutRequired        Boolean   @default(false) @map("buyout_required")
+  buyoutAmount          Decimal?  @map("buyout_amount") @db.Decimal(10, 2)
+  explanation           String?
+  status                String    @default("PENDING")
+  createdById           String    @map("created_by_id")
+  updatedById           String?   @map("updated_by_id")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  tenant     Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee   Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  exitType   ExitType?     @relation(fields: [exitTypeId], references: [id])
+  exitReason ReasonForExit? @relation(fields: [exitReasonId], references: [id])
+  createdBy  User          @relation("EmployeeExitCreatedBy", fields: [createdById], references: [id])
+  updatedBy  User?         @relation("EmployeeExitUpdatedBy", fields: [updatedById], references: [id])
+
+  @@map("employee_exits")
+}
+
+model CandidateDetails {
     id            String   @id @default(uuid())
 
     tenantId      String   @map("tenant_id")

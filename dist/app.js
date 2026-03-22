@@ -79,6 +79,7 @@ const reimbursementConfig_1 = __importDefault(require("@/routes/reimbursementCon
 const reimbursementsettingsRoutes_1 = __importDefault(require("@/routes/reimbursementsettingsRoutes"));
 const reimbursementcreateRoutes_1 = __importDefault(require("@/routes/reimbursementcreateRoutes"));
 const rbac_1 = __importDefault(require("@/routes/rbac"));
+const candidateForm_routes_1 = __importDefault(require("@/routes/candidateForm.routes"));
 const employeeAssets_routes_1 = __importDefault(require("@/routes/employeeAssets.routes"));
 const noticePolicy_routes_1 = __importDefault(require("@/routes/noticePolicy.routes"));
 const exitType_routes_1 = __importDefault(require("@/routes/exitType.routes"));
@@ -88,6 +89,7 @@ const exitApprovalWorkflow_routes_1 = __importDefault(require("@/routes/exitAppr
 dotenv_1.default.config();
 console.log("🚀 API Starting up...");
 console.log("📅 Mounting calendar routes at /api/calendar");
+console.log("🤖 DevBot deployment test — 2026-03-22");
 // Create Express application
 const app = (0, express_1.default)();
 // CORS must be first — before any other middleware — so headers are set on all responses
@@ -237,6 +239,8 @@ app.use("/api/exit/approval-workflow", exitApprovalWorkflow_routes_1.default);
 app.use("/api/exit/request", employeeExit_routes_1.default);
 // RBAC management API
 app.use("/api/rbac", rbac_1.default);
+// Candidate Form API
+app.use("/api/candidate-form", candidateForm_routes_1.default);
 app.use("/api/employee-assets", employeeAssets_routes_1.default);
 app.use("/api/shortcuts", shortcut_routes_1.default);
 // app.use("/api/addresses", addressRoutes);
