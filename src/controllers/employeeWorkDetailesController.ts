@@ -63,8 +63,9 @@ export class EmployeeWorkDetailController {
           workLocation,
           workShift,
           createdById: req.user.id,
-          position: { connect: { id: positionId }
-    }
+          position: {
+            connect: { id: positionId }
+          }
         },
       });
 
@@ -146,7 +147,7 @@ export class EmployeeWorkDetailController {
             { levelType: 'Positions', levelId: workDetail.positionId },
             { levelType: 'Grades', levelId: workDetail.position?.gradeId || '' }
           ],
-          status: 'active'
+          // status: true
         }
       });
 

@@ -23,6 +23,38 @@ async function generateClientCode(tenantId: string, idPrefix = 'CL-') {
     });
 }
 
+/**
+ * Utility to map an Employee ID to a User ID for foreign key relations
+ * @throws Error 'UserAccountNotFound' if no user is linked to the employee
+ */
+async function getUserIdFromEmployeeId(prisma: any, employeeId: string, tenantId: string): Promise<string> {
+    // 1. Try direct link in User table
+    const userByEmployeeId = await prisma.user.findFirst({
+        where: { employeeId, tenantId }
+    });
+    if (userByEmployeeId) return userByEmployeeId.id;
+
+    // 2. Fallback: Lookup employee email and find user by that email
+    const employee = await prisma.employee.findUnique({
+        where: { id: employeeId }
+    });
+
+    if (employee) {
+        const userByEmail = await prisma.user.findFirst({
+            where: { workEmail: employee.work_email, tenantId }
+        });
+        if (userByEmail) return userByEmail.id;
+    }
+
+    // 3. Last fallback: Check if the ID provided is already a valid User ID
+    const isAlreadyUser = await prisma.user.findUnique({
+        where: { id: employeeId }
+    });
+    if (isAlreadyUser) return isAlreadyUser.id;
+
+    throw new Error('UserAccountNotFound');
+}
+
 export class ClientV2Controller {
     // ==============================================
     // CLIENT CORE DETAILS
@@ -374,20 +406,7 @@ export class ClientV2Controller {
             }
 
             const result = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
-                // Since we're picking from Employees in UI, but Project expects a User ID:
-                let actualProjectManagerId = projectManagerId;
-                const employee = await prisma.employee.findUnique({
-                    where: { id: projectManagerId }
-                });
-
-                if (employee) {
-                    const user = await prisma.user.findFirst({
-                        where: { workEmail: employee.work_email, tenantId: req.tenantId }
-                    });
-                    if (user) {
-                        actualProjectManagerId = user.id;
-                    }
-                }
+                const actualProjectManagerId = await getUserIdFromEmployeeId(prisma, projectManagerId, req.tenantId!);
 
                 // 1. Create the project in the global projects table
                 const project = await prisma.project.create({
@@ -395,7 +414,7 @@ export class ClientV2Controller {
                         tenantId: req.tenantId!,
                         name,
                         code,
-                        description: `Client project for ${clientId}`, // Default description
+                        description: `Client project for ${clientId}`,
                         status: status || 'Draft',
                         projectManagerId: actualProjectManagerId,
                         startDate: new Date(startDate),
@@ -422,11 +441,15 @@ export class ClientV2Controller {
             res.status(201).json({ success: true, data: result } as ApiResponse);
         } catch (error: any) {
             console.error('addProject error:', error);
+            if (error.message === 'UserAccountNotFound') {
+                res.status(400).json({ success: false, error: 'The selected employee must have a system user account to be assigned as Project Manager' } as ApiResponse);
+                return;
+            }
             if (error.code === 'P2002') {
                 res.status(400).json({ success: false, error: 'Project code must be unique' } as ApiResponse);
                 return;
             }
-            res.status(500).json({ success: false, error: 'Failed to create and map project' } as ApiResponse);
+            res.status(500).json({ success: false, error: 'Failed to create project' } as ApiResponse);
         }
     }
 
@@ -447,18 +470,7 @@ export class ClientV2Controller {
             await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
                 let actualProjectManagerId = projectManagerId;
                 if (projectManagerId) {
-                    const employee = await prisma.employee.findUnique({
-                        where: { id: projectManagerId }
-                    });
-
-                    if (employee) {
-                        const user = await prisma.user.findFirst({
-                            where: { workEmail: employee.work_email, tenantId: req.tenantId }
-                        });
-                        if (user) {
-                            actualProjectManagerId = user.id;
-                        }
-                    }
+                    actualProjectManagerId = await getUserIdFromEmployeeId(prisma, projectManagerId, req.tenantId!);
                 }
 
                 const updateData: any = {};
@@ -499,6 +511,10 @@ export class ClientV2Controller {
             });
         } catch (error: any) {
             console.error('updateProject error:', error);
+            if (error.message === 'UserAccountNotFound') {
+                res.status(400).json({ success: false, error: 'The selected employee must have a system user account to be assigned as Project Manager' } as ApiResponse);
+                return;
+            }
             if (error.code === 'P2002') {
                 res.status(400).json({ success: false, error: 'Project code must be unique' } as ApiResponse);
                 return;
