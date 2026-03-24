@@ -57,6 +57,12 @@ export const Permissions = {
   INVOICE_DELETE: 'invoice.delete',
   INVOICE_MANAGE: 'invoice.manage',
 
+  // ─── Invoice Templates ───────────────────────────────────────────
+  INVOICE_TEMPLATE_CREATE: 'invoice_template.create',
+  INVOICE_TEMPLATE_READ:   'invoice_template.read',
+  INVOICE_TEMPLATE_UPDATE: 'invoice_template.update',
+  INVOICE_TEMPLATE_DELETE: 'invoice_template.delete',
+
   // ─── Transactions / Accounts ─────────────────────────────────────
   TRANSACTION_CREATE: 'transaction.create',
   TRANSACTION_READ:   'transaction.read',
@@ -126,6 +132,13 @@ export const Permissions = {
   DAILY_UPDATE_CREATE: 'daily_update.create',
   DAILY_UPDATE_READ:   'daily_update.read',
   DAILY_UPDATE_MANAGE: 'daily_update.manage',
+
+  // ─── Squads ──────────────────────────────────────────────────────
+  SQUAD_CREATE: 'squad.create',
+  SQUAD_READ:   'squad.read',
+  SQUAD_UPDATE: 'squad.update',
+  SQUAD_DELETE: 'squad.delete',
+  SQUAD_MANAGE: 'squad.manage',
 } as const;
 
 export type Permission = (typeof Permissions)[keyof typeof Permissions];
@@ -141,6 +154,7 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
   leave:        [Permissions.LEAVE_CREATE, Permissions.LEAVE_READ, Permissions.LEAVE_UPDATE, Permissions.LEAVE_DELETE, Permissions.LEAVE_APPROVE, Permissions.LEAVE_MANAGE],
   shift:        [Permissions.SHIFT_CREATE, Permissions.SHIFT_READ, Permissions.SHIFT_UPDATE, Permissions.SHIFT_DELETE, Permissions.SHIFT_MANAGE],
   invoice:      [Permissions.INVOICE_CREATE, Permissions.INVOICE_READ, Permissions.INVOICE_UPDATE, Permissions.INVOICE_DELETE, Permissions.INVOICE_MANAGE],
+  invoice_template: [Permissions.INVOICE_TEMPLATE_CREATE, Permissions.INVOICE_TEMPLATE_READ, Permissions.INVOICE_TEMPLATE_UPDATE, Permissions.INVOICE_TEMPLATE_DELETE],
   transaction:  [Permissions.TRANSACTION_CREATE, Permissions.TRANSACTION_READ, Permissions.TRANSACTION_UPDATE, Permissions.TRANSACTION_DELETE, Permissions.TRANSACTION_MANAGE],
   client:       [Permissions.CLIENT_CREATE, Permissions.CLIENT_READ, Permissions.CLIENT_UPDATE, Permissions.CLIENT_DELETE, Permissions.CLIENT_MANAGE],
   settings:     [Permissions.SETTINGS_READ, Permissions.SETTINGS_UPDATE, Permissions.SETTINGS_MANAGE],
@@ -153,6 +167,7 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
   timesheet:    [Permissions.TIMESHEET_CREATE, Permissions.TIMESHEET_READ, Permissions.TIMESHEET_UPDATE, Permissions.TIMESHEET_APPROVE, Permissions.TIMESHEET_MANAGE],
   org:          [Permissions.ORG_READ, Permissions.ORG_MANAGE],
   daily_update: [Permissions.DAILY_UPDATE_CREATE, Permissions.DAILY_UPDATE_READ, Permissions.DAILY_UPDATE_MANAGE],
+  squad:        [Permissions.SQUAD_CREATE, Permissions.SQUAD_READ, Permissions.SQUAD_UPDATE, Permissions.SQUAD_DELETE, Permissions.SQUAD_MANAGE],
 };
 
 /** Flat list of all permissions — used for seeding. */

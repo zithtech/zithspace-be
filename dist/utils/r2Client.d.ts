@@ -22,6 +22,15 @@ export declare function uploadFileToR2(base64File: string, fileName: string, ten
     fileType: string;
 }>;
 /**
+ * Upload a job requisition attachment to Cloudflare R2
+ * Stores under: {tenantId}/requisition_attachments/{requisitionId}/{category}/{uniqueId}_{fileName}
+ */
+export declare function uploadRequisitionAttachmentToR2(base64File: string, fileName: string, tenantId: string, requisitionId: string, category: string): Promise<{
+    fileUrl: string;
+    fileSize: number;
+    fileType: string;
+}>;
+/**
  * Upload employee document to Cloudflare R2
  * @param base64File - Base64 encoded file string
  * @param fileName - Original file name
@@ -58,6 +67,16 @@ export declare function uploadEmployeeAssetToR2({ base64, fileName, tenantId, em
     employeeId: string;
     folder?: string;
 }): Promise<string>;
+/**
+ * Upload candidate document to Cloudflare R2
+ * @param base64File - Base64 encoded file string
+ * @param fileName - Original file name
+ * @param tenantId - Tenant ID
+ * @param candidateId - Candidate ID
+ * @param documentType - Type of document (e.g., resume, passport)
+ * @returns Public URL of uploaded document
+ */
+export declare function uploadCandidateDocumentToR2(base64File: string, fileName: string, tenantId: string, candidateId: string, documentType: string): Promise<string>;
 /**
  * Delete any file from Cloudflare R2
  * @param fileUrl - Full URL of the file to delete

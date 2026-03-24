@@ -53,6 +53,11 @@ exports.Permissions = {
     INVOICE_UPDATE: 'invoice.update',
     INVOICE_DELETE: 'invoice.delete',
     INVOICE_MANAGE: 'invoice.manage',
+    // ─── Invoice Templates ───────────────────────────────────────────
+    INVOICE_TEMPLATE_CREATE: 'invoice_template.create',
+    INVOICE_TEMPLATE_READ: 'invoice_template.read',
+    INVOICE_TEMPLATE_UPDATE: 'invoice_template.update',
+    INVOICE_TEMPLATE_DELETE: 'invoice_template.delete',
     // ─── Transactions / Accounts ─────────────────────────────────────
     TRANSACTION_CREATE: 'transaction.create',
     TRANSACTION_READ: 'transaction.read',
@@ -111,6 +116,12 @@ exports.Permissions = {
     DAILY_UPDATE_CREATE: 'daily_update.create',
     DAILY_UPDATE_READ: 'daily_update.read',
     DAILY_UPDATE_MANAGE: 'daily_update.manage',
+    // ─── Squads ──────────────────────────────────────────────────────
+    SQUAD_CREATE: 'squad.create',
+    SQUAD_READ: 'squad.read',
+    SQUAD_UPDATE: 'squad.update',
+    SQUAD_DELETE: 'squad.delete',
+    SQUAD_MANAGE: 'squad.manage',
 };
 /**
  * All permissions grouped by resource for UI rendering (permission picker).
@@ -123,6 +134,7 @@ exports.PERMISSIONS_BY_RESOURCE = {
     leave: [exports.Permissions.LEAVE_CREATE, exports.Permissions.LEAVE_READ, exports.Permissions.LEAVE_UPDATE, exports.Permissions.LEAVE_DELETE, exports.Permissions.LEAVE_APPROVE, exports.Permissions.LEAVE_MANAGE],
     shift: [exports.Permissions.SHIFT_CREATE, exports.Permissions.SHIFT_READ, exports.Permissions.SHIFT_UPDATE, exports.Permissions.SHIFT_DELETE, exports.Permissions.SHIFT_MANAGE],
     invoice: [exports.Permissions.INVOICE_CREATE, exports.Permissions.INVOICE_READ, exports.Permissions.INVOICE_UPDATE, exports.Permissions.INVOICE_DELETE, exports.Permissions.INVOICE_MANAGE],
+    invoice_template: [exports.Permissions.INVOICE_TEMPLATE_CREATE, exports.Permissions.INVOICE_TEMPLATE_READ, exports.Permissions.INVOICE_TEMPLATE_UPDATE, exports.Permissions.INVOICE_TEMPLATE_DELETE],
     transaction: [exports.Permissions.TRANSACTION_CREATE, exports.Permissions.TRANSACTION_READ, exports.Permissions.TRANSACTION_UPDATE, exports.Permissions.TRANSACTION_DELETE, exports.Permissions.TRANSACTION_MANAGE],
     client: [exports.Permissions.CLIENT_CREATE, exports.Permissions.CLIENT_READ, exports.Permissions.CLIENT_UPDATE, exports.Permissions.CLIENT_DELETE, exports.Permissions.CLIENT_MANAGE],
     settings: [exports.Permissions.SETTINGS_READ, exports.Permissions.SETTINGS_UPDATE, exports.Permissions.SETTINGS_MANAGE],
@@ -135,6 +147,7 @@ exports.PERMISSIONS_BY_RESOURCE = {
     timesheet: [exports.Permissions.TIMESHEET_CREATE, exports.Permissions.TIMESHEET_READ, exports.Permissions.TIMESHEET_UPDATE, exports.Permissions.TIMESHEET_APPROVE, exports.Permissions.TIMESHEET_MANAGE],
     org: [exports.Permissions.ORG_READ, exports.Permissions.ORG_MANAGE],
     daily_update: [exports.Permissions.DAILY_UPDATE_CREATE, exports.Permissions.DAILY_UPDATE_READ, exports.Permissions.DAILY_UPDATE_MANAGE],
+    squad: [exports.Permissions.SQUAD_CREATE, exports.Permissions.SQUAD_READ, exports.Permissions.SQUAD_UPDATE, exports.Permissions.SQUAD_DELETE, exports.Permissions.SQUAD_MANAGE],
 };
 /** Flat list of all permissions — used for seeding. */
 exports.ALL_PERMISSIONS = Object.values(exports.Permissions);

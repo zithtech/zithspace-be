@@ -190,7 +190,7 @@ export class EmailHistoryController {
           id: invoice.id,
           invoiceNumber: invoice.invoiceNumber,
           customerName: (invoice.customerSnapshot as any)?.companyName || 'Unknown',
-          total: invoice.total,
+          total: (invoice as any).grandTotal,
           status: invoice.status
         }
       });

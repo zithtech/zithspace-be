@@ -92,7 +92,9 @@ export async function uploadImageToR2(
     await s3Client.send(new PutObjectCommand(params));
 
     // Construct public URL
-    const imageUrl = `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/${fileName}`;
+    const baseUrl =
+      PUBLIC_URL || "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+    const imageUrl = `${baseUrl}/${fileName}`;
 
     return imageUrl;
   } catch (error: any) {
@@ -155,7 +157,9 @@ export async function uploadFileToR2(
     await s3Client.send(new PutObjectCommand(params));
 
     // Construct public URL
-    const fileUrl = `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/${storedFileName}`;
+    const baseUrl =
+      PUBLIC_URL || "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+    const fileUrl = `${baseUrl}/${storedFileName}`;
 
     return {
       fileUrl,
@@ -165,6 +169,67 @@ export async function uploadFileToR2(
   } catch (error: any) {
     console.error("R2 file upload error:", error);
     throw new Error(`Failed to upload file: ${error.message}`);
+  }
+}
+
+/**
+ * Upload a job requisition attachment to Cloudflare R2
+ * Stores under: {tenantId}/requisition_attachments/{requisitionId}/{category}/{uniqueId}_{fileName}
+ */
+export async function uploadRequisitionAttachmentToR2(
+  base64File: string,
+  fileName: string,
+  tenantId: string,
+  requisitionId: string,
+  category: string,
+): Promise<{ fileUrl: string; fileSize: number; fileType: string }> {
+  try {
+    const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+    if (!matches) {
+      throw new Error("Invalid file format. Expected base64 encoded file.");
+    }
+
+    const contentType = matches[1];
+    const base64Data = matches[2];
+    const buffer = Buffer.from(base64Data, "base64");
+
+    // Validate file size (max 5MB)
+    const fileSizeInBytes = buffer.length;
+    const fileSizeInMB = fileSizeInBytes / (1024 * 1024);
+    if (fileSizeInMB > 5) {
+      throw new Error("File size exceeds 5MB limit");
+    }
+
+    const uniqueId = nanoid(12);
+    const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+    const folderPath = `${tenantId}/requisition_attachments/${requisitionId}/${category}`;
+    const storedFileName = `${folderPath}/${uniqueId}_${sanitizedFileName}`;
+
+    const params = {
+      Bucket: BUCKET_NAME,
+      Key: storedFileName,
+      Body: buffer,
+      ContentType: contentType,
+      CacheControl: "public, max-age=31536000",
+      ContentDisposition: `attachment; filename="${sanitizedFileName}"`,
+    };
+
+    await s3Client.send(new PutObjectCommand(params));
+
+    const baseUrl =
+      PUBLIC_URL || "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+    const fileUrl = `${baseUrl}/${storedFileName}`;
+
+    return {
+      fileUrl,
+      fileSize: fileSizeInBytes,
+      fileType: contentType,
+    };
+  } catch (error: any) {
+    console.error("R2 requisition attachment upload error:", error);
+    throw new Error(
+      `Failed to upload requisition attachment: ${error.message}`,
+    );
   }
 }
 
@@ -207,7 +272,9 @@ export async function uploadEmployeeDocumentToR2(
 
     await s3Client.send(new PutObjectCommand(params));
 
-    return `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/${key}`;
+    const baseUrl =
+      PUBLIC_URL || "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+    return `${baseUrl}/${key}`;
   } catch (error: any) {
     console.error("R2 upload error:", error);
     throw new Error(`Failed to upload document: ${error.message}`);
@@ -256,7 +323,9 @@ export async function uploadClientDocumentToR2(
 
     await s3Client.send(new PutObjectCommand(params));
 
-    return `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/${key}`;
+    const baseUrl =
+      PUBLIC_URL || "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+    return `${baseUrl}/${key}`;
   } catch (error: any) {
     console.error("R2 upload error (Client V2):", error);
     throw new Error(`Failed to upload client document: ${error.message}`);
@@ -317,10 +386,60 @@ export async function uploadEmployeeAssetToR2({
       }),
     );
 
-    return `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/${key}`;
+    const baseUrl =
+      PUBLIC_URL || "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+    return `${baseUrl}/${key}`;
   } catch (error: any) {
     console.error(`R2 ${folder} image upload error:`, error);
     throw new Error(`Failed to upload ${folder} image: ${error.message}`);
+  }
+}
+
+/**
+ * Upload candidate document to Cloudflare R2
+ * @param base64File - Base64 encoded file string
+ * @param fileName - Original file name
+ * @param tenantId - Tenant ID
+ * @param candidateId - Candidate ID
+ * @param documentType - Type of document (e.g., resume, passport)
+ * @returns Public URL of uploaded document
+ */
+export async function uploadCandidateDocumentToR2(
+  base64File: string,
+  fileName: string,
+  tenantId: string,
+  candidateId: string,
+  documentType: string,
+): Promise<string> {
+  try {
+    const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+    if (!matches) {
+      throw new Error("Invalid file format. Expected base64 encoded file.");
+    }
+
+    const contentType = matches[1];
+    const base64Data = matches[2];
+    const buffer = Buffer.from(base64Data, "base64");
+
+    const uniqueId = nanoid(12);
+    const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+    const key = `${tenantId}/candidates/${candidateId}/documents/${documentType}/${uniqueId}_${sanitizedFileName}`;
+
+    await s3Client.send(
+      new PutObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+      }),
+    );
+
+    const baseUrl =
+      PUBLIC_URL || "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+    return `${baseUrl}/${key}`;
+  } catch (error: any) {
+    console.error("R2 candidate document upload error:", error);
+    throw new Error(`Failed to upload candidate document: ${error.message}`);
   }
 }
 

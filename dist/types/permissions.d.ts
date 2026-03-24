@@ -43,6 +43,10 @@ export declare const Permissions: {
     readonly INVOICE_UPDATE: "invoice.update";
     readonly INVOICE_DELETE: "invoice.delete";
     readonly INVOICE_MANAGE: "invoice.manage";
+    readonly INVOICE_TEMPLATE_CREATE: "invoice_template.create";
+    readonly INVOICE_TEMPLATE_READ: "invoice_template.read";
+    readonly INVOICE_TEMPLATE_UPDATE: "invoice_template.update";
+    readonly INVOICE_TEMPLATE_DELETE: "invoice_template.delete";
     readonly TRANSACTION_CREATE: "transaction.create";
     readonly TRANSACTION_READ: "transaction.read";
     readonly TRANSACTION_UPDATE: "transaction.update";
@@ -89,6 +93,11 @@ export declare const Permissions: {
     readonly DAILY_UPDATE_CREATE: "daily_update.create";
     readonly DAILY_UPDATE_READ: "daily_update.read";
     readonly DAILY_UPDATE_MANAGE: "daily_update.manage";
+    readonly SQUAD_CREATE: "squad.create";
+    readonly SQUAD_READ: "squad.read";
+    readonly SQUAD_UPDATE: "squad.update";
+    readonly SQUAD_DELETE: "squad.delete";
+    readonly SQUAD_MANAGE: "squad.manage";
 };
 export type Permission = (typeof Permissions)[keyof typeof Permissions];
 /**

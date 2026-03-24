@@ -254,6 +254,14 @@ export interface LoginResponse {
     };
     message: string;
 }
+export interface AuthUser {
+    id: string;
+    email: string;
+    role: string;
+}
+export interface AuthUser {
+    employeeId?: string;
+}
 export interface AuthRequest extends Request {
     user?: AuthUser;
     tenantId?: string;
@@ -508,6 +516,8 @@ export interface CreateCustomerData {
     city?: string;
     country?: string;
     taxId?: string;
+    gstin?: string;
+    pan?: string;
 }
 export interface UpdateCustomerData {
     companyName?: string;
@@ -517,6 +527,8 @@ export interface UpdateCustomerData {
     city?: string;
     country?: string;
     taxId?: string;
+    gstin?: string;
+    pan?: string;
 }
 export declare class ValidationError extends Error {
     readonly field?: string;
@@ -694,4 +706,193 @@ export interface CreateEmployeeClientAllocationV2Data {
     status?: string;
 }
 export interface UpdateEmployeeClientAllocationV2Data extends Partial<CreateEmployeeClientAllocationV2Data> {
+}
+export interface Squad {
+    id: string;
+    tenantId: string;
+    squadName: string;
+    squadCode: string;
+    squadStatus: boolean;
+    isArchived: boolean;
+    isDeleted: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+    createdById: string;
+    updatedById?: string;
+    squadMembers?: SquadMember[];
+    createdBy?: User;
+    updatedBy?: User;
+    _count?: {
+        squadMembers?: number;
+    };
+}
+export interface SquadMember {
+    id: string;
+    tenantId: string;
+    squadId: string;
+    squadMemberId: string;
+    memberType: "HEAD" | "SUB_HEAD" | "MEMBER" | string;
+    status: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+    createdById: string;
+    updatedById?: string;
+    member?: User;
+    squad?: Squad;
+}
+export interface CreateSquadData {
+    squadName: string;
+    squadCode: string;
+    headIds: string[];
+    subHeadIds: string[];
+    memberIds: string[];
+    squadStatus?: boolean;
+}
+export interface UpdateSquadData {
+    squadName?: string;
+    squadCode?: string;
+    headIds?: string[];
+    subHeadIds?: string[];
+    memberIds?: string[];
+    squadStatus?: boolean;
+    isArchived?: boolean;
+}
+export interface CreateImplementationPartnerData {
+    companyName: string;
+    industry?: string;
+    website?: string;
+    companyEmail?: string;
+    companyPhone?: string;
+    status?: boolean;
+    street?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    zipCode?: string;
+    notes?: string;
+    contactPersons?: CreateImplementationContactPersonData[];
+    businessDetails?: CreateImplementationBusinessDetailsData[];
+    relations?: CreateImplementationRelationsData[];
+    documents?: CreateImplementationDocumentData[];
+}
+export interface UpdateImplementationPartnerData extends Partial<CreateImplementationPartnerData> {
+    id: string;
+}
+export interface CreateImplementationContactPersonData {
+    personName: string;
+    designation?: string;
+    email?: string;
+    phone?: string;
+    linkedInUrl?: string;
+}
+export interface CreateImplementationBusinessDetailsData {
+    registrationNumber?: string;
+    taxId?: string;
+    businessType?: string;
+    yearEstabliliesh?: number;
+    totalEmployees?: number;
+}
+export interface CreateImplementationRelationsData {
+    linkedVendor?: string;
+    linkedClient?: string;
+    supportsVisaSponsorship: boolean;
+    visaTypesSupported?: string;
+}
+export interface CreateImplementationDocumentData {
+    documentType?: string;
+    documentUrl?: string;
+    base64?: string;
+    fileName?: string;
+}
+export interface CreateVendorData {
+    companyName: string;
+    industry?: string;
+    website?: string;
+    companyEmail?: string;
+    companyPhone?: string;
+    status?: boolean;
+    street?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    zipCode?: string;
+    notes?: string;
+    contactPersons?: CreateVendorContactPersonData[];
+    businessDetails?: CreateVendorBusinessDetailsData[];
+    relations?: CreateVendorRelationsData[];
+    documents?: CreateVendorDocumentData[];
+}
+export interface UpdateVendorData extends Partial<CreateVendorData> {
+    id: string;
+}
+export interface CreateVendorContactPersonData {
+    personName: string;
+    designation?: string;
+    email?: string;
+    phone?: string;
+    linkedInUrl?: string;
+}
+export interface CreateVendorBusinessDetailsData {
+    registrationNumber?: string;
+    taxId?: string;
+    businessType?: string;
+    yearEstabliliesh?: number;
+    totalEmployees?: number;
+}
+export interface CreateVendorRelationsData {
+    linkedVendor?: string;
+    linkedClient?: string;
+    supportsVisaSponsorship: boolean;
+    visaTypesSupported?: string;
+}
+export interface CreateVendorDocumentData {
+    documentType?: string;
+    documentUrl?: string;
+    base64?: string;
+    fileName?: string;
+}
+export interface CreateRecruitmentClientData {
+    clientName: string;
+    accountType?: string;
+    industry?: string;
+    website?: string;
+    companyEmail?: string;
+    companyPhone?: string;
+    street?: string;
+    city?: string;
+    state?: string;
+    zipCode?: string;
+    country?: string;
+    status?: boolean;
+    notes?: string;
+    implementationPartnerId?: string;
+    primeVendorId?: string;
+    businessDetails?: CreateRecruitmentClientBusinessDetailsData[];
+    hiringPreferences?: CreateRecruitmentClientHiringPreferenceData[];
+    contacts?: RecruitmentClientContactData[];
+}
+export interface UpdateRecruitmentClientData extends Partial<CreateRecruitmentClientData> {
+}
+export interface CreateRecruitmentClientBusinessDetailsData {
+    companyName?: string;
+    yearEstablished?: number;
+    revenueRange?: string;
+}
+export interface CreateRecruitmentClientHiringPreferenceData {
+    employmentType?: string;
+    workType?: string;
+    hiringLocation?: string;
+}
+export interface RecruitmentClientContactData {
+    id?: string;
+    personName: string;
+    designation?: string;
+    email?: string;
+    phone?: string;
+    linkedInUrl?: string;
+}
+export interface RecruitmentClientDocumentData {
+    id?: string;
+    documentType?: string;
+    documentUrl?: string;
 }

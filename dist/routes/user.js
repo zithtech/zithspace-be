@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const userController_1 = require("@/controllers/userController");
+const userPreferenceController_1 = require("@/controllers/userPreferenceController");
 const auth_1 = require("@/middleware/auth");
 const permission_1 = require("@/middleware/permission");
 const permissions_1 = require("@/types/permissions");
@@ -32,6 +33,18 @@ router.put('/profile', userController_1.UserController.updateUserProfile);
  * @body    ChangePasswordData
  */
 router.post('/change-password', userController_1.UserController.changePassword);
+/**
+ * @route   GET /api/user/preferences
+ * @desc    Get user preferences
+ * @access  Private (authenticated users)
+ */
+router.get('/preferences', userPreferenceController_1.UserPreferenceController.getPreferences);
+/**
+ * @route   PATCH /api/user/preferences
+ * @desc    Update user preferences
+ * @access  Private (authenticated users)
+ */
+router.patch('/preferences', userPreferenceController_1.UserPreferenceController.updatePreferences);
 /**
  * @route   POST /api/user/reset-password/:userId
  * @desc    Reset user password (admin only - tenant-aware)

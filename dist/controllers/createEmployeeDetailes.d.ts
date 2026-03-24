@@ -106,14 +106,20 @@ export declare function getAllEmployees(req: AuthRequest): Promise<{
     status: any;
     created_at: any;
 }[]>;
+export declare function getUpcomingBirthdays(req: AuthRequest): Promise<{
+    id: string;
+    firstName: string;
+    lastName: string;
+    dateOfBirth: Date;
+}[]>;
 export declare function updatePersonalDetails(req: AuthRequest, employeeId: string, tx?: any): Promise<any>;
 export declare function deletePersonalDetails(req: AuthRequest, employeeId: string): Promise<{
     success: boolean;
     message: string;
     employee: {
         status: boolean;
-        tenantId: string;
         id: string;
+        tenantId: string;
         employee_code: string;
         first_name: string;
         last_name: string;
