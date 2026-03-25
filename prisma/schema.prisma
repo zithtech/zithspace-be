@@ -8,7 +8,7 @@ datasource db {
 }
 
 model Tenant {
-  id                    String                 @id @default(uuid())
+  id                    String                 @id @default(uuid()) @db.Uuid
   name                  String
   subdomain             String                 @unique
   planType              String                 @default("basic") @map("plan_type")
@@ -121,8 +121,8 @@ model Tenant {
 }
 
 model User {
-  id                String    @id @default(uuid())
-  tenantId          String    @map("tenant_id")
+  id                String    @id @default(uuid()) @db.Uuid
+  tenantId          String    @map("tenant_id") @db.Uuid
   name              String
   workEmail         String    @map("work_email")
   personalEmail     String    @map("personal_email")
@@ -195,6 +195,8 @@ model User {
   createdExitApprovalWorkflows ExitApprovalWorkflow[] @relation("ExitApprovalWorkflowCreatedBy")
   updatedExitApprovalWorkflows ExitApprovalWorkflow[] @relation("ExitApprovalWorkflowUpdatedBy")
   // ExitNoticePolicy has no creator/updater foreign keys in DB
+   createdExitPolicies ExitNoticePolicy[] @relation("ExitNoticePolicyCreator")
+  updatedExitPolicies ExitNoticePolicy[] @relation("ExitNoticePolicyUpdater")
 
   createdLedgers          LeaveLedger[] @relation("LeaveLedgerCreator")
   updatedLedgers          LeaveLedger[] @relation("LeaveLedgerUpdater")
@@ -369,8 +371,7 @@ model User {
   // ===== RBAC Relations =====
   userRoles UserRole[]
 
-  createdExitPolicies ExitNoticePolicy[] @relation("ExitNoticePolicyCreator")
-  updatedExitPolicies ExitNoticePolicy[] @relation("ExitNoticePolicyUpdater")
+ 
   
   // Time Tracking
   timeTrackingEntries TimeTrackingEntry[]
@@ -4009,21 +4010,21 @@ model ReasonForExit {
 }
 
 model ExitNoticePolicy {
-  id                        String   @id @default(uuid())
-  tenantId                  String   @map("tenant_id")
+  id                        String   @id @default(uuid()) @db.Uuid
+  tenantId                  String   @map("tenant_id") @db.Uuid
   policyName                String   @map("policy_name")
   code                      String?  @unique @map("code")
   description               String?
   levelType                 String   @map("level_type")
-  levelId                   String   @map("level_id")
+  levelId                   String   @map("level_id") @db.Uuid
   noticePeriodDays          Int      @map("notice_period_days")
   probationPeriodDays       Int      @default(0) @map("probation_period_days")
   probationNoticeDays       Int      @default(0) @map("probation_notice_days")
   noticeBuyoutAllowed       Boolean  @default(false) @map("notice_buyout_allowed")
   buyoutCalculatingType     String?  @map("buyout_calculating_type")
   status                    Boolean  @default(true) 
-  createdById               String   @map("created_by_id")
-  updatedById               String?  @map("updated_by_id")
+  createdById               String   @map("created_by_id") @db.Uuid
+  updatedById               String?  @map("updated_by_id") @db.Uuid
   createdAt                 DateTime @default(now()) @map("created_at")
   updatedAt                 DateTime @updatedAt @map("updated_at")
 
