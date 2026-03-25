@@ -1,4 +1,6 @@
 import { Request, Response } from "express";
+import fs from "fs";
+import path from "path";
 import { prisma } from "@/config/database";
 import {
   AuthRequest,
@@ -982,6 +984,10 @@ export class TicketController {
    * Update ticket (tenant-aware)
    */
   static async updateTicket(req: AuthRequest, res: Response): Promise<void> {
+    const { id } = req.params;
+    const logFile = path.join(process.cwd(), 'debug_update_ticket.log');
+    const log = (msg: string) => fs.appendFileSync(logFile, `${new Date().toISOString()} - ${msg}\n`);
+
     try {
       if (!req.tenantId || !req.user) {
         res.status(400).json({
@@ -991,25 +997,33 @@ export class TicketController {
         return;
       }
 
-      const { id } = req.params;
       const updates = req.body;
+
+      log(`Updating ticket ${id}. Payload: ${JSON.stringify(updates)}`);
 
       // Map frontend field names to backend field names (like in createTicket)
       const mappedUpdates: any = { ...updates };
 
-      // Map field names
+      // 1. Map relational/special fields
       if (updates.project) {
-        mappedUpdates.projectId = updates.project;
+        mappedUpdates.projectId = typeof updates.project === 'object' ? updates.project.id : updates.project;
         delete mappedUpdates.project;
       }
+
       if (updates.assignee !== undefined) {
-        console.log('Update Assignee Debug:', { val: updates.assignee, type: typeof updates.assignee, isNull: updates.assignee === null });
-        // Handle explicit null or empty string as unassigning
-        mappedUpdates.assigneeId = (updates.assignee === '' || updates.assignee === null) ? null : updates.assignee;
+        // Handle explicit null, empty string, or object ID
+        const val = updates.assignee;
+        mappedUpdates.assigneeId = (val === '' || val === null) 
+          ? null 
+          : (typeof val === 'object' ? val.id : val);
         delete mappedUpdates.assignee;
       }
+
       if (updates.reportTo !== undefined) {
-        mappedUpdates.reportToId = updates.reportTo;
+        const val = updates.reportTo;
+        mappedUpdates.reportToId = (val === '' || val === null) 
+          ? null 
+          : (typeof val === 'object' ? val.id : val);
         delete mappedUpdates.reportTo;
       }
 
@@ -1020,37 +1034,34 @@ export class TicketController {
       }
 
       // Handle releasePlan / sprint assignment smart mapping
-      if (updates.releasePlan !== undefined) {
-        const planId = updates.releasePlan;
+      if (updates.releasePlan !== undefined || updates.sprintPlan !== undefined) {
+        const planId = updates.releasePlan || updates.sprintPlan;
 
-        if (planId === null) {
-          // If null, we might be unassigning. 
-          // Ideally we should know WHICH plan to unassign, but legacy behavior implies releasePlanId.
-          // For Sprint assignment, frontend might send null to remove from sprint.
-          // We'll check if we can clarify, but for now let's assume if it's explicitly null, 
-          // we clear sprintPlanId if it was a sprint action, or we clear them all?
-          // Safer to just clear sprintPlanId if the intention was sprint?
-          // But let's look at TicketList. It supports Sprint Assignment.
-          // If we can't accept explicit fields, we default to clearing sprintPlanId 
-          // if the user is in Kanban active/backlog mode?
-          // Actually, let's just support direct field updates from frontend if possible, 
-          // but `updateTicketMutation` in frontend is generic.
-
-          // For now, let's clear sprintPlanId as that's the most common "remove" action in the new UI.
+        if (planId === null || planId === 'null' || planId === '') {
           mappedUpdates.sprintPlanId = null;
+          mappedUpdates.releasePlanId = null;
         } else if (typeof planId === 'string') {
-          const plan = await prisma.releasePlan.findUnique({ where: { id: planId } });
-          if (plan) {
-            if (plan.type === 'sprint_plan') {
-              mappedUpdates.sprintPlanId = planId;
-            } else if (plan.type === 'demo_plan') {
-              mappedUpdates.demoPlanId = planId;
-            } else {
-              mappedUpdates.releasePlanId = planId;
+          try {
+            const plan = await prisma.releasePlan.findUnique({ where: { id: planId } });
+            if (plan) {
+              if (plan.type === 'sprint_plan') {
+                mappedUpdates.sprintPlanId = planId;
+                // Important: clear releasePlanId if moving to a sprint
+                mappedUpdates.releasePlanId = null;
+              } else if (plan.type === 'demo_plan') {
+                mappedUpdates.demoPlanId = planId;
+              } else {
+                mappedUpdates.releasePlanId = planId;
+                mappedUpdates.sprintPlanId = null;
+              }
             }
+          } catch (e) {
+            console.error("[TicketController] Plan lookup failed:", e);
+            // Non-fatal, just don't set the ID
           }
         }
         delete mappedUpdates.releasePlan;
+        delete mappedUpdates.sprintPlan;
       }
 
       // Handle date conversions
@@ -1131,13 +1142,37 @@ export class TicketController {
         }
       }
 
+      // 2. Clear out non-scalar fields and read-only fields
+      const scalarFields = [
+        'title', 'description', 'status', 'priority', 'type', 
+        'platform', 'stack', 'taskLevel', 'storyPoint', 'estimateHours',
+        'assigneeId', 'reportToId', 'projectId', 'releasePlanId', 
+        'sprintPlanId', 'demoPlanId', 'bucketId', 'startDate', 'endDate', 
+        'dueDate', 'completedAt', 'tags', 'metadata', 'isArchived', 
+        'archivedAt', 'archivedById', 'epicId', 'parentId', 'rank'
+      ];
+
+      const dataToUpdate: any = {
+        updatedAt: new Date(),
+      };
+
+      scalarFields.forEach(field => {
+        if (mappedUpdates[field] !== undefined) {
+          // Type casting safety
+          let val = mappedUpdates[field];
+          if (field === 'storyPoint' && val !== null) val = parseInt(val, 10);
+          if (field === 'estimateHours' && val !== null) val = parseFloat(val);
+          
+          dataToUpdate[field] = val;
+        }
+      });
+
+      log(`Final data for Update: ${JSON.stringify(dataToUpdate)}`);
+
       // Actually update the ticket in database
       const ticket = await prisma.ticket.update({
         where: { id },
-        data: {
-          ...mappedUpdates,
-          updatedAt: new Date(),
-        },
+        data: dataToUpdate,
         select: {
           // Core fields
           id: true,
@@ -1239,6 +1274,7 @@ export class TicketController {
         message: "Ticket updated successfully",
       } as ApiResponse);
     } catch (error: any) {
+      log(`Update ticket error for ${id}: ${error.stack || error.message || error}`);
       console.error("Update ticket error:", error);
 
       if (error instanceof NotFoundError) {
@@ -1252,6 +1288,7 @@ export class TicketController {
       res.status(500).json({
         success: false,
         error: "Failed to update ticket",
+        details: error.message // Sending details temporarily for debugging
       } as ApiResponse);
     }
   }
