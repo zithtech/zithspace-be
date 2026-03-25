@@ -4,6 +4,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TicketController = void 0;
+const fs_1 = __importDefault(require("fs"));
+const path_1 = __importDefault(require("path"));
 const database_1 = require("@/config/database");
 const types_1 = require("@/types");
 const r2Client_1 = require("@/utils/r2Client");
@@ -858,6 +860,9 @@ class TicketController {
      * Update ticket (tenant-aware)
      */
     static async updateTicket(req, res) {
+        const { id } = req.params;
+        const logFile = path_1.default.join(process.cwd(), 'debug_update_ticket.log');
+        const log = (msg) => fs_1.default.appendFileSync(logFile, `${new Date().toISOString()} - ${msg}\n`);
         try {
             if (!req.tenantId || !req.user) {
                 res.status(400).json({
@@ -866,23 +871,28 @@ class TicketController {
                 });
                 return;
             }
-            const { id } = req.params;
             const updates = req.body;
+            log(`Updating ticket ${id}. Payload: ${JSON.stringify(updates)}`);
             // Map frontend field names to backend field names (like in createTicket)
             const mappedUpdates = { ...updates };
-            // Map field names
+            // 1. Map relational/special fields
             if (updates.project) {
-                mappedUpdates.projectId = updates.project;
+                mappedUpdates.projectId = typeof updates.project === 'object' ? updates.project.id : updates.project;
                 delete mappedUpdates.project;
             }
             if (updates.assignee !== undefined) {
-                console.log('Update Assignee Debug:', { val: updates.assignee, type: typeof updates.assignee, isNull: updates.assignee === null });
-                // Handle explicit null or empty string as unassigning
-                mappedUpdates.assigneeId = (updates.assignee === '' || updates.assignee === null) ? null : updates.assignee;
+                // Handle explicit null, empty string, or object ID
+                const val = updates.assignee;
+                mappedUpdates.assigneeId = (val === '' || val === null)
+                    ? null
+                    : (typeof val === 'object' ? val.id : val);
                 delete mappedUpdates.assignee;
             }
             if (updates.reportTo !== undefined) {
-                mappedUpdates.reportToId = updates.reportTo;
+                const val = updates.reportTo;
+                mappedUpdates.reportToId = (val === '' || val === null)
+                    ? null
+                    : (typeof val === 'object' ? val.id : val);
                 delete mappedUpdates.reportTo;
             }
             // Map taskType to type (frontend sends taskType, backend stores as type)
@@ -891,38 +901,37 @@ class TicketController {
                 delete mappedUpdates.taskType;
             }
             // Handle releasePlan / sprint assignment smart mapping
-            if (updates.releasePlan !== undefined) {
-                const planId = updates.releasePlan;
-                if (planId === null) {
-                    // If null, we might be unassigning. 
-                    // Ideally we should know WHICH plan to unassign, but legacy behavior implies releasePlanId.
-                    // For Sprint assignment, frontend might send null to remove from sprint.
-                    // We'll check if we can clarify, but for now let's assume if it's explicitly null, 
-                    // we clear sprintPlanId if it was a sprint action, or we clear them all?
-                    // Safer to just clear sprintPlanId if the intention was sprint?
-                    // But let's look at TicketList. It supports Sprint Assignment.
-                    // If we can't accept explicit fields, we default to clearing sprintPlanId 
-                    // if the user is in Kanban active/backlog mode?
-                    // Actually, let's just support direct field updates from frontend if possible, 
-                    // but `updateTicketMutation` in frontend is generic.
-                    // For now, let's clear sprintPlanId as that's the most common "remove" action in the new UI.
+            if (updates.releasePlan !== undefined || updates.sprintPlan !== undefined) {
+                const planId = updates.releasePlan || updates.sprintPlan;
+                if (planId === null || planId === 'null' || planId === '') {
                     mappedUpdates.sprintPlanId = null;
+                    mappedUpdates.releasePlanId = null;
                 }
                 else if (typeof planId === 'string') {
-                    const plan = await database_1.prisma.releasePlan.findUnique({ where: { id: planId } });
-                    if (plan) {
-                        if (plan.type === 'sprint_plan') {
-                            mappedUpdates.sprintPlanId = planId;
+                    try {
+                        const plan = await database_1.prisma.releasePlan.findUnique({ where: { id: planId } });
+                        if (plan) {
+                            if (plan.type === 'sprint_plan') {
+                                mappedUpdates.sprintPlanId = planId;
+                                // Important: clear releasePlanId if moving to a sprint
+                                mappedUpdates.releasePlanId = null;
+                            }
+                            else if (plan.type === 'demo_plan') {
+                                mappedUpdates.demoPlanId = planId;
+                            }
+                            else {
+                                mappedUpdates.releasePlanId = planId;
+                                mappedUpdates.sprintPlanId = null;
+                            }
                         }
-                        else if (plan.type === 'demo_plan') {
-                            mappedUpdates.demoPlanId = planId;
-                        }
-                        else {
-                            mappedUpdates.releasePlanId = planId;
-                        }
+                    }
+                    catch (e) {
+                        console.error("[TicketController] Plan lookup failed:", e);
+                        // Non-fatal, just don't set the ID
                     }
                 }
                 delete mappedUpdates.releasePlan;
+                delete mappedUpdates.sprintPlan;
             }
             // Handle date conversions
             if (mappedUpdates.startDate &&
@@ -982,13 +991,34 @@ class TicketController {
                     throw new types_1.ValidationError(error.message || "Invalid description content");
                 }
             }
+            // 2. Clear out non-scalar fields and read-only fields
+            const scalarFields = [
+                'title', 'description', 'status', 'priority', 'type',
+                'platform', 'stack', 'taskLevel', 'storyPoint', 'estimateHours',
+                'assigneeId', 'reportToId', 'projectId', 'releasePlanId',
+                'sprintPlanId', 'demoPlanId', 'bucketId', 'startDate', 'endDate',
+                'dueDate', 'completedAt', 'tags', 'metadata', 'isArchived',
+                'archivedAt', 'archivedById', 'epicId', 'parentId', 'rank'
+            ];
+            const dataToUpdate = {
+                updatedAt: new Date(),
+            };
+            scalarFields.forEach(field => {
+                if (mappedUpdates[field] !== undefined) {
+                    // Type casting safety
+                    let val = mappedUpdates[field];
+                    if (field === 'storyPoint' && val !== null)
+                        val = parseInt(val, 10);
+                    if (field === 'estimateHours' && val !== null)
+                        val = parseFloat(val);
+                    dataToUpdate[field] = val;
+                }
+            });
+            log(`Final data for Update: ${JSON.stringify(dataToUpdate)}`);
             // Actually update the ticket in database
             const ticket = await database_1.prisma.ticket.update({
                 where: { id },
-                data: {
-                    ...mappedUpdates,
-                    updatedAt: new Date(),
-                },
+                data: dataToUpdate,
                 select: {
                     // Core fields
                     id: true,
@@ -1082,6 +1112,7 @@ class TicketController {
             });
         }
         catch (error) {
+            log(`Update ticket error for ${id}: ${error.stack || error.message || error}`);
             console.error("Update ticket error:", error);
             if (error instanceof types_1.NotFoundError) {
                 res.status(404).json({
@@ -1093,6 +1124,7 @@ class TicketController {
             res.status(500).json({
                 success: false,
                 error: "Failed to update ticket",
+                details: error.message // Sending details temporarily for debugging
             });
         }
     }

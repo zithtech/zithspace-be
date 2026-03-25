@@ -518,6 +518,9 @@ export class DocumentHubController {
           createdBy: {
             select: { id: true, name: true, workEmail: true },
           },
+          treeNodes: {
+            select: { id: true, type: true },
+          },
         },
         orderBy: {
           createdAt: "desc",
