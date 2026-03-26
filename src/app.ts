@@ -60,7 +60,7 @@ import recruitmentClientRoutes from "@/routes/recruitmentClient";
 import vendorRoutes from "@/routes/vendor";
 
 import timesheetRoutes from "@/routes/timesheet";
-import timeTrackingRoutes from "@/routes/timeTracking";
+import timeTrackingRoutes from "./routes/timeTracking";
 
 import companyGovernmentHolidayRouter from "@/routes/companyGovernmentHoliday.routes";
 import leaveAdjustmentRoutes from "./routes/leaveAdjustmentRoutes";
@@ -202,6 +202,7 @@ app.use("/api/fixed-holidays", fixedHolidayRoutes);
 app.get("/api/direct-test", (req, res) => {
   res.json({ success: true, message: "Direct app.get works" });
 });
+app.get("/api/debug-ping-unique", (req, res) => res.json({ success: true, message: "Debug route is active" }));
 app.use("/api/auth", authRoutes);
 app.use("/api/tenants", tenantRoutes);
 app.use("/api/calendar", calendarRoutes);
