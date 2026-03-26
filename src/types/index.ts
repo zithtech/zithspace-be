@@ -282,6 +282,7 @@ export interface LoginResponse {
     position: string | null;
     tenantId: string;
     tenantName: string;
+    tenantLogo: string | null;
     isActive: boolean;
   };
   message: string;
