@@ -72,6 +72,11 @@ router.get('/profile', tenantRateLimit, tenantContext_1.resolveTenant, auth_1.au
  */
 router.put('/profile', tenantRateLimit, tenantContext_1.resolveTenant, auth_1.authenticateToken, (0, permission_1.requirePermission)(permissions_1.Permissions.SETTINGS_UPDATE), tenantController_1.TenantController.updateProfile);
 /**
+ * DELETE /api/tenants/logo-version
+ * Delete a specific logo version
+ */
+router.delete('/logo-version', tenantRateLimit, tenantContext_1.resolveTenant, auth_1.authenticateToken, (0, permission_1.requirePermission)(permissions_1.Permissions.SETTINGS_UPDATE), tenantController_1.TenantController.deleteLogoVersion);
+/**
  * GET /api/tenants/statistics
  * Get detailed tenant statistics
  * Requires tenant context, authentication, and admin role

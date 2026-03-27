@@ -4337,10 +4337,7 @@ enum ApproverStatus {
   @@map("approver_status")
 }
 
-enum AddressType {
-  CURRENT
-  PERMANENT
-}
+
 
 enum DeductionType {
   BASIC_PERCENT
