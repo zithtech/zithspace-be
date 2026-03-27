@@ -4054,7 +4054,7 @@ model ExitApprovalWorkflow {
   @@map("exit_approval_workflows")
 }
 
-model EmployeeExit {
+model EmployeeExit {  
   id                    String    @id @default(uuid())
   tenantId              String    @map("tenant_id")
   employeeId            String    @map("employee_id") @db.Uuid

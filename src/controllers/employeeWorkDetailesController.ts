@@ -89,7 +89,7 @@ export class EmployeeWorkDetailController {
     res: Response,
   ): Promise<void> {
     try {
-      const { employeeId } = req.params;
+      const { employeeId: inputId } = req.params;
       const tenantId = req.headers["x-tenant-id"] as string;
 
       if (!tenantId) {
@@ -97,7 +97,40 @@ export class EmployeeWorkDetailController {
         return;
       }
 
-      // 1. Get work details with position and department
+      console.log(`[Autofill] Processing request for ID: ${inputId}`);
+
+      // 1. Try to find the User first (as the frontend often sends User.id)
+      const user = await prisma.user.findFirst({
+        where: { id: inputId },
+        include: {
+          position: {
+            include: {
+              department: true,
+            },
+          },
+          reportsTo: {
+            select: {
+              id: true,
+              name: true,
+              position: { select: { title: true } }
+            }
+          }
+        },
+      });
+
+      let employeeId = inputId;
+      let position = user?.position || null;
+      let reportingManagerId = user?.reportsToId || null;
+      let reportingManagerName = user?.reportsTo?.name || null;
+
+      if (user) {
+        console.log(`[Autofill] Found user: ${user.name}, linked employeeId: ${user.employeeId}`);
+        if (user.employeeId) {
+          employeeId = user.employeeId;
+        }
+      }
+
+      // 2. Get work details from EmployeeWorkDetail table
       const workDetail = await prisma.employeeWorkDetail.findFirst({
         where: { employeeId },
         include: {
@@ -109,55 +142,71 @@ export class EmployeeWorkDetailController {
         },
       });
 
-      if (!workDetail) {
-        res.status(404).json({
-          success: false,
-          error: "Work detail not found",
-        } as ApiResponse);
-        return;
+      // If user didn't have a position, take it from workDetails
+      if (!position && workDetail?.position) {
+        position = workDetail.position;
       }
 
-      // 2. Get reporting manager from employee_project_mappings
-      const projectMapping = await prisma.employeeProjectMapping.findFirst({
-        where: { employeeId },
-        orderBy: { createdAt: 'desc' }
-      });
-
-      let reportingManagerName = null;
-      if (projectMapping?.reportingManager) {
-        // Try to find the manager's name if it's an ID
-        const manager = await prisma.employee.findUnique({
-          where: { id: projectMapping.reportingManager },
-          select: { first_name: true, last_name: true }
+      // 3. Get reporting manager from employee_project_mappings as a fallback
+      if (!reportingManagerName) {
+        const projectMapping = await prisma.employeeProjectMapping.findFirst({
+          where: { employeeId },
+          orderBy: { createdAt: 'desc' }
         });
-        if (manager) {
-          reportingManagerName = `${manager.first_name} ${manager.last_name}`;
-        } else {
-          // Fallback to value if not found in employee table (maybe it's already a name)
-          reportingManagerName = projectMapping.reportingManager;
+
+        if (projectMapping?.reportingManager) {
+          reportingManagerId = projectMapping.reportingManager;
+          // Try to find the manager's name (check User first, then Employee)
+          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectMapping.reportingManager);
+          
+          if (isUuid) {
+            // Check User table first
+            const userManager = await prisma.user.findUnique({
+              where: { id: projectMapping.reportingManager },
+              select: { name: true }
+            });
+            
+            if (userManager) {
+              reportingManagerName = userManager.name;
+            } else {
+              // Fallback to Employee table
+              const empManager = await prisma.employee.findUnique({
+                where: { id: projectMapping.reportingManager },
+                select: { first_name: true, last_name: true }
+              });
+              if (empManager) {
+                reportingManagerName = `${empManager.first_name} ${empManager.last_name}`;
+              }
+            }
+          } else {
+            reportingManagerName = projectMapping.reportingManager;
+          }
         }
       }
 
-      // 3. Get Notice Period from ExitNoticePolicy
-      // Logic: Match positionId or gradeId
+      // 4. Get Notice Period from ExitNoticePolicy
       const noticePolicy = await prisma.exitNoticePolicy.findFirst({
         where: {
           tenantId,
           OR: [
-            { levelType: 'Positions', levelId: workDetail.positionId },
-            { levelType: 'Grades', levelId: workDetail.position?.gradeId || '' }
+            { levelType: 'Positions', levelId: position?.id || '' },
+            { levelType: 'Grades', levelId: position?.gradeId || '' }
           ],
-          // status: true
         }
       });
 
+      // Construct the unified response
       res.status(200).json({
         success: true,
         data: {
-          ...workDetail,
-          reportingManagerId: projectMapping?.reportingManager || null,
+          ...(workDetail || {}),
+          employeeId: employeeId,
+          positionId: position?.id || null,
+          position: position,
+          department: position?.department || null,
+          departmentId: position?.department?.id || null,
+          reportingManagerId: reportingManagerId,
           reportingManagerName: reportingManagerName,
-          department: workDetail.position?.department || null,
           noticePeriodDays: noticePolicy?.noticePeriodDays || 0
         },
       } as ApiResponse);
