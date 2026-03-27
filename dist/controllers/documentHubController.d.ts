@@ -12,4 +12,34 @@ export declare class DocumentHubController {
     static updateDocument(req: AuthRequest, res: Response): Promise<void>;
     static getDocumentHistory(req: AuthRequest, res: Response): Promise<void>;
     static getAllDocumentHubs(req: AuthRequest, res: Response): Promise<void>;
+    static deleteDocumentHub(req: AuthRequest, res: Response): Promise<void>;
+    static deleteTreeNode(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Delete individual document (soft delete)
+     */
+    static deleteDocument(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get trash items (hubs and documents)
+     */
+    static getTrash(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Restore document hub
+     */
+    static restoreDocumentHub(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Restore document
+     */
+    static restoreDocument(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Share document (update visibility and share token)
+     */
+    static shareDocument(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Revoke sharing (set to private)
+     */
+    static revokeShare(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get public document by share token
+     */
+    static getPublicDocument(req: any, res: Response): Promise<void>;
 }
