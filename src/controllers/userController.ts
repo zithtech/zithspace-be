@@ -653,6 +653,12 @@ export class UserController {
           lastLoginAt: true,
           createdAt: true,
           updatedAt: true,
+          employeeId: true,
+          employee: {
+            select: {
+              employee_code: true,
+            },
+          },
           reportsTo: {
             select: {
               id: true,

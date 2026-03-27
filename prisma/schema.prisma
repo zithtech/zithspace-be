@@ -2407,7 +2407,7 @@ model EmployeeProjectMapping {
   id String @id @default(uuid()) @db.Uuid
 
   employeeId       String  @map("employee_id") @db.Uuid
-  reportingManager String? @map("reporting_manager") @db.VarChar(50)
+  reportingManager String? @map("reporting_manager") @db.Text
   createdById      String? @map("created_by_id") @db.Uuid
   updatedById      String? @map("updated_by_id") @db.Uuid
 
@@ -3019,7 +3019,7 @@ model EmployeeClientAllocationV2 {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employee Employee? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   client   ClientV2 @relation(fields: [clientId], references: [id], onDelete: Cascade)
   project  Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
@@ -4065,7 +4065,7 @@ model EmployeeExit {
   exitReasonId          String?   @map("exit_reason_id")
   resignationDate       DateTime  @map("resignation_date")
   proposedLastWorkingDay DateTime @map("proposed_last_working_day")
-  noticePeriodDay       DateTime  @map("notice_period_day")
+  noticePeriodDay       DateTime?  @map("notice_period_day")
   waiveNoticePeriod     Boolean   @default(false) @map("waive_notice_period")
   buyoutRequired        Boolean   @default(false) @map("buyout_required")
   buyoutAmount          Decimal?  @map("buyout_amount") @db.Decimal(10, 2)

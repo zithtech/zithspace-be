@@ -140,7 +140,7 @@ export class AuthController {
           workEmail: user.workEmail,
           personalEmail: user.personalEmail,
           role: user.role as any,
-          position: user.position?.title || null,
+          position: user.position ? { id: user.position.id, title: user.position.title } : null as any,
           tenantId: user.tenantId,
           tenantName: user.tenant.name,
           tenantLogo: (user.tenant.settings as any)?.logoUrl || null,

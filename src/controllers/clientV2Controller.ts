@@ -27,7 +27,7 @@ async function generateClientCode(tenantId: string, idPrefix = 'CL-') {
  * Utility to map an Employee ID to a User ID for foreign key relations
  * @throws Error 'UserAccountNotFound' if no user is linked to the employee
  */
-async function getUserIdFromEmployeeId(prisma: any, employeeId: string, tenantId: string): Promise<string> {
+async function getUserIdFromEmployeeId(prisma: any, employeeId: string, tenantId: string, fallbackUserId?: string): Promise<string> {
     // 1. Try direct link in User table
     const userByEmployeeId = await prisma.user.findFirst({
         where: { employeeId, tenantId }
@@ -41,7 +41,13 @@ async function getUserIdFromEmployeeId(prisma: any, employeeId: string, tenantId
 
     if (employee) {
         const userByEmail = await prisma.user.findFirst({
-            where: { workEmail: employee.work_email, tenantId }
+            where: { 
+                OR: [
+                    { workEmail: employee.work_email },
+                    { personalEmail: employee.personal_email || undefined }
+                ],
+                tenantId 
+            }
         });
         if (userByEmail) return userByEmail.id;
     }
@@ -51,6 +57,9 @@ async function getUserIdFromEmployeeId(prisma: any, employeeId: string, tenantId
         where: { id: employeeId }
     });
     if (isAlreadyUser) return isAlreadyUser.id;
+
+    // 4. Final Fallback: Use provided fallback ID or throw if absolutely necessary
+    if (fallbackUserId) return fallbackUserId;
 
     throw new Error('UserAccountNotFound');
 }
@@ -134,7 +143,10 @@ export class ClientV2Controller {
                         contacts: true,
                         documents: true,
                         allocations: {
-                            include: { employee: { select: { id: true, first_name: true, last_name: true } } }
+                            include: { 
+                                employee: { select: { id: true, first_name: true, last_name: true } },
+                                project: { select: { id: true, name: true } }
+                            }
                         }
                     }
                 });
@@ -144,8 +156,15 @@ export class ClientV2Controller {
                 res.status(404).json({ success: false, error: 'Client not found' } as ApiResponse);
                 return;
             }
+
+            // Filter out allocations where employee is missing if prisma generate hasn't updated yet
+            if (client.allocations) {
+                client.allocations = client.allocations.filter((a: any) => a.employee !== null);
+            }
+
             res.status(200).json({ success: true, data: client } as ApiResponse);
         } catch (error) {
+            console.error('getClientById error:', error);
             res.status(500).json({ success: false, error: 'Failed to fetch client' } as ApiResponse);
         }
     }
@@ -184,18 +203,53 @@ export class ClientV2Controller {
 
     static async updateClient(req: AuthRequest, res: Response): Promise<void> {
         try {
-            if (!req.tenantId || !req.user) return;
-            const { id } = req.params;
-            const updates = req.body as UpdateClientV2Data;
-
-            // Sanitize numeric fields to prevent Prisma Decimal parsing errors on strings like "N/A"
-            if ('contractValue' in updates) {
-                const cv = updates.contractValue as any;
-                updates.contractValue = (cv && !isNaN(Number(cv))) ? Number(cv) : null;
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({ success: false, error: 'Tenant context and authentication required' } as ApiResponse);
+                return;
             }
-            if ('creditLimit' in updates) {
-                const cl = updates.creditLimit as any;
-                updates.creditLimit = (cl && !isNaN(Number(cl))) ? Number(cl) : null;
+            
+            const { id } = req.params;
+            const body = req.body;
+
+            // Define allowed fields for ClientV2 to sanitize input
+            const allowedFields = [
+                'companyName', 'clientType', 'legalName', 'parentId', 'companySize', 'industry',
+                'contractValue', 'yearOfIncorporation', 'duration', 'gstVatTaxId', 'registrationNumber',
+                'country', 'website', 'defaultCurrency', 'billingAddress', 'riskLevel', 'status', 'pan',
+                'vatNumber', 'dunsNumber', 'msmeRegistration', 'paymentTerms', 'creditLimit',
+                'billingContactEmail', 'accountsPayableName', 'tdsApplicable', 'reverseCharge',
+                'accountManagerId', 'salesOwnerId', 'deliveryOwnerId', 'clientSegment',
+                'contractStartDate', 'contractEndDate', 'renewalType', 'slaLevel', 'bankName',
+                'bankAccountNumber', 'ifscSwift', 'currencyOfPayment', 'preferredPaymentMode', 'isActive'
+            ];
+
+            const updates: any = {};
+            for (const key of allowedFields) {
+                if (key in body) {
+                    let value = body[key];
+                    
+                    // Sanitize numeric fields
+                    if (['contractValue', 'creditLimit'].includes(key)) {
+                        value = (value !== null && value !== '' && !isNaN(Number(value))) ? Number(value) : null;
+                    }
+                    
+                    // Sanitize date fields
+                    if (['contractStartDate', 'contractEndDate'].includes(key)) {
+                        value = (value && value !== '') ? new Date(value) : null;
+                    }
+
+                    // Sanitize boolean fields
+                    if (['tdsApplicable', 'reverseCharge', 'isActive'].includes(key)) {
+                        value = value === true || value === 'true';
+                    }
+
+                    updates[key] = value;
+                }
+            }
+
+            if (Object.keys(updates).length === 0) {
+                res.status(400).json({ success: false, error: 'No valid update fields provided' } as ApiResponse);
+                return;
             }
 
             await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
@@ -207,7 +261,7 @@ export class ClientV2Controller {
             });
         } catch (error: any) {
             console.error('Update ClientV2 error:', error);
-            res.status(500).json({ success: false, error: 'Failed to update client' } as ApiResponse);
+            res.status(500).json({ success: false, error: error.message || 'Failed to update client' } as ApiResponse);
         }
     }
 
@@ -406,7 +460,7 @@ export class ClientV2Controller {
             }
 
             const result = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
-                const actualProjectManagerId = await getUserIdFromEmployeeId(prisma, projectManagerId, req.tenantId!);
+                const actualProjectManagerId = await getUserIdFromEmployeeId(prisma, projectManagerId, req.tenantId!, req.user!.id);
 
                 // 1. Create the project in the global projects table
                 const project = await prisma.project.create({
@@ -470,7 +524,7 @@ export class ClientV2Controller {
             await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
                 let actualProjectManagerId = projectManagerId;
                 if (projectManagerId) {
-                    actualProjectManagerId = await getUserIdFromEmployeeId(prisma, projectManagerId, req.tenantId!);
+                    actualProjectManagerId = await getUserIdFromEmployeeId(prisma, projectManagerId, req.tenantId!, req.user!.id);
                 }
 
                 const updateData: any = {};
