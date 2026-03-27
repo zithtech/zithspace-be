@@ -36,12 +36,15 @@ model Tenant {
   departments           Department[]
   subDepartments        SubDepartment[]
   positions             Position[]
-  
+  salaryStructures SalaryStructure[]
   salaryComponents      SalaryComponent[]
   companies             Company[]
   holidays              CompanyGovernmentHoliday[]
   projects              Project[]
   releasePlans          ReleasePlan[]
+  salaryPayouts         SalaryPayout[]
+  salaryAdjustments     SalaryAdjustment[]
+  bankFiles               BankFile[]
   shortcuts             Shortcut[] 
 
   reimbursementCategories ReimbursementCategory[]
@@ -100,6 +103,8 @@ model Tenant {
 
   // RBAC
   roles Role[]
+  salaryAssignments EmployeeSalaryAssignment[]
+  salaryApprovalWorkflows SalaryApprovalWorkflow[]
   
   // Time Tracking
   timeTrackingEntries TimeTrackingEntry[]
@@ -132,7 +137,13 @@ model User {
   employeeId        String?   @map("employee_id") 
   employee          Employee? @relation(fields: [employeeId], references: [id])
   leaveAdjustments             LeaveAdjustment[]          @relation("UserLeaveAdjustments")
-
+  approvedSalaryPayouts     SalaryPayout[]             @relation("SalaryApprover")
+  salaryApprovalLogs        SalaryApprovalLog[]        @relation("ApprovalLogPerformer")
+  salaryApprovalSteps       SalaryApprovalStep[]       @relation("StepSpecificUser")
+  fallbackApprovalSteps     SalaryApprovalStep[]       @relation("StepFallbackUser")
+  createdBankFiles BankFile[] @relation("BankFileCreator")
+  sentBankFiles    BankFile[] @relation("BankFileSender")
+  paidSalaryPayouts SalaryPayout[] @relation("SalaryPayer")
 
   createdSalaryComponents SalaryComponent[] @relation("SalaryComponentCreator")
   updatedSalaryComponents SalaryComponent[] @relation("SalaryComponentUpdater")
@@ -1568,7 +1579,8 @@ model SalaryComponent {
   updatedAt   DateTime @updatedAt @map("updated_at")
   createdById String?  @map("created_by_id")
   updatedById String?  @map("updated_by_id")
-
+  structureComponents SalaryStructureComponent[]
+  assignments EmployeeSalaryAssignmentComponent[]
   // Relations
   tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   createdBy User?  @relation("SalaryComponentCreator", fields: [createdById], references: [id])
@@ -2203,6 +2215,7 @@ model Employee {
   contactsUpdated EmployeeContact[] @relation("EmployeeContactUpdatedBy")
 
   assets EmployeeAsset[] @relation("EmployeeAssets")
+  salaryPayouts SalaryPayout[]
 
   createdAssets EmployeeAsset[] @relation("EmployeeAssetCreatedBy")
 
@@ -2216,7 +2229,8 @@ model Employee {
   salesClients      ClientV2[]                   @relation("SalesOwner")
   deliveryClients   ClientV2[]                   @relation("DeliveryOwner")
   clientAllocations EmployeeClientAllocationV2[]
-
+  salaryAssignments EmployeeSalaryAssignment[]
+  salaryAdjustments     SalaryAdjustment[]
   @@map("employees")
 }
 
@@ -2300,7 +2314,7 @@ model EmployeeWorkDetail {
 
   employeeId String @map("employee_id") @db.Uuid
  
-  department     String   @db.VarChar(100)
+  department     String?  @db.VarChar(100)
   positionId     String?  @db.Uuid @map("position_id")   // ✅ ADD THIS
   team           String   @db.VarChar(100)
   employeeType   String   @db.VarChar(50)  @map("employee_type")
@@ -2756,6 +2770,7 @@ model Role {
   tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   rolePermissions RolePermission[]
   userRoles       UserRole[]
+  salaryApprovalSteps SalaryApprovalStep[]
 
   @@unique([tenantId, slug])
   @@index([tenantId])
@@ -3435,6 +3450,249 @@ model TimeTrackingLog {
   @@index([timeTrackingId])
   @@index([tenantId])
   @@map("time_tracking_logs")
+}
+
+enum CalculationType {
+  FIXED
+  PERCENTAGE
+  @@map("calculation_type")
+}
+
+enum PercentageBasis {
+  GROSS
+  BASIC
+  @@map("percentage_basis")
+}
+
+model SalaryStructure {
+  id            String   @id @default(uuid())
+  tenantId      String   @map("tenant_id")
+  name          String
+  employeeType  String?   @map("employee_type") // Full-time, Contract, Intern
+  grossSalary   Decimal?  @db.Decimal(12, 2) @map("gross_salary")
+  effectiveFrom DateTime? @map("effective_from")
+  description   String?
+  isActive      Boolean  @default(true) @map("is_active")
+  components    SalaryStructureComponent[]
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employeeAssignments EmployeeSalaryAssignment[]
+ 
+  @@map("salary_structures")
+}
+
+model SalaryStructureComponent {
+  id               String   @id @default(uuid())
+  structureId      String   @map("structure_id")
+  componentId      Int      @map("component_id") // ⚠️ change to Int (matches key)
+
+  calculationType  CalculationType @map("calculation_type") // ENUM
+  percentageBasis  PercentageBasis? @map("percentage_basis") // ENUM
+
+  value            Decimal  @db.Decimal(12, 2)
+
+  // 🔥 ADD THIS
+  calculatedAmount Decimal? @map("calculated_amount") @db.Decimal(12, 2)
+
+  // 🔥 ADD ORDER (for UI sorting)
+  displayOrder     Int?     @map("display_order")
+
+  structure SalaryStructure @relation(fields: [structureId], references: [id], onDelete: Cascade)
+  component SalaryComponent @relation(fields: [componentId], references: [key])
+
+  @@map("salary_structure_components")
+}
+
+model EmployeeSalaryAssignment {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  employeeId      String   @map("employee_id") @db.Uuid
+  structureId     String   @map("structure_id")
+  baseSalary      Decimal  @db.Decimal(12, 2) @map("base_salary")
+  salaryType      SalaryType @default(MONTHLY) @map("salary_type")
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  employee        Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  structure       SalaryStructure @relation(fields: [structureId], references: [id], onDelete: Cascade)
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  components      EmployeeSalaryAssignmentComponent[]
+
+  @@unique([employeeId, isActive])
+  @@map("employee_salary_assignments")
+}
+
+model EmployeeSalaryAssignmentComponent {
+  id               String   @id @default(uuid())
+  assignmentId     String   @map("assignment_id")
+  componentId      Int      @map("component_id")
+  
+  amount           Decimal  @db.Decimal(12, 2)
+  calculationType  CalculationType @map("calculation_type")
+  percentageBasis  PercentageBasis? @map("percentage_basis")
+  value            Decimal  @db.Decimal(12, 2) // Original template value
+
+  assignment       EmployeeSalaryAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  component        SalaryComponent @relation(fields: [componentId], references: [key])
+
+  @@map("employee_salary_assignment_components")
+}
+
+model SalaryPayout {
+  id                String   @id @default(uuid())
+  tenantId          String   @map("tenant_id")
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employeeId        String   @map("employee_id") @db.Uuid
+  employee          Employee @relation(fields: [employeeId], references: [id])
+  month             Int
+  year              Int
+  grossSalary       Decimal  @db.Decimal(12, 2) @map("gross_salary")
+  netSalary         Decimal  @db.Decimal(12, 2) @map("net_salary")
+  totalDeductions   Decimal  @db.Decimal(12, 2) @map("total_deductions")
+  lopDays           Decimal  @db.Decimal(10, 2) @map("lop_days")
+  lopDeduction      Decimal  @db.Decimal(12, 2) @map("lop_deduction")
+  workedDays        Int      @map("worked_days")
+  status            String   @default("DRAFT") // DRAFT, PENDING, APPROVED, REJECTED, PAID
+  currentStep       Int      @default(0)       @map("current_step")
+  workflowId        String?  @map("workflow_id")
+  workflow          SalaryApprovalWorkflow? @relation(fields: [workflowId], references: [id])
+  
+  approvedAt        DateTime? @map("approved_at")
+  approvedById      String?  @map("approved_by_id")
+  approvedBy        User?    @relation("SalaryApprover", fields: [approvedById], references: [id])
+  
+  paidAt            DateTime? @map("paid_at")
+  paidById          String?   @map("paid_by_id")
+  paidBy            User?     @relation("SalaryPayer", fields: [paidById], references: [id])
+  
+  components        Json?    // Store the snapshot of breakdown components
+  adjustments       Json?    // Store the snapshot of salary adjustments
+
+  approvalLogs      SalaryApprovalLog[]
+
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@unique([employeeId, month, year])
+  @@map("salary_payouts")
+}
+
+// Approval Workflow Definition
+model SalaryApprovalWorkflow {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String   // e.g., "Default Approval Flow"
+  description String?
+  version     Int      @default(1)
+  isActive    Boolean  @default(true) @map("is_active")
+  isDeleted   Boolean  @default(false) @map("is_deleted")
+  
+  steps       SalaryApprovalStep[]
+  payouts     SalaryPayout[]
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("salary_approval_workflows")
+}
+
+enum ApproverType {
+  MANAGER
+  ROLE
+  SPECIFIC_USER
+
+  @@map("approver_type")
+}
+
+model SalaryApprovalStep {
+  id            String   @id @default(uuid())
+  workflowId    String   @map("workflow_id")
+  stepOrder     Int      @map("step_order")
+  approverType  ApproverType @map("approver_type")
+  roleId        String?  @map("role_id")
+  specificUserId String? @map("specific_user_id")
+  fallbackUserId String? @map("fallback_user_id") // If MANAGER not found
+
+  role          Role? @relation(fields: [roleId], references: [id])
+  specificUser  User? @relation("StepSpecificUser", fields: [specificUserId], references: [id])
+  fallbackUser  User? @relation("StepFallbackUser", fields: [fallbackUserId], references: [id])
+  workflow      SalaryApprovalWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@unique([workflowId, stepOrder])
+  @@map("salary_approval_steps")
+}
+
+model SalaryApprovalLog {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  salaryPayoutId  String   @map("salary_payout_id")
+  stepNumber      Int      @map("step_number")
+  action          String   // e.g., "SUBMITTED", "APPROVED", "REJECTED"
+  performedById   String   @map("performed_by_id")
+  remarks         String?  @db.Text
+  
+  salaryPayout    SalaryPayout @relation(fields: [salaryPayoutId], references: [id], onDelete: Cascade)
+  performedBy     User         @relation("ApprovalLogPerformer", fields: [performedById], references: [id])
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  @@map("salary_approval_logs")
+}
+
+enum SalaryType {
+  MONTHLY
+  YEARLY
+
+  @@map("salary_type")
+}
+
+model SalaryAdjustment {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employeeId  String   @map("employee_id") @db.Uuid
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  month       Int
+  year        Int
+  type        ComponentType   // EARNING or DEDUCTION
+  label       String   
+  amount      Decimal  @db.Decimal(12, 2)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("salary_adjustments")
+}
+
+
+model BankFile {
+  id            String   @id @default(uuid())
+  tenantId      String   @map("tenant_id")
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  month         Int
+  year          Int
+  fileUrl       String   @map("file_url")
+  fileName      String   @map("file_name")
+  
+  employeeCount Int      @map("employee_count")
+  totalAmount   Decimal  @db.Decimal(15, 2) @map("total_amount")
+  
+  status        String   @default("GENERATED") // GENERATED, SENT
+  
+  sentAt        DateTime? @map("sent_at")
+  sentBy        String?   @map("sent_by") // User ID
+  
+  createdAt     DateTime @default(now()) @map("created_at")
+  createdById   String   @map("created_by_id")
+  
+  createdBy     User     @relation("BankFileCreator", fields: [createdById], references: [id])
+  sender        User?    @relation("BankFileSender", fields: [sentBy], references: [id])
+
+  @@map("bank_disbursement_files")
 }
 
 model UserPreference {

@@ -102,6 +102,7 @@ export const Permissions = {
 
   // ─── Salary / Payroll ────────────────────────────────────────────
   SALARY_READ:   'salary.read',
+  SALARY_APPROVE: 'salary.approve',
   SALARY_MANAGE: 'salary.manage',
 
   // ─── Documents ───────────────────────────────────────────────────
@@ -154,7 +155,7 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
   role:         [Permissions.ROLE_CREATE, Permissions.ROLE_READ, Permissions.ROLE_UPDATE, Permissions.ROLE_DELETE, Permissions.ROLE_ASSIGN],
   report:       [Permissions.REPORT_READ, Permissions.REPORT_MANAGE],
   reimbursement:[Permissions.REIMBURSEMENT_CREATE, Permissions.REIMBURSEMENT_READ, Permissions.REIMBURSEMENT_UPDATE, Permissions.REIMBURSEMENT_APPROVE, Permissions.REIMBURSEMENT_MANAGE],
-  salary:       [Permissions.SALARY_READ, Permissions.SALARY_MANAGE],
+  salary:       [Permissions.SALARY_READ, Permissions.SALARY_APPROVE, Permissions.SALARY_MANAGE],
   document:     [Permissions.DOCUMENT_CREATE, Permissions.DOCUMENT_READ, Permissions.DOCUMENT_UPDATE, Permissions.DOCUMENT_DELETE, Permissions.DOCUMENT_MANAGE],
   onboarding:   [Permissions.ONBOARDING_CREATE, Permissions.ONBOARDING_READ, Permissions.ONBOARDING_UPDATE, Permissions.ONBOARDING_MANAGE],
   timesheet:    [Permissions.TIMESHEET_CREATE, Permissions.TIMESHEET_READ, Permissions.TIMESHEET_UPDATE, Permissions.TIMESHEET_APPROVE, Permissions.TIMESHEET_MANAGE],
