@@ -21,6 +21,7 @@ const gradeRoutes_1 = __importDefault(require("@/routes/gradeRoutes"));
 const companyRoutes_1 = __importDefault(require("./routes/companyRoutes"));
 const auth_1 = __importDefault(require("@/routes/auth"));
 const tenants_1 = __importDefault(require("@/routes/tenants"));
+const projects_1 = __importDefault(require("@/routes/projects"));
 const squad_1 = __importDefault(require("@/routes/squad"));
 const tickets_1 = __importDefault(require("@/routes/tickets"));
 const jobRequisition_routes_1 = __importDefault(require("./routes/jobRequisition.routes"));
@@ -179,6 +180,7 @@ app.get("/api/direct-test", (req, res) => {
 });
 app.get("/api/debug-ping-unique", (req, res) => res.json({ success: true, message: "Debug route is active" }));
 app.use("/api/auth", auth_1.default);
+app.use("/api/projects", projects_1.default);
 app.use("/api/tenants", tenants_1.default);
 app.use("/api/calendar", calendar_1.default);
 app.use("/api/squads", squad_1.default);
