@@ -7,6 +7,7 @@ import {
   ValidationError,
 } from "@/types";
 import { socketService } from "@/services/socketService";
+import crypto from "crypto";
 
 export class DocumentHubController {
   /**
@@ -166,9 +167,11 @@ export class DocumentHubController {
         where: {
           id,
           tenantId: req.tenantId,
+          isDeleted: false,
         },
         include: {
           treeNodes: {
+            where: { isDeleted: false },
             orderBy: {
               position: "asc",
             },
@@ -232,6 +235,7 @@ export class DocumentHubController {
           tenantId: req.tenantId,
           documentHubId,
           parentId: parentId || null,
+          isDeleted: false,
         },
         orderBy: {
           position: "desc",
@@ -308,6 +312,7 @@ export class DocumentHubController {
         where: {
           id,
           tenantId: req.tenantId,
+          isDeleted: false,
         },
       });
 
@@ -361,6 +366,7 @@ export class DocumentHubController {
         where: {
           id,
           tenantId: req.tenantId,
+          isDeleted: false,
         },
       });
 
@@ -402,6 +408,7 @@ export class DocumentHubController {
         where: {
           id,
           tenantId: req.tenantId,
+          isDeleted: false,
         },
       });
 
@@ -466,6 +473,7 @@ export class DocumentHubController {
         where: {
           documentId: id,
           tenantId: req.tenantId,
+          document: { isDeleted: false },
         },
         include: {
           createdBy: {
@@ -507,6 +515,7 @@ export class DocumentHubController {
       const documentHubs = await prisma.documentHub.findMany({
         where: {
           tenantId: req.tenantId,
+          isDeleted: false,
         },
         include: {
           project: {
@@ -519,6 +528,7 @@ export class DocumentHubController {
             select: { id: true, name: true, workEmail: true },
           },
           treeNodes: {
+            where: { isDeleted: false },
             select: { id: true, type: true },
           },
         },
@@ -536,6 +546,578 @@ export class DocumentHubController {
       res.status(500).json({
         success: false,
         error: "Failed to get all document hubs",
+      } as ApiResponse);
+    }
+  }
+
+  static async deleteDocumentHub(
+    req: AuthRequest,
+    res: Response,
+  ): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { id } = req.params;
+
+      const documentHub = await prisma.documentHub.findFirst({
+        where: {
+          id,
+          tenantId: req.tenantId,
+          isDeleted: false,
+        },
+      });
+
+      if (!documentHub) {
+        res.status(404).json({
+          success: false,
+          error: "Document Hub not found",
+        } as ApiResponse);
+        return;
+      }
+
+      await prisma.documentHub.update({
+        where: { id },
+        data: {
+          isDeleted: true,
+          deletedAt: new Date(),
+          deletedById: req.user.id,
+        },
+      });
+
+      // Emit socket event
+      socketService.emitToTenant(
+        req.tenantId,
+        "documenthub:deleted",
+        { id },
+      );
+
+      res.status(200).json({
+        success: true,
+        message: "Document Hub moved to trash",
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Delete document hub error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to delete document hub",
+      } as ApiResponse);
+    }
+  }
+
+  static async deleteTreeNode(
+    req: AuthRequest,
+    res: Response,
+  ): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { id } = req.params;
+
+      const node = await prisma.documentTree.findFirst({
+        where: {
+          id,
+          tenantId: req.tenantId,
+          isDeleted: false,
+        },
+      });
+
+      if (!node) {
+        res.status(404).json({
+          success: false,
+          error: "Node not found",
+        } as ApiResponse);
+        return;
+      }
+
+      // Soft delete the node
+      await prisma.documentTree.update({
+        where: { id },
+        data: {
+          isDeleted: true,
+          deletedAt: new Date(),
+          deletedById: req.user.id,
+        },
+      });
+
+      // If it's a file, also soft delete the associated document
+      if (node.type === "file" && node.documentId) {
+        await prisma.document.update({
+          where: { id: node.documentId },
+          data: {
+            isDeleted: true,
+            deletedAt: new Date(),
+            deletedById: req.user.id,
+          },
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        message: "Node moved to trash",
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Delete tree node error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to delete tree node",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Delete individual document (soft delete)
+   */
+  static async deleteDocument(
+    req: AuthRequest,
+    res: Response,
+  ): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { id } = req.params;
+
+      const document = await prisma.document.findFirst({
+        where: {
+          id,
+          tenantId: req.tenantId,
+          isDeleted: false,
+        },
+      });
+
+      if (!document) {
+        res.status(404).json({
+          success: false,
+          error: "Document not found",
+        } as ApiResponse);
+        return;
+      }
+
+      // Soft delete the document
+      await prisma.document.update({
+        where: { id },
+        data: {
+          isDeleted: true,
+          deletedAt: new Date(),
+          deletedById: req.user.id,
+        },
+      });
+
+      // Also soft delete associated tree node if it exists
+      await prisma.documentTree.updateMany({
+        where: {
+          documentId: id,
+          tenantId: req.tenantId,
+          isDeleted: false,
+        },
+        data: {
+          isDeleted: true,
+          deletedAt: new Date(),
+          deletedById: req.user.id,
+        },
+      });
+
+      res.status(200).json({
+        success: true,
+        message: "Document moved to trash",
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Delete document error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to delete document",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Get trash items (hubs and documents)
+   */
+  static async getTrash(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { type } = req.query;
+
+      let hubs: any[] = [];
+      let documents: any[] = [];
+
+      if (!type || type === "hub") {
+        hubs = await prisma.documentHub.findMany({
+          where: {
+            tenantId: req.tenantId,
+            isDeleted: true,
+          },
+          include: {
+            deletedBy: {
+              select: { id: true, name: true },
+            },
+          },
+          orderBy: {
+            deletedAt: "desc",
+          },
+        });
+      }
+
+      if (!type || type === "document") {
+        documents = await prisma.document.findMany({
+          where: {
+            tenantId: req.tenantId,
+            isDeleted: true,
+          },
+          include: {
+            deletedBy: {
+              select: { id: true, name: true },
+            },
+            documentHub: {
+              select: { id: true, name: true },
+            },
+          },
+          orderBy: {
+            deletedAt: "desc",
+          },
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        data: { hubs, documents },
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Get trash error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to get trash items",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Restore document hub
+   */
+  static async restoreDocumentHub(
+    req: AuthRequest,
+    res: Response,
+  ): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { id } = req.params;
+
+      const documentHub = await prisma.documentHub.findFirst({
+        where: {
+          id,
+          tenantId: req.tenantId,
+          isDeleted: true,
+        },
+      });
+
+      if (!documentHub) {
+        res.status(404).json({
+          success: false,
+          error: "Document Hub not found in trash",
+        } as ApiResponse);
+        return;
+      }
+
+      await prisma.documentHub.update({
+        where: { id },
+        data: {
+          isDeleted: false,
+          deletedAt: null,
+          deletedById: null,
+        },
+      });
+
+      res.status(200).json({
+        success: true,
+        message: "Document Hub restored successfully",
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Restore document hub error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to restore document hub",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Restore document
+   */
+  static async restoreDocument(
+    req: AuthRequest,
+    res: Response,
+  ): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { id } = req.params;
+
+      const document = await prisma.document.findFirst({
+        where: {
+          id,
+          tenantId: req.tenantId,
+          isDeleted: true,
+        },
+        include: {
+          documentHub: true
+        }
+      });
+
+      if (!document) {
+        res.status(404).json({
+          success: false,
+          error: "Document not found in trash",
+        } as ApiResponse);
+        return;
+      }
+
+      // If the parent hub is deleted, we might want to warn or prevent?
+      // For now, restore the document.
+      
+      await prisma.document.update({
+        where: { id },
+        data: {
+          isDeleted: false,
+          deletedAt: null,
+          deletedById: null,
+        },
+      });
+
+      // Also restore associated tree node if it exists
+      await prisma.documentTree.updateMany({
+        where: {
+          documentId: id,
+          tenantId: req.tenantId,
+          isDeleted: true,
+        },
+        data: {
+          isDeleted: false,
+          deletedAt: null,
+          deletedById: null,
+        },
+      });
+
+      res.status(200).json({
+        success: true,
+        message: "Document restored successfully",
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Restore document error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to restore document",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Share document (update visibility and share token)
+   */
+  static async shareDocument(
+    req: AuthRequest,
+    res: Response,
+  ): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { id } = req.params;
+      const { visibility } = req.body;
+
+      if (!['private', 'internal', 'public'].includes(visibility)) {
+        res.status(400).json({
+          success: false,
+          error: "Invalid visibility mode",
+        } as ApiResponse);
+        return;
+      }
+
+      const document = await prisma.document.findFirst({
+        where: {
+          id,
+          tenantId: req.tenantId,
+          isDeleted: false,
+        },
+      });
+
+      if (!document) {
+        res.status(404).json({
+          success: false,
+          error: "Document not found",
+        } as ApiResponse);
+        return;
+      }
+
+      let shareToken = (document as any).shareToken;
+
+      // Generate token if public and doesn't have one
+      if (visibility === 'public') {
+        if (!shareToken) {
+          shareToken = crypto.randomBytes(32).toString('hex');
+        }
+      } else {
+        shareToken = null;
+      }
+
+      const updatedDocument = await prisma.document.update({
+        where: { id },
+        data: {
+          visibility,
+          shareToken,
+        },
+      });
+
+      res.status(200).json({
+        success: true,
+        data: updatedDocument,
+        message: `Document visibility updated to ${visibility}`,
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Share document error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to update sharing settings",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Revoke sharing (set to private)
+   */
+  static async revokeShare(
+    req: AuthRequest,
+    res: Response,
+  ): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { id } = req.params;
+
+      const document = await prisma.document.findFirst({
+        where: {
+          id,
+          tenantId: req.tenantId,
+          isDeleted: false,
+        },
+      });
+
+      if (!document) {
+        res.status(404).json({
+          success: false,
+          error: "Document not found",
+        } as ApiResponse);
+        return;
+      }
+
+      await prisma.document.update({
+        where: { id },
+        data: {
+          visibility: 'private',
+          shareToken: null,
+        },
+      });
+
+      res.status(200).json({
+        success: true,
+        message: "Document sharing revoked",
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Revoke share error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to revoke sharing",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Get public document by share token
+   */
+  static async getPublicDocument(req: any, res: Response): Promise<void> {
+    try {
+      const { token } = req.params;
+
+      const document = await prisma.document.findFirst({
+        where: {
+          shareToken: token,
+          visibility: 'public',
+          isDeleted: false,
+        },
+        include: {
+          documentHub: {
+            select: { name: true }
+          },
+          createdBy: {
+            select: { name: true }
+          }
+        }
+      });
+
+      if (!document) {
+        res.status(404).json({
+          success: false,
+          error: "Public document not found or access expired",
+        } as ApiResponse);
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        data: document,
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Get public document error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to fetch public document",
       } as ApiResponse);
     }
   }

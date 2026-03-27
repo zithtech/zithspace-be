@@ -56,6 +56,7 @@ const employeeTimeline_1 = __importDefault(require("@/routes/employeeTimeline"))
 const onboardingRoutes_1 = __importDefault(require("@/routes/onboardingRoutes"));
 const auth_2 = __importDefault(require("@/routes/auth"));
 const publicTickets_1 = __importDefault(require("@/routes/publicTickets"));
+const publicDocuments_1 = __importDefault(require("@/routes/publicDocuments"));
 const employeeSettingsRoutes_1 = __importDefault(require("@/routes/employeeSettingsRoutes"));
 const implementationPartner_1 = __importDefault(require("@/routes/implementationPartner"));
 const recruitmentClient_1 = __importDefault(require("@/routes/recruitmentClient"));
@@ -179,11 +180,12 @@ app.get("/api/direct-test", (req, res) => {
 });
 app.get("/api/debug-ping-unique", (req, res) => res.json({ success: true, message: "Debug route is active" }));
 app.use("/api/auth", auth_1.default);
+app.use("/api/projects", projects_1.default);
 app.use("/api/tenants", tenants_1.default);
 app.use("/api/calendar", calendar_1.default);
-app.use("/api/projects", projects_1.default);
 app.use("/api/squads", squad_1.default);
 app.use("/api/public/tickets", publicTickets_1.default);
+app.use("/api/public/document", publicDocuments_1.default);
 app.use("/api/tickets", tickets_1.default);
 app.use("/api/recruitment", jobRequisition_routes_1.default);
 app.use("/api/attendance", attendance_1.default);

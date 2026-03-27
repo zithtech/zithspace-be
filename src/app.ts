@@ -55,6 +55,7 @@ import employeeTimelineRoutes from "@/routes/employeeTimeline";
 import employeeOnboardingRoutes from "@/routes/onboardingRoutes";
 import newProfileRoutes from "@/routes/auth";
 import publicTicketRoutes from "@/routes/publicTickets";
+import publicDocumentRoutes from "@/routes/publicDocuments";
 import employeeSettingsRoutes from "@/routes/employeeSettingsRoutes";
 import implementationPartnerRoutes from "@/routes/implementationPartner";
 import recruitmentClientRoutes from "@/routes/recruitmentClient";
@@ -208,11 +209,12 @@ app.get("/api/debug-ping-unique", (req, res) => res.json({ success: true, messag
 
 app.use("/api", proxyRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/projects", projectRoutes);
 app.use("/api/tenants", tenantRoutes);
 app.use("/api/calendar", calendarRoutes);
-app.use("/api/projects", projectRoutes);
 app.use("/api/squads", squadRoutes);
 app.use("/api/public/tickets", publicTicketRoutes);
+app.use("/api/public/document", publicDocumentRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/recruitment", recruitmentRoutes);
 app.use("/api/attendance", attendanceRoutes);

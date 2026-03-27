@@ -10,8 +10,8 @@ export class NoticePolicyService {
     return await prisma.exitNoticePolicy.create({
       data: {
         ...data,
-        tenant: { connect: { id: tenantId } },
-        createdBy: { connect: { id: createdById } },
+        tenantId,
+        createdById,
       },
     });
   }
@@ -58,7 +58,7 @@ export class NoticePolicyService {
       },
       data: {
         ...data,
-        updatedBy: { connect: { id: updatedById } },
+        updatedById,
       },
     });
   }
