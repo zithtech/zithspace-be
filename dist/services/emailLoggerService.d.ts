@@ -58,8 +58,8 @@ export declare class EmailLoggerService {
             status: string;
             id: string;
             tenantId: string;
-            dueDate: string | null;
             metadata: import("@prisma/client/runtime/library").JsonValue | null;
+            dueDate: string | null;
             amount: string | null;
             currency: string | null;
             module: string;
@@ -120,8 +120,8 @@ export declare class EmailLoggerService {
         status: string;
         id: string;
         tenantId: string;
-        dueDate: string | null;
         metadata: import("@prisma/client/runtime/library").JsonValue | null;
+        dueDate: string | null;
         amount: string | null;
         currency: string | null;
         module: string;
@@ -174,8 +174,8 @@ export declare class EmailLoggerService {
         status: string;
         id: string;
         tenantId: string;
-        dueDate: string | null;
         metadata: import("@prisma/client/runtime/library").JsonValue | null;
+        dueDate: string | null;
         amount: string | null;
         currency: string | null;
         module: string;

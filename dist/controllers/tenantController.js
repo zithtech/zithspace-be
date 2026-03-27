@@ -8,6 +8,7 @@ const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const database_1 = require("@/config/database");
 const tenantLogger_1 = __importDefault(require("@/utils/tenantLogger"));
 const types_1 = require("@/types");
+const r2Client_1 = require("@/utils/r2Client");
 class TenantController {
     /**
      * Register a new tenant with admin user (public endpoint)
@@ -338,13 +339,41 @@ class TenantController {
                 });
                 return;
             }
-            const updateData = req.body;
+            const rawClient = database_1.tenantAwarePrisma.getRawClient();
+            const updateData = { ...req.body };
+            // Handle logo upload if provided
+            if (updateData.logo && typeof updateData.logo === 'string' && updateData.logo.startsWith('data:image')) {
+                try {
+                    const logoUrl = await (0, r2Client_1.uploadImageToR2)(updateData.logo, req.tenantId);
+                    // Get current settings to merge
+                    const currentTenant = await rawClient.tenant.findUnique({
+                        where: { id: req.tenantId },
+                        select: { settings: true }
+                    });
+                    const currentSettings = currentTenant?.settings || {};
+                    updateData.settings = {
+                        ...currentSettings,
+                        logoUrl
+                    };
+                    // Remove the base64 logo from updateData to prevent it from being stored elsewhere
+                    delete updateData.logo;
+                }
+                catch (uploadError) {
+                    console.error("Logo upload failed:", uploadError);
+                    // Continue with other updates even if logo fails, or return error?
+                    // For now, let's return error to be safe
+                    res.status(500).json({
+                        success: false,
+                        error: "Failed to upload company logo",
+                    });
+                    return;
+                }
+            }
             // Remove sensitive fields that shouldn't be updated directly
             delete updateData.id;
             delete updateData.subdomain; // Subdomain changes require special handling
             delete updateData.createdAt;
             delete updateData.updatedAt;
-            const rawClient = database_1.tenantAwarePrisma.getRawClient();
             const updatedTenant = await rawClient.tenant.update({
                 where: { id: req.tenantId },
                 data: updateData,

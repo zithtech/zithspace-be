@@ -1001,14 +1001,14 @@ class ProjectController {
                 {
                     value: project.projectManager.id,
                     label: project.projectManager.name,
-                    position: project.projectManager.position,
+                    position: project.projectManager.position?.title || "N/A",
                     workEmail: project.projectManager.workEmail,
                     isProjectManager: true,
                 },
                 ...project.members.map((member) => ({
                     value: member.user.id,
                     label: member.user.name,
-                    position: member.user.position,
+                    position: member.user.position?.title || "N/A",
                     workEmail: member.user.workEmail,
                     isProjectManager: false,
                 })),
