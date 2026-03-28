@@ -51,15 +51,15 @@ export declare class EmailLoggerService {
                 email: string;
             };
             sentByUserRel: {
-                name: string;
                 id: string;
+                name: string;
             };
         } & {
             status: string;
-            tenantId: string;
             id: string;
-            dueDate: string | null;
+            tenantId: string;
             metadata: import("@prisma/client/runtime/library").JsonValue | null;
+            dueDate: string | null;
             amount: string | null;
             currency: string | null;
             module: string;
@@ -99,29 +99,29 @@ export declare class EmailLoggerService {
             companyName: string;
             country: string | null;
             pan: string | null;
+            city: string | null;
+            id: string;
             tenantId: string;
             createdAt: Date;
             updatedAt: Date;
             createdBy: string;
             updatedBy: string | null;
-            id: string;
             email: string | null;
             phone: string | null;
-            city: string | null;
             address: string | null;
             taxId: string | null;
             gstin: string | null;
         };
         sentByUserRel: {
-            name: string;
             id: string;
+            name: string;
         };
     } & {
         status: string;
-        tenantId: string;
         id: string;
-        dueDate: string | null;
+        tenantId: string;
         metadata: import("@prisma/client/runtime/library").JsonValue | null;
+        dueDate: string | null;
         amount: string | null;
         currency: string | null;
         module: string;
@@ -172,10 +172,10 @@ export declare class EmailLoggerService {
      */
     static updateStatus(id: string, tenantId: string, status: 'OPENED' | 'CLICKED', metadata?: any): Promise<{
         status: string;
-        tenantId: string;
         id: string;
-        dueDate: string | null;
+        tenantId: string;
         metadata: import("@prisma/client/runtime/library").JsonValue | null;
+        dueDate: string | null;
         amount: string | null;
         currency: string | null;
         module: string;

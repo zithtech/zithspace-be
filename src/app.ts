@@ -16,10 +16,10 @@ import salaryComponentRoutes from "@/routes/salaryComponentRoutes";
 import gradeRoutes from "@/routes/gradeRoutes";
 import companyRoutes from "./routes/companyRoutes";
 
-
 import authRoutes from "@/routes/auth";
 import tenantRoutes from "@/routes/tenants";
 import projectRoutes from "@/routes/projects";
+import squadRoutes from "@/routes/squad";
 import ticketRoutes from "@/routes/tickets";
 import recruitmentRoutes from "./routes/jobRequisition.routes";
 import attendanceRoutes from "@/routes/attendance";
@@ -54,10 +54,14 @@ import employeeTimelineRoutes from "@/routes/employeeTimeline";
 import employeeOnboardingRoutes from "@/routes/onboardingRoutes";
 import newProfileRoutes from "@/routes/auth";
 import publicTicketRoutes from "@/routes/publicTickets";
+import publicDocumentRoutes from "@/routes/publicDocuments";
 import employeeSettingsRoutes from "@/routes/employeeSettingsRoutes";
+import implementationPartnerRoutes from "@/routes/implementationPartner";
+import recruitmentClientRoutes from "@/routes/recruitmentClient";
+import vendorRoutes from "@/routes/vendor";
 
 import timesheetRoutes from "@/routes/timesheet";
-import timeTrackingRoutes from "@/routes/timeTracking";
+import timeTrackingRoutes from "./routes/timeTracking";
 
 import companyGovernmentHolidayRouter from "@/routes/companyGovernmentHoliday.routes";
 import leaveAdjustmentRoutes from "./routes/leaveAdjustmentRoutes";
@@ -68,7 +72,7 @@ import repositoryRoutes from "@/routes/repositoryRoutes";
 import departmentRoutes from "@/routes/departmentRoutes";
 import subDepartmentRoutes from "@/routes/subDepartmentRoutes";
 import positionRoutes from "@/routes/positionRoutes";
-import calendarRoutes from "@/routes/calendar"
+import calendarRoutes from "@/routes/calendar";
 import employeeExitRoutes from "@/routes/employeeExit.routes";
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
 import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
@@ -77,22 +81,27 @@ import leaveBalanceRoutes from "@/routes/leaveBalanceRoutes";
 import payrollRoutes from "@/routes/payroll";
 import reimbursementConfigurationRoutes from "@/routes/reimbursementConfig";
 import reimbursementsettingsRoutes from "@/routes/reimbursementsettingsRoutes";
-import reimbursementRoutes from "@/routes/reimbursementcreateRoutes"; 
+import reimbursementRoutes from "@/routes/reimbursementcreateRoutes";
 import rbacRoutes from "@/routes/rbac";
+import candidateFormRoutes from "@/routes/candidateForm.routes";
 import employeeAssetRoutes from "@/routes/employeeAssets.routes";
 import noticePolicyRoutes from "@/routes/noticePolicy.routes";
 import exitTypeRoutes from "@/routes/exitType.routes";
 import reasonForExitRoutes from "@/routes/reasonForExit.routes";
 import exitApprovalWorkflowRoutes from "@/routes/exitApprovalWorkflow.routes";
 
+import recruitmentStatusRoutes from "@/routes/recruitmentStatus.routes";
+import recruitmentActionRoutes from "@/routes/recruitmentAction.routes";
+import candidateRoutes from "@/routes/candidateRoutes";
 // Load environment
 dotenv.config();
 console.log("🚀 API Starting up...");
 console.log("📅 Mounting calendar routes at /api/calendar");
+console.log("🤖 DevBot deployment test — 2026-03-22");
 // Create Express application
 const app = express();
 
-// CORS must be first — before any other middleware — so headers are set on all responses
+
 const allowedOrigins = [
   "http://localhost:3000", // Local development
   "http://localhost:3005", // Local development for internal app
@@ -194,11 +203,14 @@ app.use("/api/fixed-holidays", fixedHolidayRoutes);
 app.get("/api/direct-test", (req, res) => {
   res.json({ success: true, message: "Direct app.get works" });
 });
+app.get("/api/debug-ping-unique", (req, res) => res.json({ success: true, message: "Debug route is active" }));
 app.use("/api/auth", authRoutes);
+app.use("/api/projects", projectRoutes);
 app.use("/api/tenants", tenantRoutes);
 app.use("/api/calendar", calendarRoutes);
-app.use("/api/projects", projectRoutes);
+app.use("/api/squads", squadRoutes);
 app.use("/api/public/tickets", publicTicketRoutes);
+app.use("/api/public/document", publicDocumentRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/recruitment", recruitmentRoutes);
 app.use("/api/attendance", attendanceRoutes);
@@ -214,7 +226,7 @@ app.use("/api/daily-updates", dailyUpdateRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/leaves", leaveRoutes);
 // app.use("/api/reimbursement-category", reimbursement);
-app.use("/api/reimbursement-categories", reimbursement);  // plural form
+app.use("/api/reimbursement-categories", reimbursement); // plural form
 app.use("/api/repositories", repositoryRoutes);
 app.use("/api/leave-types", leaveTypeRoutes);
 app.use("/api/customers", customerRoutes);
@@ -244,8 +256,12 @@ app.use("/api/leave-allocation", leaveAllocationRoutes);
 app.use("/api/leave-request", leaveRequestRoutes);
 app.use("/api/leave-balances", leaveBalanceRoutes);
 
-
 app.use("/api/time-tracking", timeTrackingRoutes);
+
+app.use("/api/candidates", candidateRoutes);
+
+app.use("/api/recruitment-statuses", recruitmentStatusRoutes);
+app.use("/api/recruitment-actions", recruitmentActionRoutes);
 
 app.use("/api/employee-work-details", employeeWorkDetailRoutes);
 app.use("/api/employee-timelines", employeeTimelineRoutes);
@@ -267,8 +283,18 @@ app.use("/api/exit/request", employeeExitRoutes);
 
 // RBAC management API
 app.use("/api/rbac", rbacRoutes);
+
+// Candidate Form API
+app.use("/api/candidate-form", candidateFormRoutes);
 app.use("/api/employee-assets", employeeAssetRoutes);
 app.use("/api/shortcuts", shortcutRoutes);
+
+// Implementation Partner API
+app.use("/api/implementation-partner", implementationPartnerRoutes);
+
+// Recruitment Client API
+app.use("/api/recruitment-client", recruitmentClientRoutes);
+app.use("/api/vendor", vendorRoutes);
 
 // app.use("/api/addresses", addressRoutes);
 //app.use("/api/employee_address", addressRoutes);
@@ -400,7 +426,6 @@ let server: any;
 
 const startServer = async () => {
   try {
-
     // Connect PostgreSQL
     await connectDatabase();
     // console.log("Database connected");
@@ -419,7 +444,6 @@ const startServer = async () => {
       // console.log(`Environment: ${process.env.NODE_ENV}`);
       // console.log(`Health check: http://localhost:${PORT}/health`);
     });
-
   } catch (error) {
     console.error("Server startup failed:", error);
     process.exit(1);

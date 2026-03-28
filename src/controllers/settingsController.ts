@@ -291,10 +291,15 @@ export class SettingsController {
         where: {
           projectId,
           tenantId: req.tenantId,
-          status: { in: ['planning', 'active'] },
           OR: [
-            { releaseDate: null },
-            { releaseDate: { gte: new Date() } }
+            { status: 'active' },
+            { 
+              status: 'planning',
+              OR: [
+                { releaseDate: null },
+                { releaseDate: { gte: new Date() } }
+              ]
+            }
           ]
         },
         select: {
@@ -302,18 +307,54 @@ export class SettingsController {
           version: true,
           description: true,
           status: true,
-          releaseDate: true
+          releaseDate: true,
+          startDate: true,
+          endDate: true
         },
         orderBy: { releaseDate: 'asc' }
       });
 
 
-      const formattedPlans = releasePlans.map(plan => ({
-        value: plan.id,
-        label: plan.version,
-        description: plan.description,
-        status: plan.status,
-        releaseDate: plan.releaseDate
+      const formattedPlans = await Promise.all(releasePlans.map(async (plan) => {
+        // Count total and completed tickets for this plan/sprint
+        const [totalCount, completedCount] = await Promise.all([
+          prisma.ticket.count({
+            where: {
+              tenantId: req.tenantId,
+              projectId,
+              OR: [
+                { releasePlanId: plan.id },
+                { sprintPlanId: plan.id },
+                { demoPlanId: plan.id }
+              ]
+            }
+          }),
+          prisma.ticket.count({
+            where: {
+              tenantId: req.tenantId,
+              projectId,
+              OR: [
+                { releasePlanId: plan.id },
+                { sprintPlanId: plan.id },
+                { demoPlanId: plan.id }
+              ],
+              status: { in: ['completed', 'live', 'COMPLETED', 'LIVE'] }
+            }
+          })
+        ]);
+
+        return {
+          value: plan.id,
+          label: plan.version,
+          description: plan.description,
+          status: plan.status,
+          releaseDate: plan.releaseDate,
+          startDate: plan.startDate,
+          endDate: plan.endDate,
+          totalTickets: totalCount,
+          completedTickets: completedCount,
+          progress: totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0
+        };
       }));
 
       res.status(200).json({

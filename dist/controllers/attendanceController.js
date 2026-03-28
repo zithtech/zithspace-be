@@ -261,15 +261,11 @@ class AttendanceController {
                         },
                     });
                 }
-                // Transform data to use 'member' instead of 'user'
-                const attendance = {
-                    ...attendanceRecord,
-                    member: attendanceRecord.user,
-                    user: undefined,
-                };
+                // Get formatted today attendance for consistent response
+                const formattedAttendance = await AttendanceController.getFormattedTodayAttendance(client, userId, req.tenantId, today);
                 res.status(200).json({
                     success: true,
-                    data: attendance,
+                    data: formattedAttendance,
                     message: "Clocked in successfully",
                 });
             });
@@ -341,15 +337,11 @@ class AttendanceController {
                         },
                     },
                 });
-                // Transform data to use 'member' instead of 'user'
-                const updatedAttendance = {
-                    ...attendanceRecord,
-                    member: attendanceRecord.user,
-                    user: undefined,
-                };
+                // Get formatted today attendance for consistent response
+                const formattedAttendance = await AttendanceController.getFormattedTodayAttendance(client, userId, req.tenantId, today);
                 res.status(200).json({
                     success: true,
-                    data: updatedAttendance,
+                    data: formattedAttendance,
                     message: "Clocked out successfully",
                 });
             });
@@ -388,60 +380,7 @@ class AttendanceController {
             const endOfToday = new Date(today);
             endOfToday.setHours(23, 59, 59, 999);
             const result = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                // Get user info with assigned shift
-                const user = await client.user.findUnique({
-                    where: { id: userId },
-                    include: {
-                        assignedShift: true,
-                    },
-                });
-                if (!user) {
-                    throw new types_1.NotFoundError("User not found");
-                }
-                // Get attendance with shift data
-                const attendance = await client.attendance.findFirst({
-                    where: {
-                        userId,
-                        tenantId: req.tenantId,
-                        date: { gte: startOfToday, lte: endOfToday },
-                    },
-                    include: {
-                        shift: true,
-                    },
-                });
-                // Get shift info (from attendance or user's assigned shift)
-                const shift = attendance?.shift || user.assignedShift;
-                // Calculate work minutes if clocked in
-                let totalWorkMinutes = 0;
-                if (attendance?.clockIn) {
-                    const endTime = attendance.clockOut || new Date();
-                    totalWorkMinutes = Math.floor((endTime.getTime() - attendance.clockIn.getTime()) / 60000);
-                }
-                // Build response - always return data even if no attendance record
-                const responseData = {
-                    id: attendance?.id || null,
-                    userId: userId,
-                    date: startOfToday,
-                    clockIn: attendance?.clockIn || null,
-                    clockOut: attendance?.clockOut || null,
-                    status: attendance?.status?.toLowerCase() || "not_clocked_in",
-                    shift: shift
-                        ? {
-                            id: shift.id,
-                            name: shift.name,
-                            startTime: shift.startTime,
-                            endTime: shift.endTime,
-                            isFlexible: false,
-                        }
-                        : null,
-                    totalWorkMinutes,
-                    isClockIn: !!attendance?.clockIn,
-                    clockInTime: attendance?.clockIn || null,
-                    clockOutTime: attendance?.clockOut || null,
-                    canClockIn: !attendance?.clockIn,
-                    canClockOut: !!attendance?.clockIn && !attendance?.clockOut,
-                };
-                return responseData;
+                return await AttendanceController.getFormattedTodayAttendance(client, userId, req.tenantId, today);
             });
             res.status(200).json({
                 success: true,
@@ -935,6 +874,69 @@ class AttendanceController {
                 error: "Failed to create attendance record",
             });
         }
+    }
+    /**
+     * Helper to get formatted today's attendance data for a user
+     * Consistent response format for clock-in, clock-out, and today status
+     */
+    static async getFormattedTodayAttendance(client, userId, tenantId, targetDate) {
+        const startOfToday = new Date(targetDate);
+        startOfToday.setHours(0, 0, 0, 0);
+        const endOfToday = new Date(targetDate);
+        endOfToday.setHours(23, 59, 59, 999);
+        // Get user info with assigned shift
+        const user = await client.user.findUnique({
+            where: { id: userId },
+            include: {
+                assignedShift: true,
+            },
+        });
+        if (!user) {
+            throw new types_1.NotFoundError("User not found");
+        }
+        // Get attendance with shift data
+        const attendance = await client.attendance.findFirst({
+            where: {
+                userId,
+                tenantId,
+                date: { gte: startOfToday, lte: endOfToday },
+            },
+            include: {
+                shift: true,
+            },
+        });
+        // Get shift info (from attendance or user's assigned shift)
+        const shift = attendance?.shift || user.assignedShift;
+        // Calculate work minutes if clocked in
+        let totalWorkMinutes = 0;
+        if (attendance?.clockIn) {
+            const endTime = attendance.clockOut || new Date();
+            totalWorkMinutes = Math.floor((endTime.getTime() - attendance.clockIn.getTime()) / 60000);
+        }
+        // Standardized response object
+        return {
+            id: attendance?.id || null,
+            userId: userId,
+            date: startOfToday,
+            clockIn: attendance?.clockIn || null,
+            clockOut: attendance?.clockOut || null,
+            status: attendance?.status?.toLowerCase() || "not_clocked_in",
+            shift: shift
+                ? {
+                    id: shift.id,
+                    name: shift.name,
+                    startTime: shift.startTime,
+                    endTime: shift.endTime,
+                    isFlexible: false,
+                }
+                : null,
+            totalWorkMinutes,
+            isClockIn: !!attendance?.clockIn,
+            clockInTime: attendance?.clockIn || null,
+            clockOutTime: attendance?.clockOut || null,
+            canClockIn: !attendance?.clockIn,
+            canClockOut: !!attendance?.clockIn && !attendance?.clockOut,
+        };
     }
 }
 exports.AttendanceController = AttendanceController;

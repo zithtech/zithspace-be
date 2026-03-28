@@ -3,6 +3,7 @@ import { TimeTrackingController } from "@/controllers/timeTrackingController";
 import { authenticateToken, requireAuth } from "@/middleware/auth";
 import { resolveTenant } from "@/middleware/tenantContext";
 
+console.log("🚀 Time Tracking Routes Loading...");
 const router = Router();
 
 router.use(resolveTenant);
@@ -11,6 +12,7 @@ router.use(requireAuth);
 
 router.get("/", TimeTrackingController.getEntries);
 router.post("/start", TimeTrackingController.startTimer);
+router.post("/manual", TimeTrackingController.createManualEntry);
 router.post("/:id/pause", TimeTrackingController.pauseTimer);
 router.post("/:id/resume", TimeTrackingController.resumeTimer);
 router.post("/:id/stop", TimeTrackingController.stopTimer);

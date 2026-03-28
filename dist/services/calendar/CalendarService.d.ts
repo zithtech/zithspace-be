@@ -12,13 +12,13 @@ export declare class CalendarService {
  * Handle the OAuth callback and save integration details.
  */
     static handleCallback(provider: CalendarProvider, userId: string, tenantId: string, code: string, state: string): Promise<{
+        id: string;
         tenantId: string;
         refreshToken: string | null;
         createdAt: Date;
         updatedAt: Date;
         createdById: string | null;
         updatedById: string | null;
-        id: string;
         userId: string;
         accessToken: string | null;
         calendarId: string | null;
@@ -59,12 +59,12 @@ export declare class CalendarService {
      * Create an event on the external provider and save locally.
      */
     static createEvent(userId: string, tenantId: string, provider: CalendarProvider, eventData: CalendarEventData): Promise<{
+        id: string;
         tenantId: string;
         createdAt: Date;
         updatedAt: Date;
         createdById: string | null;
         updatedById: string | null;
-        id: string;
         userId: string;
         title: string;
         description: string | null;

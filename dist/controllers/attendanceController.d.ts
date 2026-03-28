@@ -45,5 +45,10 @@ export declare class AttendanceController {
      * Create manual attendance entry (tenant-aware)
      */
     static createAttendance(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Helper to get formatted today's attendance data for a user
+     * Consistent response format for clock-in, clock-out, and today status
+     */
+    private static getFormattedTodayAttendance;
 }
 export default AttendanceController;
