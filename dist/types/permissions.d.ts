@@ -73,6 +73,7 @@ export declare const Permissions: {
     readonly REIMBURSEMENT_APPROVE: "reimbursement.approve";
     readonly REIMBURSEMENT_MANAGE: "reimbursement.manage";
     readonly SALARY_READ: "salary.read";
+    readonly SALARY_APPROVE: "salary.approve";
     readonly SALARY_MANAGE: "salary.manage";
     readonly DOCUMENT_CREATE: "document.create";
     readonly DOCUMENT_READ: "document.read";

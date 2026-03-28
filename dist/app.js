@@ -17,6 +17,9 @@ const express_session_1 = __importDefault(require("express-session"));
 // Import configurations
 const database_1 = require("@/config/database");
 const salaryComponentRoutes_1 = __importDefault(require("@/routes/salaryComponentRoutes"));
+const salaryStructureRoutes_1 = __importDefault(require("@/routes/salaryStructureRoutes"));
+const salaryApprovalRoutes_1 = __importDefault(require("@/routes/salaryApprovalRoutes"));
+const salaryAdjustmentRoutes_1 = __importDefault(require("@/routes/salaryAdjustmentRoutes"));
 const gradeRoutes_1 = __importDefault(require("@/routes/gradeRoutes"));
 const companyRoutes_1 = __importDefault(require("./routes/companyRoutes"));
 const auth_1 = __importDefault(require("@/routes/auth"));
@@ -82,11 +85,11 @@ const leaveOriginRoutes_1 = __importDefault(require("@/routes/leaveOriginRoutes"
 const emailHistoryRoutes_1 = __importDefault(require("@/routes/emailHistoryRoutes"));
 const leaveRequestRoutes_1 = __importDefault(require("@/routes/leaveRequestRoutes"));
 const leaveBalanceRoutes_1 = __importDefault(require("@/routes/leaveBalanceRoutes"));
+const payroll_1 = __importDefault(require("@/routes/payroll"));
 const reimbursementConfig_1 = __importDefault(require("@/routes/reimbursementConfig"));
 const reimbursementsettingsRoutes_1 = __importDefault(require("@/routes/reimbursementsettingsRoutes"));
 const reimbursementcreateRoutes_1 = __importDefault(require("@/routes/reimbursementcreateRoutes")); // the file we created earlier
 // import managerReimbursementRoutes from "./routes/managerReimbursementRoutes";
-const payroll_1 = __importDefault(require("@/routes/payroll"));
 const rbac_1 = __importDefault(require("@/routes/rbac"));
 const employeeAssets_routes_1 = __importDefault(require("@/routes/employeeAssets.routes"));
 // Load environment
@@ -206,6 +209,9 @@ app.use("/api/buckets", buckets_1.default);
 app.use("/api/trash", trash_1.default);
 app.use("/api/sprint-completion", sprintCompletion_1.default);
 app.use("/api/salary-components", salaryComponentRoutes_1.default);
+app.use("/api/salary-structures", salaryStructureRoutes_1.default);
+app.use("/api/salary-approvals", salaryApprovalRoutes_1.default);
+app.use("/api/salary-adjustments", salaryAdjustmentRoutes_1.default);
 app.use("/api/companies", companyRoutes_1.default);
 app.use("/api/grades", gradeRoutes_1.default);
 app.use("/api/payroll", payroll_1.default);
@@ -223,11 +229,6 @@ app.use("/api/leave-allocation", leaveAllocationRoutes_1.default);
 app.use("/api/leave-request", leaveRequestRoutes_1.default);
 app.use("/api/leave-balances", leaveBalanceRoutes_1.default);
 app.use("/api/time-tracking", timeTracking_1.default);
-// onboarding
-// app.use("/api/employees", employeeRoutes);
-// app.use("/api/employee-addresses", employeeAddressRoutes);
-// app.use("/api/employee-emergency-contacts", employeeEmergencyContactRoutes);
-// app.use("/api/employee-identities", employeeIdentityRoutes);
 app.use("/api/employee-work-details", employeeWorkDetailes_1.default);
 app.use("/api/employee-timelines", employeeTimeline_1.default);
 app.use("/api/onboarding", onboardingRoutes_1.default);
