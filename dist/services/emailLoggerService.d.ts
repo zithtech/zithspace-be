@@ -57,12 +57,7 @@ export declare class EmailLoggerService {
         } & {
             status: string;
             id: string;
-<<<<<<< HEAD
-=======
             tenantId: string;
-            metadata: import("@prisma/client/runtime/library").JsonValue | null;
-            dueDate: string | null;
->>>>>>> production
             amount: string | null;
             from: string;
             to: string;
@@ -103,21 +98,19 @@ export declare class EmailLoggerService {
         customer: {
             companyName: string;
             country: string | null;
-<<<<<<< HEAD
-=======
             pan: string | null;
             city: string | null;
             id: string;
->>>>>>> production
             tenantId: string;
             createdAt: Date;
             updatedAt: Date;
-            email: string | null;
-            phone: string | null;
             createdBy: string;
             updatedBy: string | null;
+            email: string | null;
+            phone: string | null;
             address: string | null;
             taxId: string | null;
+            gstin: string | null;
         };
         sentByUserRel: {
             id: string;
@@ -126,12 +119,7 @@ export declare class EmailLoggerService {
     } & {
         status: string;
         id: string;
-<<<<<<< HEAD
-=======
         tenantId: string;
-        metadata: import("@prisma/client/runtime/library").JsonValue | null;
-        dueDate: string | null;
->>>>>>> production
         amount: string | null;
         from: string;
         to: string;
@@ -185,12 +173,7 @@ export declare class EmailLoggerService {
     static updateStatus(id: string, tenantId: string, status: 'OPENED' | 'CLICKED', metadata?: any): Promise<{
         status: string;
         id: string;
-<<<<<<< HEAD
-=======
         tenantId: string;
-        metadata: import("@prisma/client/runtime/library").JsonValue | null;
-        dueDate: string | null;
->>>>>>> production
         amount: string | null;
         from: string;
         to: string;
