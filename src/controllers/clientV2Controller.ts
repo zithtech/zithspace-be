@@ -159,7 +159,7 @@ export class ClientV2Controller {
 
             // Filter out allocations where employee is missing if prisma generate hasn't updated yet
             if (client.allocations) {
-                client.allocations = client.allocations.filter((a: any) => a.employee !== null);
+                (client as any).allocations = (client as any).allocations.filter((a: any) => a.employee !== null);
             }
 
             res.status(200).json({ success: true, data: client } as ApiResponse);

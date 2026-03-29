@@ -89,6 +89,7 @@ model Tenant {
   transactions                Transaction[]
   user_roles                  UserRole[]
   users                       User[]
+  employeeClientAllocationsV2 EmployeeClientAllocationV2[]
 
   @@map("tenants")
 }
@@ -218,6 +219,8 @@ model User {
   exitTypesUpdated                                                     ExitType[]                          @relation("ExitTypeUpdater")
   reasonsForExitCreated                                                ReasonForExit[]                     @relation("ReasonForExitCreator")
   reasonsForExitUpdated                                                ReasonForExit[]                     @relation("ReasonForExitUpdater")
+  employeeExitsCreated                                                 EmployeeExit[]                      @relation("EmployeeExitCreatedBy")
+  employeeExitsUpdated                                                 EmployeeExit[]                      @relation("EmployeeExitUpdatedBy")
   recruitmentStatusesCreated                                           RecruitmentStatus[]                 @relation("RecruitmentStatusCreator")
   recruitmentStatusesUpdated                                           RecruitmentStatus[]                 @relation("RecruitmentStatusUpdater")
   recruitmentActionsCreated                                            RecruitmentAction[]                 @relation("RecruitmentActionCreator")
@@ -409,6 +412,7 @@ model Project {
   work_entry          work_entry[]
   buckets             Bucket[]
   documentHubs        DocumentHub[]
+  clientAllocationsV2 EmployeeClientAllocationV2[]
 
   @@unique([tenantId, code])
   @@map("projects")
@@ -1704,7 +1708,10 @@ model Employee {
   workDetail                  EmployeeWorkDetail?
   additionalDetails           EmployeeAdditionalDetail?
   employeeTimeline            EmployeeTimeline?
-  projectMappings             EmployeeProjectMapping[]
+  projectMappings             EmployeeProjectMapping[]    @relation("EmployeeProjectMappingEmployee")
+  projectMappingsCreated      EmployeeProjectMapping[]    @relation("EmployeeProjectMappingCreatedBy")
+  projectMappingsUpdated      EmployeeProjectMapping[]    @relation("EmployeeProjectMappingUpdatedBy")
+  clientAllocationsV2         EmployeeClientAllocationV2[]
   leaveRequests               LeaveRequest[]              @relation("EmployeeLeaveRequests")
   leaveLedgers                LeaveLedger[]
 
@@ -2207,6 +2214,7 @@ model ClientV2 {
   parentClient         ClientV2?       @relation("ClientHierarchy", fields: [parentId], references: [id])
   childClients         ClientV2[]      @relation("ClientHierarchy")
   contacts             ClientContactV2[]
+  clientAllocationsV2  EmployeeClientAllocationV2[]
 
   @@unique([tenantId, clientCode])
   @@map("clients_v2")

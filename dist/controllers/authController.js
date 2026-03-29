@@ -120,7 +120,7 @@ class AuthController {
                     workEmail: user.workEmail,
                     personalEmail: user.personalEmail,
                     role: user.role,
-                    position: user.position?.title || null,
+                    position: user.position ? { id: user.position.id, title: user.position.title } : null,
                     tenantId: user.tenantId,
                     tenantName: user.tenant.name,
                     tenantLogo: user.tenant.settings?.logoUrl || null,
