@@ -63,6 +63,7 @@ const recruitmentClient_1 = __importDefault(require("@/routes/recruitmentClient"
 const vendor_1 = __importDefault(require("@/routes/vendor"));
 const timesheet_1 = __importDefault(require("@/routes/timesheet"));
 const timeTracking_1 = __importDefault(require("./routes/timeTracking"));
+const proxyRoutes_1 = __importDefault(require("@/routes/proxyRoutes"));
 const companyGovernmentHoliday_routes_1 = __importDefault(require("@/routes/companyGovernmentHoliday.routes"));
 const leaveAdjustmentRoutes_1 = __importDefault(require("./routes/leaveAdjustmentRoutes"));
 const leaveAllocationRoutes_1 = __importDefault(require("@/routes/leaveAllocationRoutes"));
@@ -179,6 +180,7 @@ app.get("/api/direct-test", (req, res) => {
     res.json({ success: true, message: "Direct app.get works" });
 });
 app.get("/api/debug-ping-unique", (req, res) => res.json({ success: true, message: "Debug route is active" }));
+app.use("/api", proxyRoutes_1.default);
 app.use("/api/auth", auth_1.default);
 app.use("/api/projects", projects_1.default);
 app.use("/api/tenants", tenants_1.default);

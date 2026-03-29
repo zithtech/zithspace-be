@@ -4503,6 +4503,8 @@ enum ApproverStatus {
   @@map("approver_status")
 }
 
+
+
 enum DeductionType {
   BASIC_PERCENT
   GROSS_PERCENT
