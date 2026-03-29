@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
 model Tenant {
@@ -1781,7 +1782,7 @@ model EmployeeWorkDetail {
   totalDays       Int?      @map("total_days")
   totalHours      Int?      @map("total_hours")
   workJoiningDate String?   @map("work_joining_date") @db.VarChar(30)
-  positionId      String?   @map("position_id") @db.Uuid
+  positionId      String?   @map("position_id")
   notice_period   String?   @db.VarChar(10)
   employee        Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   position        Position? @relation(fields: [positionId], references: [id])
@@ -2710,7 +2711,7 @@ model Reimbursement {
   submittedBy                    String?                       @map("submitted_by") @db.Uuid
   createdAt                      DateTime                      @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt                      DateTime                      @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
-  createdById                    String                        @map("created_by_id") @db.Uuid
+  createdById                    String                        @map("created_by_id")
   updatedById                    String?                       @map("updated_by_id") @db.Uuid
   reimbursement_policy_approvers ReimbursementPolicyApprover[]
   items                          ReimbursementItem[]
@@ -4620,4 +4621,32 @@ enum visibility {
 enum visibilitytype {
   PUBLIC
   PRIVATE
+}
+
+
+model Analytics {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  event     String
+  data      Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("analytics")
+}
+
+model Test {
+  id      String  @id @default(uuid())
+  fieldA  String  @map("field_a")
+  fieldB  String? @map("field_b")
+
+  @@map("test")
+}
+
+
+model Test_B {
+  id      String  @id @default(uuid())
+  fieldA  String  @map("field_a")
+  fieldB  String? @map("field_b")
+
+  @@map("test_2")
 }
