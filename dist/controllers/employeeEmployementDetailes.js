@@ -148,9 +148,9 @@ async function getAllEmploymentDetails(req) {
             },
         });
         return employees.map((employee) => {
-            const latestWorkDetail = employee.workDetail || null;
-            const latestAdditionalDetail = employee.additionalDetails || null;
-            const latestTimeline = employee.employeeTimeline || null;
+            const latestWorkDetail = employee.workDetail[0] || null;
+            const latestAdditionalDetail = employee.additionalDetails[0] || null;
+            const latestTimeline = employee.employeeTimeline[0] || null;
             return {
                 id: employee.id,
                 employeeCode: employee.employee_code,

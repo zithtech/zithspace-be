@@ -20,9 +20,9 @@ export declare class CalendarService {
         createdById: string | null;
         updatedById: string | null;
         userId: string;
-        accessToken: string | null;
         created_by: string | null;
         updated_by: string | null;
+        accessToken: string | null;
         calendarId: string | null;
         provider: import(".prisma/client").$Enums.CalendarProvider;
         tokenExpiry: Date | null;

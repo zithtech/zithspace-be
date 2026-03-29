@@ -6,6 +6,7 @@ interface EmailOptions {
   subject: string;
   html: string;
   text?: string;
+  attachments?: any[];
 }
 
 interface LeaveApplicationEmailData {
@@ -99,6 +100,7 @@ class EmailService {
         subject: options.subject,
         html: options.html,
         text: options.text,
+        attachments: options.attachments
       };
 
       const info = await this.transporter.sendMail(mailOptions);
@@ -490,6 +492,47 @@ async sendInvoiceEmail(data: {
 
 
 
+  async sendBankDisbursementEmail(data: {
+    to: string;
+    companyName: string;
+    month: number;
+    year: number;
+    excelBuffer: Buffer;
+    fileName: string;
+  }): Promise<boolean> {
+    const subject = `Bank Disbursement Sheet - ${data.companyName} (${data.month}/${data.year})`;
+    
+    const html = `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e1e1e1; border-radius: 8px;">
+        <div style="background-color: #52c41a; color: white; padding: 24px; text-align: center;">
+          <h1 style="margin: 0; font-size: 20px;">Bank Disbursement</h1>
+        </div>
+        <div style="padding: 24px; color: #333;">
+          <p>Dear Bank Manager,</p>
+          <p style="line-height: 1.6; color: #555;">
+            Please find the attached bank disbursement sheet for <strong>${data.companyName}</strong> 
+            for the period of <strong>${data.month}/${data.year}</strong>.
+          </p>
+          <p>Kindly process the payments as per the attached details.</p>
+          <br/>
+          <p style="color: #666; font-size: 12px;">This is an automated email from Zithmi HRMS.</p>
+        </div>
+      </div>
+    `;
+
+    const options: any = {
+      to: data.to,
+      subject,
+      html,
+      attachments: [{
+        filename: data.fileName,
+        content: data.excelBuffer,
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      }]
+    };
+
+    return this.sendEmail(options);
+  }
 }
 
 // Export singleton instance

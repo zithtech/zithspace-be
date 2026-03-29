@@ -91,6 +91,7 @@ exports.Permissions = {
     REIMBURSEMENT_MANAGE: 'reimbursement.manage',
     // ─── Salary / Payroll ────────────────────────────────────────────
     SALARY_READ: 'salary.read',
+    SALARY_APPROVE: 'salary.approve',
     SALARY_MANAGE: 'salary.manage',
     // ─── Documents ───────────────────────────────────────────────────
     DOCUMENT_CREATE: 'document.create',
@@ -141,7 +142,7 @@ exports.PERMISSIONS_BY_RESOURCE = {
     role: [exports.Permissions.ROLE_CREATE, exports.Permissions.ROLE_READ, exports.Permissions.ROLE_UPDATE, exports.Permissions.ROLE_DELETE, exports.Permissions.ROLE_ASSIGN],
     report: [exports.Permissions.REPORT_READ, exports.Permissions.REPORT_MANAGE],
     reimbursement: [exports.Permissions.REIMBURSEMENT_CREATE, exports.Permissions.REIMBURSEMENT_READ, exports.Permissions.REIMBURSEMENT_UPDATE, exports.Permissions.REIMBURSEMENT_APPROVE, exports.Permissions.REIMBURSEMENT_MANAGE],
-    salary: [exports.Permissions.SALARY_READ, exports.Permissions.SALARY_MANAGE],
+    salary: [exports.Permissions.SALARY_READ, exports.Permissions.SALARY_APPROVE, exports.Permissions.SALARY_MANAGE],
     document: [exports.Permissions.DOCUMENT_CREATE, exports.Permissions.DOCUMENT_READ, exports.Permissions.DOCUMENT_UPDATE, exports.Permissions.DOCUMENT_DELETE, exports.Permissions.DOCUMENT_MANAGE],
     onboarding: [exports.Permissions.ONBOARDING_CREATE, exports.Permissions.ONBOARDING_READ, exports.Permissions.ONBOARDING_UPDATE, exports.Permissions.ONBOARDING_MANAGE],
     timesheet: [exports.Permissions.TIMESHEET_CREATE, exports.Permissions.TIMESHEET_READ, exports.Permissions.TIMESHEET_UPDATE, exports.Permissions.TIMESHEET_APPROVE, exports.Permissions.TIMESHEET_MANAGE],

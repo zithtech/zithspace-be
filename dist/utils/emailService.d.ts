@@ -56,6 +56,14 @@ declare class EmailService {
         success: boolean;
         html: string;
     }>;
+    sendBankDisbursementEmail(data: {
+        to: string;
+        companyName: string;
+        month: number;
+        year: number;
+        excelBuffer: Buffer;
+        fileName: string;
+    }): Promise<boolean>;
 }
 export declare const emailService: EmailService;
 export default emailService;

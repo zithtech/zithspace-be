@@ -8,6 +8,10 @@ const algorithm = "aes-256-cbc";
 const secretKey = process.env.SECRET_KEY as string; // 32 chars
 
 export function encrypt(text: string) {
+  if (!secretKey) {
+    console.warn("SECRET_KEY not found. Encryption skipped.");
+    return text;
+  }
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv(algorithm, Buffer.from(secretKey), iv);
   let encrypted = cipher.update(text);
@@ -17,6 +21,10 @@ export function encrypt(text: string) {
 }
 
 export function decrypt(text: string): string {
+  if (!secretKey) {
+    console.warn("SECRET_KEY not found. Decryption skipped.");
+    return text;
+  }
   try {
     const parts = text.split(":");
     if (parts.length !== 2) {
@@ -320,6 +328,15 @@ export async function getAllEmployees(req: AuthRequest) {
         addresses: true,
         emergencyContacts: true,
         employeeIdentity: true,
+        workDetail: {
+          include: {
+            position: {
+              include: {
+                department: true
+              }
+            }
+          }
+        }
       },
       orderBy: {
         created_at: "desc",
@@ -328,20 +345,23 @@ export async function getAllEmployees(req: AuthRequest) {
 
     return employees.map((employee: any) => {
       const currentAddress = employee.addresses.find(
-        (addr) => addr.addressType === "CURRENT",
+        (addr: any) => addr.addressType === "CURRENT",
       );
       const permanentAddress = employee.addresses.find(
-        (addr) => addr.addressType === "PERMANENT",
+        (addr: any) => addr.addressType === "PERMANENT",
       );
       const emergencyContact = employee.emergencyContacts[0];
       const identity = Array.isArray(employee.employeeIdentity)
         ? employee.employeeIdentity[0]
         : employee.employeeIdentity;
 
+      const latestWorkDetail = employee.workDetail?.[0];
+
       return {
         id: employee.id,
         firstName: employee.first_name,
         lastName: employee.last_name,
+        name: `${employee.first_name} ${employee.last_name}`,
         gender: employee.gender,
         dob: employee.date_of_birth,
         profile_pic: employee.profile_pic,
@@ -349,6 +369,9 @@ export async function getAllEmployees(req: AuthRequest) {
         mobile: employee.mobile,
         workEmail: employee.work_email,
         personalEmail: employee.personal_email,
+        departmentId: latestWorkDetail?.position?.departmentId || null,
+        departmentName: latestWorkDetail?.position?.department?.name || null,
+        positionTitle: latestWorkDetail?.position?.title || null,
         address: {
           current: currentAddress
             ? {
@@ -381,6 +404,7 @@ export async function getAllEmployees(req: AuthRequest) {
         passport: identity?.passportNumber
           ? decrypt(identity.passportNumber)
           : null,
+        employeeCode: employee.employee_code,
         employee_code: employee.employee_code,
         status: employee.status,
         created_at: employee.created_at,

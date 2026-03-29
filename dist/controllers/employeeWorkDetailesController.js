@@ -12,9 +12,10 @@ class EmployeeWorkDetailController {
                     .json({ success: false, error: "Unauthorized" });
                 return;
             }
-            const { employeeId, positionId, team, employeeType, workLocation, workShift, } = req.body;
+            const { employeeId, positionId, department, team, employeeType, workLocation, workShift, } = req.body;
             if (!employeeId ||
                 !positionId ||
+                !department ||
                 !team ||
                 !employeeType ||
                 !workLocation ||
@@ -39,6 +40,7 @@ class EmployeeWorkDetailController {
             const workDetail = await database_1.prisma.employeeWorkDetail.create({
                 data: {
                     employee: { connect: { id: employeeId } },
+                    department,
                     team,
                     employeeType,
                     workLocation,

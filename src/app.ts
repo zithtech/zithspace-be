@@ -14,6 +14,9 @@ import bcrypt from "bcryptjs";
 // Import configurations
 import { connectDatabase, disconnectDatabase } from "@/config/database";
 import salaryComponentRoutes from "@/routes/salaryComponentRoutes";
+import salaryStructureRoutes from "@/routes/salaryStructureRoutes";
+import salaryApprovalRoutes from "@/routes/salaryApprovalRoutes";
+import salaryAdjustmentRoutes from "@/routes/salaryAdjustmentRoutes";
 import gradeRoutes from "@/routes/gradeRoutes";
 import companyRoutes from "./routes/companyRoutes";
 
@@ -242,6 +245,9 @@ app.use("/api/buckets", bucketRoutes);
 app.use("/api/trash", trashRoutes);
 app.use("/api/sprint-completion", sprintCompletionRoutes);
 app.use("/api/salary-components", salaryComponentRoutes);
+app.use("/api/salary-structures", salaryStructureRoutes);
+app.use("/api/salary-approvals", salaryApprovalRoutes);
+app.use("/api/salary-adjustments", salaryAdjustmentRoutes);
 app.use("/api/companies", companyRoutes);
 app.use("/api/grades", gradeRoutes);
 app.use("/api/payroll", payrollRoutes);

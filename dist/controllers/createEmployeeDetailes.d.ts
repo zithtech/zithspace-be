@@ -57,6 +57,7 @@ export declare function getAllEmployees(req: AuthRequest): Promise<{
     id: any;
     firstName: any;
     lastName: any;
+    name: string;
     gender: any;
     dob: any;
     profile_pic: any;
@@ -64,6 +65,9 @@ export declare function getAllEmployees(req: AuthRequest): Promise<{
     mobile: any;
     workEmail: any;
     personalEmail: any;
+    departmentId: any;
+    departmentName: any;
+    positionTitle: any;
     address: {
         current: {
             c_flat: any;
@@ -102,6 +106,7 @@ export declare function getAllEmployees(req: AuthRequest): Promise<{
     aadhaar: string;
     pan: string;
     passport: string;
+    employeeCode: any;
     employee_code: any;
     status: any;
     created_at: any;
@@ -129,11 +134,11 @@ export declare function deletePersonalDetails(req: AuthRequest, employeeId: stri
         mobile: string;
         work_email: string;
         personal_email: string | null;
+        profile_pic: string | null;
         created_by: string;
         updated_by: string | null;
         created_at: Date;
         updated_at: Date;
-        profile_pic: string | null;
     };
 }>;
 export declare function hardDeletePersonalDetails(req: AuthRequest, employeeId: string): Promise<{

@@ -19,6 +19,7 @@ export class EmployeeWorkDetailController {
       const {
         employeeId,
         positionId,
+        department,
         team,
         employeeType,
         workLocation,
@@ -29,6 +30,7 @@ export class EmployeeWorkDetailController {
       if (
         !employeeId ||
         !positionId ||
+        !department ||
         !team ||
         !employeeType ||
         !workLocation ||
@@ -58,6 +60,7 @@ export class EmployeeWorkDetailController {
       const workDetail = await prisma.employeeWorkDetail.create({
         data: {
           employee: { connect: { id: employeeId } },
+          department,
           team,
           employeeType,
           workLocation,
