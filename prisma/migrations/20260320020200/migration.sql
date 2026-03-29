@@ -1,1 +1,0 @@
-﻿-- This migration was applied directly to the database and is tracked here for history.
