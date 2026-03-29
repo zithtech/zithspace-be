@@ -36,7 +36,7 @@ export class ImplementationPartnerController {
 
             const [partners, total] = await Promise.all([
                 tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
-                    return await prisma.implementationBasicInformation.findMany({
+                    return await (prisma.implementationBasicInformation.findMany as any)({
                         where,
                         include: {
                             contactPersons: true,
@@ -82,7 +82,7 @@ export class ImplementationPartnerController {
 
             const { id } = req.params;
             const partner = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
-                return await prisma.implementationBasicInformation.findUnique({
+                return await (prisma.implementationBasicInformation.findUnique as any)({
                     where: { id },
                     include: {
                         contactPersons: true,

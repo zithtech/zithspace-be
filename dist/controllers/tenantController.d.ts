@@ -17,6 +17,7 @@ export declare class TenantController {
      * Update tenant profile (admin only)
      */
     static updateProfile(req: AuthRequest, res: Response): Promise<void>;
+    static deleteLogoVersion(req: AuthRequest, res: Response): Promise<void>;
     /**
      * Get tenant statistics (admin only)
      */

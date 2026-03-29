@@ -129,11 +129,11 @@ export declare function deletePersonalDetails(req: AuthRequest, employeeId: stri
         mobile: string;
         work_email: string;
         personal_email: string | null;
-        profile_pic: string | null;
         created_by: string;
         updated_by: string | null;
         created_at: Date;
         updated_at: Date;
+        profile_pic: string | null;
     };
 }>;
 export declare function hardDeletePersonalDetails(req: AuthRequest, employeeId: string): Promise<{

@@ -148,7 +148,7 @@ export class ClientV2Controller {
                                 project: { select: { id: true, name: true } }
                             }
                         }
-                    }
+                    } as any
                 });
             });
 

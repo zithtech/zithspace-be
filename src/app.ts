@@ -1,7 +1,7 @@
 if (process.env.NODE_ENV !== "development") {
   require("module-alias/register");
 }
-import express from "express";
+import express, { Request, Response } from "express";
 import cors from "cors";
 import morgan from "morgan";
 import compression from "compression";
@@ -9,6 +9,7 @@ import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
 import session from "express-session";
+import bcrypt from "bcryptjs";
 
 // Import configurations
 import { connectDatabase, disconnectDatabase } from "@/config/database";
@@ -54,6 +55,7 @@ import employeeTimelineRoutes from "@/routes/employeeTimeline";
 import employeeOnboardingRoutes from "@/routes/onboardingRoutes";
 import newProfileRoutes from "@/routes/auth";
 import publicTicketRoutes from "@/routes/publicTickets";
+import publicDocumentRoutes from "@/routes/publicDocuments";
 import employeeSettingsRoutes from "@/routes/employeeSettingsRoutes";
 import implementationPartnerRoutes from "@/routes/implementationPartner";
 import recruitmentClientRoutes from "@/routes/recruitmentClient";
@@ -61,6 +63,7 @@ import vendorRoutes from "@/routes/vendor";
 
 import timesheetRoutes from "@/routes/timesheet";
 import timeTrackingRoutes from "./routes/timeTracking";
+import proxyRoutes from "@/routes/proxyRoutes";
 
 import companyGovernmentHolidayRouter from "@/routes/companyGovernmentHoliday.routes";
 import leaveAdjustmentRoutes from "./routes/leaveAdjustmentRoutes";
@@ -203,12 +206,15 @@ app.get("/api/direct-test", (req, res) => {
   res.json({ success: true, message: "Direct app.get works" });
 });
 app.get("/api/debug-ping-unique", (req, res) => res.json({ success: true, message: "Debug route is active" }));
+
+app.use("/api", proxyRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/projects", projectRoutes);
 app.use("/api/tenants", tenantRoutes);
 app.use("/api/calendar", calendarRoutes);
-app.use("/api/projects", projectRoutes);
 app.use("/api/squads", squadRoutes);
 app.use("/api/public/tickets", publicTicketRoutes);
+app.use("/api/public/document", publicDocumentRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/recruitment", recruitmentRoutes);
 app.use("/api/attendance", attendanceRoutes);

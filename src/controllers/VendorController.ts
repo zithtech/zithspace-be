@@ -665,7 +665,7 @@ export class VendorController {
             }
 
             const partners = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
-                return await prisma.implementationBasicInformation.findMany({
+                return await (prisma.implementationBasicInformation.findMany as any)({
                     where: {
                         id: { in: vendor.implementationIds },
                         tenantId: req.tenantId

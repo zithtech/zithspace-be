@@ -115,9 +115,6 @@ export const createRequisition = async (
             deliveryManager: {
               select: { id: true, name: true, workEmail: true },
             },
-            assignedRecruiters: {
-              select: { id: true, name: true, workEmail: true },
-            },
             jobRequisitionContacts: true,
           },
         });
@@ -216,9 +213,6 @@ export const getRequisitions = async (
           where,
           include: {
             client: true,
-            assignedRecruiters: {
-              select: { id: true, name: true, workEmail: true },
-            },
           },
           orderBy: { createdAt: "desc" },
           skip,
@@ -285,9 +279,6 @@ export const getRequisitionById = async (
               select: { id: true, name: true, workEmail: true },
             },
             deliveryManager: {
-              select: { id: true, name: true, workEmail: true },
-            },
-            assignedRecruiters: {
               select: { id: true, name: true, workEmail: true },
             },
             jobRequisitionContacts: true,
@@ -402,9 +393,6 @@ export const updateRequisition = async (
               select: { id: true, name: true, workEmail: true },
             },
             deliveryManager: {
-              select: { id: true, name: true, workEmail: true },
-            },
-            assignedRecruiters: {
               select: { id: true, name: true, workEmail: true },
             },
             jobRequisitionContacts: true,

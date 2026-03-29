@@ -341,34 +341,57 @@ class TenantController {
             }
             const rawClient = database_1.tenantAwarePrisma.getRawClient();
             const updateData = { ...req.body };
-            // Handle logo upload if provided
+            // Handle logo uploads (original, cropped, or setting final)
+            const currentTenant = await rawClient.tenant.findUnique({
+                where: { id: req.tenantId },
+                select: { settings: true }
+            });
+            const currentSettings = currentTenant?.settings || {};
+            const logoVersions = Array.isArray(currentSettings.logoVersions) ? [...currentSettings.logoVersions] : [];
+            let newLogoUrl = currentSettings.logoUrl;
+            // 1. Handle Original Logo Upload
             if (updateData.logo && typeof updateData.logo === 'string' && updateData.logo.startsWith('data:image')) {
                 try {
                     const logoUrl = await (0, r2Client_1.uploadImageToR2)(updateData.logo, req.tenantId);
-                    // Get current settings to merge
-                    const currentTenant = await rawClient.tenant.findUnique({
-                        where: { id: req.tenantId },
-                        select: { settings: true }
-                    });
-                    const currentSettings = currentTenant?.settings || {};
-                    updateData.settings = {
-                        ...currentSettings,
-                        logoUrl
-                    };
-                    // Remove the base64 logo from updateData to prevent it from being stored elsewhere
+                    newLogoUrl = logoUrl;
+                    if (!logoVersions.includes(logoUrl)) {
+                        logoVersions.push(logoUrl);
+                    }
                     delete updateData.logo;
                 }
                 catch (uploadError) {
-                    console.error("Logo upload failed:", uploadError);
-                    // Continue with other updates even if logo fails, or return error?
-                    // For now, let's return error to be safe
-                    res.status(500).json({
-                        success: false,
-                        error: "Failed to upload company logo",
-                    });
+                    console.error("Original logo upload failed:", uploadError);
+                    res.status(500).json({ success: false, error: "Failed to upload company logo" });
                     return;
                 }
             }
+            // 2. Handle Cropped Logo Upload
+            if (updateData.croppedLogo && typeof updateData.croppedLogo === 'string' && updateData.croppedLogo.startsWith('data:image')) {
+                try {
+                    const croppedUrl = await (0, r2Client_1.uploadImageToR2)(updateData.croppedLogo, req.tenantId);
+                    newLogoUrl = croppedUrl;
+                    if (!logoVersions.includes(croppedUrl)) {
+                        logoVersions.push(croppedUrl);
+                    }
+                    delete updateData.croppedLogo;
+                }
+                catch (uploadError) {
+                    console.error("Cropped logo upload failed:", uploadError);
+                    res.status(500).json({ success: false, error: "Failed to upload cropped logo" });
+                    return;
+                }
+            }
+            // 3. Handle Setting Final Logo from existing versions
+            if (updateData.finalLogoUrl && typeof updateData.finalLogoUrl === 'string') {
+                newLogoUrl = updateData.finalLogoUrl;
+                delete updateData.finalLogoUrl;
+            }
+            // Update settings with new logo state
+            updateData.settings = {
+                ...currentSettings,
+                logoUrl: newLogoUrl,
+                logoVersions: logoVersions
+            };
             // Remove sensitive fields that shouldn't be updated directly
             delete updateData.id;
             delete updateData.subdomain; // Subdomain changes require special handling
@@ -398,6 +421,57 @@ class TenantController {
                 success: false,
                 error: "Failed to update tenant profile",
             });
+        }
+    }
+    static async deleteLogoVersion(req, res) {
+        try {
+            if (!req.tenantId) {
+                res.status(400).json({ success: false, error: "Tenant context required" });
+                return;
+            }
+            const { url } = req.body;
+            if (!url) {
+                res.status(400).json({ success: false, error: "Logo URL is required" });
+                return;
+            }
+            const rawClient = database_1.tenantAwarePrisma.getRawClient();
+            const tenant = await rawClient.tenant.findUnique({
+                where: { id: req.tenantId },
+                select: { settings: true }
+            });
+            if (!tenant) {
+                res.status(404).json({ success: false, error: "Tenant not found" });
+                return;
+            }
+            const settings = tenant.settings || {};
+            let logoVersions = Array.isArray(settings.logoVersions) ? [...settings.logoVersions] : [];
+            let currentLogoUrl = settings.logoUrl;
+            // Filter out the URL
+            logoVersions = logoVersions.filter(v => v !== url);
+            // If deleted logo was the final one, switch to the next available or null
+            if (currentLogoUrl === url) {
+                currentLogoUrl = logoVersions.length > 0 ? logoVersions[0] : null;
+            }
+            // Update tenant settings
+            await rawClient.tenant.update({
+                where: { id: req.tenantId },
+                data: {
+                    settings: {
+                        ...settings,
+                        logoUrl: currentLogoUrl,
+                        logoVersions: logoVersions
+                    }
+                }
+            });
+            res.status(200).json({
+                success: true,
+                message: "Logo version deleted successfully",
+                data: { logoUrl: currentLogoUrl, logoVersions: logoVersions }
+            });
+        }
+        catch (error) {
+            console.error("Delete logo version error:", error);
+            res.status(500).json({ success: false, error: "Failed to delete logo version" });
         }
     }
     /**

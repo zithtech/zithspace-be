@@ -1,9 +1,13 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DocumentHubController = void 0;
 const database_1 = require("@/config/database");
 const types_1 = require("@/types");
 const socketService_1 = require("@/services/socketService");
+const crypto_1 = __importDefault(require("crypto"));
 class DocumentHubController {
     /**
      * Create a new Document HUb (tenant-aware)
@@ -140,9 +144,11 @@ class DocumentHubController {
                 where: {
                     id,
                     tenantId: req.tenantId,
+                    isDeleted: false,
                 },
                 include: {
                     treeNodes: {
+                        where: { isDeleted: false },
                         orderBy: {
                             position: "asc",
                         },
@@ -198,6 +204,7 @@ class DocumentHubController {
                     tenantId: req.tenantId,
                     documentHubId,
                     parentId: parentId || null,
+                    isDeleted: false,
                 },
                 orderBy: {
                     position: "desc",
@@ -265,6 +272,7 @@ class DocumentHubController {
                 where: {
                     id,
                     tenantId: req.tenantId,
+                    isDeleted: false,
                 },
             });
             if (!node) {
@@ -312,6 +320,7 @@ class DocumentHubController {
                 where: {
                     id,
                     tenantId: req.tenantId,
+                    isDeleted: false,
                 },
             });
             if (!document) {
@@ -349,6 +358,7 @@ class DocumentHubController {
                 where: {
                     id,
                     tenantId: req.tenantId,
+                    isDeleted: false,
                 },
             });
             if (!document) {
@@ -446,6 +456,7 @@ class DocumentHubController {
             const documentHubs = await database_1.prisma.documentHub.findMany({
                 where: {
                     tenantId: req.tenantId,
+                    isDeleted: false,
                 },
                 include: {
                     project: {
@@ -458,6 +469,7 @@ class DocumentHubController {
                         select: { id: true, name: true, workEmail: true },
                     },
                     treeNodes: {
+                        where: { isDeleted: false },
                         select: { id: true, type: true },
                     },
                 },
@@ -475,6 +487,503 @@ class DocumentHubController {
             res.status(500).json({
                 success: false,
                 error: "Failed to get all document hubs",
+            });
+        }
+    }
+    static async deleteDocumentHub(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { id } = req.params;
+            const documentHub = await database_1.prisma.documentHub.findFirst({
+                where: {
+                    id,
+                    tenantId: req.tenantId,
+                    isDeleted: false,
+                },
+            });
+            if (!documentHub) {
+                res.status(404).json({
+                    success: false,
+                    error: "Document Hub not found",
+                });
+                return;
+            }
+            await database_1.prisma.documentHub.update({
+                where: { id },
+                data: {
+                    isDeleted: true,
+                    deletedAt: new Date(),
+                    deletedById: req.user.id,
+                },
+            });
+            // Emit socket event
+            socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:deleted", { id });
+            res.status(200).json({
+                success: true,
+                message: "Document Hub moved to trash",
+            });
+        }
+        catch (error) {
+            console.error("Delete document hub error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to delete document hub",
+            });
+        }
+    }
+    static async deleteTreeNode(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { id } = req.params;
+            const node = await database_1.prisma.documentTree.findFirst({
+                where: {
+                    id,
+                    tenantId: req.tenantId,
+                    isDeleted: false,
+                },
+            });
+            if (!node) {
+                res.status(404).json({
+                    success: false,
+                    error: "Node not found",
+                });
+                return;
+            }
+            // Soft delete the node
+            await database_1.prisma.documentTree.update({
+                where: { id },
+                data: {
+                    isDeleted: true,
+                    deletedAt: new Date(),
+                    deletedById: req.user.id,
+                },
+            });
+            // If it's a file, also soft delete the associated document
+            if (node.type === "file" && node.documentId) {
+                await database_1.prisma.document.update({
+                    where: { id: node.documentId },
+                    data: {
+                        isDeleted: true,
+                        deletedAt: new Date(),
+                        deletedById: req.user.id,
+                    },
+                });
+            }
+            res.status(200).json({
+                success: true,
+                message: "Node moved to trash",
+            });
+        }
+        catch (error) {
+            console.error("Delete tree node error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to delete tree node",
+            });
+        }
+    }
+    /**
+     * Delete individual document (soft delete)
+     */
+    static async deleteDocument(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { id } = req.params;
+            const document = await database_1.prisma.document.findFirst({
+                where: {
+                    id,
+                    tenantId: req.tenantId,
+                    isDeleted: false,
+                },
+            });
+            if (!document) {
+                res.status(404).json({
+                    success: false,
+                    error: "Document not found",
+                });
+                return;
+            }
+            // Soft delete the document
+            await database_1.prisma.document.update({
+                where: { id },
+                data: {
+                    isDeleted: true,
+                    deletedAt: new Date(),
+                    deletedById: req.user.id,
+                },
+            });
+            // Also soft delete associated tree node if it exists
+            await database_1.prisma.documentTree.updateMany({
+                where: {
+                    documentId: id,
+                    tenantId: req.tenantId,
+                    isDeleted: false,
+                },
+                data: {
+                    isDeleted: true,
+                    deletedAt: new Date(),
+                    deletedById: req.user.id,
+                },
+            });
+            res.status(200).json({
+                success: true,
+                message: "Document moved to trash",
+            });
+        }
+        catch (error) {
+            console.error("Delete document error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to delete document",
+            });
+        }
+    }
+    /**
+     * Get trash items (hubs and documents)
+     */
+    static async getTrash(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { type } = req.query;
+            let hubs = [];
+            let documents = [];
+            if (!type || type === "hub") {
+                hubs = await database_1.prisma.documentHub.findMany({
+                    where: {
+                        tenantId: req.tenantId,
+                        isDeleted: true,
+                    },
+                    include: {
+                        deletedBy: {
+                            select: { id: true, name: true },
+                        },
+                    },
+                    orderBy: {
+                        deletedAt: "desc",
+                    },
+                });
+            }
+            if (!type || type === "document") {
+                documents = await database_1.prisma.document.findMany({
+                    where: {
+                        tenantId: req.tenantId,
+                        isDeleted: true,
+                    },
+                    include: {
+                        deletedBy: {
+                            select: { id: true, name: true },
+                        },
+                        documentHub: {
+                            select: { id: true, name: true },
+                        },
+                    },
+                    orderBy: {
+                        deletedAt: "desc",
+                    },
+                });
+            }
+            res.status(200).json({
+                success: true,
+                data: { hubs, documents },
+            });
+        }
+        catch (error) {
+            console.error("Get trash error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to get trash items",
+            });
+        }
+    }
+    /**
+     * Restore document hub
+     */
+    static async restoreDocumentHub(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { id } = req.params;
+            const documentHub = await database_1.prisma.documentHub.findFirst({
+                where: {
+                    id,
+                    tenantId: req.tenantId,
+                    isDeleted: true,
+                },
+            });
+            if (!documentHub) {
+                res.status(404).json({
+                    success: false,
+                    error: "Document Hub not found in trash",
+                });
+                return;
+            }
+            await database_1.prisma.documentHub.update({
+                where: { id },
+                data: {
+                    isDeleted: false,
+                    deletedAt: null,
+                    deletedById: null,
+                },
+            });
+            res.status(200).json({
+                success: true,
+                message: "Document Hub restored successfully",
+            });
+        }
+        catch (error) {
+            console.error("Restore document hub error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to restore document hub",
+            });
+        }
+    }
+    /**
+     * Restore document
+     */
+    static async restoreDocument(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { id } = req.params;
+            const document = await database_1.prisma.document.findFirst({
+                where: {
+                    id,
+                    tenantId: req.tenantId,
+                    isDeleted: true,
+                },
+                include: {
+                    documentHub: true
+                }
+            });
+            if (!document) {
+                res.status(404).json({
+                    success: false,
+                    error: "Document not found in trash",
+                });
+                return;
+            }
+            // If the parent hub is deleted, we might want to warn or prevent?
+            // For now, restore the document.
+            await database_1.prisma.document.update({
+                where: { id },
+                data: {
+                    isDeleted: false,
+                    deletedAt: null,
+                    deletedById: null,
+                },
+            });
+            // Also restore associated tree node if it exists
+            await database_1.prisma.documentTree.updateMany({
+                where: {
+                    documentId: id,
+                    tenantId: req.tenantId,
+                    isDeleted: true,
+                },
+                data: {
+                    isDeleted: false,
+                    deletedAt: null,
+                    deletedById: null,
+                },
+            });
+            res.status(200).json({
+                success: true,
+                message: "Document restored successfully",
+            });
+        }
+        catch (error) {
+            console.error("Restore document error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to restore document",
+            });
+        }
+    }
+    /**
+     * Share document (update visibility and share token)
+     */
+    static async shareDocument(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { id } = req.params;
+            const { visibility } = req.body;
+            if (!['private', 'internal', 'public'].includes(visibility)) {
+                res.status(400).json({
+                    success: false,
+                    error: "Invalid visibility mode",
+                });
+                return;
+            }
+            const document = await database_1.prisma.document.findFirst({
+                where: {
+                    id,
+                    tenantId: req.tenantId,
+                    isDeleted: false,
+                },
+            });
+            if (!document) {
+                res.status(404).json({
+                    success: false,
+                    error: "Document not found",
+                });
+                return;
+            }
+            let shareToken = document.shareToken;
+            // Generate token if public and doesn't have one
+            if (visibility === 'public') {
+                if (!shareToken) {
+                    shareToken = crypto_1.default.randomBytes(32).toString('hex');
+                }
+            }
+            else {
+                shareToken = null;
+            }
+            const updatedDocument = await database_1.prisma.document.update({
+                where: { id },
+                data: {
+                    visibility,
+                    shareToken,
+                },
+            });
+            res.status(200).json({
+                success: true,
+                data: updatedDocument,
+                message: `Document visibility updated to ${visibility}`,
+            });
+        }
+        catch (error) {
+            console.error("Share document error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to update sharing settings",
+            });
+        }
+    }
+    /**
+     * Revoke sharing (set to private)
+     */
+    static async revokeShare(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { id } = req.params;
+            const document = await database_1.prisma.document.findFirst({
+                where: {
+                    id,
+                    tenantId: req.tenantId,
+                    isDeleted: false,
+                },
+            });
+            if (!document) {
+                res.status(404).json({
+                    success: false,
+                    error: "Document not found",
+                });
+                return;
+            }
+            await database_1.prisma.document.update({
+                where: { id },
+                data: {
+                    visibility: 'private',
+                    shareToken: null,
+                },
+            });
+            res.status(200).json({
+                success: true,
+                message: "Document sharing revoked",
+            });
+        }
+        catch (error) {
+            console.error("Revoke share error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to revoke sharing",
+            });
+        }
+    }
+    /**
+     * Get public document by share token
+     */
+    static async getPublicDocument(req, res) {
+        try {
+            const { token } = req.params;
+            const document = await database_1.prisma.document.findFirst({
+                where: {
+                    shareToken: token,
+                    visibility: 'public',
+                    isDeleted: false,
+                },
+                include: {
+                    documentHub: {
+                        select: { name: true }
+                    },
+                    createdBy: {
+                        select: { name: true }
+                    }
+                }
+            });
+            if (!document) {
+                res.status(404).json({
+                    success: false,
+                    error: "Public document not found or access expired",
+                });
+                return;
+            }
+            res.status(200).json({
+                success: true,
+                data: document,
+            });
+        }
+        catch (error) {
+            console.error("Get public document error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to fetch public document",
             });
         }
     }
