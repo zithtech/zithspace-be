@@ -80,9 +80,9 @@ export declare class EmailLoggerService {
             sentAt: Date;
             openedAt: Date | null;
             clickedAt: Date | null;
-            sentBy: string;
-            customerId: string | null;
             sentByUser: string | null;
+            customerId: string | null;
+            sentBy: string;
         })[];
         pagination: {
             page: number;
@@ -104,10 +104,10 @@ export declare class EmailLoggerService {
             tenantId: string;
             createdAt: Date;
             updatedAt: Date;
-            createdBy: string;
-            updatedBy: string | null;
             email: string | null;
             phone: string | null;
+            createdBy: string;
+            updatedBy: string | null;
             address: string | null;
             taxId: string | null;
             gstin: string | null;
@@ -142,9 +142,9 @@ export declare class EmailLoggerService {
         sentAt: Date;
         openedAt: Date | null;
         clickedAt: Date | null;
-        sentBy: string;
-        customerId: string | null;
         sentByUser: string | null;
+        customerId: string | null;
+        sentBy: string;
     }>;
     /**
      * Get all unique modules that have sent emails
@@ -196,8 +196,8 @@ export declare class EmailLoggerService {
         sentAt: Date;
         openedAt: Date | null;
         clickedAt: Date | null;
-        sentBy: string;
-        customerId: string | null;
         sentByUser: string | null;
+        customerId: string | null;
+        sentBy: string;
     }>;
 }

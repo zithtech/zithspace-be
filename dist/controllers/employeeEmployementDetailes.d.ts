@@ -41,10 +41,10 @@ export declare function getAllEmploymentDetails(req: AuthRequest): Promise<{
     fixedDays: string[];
     totalDays: number;
     totalHours: number;
-    employeeGrade: string;
-    promotionStatus: string;
-    joiningDate: Date;
-    trainingCompletion: Date;
+    employeeGrade: any;
+    promotionStatus: any;
+    joiningDate: any;
+    trainingCompletion: any;
     projects: string[];
     reportingManager: string;
 }[]>;
