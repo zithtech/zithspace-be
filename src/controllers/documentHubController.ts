@@ -469,11 +469,10 @@ export class DocumentHubController {
 
       const { id } = req.params;
 
-      const history = await prisma.documentHistory.findMany({
+      const history = await (prisma.documentHistory.findMany as any)({
         where: {
           documentId: id,
           tenantId: req.tenantId,
-          document: { isDeleted: false },
         },
         include: {
           createdBy: {

@@ -200,10 +200,40 @@ model User {
   addedRelatedLinks                                                    TicketRelatedLink[]
   assignedTickets                                                      Ticket[]                            @relation("TicketAssignee")
   createdTickets                                                       Ticket[]                            @relation("TicketCreator")
+  deletedTickets                                                       Ticket[]                            @relation("TicketDeletedBy")
   reportToTickets                                                      Ticket[]                            @relation("TicketReportTo")
   timeTrackingEntries                                                  TimeTrackingEntry[]
   transactions                                                         Transaction[]
   userRoles                                                            UserRole[]
+  bucketCreations                                                      Bucket[]                            @relation("BucketCreator")
+  bucketMemberships                                                    BucketMember[]
+  sprintCompletionLogs                                                 SprintCompletionLog[]               @relation("SprintLogPerformedBy")
+  invoicePaymentsCreated                                               InvoicePayment[]                    @relation("InvoicePaymentCreatedBy")
+  invoicesDeleted                                                      Invoice[]                           @relation("InvoiceDeletedBy")
+  timesheets                                                           Timesheet[]                         @relation("TimesheetUser")
+  approvedTimesheets                                                   Timesheet[]                         @relation("TimesheetApprover")
+  calendarEventExceptionsCreated                                       CalendarEventException[]            @relation("CalendarEventExceptionCreator")
+  emailLogsSent                                                        EmailLog[]                          @relation("EmailLogSentBy")
+  exitTypesCreated                                                     ExitType[]                          @relation("ExitTypeCreator")
+  exitTypesUpdated                                                     ExitType[]                          @relation("ExitTypeUpdater")
+  reasonsForExitCreated                                                ReasonForExit[]                     @relation("ReasonForExitCreator")
+  reasonsForExitUpdated                                                ReasonForExit[]                     @relation("ReasonForExitUpdater")
+  recruitmentStatusesCreated                                           RecruitmentStatus[]                 @relation("RecruitmentStatusCreator")
+  recruitmentStatusesUpdated                                           RecruitmentStatus[]                 @relation("RecruitmentStatusUpdater")
+  recruitmentActionsCreated                                            RecruitmentAction[]                 @relation("RecruitmentActionCreator")
+  recruitmentActionsUpdated                                            RecruitmentAction[]                 @relation("RecruitmentActionUpdater")
+  jobRequisitionsCreated                                               JobRequisition[]                    @relation("JobRequisitionCreator")
+  jobRequisitionsAsAccountManager                                      JobRequisition[]                    @relation("JobRequisitionAccountManager")
+  jobRequisitionsAsDeliveryManager                                     JobRequisition[]                    @relation("JobRequisitionDeliveryManager")
+  leaveRequestsApproved                                                LeaveRequest[]                      @relation("LeaveRequestApprover")
+  documentHubsCreated                                                  DocumentHub[]                       @relation("DocumentHubCreator")
+  documentHubsDeleted                                                  DocumentHub[]                       @relation("DocumentHubDeletedBy")
+  documentsCreated                                                     Document[]                          @relation("DocumentCreator")
+  documentsDeleted                                                     Document[]                          @relation("DocumentDeletedBy")
+  documentTreesCreated                                                 DocumentTree[]                      @relation("DocumentTreeCreator")
+  reimbursementsCreated                                                Reimbursement[]                     @relation("ReimbursementCreatedBy")
+  shortcutsCreated                                                     Shortcut[]                          @relation("ShortcutCreator")
+  shortcutsUpdated                                                     Shortcut[]                          @relation("ShortcutUpdater")
   assignedShift                                                        Shift?                              @relation("UserShift", fields: [assignedShiftId], references: [id])
   employee                                                             Employee?                           @relation(fields: [employeeId], references: [id])
   position                                                             Position?                           @relation("UserPosition", fields: [positionId], references: [id])
@@ -311,26 +341,27 @@ model SubDepartment {
 }
 
 model Position {
-  id              String         @id @default(uuid())
-  tenantId        String         @map("tenant_id")
-  code            String
-  title           String
-  departmentId    String         @map("department_id")
-  subDepartmentId String?        @map("sub_department_id")
-  gradeId         String         @map("grade_id")
-  description     String?
-  isActive        Boolean        @default(true) @map("is_active")
-  createdById     String         @map("created_by_id")
-  updatedById     String?        @map("updated_by_id")
-  createdAt       DateTime       @default(now()) @map("created_at")
-  updatedAt       DateTime       @updatedAt @map("updated_at")
-  createdBy       User           @relation("PositionCreator", fields: [createdById], references: [id])
-  department      Department     @relation(fields: [departmentId], references: [id])
-  grade           Grade          @relation(fields: [gradeId], references: [id])
-  subDepartment   SubDepartment? @relation(fields: [subDepartmentId], references: [id])
-  tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  updatedBy       User?          @relation("PositionUpdater", fields: [updatedById], references: [id])
-  users           User[]         @relation("UserPosition")
+  id                  String               @id @default(uuid())
+  tenantId            String               @map("tenant_id")
+  code                String
+  title               String
+  departmentId        String               @map("department_id")
+  subDepartmentId     String?              @map("sub_department_id")
+  gradeId             String               @map("grade_id")
+  description         String?
+  isActive            Boolean              @default(true) @map("is_active")
+  createdById         String               @map("created_by_id")
+  updatedById         String?              @map("updated_by_id")
+  createdAt           DateTime             @default(now()) @map("created_at")
+  updatedAt           DateTime             @updatedAt @map("updated_at")
+  createdBy           User                 @relation("PositionCreator", fields: [createdById], references: [id])
+  department          Department           @relation(fields: [departmentId], references: [id])
+  grade               Grade                @relation(fields: [gradeId], references: [id])
+  subDepartment       SubDepartment?       @relation(fields: [subDepartmentId], references: [id])
+  tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  updatedBy           User?                @relation("PositionUpdater", fields: [updatedById], references: [id])
+  users               User[]               @relation("UserPosition")
+  employeeWorkDetails EmployeeWorkDetail[] @relation("EmployeeWorkDetailPosition")
 
   @@unique([tenantId, code])
   @@map("positions")
@@ -376,6 +407,8 @@ model Project {
   tickets             Ticket[]
   timeTrackingEntries TimeTrackingEntry[]
   work_entry          work_entry[]
+  buckets             Bucket[]
+  documentHubs        DocumentHub[]
 
   @@unique([tenantId, code])
   @@map("projects")
@@ -463,6 +496,7 @@ model Ticket {
   workflowSteps       TicketWorkflowStep[]
   assignee            User?                @relation("TicketAssignee", fields: [assigneeId], references: [id])
   createdBy           User                 @relation("TicketCreator", fields: [createdById], references: [id])
+  deletedBy           User?                @relation("TicketDeletedBy", fields: [deletedById], references: [id])
   demoPlan            ReleasePlan?         @relation("TicketDemoPlan", fields: [demoPlanId], references: [id])
   epic                Ticket?              @relation("EpicStories", fields: [epicId], references: [id])
   stories             Ticket[]             @relation("EpicStories")
@@ -475,6 +509,8 @@ model Ticket {
   tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   timeTrackingEntries TimeTrackingEntry[]
   work_entry          work_entry[]
+  documentHubs        DocumentHub[]
+  bucket              Bucket?             @relation("BucketTickets", fields: [bucketId], references: [id])
 
   @@unique([tenantId, ticketNumber])
   @@index([epicId])
@@ -786,9 +822,13 @@ model LeaveType {
   updatedAt        DateTime @updatedAt @map("updated_at")
   days             Int?     @default(1)
   hours            Decimal? @db.Decimal(4, 2)
-  createdBy        User?    @relation("LeaveTypeCreator", fields: [createdById], references: [id])
-  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  updatedBy        User?    @relation("LeaveTypeUpdater", fields: [updatedById], references: [id])
+  createdBy        User?             @relation("LeaveTypeCreator", fields: [createdById], references: [id])
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  updatedBy        User?             @relation("LeaveTypeUpdater", fields: [updatedById], references: [id])
+  leaveAdjustments LeaveAdjustment[]
+  leaveRequests    LeaveRequest[]    @relation("LeaveRequestType")
+  originLeaveTypes OriginLeaveType[]
+  leaveLedgers     LeaveLedger[]
 
   @@unique([tenantId, code])
   @@map("leave_types")
@@ -842,6 +882,7 @@ model LeaveAdjustment {
   tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   updatedBy       User?     @relation("LeaveAdjustmentUpdater", fields: [updatedById], references: [id])
   user            User?     @relation("UserLeaveAdjustments", fields: [userId], references: [id], onDelete: Cascade)
+  leaveType       LeaveType? @relation(fields: [leaveTypeId], references: [id])
 
   @@map("leave_adjustments")
 }
@@ -883,23 +924,28 @@ model Customer {
   updatedBy   String?   @map("updated_by")
   gstin       String?   @map("gstin") @db.VarChar(30)
   pan         String?   @map("pan") @db.VarChar(30)
-  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant      Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   invoices    Invoice[]
+  emailLogs   EmailLog[]
 
   @@map("customers")
 }
 
 model Bucket {
-  id          String   @id @default(uuid())
-  tenantId    String   @map("tenant_id")
-  projectId   String?  @map("project_id")
+  id          String         @id @default(uuid())
+  tenantId    String         @map("tenant_id")
+  projectId   String?        @map("project_id")
   name        String
   description String?
-  color       String?  @default("#6366f1")
-  isShared    Boolean  @default(false) @map("is_shared")
-  createdById String   @map("created_by_id")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  color       String?        @default("#6366f1")
+  isShared    Boolean        @default(false) @map("is_shared")
+  createdById String         @map("created_by_id")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+  createdBy   User           @relation("BucketCreator", fields: [createdById], references: [id])
+  project     Project?       @relation(fields: [projectId], references: [id])
+  members     BucketMember[]
+  tickets     Ticket[]       @relation("BucketTickets")
 
   @@unique([tenantId, projectId, name], map: "unique_bucket_per_project")
   @@index([createdById], map: "idx_buckets_created_by_id")
@@ -914,6 +960,8 @@ model BucketMember {
   userId   String   @map("user_id")
   role     String   @default("member")
   addedAt  DateTime @default(now()) @map("added_at")
+  bucket   Bucket   @relation(fields: [bucketId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([bucketId, userId], map: "unique_bucket_member")
   @@index([bucketId], map: "idx_bucket_members_bucket_id")
@@ -933,6 +981,7 @@ model SprintCompletionLog {
   performedById   String   @map("performed_by_id") @db.VarChar(255)
   performedAt     DateTime @default(now()) @map("performed_at") @db.Timestamp(6)
   metadata        Json?    @default("{}")
+  performedBy     User     @relation("SprintLogPerformedBy", fields: [performedById], references: [id])
 
   @@index([performedAt], map: "idx_sprint_completion_logs_performed_at")
   @@index([projectId], map: "idx_sprint_completion_logs_project_id")
@@ -1068,6 +1117,9 @@ model Invoice {
   templateId         String?             @map("template_id") @db.Uuid
   metadata           Json?
   payments           InvoicePayment[]
+  lineItems          InvoiceLineItem[]
+  attachments        InvoiceAttachment[]
+  taxes              InvoiceTax[]
   template           InvoiceTemplate?    @relation(fields: [templateId], references: [id], onUpdate: NoAction, map: "fk_invoices_template")
   createdByUser      User                @relation("InvoiceCreatedBy", fields: [createdBy], references: [id])
   customer           Customer            @relation(fields: [customerId], references: [id])
@@ -1075,6 +1127,7 @@ model Invoice {
   settingsProfile    SettingsProfile?    @relation(fields: [settingsProfileId], references: [id])
   tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   updatedByUser      User?               @relation("InvoiceUpdatedBy", fields: [updatedBy], references: [id])
+  deletedByUser      User?               @relation("InvoiceDeletedBy", fields: [deletedBy], references: [id])
 
   @@index([customerId], map: "idx_invoices_customer_id")
   @@index([firstPaymentDate], map: "idx_invoices_first_payment_date")
@@ -1106,6 +1159,7 @@ model InvoiceLineItem {
   taxAmount   Decimal?  @map("tax_amount") @db.Decimal(14, 2)
   total       Decimal?  @db.Decimal(14, 2)
   extraFields Json?     @map("extra_fields")
+  invoice     Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   @@index([invoiceId], map: "idx_invoice_items_invoice_id")
   @@index([tenantId], map: "idx_invoice_items_tenant_id")
@@ -1128,6 +1182,7 @@ model InvoiceTax {
   updatedBy String?   @map("updated_by")
   createdAt DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  invoice   Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   @@index([invoiceId], map: "idx_invoice_taxes_invoice_id")
   @@index([tenantId], map: "idx_invoice_taxes_tenant_id")
@@ -1141,6 +1196,7 @@ model InvoiceAttachment {
   fileUrl    String    @map("file_url")
   uploadedBy String    @map("uploaded_by")
   uploadedAt DateTime? @default(now()) @map("uploaded_at") @db.Timestamptz(6)
+  invoice    Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   @@index([invoiceId], map: "idx_invoice_attachments_invoice_id")
   @@map("invoice_attachments")
@@ -1176,6 +1232,7 @@ model InvoicePayment {
   balanceAfter  Decimal?       @map("balance_after") @db.Decimal(15, 2)
   invoice       Invoice        @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdByUser User           @relation("InvoicePaymentCreatedBy", fields: [createdBy], references: [id])
 
   @@index([invoiceId], map: "idx_invoice_payments_invoice_id")
   @@index([paymentDate], map: "idx_invoice_payments_payment_date")
@@ -1258,17 +1315,23 @@ model CompanyGovernmentHoliday {
 }
 
 model DocumentHub {
-  id          String    @id @default(uuid())
+  id          String         @id @default(uuid())
   tenantId    String
   name        String
   projectId   String?
   ticketId    String?
   createdById String
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  isDeleted   Boolean?  @default(false) @map("is_deleted")
-  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz(6)
-  deletedById String?   @map("deleted_by_id") @db.Uuid
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  isDeleted   Boolean?       @default(false) @map("is_deleted")
+  deletedAt   DateTime?      @map("deleted_at") @db.Timestamptz(6)
+  deletedById String?        @map("deleted_by_id") @db.Uuid
+  createdBy   User           @relation("DocumentHubCreator", fields: [createdById], references: [id])
+  deletedBy   User?          @relation("DocumentHubDeletedBy", fields: [deletedById], references: [id])
+  project     Project?       @relation(fields: [projectId], references: [id])
+  ticket      Ticket?        @relation(fields: [ticketId], references: [id])
+  treeNodes   DocumentTree[]
+  documents   Document[]
 
   @@index([createdById], map: "idx_documenthub_created_by_id")
   @@index([projectId], map: "idx_documenthub_project_id")
@@ -1278,19 +1341,22 @@ model DocumentHub {
 }
 
 model Document {
-  id            String    @id @default(uuid())
+  id            String      @id @default(uuid())
   documentHubId String
   title         String
   content       Json
   createdById   String
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
   tenantId      String
-  isDeleted     Boolean?  @default(false) @map("is_deleted")
-  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(6)
-  deletedById   String?   @map("deleted_by_id") @db.Uuid
-  visibility    String?   @default("private") @db.VarChar(255)
-  shareToken    String?   @unique @map("share_token") @db.VarChar(255)
+  isDeleted     Boolean?    @default(false) @map("is_deleted")
+  deletedAt     DateTime?   @map("deleted_at") @db.Timestamptz(6)
+  deletedById   String?     @map("deleted_by_id") @db.Uuid
+  visibility    String?     @default("private") @db.VarChar(255)
+  shareToken    String?     @unique @map("share_token") @db.VarChar(255)
+  documentHub   DocumentHub @relation(fields: [documentHubId], references: [id], onDelete: Cascade)
+  createdBy     User        @relation("DocumentCreator", fields: [createdById], references: [id])
+  deletedBy     User?       @relation("DocumentDeletedBy", fields: [deletedById], references: [id])
 
   @@map("documents")
 }
@@ -1309,6 +1375,8 @@ model DocumentTree {
   isDeleted     Boolean?         @default(false) @map("is_deleted")
   deletedAt     DateTime?        @map("deleted_at") @db.Timestamptz(6)
   deletedById   String?          @map("deleted_by_id") @db.Uuid
+  documentHub   DocumentHub      @relation(fields: [documentHubId], references: [id], onDelete: Cascade)
+  createdBy     User             @relation("DocumentTreeCreator", fields: [createdById], references: [id])
 
   @@map("documenttree")
 }
@@ -1427,6 +1495,9 @@ model Timesheet {
   createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt    DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
   leaveCount   Int              @default(0) @map("leave_count")
+  rows         TimesheetRow[]
+  user         User             @relation("TimesheetUser", fields: [userId], references: [id])
+  approvedBy   User?            @relation("TimesheetApprover", fields: [approvedById], references: [id])
 
   @@unique([userId, weekStart], map: "uq_timesheet_user_week")
   @@index([userId], map: "idx_timesheets_user_id")
@@ -1434,22 +1505,23 @@ model Timesheet {
 }
 
 model TimesheetRow {
-  id          String   @id @default(cuid())
-  tenantId    String   @map("tenant_id")
-  timesheetId String   @map("timesheet_id")
-  day         DateTime @db.Date
-  projectName String   @map("project_name")
-  taskName    String   @map("task_name")
+  id          String    @id @default(cuid())
+  tenantId    String    @map("tenant_id")
+  timesheetId String    @map("timesheet_id")
+  day         DateTime  @db.Date
+  projectName String    @map("project_name")
+  taskName    String    @map("task_name")
   description String?
   hours       Float
-  billable    Boolean  @default(false)
-  createdById String   @map("created_by_id")
-  updatedById String?  @map("updated_by_id")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamp(6)
-  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
-  projectId   String?  @db.Uuid
-  taskId      String?  @db.Uuid
+  billable    Boolean   @default(false)
+  createdById String    @map("created_by_id")
+  updatedById String?   @map("updated_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt   DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  projectId   String?   @db.Uuid
+  taskId      String?   @db.Uuid
   dayorder    Int?
+  timesheet   Timesheet @relation(fields: [timesheetId], references: [id], onDelete: Cascade)
 
   @@index([createdById], map: "idx_timesheet_rows_created_by")
   @@index([timesheetId], map: "idx_timesheet_rows_timesheet_id")
@@ -1491,6 +1563,7 @@ model OriginLeaveType {
   accrualInterval      Int?                  @default(1) @map("accrual_interval")
   createdBy            User                  @relation("OriginLeaveTypeCreator", fields: [createdById], references: [id])
   leaveOriginStructure LeaveOriginStructure? @relation(fields: [leaveOriginId], references: [id], onDelete: Cascade)
+  leaveType            LeaveType?            @relation(fields: [leaveTypeId], references: [id])
   tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   updatedBy            User?                 @relation("OriginLeaveTypeUpdater", fields: [updatedById], references: [id])
 
@@ -1579,6 +1652,8 @@ model EmailLog {
   sentBy         String    @map("sent_by")
   sentByUser     String?   @map("sent_by_user")
   metadata       Json?
+  customer       Customer? @relation(fields: [customerId], references: [id])
+  sentByUserRel  User?     @relation("EmailLogSentBy", fields: [sentByUser], references: [id])
 
   @@index([module, moduleId])
   @@index([module, sentAt])
@@ -1620,6 +1695,18 @@ model Employee {
   salary_adjustments          salary_adjustments[]
   salary_payouts              salary_payouts[]
   users                       User[]
+  bankDetail                  EmployeeBankDetail?
+  payrollDetail               EmployeePayrollDetail?
+  addresses                   EmployeeAddress[]
+  emergencyContacts           EmployeeEmergencyContact[]
+  employeeIdentity            EmployeeIdentity?
+  assets                      EmployeeAsset[]
+  workDetail                  EmployeeWorkDetail?
+  additionalDetails           EmployeeAdditionalDetail?
+  employeeTimeline            EmployeeTimeline?
+  projectMappings             EmployeeProjectMapping[]
+  leaveRequests               LeaveRequest[]              @relation("EmployeeLeaveRequests")
+  leaveLedgers                LeaveLedger[]
 
   @@map("employees")
 }
@@ -1639,6 +1726,7 @@ model EmployeeAddress {
   updatedById String?     @map("updated_by_id") @db.Uuid
   createdAt   DateTime    @default(now()) @map("created_at")
   updatedAt   DateTime    @updatedAt @map("updated_at")
+  employee    Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@map("employee_addresses")
 }
@@ -1653,13 +1741,14 @@ model EmployeeEmergencyContact {
   updatedById  String?   @map("updated_by_id")
   createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt    DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  employee     Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@map("employee_emergency_contacts")
 }
 
 model EmployeeIdentity {
   id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  employeeId     String    @map("employee_id") @db.Uuid
+  employeeId     String    @unique @map("employee_id") @db.Uuid
   aadhaarNumber  String?   @map("aadhaar_number") @db.VarChar(255)
   panNumber      String?   @map("pan_number") @db.VarChar(255)
   passportNumber String?   @map("passport_number") @db.VarChar(255)
@@ -1667,13 +1756,14 @@ model EmployeeIdentity {
   updatedById    String?   @map("updated_by_id") @db.Uuid
   createdAt      DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  employee       Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@map("employee_identities")
 }
 
 model EmployeeWorkDetail {
   id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  employeeId      String    @map("employee_id") @db.Uuid
+  employeeId      String    @unique @map("employee_id") @db.Uuid
   department      String?   @db.VarChar(100)
   team            String?   @db.VarChar(100)
   employeeType    String?   @map("employee_type") @db.VarChar(50)
@@ -1691,19 +1781,22 @@ model EmployeeWorkDetail {
   workJoiningDate String?   @map("work_joining_date") @db.VarChar(30)
   positionId      String?   @map("position_id") @db.Uuid
   notice_period   String?   @db.VarChar(10)
+  employee        Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  position        Position? @relation("EmployeeWorkDetailPosition", fields: [positionId], references: [id])
 
   @@map("employee_work_details")
 }
 
 model EmployeeTimeline {
   id                     String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  employeeId             String    @map("employee_id") @db.Uuid
+  employeeId             String    @unique @map("employee_id") @db.Uuid
   joiningDate            DateTime? @map("joining_date") @db.Date
   trainingCompletionDate DateTime? @map("training_completion_date") @db.Date
   createdById            String?   @map("created_by_id") @db.Uuid
   updatedById            String?   @map("updated_by_id") @db.Uuid
   createdAt              DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt              DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  employee               Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@map("employee_timelines")
 }
@@ -1717,26 +1810,28 @@ model EmployeeProjectMapping {
   projectName      String?   @map("project_name") @db.VarChar(150)
   createdAt        DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  employee         Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@map("employee_project_mappings")
 }
 
 model EmployeeAdditionalDetail {
   id              String   @id @default(uuid()) @db.Uuid
-  employeeId      String   @map("employee_id") @db.Uuid
+  employeeId      String   @unique @map("employee_id") @db.Uuid
   createdById     String?  @map("created_by_id") @db.Uuid
   updatedById     String?  @map("updated_by_id") @db.Uuid
   promotionStatus String?  @map("promotion_status") @db.VarChar(50)
   employeeGrade   String?  @map("employee_grade") @db.VarChar(50)
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
+  employee        Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@map("employee_additional_details")
 }
 
 model EmployeeBankDetail {
   id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  employeeId        String    @map("employee_id") @db.Uuid
+  employeeId        String    @unique @map("employee_id") @db.Uuid
   createdById       String?   @map("created_by_id") @db.Uuid
   updatedById       String?   @map("updated_by_id") @db.Uuid
   bankName          String?   @map("bank_name") @db.VarChar(150)
@@ -1747,6 +1842,7 @@ model EmployeeBankDetail {
   accountType       String?   @map("account_type") @db.VarChar(50)
   createdAt         DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt         DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  employee          Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@map("employee_bank_details")
 }
@@ -1763,6 +1859,7 @@ model EmployeePayrollDetail {
   paymentType String?   @map("payment_type") @db.VarChar(50)
   createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@map("employee_payroll_details")
 }
@@ -1829,6 +1926,7 @@ model EmployeeAsset {
   condition    String?
   deduction    Int?
   remarks      String?
+  employee     Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
   @@map("employee_assets")
 }
@@ -1907,6 +2005,7 @@ model CalendarEvent {
   updatedById    String?          @map("updated_by_id")
   organizerEmail String?          @map("organizer_email")
   isDeleted      Boolean          @default(false) @map("is_deleted")
+  exceptions     CalendarEventException[]
 
   @@unique([provider, externalId, tenantId], map: "calendar_events_unique_provider_external_tenant")
   @@index([startTime], map: "idx_calendar_events_start_time")
@@ -1934,6 +2033,8 @@ model CalendarEventException {
   overrideLocation    String?   @map("override_location")
   overrideMeetingLink String?   @map("override_meeting_link")
   overrideAttendees   Json?     @map("override_attendees")
+  event               CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  createdBy           User          @relation("CalendarEventExceptionCreator", fields: [createdById], references: [id])
 
   @@unique([eventId, originalDate], map: "unique_event_occurrence")
   @@index([eventId], map: "idx_exception_event_id")
@@ -2033,10 +2134,13 @@ model Shortcut {
   id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   title       String    @db.VarChar(255)
   path        String    @db.VarChar(255)
+  tenantId    String    @map("tenant_id")
   createdById String    @map("created_by_id") @db.Uuid
   updatedById String?   @map("updated_by_id") @db.Uuid
   createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt   DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  createdBy   User      @relation("ShortcutCreator", fields: [createdById], references: [id])
+  updatedBy   User?     @relation("ShortcutUpdater", fields: [updatedById], references: [id])
 
   @@map("shortcuts")
 }
@@ -2094,6 +2198,9 @@ model ClientV2 {
   deliveryOwner        Employee?       @relation("DeliveryOwner", fields: [deliveryOwnerId], references: [id])
   salesOwner           Employee?       @relation("SalesOwner", fields: [salesOwnerId], references: [id])
   tenant               Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parentClient         ClientV2?       @relation("ClientHierarchy", fields: [parentId], references: [id])
+  childClients         ClientV2[]      @relation("ClientHierarchy")
+  contacts             ClientContactV2[]
 
   @@unique([tenantId, clientCode])
   @@map("clients_v2")
@@ -2120,6 +2227,7 @@ model ClientContactV2 {
   status          String   @default("Active")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
+  client          ClientV2 @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@map("client_contacts_v2")
 }
@@ -2175,6 +2283,9 @@ model LeaveLedger {
   createdById     String?   @map("created_by_id")
   updatedById     String?   @map("updated_by_id")
 
+  leaveType    LeaveType @relation(fields: [leaveTypeId], references: [id])
+  employee     Employee  @relation(fields: [employeeId], references: [id])
+
   @@index([employeeId])
   @@index([leaveTypeId])
   @@index([referenceId])
@@ -2194,9 +2305,10 @@ model InvoiceTemplate {
   createdById String    @map("created_by")
   createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt   DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
-  createdBy   User      @relation("InvoiceTemplateCreator", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invoice_templates_created_by")
-  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_invoice_templates_tenant")
+  createdBy   User                   @relation("InvoiceTemplateCreator", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_invoice_templates_created_by")
+  tenant      Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_invoice_templates_tenant")
   invoices    Invoice[]
+  fields      InvoiceTemplateField[]
 
   @@map("invoice_templates")
 }
@@ -2208,10 +2320,11 @@ model InvoiceTemplateField {
   fieldLabel String    @map("field_label") @db.VarChar(200)
   fieldType  String    @map("field_type") @db.VarChar(50)
   fieldOrder Int       @map("field_order")
-  isRequired Boolean?  @default(false) @map("is_required")
-  isSystem   Boolean?  @default(false) @map("is_system")
-  createdAt  DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
-  options    Json?     @default("[]")
+  isRequired Boolean?        @default(false) @map("is_required")
+  isSystem   Boolean?        @default(false) @map("is_system")
+  createdAt  DateTime?       @default(now()) @map("created_at") @db.Timestamp(6)
+  options    Json?           @default("[]")
+  template   InvoiceTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
 
   @@map("invoice_template_fields")
 }
@@ -2270,6 +2383,12 @@ model JobRequisition {
   recruitmentClientId  String?   @map("recruitment_client_id")
   vendorIds            String?   @map("vendor_ids")
 
+  createdBy              User?                          @relation("JobRequisitionCreator", fields: [createdById], references: [id])
+  accountManager         User?                          @relation("JobRequisitionAccountManager", fields: [accountManagerId], references: [id])
+  deliveryManager        User?                          @relation("JobRequisitionDeliveryManager", fields: [deliveryManagerId], references: [id])
+  jobRequisitionContacts JobRequisitionContact[]
+  client                 RecruitmentClientBasicInformation? @relation("JobRequisitionClient", fields: [recruitmentClientId], references: [id])
+
   @@unique([tenantId, ticketId])
   @@index([tenantId, status])
   @@index([clientId])
@@ -2280,8 +2399,9 @@ model JobRequisitionContact {
   id               String    @id @default(dbgenerated("gen_random_uuid()"))
   jobRequisitionId String    @map("job_requisition_id")
   contactId        String    @map("contact_id")
-  createdAt        DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
-  updatedAt        DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  createdAt        DateTime?      @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt        DateTime?      @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  jobRequisition   JobRequisition @relation(fields: [jobRequisitionId], references: [id], onDelete: Cascade)
 
   @@map("job_requisition_contacts")
 }
@@ -2398,6 +2518,7 @@ model RecruitmentClientBasicInformation {
   contacts                RecruitmentClientContact[]          @relation("ClientToContacts")
   hiringPreferences       RecruitmentClientHiringPreference[] @relation("RecruitmentToHiringPreferences")
   clientRelationships     RecruitmentClientRelationship[]     @relation("ClientToRelations")
+  jobRequisitions         JobRequisition[]                    @relation("JobRequisitionClient")
 
   @@map("recruitment_client_basic_information")
 }
@@ -2482,57 +2603,66 @@ model VendorBasicInformation {
   implementationIds String[]  @map("implementation_id")
   clientIds         String[]  @map("client_id")
 
+  contactPersons    VendorContactPerson[]
+  businessDetails   VendorBusinessDetailes[]
+  relations         VendorRelations[]
+  documents         VendorDocument[]
+
   @@map("vendor-basic-information")
 }
 
 model VendorContactPerson {
-  id          String    @id @default(cuid())
-  vendorId    String    @map("vendor_id")
-  personName  String    @map("person_name")
+  id          String                 @id @default(cuid())
+  vendorId    String                 @map("vendor_id")
+  personName  String                 @map("person_name")
   designation String?
   email       String?
   phone       String?
-  linkedInUrl String?   @map("linkedin_url")
-  createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
-  updatedAt   DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  linkedInUrl String?                @map("linkedin_url")
+  createdAt   DateTime?              @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt   DateTime?              @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  vendor      VendorBasicInformation @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 
   @@map("vendor_contact_person")
 }
 
 model VendorBusinessDetailes {
-  id                 String    @id @default(cuid())
-  vendorId           String    @map("vendor_id")
-  registrationNumber String?   @map("registration_number")
-  taxId              String?   @map("tax_id")
-  businessType       String?   @map("business_type")
-  yearEstabliliesh   Int?      @map("year_establiliesh")
-  totalEmployees     Int?      @map("total_employees")
-  createdAt          DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
-  updatedAt          DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  id                 String                 @id @default(cuid())
+  vendorId           String                 @map("vendor_id")
+  registrationNumber String?                @map("registration_number")
+  taxId              String?                @map("tax_id")
+  businessType       String?                @map("business_type")
+  yearEstabliliesh   Int?                   @map("year_establiliesh")
+  totalEmployees     Int?                   @map("total_employees")
+  createdAt          DateTime?              @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt          DateTime?              @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  vendor             VendorBasicInformation @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 
   @@map("vendor_business_detailes")
 }
 
 model VendorRelations {
-  id                      String    @id @default(cuid())
-  vendorId                String    @map("vendor_id")
-  linkedVendor            String?   @map("linked_vendor")
-  linkedClient            String?   @map("linked_client")
-  supportsVisaSponsorship Boolean   @map("supports_visa_sponsorship")
-  visaTypesSupported      String?   @map("visa_types_supported")
-  createdAt               DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
-  updatedAt               DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  id                      String                 @id @default(cuid())
+  vendorId                String                 @map("vendor_id")
+  linkedVendor            String?                @map("linked_vendor")
+  linkedClient            String?                @map("linked_client")
+  supportsVisaSponsorship Boolean                @map("supports_visa_sponsorship")
+  visaTypesSupported      String?                @map("visa_types_supported")
+  createdAt               DateTime?              @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt               DateTime?              @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  vendor                  VendorBasicInformation @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 
   @@map("vendor_relations")
 }
 
 model VendorDocument {
-  id           String    @id @default(dbgenerated("gen_random_uuid()"))
-  vendorId     String    @map("vendor_id")
-  documentType String?   @map("document_type")
-  documentUrl  String?   @map("document_url")
-  createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
-  updatedAt    DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  id           String                 @id @default(dbgenerated("gen_random_uuid()"))
+  vendorId     String                 @map("vendor_id")
+  documentType String?                @map("document_type")
+  documentUrl  String?                @map("document_url")
+  createdAt    DateTime?              @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt    DateTime?              @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  vendor       VendorBasicInformation @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 
   @@map("vendor_document")
 }
@@ -2589,6 +2719,8 @@ model Reimbursement {
   createdById                    String                        @map("created_by_id") @db.Uuid
   updatedById                    String?                       @map("updated_by_id") @db.Uuid
   reimbursement_policy_approvers ReimbursementPolicyApprover[]
+  items                          ReimbursementItem[]
+  createdBy                      User                          @relation("ReimbursementCreatedBy", fields: [createdById], references: [id])
 
   @@map("reimbursements")
 }
@@ -2605,6 +2737,8 @@ model ReimbursementItem {
   updatedAt       DateTime                    @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
   status          String?                     @default("SUBMITTED")
   approvers       ReimbursementItemApprover[]
+  reimbursement   Reimbursement               @relation(fields: [reimbursementId], references: [id], onDelete: Cascade)
+  attachments     Attachment[]
 
   @@map("reimbursement_items")
 }
@@ -2627,14 +2761,15 @@ model ReimbursementItemApprover {
 }
 
 model Attachment {
-  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  reimbursementItemId String   @map("reimbursement_item_id") @db.Uuid
-  fileName            String   @map("file_name") @db.VarChar(255)
-  fileUrl             String   @map("file_url")
-  fileSize            Int      @map("file_size")
-  fileType            String   @map("file_type") @db.VarChar(100)
-  uploadedBy          String   @map("uploaded_by") @db.Uuid
-  uploadedAt          DateTime @default(now()) @map("uploaded_at") @db.Timestamp(6)
+  id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reimbursementItemId String            @map("reimbursement_item_id") @db.Uuid
+  fileName            String            @map("file_name") @db.VarChar(255)
+  fileUrl             String            @map("file_url")
+  fileSize            Int               @map("file_size")
+  fileType            String            @map("file_type") @db.VarChar(100)
+  uploadedBy          String            @map("uploaded_by") @db.Uuid
+  uploadedAt          DateTime          @default(now()) @map("uploaded_at") @db.Timestamp(6)
+  reimbursementItem   ReimbursementItem @relation(fields: [reimbursementItemId], references: [id], onDelete: Cascade)
 
   @@map("attachments")
 }
@@ -2649,6 +2784,8 @@ model ReimbursementPolicy {
   createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt   DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
   tenantId    String?   @map("tenant_id") @db.VarChar(255)
+
+  rules       ReimbursementPolicyRule[]
 
   @@index([originType, originId], map: "idx_reimbursement_policies_origin")
   @@map("reimbursement_policies")
@@ -2667,23 +2804,27 @@ model ReimbursementPolicyRule {
   updatedAt   DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
   tenantId    String?   @map("tenant_id") @db.VarChar(255)
 
+  policy      ReimbursementPolicy          @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  approvers   ReimbursementPolicyApprover[]
+
   @@index([policyId], map: "idx_policy_rules_policy_id")
   @@map("reimbursement_policy_rules")
 }
 
 model ReimbursementPolicyApprover {
-  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  policyRuleId     String         @map("policy_rule_id") @db.Uuid
+  id               String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  policyRuleId     String                  @map("policy_rule_id") @db.Uuid
   level            Int
-  approverType     String         @map("approver_type") @db.VarChar(50)
-  approverId       String?        @map("approver_id")
-  createdById      String         @map("created_by_id") @db.Uuid
-  updatedById      String?        @map("updated_by_id") @db.Uuid
-  createdAt        DateTime?      @default(now()) @map("created_at") @db.Timestamp(6)
-  updatedAt        DateTime?      @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
-  tenantId         String?        @map("tenant_id") @db.VarChar(255)
-  reimbursement_id String?        @db.Uuid
-  reimbursements   Reimbursement? @relation(fields: [reimbursement_id], references: [id], onUpdate: NoAction, map: "fk_reimbursement")
+  approverType     String                  @map("approver_type") @db.VarChar(50)
+  approverId       String?                 @map("approver_id")
+  createdById      String                  @map("created_by_id") @db.Uuid
+  updatedById      String?                 @map("updated_by_id") @db.Uuid
+  createdAt        DateTime?               @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt        DateTime?               @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  tenantId         String?                 @map("tenant_id") @db.VarChar(255)
+  reimbursement_id String?                 @db.Uuid
+  reimbursements   Reimbursement?          @relation(fields: [reimbursement_id], references: [id], onUpdate: NoAction, map: "fk_reimbursement")
+  policyRule       ReimbursementPolicyRule @relation(fields: [policyRuleId], references: [id], onDelete: Cascade)
 
   @@index([policyRuleId], map: "idx_policy_approvers_rule_id")
   @@map("reimbursement_policy_approvers")
@@ -2798,6 +2939,10 @@ model LeaveRequest {
   updatedAt    DateTime  @updatedAt @map("updated_at")
   reason       String?
 
+  employee       Employee?  @relation("EmployeeLeaveRequests", fields: [employeeId], references: [id])
+  leaveType      LeaveType? @relation("LeaveRequestType", fields: [leaveTypeId], references: [id])
+  approvedByUser User?      @relation("LeaveRequestApprover", fields: [approvedById], references: [id])
+
   @@index([createdById])
   @@index([leaveTypeId])
   @@index([tenantId, employeeId, status])
@@ -2816,6 +2961,8 @@ model ExitType {
   updated_at    DateTime       @default(now()) @updatedAt
   employeeExits EmployeeExit[]
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy     User           @relation("ExitTypeCreator", fields: [createdById], references: [id])
+  updatedBy     User?          @relation("ExitTypeUpdater", fields: [updatedById], references: [id])
 
   @@map("exit_types")
 }
@@ -2832,6 +2979,8 @@ model ReasonForExit {
   updated_at    DateTime       @default(now()) @updatedAt
   employeeExits EmployeeExit[]
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy     User           @relation("ReasonForExitCreator", fields: [createdById], references: [id])
+  updatedBy     User?          @relation("ReasonForExitUpdater", fields: [updatedById], references: [id])
 
   @@map("reasons_for_exit")
 }
@@ -2916,6 +3065,8 @@ model RecruitmentStatus {
   updatedById  String?  @map("updated_by_id")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
+  createdBy    User     @relation("RecruitmentStatusCreator", fields: [createdById], references: [id])
+  updatedBy    User?    @relation("RecruitmentStatusUpdater", fields: [updatedById], references: [id])
 
   @@unique([tenantId, name])
   @@map("recruitment_statuses")
@@ -2933,6 +3084,8 @@ model RecruitmentAction {
   updatedById String?  @map("updated_by_id")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
+  createdBy   User     @relation("RecruitmentActionCreator", fields: [createdById], references: [id])
+  updatedBy   User?    @relation("RecruitmentActionUpdater", fields: [updatedById], references: [id])
 
   @@unique([tenantId, name])
   @@map("recruitment_actions")
@@ -2985,6 +3138,11 @@ model Candidate {
   actionConfig            String    @default("New") @map("action_config")
   skillRate               String    @default("New") @map("skill_rate")
 
+  workExperiences CandidateWorkExperience[]
+  skills          CandidateSkillMatrix[]
+  educations      CandidateEducation[]
+  interviewSlots  CandidateInterviewSlot[]
+
   @@index([tenantId])
   @@index([email])
   @@map("candidates")
@@ -3008,6 +3166,8 @@ model CandidateWorkExperience {
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at")
 
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
   @@index([candidateId])
   @@map("candidate_work_experiences")
 }
@@ -3022,6 +3182,8 @@ model CandidateSkillMatrix {
   updatedById       String?  @map("updated_by_id")
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @default(now()) @updatedAt @map("updated_at")
+
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
 
   @@index([candidateId])
   @@map("candidate_skill_matrices")
@@ -3041,6 +3203,8 @@ model CandidateEducation {
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at")
 
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
   @@index([candidateId])
   @@map("candidate_educations")
 }
@@ -3056,6 +3220,8 @@ model CandidateInterviewSlot {
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @default(now()) @updatedAt @map("updated_at")
   timezone      String?  @map("timezone")
+
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
 
   @@index([candidateId])
   @@map("candidate_interview_slots")
@@ -4335,11 +4501,6 @@ enum ApproverStatus {
   SUBMITTED
 
   @@map("approver_status")
-}
-
-enum AddressType {
-  CURRENT
-  PERMANENT
 }
 
 enum DeductionType {

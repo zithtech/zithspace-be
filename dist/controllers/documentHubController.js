@@ -417,7 +417,6 @@ class DocumentHubController {
                 where: {
                     documentId: id,
                     tenantId: req.tenantId,
-                    document: { isDeleted: false },
                 },
                 include: {
                     createdBy: {

@@ -66,7 +66,6 @@ export class InvoiceSettingsController {
             general: true,
             invoice: true,
             payment: true,
-            createdByUser: { select: { name: true } }
           }
         }),
         prisma.settingsProfile.count({ where })
@@ -151,7 +150,7 @@ export class InvoiceSettingsController {
         name,
         isActive: false,
         tenant: { connect: { id: req.tenantId } },
-        createdByUser: { connect: { id: req.user.id } },
+        createdBy: req.user.id,
 
         general: {
           create: {
@@ -167,7 +166,7 @@ export class InvoiceSettingsController {
           create: {
             ...parsedInvoiceData, // This now contains dynamic padding, resetYearly, etc.
             tenant: { connect: { id: req.tenantId } },
-            createdByUser: { connect: { id: req.user.id } },
+            createdBy: req.user.id,
           }
         },
 
@@ -223,9 +222,9 @@ export class InvoiceSettingsController {
     // 2. Perform the update with explicit 'where' for children
     const updatedProfile = await prisma.settingsProfile.update({
       where: { id },
-      data: { 
+      data: {
         name,
-        updatedByUser: { connect: { id: req.user.id } },
+        updatedBy: req.user.id,
         
         // Update General Settings
         general: general ? {
@@ -328,9 +327,9 @@ static async hardDeleteProfile(req: AuthRequest, res: Response): Promise<void> {
     // 2. Perform a single update ONLY on the targeted profile
     const updatedProfile = await prisma.settingsProfile.update({
       where: { id, tenantId: req.tenantId },
-      data: { 
-        isActive: isActive, 
-        updatedByUser: { connect: { id: req.user.id } } 
+      data: {
+        isActive: isActive,
+        updatedBy: req.user.id,
       }
     });
 
