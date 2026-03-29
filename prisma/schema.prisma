@@ -4667,3 +4667,12 @@ model TestZithmi {
 
   @@map("test_zithmi")
 }
+
+
+model TestZithpace {
+  id      String  @id @default(uuid())
+  fieldB  String? @map("field_b")
+  fieldC  String? @map("field_c")
+
+  @@map("test_zithspace")
+}
