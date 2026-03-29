@@ -4650,3 +4650,20 @@ model Test_B {
 
   @@map("test_2")
 }
+
+model TestDK {
+  id      String  @id @default(uuid())
+  fieldA  String  @map("field_a")
+  fieldB  String? @map("field_b")
+
+  @@map("test_dk")
+}
+
+
+model TestZithmi {
+  id      String  @id @default(uuid())
+  fieldA  String  @map("field_a")
+  fieldB  String? @map("field_b")
+
+  @@map("test_zithmi")
+}
