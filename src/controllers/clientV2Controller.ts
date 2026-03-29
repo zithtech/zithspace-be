@@ -136,7 +136,7 @@ export class ClientV2Controller {
                         allocations: {
                             include: { employee: { select: { id: true, first_name: true, last_name: true } } }
                         }
-                    }
+                    } as any
                 });
             });
 

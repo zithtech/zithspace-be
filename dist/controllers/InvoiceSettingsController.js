@@ -45,7 +45,6 @@ class InvoiceSettingsController {
                         general: true,
                         invoice: true,
                         payment: true,
-                        createdByUser: { select: { name: true } }
                     }
                 }),
                 database_1.prisma.settingsProfile.count({ where })
@@ -118,7 +117,7 @@ class InvoiceSettingsController {
                     name,
                     isActive: false,
                     tenant: { connect: { id: req.tenantId } },
-                    createdByUser: { connect: { id: req.user.id } },
+                    createdBy: req.user.id,
                     general: {
                         create: {
                             ...general,
@@ -132,7 +131,7 @@ class InvoiceSettingsController {
                         create: {
                             ...parsedInvoiceData, // This now contains dynamic padding, resetYearly, etc.
                             tenant: { connect: { id: req.tenantId } },
-                            createdByUser: { connect: { id: req.user.id } },
+                            createdBy: req.user.id,
                         }
                     },
                     payment: {
@@ -183,7 +182,7 @@ class InvoiceSettingsController {
                 where: { id },
                 data: {
                     name,
-                    updatedByUser: { connect: { id: req.user.id } },
+                    updatedBy: req.user.id,
                     // Update General Settings
                     general: general ? {
                         update: {
@@ -272,7 +271,7 @@ class InvoiceSettingsController {
                 where: { id, tenantId: req.tenantId },
                 data: {
                     isActive: isActive,
-                    updatedByUser: { connect: { id: req.user.id } }
+                    updatedBy: req.user.id,
                 }
             });
             res.status(200).json({

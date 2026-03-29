@@ -48,7 +48,7 @@ export async function submitCandidateForm(req: AuthRequest, res: Response) {
 
       // 2. Create Availability
       if (availability) {
-        await tx.candidateAvailability.create({
+        await (tx as any).candidateAvailability.create({
           data: {
             candidateId,
             availableToJoin: availability.earliestAvailable === "Immediate Joiner",
@@ -163,7 +163,7 @@ export async function getCandidates(req: AuthRequest, res: Response) {
         workAuthorizations: true,
         interviewAvailabilities: true,
         documents: true
-      },
+      } as any,
       orderBy: { createdAt: 'desc' }
     });
 
@@ -195,7 +195,7 @@ export async function getCandidateById(req: AuthRequest, res: Response) {
         workAuthorizations: true,
         interviewAvailabilities: true,
         documents: true
-      }
+      } as any
     });
 
     if (!candidate) {
@@ -257,8 +257,8 @@ export async function updateCandidate(req: AuthRequest, res: Response) {
 
       // 2. Update Availability (Delete and Re-create for simplicity in related many-to-one)
       if (availability) {
-        await tx.candidateAvailability.deleteMany({ where: { candidateId: id } });
-        await tx.candidateAvailability.create({
+        await (tx as any).candidateAvailability.deleteMany({ where: { candidateId: id } });
+        await (tx as any).candidateAvailability.create({
           data: {
             candidateId: id,
             availableToJoin: availability.earliestAvailable === "Immediate Joiner",
@@ -373,7 +373,7 @@ export async function deleteCandidate(req: AuthRequest, res: Response) {
 
     // Delete related records first (if not handled by cascade which Prisma doesn't do by default unless specified)
     await prisma.$transaction(async (tx) => {
-      await tx.candidateAvailability.deleteMany({ where: { candidateId: id } });
+      await (tx as any).candidateAvailability.deleteMany({ where: { candidateId: id } });
       await tx.currentEmployerContact.deleteMany({ where: { candidateId: id } });
       await tx.workAuthorization.deleteMany({ where: { candidateId: id } });
       await tx.candidateInterviewAvailability.deleteMany({ where: { candidateId: id } });
