@@ -117,6 +117,12 @@ exports.Permissions = {
     DAILY_UPDATE_CREATE: 'daily_update.create',
     DAILY_UPDATE_READ: 'daily_update.read',
     DAILY_UPDATE_MANAGE: 'daily_update.manage',
+    // ─── Squads ──────────────────────────────────────────────────────
+    SQUAD_CREATE: 'squad.create',
+    SQUAD_READ: 'squad.read',
+    SQUAD_UPDATE: 'squad.update',
+    SQUAD_DELETE: 'squad.delete',
+    SQUAD_MANAGE: 'squad.manage',
 };
 /**
  * All permissions grouped by resource for UI rendering (permission picker).
@@ -142,6 +148,7 @@ exports.PERMISSIONS_BY_RESOURCE = {
     timesheet: [exports.Permissions.TIMESHEET_CREATE, exports.Permissions.TIMESHEET_READ, exports.Permissions.TIMESHEET_UPDATE, exports.Permissions.TIMESHEET_APPROVE, exports.Permissions.TIMESHEET_MANAGE],
     org: [exports.Permissions.ORG_READ, exports.Permissions.ORG_MANAGE],
     daily_update: [exports.Permissions.DAILY_UPDATE_CREATE, exports.Permissions.DAILY_UPDATE_READ, exports.Permissions.DAILY_UPDATE_MANAGE],
+    squad: [exports.Permissions.SQUAD_CREATE, exports.Permissions.SQUAD_READ, exports.Permissions.SQUAD_UPDATE, exports.Permissions.SQUAD_DELETE, exports.Permissions.SQUAD_MANAGE],
 };
 /** Flat list of all permissions — used for seeding. */
 exports.ALL_PERMISSIONS = Object.values(exports.Permissions);

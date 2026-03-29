@@ -1,6 +1,6 @@
 import { prisma } from "@/config/database";
 import { EmployeeExit, Prisma } from "@prisma/client";
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 
 export class EmployeeExitService {
   async createExitRequest(
@@ -8,11 +8,24 @@ export class EmployeeExitService {
     data: any,
     createdById: string
   ): Promise<EmployeeExit> {
+    let finalEmployeeId = data.employeeId;
+
+    // Resolve User.id to Employee.id if necessary
+    const user = await prisma.user.findUnique({
+      where: { id: data.employeeId },
+      select: { employeeId: true }
+    });
+
+    if (user?.employeeId) {
+      console.log(`[ExitRequest] Mapping User.id ${data.employeeId} to Employee.id ${user.employeeId}`);
+      finalEmployeeId = user.employeeId;
+    }
+
     return await prisma.employeeExit.create({
       data: {
-        id: uuidv4(),
-        tenant: { connect: { id: tenantId } },
-        employee: { connect: { id: data.employeeId } },
+        id: randomUUID(),
+        tenantId,
+        employeeId: finalEmployeeId,
         departmentId: data.departmentId || null,
         positionId: data.positionId || null,
         reportingManagerId: data.reportingManagerId && data.reportingManagerId !== "" ? data.reportingManagerId : null,
@@ -20,13 +33,14 @@ export class EmployeeExitService {
         exitReasonId: data.exitReasonId || null,
         resignationDate: new Date(data.resignationDate),
         proposedLastWorkingDay: new Date(data.proposedLastWorkingDay),
-        noticePeriodDay: new Date(data.noticePeriodDay),
+        // noticePeriodDay: new Date(data.noticePeriodDay),
+        noticePeriodDay: data.noticePeriodDay ? new Date(data.noticePeriodDay) : null,
         waiveNoticePeriod: !!data.waiveNoticePeriod,
         buyoutRequired: !!data.buyoutRequired,
         buyoutAmount: data.buyoutAmount ? new Prisma.Decimal(data.buyoutAmount) : null,
         explanation: data.explanation || null,
         status: data.status || "PENDING",
-        createdBy: { connect: { id: createdById } },
+        createdById,
       },
     });
   }
@@ -50,14 +64,26 @@ export class EmployeeExitService {
       },
     });
 
-    // Resolve reporting manager names
-    const managerIds = Array.from(new Set(requests.map(r => r.reportingManagerId).filter(Boolean))) as string[];
-    const managers = await prisma.employee.findMany({
+    // Resolve reporting manager names (check User first, then Employee)
+    const isUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    const managerIds = Array.from(new Set(requests.map(r => r.reportingManagerId).filter(id => id && isUuid(id)))) as string[];
+
+    const userManagers = await prisma.user.findMany({
       where: { id: { in: managerIds } },
+      select: { id: true, name: true }
+    });
+
+    const foundUserIds = new Set(userManagers.map(u => u.id));
+    const remainingIds = managerIds.filter(id => !foundUserIds.has(id));
+
+    const empManagers = await prisma.employee.findMany({
+      where: { id: { in: remainingIds } },
       select: { id: true, first_name: true, last_name: true }
     });
 
-    const managerMap = new Map(managers.map(m => [m.id, `${m.first_name} ${m.last_name}`]));
+    const managerMap = new Map<string, string>();
+    userManagers.forEach(u => managerMap.set(u.id, u.name));
+    empManagers.forEach(e => managerMap.set(e.id, `${e.first_name} ${e.last_name}`));
 
     return requests.map(r => ({
       ...r,
@@ -87,12 +113,28 @@ export class EmployeeExitService {
 
     let reportingManagerName = null;
     if (request.reportingManagerId) {
-      const manager = await prisma.employee.findUnique({
-        where: { id: request.reportingManagerId },
-        select: { first_name: true, last_name: true }
-      });
-      if (manager) {
-        reportingManagerName = `${manager.first_name} ${manager.last_name}`;
+      // Validate UUID before query
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(request.reportingManagerId);
+
+      if (isUuid) {
+        // Check User table first
+        const userManager = await prisma.user.findUnique({
+          where: { id: request.reportingManagerId },
+          select: { name: true }
+        });
+
+        if (userManager) {
+          reportingManagerName = userManager.name;
+        } else {
+          // Fallback to Employee table
+          const manager = await prisma.employee.findUnique({
+            where: { id: request.reportingManagerId },
+            select: { first_name: true, last_name: true }
+          });
+          if (manager) {
+            reportingManagerName = `${manager.first_name} ${manager.last_name}`;
+          }
+        }
       } else {
         reportingManagerName = request.reportingManagerId;
       }

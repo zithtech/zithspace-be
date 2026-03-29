@@ -12,6 +12,7 @@ export declare class CalendarService {
  * Handle the OAuth callback and save integration details.
  */
     static handleCallback(provider: CalendarProvider, userId: string, tenantId: string, code: string, state: string): Promise<{
+<<<<<<< HEAD
         tenantId: string;
         refreshToken: string | null;
         createdAt: Date;
@@ -21,6 +22,19 @@ export declare class CalendarService {
         id: string;
         userId: string;
         accessToken: string | null;
+=======
+        id: string;
+        tenantId: string;
+        refreshToken: string | null;
+        createdAt: Date | null;
+        updatedAt: Date | null;
+        createdById: string | null;
+        updatedById: string | null;
+        userId: string;
+        accessToken: string | null;
+        created_by: string | null;
+        updated_by: string | null;
+>>>>>>> production
         calendarId: string | null;
         provider: import(".prisma/client").$Enums.CalendarProvider;
         tokenExpiry: Date | null;
@@ -36,8 +50,14 @@ export declare class CalendarService {
         isSyncing: boolean;
         lastSyncStatus: string | null;
         lastSyncAt: Date | null;
+<<<<<<< HEAD
         nextSyncDueAt: Date | null;
         syncErrorCount: number;
+=======
+        nextSyncDueAt: Date;
+        syncErrorCount: number;
+        mail_account_id: string | null;
+>>>>>>> production
     }>;
     /**
      * Fetch events for a user/tenant, expanding recurring ones at runtime.
@@ -59,12 +79,21 @@ export declare class CalendarService {
      * Create an event on the external provider and save locally.
      */
     static createEvent(userId: string, tenantId: string, provider: CalendarProvider, eventData: CalendarEventData): Promise<{
+<<<<<<< HEAD
         tenantId: string;
         createdAt: Date;
         updatedAt: Date;
         createdById: string | null;
         updatedById: string | null;
         id: string;
+=======
+        id: string;
+        tenantId: string;
+        createdAt: Date | null;
+        updatedAt: Date | null;
+        createdById: string | null;
+        updatedById: string | null;
+>>>>>>> production
         userId: string;
         title: string;
         description: string | null;
@@ -74,9 +103,15 @@ export declare class CalendarService {
         location: string | null;
         calendarId: string | null;
         provider: import(".prisma/client").$Enums.CalendarProvider;
+<<<<<<< HEAD
         isRecurring: boolean;
         externalId: string;
         isAllDay: boolean;
+=======
+        isRecurring: boolean | null;
+        externalId: string;
+        isAllDay: boolean | null;
+>>>>>>> production
         rrule: string | null;
         exdate: import("@prisma/client/runtime/library").JsonValue | null;
         calendar: string | null;

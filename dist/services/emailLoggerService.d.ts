@@ -51,13 +51,18 @@ export declare class EmailLoggerService {
                 email: string;
             };
             sentByUserRel: {
-                name: string;
                 id: string;
+                name: string;
             };
         } & {
             status: string;
-            tenantId: string;
             id: string;
+<<<<<<< HEAD
+=======
+            tenantId: string;
+            metadata: import("@prisma/client/runtime/library").JsonValue | null;
+            dueDate: string | null;
+>>>>>>> production
             amount: string | null;
             from: string;
             to: string;
@@ -80,9 +85,9 @@ export declare class EmailLoggerService {
             sentAt: Date;
             openedAt: Date | null;
             clickedAt: Date | null;
-            sentByUser: string | null;
-            customerId: string | null;
             sentBy: string;
+            customerId: string | null;
+            sentByUser: string | null;
         })[];
         pagination: {
             page: number;
@@ -98,26 +103,35 @@ export declare class EmailLoggerService {
         customer: {
             companyName: string;
             country: string | null;
+<<<<<<< HEAD
+=======
+            pan: string | null;
+            city: string | null;
+            id: string;
+>>>>>>> production
             tenantId: string;
             createdAt: Date;
             updatedAt: Date;
-            createdBy: string;
-            updatedBy: string | null;
-            id: string;
             email: string | null;
             phone: string | null;
-            city: string | null;
+            createdBy: string;
+            updatedBy: string | null;
             address: string | null;
             taxId: string | null;
         };
         sentByUserRel: {
-            name: string;
             id: string;
+            name: string;
         };
     } & {
         status: string;
-        tenantId: string;
         id: string;
+<<<<<<< HEAD
+=======
+        tenantId: string;
+        metadata: import("@prisma/client/runtime/library").JsonValue | null;
+        dueDate: string | null;
+>>>>>>> production
         amount: string | null;
         from: string;
         to: string;
@@ -140,9 +154,9 @@ export declare class EmailLoggerService {
         sentAt: Date;
         openedAt: Date | null;
         clickedAt: Date | null;
-        sentByUser: string | null;
-        customerId: string | null;
         sentBy: string;
+        customerId: string | null;
+        sentByUser: string | null;
     }>;
     /**
      * Get all unique modules that have sent emails
@@ -170,8 +184,13 @@ export declare class EmailLoggerService {
      */
     static updateStatus(id: string, tenantId: string, status: 'OPENED' | 'CLICKED', metadata?: any): Promise<{
         status: string;
-        tenantId: string;
         id: string;
+<<<<<<< HEAD
+=======
+        tenantId: string;
+        metadata: import("@prisma/client/runtime/library").JsonValue | null;
+        dueDate: string | null;
+>>>>>>> production
         amount: string | null;
         from: string;
         to: string;
@@ -194,8 +213,8 @@ export declare class EmailLoggerService {
         sentAt: Date;
         openedAt: Date | null;
         clickedAt: Date | null;
-        sentByUser: string | null;
-        customerId: string | null;
         sentBy: string;
+        customerId: string | null;
+        sentByUser: string | null;
     }>;
 }

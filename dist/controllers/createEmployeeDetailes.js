@@ -577,15 +577,22 @@ async function updatePersonalDetails(req, employeeId, tx = database_1.prisma) {
             where: { employeeId: employeeId },
         });
         if (existingIdentity) {
-            await tx.employeeIdentity.update({
-                where: { id: existingIdentity.id },
-                data: {
-                    aadhaarNumber: personal.aadhaar ? encrypt(personal.aadhaar) : null,
-                    panNumber: personal.pan ? encrypt(personal.pan) : null,
-                    passportNumber: personal.passport ? encrypt(personal.passport) : null,
-                    updatedById: req.user.id,
-                },
-            });
+            const identityUpdateData = {
+                updatedById: req.user.id,
+            };
+            if (personal.aadhaar !== undefined)
+                identityUpdateData.aadhaarNumber = personal.aadhaar ? encrypt(personal.aadhaar) : null;
+            if (personal.pan !== undefined)
+                identityUpdateData.panNumber = personal.pan ? encrypt(personal.pan) : null;
+            if (personal.passport !== undefined)
+                identityUpdateData.passportNumber = personal.passport ? encrypt(personal.passport) : null;
+            // Only update if there are fields to update (besides updatedById)
+            if (Object.keys(identityUpdateData).length > 1) {
+                await tx.employeeIdentity.update({
+                    where: { id: existingIdentity.id },
+                    data: identityUpdateData,
+                });
+            }
         }
         else if (personal.aadhaar || personal.pan) {
             await tx.employeeIdentity.create({

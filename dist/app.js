@@ -25,6 +25,7 @@ const companyRoutes_1 = __importDefault(require("./routes/companyRoutes"));
 const auth_1 = __importDefault(require("@/routes/auth"));
 const tenants_1 = __importDefault(require("@/routes/tenants"));
 const projects_1 = __importDefault(require("@/routes/projects"));
+const squad_1 = __importDefault(require("@/routes/squad"));
 const tickets_1 = __importDefault(require("@/routes/tickets"));
 const jobRequisition_routes_1 = __importDefault(require("./routes/jobRequisition.routes"));
 const attendance_1 = __importDefault(require("@/routes/attendance"));
@@ -44,7 +45,6 @@ const customerRoutes_1 = __importDefault(require("@/routes/customerRoutes"));
 const invoiceSettingsRoutes_1 = __importDefault(require("@/routes/invoiceSettingsRoutes"));
 const invoice_1 = __importDefault(require("@/routes/invoice"));
 const invoiceTemplate_1 = __importDefault(require("@/routes/invoiceTemplate"));
-//import invoicedownload from "@/routes/invoiceDownload"
 const buckets_1 = __importDefault(require("@/routes/buckets"));
 const trash_1 = __importDefault(require("@/routes/trash"));
 const sprintCompletion_1 = __importDefault(require("@/routes/sprintCompletion"));
@@ -53,24 +53,21 @@ const documenthub_1 = __importDefault(require("@/routes/documenthub"));
 const channels_1 = __importDefault(require("@/routes/channels"));
 const messages_1 = __importDefault(require("@/routes/messages"));
 const shortcut_routes_1 = __importDefault(require("@/routes/shortcut.routes"));
-// Onboarding
-// import employeeRoutes from "@/routes/employeeRoutes";
-// import employeeAddressRoutes from "@/routes/employeeAddress";
-// import employeeEmergencyContactRoutes from "@/routes/emergencyContact";
-// import employeeIdentityRoutes from "@/routes/employeeIdentity";
 const employeeWorkDetailes_1 = __importDefault(require("@/routes/employeeWorkDetailes"));
 const employeeTimeline_1 = __importDefault(require("@/routes/employeeTimeline"));
-// personal Detailes
-//import employeeDetailsRoutes from "@/routes/createEmployeeRoutes";
-//import employeeEmploymentDetailsRoutes from "@/routes/employeeEmploymentDetailes";
 // main
 const onboardingRoutes_1 = __importDefault(require("@/routes/onboardingRoutes"));
 const auth_2 = __importDefault(require("@/routes/auth"));
 const publicTickets_1 = __importDefault(require("@/routes/publicTickets"));
-const employeeSettingsRoutes_1 = __importDefault(require("./routes/employeeSettingsRoutes"));
+const publicDocuments_1 = __importDefault(require("@/routes/publicDocuments"));
+const employeeSettingsRoutes_1 = __importDefault(require("@/routes/employeeSettingsRoutes"));
+const implementationPartner_1 = __importDefault(require("@/routes/implementationPartner"));
+const recruitmentClient_1 = __importDefault(require("@/routes/recruitmentClient"));
+const vendor_1 = __importDefault(require("@/routes/vendor"));
 const timesheet_1 = __importDefault(require("@/routes/timesheet"));
-const timeTracking_1 = __importDefault(require("@/routes/timeTracking"));
-const companyGovernmentHoliday_routes_1 = __importDefault(require("./routes/companyGovernmentHoliday.routes"));
+const timeTracking_1 = __importDefault(require("./routes/timeTracking"));
+const proxyRoutes_1 = __importDefault(require("@/routes/proxyRoutes"));
+const companyGovernmentHoliday_routes_1 = __importDefault(require("@/routes/companyGovernmentHoliday.routes"));
 const leaveAdjustmentRoutes_1 = __importDefault(require("./routes/leaveAdjustmentRoutes"));
 const leaveAllocationRoutes_1 = __importDefault(require("@/routes/leaveAllocationRoutes"));
 const reimbursementCategory_1 = __importDefault(require("@/routes/reimbursementCategory"));
@@ -86,32 +83,28 @@ const emailHistoryRoutes_1 = __importDefault(require("@/routes/emailHistoryRoute
 const leaveRequestRoutes_1 = __importDefault(require("@/routes/leaveRequestRoutes"));
 const leaveBalanceRoutes_1 = __importDefault(require("@/routes/leaveBalanceRoutes"));
 const payroll_1 = __importDefault(require("@/routes/payroll"));
+const payroll_1 = __importDefault(require("@/routes/payroll"));
 const reimbursementConfig_1 = __importDefault(require("@/routes/reimbursementConfig"));
 const reimbursementsettingsRoutes_1 = __importDefault(require("@/routes/reimbursementsettingsRoutes"));
 const reimbursementcreateRoutes_1 = __importDefault(require("@/routes/reimbursementcreateRoutes")); // the file we created earlier
 // import managerReimbursementRoutes from "./routes/managerReimbursementRoutes";
 const rbac_1 = __importDefault(require("@/routes/rbac"));
+const candidateForm_routes_1 = __importDefault(require("@/routes/candidateForm.routes"));
 const employeeAssets_routes_1 = __importDefault(require("@/routes/employeeAssets.routes"));
+const noticePolicy_routes_1 = __importDefault(require("@/routes/noticePolicy.routes"));
+const exitType_routes_1 = __importDefault(require("@/routes/exitType.routes"));
+const reasonForExit_routes_1 = __importDefault(require("@/routes/reasonForExit.routes"));
+const exitApprovalWorkflow_routes_1 = __importDefault(require("@/routes/exitApprovalWorkflow.routes"));
+const recruitmentStatus_routes_1 = __importDefault(require("@/routes/recruitmentStatus.routes"));
+const recruitmentAction_routes_1 = __importDefault(require("@/routes/recruitmentAction.routes"));
+const candidateRoutes_1 = __importDefault(require("@/routes/candidateRoutes"));
 // Load environment
 dotenv_1.default.config();
 console.log("🚀 API Starting up...");
 console.log("📅 Mounting calendar routes at /api/calendar");
+console.log("🤖 DevBot deployment test — 2026-03-22");
 // Create Express application
 const app = (0, express_1.default)();
-// Body parsing middleware
-app.use(express_1.default.json({ limit: "30mb" }));
-app.use(express_1.default.urlencoded({ extended: true, limit: "30mb" }));
-app.use((0, express_session_1.default)({
-    secret: process.env.SESSION_SECRET || "your-fallback-secret-key",
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-        secure: process.env.NODE_ENV === "production", // true in production
-        httpOnly: true,
-        maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    },
-}));
-// Connect to PostgreSQL
 const allowedOrigins = [
     "http://localhost:3000", // Local development
     "http://localhost:3005", // Local development for internal app
@@ -134,6 +127,20 @@ app.use((0, cors_1.default)({
     },
     credentials: true,
 }));
+// Body parsing middleware
+app.use(express_1.default.json({ limit: "30mb" }));
+app.use(express_1.default.urlencoded({ extended: true, limit: "30mb" }));
+app.use((0, express_session_1.default)({
+    secret: process.env.SESSION_SECRET || "your-fallback-secret-key",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+        secure: process.env.NODE_ENV === "production", // true in production
+        httpOnly: true,
+        maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    },
+}));
+// Connect to PostgreSQL
 // Cookie parsing middleware
 app.use((0, cookie_parser_1.default)());
 // Compression middleware
@@ -177,11 +184,15 @@ app.use("/api/fixed-holidays", fixedHolidays_1.default);
 app.get("/api/direct-test", (req, res) => {
     res.json({ success: true, message: "Direct app.get works" });
 });
+app.get("/api/debug-ping-unique", (req, res) => res.json({ success: true, message: "Debug route is active" }));
+app.use("/api", proxyRoutes_1.default);
 app.use("/api/auth", auth_1.default);
+app.use("/api/projects", projects_1.default);
 app.use("/api/tenants", tenants_1.default);
 app.use("/api/calendar", calendar_1.default);
-app.use("/api/projects", projects_1.default);
+app.use("/api/squads", squad_1.default);
 app.use("/api/public/tickets", publicTickets_1.default);
+app.use("/api/public/document", publicDocuments_1.default);
 app.use("/api/tickets", tickets_1.default);
 app.use("/api/recruitment", jobRequisition_routes_1.default);
 app.use("/api/attendance", attendance_1.default);
@@ -229,6 +240,9 @@ app.use("/api/leave-allocation", leaveAllocationRoutes_1.default);
 app.use("/api/leave-request", leaveRequestRoutes_1.default);
 app.use("/api/leave-balances", leaveBalanceRoutes_1.default);
 app.use("/api/time-tracking", timeTracking_1.default);
+app.use("/api/candidates", candidateRoutes_1.default);
+app.use("/api/recruitment-statuses", recruitmentStatus_routes_1.default);
+app.use("/api/recruitment-actions", recruitmentAction_routes_1.default);
 app.use("/api/employee-work-details", employeeWorkDetailes_1.default);
 app.use("/api/employee-timelines", employeeTimeline_1.default);
 app.use("/api/onboarding", onboardingRoutes_1.default);
@@ -239,10 +253,6 @@ app.use("/api/reimbursements", reimbursementcreateRoutes_1.default);
 // app.use("/api/manager/reimbursements", managerReimbursementRoutes);
 app.use("/api/profile/new", auth_2.default);
 app.use("/api/employeesettings", employeeSettingsRoutes_1.default);
-const noticePolicy_routes_1 = __importDefault(require("./routes/noticePolicy.routes"));
-const exitType_routes_1 = __importDefault(require("./routes/exitType.routes"));
-const reasonForExit_routes_1 = __importDefault(require("./routes/reasonForExit.routes"));
-const exitApprovalWorkflow_routes_1 = __importDefault(require("./routes/exitApprovalWorkflow.routes"));
 app.use("/api/exit/notice-policy", noticePolicy_routes_1.default);
 app.use("/api/exit/exit-type", exitType_routes_1.default);
 app.use("/api/exit/reason-for-exit", reasonForExit_routes_1.default);
@@ -250,8 +260,15 @@ app.use("/api/exit/approval-workflow", exitApprovalWorkflow_routes_1.default);
 app.use("/api/exit/request", employeeExit_routes_1.default);
 // RBAC management API
 app.use("/api/rbac", rbac_1.default);
+// Candidate Form API
+app.use("/api/candidate-form", candidateForm_routes_1.default);
 app.use("/api/employee-assets", employeeAssets_routes_1.default);
 app.use("/api/shortcuts", shortcut_routes_1.default);
+// Implementation Partner API
+app.use("/api/implementation-partner", implementationPartner_1.default);
+// Recruitment Client API
+app.use("/api/recruitment-client", recruitmentClient_1.default);
+app.use("/api/vendor", vendor_1.default);
 // app.use("/api/addresses", addressRoutes);
 //app.use("/api/employee_address", addressRoutes);
 app.get("/api/health", (req, res) => {
@@ -270,10 +287,6 @@ app.all("/socket.io/*", (req, res) => {
         message: "Socket.io not configured on this server",
         note: "WebSocket connections are not required for this application",
     });
-});
-// Handle preflight requests
-app.options("*", (req, res) => {
-    res.status(200).end();
 });
 // 404 handler
 app.use("*", (req, res) => {

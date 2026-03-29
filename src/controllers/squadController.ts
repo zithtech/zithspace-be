@@ -1,0 +1,305 @@
+import { Response } from "express";
+import { prisma } from "@/config/database";
+import {
+  AuthRequest,
+  ApiResponse,
+  NotFoundError,
+  ValidationError,
+  CreateSquadData,
+  UpdateSquadData,
+} from "@/types";
+
+export class SquadController {
+  /**
+   * Get all squads (tenant-aware)
+   */
+  static async getSquads(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId) {
+        res.status(400).json({ success: false, error: "Tenant context required" });
+        return;
+      }
+
+      const { search, status, isArchived } = req.query;
+
+      const where: any = {
+        tenantId: req.tenantId,
+        isDeleted: false,
+      };
+
+      if (search) {
+        where.OR = [
+          { squadName: { contains: search as string, mode: "insensitive" } },
+          { squadCode: { contains: search as string, mode: "insensitive" } },
+        ];
+      }
+
+      if (status !== undefined && status !== "") {
+        where.squadStatus = status === "true" || status === "active";
+      }
+
+      if (isArchived !== undefined && isArchived !== "") {
+        where.isArchived = isArchived === "true";
+      }
+
+      const squads = await prisma.squad.findMany({
+        where,
+        include: {
+          squadMembers: {
+            include: {
+              member: {
+                select: {
+                  id: true,
+                  name: true,
+                  workEmail: true,
+                  position: { select: { title: true } },
+                },
+              },
+            },
+          },
+          createdBy: { select: { id: true, name: true } },
+        },
+        orderBy: [
+          { isArchived: "desc" }, // Archived squads at the top as requested? 
+          // Wait, prompt says: "if the archive funcion id true the squad are paced into the top of the grid design"
+          { createdAt: "desc" },
+        ],
+      });
+
+
+      res.status(200).json({
+        success: true,
+        data: squads,
+      } as ApiResponse);
+    } catch (error) {
+      console.error("Get squads error:", error);
+      res.status(500).json({ success: false, error: "Failed to fetch squads" });
+    }
+  }
+
+  /**
+   * Get squad by ID
+   */
+  static async getSquadById(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const squad = await prisma.squad.findFirst({
+        where: { id, tenantId: req.tenantId as string, isDeleted: false },
+        include: {
+          squadMembers: {
+            include: {
+              member: {
+                select: {
+                  id: true,
+                  name: true,
+                  workEmail: true,
+                  position: { select: { title: true } },
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (!squad) {
+        res.status(404).json({ success: false, error: "Squad not found" });
+        return;
+      }
+
+      res.status(200).json({ success: true, data: squad });
+    } catch (error) {
+      console.error("Get squad by ID error:", error);
+      res.status(500).json({ success: false, error: "Failed to fetch squad" });
+    }
+  }
+
+  /**
+   * Create squad
+   */
+  static async createSquad(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const { squadName, squadCode, headIds, subHeadIds, memberIds } = req.body as CreateSquadData;
+      if (!squadName || !squadCode) {
+        throw new ValidationError("Squad name and code are required");
+      }
+
+      const result = await prisma.$transaction(async (tx) => {
+        const squad = await tx.squad.create({
+          data: {
+            tenantId: req.tenantId as string,
+            squadName,
+            squadCode,
+            createdById: req.user!.id,
+          },
+        });
+
+        const membersData: any[] = [];
+
+        headIds?.forEach((id) => {
+          membersData.push({
+            tenantId: req.tenantId as string,
+            squadId: squad.id,
+            squadMemberId: id,
+            memberType: "HEAD",
+            createdById: req.user!.id,
+          });
+        });
+
+        subHeadIds?.forEach((id) => {
+          membersData.push({
+            tenantId: req.tenantId as string,
+            squadId: squad.id,
+            squadMemberId: id,
+            memberType: "SUB_HEAD",
+            createdById: req.user!.id,
+          });
+        });
+
+        memberIds?.forEach((id) => {
+          membersData.push({
+            tenantId: req.tenantId as string,
+            squadId: squad.id,
+            squadMemberId: id,
+            memberType: "MEMBER",
+            createdById: req.user!.id,
+          });
+        });
+
+        if (membersData.length > 0) {
+          await tx.squadMember.createMany({ data: membersData });
+        }
+
+        return squad;
+      });
+
+      res.status(201).json({ success: true, data: result, message: "Squad created successfully" });
+    } catch (error: any) {
+      console.error("Create squad error:", error);
+      res.status(error instanceof ValidationError ? 400 : 500).json({
+        success: false,
+        error: error.message || "Failed to create squad",
+      });
+    }
+  }
+
+  /**
+   * Update squad
+   */
+  static async updateSquad(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { squadName, squadCode, headIds, subHeadIds, memberIds, squadStatus, isArchived } = req.body;
+
+      const existingSquad = await prisma.squad.findFirst({
+        where: { id, tenantId: req.tenantId as string, isDeleted: false },
+      });
+
+      if (!existingSquad) {
+        throw new NotFoundError("Squad");
+      }
+
+      const result = await prisma.$transaction(async (tx) => {
+        const updatedSquad = await tx.squad.update({
+          where: { id },
+          data: {
+            squadName,
+            squadCode,
+            squadStatus,
+            isArchived,
+            updatedById: req.user!.id,
+          },
+        });
+
+        if (headIds !== undefined || subHeadIds !== undefined || memberIds !== undefined) {
+          // Sync members: delete existing and recreate
+          // Alternatively, update existing ones, but recreation is simpler for syncing
+          await tx.squadMember.deleteMany({ where: { squadId: id } });
+
+          const membersData: any[] = [];
+          headIds?.forEach((mId: string) => {
+            membersData.push({
+              tenantId: req.tenantId as string,
+              squadId: id,
+              squadMemberId: mId,
+              memberType: "HEAD",
+              createdById: req.user!.id,
+            });
+          });
+          subHeadIds?.forEach((mId: string) => {
+            membersData.push({
+              tenantId: req.tenantId as string,
+              squadId: id,
+              squadMemberId: mId,
+              memberType: "SUB_HEAD",
+              createdById: req.user!.id,
+            });
+          });
+          memberIds?.forEach((mId: string) => {
+            membersData.push({
+              tenantId: req.tenantId as string,
+              squadId: id,
+              squadMemberId: mId,
+              memberType: "MEMBER",
+              createdById: req.user!.id,
+            });
+          });
+
+          if (membersData.length > 0) {
+            await tx.squadMember.createMany({ data: membersData });
+          }
+        }
+
+        return updatedSquad;
+      });
+
+      res.status(200).json({ success: true, data: result, message: "Squad updated successfully" });
+    } catch (error: any) {
+      console.error("Update squad error:", error);
+      res.status(error instanceof NotFoundError ? 404 : 500).json({
+        success: false,
+        error: error.message || "Failed to update squad",
+      });
+    }
+  }
+
+  /**
+   * Delete squad (soft delete)
+   */
+  static async deleteSquad(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      await prisma.squad.update({
+        where: { id },
+        data: { isDeleted: true, updatedById: req.user!.id },
+      });
+
+      res.status(200).json({ success: true, message: "Squad deleted successfully" });
+    } catch (error) {
+      console.error("Delete squad error:", error);
+      res.status(500).json({ success: false, error: "Failed to delete squad" });
+    }
+  }
+
+  /**
+   * Archive/Unarchive squad
+   */
+  static async archiveSquad(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const { isArchived } = req.body;
+
+      await prisma.squad.update({
+        where: { id },
+        data: { isArchived: !!isArchived, updatedById: req.user!.id },
+      });
+
+      res.status(200).json({
+        success: true,
+        message: isArchived ? "Squad archived successfully" : "Squad unarchived successfully",
+      });
+    } catch (error) {
+      console.error("Archive squad error:", error);
+      res.status(500).json({ success: false, error: "Failed to archive squad" });
+    }
+  }
+}

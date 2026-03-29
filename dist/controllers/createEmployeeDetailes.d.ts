@@ -123,8 +123,8 @@ export declare function deletePersonalDetails(req: AuthRequest, employeeId: stri
     message: string;
     employee: {
         status: boolean;
-        tenantId: string;
         id: string;
+        tenantId: string;
         employee_code: string;
         first_name: string;
         last_name: string;
@@ -139,6 +139,7 @@ export declare function deletePersonalDetails(req: AuthRequest, employeeId: stri
         updated_by: string | null;
         created_at: Date;
         updated_at: Date;
+        profile_pic: string | null;
     };
 }>;
 export declare function hardDeletePersonalDetails(req: AuthRequest, employeeId: string): Promise<{

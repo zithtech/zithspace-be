@@ -68,8 +68,6 @@ export const getLeaveAllocationWithEmployees = async (
             positionId: true,
             workJoiningDate: true,
           },
-          orderBy: { createdAt: "desc" },
-          take: 1,
         },
       },
       orderBy: {
@@ -80,7 +78,7 @@ export const getLeaveAllocationWithEmployees = async (
     const formattedEmployees = employees.map((emp) => ({
       employeeId: emp.id,
       fullName: `${emp.first_name} ${emp.last_name}`,
-      positionId: emp.workDetail[0]?.positionId || null,
+      positionId: emp.workDetail?.positionId || null,
     }));
 
     /* ===============================
@@ -118,7 +116,7 @@ export const getLeaveAllocationWithEmployees = async (
       await Promise.all(
         batch.map(async (emp) => {
 
-          const positionId = emp.workDetail[0]?.positionId;
+          const positionId = emp.workDetail?.positionId;
           if (!positionId) return;
 
           const position = positionMap.get(positionId);

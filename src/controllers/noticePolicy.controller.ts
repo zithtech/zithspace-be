@@ -27,14 +27,14 @@ export const createNoticePolicy = async (req: AuthRequest, res: Response) => {
     const data = {
       policyName: policy_name,
       code,
-      description,
+      description: description || undefined,
       levelType: level_type,
       levelId: level_id,
-      noticePeriodDays: notice_period_days,
-      probationPeriodDays: probotion_period_days,
-      probationNoticeDays: probation_notice_days,
-      buyoutCalculatingType: buyout_calculating_type,
-      status: status !== undefined ? status : true,
+      noticePeriodDays: Number(notice_period_days),
+      probationPeriodDays: probotion_period_days != null ? Number(probotion_period_days) : 0,
+      probationNoticeDays: probation_notice_days != null ? Number(probation_notice_days) : 0,
+      buyoutCalculatingType: buyout_calculating_type || undefined,
+      status: status === true || status === 'true' || status === 1 || status === '1',
     };
 
     const policy = await noticePolicyService.createPolicy(tenantId, data, userId);
@@ -58,9 +58,9 @@ export const getAllNoticePolicies = async (req: AuthRequest, res: Response) => {
     }
 
     const policies = await noticePolicyService.getPolicies(tenantId);
-    TenantLogger.info(`Fetched ${policies.length} policies`, { 
-      tenantId, 
-      operation: 'GET_POLICIES' 
+    TenantLogger.info(`Fetched ${policies.length} policies`, {
+      tenantId,
+      operation: 'GET_POLICIES'
     });
     return res.status(200).json({ success: true, message: "Policies fetched successfully", data: policies });
   } catch (error: any) {
@@ -115,14 +115,14 @@ export const updateNoticePolicy = async (req: AuthRequest, res: Response) => {
     const data = {
       policyName: policy_name,
       code,
-      description,
+      description: description || undefined,
       levelType: level_type,
       levelId: level_id,
-      noticePeriodDays: notice_period_days,
-      probationPeriodDays: probotion_period_days,
-      probationNoticeDays: probation_notice_days,
-      buyoutCalculatingType: buyout_calculating_type,
-      status,
+      noticePeriodDays: Number(notice_period_days),
+      probationPeriodDays: probotion_period_days != null ? Number(probotion_period_days) : 0,
+      probationNoticeDays: probation_notice_days != null ? Number(probation_notice_days) : 0,
+      buyoutCalculatingType: buyout_calculating_type || undefined,
+      status: status === true || status === 'true' || status === 1 || status === '1',
     };
 
     const updatedPolicy = await noticePolicyService.updatePolicy(tenantId, id, data, userId);
@@ -154,7 +154,7 @@ export const deleteNoticePolicy = async (req: AuthRequest, res: Response) => {
   } catch (error: any) {
     console.error("Error deleting notice policy:", error);
     if (error.message === "Policy not found or access denied") {
-         return res.status(404).json({ success: false, message: error.message });
+      return res.status(404).json({ success: false, message: error.message });
     }
     return res.status(500).json({ success: false, message: "Internal server error", error: error.message });
   }

@@ -1,15 +1,6 @@
-
-
-
-
-
-
-
-
-
 import fs from "fs";
 import path from "path";
-import { v4 as uuid } from "uuid";
+import { randomUUID as uuid } from "crypto";
 import { prisma } from "@/config/database";
 import { Response } from "express";
 import {

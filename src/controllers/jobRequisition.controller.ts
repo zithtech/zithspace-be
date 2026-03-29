@@ -25,7 +25,14 @@ export const createRequisition = async (
       return;
     }
 
-    const { assignedRecruiters, ...data } = req.body;
+    const { 
+      assignedRecruiters, 
+      contactIds, 
+      implementationContactId, 
+      clientContactId, 
+      vendorContactId, 
+      ...data 
+    } = req.body;
 
     // Validate required fields
     if (!data.jobTitle || !data.jobTitle.trim()) {
@@ -76,7 +83,7 @@ export const createRequisition = async (
     const newRequisition = await tenantAwarePrisma.withTenant(
       tenantId,
       async (client) => {
-        return await client.jobRequisition.create({
+        const requisition = await client.jobRequisition.create({
           data: {
             ...data,
             tenantId,
@@ -86,6 +93,13 @@ export const createRequisition = async (
               ? {
                   assignedRecruiters: {
                     connect: assignedRecruiters.map((id: string) => ({ id })),
+                  },
+                }
+              : {}),
+            ...(contactIds && contactIds.length > 0
+              ? {
+                  jobRequisitionContacts: {
+                    create: contactIds.map((cid: string) => ({ contactId: cid })),
                   },
                 }
               : {}),
@@ -101,11 +115,10 @@ export const createRequisition = async (
             deliveryManager: {
               select: { id: true, name: true, workEmail: true },
             },
-            assignedRecruiters: {
-              select: { id: true, name: true, workEmail: true },
-            },
+            jobRequisitionContacts: true,
           },
         });
+        return requisition;
       }
     );
 
@@ -200,9 +213,6 @@ export const getRequisitions = async (
           where,
           include: {
             client: true,
-            assignedRecruiters: {
-              select: { id: true, name: true, workEmail: true },
-            },
           },
           orderBy: { createdAt: "desc" },
           skip,
@@ -271,9 +281,7 @@ export const getRequisitionById = async (
             deliveryManager: {
               select: { id: true, name: true, workEmail: true },
             },
-            assignedRecruiters: {
-              select: { id: true, name: true, workEmail: true },
-            },
+            jobRequisitionContacts: true,
           },
         });
       }
@@ -317,7 +325,14 @@ export const updateRequisition = async (
     }
 
     const { id } = req.params;
-    const { assignedRecruiters, ...updateData } = req.body;
+    const { 
+      assignedRecruiters, 
+      contactIds, 
+      implementationContactId, 
+      clientContactId, 
+      vendorContactId, 
+      ...updateData 
+    } = req.body;
 
     // Remove fields that shouldn't be updated directly
     delete updateData.tenantId;
@@ -347,7 +362,7 @@ export const updateRequisition = async (
     const requisition = await tenantAwarePrisma.withTenant(
       req.tenantId,
       async (client) => {
-        return await client.jobRequisition.update({
+        const requisition = await client.jobRequisition.update({
           where: { id },
           data: {
             ...updateData,
@@ -355,6 +370,16 @@ export const updateRequisition = async (
               ? {
                   assignedRecruiters: {
                     set: assignedRecruiters.map((rid: string) => ({ id: rid })),
+                  },
+                }
+              : {}),
+            ...(contactIds !== undefined
+              ? {
+                  jobRequisitionContacts: {
+                    deleteMany: {},
+                    create: contactIds.map((cid: string) => ({
+                      contactId: cid,
+                    })),
                   },
                 }
               : {}),
@@ -370,11 +395,10 @@ export const updateRequisition = async (
             deliveryManager: {
               select: { id: true, name: true, workEmail: true },
             },
-            assignedRecruiters: {
-              select: { id: true, name: true, workEmail: true },
-            },
+            jobRequisitionContacts: true,
           },
         });
+        return requisition;
       }
     );
 

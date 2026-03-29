@@ -94,6 +94,11 @@ export declare const Permissions: {
     readonly DAILY_UPDATE_CREATE: "daily_update.create";
     readonly DAILY_UPDATE_READ: "daily_update.read";
     readonly DAILY_UPDATE_MANAGE: "daily_update.manage";
+    readonly SQUAD_CREATE: "squad.create";
+    readonly SQUAD_READ: "squad.read";
+    readonly SQUAD_UPDATE: "squad.update";
+    readonly SQUAD_DELETE: "squad.delete";
+    readonly SQUAD_MANAGE: "squad.manage";
 };
 export type Permission = (typeof Permissions)[keyof typeof Permissions];
 /**

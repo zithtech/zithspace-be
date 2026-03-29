@@ -5,7 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ReimbursementController = void 0;
 const fs_1 = __importDefault(require("fs"));
-const uuid_1 = require("uuid");
+const crypto_1 = require("crypto");
 const database_1 = require("@/config/database");
 const types_1 = require("@/types");
 const r2Client_1 = require("@/utils/r2Client");
@@ -326,7 +326,7 @@ class ReimbursementController {
                 try {
                     const fileBuffer = fs_1.default.readFileSync(file.path);
                     const base64File = `data:${file.mimetype};base64,${fileBuffer.toString("base64")}`;
-                    const fileId = (0, uuid_1.v4)();
+                    const fileId = (0, crypto_1.randomUUID)();
                     const fileName = `${fileId}_${file.originalname}`;
                     const fileUrl = await (0, r2Client_1.uploadEmployeeDocumentToR2)(base64File, fileName, req.tenantId, req.user.id, `reimbursement_${fileId}`);
                     uploadedFiles.push({
@@ -794,7 +794,7 @@ class ReimbursementController {
                         const fileBuffer = fs_1.default.readFileSync(file.path);
                         const base64File = `data:${file.mimetype};base64,${fileBuffer.toString("base64")}`;
                         // Generate unique filename
-                        const fileId = (0, uuid_1.v4)();
+                        const fileId = (0, crypto_1.randomUUID)();
                         const fileName = `${fileId}_${file.originalname}`;
                         // Upload to R2
                         const fileUrl = await (0, r2Client_1.uploadEmployeeDocumentToR2)(base64File, fileName, req.tenantId, req.user.id, `reimbursement_${fileId}`);

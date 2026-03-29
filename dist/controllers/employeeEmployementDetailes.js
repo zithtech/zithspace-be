@@ -93,6 +93,7 @@ async function getEmploymentDetails(req, employeeId) {
         }
         return {
             positionId: workDetails.positionId,
+            department: workDetails.department,
             team: workDetails.team,
             employeeType: workDetails.employeeType,
             workLocation: workDetails.workLocation,
@@ -109,7 +110,19 @@ async function getEmploymentDetails(req, employeeId) {
             joiningDate: timeline?.joiningDate || null,
             trainingCompletion: timeline?.trainingCompletionDate || null,
             projects: projects.map((p) => p.projectName),
-            reportingManager: projects[0]?.reportingManager || null,
+            reportingManager: await (async () => {
+                const managerId = projects[0]?.reportingManager;
+                if (!managerId)
+                    return null;
+                if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(managerId)) {
+                    const manager = await database_1.prisma.user.findUnique({
+                        where: { id: managerId },
+                        select: { name: true }
+                    });
+                    return manager?.name || managerId;
+                }
+                return managerId;
+            })(),
         };
     }
     catch (error) {
@@ -128,22 +141,16 @@ async function getAllEmploymentDetails(req) {
                 status: true,
             },
             include: {
-                workDetail: {
-                    orderBy: { createdAt: "desc" },
-                },
-                additionalDetails: {
-                    orderBy: { createdAt: "desc" },
-                },
-                employeeTimeline: {
-                    orderBy: { createdAt: "desc" },
-                },
+                workDetail: true,
+                additionalDetails: true,
+                employeeTimeline: true,
                 projectMappings: true,
             },
         });
         return employees.map((employee) => {
-            const latestWorkDetail = employee.workDetail[0] || null;
-            const latestAdditionalDetail = employee.additionalDetails[0] || null;
-            const latestTimeline = employee.employeeTimeline[0] || null;
+            const latestWorkDetail = employee.workDetail || null;
+            const latestAdditionalDetail = employee.additionalDetails || null;
+            const latestTimeline = employee.employeeTimeline || null;
             return {
                 id: employee.id,
                 employeeCode: employee.employee_code,

@@ -1,15 +1,15 @@
 if (process.env.NODE_ENV !== "development") {
   require("module-alias/register");
 }
-import express from "express";
+import express, { Request, Response } from "express";
 import cors from "cors";
-import helmet from "helmet";
 import morgan from "morgan";
 import compression from "compression";
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
 import session from "express-session";
+import bcrypt from "bcryptjs";
 
 // Import configurations
 import { connectDatabase, disconnectDatabase } from "@/config/database";
@@ -20,12 +20,10 @@ import salaryAdjustmentRoutes from "@/routes/salaryAdjustmentRoutes";
 import gradeRoutes from "@/routes/gradeRoutes";
 import companyRoutes from "./routes/companyRoutes";
 
-// Import middlewares
-import { optionalTenantContext } from "@/middleware/tenantContext";
-
 import authRoutes from "@/routes/auth";
 import tenantRoutes from "@/routes/tenants";
 import projectRoutes from "@/routes/projects";
+import squadRoutes from "@/routes/squad";
 import ticketRoutes from "@/routes/tickets";
 import recruitmentRoutes from "./routes/jobRequisition.routes";
 import attendanceRoutes from "@/routes/attendance";
@@ -45,7 +43,6 @@ import customerRoutes from "@/routes/customerRoutes";
 import invoiceSettingRoutes from "@/routes/invoiceSettingsRoutes";
 import invoice from "@/routes/invoice";
 import invoiceTemplate from "@/routes/invoiceTemplate";
-//import invoicedownload from "@/routes/invoiceDownload"
 import bucketRoutes from "@/routes/buckets";
 import trashRoutes from "@/routes/trash";
 import sprintCompletionRoutes from "@/routes/sprintCompletion";
@@ -53,31 +50,25 @@ import fixedHolidayRoutes from "@/routes/fixedHolidays";
 import documentHubRoutes from "@/routes/documenthub";
 import channelRoutes from "@/routes/channels";
 import messageRoutes from "@/routes/messages";
-import averageAttendenceRoutes from "@/routes/attendance";
-
 import shortcutRoutes from "@/routes/shortcut.routes";
-
-// Onboarding
-// import employeeRoutes from "@/routes/employeeRoutes";
-// import employeeAddressRoutes from "@/routes/employeeAddress";
-// import employeeEmergencyContactRoutes from "@/routes/emergencyContact";
-// import employeeIdentityRoutes from "@/routes/employeeIdentity";
 import employeeWorkDetailRoutes from "@/routes/employeeWorkDetailes";
 import employeeTimelineRoutes from "@/routes/employeeTimeline";
-// personal Detailes
-//import employeeDetailsRoutes from "@/routes/createEmployeeRoutes";
-//import employeeEmploymentDetailsRoutes from "@/routes/employeeEmploymentDetailes";
 
 // main
 import employeeOnboardingRoutes from "@/routes/onboardingRoutes";
 import newProfileRoutes from "@/routes/auth";
 import publicTicketRoutes from "@/routes/publicTickets";
-import employeeSettingsRoutes from "./routes/employeeSettingsRoutes";
+import publicDocumentRoutes from "@/routes/publicDocuments";
+import employeeSettingsRoutes from "@/routes/employeeSettingsRoutes";
+import implementationPartnerRoutes from "@/routes/implementationPartner";
+import recruitmentClientRoutes from "@/routes/recruitmentClient";
+import vendorRoutes from "@/routes/vendor";
 
 import timesheetRoutes from "@/routes/timesheet";
-import timeTrackingRoutes from "@/routes/timeTracking";
+import timeTrackingRoutes from "./routes/timeTracking";
+import proxyRoutes from "@/routes/proxyRoutes";
 
-import companyGovernmentHolidayRouter from "./routes/companyGovernmentHoliday.routes";
+import companyGovernmentHolidayRouter from "@/routes/companyGovernmentHoliday.routes";
 import leaveAdjustmentRoutes from "./routes/leaveAdjustmentRoutes";
 import leaveAllocationRoutes from "@/routes/leaveAllocationRoutes";
 import reimbursement from "@/routes/reimbursementCategory";
@@ -86,7 +77,7 @@ import repositoryRoutes from "@/routes/repositoryRoutes";
 import departmentRoutes from "@/routes/departmentRoutes";
 import subDepartmentRoutes from "@/routes/subDepartmentRoutes";
 import positionRoutes from "@/routes/positionRoutes";
-import calendarRoutes from "@/routes/calendar"
+import calendarRoutes from "@/routes/calendar";
 import employeeExitRoutes from "@/routes/employeeExit.routes";
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
 import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
@@ -95,35 +86,26 @@ import leaveBalanceRoutes from "@/routes/leaveBalanceRoutes";
 import payrollRoutes from "@/routes/payroll";
 import reimbursementConfigurationRoutes from "@/routes/reimbursementConfig";
 import reimbursementsettingsRoutes from "@/routes/reimbursementsettingsRoutes";
-import reimbursementRoutes from "@/routes/reimbursementcreateRoutes"; // the file we created earlier
-// import managerReimbursementRoutes from "./routes/managerReimbursementRoutes";
+import reimbursementRoutes from "@/routes/reimbursementcreateRoutes";
 import rbacRoutes from "@/routes/rbac";
+import candidateFormRoutes from "@/routes/candidateForm.routes";
 import employeeAssetRoutes from "@/routes/employeeAssets.routes";
+import noticePolicyRoutes from "@/routes/noticePolicy.routes";
+import exitTypeRoutes from "@/routes/exitType.routes";
+import reasonForExitRoutes from "@/routes/reasonForExit.routes";
+import exitApprovalWorkflowRoutes from "@/routes/exitApprovalWorkflow.routes";
+
+import recruitmentStatusRoutes from "@/routes/recruitmentStatus.routes";
+import recruitmentActionRoutes from "@/routes/recruitmentAction.routes";
+import candidateRoutes from "@/routes/candidateRoutes";
 // Load environment
 dotenv.config();
 console.log("🚀 API Starting up...");
 console.log("📅 Mounting calendar routes at /api/calendar");
+console.log("🤖 DevBot deployment test — 2026-03-22");
 // Create Express application
 const app = express();
 
-// Body parsing middleware
-app.use(express.json({ limit: "30mb" }));
-app.use(express.urlencoded({ extended: true, limit: "30mb" }));
-
-app.use(
-  session({
-    secret: process.env.SESSION_SECRET || "your-fallback-secret-key",
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-      secure: process.env.NODE_ENV === "production", // true in production
-      httpOnly: true,
-      maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    },
-  }),
-);
-
-// Connect to PostgreSQL
 
 const allowedOrigins = [
   "http://localhost:3000", // Local development
@@ -156,6 +138,25 @@ app.use(
     credentials: true,
   }),
 );
+
+// Body parsing middleware
+app.use(express.json({ limit: "30mb" }));
+app.use(express.urlencoded({ extended: true, limit: "30mb" }));
+
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || "your-fallback-secret-key",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === "production", // true in production
+      httpOnly: true,
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    },
+  }),
+);
+
+// Connect to PostgreSQL
 
 // Cookie parsing middleware
 app.use(cookieParser());
@@ -207,11 +208,16 @@ app.use("/api/fixed-holidays", fixedHolidayRoutes);
 app.get("/api/direct-test", (req, res) => {
   res.json({ success: true, message: "Direct app.get works" });
 });
+app.get("/api/debug-ping-unique", (req, res) => res.json({ success: true, message: "Debug route is active" }));
+
+app.use("/api", proxyRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/projects", projectRoutes);
 app.use("/api/tenants", tenantRoutes);
 app.use("/api/calendar", calendarRoutes);
-app.use("/api/projects", projectRoutes);
+app.use("/api/squads", squadRoutes);
 app.use("/api/public/tickets", publicTicketRoutes);
+app.use("/api/public/document", publicDocumentRoutes);
 app.use("/api/tickets", ticketRoutes);
 app.use("/api/recruitment", recruitmentRoutes);
 app.use("/api/attendance", attendanceRoutes);
@@ -227,7 +233,7 @@ app.use("/api/daily-updates", dailyUpdateRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/leaves", leaveRoutes);
 // app.use("/api/reimbursement-category", reimbursement);
-app.use("/api/reimbursement-categories", reimbursement);  // plural form
+app.use("/api/reimbursement-categories", reimbursement); // plural form
 app.use("/api/repositories", repositoryRoutes);
 app.use("/api/leave-types", leaveTypeRoutes);
 app.use("/api/customers", customerRoutes);
@@ -260,8 +266,12 @@ app.use("/api/leave-allocation", leaveAllocationRoutes);
 app.use("/api/leave-request", leaveRequestRoutes);
 app.use("/api/leave-balances", leaveBalanceRoutes);
 
-
 app.use("/api/time-tracking", timeTrackingRoutes);
+
+app.use("/api/candidates", candidateRoutes);
+
+app.use("/api/recruitment-statuses", recruitmentStatusRoutes);
+app.use("/api/recruitment-actions", recruitmentActionRoutes);
 
 app.use("/api/employee-work-details", employeeWorkDetailRoutes);
 app.use("/api/employee-timelines", employeeTimelineRoutes);
@@ -274,10 +284,7 @@ app.use("/api/reimbursements", reimbursementRoutes);
 // app.use("/api/manager/reimbursements", managerReimbursementRoutes);
 app.use("/api/profile/new", newProfileRoutes);
 app.use("/api/employeesettings", employeeSettingsRoutes);
-import noticePolicyRoutes from "./routes/noticePolicy.routes";
-import exitTypeRoutes from "./routes/exitType.routes";
-import reasonForExitRoutes from "./routes/reasonForExit.routes";
-import exitApprovalWorkflowRoutes from "./routes/exitApprovalWorkflow.routes";
+
 app.use("/api/exit/notice-policy", noticePolicyRoutes);
 app.use("/api/exit/exit-type", exitTypeRoutes);
 app.use("/api/exit/reason-for-exit", reasonForExitRoutes);
@@ -286,8 +293,18 @@ app.use("/api/exit/request", employeeExitRoutes);
 
 // RBAC management API
 app.use("/api/rbac", rbacRoutes);
+
+// Candidate Form API
+app.use("/api/candidate-form", candidateFormRoutes);
 app.use("/api/employee-assets", employeeAssetRoutes);
 app.use("/api/shortcuts", shortcutRoutes);
+
+// Implementation Partner API
+app.use("/api/implementation-partner", implementationPartnerRoutes);
+
+// Recruitment Client API
+app.use("/api/recruitment-client", recruitmentClientRoutes);
+app.use("/api/vendor", vendorRoutes);
 
 // app.use("/api/addresses", addressRoutes);
 //app.use("/api/employee_address", addressRoutes);
@@ -309,11 +326,6 @@ app.all("/socket.io/*", (req, res) => {
     message: "Socket.io not configured on this server",
     note: "WebSocket connections are not required for this application",
   });
-});
-
-// Handle preflight requests
-app.options("*", (req, res) => {
-  res.status(200).end();
 });
 
 // 404 handler
@@ -424,7 +436,6 @@ let server: any;
 
 const startServer = async () => {
   try {
-
     // Connect PostgreSQL
     await connectDatabase();
     // console.log("Database connected");
@@ -443,7 +454,6 @@ const startServer = async () => {
       // console.log(`Environment: ${process.env.NODE_ENV}`);
       // console.log(`Health check: http://localhost:${PORT}/health`);
     });
-
   } catch (error) {
     console.error("Server startup failed:", error);
     process.exit(1);
