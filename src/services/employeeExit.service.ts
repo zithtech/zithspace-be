@@ -33,7 +33,8 @@ export class EmployeeExitService {
         exitReasonId: data.exitReasonId || null,
         resignationDate: new Date(data.resignationDate),
         proposedLastWorkingDay: new Date(data.proposedLastWorkingDay),
-        noticePeriodDay: new Date(data.noticePeriodDay),
+        // noticePeriodDay: new Date(data.noticePeriodDay),
+        noticePeriodDay: data.noticePeriodDay ? new Date(data.noticePeriodDay) : null,
         waiveNoticePeriod: !!data.waiveNoticePeriod,
         buyoutRequired: !!data.buyoutRequired,
         buyoutAmount: data.buyoutAmount ? new Prisma.Decimal(data.buyoutAmount) : null,
@@ -66,7 +67,7 @@ export class EmployeeExitService {
     // Resolve reporting manager names (check User first, then Employee)
     const isUuid = (id: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
     const managerIds = Array.from(new Set(requests.map(r => r.reportingManagerId).filter(id => id && isUuid(id)))) as string[];
-    
+
     const userManagers = await prisma.user.findMany({
       where: { id: { in: managerIds } },
       select: { id: true, name: true }
@@ -114,7 +115,7 @@ export class EmployeeExitService {
     if (request.reportingManagerId) {
       // Validate UUID before query
       const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(request.reportingManagerId);
-      
+
       if (isUuid) {
         // Check User table first
         const userManager = await prisma.user.findUnique({

@@ -89,6 +89,7 @@ model Tenant {
   transactions                Transaction[]
   user_roles                  UserRole[]
   users                       User[]
+  employeeClientAllocationsV2 EmployeeClientAllocationV2[]
 
   @@map("tenants")
 }
@@ -218,6 +219,8 @@ model User {
   exitTypesUpdated                                                     ExitType[]                          @relation("ExitTypeUpdater")
   reasonsForExitCreated                                                ReasonForExit[]                     @relation("ReasonForExitCreator")
   reasonsForExitUpdated                                                ReasonForExit[]                     @relation("ReasonForExitUpdater")
+  employeeExitsCreated                                                 EmployeeExit[]                      @relation("EmployeeExitCreatedBy")
+  employeeExitsUpdated                                                 EmployeeExit[]                      @relation("EmployeeExitUpdatedBy")
   recruitmentStatusesCreated                                           RecruitmentStatus[]                 @relation("RecruitmentStatusCreator")
   recruitmentStatusesUpdated                                           RecruitmentStatus[]                 @relation("RecruitmentStatusUpdater")
   recruitmentActionsCreated                                            RecruitmentAction[]                 @relation("RecruitmentActionCreator")
@@ -409,6 +412,7 @@ model Project {
   work_entry          work_entry[]
   buckets             Bucket[]
   documentHubs        DocumentHub[]
+  clientAllocationsV2 EmployeeClientAllocationV2[]
 
   @@unique([tenantId, code])
   @@map("projects")
@@ -1704,7 +1708,10 @@ model Employee {
   workDetail                  EmployeeWorkDetail?
   additionalDetails           EmployeeAdditionalDetail?
   employeeTimeline            EmployeeTimeline?
-  projectMappings             EmployeeProjectMapping[]
+  projectMappings             EmployeeProjectMapping[]    @relation("EmployeeProjectMappingEmployee")
+  projectMappingsCreated      EmployeeProjectMapping[]    @relation("EmployeeProjectMappingCreatedBy")
+  projectMappingsUpdated      EmployeeProjectMapping[]    @relation("EmployeeProjectMappingUpdatedBy")
+  clientAllocationsV2         EmployeeClientAllocationV2[]
   leaveRequests               LeaveRequest[]              @relation("EmployeeLeaveRequests")
   leaveLedgers                LeaveLedger[]
 
@@ -1802,15 +1809,21 @@ model EmployeeTimeline {
 }
 
 model EmployeeProjectMapping {
-  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  employeeId       String    @map("employee_id") @db.Uuid
-  reportingManager String?   @map("reporting_manager")
-  createdById      String?   @map("created_by_id") @db.Uuid
-  updatedById      String?   @map("updated_by_id") @db.Uuid
-  projectName      String?   @map("project_name") @db.VarChar(150)
-  createdAt        DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
-  employee         Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  id String @id @default(uuid()) @db.Uuid
+
+  employeeId       String  @map("employee_id") @db.Uuid
+  reportingManager String? @map("reporting_manager") @db.VarChar(50)
+  createdById      String? @map("created_by_id") @db.Uuid
+  updatedById      String? @map("updated_by_id") @db.Uuid
+
+  projectName String @map("project_name") @db.VarChar(150)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  employee  Employee  @relation("EmployeeProjectMappingEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  createdBy Employee? @relation("EmployeeProjectMappingCreatedBy", fields: [createdById], references: [id])
+  updatedBy Employee? @relation("EmployeeProjectMappingUpdatedBy", fields: [updatedById], references: [id])
 
   @@map("employee_project_mappings")
 }
@@ -2201,6 +2214,7 @@ model ClientV2 {
   parentClient         ClientV2?       @relation("ClientHierarchy", fields: [parentId], references: [id])
   childClients         ClientV2[]      @relation("ClientHierarchy")
   contacts             ClientContactV2[]
+  clientAllocationsV2  EmployeeClientAllocationV2[]
 
   @@unique([tenantId, clientCode])
   @@map("clients_v2")
@@ -2260,8 +2274,14 @@ model EmployeeClientAllocationV2 {
   startDate   DateTime  @map("start_date")
   endDate     DateTime? @map("end_date")
   status      String    @default("Active")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  client   ClientV2 @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  project  Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@map("employee_client_allocations_v2")
 }
@@ -3022,31 +3042,34 @@ model ExitApprovalWorkflow {
   @@map("exit_approval_workflows")
 }
 
-model EmployeeExit {
-  id                     String         @id @default(uuid())
-  tenantId               String         @map("tenant_id")
-  employeeId             String         @map("employee_id") @db.Uuid
-  departmentId           String?        @map("department_id")
-  positionId             String?        @map("position_id")
-  reportingManagerId     String?        @map("reporting_manager_id")
-  exitTypeId             String?        @map("exit_type_id")
-  exitReasonId           String?        @map("exit_reason_id")
-  resignationDate        DateTime       @map("resignation_date")
-  proposedLastWorkingDay DateTime       @map("proposed_last_working_day")
-  noticePeriodDay        DateTime?      @map("notice_period_day")
-  waiveNoticePeriod      Boolean        @default(false) @map("waive_notice_period")
-  buyoutRequired         Boolean        @default(false) @map("buyout_required")
-  buyoutAmount           Decimal?       @map("buyout_amount") @db.Decimal(10, 2)
-  explanation            String?
-  status                 String         @default("PENDING")
-  createdById            String         @map("created_by_id")
-  updatedById            String?        @map("updated_by_id")
-  createdAt              DateTime       @default(now()) @map("created_at")
-  updatedAt              DateTime       @default(now()) @updatedAt @map("updated_at")
-  employee               Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  exitReason             ReasonForExit? @relation(fields: [exitReasonId], references: [id])
-  exitType               ExitType?      @relation(fields: [exitTypeId], references: [id])
-  tenant                 Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+model EmployeeExit {  
+  id                    String    @id @default(uuid())
+  tenantId              String    @map("tenant_id")
+  employeeId            String    @map("employee_id") @db.Uuid
+  departmentId          String?   @map("department_id")
+  positionId            String?   @map("position_id")
+  reportingManagerId    String?   @map("reporting_manager_id")
+  exitTypeId            String?   @map("exit_type_id")
+  exitReasonId          String?   @map("exit_reason_id")
+  resignationDate       DateTime  @map("resignation_date")
+  proposedLastWorkingDay DateTime @map("proposed_last_working_day")
+  noticePeriodDay       DateTime  @map("notice_period_day")
+  waiveNoticePeriod     Boolean   @default(false) @map("waive_notice_period")
+  buyoutRequired        Boolean   @default(false) @map("buyout_required")
+  buyoutAmount          Decimal?  @map("buyout_amount") @db.Decimal(10, 2)
+  explanation           String?
+  status                String    @default("PENDING")
+  createdById           String    @map("created_by_id")
+  updatedById           String?   @map("updated_by_id")
+  createdAt             DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @updatedAt @map("updated_at")
+
+  tenant     Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee   Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  exitType   ExitType?     @relation(fields: [exitTypeId], references: [id])
+  exitReason ReasonForExit? @relation(fields: [exitReasonId], references: [id])
+  createdBy  User          @relation("EmployeeExitCreatedBy", fields: [createdById], references: [id])
+  updatedBy  User?         @relation("EmployeeExitUpdatedBy", fields: [updatedById], references: [id])
 
   @@map("employee_exits")
 }
