@@ -970,7 +970,6 @@ class InvoiceController {
                     data: {
                         deletedAt: now,
                         deletedBy: userId,
-                        status: 'CANCELLED',
                         updatedAt: now,
                         updatedBy: userId
                     }
@@ -1746,7 +1745,6 @@ class InvoiceController {
                     data: {
                         deletedAt: null,
                         deletedBy: null,
-                        status: 'DRAFT', // Reset status to DRAFT
                         updatedAt: new Date(),
                         updatedBy: req.user.id
                     }
@@ -1928,7 +1926,6 @@ class InvoiceController {
                     data: {
                         deletedAt: null,
                         deletedBy: null,
-                        status: 'DRAFT',
                         updatedAt: new Date(),
                         updatedBy: req.user.id
                     }
@@ -2075,7 +2072,6 @@ class InvoiceController {
                     data: {
                         deletedAt: now,
                         deletedBy: userId,
-                        status: 'CANCELLED',
                         updatedAt: now,
                         updatedBy: userId
                     }
