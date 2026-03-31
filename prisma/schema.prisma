@@ -4676,3 +4676,49 @@ model TestZithpace {
 
   @@map("test_zithspace")
 }
+enum CandidateStatus {
+  APPLIED
+  SHORTLISTED
+  INTERVIEW
+  OFFERED
+  JOINED
+  REJECTED
+}
+model GeneralCandidates{
+  id                String   @id @default(uuid())
+  tenantId          String    @map("tenant_id")
+
+  // Basic Details
+  fullName          String   @map("full_name")
+  email             String   @unique
+  phone             String
+  location          String?
+
+  // Professional Details
+  totalExperience   Float?   @map("total_experience")
+  skills            String[] 
+  currentCompany    String?  @map("current_company")
+  currentSalary     Float?   @map("current_salary")
+  expectedSalary    Float?   @map("expected_salary")
+  noticePeriod      String?  @map("notice_period")
+
+  // Resume
+  resumeUrl         String?  @map("resume_url")
+
+  // Extra Fields (your requirement)
+  linkedinUrl       String?  @map("linkedin_url")
+  githubUrl         String?  @map("github_url")
+  portfolioUrl      String?  @map("portfolio_url")
+
+  // Status
+  status            CandidateStatus @default(APPLIED)
+
+    // ✅ Audit Fields
+  createdBy         String   @map("created_by")
+  updatedBy         String?  @map("updated_by")
+
+  // Metadata
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  @@map("general_candidates")
+}
