@@ -124,7 +124,7 @@ class InvoiceSettingsController {
                             gstin: general.gstin === "" ? null : general.gstin,
                             pan: general.pan === "" ? null : general.pan,
                             tenant: { connect: { id: req.tenantId } },
-                            createdByUser: { connect: { id: req.user.id } },
+                            createdBy: req.user.id,
                         }
                     },
                     invoice: {
@@ -138,7 +138,7 @@ class InvoiceSettingsController {
                         create: {
                             ...payment,
                             tenant: { connect: { id: req.tenantId } },
-                            createdByUser: { connect: { id: req.user.id } },
+                            createdBy: req.user.id,
                         }
                     },
                 },
@@ -193,7 +193,7 @@ class InvoiceSettingsController {
                                 pan: general.pan === "" ? null : general.pan,
                                 id: undefined, // Strip ID so Prisma doesn't try to overwrite PK
                                 tenantId: undefined,
-                                updatedByUser: { connect: { id: req.user.id } }
+                                updatedBy: req.user.id
                             }
                         }
                     } : undefined,
@@ -205,7 +205,7 @@ class InvoiceSettingsController {
                                 ...invoice,
                                 id: undefined,
                                 tenantId: undefined,
-                                updatedByUser: { connect: { id: req.user.id } }
+                                updatedBy: req.user.id
                             }
                         }
                     } : undefined,
@@ -217,7 +217,7 @@ class InvoiceSettingsController {
                                 ...payment,
                                 id: undefined,
                                 tenantId: undefined,
-                                updatedByUser: { connect: { id: req.user.id } }
+                                updatedBy: req.user.id
                             }
                         }
                     } : undefined,

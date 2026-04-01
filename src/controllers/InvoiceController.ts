@@ -1123,7 +1123,6 @@ static async deleteInvoice(req: AuthRequest, res: Response): Promise<void> {
         data: { 
           deletedAt: now,
           deletedBy: userId,
-          status: 'CANCELLED',
           updatedAt: now,
           updatedBy: userId
         }
@@ -2027,7 +2026,6 @@ static async restoreInvoice(req: AuthRequest, res: Response): Promise<void> {
         data: { 
           deletedAt: null,
           deletedBy: null,
-          status: 'DRAFT', // Reset status to DRAFT
           updatedAt: new Date(),
           updatedBy: req.user.id
         }
@@ -2231,7 +2229,6 @@ static async getDeletedInvoices(req: AuthRequest, res: Response): Promise<void> 
           data: { 
             deletedAt: null,
             deletedBy: null,
-            status: 'DRAFT',
             updatedAt: new Date(),
             updatedBy: req.user.id
           }
@@ -2394,7 +2391,6 @@ static async getDeletedInvoices(req: AuthRequest, res: Response): Promise<void> 
           data: { 
             deletedAt: now,
             deletedBy: userId,
-            status: 'CANCELLED',
             updatedAt: now,
             updatedBy: userId
           }

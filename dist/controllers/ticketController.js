@@ -703,6 +703,7 @@ class TicketController {
                         platform: true,
                         taskLevel: true,
                         storyPoint: true,
+                        estimateHours: true,
                         dueDate: true,
                         createdAt: true,
                         updatedAt: true,
