@@ -13,6 +13,9 @@ export const applyLeave = async (req: AuthRequest, res: Response) => {
     const userId = req.user?.id;
 
     const { leaveTypeId, fromDate, toDate, reason } = req.body;
+     // 👇 Paste here — line ~123
+    console.log("leave_type_id:", leaveTypeId);
+    console.log("Full body:", req.body);
 
     if (!tenantId || !userId) {
       return res.status(401).json({
@@ -109,32 +112,41 @@ export const applyLeave = async (req: AuthRequest, res: Response) => {
       },
     });
 
-    const balance = lastLedger
-      ? new Prisma.Decimal(lastLedger.balanceAfter)
-      : new Prisma.Decimal(0);
+   const balance = lastLedger
+  ? new Prisma.Decimal(lastLedger.balanceAfter)
+  : new Prisma.Decimal(0);
 
-    if (leaveTypeId !== LOP_LEAVE_TYPE_ID) {
-      if (balance.lessThan(totalUnits)) {
-        return res.status(400).json({
-          success: false,
-          message: "Insufficient leave balance",
-        });
-      }
+let finalLeaveTypeId = leaveTypeId;
+
+if (leaveTypeId !== LOP_LEAVE_TYPE_ID) {
+  if (balance.lessThan(totalUnits)) {
+    finalLeaveTypeId = LOP_LEAVE_TYPE_ID;
+  }
+}
+// Paste this BEFORE prisma.leaveRequest.create()
+const leaveTypeExists = await prisma.leaveType.findUnique({
+  where: { id: leaveTypeId },
+});
+console.log("leaveTypeExists:", leaveTypeExists);
+
+const leaveRequest = await prisma.leaveRequest.create({
+  data: {
+    tenantId: req.user.tenantId,
+    fromDate: new Date(fromDate),
+    toDate: new Date(toDate),
+    totalUnits: totalDays,
+    reason: reason,
+    createdById: req.user.id,
+
+    employee: {
+      connect: { id: employeeId }
+    },
+
+    leaveType: {
+      connect: { id: leaveTypeId }
     }
-
-    const leaveRequest = await prisma.leaveRequest.create({
-      data: {
-        tenantId,
-        employeeId,
-        leaveTypeId,
-        fromDate: start,
-        toDate: end,
-        totalUnits,
-        status: "PENDING",
-        createdById: userId,
-        reason,
-      },
-    });
+  }
+});
 
     return res.json({
       success: true,
