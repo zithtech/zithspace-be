@@ -4712,7 +4712,7 @@ model testsv{
 model SalaryRevision {
   id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tenantId        String   @map("tenant_id")
-  employeeId      String   @map("employee_id") @db.Text
+  employeeId      String   @map("employee_id") @db.Uuid
   currentSalary   Decimal  @map("current_salary") @db.Decimal(12, 2)
   revisionType    String   @map("revision_type") // MONTHLY or YEARLY
   revisionAmount  Decimal  @map("revision_amount") @db.Decimal(12, 2)

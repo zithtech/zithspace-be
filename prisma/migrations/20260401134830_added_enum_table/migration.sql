@@ -19,7 +19,7 @@ ALTER TABLE "salary_approval_steps" DROP CONSTRAINT "fk_steps_role";
 
 -- AlterTable
 ALTER TABLE "salary_approval_steps" DROP COLUMN "role_id",
-ADD COLUMN     "position_id" UUID;
+ADD COLUMN     "position_id" TEXT;
 
 -- AddForeignKey
 ALTER TABLE "salary_approval_steps" ADD CONSTRAINT "fk_steps_position" FOREIGN KEY ("position_id") REFERENCES "positions"("id") ON DELETE SET NULL ON UPDATE NO ACTION;
