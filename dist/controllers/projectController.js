@@ -18,7 +18,7 @@ class ProjectController {
                 });
                 return;
             }
-            const { page = 1, limit = 20, search, status, projectManagerId, sortBy = "createdAt", sortOrder = "desc", } = req.query;
+            const { page = 1, limit = 20, search, status, projectManagerId, userId, sortBy = "createdAt", sortOrder = "desc", } = req.query;
             // Build filter query
             const where = {
                 tenantId: req.tenantId,
@@ -34,6 +34,22 @@ class ProjectController {
                 where.status = status;
             if (projectManagerId)
                 where.projectManagerId = projectManagerId;
+            if (userId) {
+                const userFilter = [
+                    { projectManagerId: userId },
+                    { members: { some: { userId: userId } } }
+                ];
+                if (where.OR) {
+                    where.AND = [
+                        { OR: where.OR },
+                        { OR: userFilter }
+                    ];
+                    delete where.OR;
+                }
+                else {
+                    where.OR = userFilter;
+                }
+            }
             // Build sort object
             const orderBy = {};
             orderBy[sortBy] = sortOrder === "desc" ? "desc" : "asc";

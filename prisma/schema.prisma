@@ -72,6 +72,7 @@ model Tenant {
   salary_approval_logs    SalaryApprovalLog[]
   salaryApprovalWorkflows SalaryApprovalWorkflow[]
   salaryPayouts           SalaryPayout[]
+  payslipRecords          PayslipRecord[]
   salaryStructures        SalaryStructure[]
   settingsProfiles        SettingsProfile[]
   shifts                  Shift[]
@@ -90,6 +91,8 @@ model Tenant {
   transactions            Transaction[]
   user_roles              UserRole[]
   users                   User[]
+  companyLocations        CompanyLocation[] 
+  openings                OpeningManagement[]
 
   @@map("tenants")
 }
@@ -129,6 +132,7 @@ model User {
   attendance                                               Attendance[]
   bankFilesCreated                                         BankFile[]                          @relation("BankFileCreator")
   bankFilesSent                                            BankFile[]                          @relation("BankFileSender")
+  payslipsCreated                                          PayslipRecord[]                     @relation("PayslipCreator")
   channelMemberships                                       ChannelMember[]
   channelMessages                                          ChannelMessage[]
   createdChannels                                          Channel[]                           @relation("ChannelCreator")
@@ -244,6 +248,10 @@ model User {
   reimbursements                                           Reimbursement[]                     @relation("ReimbursementCreator")
   createdDocuments                                         Document[]                          @relation("DocumentCreator")
   deletedDocuments                                         Document[]                          @relation("DocumentDeleter")
+  createdCompanyLocations CompanyLocation[] @relation("CompanyLocationCreatedBy")
+  updatedCompanyLocations CompanyLocation[] @relation("CompanyLocationUpdatedBy")
+  openingsCreated        OpeningManagement[] @relation("OpeningCreatedBy")
+  openingsUpdated        OpeningManagement[] @relation("OpeningUpdatedBy")
 
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
@@ -1697,6 +1705,7 @@ model Employee {
   leaveAdjustments  LeaveAdjustment[]
   salaryAdjustments SalaryAdjustment[]
   salaryPayouts     SalaryPayout[]
+  payslips          PayslipRecord[]
   users             User[]
   addresses         EmployeeAddress[]
   emergencyContacts EmployeeEmergencyContact[]
@@ -4113,6 +4122,7 @@ model SalaryPayout {
   paidBy          User?               @relation("SalaryPayer", fields: [paidById], references: [id], onUpdate: NoAction, map: "fk_salary_payout_paid_by")
   tenant          Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_salary_tenant")
   workflow        SalaryApprovalWorkflow? @relation(fields: [workflowId], references: [id])
+  payslip         PayslipRecord?
 
   @@unique([employeeId, month, year], map: "unique_employee_month_year")
   @@map("salary_payouts")
@@ -4675,4 +4685,102 @@ model TestZithpace {
   fieldC  String? @map("field_c")
 
   @@map("test_zithspace")
+}
+
+model PayslipRecord {
+  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId     String       @map("tenant_id")
+  employeeId   String       @map("employee_id") @db.Uuid
+  payoutId     String       @map("payout_id") @db.Uuid
+  month        Int
+  year         Int
+  fileUrl      String       @map("file_url")
+  createdAt    DateTime?    @default(now()) @map("created_at") @db.Timestamp(6)
+  createdById  String       @map("created_by_id")
+  generatedAt  DateTime?    @default(now()) @map("generated_at") @db.Timestamp(6)
+  
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_payslip_employee")
+  payout       SalaryPayout @relation(fields: [payoutId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_payslip_payout")
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_payslip_tenant")
+  createdBy    User         @relation("PayslipCreator", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_payslip_created_by")
+
+  @@unique([payoutId], map: "unique_payslip_payout")
+  @@map("payslip_records")
+}
+
+model TestAbinash {
+  id      String  @id @default(uuid())
+  fieldB  String? @map("field_b")
+  fieldC  String? @map("field_c")
+
+  @@map("test_abinash")
+}
+
+model CompanyLocation {
+  id            String   @id @default(uuid())
+
+  tenantId      String   @map("tenant_id")
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+  flatNumber    String?   @map("flat_number")
+  street        String?
+  area          String?
+  city          String?
+  state         String?
+  pincode       String?
+  country       String?
+
+  createdById   String   @map("created_by_id")
+  createdBy     User     @relation("CompanyLocationCreatedBy", fields: [createdById], references: [id])
+
+  updatedById   String   @map("updated_by_id")
+  updatedBy     User     @relation("CompanyLocationUpdatedBy", fields: [updatedById], references: [id])
+
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("company_locations")
+}
+
+model OpeningManagement {
+  id                String   @id @default(uuid())
+
+  tenantId          String
+  tenant            Tenant   @relation(fields: [tenantId], references: [id])
+
+  jobTitle          String
+  roleType          String
+
+  departmentId      String   // no relation
+  hiringManagerId   String   // no relation
+
+  minExperience     Int?
+  maxExperience     Int?
+
+  primarySkills     String[]
+
+  noticePeriod      Int?
+  jobDescription    String?
+
+  baseLocation      String?
+  workArrangement   String?
+  employmentType    String?
+
+  totalOpenings     Int?
+
+  minSalary         Float?
+  maxSalary         Float?
+  currency          String?
+
+  priorityLevel     String?
+  currentStatus     String?
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  createdById       String
+  createdBy         User     @relation("OpeningCreatedBy", fields: [createdById], references: [id])
+
+  updatedById       String
+  updatedBy         User     @relation("OpeningUpdatedBy", fields: [updatedById], references: [id])
 }

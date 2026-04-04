@@ -384,7 +384,8 @@ export class SalaryApprovalController {
           approvalLogs: {
             include: { performedBy: true },
             orderBy: { createdAt: 'asc' }
-          }
+          },
+          payslip: true
         }
       });
       
@@ -412,9 +413,20 @@ export class SalaryApprovalController {
         },
         include: { 
           employee: {
-            include: { bankDetail: true }
+            include: { 
+              bankDetail: true,
+              employeeIdentity: true,
+              workDetail: {
+                include: {
+                  position: {
+                    include: { department: true }
+                  }
+                }
+              }
+            }
           }, 
-          approvedBy: true 
+          approvedBy: true,
+          payslip: true 
         }
       });
 
@@ -423,15 +435,14 @@ export class SalaryApprovalController {
       // Decrypt bank details
       const decryptedPayouts = payouts.map(p => {
         if (p.employee?.bankDetail) {
+          const emp = p.employee as any;
           return {
             ...p,
             employee: {
-              ...p.employee,
-              bankDetail: {
-                ...p.employee.bankDetail,
-                accountNumber: decrypt(p.employee.bankDetail.accountNumber),
-                ifscCode: decrypt(p.employee.bankDetail.ifscCode)
-              }
+              ...emp,
+              bankAccount: decrypt(emp.bankDetail.accountNumber),
+              pan: emp.employeeIdentity?.[0]?.panNumber ? decrypt(emp.employeeIdentity[0].panNumber) : null,
+              departmentName: emp.workDetail?.[0]?.position?.department?.name || emp.departmentName || "N/A"
             }
           };
         }
