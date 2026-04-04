@@ -98,6 +98,8 @@ import exitApprovalWorkflowRoutes from "@/routes/exitApprovalWorkflow.routes";
 import recruitmentStatusRoutes from "@/routes/recruitmentStatus.routes";
 import recruitmentActionRoutes from "@/routes/recruitmentAction.routes";
 import candidateRoutes from "@/routes/candidateRoutes";
+import companyLocationRoutes from "@/routes/companyLocationRoutes";
+import openingManagementRoutes from "@/routes/openingManagementRoutes";
 // Load environment
 dotenv.config();
 console.log("🚀 API Starting up...");
@@ -251,6 +253,8 @@ app.use("/api/salary-adjustments", salaryAdjustmentRoutes);
 app.use("/api/companies", companyRoutes);
 app.use("/api/grades", gradeRoutes);
 app.use("/api/payroll", payrollRoutes);
+app.use("/api/company-locations", companyLocationRoutes);
+app.use("/api/opening-management", openingManagementRoutes);
 
 app.use("/api/departments", departmentRoutes);
 app.use("/api/sub-departments", subDepartmentRoutes);
