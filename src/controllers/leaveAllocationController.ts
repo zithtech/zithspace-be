@@ -27,9 +27,9 @@ export const getLeaveAllocationWithEmployees = async (
         tenantId,
         ...(origin && subOriginId
           ? {
-              origin: origin as string,
-              subOriginId: subOriginId as string,
-            }
+            origin: origin as string,
+            subOriginId: subOriginId as string,
+          }
           : {}),
       },
       select: {

@@ -173,7 +173,6 @@ export const getLeaveRequests = async (req: AuthRequest, res: Response) => {
   try {
     const tenantId = req.tenantId;
     const userId = req.user?.id;
-    const role = req.user?.role;
 
     if (!tenantId || !userId) {
       return res.status(400).json({
@@ -196,30 +195,24 @@ export const getLeaveRequests = async (req: AuthRequest, res: Response) => {
 
     let whereCondition: any = { tenantId };
 
-    /* Employee view */
+    const team = await prisma.employeeProjectMapping.findMany({
+      where: {
+        reportingManager: userId,
+      },
+      select: {
+        employeeId: true,
+      },
+    });
 
-    if (role === "EMPLOYEE") {
-      whereCondition.employeeId = user.employeeId;
-    }
-
-    /* Manager view (employees who report to them) */
-
-    if (role === "MANAGER" || role === "ADMIN") {
-      const team = await prisma.employeeProjectMapping.findMany({
-        where: {
-          reportingManager: userId,
-        },
-        select: {
-          employeeId: true,
-        },
-      });
-
-      const employeeIds = team.map((t) => t.employeeId);
-
-      whereCondition.employeeId = {
-        in: employeeIds,
-      };
-    }
+    const teamEmployeeIds = team.map((t) => t.employeeId);
+    
+    whereCondition.OR = [
+      { employeeId: user.employeeId },
+      ...(teamEmployeeIds.length > 0 ? [{
+        employeeId: { in: teamEmployeeIds },
+        status: { in: ["APPROVED", "REJECTED"] }
+      }] : [])
+    ];
 
     const leaveRequests = await prisma.leaveRequest.findMany({
       where: whereCondition,
@@ -480,26 +473,23 @@ export const getPendingApprovals = async (req: AuthRequest, res: Response) => {
       });
     }
 
-    let employeeIds: string[] = [];
+    /* Find employees reporting to this manager */
+    const team = await prisma.employeeProjectMapping.findMany({
+      where: {
+        reportingManager: userId,
+      },
+      select: {
+        employeeId: true,
+      },
+    });
+    
+    const employeeIds = team.map((t) => t.employeeId);
 
-    if (user?.role === "admin" || user?.role === "super_admin") {
-      // Admins see all employees in the tenant
-      const allEmployees = await prisma.employee.findMany({
-        where: { tenantId },
-        select: { id: true },
+    if (employeeIds.length === 0) {
+      return res.json({
+        success: true,
+        data: [],
       });
-      employeeIds = allEmployees.map((e) => e.id);
-    } else {
-      /* Find employees reporting to this manager */
-      const team = await prisma.employeeProjectMapping.findMany({
-        where: {
-          reportingManager: userId,
-        },
-        select: {
-          employeeId: true,
-        },
-      });
-      employeeIds = team.map((t) => t.employeeId);
     }
 
     const approvals = await prisma.leaveRequest.findMany({
