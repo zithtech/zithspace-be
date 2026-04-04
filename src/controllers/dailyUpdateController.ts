@@ -30,9 +30,6 @@ export class DailyUpdateController {
         generalNotes,
         date,
         updateType,
-        userId, // Optional: for managers logging on behalf of others
-        is_missed: bodyIsMissed, // Optional from frontend
-        missed_updateAt: bodyMissedUpdateAt, // Optional from frontend
       } = req.body;
 
       // Validation
@@ -195,7 +192,7 @@ export class DailyUpdateController {
 
           const updates = await client.statusUpdate.findMany({
             where: {
-              userId: userId || req.user!.id,
+              userId: req.user!.id,
               tenantId: req.tenantId,
               date: {
                 gte: startOfDay(today),
@@ -224,7 +221,7 @@ export class DailyUpdateController {
             const isMember = await client.projectMember.findFirst({
               where: {
                 projectId: update.projectId,
-                userId: userId || req.user!.id,
+                userId: req.user!.id,
               },
             });
 
@@ -263,13 +260,13 @@ export class DailyUpdateController {
 
           const statusUpdate = await client.statusUpdate.create({
             data: {
-              userId: userId || req.user!.id,
+              userId: req.user.id,
               tenantId: req.tenantId,
 
               date: submittedDate, // ✅ working day
               submittedAt: now, // ✅ submit time
-              is_missed: bodyIsMissed !== undefined ? bodyIsMissed : isMissed, 
-              missed_updateAt: bodyMissedUpdateAt ? new Date(bodyMissedUpdateAt) : missedUpdateAt,
+              is_missed: isMissed, // ✅ FIXED
+              missed_updateAt: missedUpdateAt,
 
               mood: mood || null,
               totalHoursWorked: totalHoursWorked || null,

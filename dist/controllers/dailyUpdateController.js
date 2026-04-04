@@ -17,10 +17,7 @@ class DailyUpdateController {
                 return;
             }
             console.log("request checking", req.body);
-            const { mood, totalHoursWorked, projectUpdates, generalNotes, date, updateType, userId, // Optional: for managers logging on behalf of others
-            is_missed: bodyIsMissed, // Optional from frontend
-            missed_updateAt: bodyMissedUpdateAt, // Optional from frontend
-             } = req.body;
+            const { mood, totalHoursWorked, projectUpdates, generalNotes, date, updateType, } = req.body;
             // Validation
             if (!projectUpdates ||
                 !Array.isArray(projectUpdates) ||
@@ -147,7 +144,7 @@ class DailyUpdateController {
                 const today = new Date(); // this is a valid Date object
                 const updates = await client.statusUpdate.findMany({
                     where: {
-                        userId: userId || req.user.id,
+                        userId: req.user.id,
                         tenantId: req.tenantId,
                         date: {
                             gte: startOfDay(today),
@@ -171,7 +168,7 @@ class DailyUpdateController {
                     const isMember = await client.projectMember.findFirst({
                         where: {
                             projectId: update.projectId,
-                            userId: userId || req.user.id,
+                            userId: req.user.id,
                         },
                     });
                     const isProjectManager = project.projectManagerId === req.user.id;
@@ -197,12 +194,12 @@ class DailyUpdateController {
                 console.log("missedUpdateAt ", missedUpdateAt);
                 const statusUpdate = await client.statusUpdate.create({
                     data: {
-                        userId: userId || req.user.id,
+                        userId: req.user.id,
                         tenantId: req.tenantId,
                         date: submittedDate, // ✅ working day
                         submittedAt: now, // ✅ submit time
-                        is_missed: bodyIsMissed !== undefined ? bodyIsMissed : isMissed,
-                        missed_updateAt: bodyMissedUpdateAt ? new Date(bodyMissedUpdateAt) : missedUpdateAt,
+                        is_missed: isMissed, // ✅ FIXED
+                        missed_updateAt: missedUpdateAt,
                         mood: mood || null,
                         totalHoursWorked: totalHoursWorked || null,
                         projectUpdates: projectUpdates,
