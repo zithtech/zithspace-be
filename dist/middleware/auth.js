@@ -67,6 +67,7 @@ const authenticateToken = async (req, res, next) => {
             role: user.role,
             position: user.position?.title || null,
             name: user.name,
+            employeeId: user.employeeId, // Added this field
             sessionId: decoded.sessionId,
         };
         next();
