@@ -480,7 +480,54 @@ export class CompanyController {
 
     res.json({
       success: true,
-      message: "Company set as active",
+      message: `${company.name} set as active successfully`,
+    } as ApiResponse);
+  }
+
+  /** =========================
+   * DEACTIVATE COMPANY
+   * ========================== */
+  static async deactivateCompany(req: AuthRequest, res: Response) {
+    const id = Number(req.params.id);
+    if (!id) throw new ValidationError("Invalid company id");
+
+    const company = await prisma.company.findFirst({
+      where: {
+        id,
+        tenantId: req.tenantId,
+      },
+    });
+
+    if (!company) throw new NotFoundError("Company not found");
+
+    // Check if it's already inactive
+    if (!company.isActive) {
+      return res.json({
+        success: true,
+        message: "Company is already inactive",
+      } as ApiResponse);
+    }
+
+    // Optional: Check if it's the only one
+    const activeCount = await prisma.company.count({
+      where: { tenantId: req.tenantId, isActive: true },
+    });
+
+    if (activeCount <= 1) {
+      throw new ValidationError("Cannot deactivate the only active company. Please activate another company first.");
+    }
+
+    await prisma.company.update({
+      where: { id },
+      data: {
+        isActive: false,
+        updatedById: req.user!.id,
+      },
+    });
+
+    res.json({
+      success: true,
+      message: `${company.name} deactivated successfully`,
     } as ApiResponse);
   }
 
@@ -488,32 +535,56 @@ export class CompanyController {
   /** =========================
  * DELETE COMPANY
  ========================== */
-static async deleteCompany(req: AuthRequest, res: Response) {
-  const id = Number(req.params.id);
-  if (!id) throw new ValidationError("Invalid company id");
+  static async deleteCompany(req: AuthRequest, res: Response) {
+    const id = Number(req.params.id);
+    if (!id) throw new ValidationError("Invalid company id");
 
-  const company = await prisma.company.findFirst({
-    where: {
-      id,
-      tenantId: req.tenantId,
-    },
-  });
+    const company = await prisma.company.findFirst({
+      where: {
+        id,
+        tenantId: req.tenantId,
+      },
+    });
 
-  if (!company) throw new NotFoundError("Company not found");
+    if (!company) throw new NotFoundError("Company not found");
 
-  // ❌ Active company delete block
-  if (company.isActive) {
-    throw new ValidationError("Active company cannot be deleted");
+    // ❌ Active company delete block
+    if (company.isActive) {
+      throw new ValidationError("Active company cannot be deleted. Set another company as active first.");
+    }
+
+    // 🛡️ Check for assigned users
+    const userCount = await prisma.user.count({
+      where: { company_id: id, tenantId: req.tenantId }
+    });
+    if (userCount > 0) {
+      throw new ValidationError(`Cannot delete company. ${userCount} employee(s) are currently assigned to it.`);
+    }
+
+    // 🛡️ Check for historical payslips
+    const payslipCount = await prisma.payslips.count({
+      where: { company_id: id, tenant_id: req.tenantId }
+    });
+    if (payslipCount > 0) {
+      throw new ValidationError(`Cannot delete company. There are ${payslipCount} historical payslip records associated with it.`);
+    }
+
+    // 🧺 Perform cascading delete in a transaction
+    await prisma.$transaction([
+      // 1. Delete associated employee field configs
+      prisma.employee_field_configs.deleteMany({
+        where: { company_id: id, tenant_id: req.tenantId }
+      }),
+      // 2. Delete the company
+      prisma.company.delete({
+        where: { id },
+      }),
+    ]);
+
+    res.json({
+      success: true,
+      message: "Company deleted successfully",
+    } as ApiResponse);
   }
-
-  await prisma.company.delete({
-    where: { id },
-  });
-
-  res.json({
-    success: true,
-    message: "Company deleted successfully",
-  } as ApiResponse);
-}
 
 }

@@ -17,6 +17,7 @@ import salaryComponentRoutes from "@/routes/salaryComponentRoutes";
 import salaryStructureRoutes from "@/routes/salaryStructureRoutes";
 import salaryApprovalRoutes from "@/routes/salaryApprovalRoutes";
 import salaryAdjustmentRoutes from "@/routes/salaryAdjustmentRoutes";
+import salaryRevisionRoutes from "@/routes/salaryRevisionRoutes";
 import gradeRoutes from "@/routes/gradeRoutes";
 import companyRoutes from "./routes/companyRoutes";
 
@@ -248,6 +249,7 @@ app.use("/api/salary-components", salaryComponentRoutes);
 app.use("/api/salary-structures", salaryStructureRoutes);
 app.use("/api/salary-approvals", salaryApprovalRoutes);
 app.use("/api/salary-adjustments", salaryAdjustmentRoutes);
+app.use("/api/salary-revisions", salaryRevisionRoutes);
 app.use("/api/companies", companyRoutes);
 app.use("/api/grades", gradeRoutes);
 app.use("/api/payroll", payrollRoutes);
@@ -277,6 +279,7 @@ app.use("/api/employee-work-details", employeeWorkDetailRoutes);
 app.use("/api/employee-timelines", employeeTimelineRoutes);
 
 app.use("/api/onboarding", employeeOnboardingRoutes);
+app.use("/api/employees", employeeOnboardingRoutes);
 app.use("/api/reimbursement-configurations", reimbursementConfigurationRoutes);
 app.use("/api/reimbursement-settings", reimbursementsettingsRoutes);
 // Reimbursements (with file upload)

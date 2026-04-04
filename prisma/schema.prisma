@@ -74,6 +74,7 @@ model Tenant {
   salaryPayouts           SalaryPayout[]
   payslipRecords          PayslipRecord[]
   salaryStructures        SalaryStructure[]
+  salaryRevisions         SalaryRevision[]
   settingsProfiles        SettingsProfile[]
   shifts                  Shift[]
   squads                  Squad[]
@@ -246,6 +247,7 @@ model User {
   reimbursements                                           Reimbursement[]                     @relation("ReimbursementCreator")
   createdDocuments                                         Document[]                          @relation("DocumentCreator")
   deletedDocuments                                         Document[]                          @relation("DocumentDeleter")
+  createdSalaryRevisions                                   SalaryRevision[]                    @relation("SalaryRevisionCreator")
 
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
@@ -343,7 +345,7 @@ model SubDepartment {
 }
 
 model Position {
-  id              String         @id @default(uuid())
+  id              String         @id @default(uuid()) @db.Text
   tenantId        String         @map("tenant_id")
   code            String
   title           String
@@ -364,6 +366,7 @@ model Position {
   updatedBy       User?          @relation("PositionUpdater", fields: [updatedById], references: [id])
   users               User[]               @relation("UserPosition")
   employeeWorkDetails EmployeeWorkDetail[]
+  salaryApprovalSteps SalaryApprovalStep[]
 
   @@unique([tenantId, code])
   @@map("positions")
@@ -1712,6 +1715,7 @@ model Employee {
   payrollDetail     EmployeePayrollDetail?
   assets            EmployeeAsset[]
   leaveRequests     LeaveRequest[]
+  salaryRevisions   SalaryRevision[]
 
   @@map("employees")
 }
@@ -2080,7 +2084,6 @@ model Role {
   updatedAt           DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   rolePermissions     RolePermission[]
   tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  salaryApprovalSteps SalaryApprovalStep[]
   userRoles           UserRole[]
 
   @@unique([tenantId, slug], map: "roles_tenant_slug_unique")
@@ -4146,13 +4149,13 @@ model SalaryApprovalStep {
   workflowId     String                 @map("workflow_id") @db.Uuid
   stepOrder      Int                    @map("step_order")
   approverType   ApproverType           @map("approver_type")
-  roleId         String?                @map("role_id") @db.Uuid
+  positionId     String?                @map("position_id") @db.Text
   specificUserId String?                @map("specific_user_id")
   createdAt      DateTime?              @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt      DateTime?              @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
   fallbackUserId String?                @map("fallback_user_id")
   fallbackUser   User?                  @relation("StepFallbackUser", fields: [fallbackUserId], references: [id], onUpdate: NoAction, map: "fk_steps_fallback_user")
-  role           Role?                  @relation(fields: [roleId], references: [id], onUpdate: NoAction, map: "fk_steps_role")
+  position       Position?              @relation(fields: [positionId], references: [id], onUpdate: NoAction, map: "fk_steps_position")
   specificUser   User?                  @relation("StepSpecificUser", fields: [specificUserId], references: [id], onUpdate: NoAction, map: "fk_steps_user")
   workflow       SalaryApprovalWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_steps_workflow")
 
@@ -4380,10 +4383,8 @@ enum PercentageBasis {
 }
 
 enum ApproverType {
-  MANAGER
-  ROLE
   SPECIFIC_USER
-
+  POSITION
   @@map("approver_type")
 }
 
@@ -4701,3 +4702,32 @@ model PayslipRecord {
   @@unique([payoutId], map: "unique_payslip_payout")
   @@map("payslip_records")
 }
+
+model testsv{
+  id      String  @id @default(uuid())
+  name    String?
+  @@map("test_sv")
+}
+
+model SalaryRevision {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String   @map("tenant_id")
+  employeeId      String   @map("employee_id") @db.Text
+  currentSalary   Decimal  @map("current_salary") @db.Decimal(12, 2)
+  revisionType    String   @map("revision_type") // MONTHLY or YEARLY
+  revisionAmount  Decimal  @map("revision_amount") @db.Decimal(12, 2)
+  newSalary       Decimal  @map("new_salary") @db.Decimal(12, 2)
+  effectiveFrom   DateTime @map("effective_from") @db.Timestamp(6)
+  status          String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  createdById     String   @map("created_by_id")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  employee        Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_revision_employee")
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_revision_tenant")
+  createdBy       User     @relation("SalaryRevisionCreator", fields: [createdById], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_revision_creator")
+
+  @@map("salary_revisions")
+}
+
+

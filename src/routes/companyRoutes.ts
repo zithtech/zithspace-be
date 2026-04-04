@@ -19,6 +19,7 @@ router.get("/:id", requirePermission(Permissions.SALARY_READ), CompanyController
 router.post("/", requirePermission(Permissions.SALARY_MANAGE), CompanyController.createCompany);
 router.put("/:id", requirePermission(Permissions.SALARY_MANAGE), CompanyController.updateCompany);
 router.patch("/:id/active", requirePermission(Permissions.SALARY_MANAGE), CompanyController.setActiveCompany);
+router.patch("/:id/deactivate", requirePermission(Permissions.SALARY_MANAGE), CompanyController.deactivateCompany);
 router.delete("/:id", requirePermission(Permissions.SALARY_MANAGE), CompanyController.deleteCompany);
 
 export default router;

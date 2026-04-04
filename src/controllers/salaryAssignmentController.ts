@@ -290,4 +290,119 @@ export class SalaryAssignmentController {
       res.status(500).json({ success: false, error: err.message });
     }
   }
+
+  // ✅ BULK ASSIGN Salary Structure
+  static async bulkAssignStructure(req: AuthRequest, res: Response) {
+    try {
+      const { tenantId } = req;
+      const { assignmentType, targetId, structureId, baseSalary, salaryType } = req.body;
+
+      if (!assignmentType || !structureId || baseSalary === undefined || !salaryType) {
+        return res.status(400).json({ 
+          success: false, 
+          error: "Missing required fields: assignmentType, structureId, baseSalary, salaryType" 
+        });
+      }
+
+      // 1. Identify Employees
+      let employeeIds: string[] = [];
+
+      if (assignmentType === "INDIVIDUAL") {
+        if (!targetId) return res.status(400).json({ success: false, error: "Target ID required for individual assignment" });
+        employeeIds = [targetId];
+      } else if (assignmentType === "DEPARTMENT") {
+        if (!targetId) return res.status(400).json({ success: false, error: "Department ID required" });
+        const employees = await prisma.employee.findMany({
+          where: { 
+            tenantId, 
+            status: true,
+            workDetail: { some: { position: { departmentId: targetId } } }
+          },
+          select: { id: true }
+        });
+        employeeIds = employees.map(e => e.id);
+      } else if (assignmentType === "ALL") {
+        const employees = await prisma.employee.findMany({
+          where: { tenantId, status: true },
+          select: { id: true }
+        });
+        employeeIds = employees.map(e => e.id);
+      }
+
+      if (employeeIds.length === 0) {
+        return res.status(404).json({ success: false, error: "No matching active employees found" });
+      }
+
+      // 2. Verify Structure & Get Rules
+      const structure = await prisma.salaryStructure.findFirst({
+        where: { id: structureId, tenantId, isActive: true },
+        include: { 
+          components: { include: { component: true } }
+        }
+      });
+      if (!structure) {
+        return res.status(404).json({ success: false, error: "Active salary structure not found" });
+      }
+
+      // 3. Pre-calculate Dynamic Breakdown
+      const gross = salaryType === "YEARLY" ? Number(baseSalary) / 12 : Number(baseSalary);
+      const componentInputs: SalaryComponentInput[] = structure.components.map(c => ({
+        componentId: c.componentId,
+        componentCode: c.component.componentCode,
+        componentName: c.component.componentName,
+        type: c.component.type as "Earning" | "Deduction",
+        calculationType: c.calculationType,
+        percentageBasis: c.percentageBasis,
+        value: Number(c.value)
+      }));
+
+      const breakdown = calculateSalaryStructure(gross, componentInputs);
+
+      // 4. Perform Bulk Assignment in Transaction
+      // Optimization: use single transaction for all employees
+      await prisma.$transaction(async (tx) => {
+        for (const employeeId of employeeIds) {
+          // Deactivate existing
+          await tx.employeeSalaryAssignment.updateMany({
+            where: { employeeId, tenantId, isActive: true },
+            data: { isActive: false }
+          });
+
+          // Create new
+          const newAssignment = await tx.employeeSalaryAssignment.create({
+            data: {
+              tenantId: tenantId!,
+              employeeId,
+              structureId,
+              baseSalary,
+              salaryType,
+              isActive: true
+            }
+          });
+
+          // Store breakdown
+          await tx.employeeSalaryAssignmentComponent.createMany({
+            data: breakdown.map(b => ({
+              assignmentId: newAssignment.id,
+              componentId: b.componentId,
+              amount: b.calculatedAmount,
+              calculationType: b.calculationType,
+              percentageBasis: b.percentageBasis,
+              value: b.value
+            }))
+          });
+        }
+      }, {
+        timeout: 30000 // 30 seconds for potentially large batch
+      });
+
+      res.status(200).json({ 
+        success: true, 
+        message: `Salary structure assigned to ${employeeIds.length} employees successfully.` 
+      });
+    } catch (err: any) {
+      console.error("Bulk Assign Error:", err);
+      res.status(500).json({ success: false, error: err.message || "Internal Server Error" });
+    }
+  }
 }

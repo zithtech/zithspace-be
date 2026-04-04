@@ -48,15 +48,15 @@ export class SalaryApprovalController {
         });
 
         // Add steps
-        await tx.salaryApprovalStep.createMany({
-          data: steps.map((s: any, index: number) => ({
+        await (tx.salaryApprovalStep as any).createMany({
+          data: (steps as any[]).map((s: any, index: number) => ({
             workflowId: wf.id,
             stepOrder: s.stepOrder || (index + 1),
             approverType: s.approverType,
-            roleId: s.roleId,
+            positionId: s.positionId,
             specificUserId: s.specificUserId,
             fallbackUserId: s.fallbackUserId
-          }))
+          } as any))
         });
 
         return wf;
@@ -79,10 +79,10 @@ export class SalaryApprovalController {
           steps: { 
             orderBy: { stepOrder: 'asc' },
             include: {
-              role: true,
+              position: true,
               specificUser: true,
               fallbackUser: true
-            }
+            } as any
           } 
         }
       });
@@ -186,11 +186,11 @@ export class SalaryApprovalController {
       let isAllowed = false;
       const userId = req.user!.id;
 
-      if (currentStep.approverType === "ROLE") {
-        const userRoles = await prisma.userRole.findMany({
-          where: { userId, tenantId: tenantId! }
+      if ((currentStep.approverType as string) === "POSITION") {
+        const userWorkDetail = await prisma.employeeWorkDetail.findFirst({
+          where: { employee: { users: { some: { id: userId } }, tenantId: tenantId! } }
         });
-        isAllowed = userRoles.some(ur => ur.roleId === currentStep.roleId);
+        isAllowed = userWorkDetail?.positionId === (currentStep as any).positionId;
       } else if (currentStep.approverType === "SPECIFIC_USER") {
         isAllowed = currentStep.specificUserId === userId;
       }
@@ -318,18 +318,18 @@ export class SalaryApprovalController {
       const { tenantId } = req;
       const userId = req.user!.id;
 
-      // Get user's roles
-      const userRoles = await prisma.userRole.findMany({
-        where: { userId, tenantId: tenantId! }
+      // Get user's position
+      const approverWorkDetail = await prisma.employeeWorkDetail.findFirst({
+        where: { employee: { users: { some: { id: userId } }, tenantId: tenantId! } }
       });
-      const userRoleIds = userRoles.map(ur => ur.roleId);
+      const userPositionId = approverWorkDetail?.positionId;
 
       // Fetch all pending payouts for this tenant
       const payouts = await prisma.salaryPayout.findMany({
         where: { tenantId: tenantId!, status: "PENDING" },
         include: {
           employee: { include: { users: true } },
-          workflow: { include: { steps: { include: { role: true, specificUser: true } } } },
+          workflow: { include: { steps: { include: { position: true, specificUser: true } as any } } },
           approvalLogs: {
             include: { performedBy: true },
             orderBy: { createdAt: 'asc' }
@@ -346,8 +346,8 @@ export class SalaryApprovalController {
         if (step.approverType === 'SPECIFIC_USER') {
           return step.specificUserId === userId ? p : null;
         }
-        if (step.approverType === 'ROLE') {
-          return userRoleIds.includes(step.roleId!) ? p : null;
+        if ((step.approverType as string) === 'POSITION') {
+          return userPositionId === (step as any).positionId ? p : null;
         }
         return null;
       }));
@@ -377,7 +377,7 @@ export class SalaryApprovalController {
           workflow: { 
             include: { 
               steps: { 
-                include: { role: true, specificUser: true } 
+                include: { position: true, specificUser: true } as any
               } 
             } 
           },
@@ -467,7 +467,7 @@ export class SalaryApprovalController {
       const payouts = await prisma.salaryPayout.findMany({
         where: { 
           tenantId: tenantId!, 
-          status: "APPROVED", 
+          status: { in: ["APPROVED", "Approved", "SENT_TO_BANK"] }, 
           month: Number(month), 
           year: Number(year) 
         },
@@ -545,7 +545,7 @@ export class SalaryApprovalController {
       const payouts = await prisma.salaryPayout.findMany({
         where: { 
           tenantId: tenantId!, 
-          status: "APPROVED", 
+          status: { in: ["APPROVED", "Approved", "SENT_TO_BANK"] }, 
           month: Number(month), 
           year: Number(year) 
         },
@@ -624,7 +624,7 @@ export class SalaryApprovalController {
       const payouts = await prisma.salaryPayout.findMany({
         where: { 
           tenantId: tenantId!, 
-          status: "APPROVED", 
+          status: { in: ["APPROVED", "Approved", "SENT_TO_BANK"] }, 
           month: Number(month), 
           year: Number(year) 
         },

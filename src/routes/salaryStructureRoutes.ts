@@ -18,6 +18,7 @@ router.use(requireAuth);
 router.get("/assignments", requirePermission(Permissions.SALARY_READ), SalaryAssignmentController.getAllAssignments);
 router.get("/assignments/employee/:employeeId", requirePermission(Permissions.SALARY_READ), SalaryAssignmentController.getAssignmentByEmployee);
 router.post("/assignments", requirePermission(Permissions.SALARY_MANAGE), SalaryAssignmentController.assignStructure);
+router.post("/assignments/bulk", requirePermission(Permissions.SALARY_MANAGE), SalaryAssignmentController.bulkAssignStructure);
 router.put("/assignments/:id", requirePermission(Permissions.SALARY_MANAGE), SalaryAssignmentController.updateAssignment);
 router.delete("/assignments/:id", requirePermission(Permissions.SALARY_MANAGE), SalaryAssignmentController.deleteAssignment);
 
