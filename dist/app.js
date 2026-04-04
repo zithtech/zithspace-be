@@ -96,6 +96,8 @@ const exitApprovalWorkflow_routes_1 = __importDefault(require("@/routes/exitAppr
 const recruitmentStatus_routes_1 = __importDefault(require("@/routes/recruitmentStatus.routes"));
 const recruitmentAction_routes_1 = __importDefault(require("@/routes/recruitmentAction.routes"));
 const candidateRoutes_1 = __importDefault(require("@/routes/candidateRoutes"));
+const companyLocationRoutes_1 = __importDefault(require("@/routes/companyLocationRoutes"));
+const openingManagementRoutes_1 = __importDefault(require("@/routes/openingManagementRoutes"));
 // Load environment
 dotenv_1.default.config();
 console.log("🚀 API Starting up...");
@@ -224,6 +226,8 @@ app.use("/api/salary-adjustments", salaryAdjustmentRoutes_1.default);
 app.use("/api/companies", companyRoutes_1.default);
 app.use("/api/grades", gradeRoutes_1.default);
 app.use("/api/payroll", payroll_1.default);
+app.use("/api/company-locations", companyLocationRoutes_1.default);
+app.use("/api/opening-management", openingManagementRoutes_1.default);
 app.use("/api/departments", departmentRoutes_1.default);
 app.use("/api/sub-departments", subDepartmentRoutes_1.default);
 app.use("/api/positions", positionRoutes_1.default);
