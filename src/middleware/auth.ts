@@ -86,6 +86,7 @@ export const authenticateToken = async (
       role: user.role as any,
       position: user.position?.title || null,
       name: user.name,
+      employeeId: user.employeeId, // Added this field
       sessionId: decoded.sessionId,
     };
 

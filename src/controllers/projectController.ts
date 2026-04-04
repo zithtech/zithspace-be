@@ -32,6 +32,7 @@ export class ProjectController {
         search,
         status,
         projectManagerId,
+        userId,
         sortBy = "createdAt",
         sortOrder = "desc",
       } = req.query;
@@ -51,6 +52,22 @@ export class ProjectController {
 
       if (status) where.status = status;
       if (projectManagerId) where.projectManagerId = projectManagerId;
+
+      if (userId) {
+        const userFilter = [
+          { projectManagerId: userId as string },
+          { members: { some: { userId: userId as string } } }
+        ];
+        if (where.OR) {
+          where.AND = [
+            { OR: where.OR },
+            { OR: userFilter }
+          ];
+          delete where.OR;
+        } else {
+          where.OR = userFilter;
+        }
+      }
 
       // Build sort object
       const orderBy: any = {};
