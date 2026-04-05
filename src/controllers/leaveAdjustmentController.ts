@@ -90,9 +90,9 @@ export const createLeaveAdjustment = async (req: AuthRequest, res: Response) => 
           employeeId,
           leaveTypeId,
           transactionType:
-  adjustmentType === "Credit"
-    ? "adjustment_credit"
-    : "leave_debit",
+            adjustmentType === "Credit"
+              ? "adjustment_credit"
+              : "leave_debit",
           referenceId: adjustment.id,
           units,
           balanceAfter: newBalance,
@@ -257,10 +257,10 @@ export const updateLeaveAdjustment = async (req: AuthRequest, res: Response) => 
           tenantId,
           employeeId: existing.employeeId,
           leaveTypeId,
-         transactionType:
-  adjustmentType === "Credit"
-    ? "adjustment_credit"
-    : "leave_debit",
+          transactionType:
+            adjustmentType === "Credit"
+              ? "adjustment_credit"
+              : "leave_debit",
           referenceId: id,
           units: difference,
           balanceAfter: newBalance,
@@ -323,15 +323,18 @@ export const deleteLeaveAdjustment = async (req: AuthRequest, res: Response) => 
         },
       });
 
-  const previousBalance = lastLedger
-  ? new Prisma.Decimal(lastLedger.balanceAfter)
-  : new Prisma.Decimal(0);
+      const previousBalance = lastLedger
+        ? new Prisma.Decimal(lastLedger.balanceAfter)
+        : new Prisma.Decimal(0);
 
-if (adjustment?.adjustmentType === "Debit" && previousBalance.lessThanOrEqualTo(0)) {
-  throw new Error("No leave balance available to debit");
-}
+      if (adjustment?.adjustmentType === "Debit" && previousBalance.lessThanOrEqualTo(0)) {
+        throw new Error("No leave balance available to debit");
+      }
 
-      const reverseUnits = new Prisma.Decimal(adjustment.amount).negated();
+      const reverseUnits =
+        adjustment.adjustmentType === "Credit"
+          ? new Prisma.Decimal(adjustment.amount).negated()
+          : new Prisma.Decimal(adjustment.amount);
 
       const newBalance = previousBalance.plus(reverseUnits);
 

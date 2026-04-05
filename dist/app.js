@@ -228,6 +228,8 @@ app.use("/api/salary-adjustments", salaryAdjustmentRoutes_1.default);
 app.use("/api/companies", companyRoutes_1.default);
 app.use("/api/grades", gradeRoutes_1.default);
 app.use("/api/payroll", payroll_1.default);
+app.use("/api/company-locations", companyLocationRoutes_1.default);
+app.use("/api/opening-management", openingManagementRoutes_1.default);
 app.use("/api/departments", departmentRoutes_1.default);
 app.use("/api/sub-departments", subDepartmentRoutes_1.default);
 app.use("/api/positions", positionRoutes_1.default);

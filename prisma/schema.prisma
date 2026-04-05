@@ -97,6 +97,8 @@ model Tenant {
   escalationPriorities      EscalationPriority[]
   escalationStatuses        EscalationStatus[]
   escalations               Escalation[]
+  companyLocations        CompanyLocation[] 
+  openings                OpeningManagement[]
 
   @@map("tenants")
 }
@@ -248,6 +250,10 @@ model User {
   zoho_events_zoho_events_user_idTousers                   zoho_events[]                       @relation("zoho_events_user_idTousers")
   createdEscalations                                       Escalation[]                        @relation("EscalationCreator")
   escalationParticipations                                 EscalationMember[]
+  createdCompanyLocations CompanyLocation[] @relation("CompanyLocationCreatedBy")
+  updatedCompanyLocations CompanyLocation[] @relation("CompanyLocationUpdatedBy")
+  openingsCreated        OpeningManagement[] @relation("OpeningCreatedBy")
+  openingsUpdated        OpeningManagement[] @relation("OpeningUpdatedBy")
 
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
@@ -4822,4 +4828,81 @@ model EscalationTicket {
 
   @@unique([escalationId, ticketId])
   @@map("escalation_tickets")
+}
+
+model TestAbinash {
+  id      String  @id @default(uuid())
+  fieldB  String? @map("field_b")
+  fieldC  String? @map("field_c")
+
+  @@map("test_abinash")
+}
+
+model CompanyLocation {
+  id            String   @id @default(uuid())
+
+  tenantId      String   @map("tenant_id")
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+
+  flatNumber    String?   @map("flat_number")
+  street        String?
+  area          String?
+  city          String?
+  state         String?
+  pincode       String?
+  country       String?
+
+  createdById   String   @map("created_by_id")
+  createdBy     User     @relation("CompanyLocationCreatedBy", fields: [createdById], references: [id])
+
+  updatedById   String   @map("updated_by_id")
+  updatedBy     User     @relation("CompanyLocationUpdatedBy", fields: [updatedById], references: [id])
+
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("company_locations")
+}
+
+model OpeningManagement {
+  id                String   @id @default(uuid())
+
+  tenantId          String
+  tenant            Tenant   @relation(fields: [tenantId], references: [id])
+
+  jobTitle          String
+  roleType          String
+
+  departmentId      String   // no relation
+  hiringManagerId   String   // no relation
+
+  minExperience     Int?
+  maxExperience     Int?
+
+  primarySkills     String[]
+
+  noticePeriod      Int?
+  jobDescription    String?
+
+  baseLocation      String?
+  workArrangement   String?
+  employmentType    String?
+
+  totalOpenings     Int?
+
+  minSalary         Float?
+  maxSalary         Float?
+  currency          String?
+
+  priorityLevel     String?
+  currentStatus     String?
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  createdById       String
+  createdBy         User     @relation("OpeningCreatedBy", fields: [createdById], references: [id])
+
+  updatedById       String
+  updatedBy         User     @relation("OpeningUpdatedBy", fields: [updatedById], references: [id])
 }
