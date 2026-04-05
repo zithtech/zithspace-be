@@ -47,15 +47,18 @@ class EmailService {
                 return true;
             }
             const mailOptions = {
-                from: `"${process.env.SMTP_FROM_NAME || "Zithmi"}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER}>`,
+                from: options.from || `"${process.env.SMTP_FROM_NAME || "Zithmi"}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER}>`,
                 to: options.to,
                 subject: options.subject,
                 html: options.html,
                 text: options.text,
                 attachments: options.attachments
             };
+            console.log(`📧 Preparing to send email - From: ${mailOptions.from}, To: ${mailOptions.to}`);
             const info = await this.transporter.sendMail(mailOptions);
             console.log("✅ Email sent successfully:", info.messageId);
+            console.log(`📧 From: ${mailOptions.from}`);
+            console.log(`📧 To: ${mailOptions.to}`);
             return true;
         }
         catch (error) {
@@ -417,6 +420,52 @@ If you have any questions or concerns, please contact your manager or HR departm
                 }]
         };
         return this.sendEmail(options);
+    }
+    async sendPayslipEmail(data) {
+        const subject = `Your Payslip for ${data.month} ${data.year} is ready`;
+        const html = `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e1e1e1; border-radius: 12px; overflow: hidden;">
+        <div style="background-color: #7c3aed; color: white; padding: 32px; text-align: center;">
+          <h1 style="margin: 0; font-size: 24px; font-weight: 800; letter-spacing: -0.02em;">Payslip Ready</h1>
+          <p style="margin-top: 8px; opacity: 0.9;">${data.month} ${data.year}</p>
+        </div>
+        <div style="padding: 32px; color: #111827; background-color: white;">
+          <p style="font-size: 16px;">Hi <strong>${data.employeeName}</strong>,</p>
+          <p style="line-height: 1.6; color: #4b5563; font-size: 15px;">
+            Your payslip for <strong>${data.month} ${data.year}</strong> has been generated and is ready for download.
+          </p>
+          
+          <div style="margin: 32px 0; text-align: center;">
+            <a href="${data.downloadUrl}" 
+               style="display: inline-block; background-color: #7c3aed; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: 700; font-size: 15px; box-shadow: 0 4px 6px -1px rgba(124, 58, 237, 0.2);">
+               Download Payslip PDF
+            </a>
+          </div>
+
+          <div style="background-color: #f9fafb; border: 1px solid #f3f4f6; border-radius: 8px; padding: 16px; margin-top: 24px;">
+            <p style="margin: 0; font-size: 13px; color: #6b7280; text-align: center;">
+              <strong>Security Note:</strong> This is a secure, temporary link that will expire in 24 hours. 
+              Please download and save your payslip promptly.
+            </p>
+          </div>
+
+          <p style="margin-top: 32px; font-size: 14px; color: #9ca3af; text-align: center;">
+            This is an automated notification from your Enterprise HR Portal.
+          </p>
+        </div>
+      </div>
+    `;
+        const text = `
+Hi ${data.employeeName},
+
+Your payslip for ${data.month} ${data.year} is ready.
+You can download it securely using the link below:
+
+${data.downloadUrl}
+
+Note: This link will expire in 24 hours.
+    `;
+        return this.sendEmail({ to: data.to, from: data.from, subject, html, text });
     }
 }
 // Export singleton instance

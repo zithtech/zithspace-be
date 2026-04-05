@@ -102,3 +102,9 @@ export declare function extractImageUrlsFromHtml(htmlContent: string): string[];
  * @param tenantId - Tenant ID
  */
 export declare function cleanupOrphanedImages(oldHtml: string, newHtml: string, tenantId: string): Promise<void>;
+/**
+ * Generate a presigned URL for a file stored in R2
+ * @param fileUrl - The public URL of the file
+ * @param expiresIn - Expiration time in seconds (default 24 hours)
+ */
+export declare function generatePresignedUrl(fileUrl: string, expiresIn?: number): Promise<string>;

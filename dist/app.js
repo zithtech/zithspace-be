@@ -96,6 +96,8 @@ const exitApprovalWorkflow_routes_1 = __importDefault(require("@/routes/exitAppr
 const recruitmentStatus_routes_1 = __importDefault(require("@/routes/recruitmentStatus.routes"));
 const recruitmentAction_routes_1 = __importDefault(require("@/routes/recruitmentAction.routes"));
 const candidateRoutes_1 = __importDefault(require("@/routes/candidateRoutes"));
+const escalationSettingsRoutes_1 = __importDefault(require("./routes/escalationSettingsRoutes"));
+const escalationRoutes_1 = __importDefault(require("./routes/escalationRoutes"));
 // Load environment
 dotenv_1.default.config();
 console.log("🚀 API Starting up...");
@@ -201,6 +203,8 @@ app.use("/api/shifts", shifts_1.default);
 app.use("/api/transactions", transactions_1.default);
 app.use("/api/release-plans", releasePlans_1.default);
 app.use("/api/settings", settings_1.default);
+app.use("/api/escalation-settings", escalationSettingsRoutes_1.default);
+app.use("/api/escalations", escalationRoutes_1.default);
 app.use("/api/user", user_1.default);
 app.use("/api/daily-updates", dailyUpdates_1.default);
 app.use("/api/dashboard", dashboard_1.default);

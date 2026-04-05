@@ -737,27 +737,26 @@ export class ProjectController {
       const projects = await prisma.project.findMany({
         where: {
           tenantId: req.tenantId,
-          status: "active",
         },
         select: {
           id: true,
           name: true,
           code: true,
-          description: true,
         },
         orderBy: { name: "asc" },
       });
 
-      const projectOptions = projects.map((project) => ({
-        value: project.id,
-        label: project.name,
-        code: project.code,
-        description: project.description,
+      console.log(`[ProjectSelect] Found ${projects.length} projects for tenant ${req.tenantId}`);
+
+      const formattedProjects = projects.map(p => ({
+        value: p.id,
+        label: p.name,
+        code: p.code
       }));
 
       res.status(200).json({
         success: true,
-        data: projectOptions,
+        data: formattedProjects,
       } as ApiResponse);
     } catch (error) {
       console.error("Get projects for select error:", error);

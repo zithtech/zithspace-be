@@ -64,6 +64,14 @@ declare class EmailService {
         excelBuffer: Buffer;
         fileName: string;
     }): Promise<boolean>;
+    sendPayslipEmail(data: {
+        to: string;
+        from?: string;
+        employeeName: string;
+        month: string;
+        year: string;
+        downloadUrl: string;
+    }): Promise<boolean>;
 }
 export declare const emailService: EmailService;
 export default emailService;

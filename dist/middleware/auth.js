@@ -53,7 +53,7 @@ const authenticateToken = async (req, res, next) => {
             throw error;
         }
         if (!req.tenant || !req.tenant.isActive) {
-            const error = new types_1.AuthenticationError('Teanant not found');
+            const error = new types_1.AuthenticationError('Tenant not found');
             throw error;
         }
         if (req.tenantId && user.tenantId !== req.tenantId) {
@@ -67,6 +67,7 @@ const authenticateToken = async (req, res, next) => {
             role: user.role,
             position: user.position?.title || null,
             name: user.name,
+            employeeId: user.employeeId, // Added this field
             sessionId: decoded.sessionId,
         };
         next();
