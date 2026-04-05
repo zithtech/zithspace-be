@@ -21,7 +21,6 @@ model Tenant {
   is_trial                Boolean?                            @default(false)
   trial_ends_at           DateTime?                           @db.Timestamptz(6)
   EmployerManagement      EmployerManagement[]
-  OpeningManagement       OpeningManagement[]
   attendance              Attendance[]
   attendanceBreaks        AttendanceBreak[]
   bankFiles               BankFile[]
@@ -30,7 +29,6 @@ model Tenant {
   Client                  Client[]
   clientsV2               ClientV2[]
   holidays                CompanyGovernmentHoliday[]
-  company_locations       company_locations[]
   customers               Customer[]
   deal_activities         deal_activities[]
   deal_communications     deal_communications[]
@@ -99,6 +97,11 @@ model Tenant {
   escalations               Escalation[]
   companyLocations        CompanyLocation[] 
   openings                OpeningManagement[]
+  buckets                 Bucket[]
+  bucketMembers           BucketMember[]
+  documentHubs            DocumentHub[]
+  shortcuts               Shortcut[]
+  sprintCompletionLogs    SprintCompletionLog[]
 
   @@map("tenants")
 }
@@ -131,10 +134,8 @@ model User {
   positionId                                               String?                             @map("position_id")
   zoho_last_sync                                           DateTime?                           @db.Timestamptz(6)
   employeeId                                               String?                             @map("employee_id") @db.Uuid
-  EmployerManagement_EmployerManagement_createdByIdTousers EmployerManagement[]                @relation("EmployerManagement_createdByIdTousers")
-  EmployerManagement_EmployerManagement_updatedByIdTousers EmployerManagement[]                @relation("EmployerManagement_updatedByIdTousers")
-  OpeningManagement_OpeningManagement_createdByIdTousers   OpeningManagement[]                 @relation("OpeningManagement_createdByIdTousers")
-  OpeningManagement_OpeningManagement_updatedByIdTousers   OpeningManagement[]                 @relation("OpeningManagement_updatedByIdTousers")
+  EmployerManagementCreated                              EmployerManagement[]                @relation("EmployerManagementCreatedBy")
+  EmployerManagementUpdated                              EmployerManagement[]                @relation("EmployerManagementUpdatedBy")
   assigned_deal_users                                      assigned_deal_users[]
   enteredAttendance                                        Attendance[]                        @relation("AttendanceEnteredBy")
   attendance                                               Attendance[]
@@ -146,8 +147,6 @@ model User {
   createdClients                                           Client[]                            @relation("ClientCreator")
   createdHolidays                                          CompanyGovernmentHoliday[]          @relation("CompanyGovernmentHolidayCreator")
   updatedHolidays                                          CompanyGovernmentHoliday[]          @relation("CompanyGovernmentHolidayUpdater")
-  company_locations_company_locations_created_by_idTousers company_locations[]                 @relation("company_locations_created_by_idTousers")
-  company_locations_company_locations_updated_by_idTousers company_locations[]                 @relation("company_locations_updated_by_idTousers")
   createdDepartments                                       Department[]                        @relation("DepartmentCreator")
   managedDepartments                                       Department[]                        @relation("DepartmentHead")
   updatedDepartments                                       Department[]                        @relation("DepartmentUpdater")
@@ -254,6 +253,17 @@ model User {
   updatedCompanyLocations CompanyLocation[] @relation("CompanyLocationUpdatedBy")
   openingsCreated        OpeningManagement[] @relation("OpeningCreatedBy")
   openingsUpdated        OpeningManagement[] @relation("OpeningUpdatedBy")
+  createdBuckets                                           Bucket[]                            @relation("BucketCreator")
+  bucketMemberships                                       BucketMember[]
+  createdDocumentHubs                                     DocumentHub[]                       @relation("DocumentHubCreator")
+  deletedDocumentHubs                                     DocumentHub[]                       @relation("DocumentHubDeleter")
+  createdShortcuts                                       Shortcut[]                          @relation("ShortcutCreator")
+  updatedShortcuts                                       Shortcut[]                          @relation("ShortcutUpdater")
+  sprintCompletionLogs                                   SprintCompletionLog[]               @relation("SprintCompletionPerformer")
+  deletedInvoices                                          Invoice[]                           @relation("InvoiceDeletedBy")
+  createdInvoicePayments                                   InvoicePayment[]                    @relation("InvoicePaymentCreatedBy")
+  updatedInvoicePayments                                   InvoicePayment[]                    @relation("InvoicePaymentUpdatedBy")
+  deletedTickets                                           Ticket[]                            @relation("TicketDeletedBy")
 
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
@@ -418,6 +428,8 @@ model Project {
   timeTrackingEntries TimeTrackingEntry[]
   work_entry          work_entry[]
   escalations         Escalation[]
+  buckets             Bucket[]
+  documentHubs        DocumentHub[]
 
   @@unique([tenantId, code])
   @@map("projects")
@@ -514,10 +526,13 @@ model Ticket {
   releasePlan         ReleasePlan?         @relation("TicketReleasePlan", fields: [releasePlanId], references: [id])
   reportTo            User?                @relation("TicketReportTo", fields: [reportToId], references: [id])
   sprintPlan          ReleasePlan?         @relation("TicketSprintPlan", fields: [sprintPlanId], references: [id])
+  deletedBy           User?                @relation("TicketDeletedBy", fields: [deletedById], references: [id])
+  bucket              Bucket?              @relation(fields: [bucketId], references: [id])
   tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   timeTrackingEntries TimeTrackingEntry[]
   work_entry          work_entry[]
   escalations         EscalationTicket[]
+  documentHubs        DocumentHub[]
 
   @@unique([tenantId, ticketNumber])
   @@index([epicId])
@@ -949,6 +964,11 @@ model Bucket {
   createdById String   @map("created_by_id")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
+  createdBy   User     @relation("BucketCreator", fields: [createdById], references: [id])
+  project     Project? @relation(fields: [projectId], references: [id])
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  members     BucketMember[]
+  tickets     Ticket[]
 
   @@unique([tenantId, projectId, name], map: "unique_bucket_per_project")
   @@index([createdById], map: "idx_buckets_created_by_id")
@@ -961,8 +981,12 @@ model BucketMember {
   id       String   @id @default(uuid())
   bucketId String   @map("bucket_id")
   userId   String   @map("user_id")
+  tenantId String   @map("tenant_id")
   role     String   @default("member")
   addedAt  DateTime @default(now()) @map("added_at")
+  bucket   Bucket   @relation(fields: [bucketId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@unique([bucketId, userId], map: "unique_bucket_member")
   @@index([bucketId], map: "idx_bucket_members_bucket_id")
@@ -981,6 +1005,8 @@ model SprintCompletionLog {
   destinationType String?  @map("destination_type") @db.VarChar(50)
   performedById   String   @map("performed_by_id") @db.VarChar(255)
   performedAt     DateTime @default(now()) @map("performed_at") @db.Timestamp(6)
+  performedBy     User     @relation("SprintCompletionPerformer", fields: [performedById], references: [id])
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   metadata        Json?    @default("{}")
 
   @@index([performedAt], map: "idx_sprint_completion_logs_performed_at")
@@ -1111,12 +1137,16 @@ model Invoice {
   fullyPaidDate      DateTime?           @map("fully_paid_date") @db.Timestamp(6)
   deletedAt          DateTime?           @map("deleted_at") @db.Timestamp(6)
   deletedBy          String?             @map("deleted_by")
+  deletedByUser      User?               @relation("InvoiceDeletedBy", fields: [deletedBy], references: [id])
   discountTotal      Decimal             @default(0) @map("discount_total") @db.Decimal(15, 2)
   grandTotal         Decimal?            @map("grand_total") @db.Decimal(15, 2)
   projectId          String?             @map("project_id")
   templateId         String?             @map("template_id") @db.Uuid
   metadata           Json?
   payments           InvoicePayment[]
+  lineItems          InvoiceLineItem[]
+  attachments        InvoiceAttachment[]
+  taxes              InvoiceTax[]
   template           InvoiceTemplate?    @relation(fields: [templateId], references: [id], onUpdate: NoAction, map: "fk_invoices_template")
   createdByUser      User                @relation("InvoiceCreatedBy", fields: [createdBy], references: [id])
   customer           Customer            @relation(fields: [customerId], references: [id])
@@ -1155,6 +1185,7 @@ model InvoiceLineItem {
   taxAmount   Decimal?  @map("tax_amount") @db.Decimal(14, 2)
   total       Decimal?  @db.Decimal(14, 2)
   extraFields Json?     @map("extra_fields")
+  invoice     Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   @@index([invoiceId], map: "idx_invoice_items_invoice_id")
   @@index([tenantId], map: "idx_invoice_items_tenant_id")
@@ -1168,6 +1199,7 @@ model InvoiceTax {
   id        String    @id @default(dbgenerated("(gen_random_uuid())::text"))
   tenantId  String    @map("tenant_id")
   invoiceId String    @map("invoice_id")
+  invoice   Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   taxName   String    @map("tax_name") @db.VarChar(100)
   taxRate   Decimal   @map("tax_rate") @db.Decimal(6, 2)
   taxAmount Decimal   @map("tax_amount") @db.Decimal(14, 2)
@@ -1190,6 +1222,7 @@ model InvoiceAttachment {
   fileUrl    String    @map("file_url")
   uploadedBy String    @map("uploaded_by")
   uploadedAt DateTime? @default(now()) @map("uploaded_at") @db.Timestamptz(6)
+  invoice    Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   @@index([invoiceId], map: "idx_invoice_attachments_invoice_id")
   @@map("invoice_attachments")
@@ -1220,6 +1253,8 @@ model InvoicePayment {
   createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamp(6)
   updatedBy     String?        @map("updated_by")
   updatedAt     DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  createdByUser  User           @relation("InvoicePaymentCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser  User?          @relation("InvoicePaymentUpdatedBy", fields: [updatedBy], references: [id])
   referenceId   String?        @map("reference_id") @db.VarChar(255)
   balanceBefore Decimal?       @map("balance_before") @db.Decimal(15, 2)
   balanceAfter  Decimal?       @map("balance_after") @db.Decimal(15, 2)
@@ -1316,8 +1351,13 @@ model DocumentHub {
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
   deletedAt   DateTime?      @map("deleted_at") @db.Timestamptz(6)
-  deletedById String?        @map("deleted_by_id") @db.Uuid
+  deletedById String?        @map("deleted_by_id")
   isDeleted   Boolean?       @default(false) @map("is_deleted")
+  createdBy   User           @relation("DocumentHubCreator", fields: [createdById], references: [id])
+  deletedBy   User?          @relation("DocumentHubDeleter", fields: [deletedById], references: [id])
+  project     Project?       @relation(fields: [projectId], references: [id])
+  ticket      Ticket?        @relation(fields: [ticketId], references: [id])
+  tenant      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   documents   Document[]     @relation("DocumentHubDocuments")
   treeNodes   DocumentTree[]
 
@@ -1680,7 +1720,7 @@ model Employee {
   additionalDetails EmployeeAdditionalDetail[]
   addresses         EmployeeAddress[]
   assets            EmployeeAsset[]
-  bankDetail        EmployeeBankDetail[]
+  bankDetail        EmployeeBankDetail?
   emergencyContacts EmployeeEmergencyContact[]
   employeeExits     EmployeeExit[]
   employeeIdentity  EmployeeIdentity[]
@@ -1819,7 +1859,7 @@ model EmployeeAdditionalDetail {
 
 model EmployeeBankDetail {
   id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  employeeId        String    @map("employee_id") @db.Uuid
+  employeeId        String    @unique @map("employee_id") @db.Uuid
   createdById       String?   @map("created_by_id") @db.Uuid
   updatedById       String?   @map("updated_by_id") @db.Uuid
   bankName          String?   @map("bank_name") @db.VarChar(150)
@@ -2119,12 +2159,16 @@ model AuthorizationLog {
 
 model Shortcut {
   id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String    @map("tenant_id")
   title       String    @db.VarChar(255)
   path        String    @db.VarChar(255)
   createdById String    @map("created_by_id") @db.Uuid
   updatedById String?   @map("updated_by_id") @db.Uuid
   createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt   DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy   User      @relation("ShortcutCreator", fields: [createdById], references: [id])
+  updatedBy   User?     @relation("ShortcutUpdater", fields: [updatedById], references: [id])
 
   @@map("shortcuts")
 }
@@ -3346,9 +3390,9 @@ model EmployerManagement {
   updatedAt                                   DateTime
   EmployerContactPersons                      EmployerContactPersons[]
   EmployerDocuments                           EmployerDocuments[]
-  users_EmployerManagement_createdByIdTousers User?                    @relation("EmployerManagement_createdByIdTousers", fields: [createdById], references: [id])
-  tenants                                     Tenant                   @relation(fields: [tenantId], references: [id])
-  users_EmployerManagement_updatedByIdTousers User?                    @relation("EmployerManagement_updatedByIdTousers", fields: [updatedById], references: [id])
+  createdBy         User?                    @relation("EmployerManagementCreatedBy", fields: [createdById], references: [id])
+  tenant            Tenant                   @relation(fields: [tenantId], references: [id])
+  updatedBy         User?                    @relation("EmployerManagementUpdatedBy", fields: [updatedById], references: [id])
 }
 
 model AssignedRecruiters {
@@ -4410,8 +4454,8 @@ model PayslipRecord {
 }
 
 model OpeningManagement {
-  id                                         String   @id
-  tenantId                                   String
+  id                                         String   @id @default(uuid())
+  tenantId                                   String   @map("tenant_id")
   jobTitle                                   String
   roleType                                   String
   departmentId                               String
@@ -4431,37 +4475,14 @@ model OpeningManagement {
   priorityLevel                              String?
   currentStatus                              String?
   createdAt                                  DateTime @default(now())
-  updatedAt                                  DateTime
+  updatedAt                                  DateTime @default(now()) @updatedAt @map("updated_at")
   createdById                                String
   updatedById                                String
-  users_OpeningManagement_createdByIdTousers User     @relation("OpeningManagement_createdByIdTousers", fields: [createdById], references: [id])
-  tenants                                    Tenant   @relation(fields: [tenantId], references: [id])
-  users_OpeningManagement_updatedByIdTousers User     @relation("OpeningManagement_updatedByIdTousers", fields: [updatedById], references: [id])
-}
+  createdBy         User     @relation("OpeningCreatedBy", fields: [createdById], references: [id])
+  tenant            Tenant   @relation(fields: [tenantId], references: [id])
+  updatedBy         User     @relation("OpeningUpdatedBy", fields: [updatedById], references: [id])
 
-model company_locations {
-  id                                           String   @id
-  tenant_id                                    String
-  flat_number                                  String?
-  street                                       String?
-  area                                         String?
-  city                                         String?
-  state                                        String?
-  pincode                                      String?
-  country                                      String?
-  created_by_id                                String
-  updated_by_id                                String
-  created_at                                   DateTime @default(now())
-  updated_at                                   DateTime
-  users_company_locations_created_by_idTousers User     @relation("company_locations_created_by_idTousers", fields: [created_by_id], references: [id])
-  tenants                                      Tenant   @relation(fields: [tenant_id], references: [id])
-  users_company_locations_updated_by_idTousers User     @relation("company_locations_updated_by_idTousers", fields: [updated_by_id], references: [id])
-}
-
-model test_abinash {
-  id      String  @id
-  field_b String?
-  field_c String?
+  @@map("opening_managements")
 }
 
 enum CalculationType {
@@ -4840,69 +4861,21 @@ model TestAbinash {
 
 model CompanyLocation {
   id            String   @id @default(uuid())
-
   tenantId      String   @map("tenant_id")
   tenant        Tenant   @relation(fields: [tenantId], references: [id])
-
-  flatNumber    String?   @map("flat_number")
+  flatNumber    String?  @map("flat_number")
   street        String?
   area          String?
   city          String?
   state         String?
   pincode       String?
   country       String?
-
   createdById   String   @map("created_by_id")
   createdBy     User     @relation("CompanyLocationCreatedBy", fields: [createdById], references: [id])
-
   updatedById   String   @map("updated_by_id")
   updatedBy     User     @relation("CompanyLocationUpdatedBy", fields: [updatedById], references: [id])
-
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
   @@map("company_locations")
-}
-
-model OpeningManagement {
-  id                String   @id @default(uuid())
-
-  tenantId          String
-  tenant            Tenant   @relation(fields: [tenantId], references: [id])
-
-  jobTitle          String
-  roleType          String
-
-  departmentId      String   // no relation
-  hiringManagerId   String   // no relation
-
-  minExperience     Int?
-  maxExperience     Int?
-
-  primarySkills     String[]
-
-  noticePeriod      Int?
-  jobDescription    String?
-
-  baseLocation      String?
-  workArrangement   String?
-  employmentType    String?
-
-  totalOpenings     Int?
-
-  minSalary         Float?
-  maxSalary         Float?
-  currency          String?
-
-  priorityLevel     String?
-  currentStatus     String?
-
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  createdById       String
-  createdBy         User     @relation("OpeningCreatedBy", fields: [createdById], references: [id])
-
-  updatedById       String
-  updatedBy         User     @relation("OpeningUpdatedBy", fields: [updatedById], references: [id])
 }

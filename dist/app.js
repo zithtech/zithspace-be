@@ -96,6 +96,8 @@ const exitApprovalWorkflow_routes_1 = __importDefault(require("@/routes/exitAppr
 const recruitmentStatus_routes_1 = __importDefault(require("@/routes/recruitmentStatus.routes"));
 const recruitmentAction_routes_1 = __importDefault(require("@/routes/recruitmentAction.routes"));
 const candidateRoutes_1 = __importDefault(require("@/routes/candidateRoutes"));
+const companyLocationRoutes_1 = __importDefault(require("@/routes/companyLocationRoutes"));
+const openingManagementRoutes_1 = __importDefault(require("@/routes/openingManagementRoutes"));
 const escalationSettingsRoutes_1 = __importDefault(require("./routes/escalationSettingsRoutes"));
 const escalationRoutes_1 = __importDefault(require("./routes/escalationRoutes"));
 // Load environment
