@@ -96,7 +96,7 @@ export class TransactionsController {
       const transformedTransactions = transactions.map((t: any) => ({
         ...t,
         member: t.user,
-        type: (t.type === 'income' || t.type === 'bonus') ? 'credit' : 'debit'
+        type: (t.type === 'income' || t.type === 'bonus' || t.type === 'credit') ? 'credit' : 'debit'
       }));
 
       const totalPages = Math.ceil(total / Number(limit));
@@ -262,7 +262,7 @@ export class TransactionsController {
         const transformedTransaction = {
           ...newTransaction,
           member: newTransaction.user,
-          type: (newTransaction.type === 'income' || newTransaction.type === 'bonus') ? 'credit' : 'debit'
+          type: (newTransaction.type === 'income' || newTransaction.type === 'bonus' || newTransaction.type === 'credit') ? 'credit' : 'debit'
         };
 
         res.status(201).json({
@@ -372,7 +372,7 @@ export class TransactionsController {
         const transformedTransaction = {
           ...updatedTransaction,
           member: updatedTransaction.user,
-          type: (updatedTransaction.type === 'income' || updatedTransaction.type === 'bonus') ? 'credit' : 'debit'
+          type: (updatedTransaction.type === 'income' || updatedTransaction.type === 'bonus' || updatedTransaction.type === 'credit') ? 'credit' : 'debit'
         };
 
         res.status(200).json({
@@ -805,10 +805,10 @@ export class TransactionsController {
         let debitCount = 0;
 
         overallData.forEach((item: any) => {
-          const amount = item._sum.amount || 0;
+          const amount = Number(item._sum.amount || 0);
           const count = item._count || 0;
           
-          if (item.type === 'income' || item.type === 'bonus') {
+          if (item.type === 'income' || item.type === 'bonus' || item.type === 'credit') {
             totalCredits += amount;
             creditCount += count;
           } else {
@@ -838,7 +838,7 @@ export class TransactionsController {
 
         const formattedCategoryBreakdown = categoryBreakdown.map((item: any) => ({
           category: item.category,
-          total: item._sum.amount || 0,
+          total: Number(item._sum.amount || 0),
           count: item._count || 0,
         }));
 
@@ -861,7 +861,7 @@ export class TransactionsController {
         const transformedRecentTransactions = recentTransactions.map((t: any) => ({
           ...t,
           member: t.user,
-          type: (t.type === 'income' || t.type === 'bonus') ? 'credit' : 'debit'
+          type: (t.type === 'income' || t.type === 'bonus' || t.type === 'credit') ? 'credit' : 'debit'
         }));
 
         // Calculate this month's data for monthly trend
@@ -888,8 +888,8 @@ export class TransactionsController {
         let monthDebits = 0;
 
         thisMonthData.forEach((item: any) => {
-          const amount = item._sum.amount || 0;
-          if (item.type === 'income' || item.type === 'bonus') {
+          const amount = Number(item._sum.amount || 0);
+          if (item.type === 'income' || item.type === 'bonus' || item.type === 'credit') {
             monthCredits += amount;
           } else {
             monthDebits += amount;

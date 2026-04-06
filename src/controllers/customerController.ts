@@ -23,7 +23,7 @@ export class CustomerController {
         return;
       }
 
-      const { page = 1, limit = 20, search } = req.query;
+      const { page = 1, limit = 20, search, isActive } = req.query;
 
       const where: any = { tenantId: req.tenantId };
 
@@ -33,6 +33,10 @@ export class CustomerController {
           { email: { contains: search as string, mode: "insensitive" } },
           { phone: { contains: search as string, mode: "insensitive" } },
         ];
+      }
+
+      if (isActive !== undefined) {
+        where.isActive = isActive === "true";
       }
 
       const skip = (Number(page) - 1) * Number(limit);
@@ -345,7 +349,7 @@ static async updateCustomer(req: AuthRequest, res: Response): Promise<void> {
   ): Promise<void> {
     try {
       const customers = await prisma.customer.findMany({
-        where: { tenantId: req.tenantId },
+        where: { tenantId: req.tenantId, isActive: true },
         select: { id: true, companyName: true, email: true },
         orderBy: { companyName: "asc" },
       });

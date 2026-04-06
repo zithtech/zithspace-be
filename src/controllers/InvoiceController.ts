@@ -1172,7 +1172,9 @@ static async sendEmail(req: AuthRequest, res: Response): Promise<void> {
       include: { 
         customer: true,
         settingsProfile: true,
-        attachments: true
+        attachments: true,
+        lineItems: true,
+        taxes: true
       }
     });
 
@@ -1180,16 +1182,92 @@ static async sendEmail(req: AuthRequest, res: Response): Promise<void> {
 
     // Find PDF in attachments if not provided in body
     const pdfAttachment = invoice.attachments?.find((a: any) => a.fileName.toLowerCase().endsWith('.pdf') || a.fileUrl.toLowerCase().endsWith('.pdf'));
-    const finalPdfUrl = pdfUrl || pdfAttachment?.fileUrl || (invoice as any).pdfUrl;
+    let finalPdfUrl = pdfUrl || pdfAttachment?.fileUrl || (invoice as any).pdfUrl;
+
+    // 🌟 Self-healing Mechanism: Ensure PDF exists before attempting to send the email
+    let isPdfValid = false;
+    if (finalPdfUrl) {
+      try {
+        const checkRes = await fetch(finalPdfUrl, { method: 'HEAD' });
+        if (checkRes.ok) isPdfValid = true;
+      } catch (e) {
+        console.warn(`[Send Email] PDF Check failed for ${finalPdfUrl}`, e);
+      }
+    }
+
+    if (!isPdfValid) {
+      console.log(`⚠️ PDF file missing or invalid for Email Send, regenerating...`);
+      const profile = await prisma.settingsProfile.findFirst({
+        where: { id: invoice.settingsProfileId, tenantId: req.tenantId },
+        include: { general: true, payment: true }
+      });
+
+      if (!profile) {
+        throw new Error('Settings profile not found for PDF regeneration');
+      }
+
+      finalPdfUrl = await generateAndUploadInvoicePDF(invoice as any, profile);
+
+      await prisma.invoiceAttachment.create({
+        data: {
+          invoiceId: invoice.id,
+          fileName: `Invoice_${invoice.invoiceNumber}.pdf`,
+          fileUrl: finalPdfUrl,
+          uploadedBy: req.user.id
+        }
+      });
+    }
 
     // 2. Determine recipient and customer details
     const snapshot = invoice.customerSnapshot as any;
-    const recipientEmail = to || snapshot?.email || invoice.customer?.email;
-    const customerName = snapshot?.companyName || invoice.customer?.companyName || "Valued Customer";
+    
+    // Priority: Live customer email -> provided 'to' email -> snapshot email
+    const recipientEmail = invoice.customer?.email || to || snapshot?.email;
+    const customerName = invoice.customer?.companyName || snapshot?.companyName || "Valued Customer";
 
     if (!recipientEmail) {
       throw new ValidationError("No recipient email address found for this customer.");
     }
+
+    // Determine FROM mail via integration settings profile or mail accounts
+    let fromEmail = invoice.settingsProfile?.companyEmail || process.env.SMTP_FROM_EMAIL || 'noreply@zithtech.com';
+    let fromName = invoice.settingsProfile?.companyName || 'Zithtech';
+
+    try {
+      // 🌟 PRIORITY: Integrated Mail Account
+      // 1. Try to find an active mail account for the CURRENT USER in THIS TENANT
+      let integratedMail = await prisma.mail_accounts.findFirst({
+        where: {
+          tenant_id: req.tenantId,
+          user_id: req.user.id,
+          is_active: true
+        }
+      });
+
+      // 2. If not found, try to find ANY active mail account for THIS TENANT
+      if (!integratedMail) {
+        integratedMail = await prisma.mail_accounts.findFirst({
+          where: {
+            tenant_id: req.tenantId,
+            is_active: true
+          }
+        });
+      }
+
+      if (integratedMail && integratedMail.email) {
+        fromEmail = integratedMail.email;
+        if (integratedMail.display_name) fromName = integratedMail.display_name;
+        console.log(`✅ FOUND INTEGRATION MAIL: ${fromEmail}`);
+      } else {
+        console.log(`ℹ️ USING DEFAULT MAIL: ${fromEmail} (No integration found)`);
+      }
+    } catch (e) {
+      console.error('❌ [Send Email] Error fetching integrated mail accounts:', e);
+      console.log(`ℹ️ FALLBACK TO DEFAULT MAIL: ${fromEmail}`);
+    }
+
+    const companyFrom = `"${fromName}" <${fromEmail}>`;
+    console.log(`📧 Preparing to send invoice email - FROM: ${companyFrom}, TO: ${recipientEmail}`);
 
     // 3. Format amount and due date
     const amount = `${invoice.currency} ${Number(invoice.grandTotal).toLocaleString()}`;
@@ -1204,7 +1282,8 @@ static async sendEmail(req: AuthRequest, res: Response): Promise<void> {
 
     const { success: emailSuccess, html: emailHtml } = await emailService.sendInvoiceEmail({
       to: recipientEmail,
-      subject: subject || `Invoice ${invoice.invoiceNumber} from Zithtech`,
+      from: companyFrom,
+      subject: subject || `Invoice ${invoice.invoiceNumber} from ${fromName}`,
       customerName: customerName,
       invoiceNumber: invoice.invoiceNumber,
       amount: amount,
@@ -1228,10 +1307,10 @@ static async sendEmail(req: AuthRequest, res: Response): Promise<void> {
       
       // Email content - USE THE HTML RETURNED FROM EMAIL SERVICE
       to: recipientEmail,
-      from: process.env.SMTP_FROM_EMAIL || 'noreply@zithtech.com',
-      fromName: 'Zithtech',
-      subject: subject || `Invoice ${invoice.invoiceNumber} from Zithtech`,
-      html: emailHtml, // ✅ EXACT HTML THAT WAS SENT - NO DUPLICATION
+      from: fromEmail,
+      fromName: fromName,
+      subject: subject || `Invoice ${invoice.invoiceNumber} from ${fromName}`,
+      html: emailHtml,
       plainText: message || "Please find your invoice details below.",
       
       // Customer information
@@ -1516,6 +1595,26 @@ static async updateStatus(req: AuthRequest, res: Response): Promise<void> {
 
       if (paymentEntry) {
         await tx.invoicePayment.create({ data: paymentEntry });
+        
+        // 🔄 Sync with manual accounts (transactions)
+        await tx.transaction.create({
+          data: {
+            tenantId: req.tenantId as string,
+            userId: req.user.id as string,
+            type: 'income',
+            amount: new Prisma.Decimal(amountToPay),
+            description: `Invoice Payment: #${updated.invoiceNumber} - ${updated.customer.companyName}`,
+            category: 'client_payment',
+            date: paymentEntry.paymentDate || new Date(),
+            metadata: {
+              invoiceId: updated.id,
+              invoiceNumber: updated.invoiceNumber,
+              customerId: updated.customerId,
+              paymentMethod: paymentEntry.paymentMethod,
+              source: 'invoice_module'
+            }
+          }
+        });
       }
 
       return updated;
@@ -1611,6 +1710,11 @@ static async downloadInvoice(req: AuthRequest, res: Response): Promise<void> {
         id,
         tenantId: req.tenantId,
         deletedAt: null // ✅ Add this to exclude soft-deleted invoices
+      },
+      include: {
+        customer: true,
+        lineItems: true,
+        taxes: true
       }
     });
 
@@ -1657,10 +1761,44 @@ static async downloadInvoice(req: AuthRequest, res: Response): Promise<void> {
     }
 
     // 🧠 IMPORTANT: Backend fetches the PDF
-    const pdfResponse = await fetch(pdfUrl);
+    let pdfResponse = await fetch(pdfUrl);
 
     if (!pdfResponse.ok) {
-      throw new Error(`Failed to fetch PDF from R2 (${pdfResponse.status})`);
+      if (pdfResponse.status === 404) {
+        console.log(`⚠️ PDF file missing in R2 (${pdfUrl}), regenerating...`);
+        const profile = await prisma.settingsProfile.findFirst({
+          where: {
+            id: invoice.settingsProfileId,
+            tenantId: req.tenantId
+          },
+          include: {
+            general: true,
+            payment: true
+          }
+        });
+
+        if (!profile) {
+          throw new Error('Settings profile not found for PDF regeneration');
+        }
+
+        pdfUrl = await generateAndUploadInvoicePDF(invoice as any, profile);
+
+        await prisma.invoiceAttachment.create({
+          data: {
+            invoiceId: invoice.id,
+            fileName: `Invoice_${invoice.invoiceNumber}_regenerated.pdf`,
+            fileUrl: pdfUrl,
+            uploadedBy: req.user.id
+          }
+        });
+
+        pdfResponse = await fetch(pdfUrl);
+        if (!pdfResponse.ok) {
+          throw new Error(`Failed to fetch regenerated PDF from R2 (${pdfResponse.status})`);
+        }
+      } else {
+        throw new Error(`Failed to fetch PDF from R2 (${pdfResponse.status})`);
+      }
     }
 
     const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
@@ -2131,13 +2269,20 @@ static async getDeletedInvoices(req: AuthRequest, res: Response): Promise<void> 
   try {
     if (!req.tenantId) throw new ValidationError('Tenant context required');
 
-    const { page = 1, limit = 20 } = req.query;
+    const { page = 1, limit = 20, search } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
 
     const where: any = { 
       tenantId: req.tenantId,
       deletedAt: { not: null } // Only soft-deleted invoices
     };
+
+    if (search) {
+      where.OR = [
+        { invoiceNumber: { contains: search as string, mode: 'insensitive' } },
+        { customer: { companyName: { contains: search as string, mode: 'insensitive' } } }
+      ];
+    }
 
     const [invoices, total] = await Promise.all([
       prisma.invoice.findMany({

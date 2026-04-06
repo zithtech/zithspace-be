@@ -28,9 +28,18 @@ const parseInvoiceFormat = (formatString: string) => {
 };
 
 export class InvoiceSettingsController {
-
-
   
+  private static sanitizeProfile(profile: any) {
+    if (!profile) return null;
+    // Remove recursive profile links from related models to prevent circular JSON serialization
+    const { general, invoice, payment, ...rest } = profile;
+    return {
+      ...rest,
+      general: general ? { ...general, profiles: undefined, tenant: undefined } : undefined,
+      invoice: invoice ? { ...invoice, profiles: undefined, tenant: undefined } : undefined,
+      payment: payment ? { ...payment, profiles: undefined, tenant: undefined } : undefined,
+    };
+  }
 
   // ===================== GET ALL PROFILES =====================
   static async getProfiles(req: AuthRequest, res: Response): Promise<void> {
@@ -75,7 +84,7 @@ export class InvoiceSettingsController {
 
       res.status(200).json({
         success: true,
-        data: profiles,
+        data: profiles.map(p => InvoiceSettingsController.sanitizeProfile(p)),
         pagination: {
           page: Number(page),
           limit: Number(limit),
@@ -108,8 +117,10 @@ export class InvoiceSettingsController {
       });
       
       if (!profile) throw new NotFoundError('Profile not found');
+      
+      const sanitized = InvoiceSettingsController.sanitizeProfile(profile);
 
-      res.status(200).json({ success: true, data: profile } as ApiResponse);
+      res.status(200).json({ success: true, data: sanitized } as ApiResponse);
 
     } catch (error: any) {
       console.error('Get profile by ID error:', error);
@@ -361,7 +372,9 @@ static async getActiveProfiles(req: AuthRequest, res: Response): Promise<void> {
       }
     });
 
-    res.status(200).json({ success: true, data: activeProfiles });
+    const sanitized = activeProfiles.map(p => InvoiceSettingsController.sanitizeProfile(p));
+
+    res.status(200).json({ success: true, data: sanitized });
   } catch (error: any) {
     res.status(500).json({ success: false, error: 'Failed to fetch active profiles' });
   }

@@ -932,6 +932,7 @@ model Customer {
   updatedBy   String?   @map("updated_by")
   gstin       String?   @map("gstin") @db.VarChar(30)
   pan         String?   @map("pan") @db.VarChar(30)
+  isActive    Boolean   @default(true) @map("is_active")
   tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   invoices    Invoice[]
   emailLogs   EmailLog[]

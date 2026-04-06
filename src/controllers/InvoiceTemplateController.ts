@@ -28,6 +28,18 @@ export class InvoiceTemplateController {
         throw new ValidationError('Name and billing type are required');
       }
 
+      const existingDuplicate = await prisma.invoiceTemplate.findFirst({
+        where: {
+          tenantId: req.tenantId,
+          name: name,
+          description: description || null
+        }
+      });
+      
+      if (existingDuplicate) {
+        throw new ValidationError('A template with this exact same name and description already exists');
+      }
+
       const template = await prisma.$transaction(async (tx) => {
         // If this is set as default, unset other defaults for this tenant
         if (isDefault) {
@@ -161,6 +173,19 @@ export class InvoiceTemplateController {
         });
 
         if (!existing) throw new NotFoundError('Invoice template not found');
+
+        const existingDuplicate = await tx.invoiceTemplate.findFirst({
+          where: {
+            tenantId: req.tenantId,
+            id: { not: id },
+            name: name !== undefined ? name : existing.name,
+            description: (description !== undefined ? description : existing.description) || null
+          }
+        });
+
+        if (existingDuplicate) {
+          throw new ValidationError('A template with this exact same name and description already exists');
+        }
 
         // If this is set as default, unset other defaults
         if (isDefault) {
