@@ -70,7 +70,7 @@ export const authenticateToken = async (
     }
 
     if (!req.tenant || !req.tenant.isActive) {
-      const error = new AuthenticationError('Teanant not found');
+      const error = new AuthenticationError('Tenant not found');
       throw error;
     }
 
@@ -86,6 +86,7 @@ export const authenticateToken = async (
       role: user.role as any,
       position: user.position?.title || null,
       name: user.name,
+      employeeId: user.employeeId, // Added this field
       sessionId: decoded.sessionId,
     };
 

@@ -257,7 +257,9 @@ const deleteLeaveAdjustment = async (req, res) => {
             if (adjustment?.adjustmentType === "Debit" && previousBalance.lessThanOrEqualTo(0)) {
                 throw new Error("No leave balance available to debit");
             }
-            const reverseUnits = new client_1.Prisma.Decimal(adjustment.amount).negated();
+            const reverseUnits = adjustment.adjustmentType === "Credit"
+                ? new client_1.Prisma.Decimal(adjustment.amount).negated()
+                : new client_1.Prisma.Decimal(adjustment.amount);
             const newBalance = previousBalance.plus(reverseUnits);
             await tx.leaveLedger.create({
                 data: {
