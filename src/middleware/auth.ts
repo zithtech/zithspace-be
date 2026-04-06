@@ -70,7 +70,7 @@ export const authenticateToken = async (
     }
 
     if (!req.tenant || !req.tenant.isActive) {
-      const error = new AuthenticationError('Teanant not found');
+      const error = new AuthenticationError('Tenant not found');
       throw error;
     }
 

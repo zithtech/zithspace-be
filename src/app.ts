@@ -100,6 +100,8 @@ import recruitmentActionRoutes from "@/routes/recruitmentAction.routes";
 import candidateRoutes from "@/routes/candidateRoutes";
 import companyLocationRoutes from "@/routes/companyLocationRoutes";
 import openingManagementRoutes from "@/routes/openingManagementRoutes";
+import escalationSettingsRoutes from "./routes/escalationSettingsRoutes";
+import escalationRoutes from "./routes/escalationRoutes";
 // Load environment
 dotenv.config();
 console.log("🚀 API Starting up...");
@@ -230,6 +232,8 @@ app.use("/api/shifts", shiftRoutes);
 app.use("/api/transactions", transactionRoutes);
 app.use("/api/release-plans", releasePlanRoutes);
 app.use("/api/settings", settingRoutes);
+app.use("/api/escalation-settings", escalationSettingsRoutes);
+app.use("/api/escalations", escalationRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/daily-updates", dailyUpdateRoutes);
 app.use("/api/dashboard", dashboardRoutes);
