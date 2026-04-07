@@ -53,6 +53,7 @@ import messageRoutes from "@/routes/messages";
 import shortcutRoutes from "@/routes/shortcut.routes";
 import employeeWorkDetailRoutes from "@/routes/employeeWorkDetailes";
 import employeeTimelineRoutes from "@/routes/employeeTimeline";
+import milestoneRoutes from "@/routes/milestone.routes";
 
 // main
 import employeeOnboardingRoutes from "@/routes/onboardingRoutes";
@@ -305,6 +306,7 @@ app.use("/api/rbac", rbacRoutes);
 // Candidate Form API
 app.use("/api/candidate-form", candidateFormRoutes);
 app.use("/api/employee-assets", employeeAssetRoutes);
+app.use("/api/milestones", milestoneRoutes);
 app.use("/api/shortcuts", shortcutRoutes);
 
 // Implementation Partner API

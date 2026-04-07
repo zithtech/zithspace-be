@@ -102,6 +102,7 @@ model Tenant {
   documentHubs            DocumentHub[]
   shortcuts               Shortcut[]
   sprintCompletionLogs    SprintCompletionLog[]
+  milestones              Milestone[]
 
   @@map("tenants")
 }
@@ -264,6 +265,7 @@ model User {
   createdInvoicePayments                                   InvoicePayment[]                    @relation("InvoicePaymentCreatedBy")
   updatedInvoicePayments                                   InvoicePayment[]                    @relation("InvoicePaymentUpdatedBy")
   deletedTickets                                           Ticket[]                            @relation("TicketDeletedBy")
+  milestonesCreated                                      Milestone[]                         @relation("MilestoneCreator")
 
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
@@ -430,6 +432,7 @@ model Project {
   escalations         Escalation[]
   buckets             Bucket[]
   documentHubs        DocumentHub[]
+  milestones          Milestone[]
 
   @@unique([tenantId, code])
   @@map("projects")
@@ -696,10 +699,34 @@ model ReleasePlan {
   demoTickets     Ticket[]  @relation("TicketDemoPlan")
   tickets         Ticket[]  @relation("TicketReleasePlan")
   sprintTickets   Ticket[]  @relation("TicketSprintPlan")
+  milestones      Milestone[] @relation("MilestoneSprints")
 
   @@unique([tenantId, projectId, version])
   @@index([projectId, type, status])
   @@map("release_plans")
+}
+
+model Milestone {
+  id          String   @id @default(uuid())
+  tenantId    String   @map("tenant_id")
+  projectId   String   @map("project_id")
+  title       String
+  points      Json     @default("[]")
+  description String?
+  startDate   DateTime @map("start_date")
+  endDate     DateTime @map("end_date")
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sprints     ReleasePlan[] @relation("MilestoneSprints")
+  createdBy   User        @relation("MilestoneCreator", fields: [createdById], references: [id])
+
+  @@index([tenantId])
+  @@index([projectId])
+  @@map("milestones")
 }
 
 model Shift {
