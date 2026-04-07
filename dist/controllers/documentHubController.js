@@ -140,6 +140,20 @@ class DocumentHubController {
                 return;
             }
             const { id } = req.params;
+            // Fetch accessible documents for this user
+            const accessibleDocs = await database_1.prisma.document.findMany({
+                where: {
+                    documentHubId: id,
+                    tenantId: req.tenantId,
+                    isDeleted: false,
+                    OR: [
+                        { visibility: { in: ["internal", "public"] } },
+                        { createdById: req.user.id },
+                    ],
+                },
+                select: { id: true },
+            });
+            const accessibleDocIds = accessibleDocs.map((doc) => doc.id);
             const documentHub = await database_1.prisma.documentHub.findFirst({
                 where: {
                     id,
@@ -152,14 +166,7 @@ class DocumentHubController {
                             isDeleted: false,
                             OR: [
                                 { type: { not: "file" } },
-                                {
-                                    document: {
-                                        OR: [
-                                            { visibility: { in: ["internal", "public"] } },
-                                            { createdById: req.user.id },
-                                        ],
-                                    },
-                                },
+                                { documentId: { in: accessibleDocIds } },
                             ],
                         },
                         orderBy: {
@@ -485,6 +492,19 @@ class DocumentHubController {
                 });
                 return;
             }
+            // Fetch all accessible document IDs in this tenant for the user
+            const accessibleDocs = await database_1.prisma.document.findMany({
+                where: {
+                    tenantId: req.tenantId,
+                    isDeleted: false,
+                    OR: [
+                        { visibility: { in: ["internal", "public"] } },
+                        { createdById: req.user.id },
+                    ],
+                },
+                select: { id: true },
+            });
+            const accessibleDocIds = accessibleDocs.map((doc) => doc.id);
             const documentHubs = await database_1.prisma.documentHub.findMany({
                 where: {
                     tenantId: req.tenantId,
@@ -505,14 +525,7 @@ class DocumentHubController {
                             isDeleted: false,
                             OR: [
                                 { type: { not: "file" } },
-                                {
-                                    document: {
-                                        OR: [
-                                            { visibility: { in: ["internal", "public"] } },
-                                            { createdById: req.user.id },
-                                        ],
-                                    },
-                                },
+                                { documentId: { in: accessibleDocIds } },
                             ],
                         },
                         select: { id: true, type: true },
@@ -582,6 +595,69 @@ class DocumentHubController {
             });
         }
     }
+    static async updateDocumentHub(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { id } = req.params;
+            const { name } = req.body;
+            if (!name || name.trim() === "") {
+                res.status(400).json({
+                    success: false,
+                    error: "Document Hub Name is required",
+                });
+                return;
+            }
+            const documentHub = await database_1.prisma.documentHub.findFirst({
+                where: {
+                    id,
+                    tenantId: req.tenantId,
+                    isDeleted: false,
+                },
+            });
+            if (!documentHub) {
+                res.status(404).json({
+                    success: false,
+                    error: "Document Hub not found",
+                });
+                return;
+            }
+            // Check authorization (only creator can rename hub for now)
+            if (documentHub.createdById !== req.user.id) {
+                res.status(403).json({
+                    success: false,
+                    error: "You don't have permission to rename this Document Hub",
+                });
+                return;
+            }
+            const updatedDocumentHub = await database_1.prisma.documentHub.update({
+                where: { id },
+                data: {
+                    name,
+                    updatedAt: new Date(),
+                },
+            });
+            // Emit socket event
+            socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:updated", updatedDocumentHub);
+            res.status(200).json({
+                success: true,
+                data: updatedDocumentHub,
+                message: "Document Hub renamed successfully",
+            });
+        }
+        catch (error) {
+            console.error("Update document hub error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to update document hub",
+            });
+        }
+    }
     static async deleteTreeNode(req, res) {
         try {
             if (!req.tenantId || !req.user) {
@@ -606,29 +682,13 @@ class DocumentHubController {
                 });
                 return;
             }
-            // Soft delete the node
-            await database_1.prisma.documentTree.update({
-                where: { id },
-                data: {
-                    isDeleted: true,
-                    deletedAt: new Date(),
-                    deletedById: req.user.id,
-                },
+            // Use a transaction for atomic recursive deletion
+            await database_1.prisma.$transaction(async (tx) => {
+                await DocumentHubController.deleteNodeRecursive(tx, id, req.tenantId, req.user.id, node.type, node.documentId);
             });
-            // If it's a file, also soft delete the associated document
-            if (node.type === "file" && node.documentId) {
-                await database_1.prisma.document.update({
-                    where: { id: node.documentId },
-                    data: {
-                        isDeleted: true,
-                        deletedAt: new Date(),
-                        deletedById: req.user.id,
-                    },
-                });
-            }
             res.status(200).json({
                 success: true,
-                message: "Node moved to trash",
+                message: "Node and its contents moved to trash",
             });
         }
         catch (error) {
@@ -637,6 +697,49 @@ class DocumentHubController {
                 success: false,
                 error: "Failed to delete tree node",
             });
+        }
+    }
+    static async deleteNodeRecursive(tx, // Prisma transaction client
+    nodeId, tenantId, deletedById, nodeType, documentId) {
+        // 1. Get all children of this node
+        const children = await tx.documentTree.findMany({
+            where: {
+                parentId: nodeId,
+                tenantId,
+            },
+        });
+        // 2. Recursively delete each child
+        for (const child of children) {
+            await DocumentHubController.deleteNodeRecursive(tx, child.id, tenantId, deletedById, child.type, child.documentId);
+        }
+        // 3. Mark current node as deleted using updateMany for robustness
+        await tx.documentTree.updateMany({
+            where: { id: nodeId, tenantId },
+            data: {
+                isDeleted: true,
+                deletedAt: new Date(),
+                deletedById,
+            },
+        });
+        // 4. If it's a file with an associated document, mark the document as deleted too
+        if (nodeType === "file" && documentId) {
+            try {
+                await tx.document.updateMany({
+                    where: {
+                        id: documentId,
+                        tenantId,
+                    },
+                    data: {
+                        isDeleted: true,
+                        deletedAt: new Date(),
+                        deletedById,
+                    },
+                });
+            }
+            catch (error) {
+                console.error(`Failed to soft-delete document ${documentId}:`, error);
+                // We don't throw here to allow the tree node deletion to commit
+            }
         }
     }
     /**
@@ -723,7 +826,8 @@ class DocumentHubController {
             }
             const { type } = req.query;
             let hubs = [];
-            let documents = [];
+            let docsFromTree = [];
+            let folders = [];
             if (!type || type === "hub") {
                 hubs = await database_1.prisma.documentHub.findMany({
                     where: {
@@ -734,14 +838,18 @@ class DocumentHubController {
                         deletedBy: {
                             select: { id: true, name: true },
                         },
+                        project: {
+                            select: { id: true, name: true, code: true },
+                        },
                     },
                     orderBy: {
                         deletedAt: "desc",
                     },
                 });
             }
-            if (!type || type === "document") {
-                documents = await database_1.prisma.document.findMany({
+            if (!type || type === "document" || type === "folder") {
+                // Fetch all deleted nodes to filter root ones
+                const allDeletedNodes = await database_1.prisma.documentTree.findMany({
                     where: {
                         tenantId: req.tenantId,
                         isDeleted: true,
@@ -753,15 +861,36 @@ class DocumentHubController {
                         documentHub: {
                             select: { id: true, name: true },
                         },
-                    },
-                    orderBy: {
-                        deletedAt: "desc",
+                        // For files, we need the document details
                     },
                 });
+                // Identify root level deleted items (parent is not deleted)
+                const rootDeletedNodes = allDeletedNodes.filter(node => {
+                    if (!node.parentId)
+                        return true;
+                    return !allDeletedNodes.some(n => n.id === node.parentId);
+                });
+                // Separate into documents and folders
+                for (const node of rootDeletedNodes) {
+                    if (node.type === "file") {
+                        const doc = await database_1.prisma.document.findUnique({
+                            where: { id: node.documentId || '' },
+                            include: {
+                                deletedBy: { select: { id: true, name: true } },
+                                documentHub: { select: { id: true, name: true } }
+                            }
+                        });
+                        if (doc)
+                            docsFromTree.push(doc);
+                    }
+                    else {
+                        folders.push(node);
+                    }
+                }
             }
             res.status(200).json({
                 success: true,
-                data: { hubs, documents },
+                data: { hubs, documents: docsFromTree, folders },
             });
         }
         catch (error) {
@@ -839,9 +968,6 @@ class DocumentHubController {
                     tenantId: req.tenantId,
                     isDeleted: true,
                 },
-                include: {
-                    documentHub: true
-                }
             });
             if (!document) {
                 res.status(404).json({
@@ -850,8 +976,6 @@ class DocumentHubController {
                 });
                 return;
             }
-            // If the parent hub is deleted, we might want to warn or prevent?
-            // For now, restore the document.
             await database_1.prisma.document.update({
                 where: { id },
                 data: {
@@ -884,6 +1008,104 @@ class DocumentHubController {
                 success: false,
                 error: "Failed to restore document",
             });
+        }
+    }
+    /**
+     * Restore tree node (folder/section)
+     */
+    static async restoreTreeNode(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { id } = req.params;
+            const { documentHubId, parentId } = req.body;
+            if (!documentHubId) {
+                res.status(400).json({
+                    success: false,
+                    error: "Target Document Hub ID is required",
+                });
+                return;
+            }
+            const node = await database_1.prisma.documentTree.findFirst({
+                where: {
+                    id,
+                    tenantId: req.tenantId,
+                    isDeleted: true,
+                },
+            });
+            if (!node) {
+                res.status(404).json({
+                    success: false,
+                    error: "Folder/Section not found in trash",
+                });
+                return;
+            }
+            // Use a transaction for atomic recursive restoration
+            await database_1.prisma.$transaction(async (tx) => {
+                // Restore recursively and move to target hub
+                await DocumentHubController.restoreNodeRecursive(tx, id, req.tenantId, documentHubId, parentId || null // Move the root of the restored branch to the selected parent
+                );
+            });
+            res.status(200).json({
+                success: true,
+                message: "Folder and its contents restored successfully",
+            });
+        }
+        catch (error) {
+            console.error("Restore tree node error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to restore folder/section",
+            });
+        }
+    }
+    static async restoreNodeRecursive(tx, nodeId, tenantId, documentHubId, parentId = null) {
+        // 1. Get the current node to know its type and documentId
+        const node = await tx.documentTree.findUnique({
+            where: { id: nodeId }
+        });
+        if (!node)
+            return;
+        // 2. Restore current node and update its hub and parent
+        await tx.documentTree.update({
+            where: { id: nodeId },
+            data: {
+                isDeleted: false,
+                deletedAt: null,
+                deletedById: null,
+                documentHubId,
+                parentId,
+            },
+        });
+        // 3. If it's a file, restore the document and update its hub
+        if (node.type === "file" && node.documentId) {
+            await tx.document.update({
+                where: { id: node.documentId },
+                data: {
+                    isDeleted: false,
+                    deletedAt: null,
+                    deletedById: null,
+                    documentHubId,
+                },
+            });
+        }
+        // 4. Find all deleted children that WERE deleted (presumably as part of this branch)
+        const children = await tx.documentTree.findMany({
+            where: {
+                parentId: nodeId,
+                tenantId,
+                isDeleted: true, // Only restore those that are currently deleted
+            },
+        });
+        // 5. Recursively restore children, keeping the hierarchy but updating the hub
+        for (const child of children) {
+            await DocumentHubController.restoreNodeRecursive(tx, child.id, tenantId, documentHubId, nodeId // Keep as child of the current restored node
+            );
         }
     }
     /**
