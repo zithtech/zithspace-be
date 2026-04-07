@@ -38,7 +38,8 @@ class TransactionsController {
             if (search) {
                 where.OR = [
                     { description: { contains: search, mode: 'insensitive' } },
-                    { category: { contains: search, mode: 'insensitive' } }
+                    { category: { contains: search, mode: 'insensitive' } },
+                    { user: { name: { contains: search, mode: 'insensitive' } } }
                 ];
             }
             // Build sort object

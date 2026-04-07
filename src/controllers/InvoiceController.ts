@@ -2131,13 +2131,20 @@ static async getDeletedInvoices(req: AuthRequest, res: Response): Promise<void> 
   try {
     if (!req.tenantId) throw new ValidationError('Tenant context required');
 
-    const { page = 1, limit = 20 } = req.query;
+    const { page = 1, limit = 20, search } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
 
     const where: any = { 
       tenantId: req.tenantId,
       deletedAt: { not: null } // Only soft-deleted invoices
     };
+
+    if (search) {
+      where.OR = [
+        { invoiceNumber: { contains: search as string, mode: 'insensitive' } },
+        { customer: { companyName: { contains: search as string, mode: 'insensitive' } } }
+      ];
+    }
 
     const [invoices, total] = await Promise.all([
       prisma.invoice.findMany({

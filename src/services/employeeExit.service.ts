@@ -10,17 +10,36 @@ export class EmployeeExitService {
   ): Promise<EmployeeExit> {
     let finalEmployeeId = data.employeeId;
 
-    // Resolve User.id to Employee.id if necessary
-    const user = await prisma.user.findUnique({
-      where: { id: data.employeeId },
-      select: { employeeId: true }
-    });
-
-    if (user?.employeeId) {
-      console.log(`[ExitRequest] Mapping User.id ${data.employeeId} to Employee.id ${user.employeeId}`);
-      finalEmployeeId = user.employeeId;
+    if (!finalEmployeeId) {
+      throw new Error("Employee ID is required");
     }
 
+    // --- ID Resolution Strategy ---
+    // 1. Check if the provided ID is already a valid Employee ID
+    const employeeExist = await prisma.employee.findUnique({
+      where: { id: finalEmployeeId },
+      select: { id: true }
+    });
+
+    if (!employeeExist) {
+       // 2. If not an Employee ID, check if it is a User ID (Member ID)
+       const userWithEmployee = await prisma.user.findUnique({
+         where: { id: finalEmployeeId },
+         select: { employeeId: true, name: true }
+       });
+
+       if (userWithEmployee?.employeeId) {
+         // Found mapping from User to Employee
+         finalEmployeeId = userWithEmployee.employeeId;
+       } else if (userWithEmployee) {
+         // Found User record but it has no employee linkage!
+         throw new Error(`User "${userWithEmployee.name}" does not have an associated Employee record. Please link them first.`);
+       } else {
+         // Provided ID is neither a valid Employee ID nor a valid User ID
+         throw new Error("The selected employee ID is invalid or cannot be resolved.");
+       }
+    }
+    // ------------------------------
     return await prisma.employeeExit.create({
       data: {
         id: randomUUID(),

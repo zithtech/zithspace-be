@@ -148,7 +148,20 @@ class DocumentHubController {
                 },
                 include: {
                     treeNodes: {
-                        where: { isDeleted: false },
+                        where: {
+                            isDeleted: false,
+                            OR: [
+                                { type: { not: "file" } },
+                                {
+                                    document: {
+                                        OR: [
+                                            { visibility: { in: ["internal", "public"] } },
+                                            { createdById: req.user.id },
+                                        ],
+                                    },
+                                },
+                            ],
+                        },
                         orderBy: {
                             position: "asc",
                         },
@@ -321,6 +334,16 @@ class DocumentHubController {
                     id,
                     tenantId: req.tenantId,
                     isDeleted: false,
+                    OR: [
+                        {
+                            visibility: {
+                                in: ["internal", "public"],
+                            },
+                        },
+                        {
+                            createdById: req.user.id,
+                        },
+                    ],
                 },
             });
             if (!document) {
@@ -365,6 +388,15 @@ class DocumentHubController {
                 res.status(404).json({
                     success: false,
                     error: "Document not found",
+                });
+                return;
+            }
+            // Check authorization (only creator can update private document)
+            if (document.visibility === "private" &&
+                document.createdById !== req.user.id) {
+                res.status(403).json({
+                    success: false,
+                    error: "You don't have permission to update this private document",
                 });
                 return;
             }
@@ -469,7 +501,20 @@ class DocumentHubController {
                         select: { id: true, name: true, workEmail: true },
                     },
                     treeNodes: {
-                        where: { isDeleted: false },
+                        where: {
+                            isDeleted: false,
+                            OR: [
+                                { type: { not: "file" } },
+                                {
+                                    document: {
+                                        OR: [
+                                            { visibility: { in: ["internal", "public"] } },
+                                            { createdById: req.user.id },
+                                        ],
+                                    },
+                                },
+                            ],
+                        },
                         select: { id: true, type: true },
                     },
                 },
@@ -618,6 +663,14 @@ class DocumentHubController {
                 res.status(404).json({
                     success: false,
                     error: "Document not found",
+                });
+                return;
+            }
+            // Check ownership
+            if (document.createdById !== req.user.id) {
+                res.status(403).json({
+                    success: false,
+                    error: "You don't have permission to delete this document",
                 });
                 return;
             }
@@ -868,6 +921,14 @@ class DocumentHubController {
                 });
                 return;
             }
+            // Check ownership
+            if (document.createdById !== req.user.id) {
+                res.status(403).json({
+                    success: false,
+                    error: "You don't have permission to change sharing settings",
+                });
+                return;
+            }
             let shareToken = document.shareToken;
             // Generate token if public and doesn't have one
             if (visibility === 'public') {
@@ -923,6 +984,14 @@ class DocumentHubController {
                 res.status(404).json({
                     success: false,
                     error: "Document not found",
+                });
+                return;
+            }
+            // Check ownership
+            if (document.createdById !== req.user.id) {
+                res.status(403).json({
+                    success: false,
+                    error: "You don't have permission to revoke sharing",
                 });
                 return;
             }

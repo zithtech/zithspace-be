@@ -12,7 +12,9 @@ exports.deleteFileFromR2 = deleteFileFromR2;
 exports.deleteImageFromR2 = deleteImageFromR2;
 exports.extractImageUrlsFromHtml = extractImageUrlsFromHtml;
 exports.cleanupOrphanedImages = cleanupOrphanedImages;
+exports.generatePresignedUrl = generatePresignedUrl;
 const client_s3_1 = require("@aws-sdk/client-s3");
+const s3_request_presigner_1 = require("@aws-sdk/s3-request-presigner");
 const nanoid_1 = require("nanoid");
 // Cloudflare R2 Configuration
 const REGION = "auto";
@@ -456,6 +458,29 @@ async function cleanupOrphanedImages(oldHtml, newHtml, tenantId) {
     catch (error) {
         console.error("Error cleaning up orphaned images:", error);
         // Don't throw error - cleanup is best effort
+    }
+}
+/**
+ * Generate a presigned URL for a file stored in R2
+ * @param fileUrl - The public URL of the file
+ * @param expiresIn - Expiration time in seconds (default 24 hours)
+ */
+async function generatePresignedUrl(fileUrl, expiresIn = 86400) {
+    try {
+        // Extract key from URL
+        // URL format: https://pub-xxx.r2.dev/tenantId/employees/abc/payslip.pdf
+        const url = new URL(fileUrl);
+        const key = url.pathname.startsWith('/') ? url.pathname.slice(1) : url.pathname;
+        const command = new client_s3_1.GetObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: key,
+        });
+        const signedUrl = await (0, s3_request_presigner_1.getSignedUrl)(exports.s3Client, command, { expiresIn });
+        return signedUrl;
+    }
+    catch (error) {
+        console.error("Error generating presigned URL:", error);
+        throw new Error(`Failed to generate secure link: ${error.message}`);
     }
 }
 //# sourceMappingURL=r2Client.js.map

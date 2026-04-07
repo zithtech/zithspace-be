@@ -41,12 +41,12 @@ async function getUserIdFromEmployeeId(prisma: any, employeeId: string, tenantId
 
     if (employee) {
         const userByEmail = await prisma.user.findFirst({
-            where: { 
+            where: {
                 OR: [
                     { workEmail: employee.work_email },
                     { personalEmail: employee.personal_email || undefined }
                 ],
-                tenantId 
+                tenantId
             }
         });
         if (userByEmail) return userByEmail.id;
@@ -139,13 +139,13 @@ export class ClientV2Controller {
                         accountManager: { select: { id: true, first_name: true, last_name: true } },
                         salesOwner: { select: { id: true, first_name: true, last_name: true } },
                         deliveryOwner: { select: { id: true, first_name: true, last_name: true } },
-                        parentClient: { select: { id: true, companyName: true } },
+                        //parentClient: { select: { id: true, companyName: true } },
                         contacts: true,
                         documents: true,
                         allocations: {
-                            include: { 
+                            include: {
                                 employee: { select: { id: true, first_name: true, last_name: true } },
-                                project: { select: { id: true, name: true } }
+                                project: { select: { id: true } }
                             }
                         }
                     } as any
@@ -207,7 +207,7 @@ export class ClientV2Controller {
                 res.status(400).json({ success: false, error: 'Tenant context and authentication required' } as ApiResponse);
                 return;
             }
-            
+
             const { id } = req.params;
             const body = req.body;
 
@@ -227,12 +227,12 @@ export class ClientV2Controller {
             for (const key of allowedFields) {
                 if (key in body) {
                     let value = body[key];
-                    
+
                     // Sanitize numeric fields
                     if (['contractValue', 'creditLimit'].includes(key)) {
                         value = (value !== null && value !== '' && !isNaN(Number(value))) ? Number(value) : null;
                     }
-                    
+
                     // Sanitize date fields
                     if (['contractStartDate', 'contractEndDate'].includes(key)) {
                         value = (value && value !== '') ? new Date(value) : null;

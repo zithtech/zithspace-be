@@ -91,6 +91,7 @@ model Tenant {
   transactions            Transaction[]
   user_roles              UserRole[]
   users                   User[]
+  exitApprovalWorkflows   ExitApprovalWorkflow[]
 
   @@map("tenants")
 }
@@ -246,6 +247,9 @@ model User {
   reimbursements                                           Reimbursement[]                     @relation("ReimbursementCreator")
   createdDocuments                                         Document[]                          @relation("DocumentCreator")
   deletedDocuments                                         Document[]                          @relation("DocumentDeleter")
+  documentHistories                                        DocumentHistory[]                   @relation("DocumentHistoryCreator")
+  exitApprovalCreators                                     ExitApprovalWorkflow[]              @relation("ExitApprovalCreator")
+  exitApprovalUpdaters                                     ExitApprovalWorkflow[]              @relation("ExitApprovalUpdater")
 
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
@@ -426,6 +430,7 @@ model ClientProject {
   billingType String?  @map("billing_type")
   budget      Decimal? @db.Decimal(15, 2)
   budget_type String?  @db.VarChar(50)
+  allocations EmployeeClientAllocationV2[]
   client      ClientV2 @relation(fields: [clientId], references: [id], onDelete: Cascade)
   project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -1361,6 +1366,7 @@ model Document {
   documentHub   DocumentHub  @relation("DocumentHubDocuments", fields: [documentHubId], references: [id], onDelete: Cascade)
   createdBy     User         @relation("DocumentCreator", fields: [createdById], references: [id])
   deletedBy     User?        @relation("DocumentDeleter", fields: [deletedById], references: [id])
+  histories     DocumentHistory[] @relation("DocumentHistories")
 
   @@map("documents")
 }
@@ -1393,6 +1399,9 @@ model DocumentHistory {
   content     Json
   createdById String
   createdAt   DateTime @default(now())
+
+  document    Document @relation("DocumentHistories", fields: [documentId], references: [id], onDelete: Cascade)
+  createdBy   User     @relation("DocumentHistoryCreator", fields: [createdById], references: [id])
 
   @@index([createdById], map: "document_history_createdbyid_idx")
   @@index([documentId], map: "document_history_documentid_idx")
@@ -1712,6 +1721,7 @@ model Employee {
   payrollDetail     EmployeePayrollDetail?
   assets            EmployeeAsset[]
   leaveRequests     LeaveRequest[]
+  allocations EmployeeClientAllocationV2[]
 
   @@map("employees")
 }
@@ -2151,122 +2161,131 @@ model Shortcut {
   @@map("shortcuts")
 }
 
-model ClientV2 {
-  id                   String          @id @default(uuid())
-  tenantId             String          @map("tenant_id")
-  clientCode           String          @unique @map("client_code")
-  companyName          String          @map("company_name")
-  legalName            String?         @map("legal_name")
-  clientType           String          @map("client_type")
-  parentId             String?         @map("parent_id")
-  companySize          String?         @map("company_size")
-  industry             String?
-  contractValue        Decimal?        @map("contract_value") @db.Decimal(15, 2)
-  yearOfIncorporation  String?         @map("year_of_incorporation")
-  duration             String?
-  gstVatTaxId          String?         @map("gst_vat_tax_id")
-  registrationNumber   String?         @map("registration_number")
-  country              String?
-  website              String?
-  defaultCurrency      String?         @default("USD") @map("default_currency")
-  billingAddress       String?         @map("billing_address")
-  riskLevel            String?         @map("risk_level")
-  status               String          @default("Prospect")
-  pan                  String?
-  vatNumber            String?         @map("vat_number")
-  dunsNumber           String?         @map("duns_number")
-  msmeRegistration     String?         @map("msme_registration")
-  paymentTerms         String?         @map("payment_terms")
-  creditLimit          Decimal?        @map("credit_limit") @db.Decimal(15, 2)
-  billingContactEmail  String?         @map("billing_contact_email")
-  accountsPayableName  String?         @map("accounts_payable_name")
-  tdsApplicable        Boolean         @default(false) @map("tds_applicable")
-  reverseCharge        Boolean         @default(false) @map("reverse_charge_applicable")
-  accountManagerId     String?         @map("account_manager_id") @db.Uuid
-  salesOwnerId         String?         @map("sales_owner_id") @db.Uuid
-  deliveryOwnerId      String?         @map("delivery_owner_id") @db.Uuid
-  clientSegment        String?         @map("client_segment")
-  contractStartDate    DateTime?       @map("contract_start_date")
-  contractEndDate      DateTime?       @map("contract_end_date")
-  renewalType          String?         @map("renewal_type")
-  slaLevel             String?         @map("sla_level")
-  bankName             String?         @map("bank_name")
-  bankAccountNumber    String?         @map("bank_account_number")
-  ifscSwift            String?         @map("ifsc_swift")
-  currencyOfPayment    String?         @map("currency_of_payment")
-  preferredPaymentMode String?         @map("preferred_payment_mode")
-  isActive             Boolean         @default(true) @map("is_active")
-  createdById          String          @map("created_by_id")
-  createdAt            DateTime        @default(now()) @map("created_at")
-  updatedAt            DateTime        @updatedAt @map("updated_at")
-  ClientProject        ClientProject[]
-  accountManager       Employee?       @relation("AccountManager", fields: [accountManagerId], references: [id])
-  deliveryOwner        Employee?       @relation("DeliveryOwner", fields: [deliveryOwnerId], references: [id])
-  salesOwner           Employee?       @relation("SalesOwner", fields: [salesOwnerId], references: [id])
-  tenant               Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  model ClientV2 {
+    id                   String          @id @default(uuid())
+    tenantId             String          @map("tenant_id")
+    clientCode           String          @unique @map("client_code")
+    companyName          String          @map("company_name")
+    legalName            String?         @map("legal_name")
+    clientType           String          @map("client_type")
+    parentId             String?         @map("parent_id")
+    companySize          String?         @map("company_size")
+    industry             String?
+    contractValue        Decimal?        @map("contract_value") @db.Decimal(15, 2)
+    yearOfIncorporation  String?         @map("year_of_incorporation")
+    duration             String?
+    gstVatTaxId          String?         @map("gst_vat_tax_id")
+    registrationNumber   String?         @map("registration_number")
+    country              String?
+    website              String?
+    defaultCurrency      String?         @default("USD") @map("default_currency")
+    billingAddress       String?         @map("billing_address")
+    riskLevel            String?         @map("risk_level")
+    status               String          @default("Prospect")
+    pan                  String?
+    vatNumber            String?         @map("vat_number")
+    dunsNumber           String?         @map("duns_number")
+    msmeRegistration     String?         @map("msme_registration")
+    paymentTerms         String?         @map("payment_terms")
+    creditLimit          Decimal?        @map("credit_limit") @db.Decimal(15, 2)
+    billingContactEmail  String?         @map("billing_contact_email")
+    accountsPayableName  String?         @map("accounts_payable_name")
+    tdsApplicable        Boolean         @default(false) @map("tds_applicable")
+    reverseCharge        Boolean         @default(false) @map("reverse_charge_applicable")
+    accountManagerId     String?         @map("account_manager_id") @db.Uuid
+    salesOwnerId         String?         @map("sales_owner_id") @db.Uuid
+    deliveryOwnerId      String?         @map("delivery_owner_id") @db.Uuid
+    clientSegment        String?         @map("client_segment")
+    contractStartDate    DateTime?       @map("contract_start_date")
+    contractEndDate      DateTime?       @map("contract_end_date")
+    renewalType          String?         @map("renewal_type")
+    slaLevel             String?         @map("sla_level")
+    bankName             String?         @map("bank_name")
+    bankAccountNumber    String?         @map("bank_account_number")
+    ifscSwift            String?         @map("ifsc_swift")
+    currencyOfPayment    String?         @map("currency_of_payment")
+    preferredPaymentMode String?         @map("preferred_payment_mode")
+    isActive             Boolean         @default(true) @map("is_active")
+    createdById          String          @map("created_by_id")
+    createdAt            DateTime        @default(now()) @map("created_at")
+    updatedAt            DateTime        @updatedAt @map("updated_at")
+    ClientProject        ClientProject[]
+    contacts             ClientContactV2[]
+    documents             ClientDocumentV2[]
+    allocations          EmployeeClientAllocationV2[]
+    accountManager       Employee?       @relation("AccountManager", fields: [accountManagerId], references: [id])
+    deliveryOwner        Employee?       @relation("DeliveryOwner", fields: [deliveryOwnerId], references: [id])
+    salesOwner           Employee?       @relation("SalesOwner", fields: [salesOwnerId], references: [id])
+    tenant               Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  @@unique([tenantId, clientCode])
-  @@map("clients_v2")
-}
+    @@unique([tenantId, clientCode])
+    @@map("clients_v2")
+  }
 
-model ClientContactV2 {
-  id              String   @id @default(uuid())
-  tenantId        String   @map("tenant_id")
-  clientId        String   @map("client_id")
-  firstName       String   @map("first_name")
-  lastName        String   @map("last_name")
-  displayName     String?  @map("display_name")
-  designation     String?
-  department      String?
-  contactType     String?  @map("contact_type")
-  isPrimary       Boolean  @default(false) @map("is_primary")
-  officialEmail   String   @map("official_email")
-  secondaryEmail  String?  @map("secondary_email")
-  mobileNumber    String?  @map("mobile_number")
-  alternatePhone  String?  @map("alternate_phone")
-  officeLandline  String?  @map("office_landline")
-  extensionNumber String?  @map("extension_number")
-  preferredComm   String?  @map("preferred_communication_mode")
-  status          String   @default("Active")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
+  model ClientContactV2 {
+    id              String   @id @default(uuid())
+    tenantId        String   @map("tenant_id")
+    clientId        String   @map("client_id")
+    firstName       String   @map("first_name")
+    lastName        String   @map("last_name")
+    displayName     String?  @map("display_name")
+    designation     String?
+    department      String?
+    contactType     String?  @map("contact_type")
+    isPrimary       Boolean  @default(false) @map("is_primary")
+    officialEmail   String   @map("official_email")
+    secondaryEmail  String?  @map("secondary_email")
+    mobileNumber    String?  @map("mobile_number")
+    alternatePhone  String?  @map("alternate_phone")
+    officeLandline  String?  @map("office_landline")
+    extensionNumber String?  @map("extension_number")
+    preferredComm   String?  @map("preferred_communication_mode")
+    status          String   @default("Active")
+    client          ClientV2 @relation(fields: [clientId], references: [id])
+    createdAt       DateTime @default(now()) @map("created_at")
+    updatedAt       DateTime @updatedAt @map("updated_at")
 
-  @@map("client_contacts_v2")
-}
+    @@map("client_contacts_v2")
+  }
 
-model ClientDocumentV2 {
-  id           String   @id @default(uuid())
-  tenantId     String   @map("tenant_id")
-  clientId     String   @map("client_id")
-  category     String
-  documentType String   @map("document_type")
-  fileName     String   @map("file_name")
-  fileUrl      String   @map("file_url")
-  version      Int      @default(1)
-  tags         String[] @default([])
-  uploadedById String   @map("uploaded_by_id")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  model ClientDocumentV2 {
+    id           String   @id @default(uuid())
+    tenantId     String   @map("tenant_id")
+    clientId     String   @map("client_id")
+    category     String
+    documentType String   @map("document_type")
+    fileName     String   @map("file_name")
+    fileUrl      String   @map("file_url")
+    version      Int      @default(1)
+    tags         String[] @default([])
+    client       ClientV2 @relation(fields: [clientId], references: [id])
+    uploadedById String   @map("uploaded_by_id")
+    createdAt    DateTime @default(now()) @map("created_at")
+    updatedAt    DateTime @updatedAt @map("updated_at")
+    @@map("client_documents_v2")
+  }
 
-  @@map("client_documents_v2")
-}
+  model EmployeeClientAllocationV2 {
+    id          String    @id @default(uuid())
+    tenantId    String    @map("tenant_id")
+    employeeId  String    @map("employee_id") @db.Uuid
+    clientId    String    @map("client_id")
+    projectId   String?   @map("project_id")
+    billingType String    @map("billing_type")
+    billAmount  Decimal   @default(0) @map("bill_amount") @db.Decimal(10, 2)
+    startDate   DateTime  @map("start_date")
+    endDate     DateTime? @map("end_date")
+    status      String    @default("Active")
 
-model EmployeeClientAllocationV2 {
-  id          String    @id @default(uuid())
-  tenantId    String    @map("tenant_id")
-  employeeId  String    @map("employee_id") @db.Uuid
-  clientId    String    @map("client_id")
-  projectId   String?   @map("project_id")
-  billingType String    @map("billing_type")
-  billAmount  Decimal   @default(0) @map("bill_amount") @db.Decimal(10, 2)
-  startDate   DateTime  @map("start_date")
-  endDate     DateTime? @map("end_date")
-  status      String    @default("Active")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+    employee    Employee   @relation(fields: [employeeId], references: [id])
+    client      ClientV2   @relation(fields: [clientId], references: [id])
+    project     ClientProject? @relation(fields: [projectId], references: [id])
 
-  @@map("employee_client_allocations_v2")
-}
+    createdAt   DateTime  @default(now()) @map("created_at")
+    updatedAt   DateTime  @updatedAt @map("updated_at")
+
+    @@map("employee_client_allocations_v2")
+  }
 
 model LeaveLedger {
   id              String    @id @default(uuid())
@@ -3008,11 +3027,16 @@ model ExitApprovalWorkflow {
   stepOrder    Int       @map("step_order")
   approverType String    @map("approver_type") @db.VarChar(50)
   approverId   String?   @map("approver_id")
+  mandatory    Boolean   @default(true) @map("mandatory")
   isActive     Boolean?  @default(true) @map("is_active")
   createdById  String    @map("created_by_id")
   updatedById  String?   @map("updated_by_id")
   createdAt    DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt    DateTime? @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+
+  tenant       Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy    User      @relation("ExitApprovalCreator", fields: [createdById], references: [id])
+  updatedBy    User?     @relation("ExitApprovalUpdater", fields: [updatedById], references: [id])
 
   @@map("exit_approval_workflows")
 }
