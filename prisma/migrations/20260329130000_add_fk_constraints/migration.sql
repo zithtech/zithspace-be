@@ -14,9 +14,6 @@ ALTER TABLE "documenttree" ADD CONSTRAINT "documenttree_documentHubId_fkey" FORE
 ALTER TABLE "documenttree" ADD CONSTRAINT "documenttree_createdById_fkey" FOREIGN KEY ("createdById") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE NOT VALID;
 
 -- AddForeignKey
-ALTER TABLE "documenttree" ADD CONSTRAINT "documenttree_deleted_by_id_fkey" FOREIGN KEY ("deleted_by_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE NOT VALID;
-
--- AddForeignKey
 ALTER TABLE "timesheets" ADD CONSTRAINT "timesheets_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE RESTRICT ON UPDATE CASCADE NOT VALID;
 
 -- AddForeignKey

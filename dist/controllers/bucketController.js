@@ -623,6 +623,7 @@ class BucketController {
                 data: {
                     bucketId: id,
                     userId,
+                    tenantId: req.tenantId,
                     role,
                 },
                 include: {

@@ -124,6 +124,7 @@ const getLeaveBalances = async (req, res) => {
                 : new client_1.Prisma.Decimal(0);
             const pendingUnits = pendingUnitsMap.get(leaveType.id) || new client_1.Prisma.Decimal(0);
             const finalBalance = ledgerBalance.minus(pendingUnits);
+            // ✅ PASTE LOGS HERE
             return {
                 employeeId,
                 leaveTypeId: leaveType.id,
