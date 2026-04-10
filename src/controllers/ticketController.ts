@@ -1014,16 +1014,16 @@ export class TicketController {
       if (updates.assignee !== undefined) {
         // Handle explicit null, empty string, or object ID
         const val = updates.assignee;
-        mappedUpdates.assigneeId = (val === '' || val === null) 
-          ? null 
+        mappedUpdates.assigneeId = (val === '' || val === null)
+          ? null
           : (typeof val === 'object' ? val.id : val);
         delete mappedUpdates.assignee;
       }
 
       if (updates.reportTo !== undefined) {
         const val = updates.reportTo;
-        mappedUpdates.reportToId = (val === '' || val === null) 
-          ? null 
+        mappedUpdates.reportToId = (val === '' || val === null)
+          ? null
           : (typeof val === 'object' ? val.id : val);
         delete mappedUpdates.reportTo;
       }
@@ -1036,11 +1036,17 @@ export class TicketController {
 
       // Handle releasePlan / sprint assignment smart mapping
       if (updates.releasePlan !== undefined || updates.sprintPlan !== undefined) {
-        const planId = updates.releasePlan || updates.sprintPlan;
+        // FIX: Use explicit check to allow 'null' to pass through correctly
+        const planId = updates.releasePlan !== undefined ? updates.releasePlan : updates.sprintPlan;
 
         if (planId === null || planId === 'null' || planId === '') {
           mappedUpdates.sprintPlanId = null;
           mappedUpdates.releasePlanId = null;
+          mappedUpdates.demoPlanId = null;
+          mappedUpdates.bucketId = null;
+          mappedUpdates.isArchived = false;
+          mappedUpdates.archivedAt = null;
+          mappedUpdates.archivedById = null;
         } else if (typeof planId === 'string') {
           try {
             const plan = await prisma.releasePlan.findUnique({ where: { id: planId } });
@@ -1145,11 +1151,11 @@ export class TicketController {
 
       // 2. Clear out non-scalar fields and read-only fields
       const scalarFields = [
-        'title', 'description', 'status', 'priority', 'type', 
+        'title', 'description', 'status', 'priority', 'type',
         'platform', 'stack', 'taskLevel', 'storyPoint', 'estimateHours',
-        'assigneeId', 'reportToId', 'projectId', 'releasePlanId', 
-        'sprintPlanId', 'demoPlanId', 'bucketId', 'startDate', 'endDate', 
-        'dueDate', 'completedAt', 'tags', 'metadata', 'isArchived', 
+        'assigneeId', 'reportToId', 'projectId', 'releasePlanId',
+        'sprintPlanId', 'demoPlanId', 'bucketId', 'startDate', 'endDate',
+        'dueDate', 'completedAt', 'tags', 'metadata', 'isArchived',
         'archivedAt', 'archivedById', 'epicId', 'parentId', 'rank'
       ];
 
@@ -1163,7 +1169,7 @@ export class TicketController {
           let val = mappedUpdates[field];
           if (field === 'storyPoint' && val !== null) val = parseInt(val, 10);
           if (field === 'estimateHours' && val !== null) val = parseFloat(val);
-          
+
           dataToUpdate[field] = val;
         }
       });
