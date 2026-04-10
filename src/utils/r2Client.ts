@@ -28,6 +28,7 @@ export const s3Client = new S3Client({
     accessKeyId: ACCESS_KEY_ID!,
     secretAccessKey: SECRET_ACCESS_KEY!,
   },
+  forcePathStyle: true
 });
 
 /**
@@ -599,7 +600,15 @@ export async function generatePresignedUrl(
     // Extract key from URL
     // URL format: https://pub-xxx.r2.dev/tenantId/employees/abc/payslip.pdf
     const url = new URL(fileUrl);
-    const key = url.pathname.startsWith('/') ? url.pathname.slice(1) : url.pathname;
+    let key = url.pathname.startsWith('/') ? url.pathname.slice(1) : url.pathname;
+
+    // If the key starts with the bucket name (common in some R2 URL formats), strip it
+    if (key.startsWith(`${BUCKET_NAME}/`)) {
+      console.log(`[R2] Stripping bucket name "${BUCKET_NAME}" from presigned key: ${key}`);
+      key = key.substring(BUCKET_NAME.length + 1);
+    }
+
+    console.log(`[R2] Generating presigned URL for key: "${key}" (expires in ${expiresIn}s)`);
 
     const command = new GetObjectCommand({
       Bucket: BUCKET_NAME,
@@ -613,3 +622,51 @@ export async function generatePresignedUrl(
     throw new Error(`Failed to generate secure link: ${error.message}`);
   }
 }
+
+/**
+ * Fetch a file from R2 and return its content as a Buffer
+ * Uses the internal S3 client with credentials.
+ * @param fileUrl - The public-facing URL of the file
+ */
+export async function getFileBufferFromR2(fileUrl: string): Promise<Buffer> {
+  try {
+    const url = new URL(fileUrl);
+    let key = url.pathname.startsWith("/")
+      ? url.pathname.slice(1)
+      : url.pathname;
+
+    // If the key starts with the bucket name (common in some R2 URL formats), strip it
+    if (key.startsWith(`${BUCKET_NAME}/`)) {
+      console.log(`[R2] Stripping bucket name "${BUCKET_NAME}" from key: ${key}`);
+      key = key.substring(BUCKET_NAME.length + 1);
+    }
+
+    console.log(`[R2] Final key for fetch: "${key}" from URL: ${fileUrl}`);
+
+    const command = new GetObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+    });
+
+    const response = await s3Client.send(command);
+
+    if (!response.Body) {
+      throw new Error("Empty body received from R2");
+    }
+
+    // Convert high-level stream to Buffer
+    const streamToBuffer = async (stream: any): Promise<Buffer> => {
+      const chunks: any[] = [];
+      for await (const chunk of stream) {
+        chunks.push(chunk);
+      }
+      return Buffer.concat(chunks);
+    };
+
+    return await streamToBuffer(response.Body);
+  } catch (error: any) {
+    console.error(`Error fetching buffer from R2 for ${fileUrl}:`, error);
+    throw error;
+  }
+}
+

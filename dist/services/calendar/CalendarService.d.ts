@@ -61,6 +61,10 @@ export declare class CalendarService {
     /**
      * Create an event on the external provider and save locally.
      */
+    /**
+     * Check for any overlapping events for a specific user and time range.
+     */
+    static checkForOverlap(userId: string, tenantId: string, startTime: Date | string, endTime: Date | string, excludeEventId?: string): Promise<any[]>;
     static createEvent(userId: string, tenantId: string, provider: CalendarProvider, eventData: CalendarEventData): Promise<{
         id: string;
         tenantId: string;

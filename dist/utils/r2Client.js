@@ -35,6 +35,7 @@ exports.s3Client = new client_s3_1.S3Client({
         accessKeyId: ACCESS_KEY_ID,
         secretAccessKey: SECRET_ACCESS_KEY,
     },
+    forcePathStyle: true
 });
 /**
  * Upload image to Cloudflare R2
