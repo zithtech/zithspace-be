@@ -259,30 +259,35 @@ model User {
   sprintCompletionLogs                                     SprintCompletionLog[]               @relation("SprintCompletionPerformer")
   createdDocumentHubs                                      DocumentHub[]                       @relation("DocumentHubCreator")
   deletedDocumentHubs                                      DocumentHub[]                       @relation("DocumentHubDeleter")
-  createdDocumentTrees                                     DocumentTree[]                      @relation("DocumentTreeCreator")
+//   createdDocumentTrees                                     DocumentTree[]                      @relation("DocumentTreeCreator")
   deletedDocumentTrees                                     DocumentTree[]                      @relation("DocumentTreeDeleter")
-  createdTimesheets                                        Timesheet[]                         @relation("TimesheetUser")
-  approvedTimesheets                                       Timesheet[]                         @relation("TimesheetApprover")
-  createdRecruitmentActions                                RecruitmentAction[]                 @relation("RecruitmentActionCreator")
-  updatedRecruitmentActions                                RecruitmentAction[]                 @relation("RecruitmentActionUpdater")
-  createdRecruitmentStatuses                               RecruitmentStatus[]                 @relation("RecruitmentStatusCreator")
-  updatedRecruitmentStatuses                               RecruitmentStatus[]                 @relation("RecruitmentStatusUpdater")
-  createdExitTypes                                         ExitType[]                          @relation("ExitTypeCreator")
-  updatedExitTypes                                         ExitType[]                          @relation("ExitTypeUpdater")
-  createdReasonsForExit                                    ReasonForExit[]                     @relation("ReasonForExitCreator")
-  updatedReasonsForExit                                    ReasonForExit[]                     @relation("ReasonForExitUpdater")
-  emailLogs                                                EmailLog[]                          @relation("EmailLogSender")
-  deletedTickets                                           Ticket[]                            @relation("TicketDeleter")
-  leaveRequests                                            LeaveRequest[]                      @relation("LeaveRequestApprover")
-  createdJobRequisitions                                   JobRequisition[]                    @relation("JobRequisitionCreator")
-  managedJobRequisitions                                   JobRequisition[]                    @relation("JobRequisitionAccountManager")
-  deliveryJobRequisitions                                  JobRequisition[]                    @relation("JobRequisitionDeliveryManager")
-  reimbursements                                           Reimbursement[]                     @relation("ReimbursementCreator")
-  createdDocuments                                         Document[]                          @relation("DocumentCreator")
-  deletedDocuments                                         Document[]                          @relation("DocumentDeleter")
+//   createdTimesheets                                        Timesheet[]                         @relation("TimesheetUser")
+//   approvedTimesheets                                       Timesheet[]                         @relation("TimesheetApprover")
+//   createdRecruitmentActions                                RecruitmentAction[]                 @relation("RecruitmentActionCreator")
+//   updatedRecruitmentActions                                RecruitmentAction[]                 @relation("RecruitmentActionUpdater")
+//   createdRecruitmentStatuses                               RecruitmentStatus[]                 @relation("RecruitmentStatusCreator")
+//   updatedRecruitmentStatuses                               RecruitmentStatus[]                 @relation("RecruitmentStatusUpdater")
+//   createdExitTypes                                         ExitType[]                          @relation("ExitTypeCreator")
+//   updatedExitTypes                                         ExitType[]                          @relation("ExitTypeUpdater")
+//   createdReasonsForExit                                    ReasonForExit[]                     @relation("ReasonForExitCreator")
+//   updatedReasonsForExit                                    ReasonForExit[]                     @relation("ReasonForExitUpdater")
+//   emailLogs                                                EmailLog[]                          @relation("EmailLogSender")
+  deletedTickets                                           Ticket[]                            @relation("TicketDeletedBy")
+//   leaveRequests                                            LeaveRequest[]                      @relation("LeaveRequestApprover")
+//   createdJobRequisitions                                   JobRequisition[]                    @relation("JobRequisitionCreator")
+//   managedJobRequisitions                                   JobRequisition[]                    @relation("JobRequisitionAccountManager")
+//   deliveryJobRequisitions                                  JobRequisition[]                    @relation("JobRequisitionDeliveryManager")
+//   reimbursements                                           Reimbursement[]                     @relation("ReimbursementCreator")
+//   createdDocuments                                         Document[]                          @relation("DocumentCreator")
+//   deletedDocuments                                         Document[]                          @relation("DocumentDeleter")
   documentHistories                                        DocumentHistory[]                   @relation("DocumentHistoryCreator")
   exitApprovalCreators                                     ExitApprovalWorkflow[]              @relation("ExitApprovalCreator")
   exitApprovalUpdaters                                     ExitApprovalWorkflow[]              @relation("ExitApprovalUpdater")
+  deletedInvoices                                          Invoice[]                           @relation("InvoiceDeletedBy")
+  createdInvoicePayments                                   InvoicePayment[]                    @relation("InvoicePaymentCreatedBy")
+  updatedInvoicePayments                                   InvoicePayment[]                    @relation("InvoicePaymentUpdatedBy")
+  createdShortcuts                                         Shortcut[]                          @relation("ShortcutCreator")
+  updatedShortcuts                                         Shortcut[]                          @relation("ShortcutUpdater")
 
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
@@ -1425,6 +1430,7 @@ model DocumentTree {
   deletedById   String?          @map("deleted_by_id") @db.Uuid
   isDeleted     Boolean?         @default(false) @map("is_deleted")
   createdBy     User             @relation("DocumentTreeCreator", fields: [createdById], references: [id])
+  deletedBy     User?            @relation("DocumentTreeDeleter", fields: [deletedById], references: [id])
   documentHub   DocumentHub      @relation(fields: [documentHubId], references: [id])
 
   @@map("documenttree")
@@ -1759,17 +1765,17 @@ model Employee {
   salaryAdjustments SalaryAdjustment[]
   salaryPayouts     SalaryPayout[]
   users             User[]
-  addresses         EmployeeAddress[]
-  emergencyContacts EmployeeEmergencyContact[]
-  employeeIdentity  EmployeeIdentity?
-  workDetail        EmployeeWorkDetail[]
-  additionalDetails EmployeeAdditionalDetail?
-  employeeTimeline  EmployeeTimeline?
-  projectMappings   EmployeeProjectMapping[]
-  bankDetail        EmployeeBankDetail?
-  payrollDetail     EmployeePayrollDetail?
-  assets            EmployeeAsset[]
-  leaveRequests     LeaveRequest[]
+//   addresses         EmployeeAddress[]
+//   emergencyContacts EmployeeEmergencyContact[]
+//   employeeIdentity  EmployeeIdentity?
+//   workDetail        EmployeeWorkDetail[]
+//   additionalDetails EmployeeAdditionalDetail?
+//   employeeTimeline  EmployeeTimeline?
+//   projectMappings   EmployeeProjectMapping[]
+//   bankDetail        EmployeeBankDetail?
+//   payrollDetail     EmployeePayrollDetail?
+//   assets            EmployeeAsset[]
+//   leaveRequests     LeaveRequest[]
   allocations EmployeeClientAllocationV2[]
 
   @@map("employees")
