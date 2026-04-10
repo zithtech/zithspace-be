@@ -32,6 +32,7 @@ export class AttendanceController {
         startDate,
         endDate,
         search, // Search by member name
+        projectId,
         sortBy = "date",
         sortOrder = "desc",
       } = req.query;
@@ -47,14 +48,24 @@ export class AttendanceController {
 
       if (status) where.status = status;
 
-      // Handle search by member name
-      if (search) {
-        where.user = {
-          name: {
+      // Handle search by member name and project filter
+      if (search || projectId) {
+        where.user = {};
+        
+        if (search) {
+          where.user.name = {
             contains: search as string,
             mode: "insensitive",
-          },
-        };
+          };
+        }
+        
+        if (projectId) {
+          where.user.projectMemberships = {
+            some: {
+              projectId: projectId as string,
+            },
+          };
+        }
       }
 
       if (date) {
