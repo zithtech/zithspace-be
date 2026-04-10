@@ -191,7 +191,7 @@ export class TimeTrackingController {
       const { id } = req.params;
 
       const entry = await prisma.timeTrackingEntry.findUnique({
-        where: { id, tenantId: req.tenantId, userId: req.user.id }
+        where: { id, tenantId: req.tenantId }
       });
 
       if (!entry || entry.status !== "RUNNING") {
@@ -240,7 +240,7 @@ export class TimeTrackingController {
       const { id } = req.params;
 
       const entry = await prisma.timeTrackingEntry.findUnique({
-        where: { id, tenantId: req.tenantId, userId: req.user.id }
+        where: { id, tenantId: req.tenantId }
       });
 
       if (!entry || entry.status !== "PAUSED") {
@@ -279,7 +279,7 @@ export class TimeTrackingController {
       const { id } = req.params;
 
       const entry = await prisma.timeTrackingEntry.findUnique({
-        where: { id, tenantId: req.tenantId, userId: req.user.id }
+        where: { id, tenantId: req.tenantId }
       });
 
       if (!entry || entry.status === "STOPPED") {
@@ -332,7 +332,7 @@ export class TimeTrackingController {
       }
 
       const { id } = req.params;
-      const { projectId, ticketId, description, billable, billingRate, startTime, endTime } = req.body;
+      const { projectId, ticketId, description, billable, billingRate, startTime, endTime, logId } = req.body;
 
       let duration = undefined;
       let newStartTime = startTime ? new Date(startTime) : undefined;
@@ -343,7 +343,7 @@ export class TimeTrackingController {
       if (newEndTime && isNaN(newEndTime.getTime())) newEndTime = undefined;
 
       const entry = await prisma.timeTrackingEntry.findUnique({
-        where: { id, tenantId: req.tenantId, userId: req.user.id }
+        where: { id, tenantId: req.tenantId }
       });
 
       if (!entry) {
@@ -351,27 +351,32 @@ export class TimeTrackingController {
         return;
       }
 
-      // Shortening logic: If endTime is provided, ensure logs are consistent with the new range
+      // Handle targeted log update OR broad truncation
       if (newEndTime) {
         const newEnd = new Date(newEndTime);
 
-        // 1. Delete all logs strictly after the new end time
-        await prisma.timeTrackingLog.deleteMany({
-          where: {
-            timeTrackingId: id,
-            createdAt: { gt: newEnd }
-          }
-        });
+        if (logId) {
+          // TARGETED UPDATE: Only update the specific log segment
+          await prisma.timeTrackingLog.update({
+            where: { id: logId, timeTrackingId: id },
+            data: { createdAt: newEnd }
+          });
+        } else {
+          // BROAD TRUNCATION: Delete all logs strictly after the new end time (manual entries)
+          await prisma.timeTrackingLog.deleteMany({
+            where: {
+              timeTrackingId: id,
+              createdAt: { gt: newEnd }
+            }
+          });
 
-        // 2. Check the state of the last remaining log
-        const lastLog = await prisma.timeTrackingLog.findFirst({
-          where: { timeTrackingId: id },
-          orderBy: { createdAt: 'desc' }
-        });
+          // Check if we need to close an open session
+          const lastLog = await prisma.timeTrackingLog.findFirst({
+            where: { timeTrackingId: id },
+            orderBy: { createdAt: 'desc' }
+          });
 
-        if (lastLog) {
-          if (lastLog.action === 'STARTED' || lastLog.action === 'RESUMED') {
-            // If we cut off in the middle of a session, close it at the new end time
+          if (lastLog && (lastLog.action === 'STARTED' || lastLog.action === 'RESUMED')) {
             await prisma.timeTrackingLog.create({
               data: {
                 timeTrackingId: id,
@@ -379,13 +384,6 @@ export class TimeTrackingController {
                 action: 'STOPPED',
                 createdAt: newEnd
               }
-            });
-          } else {
-            // If the last log was already a pause/stop, just ensure it doesn't exceed the new end time
-            // (though deleteMany already handled logs strictly after newEnd)
-            await prisma.timeTrackingLog.update({
-              where: { id: lastLog.id },
-              data: { createdAt: newEnd }
             });
           }
         }
@@ -405,24 +403,34 @@ export class TimeTrackingController {
         }
       }
 
-      // Recalculate duration from logs
+      // Recalculate duration from all logs
       const allLogs = await prisma.timeTrackingLog.findMany({
         where: { timeTrackingId: id },
         orderBy: { createdAt: 'asc' }
       });
 
-      if (allLogs.length > 0) {
-        let totalDuration = 0;
-        let currentStart: Date | null = null;
-        for (const log of allLogs) {
-          if (log.action === 'STARTED' || log.action === 'RESUMED') {
-            currentStart = log.createdAt;
-          } else if ((log.action === 'PAUSED' || log.action === 'STOPPED') && currentStart) {
-            totalDuration += Math.floor((log.createdAt.getTime() - currentStart.getTime()) / 1000);
-            currentStart = null;
-          }
+      let totalDuration = 0;
+      let currentStart: Date | null = null;
+      for (const log of allLogs) {
+        if (log.action === 'STARTED' || log.action === 'RESUMED') {
+          currentStart = log.createdAt;
+        } else if ((log.action === 'PAUSED' || log.action === 'STOPPED') && currentStart) {
+          totalDuration += Math.floor((log.createdAt.getTime() - currentStart.getTime()) / 1000);
+          currentStart = null;
         }
-        duration = totalDuration;
+      }
+      duration = totalDuration;
+
+      // Determine if we should update the overall entry endTime & status
+      let shouldUpdateOverallEndTime = !!newEndTime;
+      if (logId && newEndTime) {
+        const latestLog = await prisma.timeTrackingLog.findFirst({
+          where: { timeTrackingId: id },
+          orderBy: { createdAt: 'desc' }
+        });
+        if (latestLog && latestLog.id !== logId) {
+          shouldUpdateOverallEndTime = false;
+        }
       }
 
       const updatedEntry = await prisma.timeTrackingEntry.update({
@@ -434,10 +442,9 @@ export class TimeTrackingController {
           ...(billable !== undefined && { billable }),
           ...(billingRate !== undefined && { billingRate }),
           ...(newStartTime && { startTime: new Date(newStartTime) }),
-          ...(newEndTime && { endTime: new Date(newEndTime) }),
+          ...(shouldUpdateOverallEndTime && { endTime: new Date(newEndTime) }),
           ...(duration !== undefined && { duration }),
-          // If we provide end time, ensure status is MANUAL_UPDATED
-          ...(newEndTime && { status: "MANUAL_UPDATED" })
+          ...(shouldUpdateOverallEndTime && { status: "MANUAL_UPDATED" })
         },
         include: {
           project: { select: { id: true, name: true, code: true } },
@@ -462,7 +469,7 @@ export class TimeTrackingController {
       const { id } = req.params;
 
       await prisma.timeTrackingEntry.delete({
-        where: { id, tenantId: req.tenantId, userId: req.user.id }
+        where: { id, tenantId: req.tenantId }
       });
 
       res.status(200).json({ success: true, message: "Entry deleted successfully" } as ApiResponse);
