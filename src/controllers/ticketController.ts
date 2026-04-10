@@ -1328,11 +1328,36 @@ export class TicketController {
         throw new NotFoundError("Ticket not found in this tenant");
       }
 
-      await prisma.ticket.delete({
+      // Move to trash (soft delete)
+      await prisma.ticket.update({
         where: { id },
+        data: {
+          isDeleted: true,
+          deletedAt: new Date(),
+          deletedById: req.user.id,
+          updatedAt: new Date(),
+        },
       });
 
-      socketService.emitToTenant(req.tenantId, "ticket:deleted", { id });
+      // Log activity
+      try {
+        await prisma.ticketActivityLog.create({
+          data: {
+            ticketId: id,
+            tenantId: req.tenantId,
+            action: "Ticket Moved to Trash",
+            performedById: req.user.id,
+            details: {
+              ticketNumber: ticket.ticketNumber,
+              title: ticket.title,
+            },
+          },
+        });
+      } catch (logError) {
+        console.error("Failed to log ticket deletion activity:", logError);
+      }
+
+      socketService.emitToTenant(req.tenantId, "ticket:deleted", { id, isSoftDelete: true });
 
       const invalidationPromises: Promise<any>[] = [
         cacheService.invalidateTicket(id, req.tenantId)
@@ -2614,6 +2639,114 @@ export class TicketController {
       res.status(500).json({
         success: false,
         error: error.message || "Failed to upload attachment",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Rename ticket attachment (tenant-aware)
+   */
+  static async renameAttachment(
+    req: AuthRequest,
+    res: Response
+  ): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { ticketId, attachmentId } = req.params;
+      const { newFileName } = req.body;
+
+      if (!newFileName) {
+        res.status(400).json({
+          success: false,
+          error: "New file name is required",
+        } as ApiResponse);
+        return;
+      }
+
+      // Verify ticket exists and belongs to tenant
+      const ticket = await prisma.ticket.findFirst({
+        where: {
+          id: ticketId,
+          tenantId: req.tenantId,
+          isDeleted: false,
+        },
+      });
+
+      if (!ticket) {
+        throw new NotFoundError("Ticket not found");
+      }
+
+      // Verify attachment exists and belongs to this ticket and tenant
+      const attachment = await prisma.ticketAttachment.findFirst({
+        where: {
+          id: attachmentId,
+          ticketId: ticketId,
+          tenantId: req.tenantId,
+        },
+      });
+
+      if (!attachment) {
+        throw new NotFoundError("Attachment not found");
+      }
+
+      const oldFileName = attachment.fileName;
+
+      // Update attachment record
+      const updatedAttachment = await prisma.ticketAttachment.update({
+        where: { id: attachmentId },
+        data: {
+          fileName: newFileName,
+          updatedAt: new Date(),
+        },
+        include: {
+          uploadedBy: {
+            select: {
+              id: true,
+              name: true,
+              workEmail: true,
+              position: true,
+            },
+          },
+        },
+      });
+
+      // Log activity
+      await prisma.ticketActivityLog.create({
+        data: {
+          ticketId,
+          tenantId: req.tenantId,
+          action: "Attachment Renamed",
+          performedById: req.user!.id,
+          details: { oldFileName, newFileName, attachmentId },
+        },
+      });
+
+      res.status(200).json({
+        success: true,
+        data: updatedAttachment,
+        message: "Attachment renamed successfully",
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Rename attachment error:", error);
+
+      if (error instanceof NotFoundError) {
+        res.status(404).json({
+          success: false,
+          error: error.message,
+        } as ApiResponse);
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        error: "Failed to rename attachment",
       } as ApiResponse);
     }
   }
