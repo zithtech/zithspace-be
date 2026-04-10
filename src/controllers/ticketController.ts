@@ -566,6 +566,7 @@ export class TicketController {
         baseWhere.OR = [
           { title: { contains: search as string, mode: "insensitive" } },
           { ticketNumber: { contains: search as string, mode: "insensitive" } },
+          { project: { code: { contains: search as string, mode: "insensitive" } } },
         ];
       }
 
@@ -755,6 +756,7 @@ export class TicketController {
           { title: { contains: search as string, mode: "insensitive" } },
           { description: { contains: search as string, mode: "insensitive" } },
           { ticketNumber: { contains: search as string, mode: "insensitive" } },
+          { project: { code: { contains: search as string, mode: "insensitive" } } },
         ];
       }
 
