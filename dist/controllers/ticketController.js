@@ -2707,6 +2707,7 @@ class TicketController {
                 return;
             }
             // Calculate detailed progress
+            // Calculate detailed progress
             const totalStories = epic.stories.length;
             const completedStories = epic.stories.filter((s) => s.status === "completed").length;
             const inProgressStories = epic.stories.filter((s) => s.status === "in_progress").length;
