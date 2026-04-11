@@ -38,6 +38,10 @@ export declare class AttendanceController {
      */
     static updateAttendance(req: AuthRequest, res: Response): Promise<void>;
     /**
+     * Delete attendance record (tenant-aware)
+     */
+    static deleteAttendance(req: AuthRequest, res: Response): Promise<void>;
+    /**
      * Get last 5 working days average for current user
      */
     static getLast5DaysAverage(req: AuthRequest, res: Response): Promise<void>;

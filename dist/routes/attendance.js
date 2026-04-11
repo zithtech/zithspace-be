@@ -82,5 +82,12 @@ router.post("/", (0, permission_1.requirePermission)(permissions_1.Permissions.A
  * @body    Partial attendance data
  */
 router.put("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.ATTENDANCE_MANAGE), attendanceController_1.AttendanceController.updateAttendance);
+/**
+ * @route   DELETE /api/attendance/:id
+ * @desc    Delete attendance record (tenant-aware)
+ * @access  Private (admin only)
+ * @param   id - Attendance record ID
+ */
+router.delete("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.ATTENDANCE_MANAGE), attendanceController_1.AttendanceController.deleteAttendance);
 exports.default = router;
 //# sourceMappingURL=attendance.js.map
