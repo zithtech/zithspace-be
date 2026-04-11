@@ -286,6 +286,7 @@ export class TimeTrackingController {
         res.status(400).json({ success: false, error: "No active timer found with this ID." } as ApiResponse);
         return;
       }
+       // Calculate detailed progress
 
       const endTime = new Date();
       let additionalDuration = 0;
