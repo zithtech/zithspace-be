@@ -121,13 +121,13 @@ class ClientV2Controller {
                         accountManager: { select: { id: true, first_name: true, last_name: true } },
                         salesOwner: { select: { id: true, first_name: true, last_name: true } },
                         deliveryOwner: { select: { id: true, first_name: true, last_name: true } },
-                        parentClient: { select: { id: true, companyName: true } },
+                        //parentClient: { select: { id: true, companyName: true } },
                         contacts: true,
                         documents: true,
                         allocations: {
                             include: {
                                 employee: { select: { id: true, first_name: true, last_name: true } },
-                                project: { select: { id: true, name: true } }
+                                project: { select: { id: true } }
                             }
                         }
                     }

@@ -973,6 +973,7 @@ export class UserController {
         where,
         select: {
           id: true,
+          employeeId: true,
           name: true,
           workEmail: true,
           position: { select: { id: true, title: true } },
@@ -983,6 +984,7 @@ export class UserController {
 
       const formattedMembers = members.map((member) => ({
         value: member.id,
+        employeeId: member.employeeId,
         label: member.name,
         email: member.workEmail,
         position: member.position?.title,
