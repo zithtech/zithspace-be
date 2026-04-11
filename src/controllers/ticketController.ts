@@ -3090,7 +3090,7 @@ export class TicketController {
         } as ApiResponse);
         return;
       }
-
+ // Calculate detailed progress
       // Calculate detailed progress
       const totalStories = epic.stories.length;
       const completedStories = epic.stories.filter(
