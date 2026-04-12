@@ -102,6 +102,7 @@ import companyLocationRoutes from "@/routes/companyLocationRoutes";
 import openingManagementRoutes from "@/routes/openingManagementRoutes";
 import escalationSettingsRoutes from "./routes/escalationSettingsRoutes";
 import escalationRoutes from "./routes/escalationRoutes";
+import leadRoutes from "@/routes/lead.routes";
 // Load environment
 dotenv.config();
 console.log("🚀 API Starting up...");
@@ -259,6 +260,7 @@ app.use("/api/grades", gradeRoutes);
 app.use("/api/payroll", payrollRoutes);
 app.use("/api/company-locations", companyLocationRoutes);
 app.use("/api/opening-management", openingManagementRoutes);
+app.use("/api/leads", leadRoutes);
 
 app.use("/api/departments", departmentRoutes);
 app.use("/api/sub-departments", subDepartmentRoutes);
