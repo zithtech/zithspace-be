@@ -53,6 +53,7 @@ import messageRoutes from "@/routes/messages";
 import shortcutRoutes from "@/routes/shortcut.routes";
 import employeeWorkDetailRoutes from "@/routes/employeeWorkDetailes";
 import employeeTimelineRoutes from "@/routes/employeeTimeline";
+import escalationCategoryRoutes from "@/routes/escalationCategoryV2.routes";
 
 // main
 import employeeOnboardingRoutes from "@/routes/onboardingRoutes";
@@ -273,6 +274,9 @@ app.use("/api/zoho", calendarRoutes);
 app.use("/api/leave-allocation", leaveAllocationRoutes);
 app.use("/api/leave-request", leaveRequestRoutes);
 app.use("/api/leave-balances", leaveBalanceRoutes);
+
+//Escalation
+app.use("/api/escalation-categories", escalationCategoryRoutes);
 
 app.use("/api/time-tracking", timeTrackingRoutes);
 
