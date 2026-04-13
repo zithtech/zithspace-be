@@ -404,6 +404,8 @@ const startServer = async () => {
             // console.log(`Zithmi Backend running on port ${PORT}`);
             // console.log(`Environment: ${process.env.NODE_ENV}`);
             // console.log(`Health check: http://localhost:${PORT}/health`);
+            const { startTimeTrackingAutoPauseJob } = require("@/jobs/timeTrackingAutoPause");
+            startTimeTrackingAutoPauseJob();
         });
     }
     catch (error) {
