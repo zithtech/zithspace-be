@@ -150,7 +150,7 @@ export class GoogleMailProvider implements IMailProvider {
         };
     }
 
-    async updateDraft(accessToken: string, draftId: string, draftData: Partial<MailMessageData>): Promise<void> {
+    async updateDraft(accessToken: string, draftId: string, draftData: Partial<MailMessageData>): Promise<{ id: string, messageId?: string, threadId?: string } | void> {
         const raw = this.constructRawMessage(draftData);
         const encodedMail = Buffer.from(raw).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 

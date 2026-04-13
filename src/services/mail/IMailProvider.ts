@@ -43,7 +43,7 @@ export interface IMailProvider {
     getMessages(accessToken: string, threadId: string): Promise<MailMessageData[]>;
     sendMessage(accessToken: string, mailData: Partial<MailMessageData>): Promise<{ messageId: string, threadId?: string } | void>;
     saveDraft(accessToken: string, draftData: Partial<MailMessageData>): Promise<{ id: string, messageId?: string, threadId?: string }>;
-    updateDraft(accessToken: string, draftId: string, draftData: Partial<MailMessageData>): Promise<void>;
+    updateDraft(accessToken: string, draftId: string, draftData: Partial<MailMessageData>): Promise<{ id: string, messageId?: string, threadId?: string } | void>;
     sendDraft(accessToken: string, draftId: string): Promise<void>;
     moveThread(accessToken: string, threadId: string, destFolderId: string): Promise<void>;
     restoreThread(accessToken: string, threadId: string, destFolderId?: string): Promise<void>;

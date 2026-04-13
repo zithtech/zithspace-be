@@ -50,9 +50,20 @@ export class MailSyncWorker {
                 const lockAcquired = await redisService.acquireLock(lockKey, 600); // 10 minute timeout
 
                 if (!lockAcquired) {
-                    syncLogger.warn(`Sync already in progress for ${email}. Requeueing...`);
-                    // Nack and requeue so it can be picked up later
-                    channel.nack(msg, false, true);
+                    syncLogger.warn(`Sync already in progress for ${email}. Delaying retry by 1m (Attempt ${retryCount + 1})...`);
+                    
+                    // Route to 1m delay queue instead of immediate requeue
+                    channel.publish(
+                        MAIL_SYNC_RETRY_EXCHANGE,
+                        MAIL_SYNC_RETRY_RK_1M,
+                        msg.content,
+                        {
+                            ...msg.properties,
+                            headers: headers // Preserve current retry count
+                        }
+                    );
+
+                    channel.ack(msg);
                     return;
                 }
 

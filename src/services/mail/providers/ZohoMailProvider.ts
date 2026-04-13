@@ -133,7 +133,7 @@ export class ZohoMailProvider implements IMailProvider {
                 });
 
                 return (response.data.data || []).map((msg: any) => ({
-                    id: `${msg.messageId}|${msg.folderId || fId || '1'}`,
+                    id: msg.messageId,
                     subject: this.decodeHtml(msg.subject) || "No Subject",
                     lastMessageAt: new Date(parseInt(msg.receivedTime)),
                     messageCount: 1,
@@ -451,13 +451,22 @@ export class ZohoMailProvider implements IMailProvider {
 
     async saveDraft(accessToken: string, draftData: Partial<MailMessageData>): Promise<{ id: string, messageId?: string, threadId?: string }> {
         const accountId = await this.getZohoAccountId(accessToken);
-        const payload = {
+        const payload: any = {
             fromAddress: draftData.from,
-            toAddress: draftData.to?.join(","),
             subject: draftData.subject,
             content: draftData.body,
             mode: "draft"
         };
+
+        if (draftData.to && Array.isArray(draftData.to) && draftData.to.length > 0) {
+            payload.toAddress = draftData.to.join(",");
+        }
+        if (draftData.cc && Array.isArray(draftData.cc) && draftData.cc.length > 0) {
+            payload.ccAddress = draftData.cc.join(",");
+        }
+        if (draftData.bcc && Array.isArray(draftData.bcc) && draftData.bcc.length > 0) {
+            payload.bccAddress = draftData.bcc.join(",");
+        }
 
         try {
             const response = await axios.post(`${this.ZOHO_MAIL_API}/accounts/${accountId}/messages`, payload, {
@@ -471,7 +480,7 @@ export class ZohoMailProvider implements IMailProvider {
             return {
                 id: messageId,
                 messageId: messageId,
-                threadId: `${messageId}|${draftFolderId}`
+                threadId: messageId // Fallback to messageId for new drafts; sync will resolve real threadId
             };
         } catch (error: any) {
             if (error.response) {
@@ -481,33 +490,31 @@ export class ZohoMailProvider implements IMailProvider {
         }
     }
 
-    async updateDraft(accessToken: string, draftId: string, draftData: Partial<MailMessageData>): Promise<void> {
-        const accountId = await this.getZohoAccountId(accessToken);
-        const payload = {
-            fromAddress: draftData.from,
-            toAddress: draftData.to?.join(","),
-            subject: draftData.subject,
-            content: draftData.body,
-            mode: "draft"
-        };
+    async updateDraft(accessToken: string, draftId: string, draftData: Partial<MailMessageData>): Promise<{ id: string, messageId?: string, threadId?: string } | void> {
+        // Zoho's India DC (mail.zoho.in) and some other regions do not support direct PUT/POST updates to draft content.
+        // The most reliable way to "update" a draft is to save it as a new draft and delete the old one.
+        
+        // 1. Save new draft
+        const newDraft = await this.saveDraft(accessToken, draftData);
 
+        // 2. Delete old draft (silently if it fails, as the new one is already saved)
         try {
-            await axios.put(`${this.ZOHO_MAIL_API}/accounts/${accountId}/messages/${draftId}`, payload, {
-                headers: { Authorization: `Zoho-oauthtoken ${accessToken}` }
-            });
+            await this.deleteMessage(accessToken, draftId);
         } catch (error: any) {
-            if (error.response) {
-                console.error("[ZohoMailProvider] updateDraft API Error Response:", JSON.stringify(error.response.data));
-            }
-            throw error;
+            console.warn(`[ZohoMailProvider] Failed to delete old draft ${draftId} during update: ${error.message}`);
         }
+
+        // 3. Return new draft info so the caller can update local DB
+        return newDraft;
     }
 
     async sendDraft(accessToken: string, draftId: string): Promise<void> {
         const accountId = await this.getZohoAccountId(accessToken);
+        // Normalize: Zoho API usually needs just the messageId
+        const [messageId] = draftId.split('|');
+
         try {
-            // Sending a draft in standard Zoho Mail API is done by POSTing to /messages/{messageId} with action=send
-            await axios.post(`${this.ZOHO_MAIL_API}/accounts/${accountId}/messages/${draftId}`, {}, {
+            await axios.post(`${this.ZOHO_MAIL_API}/accounts/${accountId}/messages/${messageId}`, {}, {
                 headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
                 params: { action: "send" }
             });
@@ -622,17 +629,21 @@ export class ZohoMailProvider implements IMailProvider {
 
     async deleteMessage(accessToken: string, messageId: string): Promise<void> {
         const accountId = await this.getZohoAccountId(accessToken);
-        // Fallback to searching folders if we don't have the folderId
-        // For simplicity in this provider, we'll try to find the message first
-        const metaUrl = `${this.ZOHO_MAIL_API}/accounts/${accountId}/messages/${messageId}`;
-        const metaResponse = await axios.get(metaUrl, {
-            headers: { Authorization: `Zoho-oauthtoken ${accessToken}` }
-        });
+        const [pureMessageId, folderIdFromId] = messageId.split('|');
 
-        const folderId = metaResponse.data.data?.folderId;
+        let folderId = folderIdFromId;
+        if (!folderId) {
+            // Fallback to searching folders if we don't have the folderId
+            const metaUrl = `${this.ZOHO_MAIL_API}/accounts/${accountId}/messages/${pureMessageId}`;
+            const metaResponse = await axios.get(metaUrl, {
+                headers: { Authorization: `Zoho-oauthtoken ${accessToken}` }
+            });
+            folderId = metaResponse.data.data?.folderId;
+        }
+
         if (!folderId) throw new Error("Could not find message folder");
 
-        await axios.delete(`${this.ZOHO_MAIL_API}/accounts/${accountId}/folders/${folderId}/messages/${messageId}`, {
+        await axios.delete(`${this.ZOHO_MAIL_API}/accounts/${accountId}/folders/${folderId}/messages/${pureMessageId}`, {
             headers: { Authorization: `Zoho-oauthtoken ${accessToken}` },
             params: { expunge: "true" }
         });

@@ -670,26 +670,76 @@ export class MailService {
         const provider = MailProviderFactory.getProvider(account.provider);
 
         let result;
+        let oldExternalId: string | null = null;
         if (draftData.id) {
-            // The draft id stored locally starts with "draft_" prefix (e.g. "draft_123").
-            // The provider only knows the plain numeric/string id without that prefix.
-            const providerDraftId = draftData.id.startsWith('draft_')
-                ? draftData.id.slice('draft_'.length)
-                : draftData.id;
-            await provider.updateDraft(accessToken, providerDraftId, draftData);
-            result = { id: providerDraftId };
+            // Identity Mapping: Find the existing record to resolve the real provider-side ID.
+            // This handles cases where the frontend might pass a local database ID.
+            const existingRecord = await prisma.mail_messages.findFirst({
+                where: {
+                    OR: [
+                        { id: draftData.id, account_id: account.id },
+                        { external_id: draftData.id, account_id: account.id }
+                    ]
+                }
+            });
+
+            if (existingRecord) {
+                oldExternalId = existingRecord.external_id;
+            } else {
+                // Fallback for prefixed IDs or raw IDs not yet in DB
+                oldExternalId = draftData.id.startsWith('draft_')
+                    ? draftData.id.slice('draft_'.length)
+                    : draftData.id;
+            }
+
+            const updateResult = await provider.updateDraft(accessToken, oldExternalId, draftData);
+            result = updateResult || { id: oldExternalId };
         } else {
             result = await provider.saveDraft(accessToken, draftData);
         }
 
+        // Capture new IDs from provider
+        const messageExternalId = result.messageId || result.id;
+        const threadId = result.threadId || draftData.threadId || messageExternalId;
+
+        // If the ID changed (common for Zoho India updates), remove the old local record
+        // so the upsert below creates the updated one with the new ID.
+        if (oldExternalId && oldExternalId !== messageExternalId) {
+            // Find existing message to get its thread ID for cleanup
+            // Standardize: Zoho sync uses compound IDs (msgId|folderId), but manual saves might have used simple IDs.
+            const [pureId] = oldExternalId.split('|');
+            
+            const existing = await prisma.mail_messages.findFirst({
+                where: {
+                    OR: [
+                        { external_id: pureId, account_id: account.id },
+                        { external_id: { startsWith: `${pureId}|` }, account_id: account.id },
+                        { external_id: `draft_${pureId}`, account_id: account.id },
+                        { external_id: draftData.id, account_id: account.id } // also match exact passed in ID
+                    ]
+                }
+            });
+
+            if (existing) {
+                const oldThreadId = existing.thread_id;
+                await prisma.mail_messages.delete({ where: { id: existing.id } });
+
+                // If the thread ID also changed, cleanup the old thread if it has no other messages
+                if (oldThreadId && oldThreadId !== threadId) {
+                    const otherMessages = await prisma.mail_messages.count({
+                        where: { thread_id: oldThreadId }
+                    });
+                    if (otherMessages === 0) {
+                        await prisma.mail_threads.deleteMany({
+                            where: { id: oldThreadId }
+                        });
+                    }
+                }
+            }
+        }
+
         // Save to local DB immediately for better UX
         try {
-            // If we were updating an existing draft, keep the same external_id "draft_<id>"
-            // so the DB upsert finds and updates the record rather than inserting a duplicate.
-            const messageExternalId = draftData.id
-                ? (draftData.id.startsWith('draft_') ? draftData.id : `draft_${draftData.id}`)
-                : (result.messageId || `draft_${result.id}`);
-            const threadId = draftData.threadId || result.threadId || messageExternalId;
 
             if (threadId) {
                 // Ensure thread exists
@@ -812,7 +862,56 @@ export class MailService {
         const accessToken = await UnifiedAuthService.getValidAccessToken(userId, account.provider as any);
         const provider = MailProviderFactory.getProvider(account.provider);
 
-        await provider.sendDraft(accessToken, draftId);
+        // Resolve the actual provider-side ID (external_id) before sending
+        const existing = await prisma.mail_messages.findFirst({
+            where: {
+                OR: [
+                    { id: draftId, account_id: account.id },
+                    { external_id: draftId, account_id: account.id }
+                ]
+            }
+        });
+
+        const resolvedProviderId = existing
+            ? existing.external_id
+            : (draftId.startsWith('draft_') ? draftId.slice(6) : draftId);
+
+        await provider.sendDraft(accessToken, resolvedProviderId);
+
+        // Cleanup local DB immediately so it disappears from Drafts folder
+        try {
+            if (existing) {
+                const threadId = existing.thread_id;
+                await prisma.mail_messages.delete({ where: { id: existing.id } });
+
+                if (threadId) {
+                    const otherMessages = await prisma.mail_messages.count({
+                        where: { thread_id: threadId }
+                    });
+                    if (otherMessages === 0) {
+                        await prisma.mail_threads.deleteMany({
+                            where: { id: threadId }
+                        });
+                    }
+                }
+            } else {
+                // Fallback attempt if we didn't find it before (unlikely but safe)
+                const [pureId] = resolvedProviderId.split('|');
+                await prisma.mail_messages.deleteMany({
+                    where: {
+                        account_id: account.id,
+                        OR: [
+                            { external_id: pureId },
+                            { external_id: { startsWith: `${pureId}|` } },
+                            { external_id: `draft_${pureId}` },
+                            { id: draftId }
+                        ]
+                    }
+                });
+            }
+        } catch (error) {
+            console.error("[MailService] Failed to cleanup local draft after sending:", error);
+        }
     }
 
     /**

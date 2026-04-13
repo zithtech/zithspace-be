@@ -229,7 +229,7 @@ export class MicrosoftMailProvider implements IMailProvider {
         };
     }
 
-    async updateDraft(accessToken: string, draftId: string, draftData: Partial<MailMessageData>): Promise<void> {
+    async updateDraft(accessToken: string, draftId: string, draftData: Partial<MailMessageData>): Promise<{ id: string, messageId?: string, threadId?: string } | void> {
         const payload = {
             subject: draftData.subject,
             body: {
