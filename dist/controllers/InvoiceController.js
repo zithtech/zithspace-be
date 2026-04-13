@@ -1839,12 +1839,18 @@ class InvoiceController {
         try {
             if (!req.tenantId)
                 throw new types_1.ValidationError('Tenant context required');
-            const { page = 1, limit = 20 } = req.query;
+            const { page = 1, limit = 20, search } = req.query;
             const skip = (Number(page) - 1) * Number(limit);
             const where = {
                 tenantId: req.tenantId,
                 deletedAt: { not: null } // Only soft-deleted invoices
             };
+            if (search) {
+                where.OR = [
+                    { invoiceNumber: { contains: search, mode: 'insensitive' } },
+                    { customer: { companyName: { contains: search, mode: 'insensitive' } } }
+                ];
+            }
             const [invoices, total] = await Promise.all([
                 database_1.prisma.invoice.findMany({
                     where,

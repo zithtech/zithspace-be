@@ -136,4 +136,16 @@ router.put(
   AttendanceController.updateAttendance,
 );
 
+/**
+ * @route   DELETE /api/attendance/:id
+ * @desc    Delete attendance record (tenant-aware)
+ * @access  Private (admin only)
+ * @param   id - Attendance record ID
+ */
+router.delete(
+  "/:id",
+  requirePermission(Permissions.ATTENDANCE_MANAGE),
+  AttendanceController.deleteAttendance,
+);
+
 export default router;

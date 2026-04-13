@@ -59,7 +59,8 @@ export class TransactionsController {
       if (search) {
         where.OR = [
           { description: { contains: search as string, mode: 'insensitive' } },
-          { category: { contains: search as string, mode: 'insensitive' } }
+          { category: { contains: search as string, mode: 'insensitive' } },
+          { user: { name: { contains: search as string, mode: 'insensitive' } } }
         ];
       }
 
