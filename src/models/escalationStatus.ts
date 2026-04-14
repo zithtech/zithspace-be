@@ -56,7 +56,7 @@ export class EscalationStatusModel {
     static async findAll(tenantId: string): Promise<any[]> {
         const query = `
       SELECT * FROM "escalation_status"
-      WHERE tenantid = $1
+      WHERE tenantid = $1 AND status = TRUE
       ORDER BY priorityweight ASC;
     `;
         const result = await pool.query(query, [tenantId]);

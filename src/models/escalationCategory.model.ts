@@ -52,7 +52,7 @@ export class EscalationCategoryModel {
     static async findAll(tenantId: string): Promise<any[]> {
         const query = `
       SELECT * FROM "escalationcategories"
-      WHERE tenantId = $1
+      WHERE tenantId = $1 AND status = TRUE
       ORDER BY createdAt DESC;
     `;
         const result = await pool.query(query, [tenantId]);
