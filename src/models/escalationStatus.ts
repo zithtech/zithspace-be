@@ -9,6 +9,8 @@ export interface EscalationStatusData {
     priorityWeight: number;
     visualColor?: string;
     status?: boolean;
+    isFinal?: boolean;
+    isDefault?: boolean;
 }
 
 export class EscalationStatusModel {
@@ -17,10 +19,10 @@ export class EscalationStatusModel {
      */
     static async create(data: EscalationStatusData): Promise<any> {
         const query = `
-      INSERT INTO "escalationStatus" (
-        tenantId, createdById, updatedById,
-        displayName, "PriorityWeight", visualColor, status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO "escalation_status" (
+        tenantid, createdbyid, updatedbyid,
+        displayname, priorityweight, visualcolor, status, finalstate, defaultstatus
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *;
     `;
 
@@ -32,6 +34,8 @@ export class EscalationStatusModel {
             data.priorityWeight,
             data.visualColor || null,
             data.status ?? true,
+            data.isFinal ?? false,
+            data.isDefault ?? false
         ];
 
         try {
@@ -51,9 +55,9 @@ export class EscalationStatusModel {
      */
     static async findAll(tenantId: string): Promise<any[]> {
         const query = `
-      SELECT * FROM "escalationStatus"
-      WHERE tenantId = $1
-      ORDER BY "PriorityWeight" ASC;
+      SELECT * FROM "escalation_status"
+      WHERE tenantid = $1
+      ORDER BY priorityweight ASC;
     `;
         const result = await pool.query(query, [tenantId]);
         return result.rows;
@@ -64,8 +68,8 @@ export class EscalationStatusModel {
      */
     static async findById(id: string, tenantId: string): Promise<any> {
         const query = `
-      SELECT * FROM "escalationStatus"
-      WHERE id = $1 AND tenantId = $2;
+      SELECT * FROM "escalation_status"
+      WHERE id = $1 AND tenantid = $2;
     `;
         const result = await pool.query(query, [id, tenantId]);
         return result.rows[0];
@@ -85,18 +89,20 @@ export class EscalationStatusModel {
         let placeholderIndex = 1;
 
         // Always update updatedById and updatedAt on any update
-        fields.push(`updatedById = $${placeholderIndex}`);
+        fields.push(`updatedbyid = $${placeholderIndex}`);
         values.push(updatedById);
         placeholderIndex++;
 
-        fields.push(`updatedAt = CURRENT_TIMESTAMP`);
+        fields.push(`updatedat = CURRENT_TIMESTAMP`);
 
         // Column name map — camelCase interface key → exact DB column name
         const columnMap: Record<string, string> = {
-            displayName: 'displayName',
-            priorityWeight: '"PriorityWeight"',
-            visualColor: 'visualColor',
+            displayName: 'displayname',
+            priorityWeight: 'priorityweight',
+            visualColor: 'visualcolor',
             status: 'status',
+            isFinal: 'finalstate',
+            isDefault: 'defaultstatus'
         };
 
         // Build dynamic UPDATE query from remaining fields
@@ -113,9 +119,9 @@ export class EscalationStatusModel {
 
         values.push(id, tenantId);
         const query = `
-      UPDATE "escalationStatus"
+      UPDATE "escalation_status"
       SET ${fields.join(', ')}
-      WHERE id = $${placeholderIndex} AND tenantId = $${placeholderIndex + 1}
+      WHERE id = $${placeholderIndex} AND tenantid = $${placeholderIndex + 1}
       RETURNING *;
     `;
 
@@ -136,9 +142,9 @@ export class EscalationStatusModel {
      */
     static async softDelete(id: string, tenantId: string, updatedById: string): Promise<any> {
         const query = `
-      UPDATE "escalationStatus"
-      SET status = FALSE, updatedById = $3, updatedAt = CURRENT_TIMESTAMP
-      WHERE id = $1 AND tenantId = $2
+      UPDATE "escalation_status"
+      SET status = FALSE, updatedbyid = $3, updatedat = CURRENT_TIMESTAMP
+      WHERE id = $1 AND tenantid = $2
       RETURNING *;
     `;
         const result = await pool.query(query, [id, tenantId, updatedById]);
@@ -150,8 +156,8 @@ export class EscalationStatusModel {
      */
     static async delete(id: string, tenantId: string): Promise<boolean> {
         const query = `
-      DELETE FROM "escalationStatus"
-      WHERE id = $1 AND tenantId = $2;
+      DELETE FROM "escalation_status"
+      WHERE id = $1 AND tenantid = $2;
     `;
         const result = await pool.query(query, [id, tenantId]);
         return (result.rowCount ?? 0) > 0;

@@ -17,7 +17,7 @@ export class EscalationCategoryModel {
      */
     static async create(data: EscalationCategoryData): Promise<any> {
         const query = `
-      INSERT INTO "escalationCategories" (
+      INSERT INTO "escalationcategories" (
         tenantId, createdById, updatedById,
         displayName, description, visualColor, status
       ) VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -51,7 +51,7 @@ export class EscalationCategoryModel {
      */
     static async findAll(tenantId: string): Promise<any[]> {
         const query = `
-      SELECT * FROM "escalationCategories"
+      SELECT * FROM "escalationcategories"
       WHERE tenantId = $1
       ORDER BY createdAt DESC;
     `;
@@ -64,7 +64,7 @@ export class EscalationCategoryModel {
      */
     static async findById(id: string, tenantId: string): Promise<any> {
         const query = `
-      SELECT * FROM "escalationCategories"
+      SELECT * FROM "escalationcategories"
       WHERE id = $1 AND tenantId = $2;
     `;
         const result = await pool.query(query, [id, tenantId]);
@@ -104,7 +104,7 @@ export class EscalationCategoryModel {
 
         values.push(id, tenantId);
         const query = `
-      UPDATE "escalationCategories"
+      UPDATE "escalationcategories"
       SET ${fields.join(', ')}
       WHERE id = $${placeholderIndex} AND tenantId = $${placeholderIndex + 1}
       RETURNING *;
@@ -127,7 +127,7 @@ export class EscalationCategoryModel {
      */
     static async softDelete(id: string, tenantId: string, updatedById: string): Promise<any> {
         const query = `
-      UPDATE "escalationCategories"
+      UPDATE "escalationcategories"
       SET status = FALSE, updatedById = $3, updatedAt = CURRENT_TIMESTAMP
       WHERE id = $1 AND tenantId = $2
       RETURNING *;
@@ -141,7 +141,7 @@ export class EscalationCategoryModel {
      */
     static async delete(id: string, tenantId: string): Promise<boolean> {
         const query = `
-      DELETE FROM "escalationCategories"
+      DELETE FROM "escalationcategories"
       WHERE id = $1 AND tenantId = $2;
     `;
         const result = await pool.query(query, [id, tenantId]);

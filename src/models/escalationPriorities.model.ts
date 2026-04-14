@@ -17,9 +17,9 @@ export class EscalationPriorityModel {
      */
     static async create(data: EscalationPriorityData): Promise<any> {
         const query = `
-      INSERT INTO "escalationPriorities" (
-        tenantId, createdById, updatedById,
-        displayName, "PriorityWeight", visualColor, status
+      INSERT INTO "escalation_priorities" (
+        tenantid, createdbyid, updatedbyid,
+        displayname, priorityweight, visualcolor, status
       ) VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *;
     `;
@@ -51,9 +51,9 @@ export class EscalationPriorityModel {
      */
     static async findAll(tenantId: string): Promise<any[]> {
         const query = `
-      SELECT * FROM "escalationPriorities"
-      WHERE tenantId = $1
-      ORDER BY "PriorityWeight" ASC;
+      SELECT * FROM "escalation_priorities"
+      WHERE tenantid = $1
+      ORDER BY priorityweight ASC;
     `;
         const result = await pool.query(query, [tenantId]);
         return result.rows;
@@ -64,8 +64,8 @@ export class EscalationPriorityModel {
      */
     static async findById(id: string, tenantId: string): Promise<any> {
         const query = `
-      SELECT * FROM "escalationPriorities"
-      WHERE id = $1 AND tenantId = $2;
+      SELECT * FROM "escalation_priorities"
+      WHERE id = $1 AND tenantid = $2;
     `;
         const result = await pool.query(query, [id, tenantId]);
         return result.rows[0];
@@ -85,17 +85,17 @@ export class EscalationPriorityModel {
         let placeholderIndex = 1;
 
         // Always update updatedById and updatedAt on any update
-        fields.push(`updatedById = $${placeholderIndex}`);
+        fields.push(`updatedbyid = $${placeholderIndex}`);
         values.push(updatedById);
         placeholderIndex++;
 
-        fields.push(`updatedAt = CURRENT_TIMESTAMP`);
+        fields.push(`updatedat = CURRENT_TIMESTAMP`);
 
         // Column name map — camelCase interface key → exact DB column name
         const columnMap: Record<string, string> = {
-            displayName: 'displayName',
-            priorityWeight: '"PriorityWeight"',
-            visualColor: 'visualColor',
+            displayName: 'displayname',
+            priorityWeight: 'priorityweight',
+            visualColor: 'visualcolor',
             status: 'status',
         };
 
@@ -113,9 +113,9 @@ export class EscalationPriorityModel {
 
         values.push(id, tenantId);
         const query = `
-      UPDATE "escalationPriorities"
+      UPDATE "escalation_priorities"
       SET ${fields.join(', ')}
-      WHERE id = $${placeholderIndex} AND tenantId = $${placeholderIndex + 1}
+      WHERE id = $${placeholderIndex} AND tenantid = $${placeholderIndex + 1}
       RETURNING *;
     `;
 
@@ -136,9 +136,9 @@ export class EscalationPriorityModel {
      */
     static async softDelete(id: string, tenantId: string, updatedById: string): Promise<any> {
         const query = `
-      UPDATE "escalationPriorities"
-      SET status = FALSE, updatedById = $3, updatedAt = CURRENT_TIMESTAMP
-      WHERE id = $1 AND tenantId = $2
+      UPDATE "escalation_priorities"
+      SET status = FALSE, updatedbyid = $3, updatedat = CURRENT_TIMESTAMP
+      WHERE id = $1 AND tenantid = $2
       RETURNING *;
     `;
         const result = await pool.query(query, [id, tenantId, updatedById]);
@@ -150,8 +150,8 @@ export class EscalationPriorityModel {
      */
     static async delete(id: string, tenantId: string): Promise<boolean> {
         const query = `
-      DELETE FROM "escalationPriorities"
-      WHERE id = $1 AND tenantId = $2;
+      DELETE FROM "escalation_priorities"
+      WHERE id = $1 AND tenantid = $2;
     `;
         const result = await pool.query(query, [id, tenantId]);
         return (result.rowCount ?? 0) > 0;
