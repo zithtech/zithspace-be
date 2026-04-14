@@ -255,7 +255,7 @@ export class SprintCompletionController {
       const moveToTrashActions = actions.filter((a) => a.action === "move_to_trash");
 
       // VALIDATION PHASE - Do ALL validation BEFORE transaction to avoid timeout
-      
+
       // Validate destination sprints exist (if any)
       if (moveToSprintActions.length > 0) {
         const destinationSprintIds = [...new Set(moveToSprintActions.map(a => a.destinationId!))];
@@ -412,11 +412,17 @@ export class SprintCompletionController {
         if (moveToBacklogActions.length > 0) {
           const ticketIds = moveToBacklogActions.map(a => a.ticketId);
 
-          // Bulk update tickets
+          // Bulk update tickets - Thoroughly clear all plan associations, unarchive, and remove from buckets
           await tx.ticket.updateMany({
             where: { id: { in: ticketIds } },
             data: {
               sprintPlanId: null,
+              releasePlanId: null,
+              demoPlanId: null,
+              isArchived: false,
+              archivedAt: null,
+              archivedById: null,
+              bucketId: null,
               updatedAt: now,
             },
           });

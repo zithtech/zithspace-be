@@ -476,6 +476,7 @@ class TicketController {
                 baseWhere.OR = [
                     { title: { contains: search, mode: "insensitive" } },
                     { ticketNumber: { contains: search, mode: "insensitive" } },
+                    { project: { code: { contains: search, mode: "insensitive" } } },
                 ];
             }
             // Handle releasePlanId, sprintId, demoId filtering
@@ -641,6 +642,7 @@ class TicketController {
                     { title: { contains: search, mode: "insensitive" } },
                     { description: { contains: search, mode: "insensitive" } },
                     { ticketNumber: { contains: search, mode: "insensitive" } },
+                    { project: { code: { contains: search, mode: "insensitive" } } },
                 ];
             }
             // Handle releasePlanId, sprintId, demoId filtering
@@ -903,10 +905,16 @@ class TicketController {
             }
             // Handle releasePlan / sprint assignment smart mapping
             if (updates.releasePlan !== undefined || updates.sprintPlan !== undefined) {
-                const planId = updates.releasePlan || updates.sprintPlan;
+                // FIX: Use explicit check to allow 'null' to pass through correctly
+                const planId = updates.releasePlan !== undefined ? updates.releasePlan : updates.sprintPlan;
                 if (planId === null || planId === 'null' || planId === '') {
                     mappedUpdates.sprintPlanId = null;
                     mappedUpdates.releasePlanId = null;
+                    mappedUpdates.demoPlanId = null;
+                    mappedUpdates.bucketId = null;
+                    mappedUpdates.isArchived = false;
+                    mappedUpdates.archivedAt = null;
+                    mappedUpdates.archivedById = null;
                 }
                 else if (typeof planId === 'string') {
                     try {
@@ -1151,10 +1159,35 @@ class TicketController {
             if (!ticket) {
                 throw new types_1.NotFoundError("Ticket not found in this tenant");
             }
-            await database_1.prisma.ticket.delete({
+            // Move to trash (soft delete)
+            await database_1.prisma.ticket.update({
                 where: { id },
+                data: {
+                    isDeleted: true,
+                    deletedAt: new Date(),
+                    deletedById: req.user.id,
+                    updatedAt: new Date(),
+                },
             });
-            socketService_1.socketService.emitToTenant(req.tenantId, "ticket:deleted", { id });
+            // Log activity
+            try {
+                await database_1.prisma.ticketActivityLog.create({
+                    data: {
+                        ticketId: id,
+                        tenantId: req.tenantId,
+                        action: "Ticket Moved to Trash",
+                        performedById: req.user.id,
+                        details: {
+                            ticketNumber: ticket.ticketNumber,
+                            title: ticket.title,
+                        },
+                    },
+                });
+            }
+            catch (logError) {
+                console.error("Failed to log ticket deletion activity:", logError);
+            }
+            socketService_1.socketService.emitToTenant(req.tenantId, "ticket:deleted", { id, isSoftDelete: true });
             const invalidationPromises = [
                 cacheService_1.default.invalidateTicket(id, req.tenantId)
             ];
@@ -2276,6 +2309,99 @@ class TicketController {
         }
     }
     /**
+     * Rename ticket attachment (tenant-aware)
+     */
+    static async renameAttachment(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { ticketId, attachmentId } = req.params;
+            const { newFileName } = req.body;
+            if (!newFileName) {
+                res.status(400).json({
+                    success: false,
+                    error: "New file name is required",
+                });
+                return;
+            }
+            // Verify ticket exists and belongs to tenant
+            const ticket = await database_1.prisma.ticket.findFirst({
+                where: {
+                    id: ticketId,
+                    tenantId: req.tenantId,
+                    isDeleted: false,
+                },
+            });
+            if (!ticket) {
+                throw new types_1.NotFoundError("Ticket not found");
+            }
+            // Verify attachment exists and belongs to this ticket and tenant
+            const attachment = await database_1.prisma.ticketAttachment.findFirst({
+                where: {
+                    id: attachmentId,
+                    ticketId: ticketId,
+                    tenantId: req.tenantId,
+                },
+            });
+            if (!attachment) {
+                throw new types_1.NotFoundError("Attachment not found");
+            }
+            const oldFileName = attachment.fileName;
+            // Update attachment record
+            const updatedAttachment = await database_1.prisma.ticketAttachment.update({
+                where: { id: attachmentId },
+                data: {
+                    fileName: newFileName,
+                    updatedAt: new Date(),
+                },
+                include: {
+                    uploadedBy: {
+                        select: {
+                            id: true,
+                            name: true,
+                            workEmail: true,
+                            position: true,
+                        },
+                    },
+                },
+            });
+            // Log activity
+            await database_1.prisma.ticketActivityLog.create({
+                data: {
+                    ticketId,
+                    tenantId: req.tenantId,
+                    action: "Attachment Renamed",
+                    performedById: req.user.id,
+                    details: { oldFileName, newFileName, attachmentId },
+                },
+            });
+            res.status(200).json({
+                success: true,
+                data: updatedAttachment,
+                message: "Attachment renamed successfully",
+            });
+        }
+        catch (error) {
+            console.error("Rename attachment error:", error);
+            if (error instanceof types_1.NotFoundError) {
+                res.status(404).json({
+                    success: false,
+                    error: error.message,
+                });
+                return;
+            }
+            res.status(500).json({
+                success: false,
+                error: "Failed to rename attachment",
+            });
+        }
+    }
+    /**
      * Get attachments for a ticket (tenant-aware)
      */
     static async getAttachments(req, res) {
@@ -2580,6 +2706,7 @@ class TicketController {
                 });
                 return;
             }
+            // Calculate detailed progress
             // Calculate detailed progress
             const totalStories = epic.stories.length;
             const completedStories = epic.stories.filter((s) => s.status === "completed").length;

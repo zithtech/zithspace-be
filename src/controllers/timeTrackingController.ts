@@ -41,7 +41,7 @@ export class TimeTrackingController {
         where: whereClause,
         include: {
           project: { select: { id: true, name: true, code: true } },
-          ticket: { select: { id: true, title: true, ticketNumber: true } },
+          ticket: { select: { id: true, title: true, ticketNumber: true, estimateHours: true } },
           user: { select: { id: true, name: true, workEmail: true } },
           logs: { orderBy: { createdAt: 'desc' } }
         },
@@ -97,7 +97,7 @@ export class TimeTrackingController {
         },
         include: {
           project: { select: { id: true, name: true, code: true } },
-          ticket: { select: { id: true, title: true, ticketNumber: true } },
+          ticket: { select: { id: true, title: true, ticketNumber: true, estimateHours: true } },
           logs: { orderBy: { createdAt: 'desc' } }
         }
       });
@@ -170,7 +170,7 @@ export class TimeTrackingController {
         },
         include: {
           project: { select: { id: true, name: true, code: true } },
-          ticket: { select: { id: true, title: true, ticketNumber: true } },
+          ticket: { select: { id: true, title: true, ticketNumber: true, estimateHours: true } },
           logs: { orderBy: { createdAt: 'desc' } }
         }
       });
@@ -219,7 +219,7 @@ export class TimeTrackingController {
         },
         include: {
           project: { select: { id: true, name: true, code: true } },
-          ticket: { select: { id: true, title: true, ticketNumber: true } },
+          ticket: { select: { id: true, title: true, ticketNumber: true, estimateHours: true } },
           logs: { orderBy: { createdAt: 'desc' } }
         }
       });
@@ -258,7 +258,7 @@ export class TimeTrackingController {
         },
         include: {
           project: { select: { id: true, name: true, code: true } },
-          ticket: { select: { id: true, title: true, ticketNumber: true } },
+          ticket: { select: { id: true, title: true, ticketNumber: true, estimateHours: true } },
           logs: { orderBy: { createdAt: 'desc' } }
         }
       });
@@ -286,7 +286,7 @@ export class TimeTrackingController {
         res.status(400).json({ success: false, error: "No active timer found with this ID." } as ApiResponse);
         return;
       }
-       // Calculate detailed progress
+      // Calculate detailed progress
 
       const endTime = new Date();
       let additionalDuration = 0;
@@ -314,7 +314,7 @@ export class TimeTrackingController {
         },
         include: {
           project: { select: { id: true, name: true, code: true } },
-          ticket: { select: { id: true, title: true, ticketNumber: true } },
+          ticket: { select: { id: true, title: true, ticketNumber: true, estimateHours: true } },
           logs: { orderBy: { createdAt: 'desc' } }
         }
       });
@@ -449,7 +449,7 @@ export class TimeTrackingController {
         },
         include: {
           project: { select: { id: true, name: true, code: true } },
-          ticket: { select: { id: true, title: true, ticketNumber: true } },
+          ticket: { select: { id: true, title: true, ticketNumber: true, estimateHours: true } },
           logs: { orderBy: { createdAt: 'desc' } }
         }
       });

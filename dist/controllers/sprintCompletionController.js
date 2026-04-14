@@ -348,11 +348,17 @@ class SprintCompletionController {
                 // BULK PROCESS: Move to Backlog
                 if (moveToBacklogActions.length > 0) {
                     const ticketIds = moveToBacklogActions.map(a => a.ticketId);
-                    // Bulk update tickets
+                    // Bulk update tickets - Thoroughly clear all plan associations, unarchive, and remove from buckets
                     await tx.ticket.updateMany({
                         where: { id: { in: ticketIds } },
                         data: {
                             sprintPlanId: null,
+                            releasePlanId: null,
+                            demoPlanId: null,
+                            isArchived: false,
+                            archivedAt: null,
+                            archivedById: null,
+                            bucketId: null,
                             updatedAt: now,
                         },
                     });

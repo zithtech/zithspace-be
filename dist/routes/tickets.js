@@ -246,5 +246,14 @@ router.get("/:id/attachments", (0, permission_1.requirePermission)(permissions_1
  * @param   attachmentId - Attachment ID
  */
 router.delete("/:ticketId/attachments/:attachmentId", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_UPDATE), ticketController_1.TicketController.deleteAttachment);
+/**
+ * @route   PUT /api/tickets/:ticketId/attachments/:attachmentId
+ * @desc    Rename attachment (tenant-aware)
+ * @access  Private (attachment uploader or admin)
+ * @param   ticketId - Ticket ID
+ * @param   attachmentId - Attachment ID
+ * @body    { newFileName: string }
+ */
+router.put("/:ticketId/attachments/:attachmentId", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_UPDATE), ticketController_1.TicketController.renameAttachment);
 exports.default = router;
 //# sourceMappingURL=tickets.js.map
