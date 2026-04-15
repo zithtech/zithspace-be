@@ -56,6 +56,7 @@ export declare class SettingsController {
     static createDropdownOption(req: AuthRequest, res: Response): Promise<void>;
     /**
      * Update an existing dropdown option (tenant-aware)
+     * FIXED: Allows order-only updates
      */
     static updateDropdownOption(req: AuthRequest, res: Response): Promise<void>;
     /**
