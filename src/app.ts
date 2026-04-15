@@ -102,7 +102,9 @@ import companyLocationRoutes from "@/routes/companyLocationRoutes";
 import openingManagementRoutes from "@/routes/openingManagementRoutes";
 import escalationSettingsRoutes from "./routes/escalationSettingsRoutes";
 import escalationRoutes from "./routes/escalationRoutes";
+import excelRoutes from "./routes/excel";
 // Load environment
+
 dotenv.config();
 console.log("🚀 API Starting up...");
 console.log("📅 Mounting calendar routes at /api/calendar");
@@ -275,8 +277,10 @@ app.use("/api/leave-request", leaveRequestRoutes);
 app.use("/api/leave-balances", leaveBalanceRoutes);
 
 app.use("/api/time-tracking", timeTrackingRoutes);
+app.use("/api/excel", excelRoutes);
 
 app.use("/api/candidates", candidateRoutes);
+
 
 app.use("/api/recruitment-statuses", recruitmentStatusRoutes);
 app.use("/api/recruitment-actions", recruitmentActionRoutes);
