@@ -613,3 +613,50 @@ export async function generatePresignedUrl(
     throw new Error(`Failed to generate secure link: ${error.message}`);
   }
 }
+
+/**
+ * Upload Escalation document to Cloudflare R2
+ * @param base64File - Base64 encoded file string
+ * @param fileName - Original file name
+ * @param tenantId - Tenant ID
+ * @param escalationId - Temporary or generated escalation ID
+ * @returns Public URL of uploaded document
+ */
+export async function uploadEscalationDocumentToR2(
+  base64File: string,
+  fileName: string,
+  tenantId: string,
+  escalationId: string,
+): Promise<string> {
+  try {
+    const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+    if (!matches) {
+      throw new Error("Invalid file format. Expected base64 encoded file.");
+    }
+
+    const contentType = matches[1];
+    const base64Data = matches[2];
+    const buffer = Buffer.from(base64Data, "base64");
+
+    const uniqueId = nanoid(12);
+    const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+    const key = `${tenantId}/escalations/${escalationId}/documents/${uniqueId}_${sanitizedFileName}`;
+
+    const params = {
+      Bucket: BUCKET_NAME,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+      CacheControl: "public, max-age=31536000",
+      ContentDisposition: `attachment; filename="${sanitizedFileName}"`
+    };
+
+    await s3Client.send(new PutObjectCommand(params));
+
+    const baseUrl = PUBLIC_URL || "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+    return `${baseUrl}/${key}`;
+  } catch (error: any) {
+    console.error("R2 escalation document upload error:", error);
+    throw new Error(`Failed to upload escalation document: ${error.message}`);
+  }
+}
