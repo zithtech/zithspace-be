@@ -55,6 +55,7 @@ const messages_1 = __importDefault(require("@/routes/messages"));
 const shortcut_routes_1 = __importDefault(require("@/routes/shortcut.routes"));
 const employeeWorkDetailes_1 = __importDefault(require("@/routes/employeeWorkDetailes"));
 const employeeTimeline_1 = __importDefault(require("@/routes/employeeTimeline"));
+const skillExperience_routes_1 = __importDefault(require("@/routes/skillExperience.routes"));
 // main
 const onboardingRoutes_1 = __importDefault(require("@/routes/onboardingRoutes"));
 const auth_2 = __importDefault(require("@/routes/auth"));
@@ -239,6 +240,7 @@ app.use("/api/company-locations", companyLocationRoutes_1.default);
 app.use("/api/opening-management", openingManagementRoutes_1.default);
 app.use("/api/leads", lead_routes_1.default);
 app.use("/api/lead-settings", leadSettings_routes_1.default);
+app.use("/api", skillExperience_routes_1.default);
 app.use("/api/departments", departmentRoutes_1.default);
 app.use("/api/sub-departments", subDepartmentRoutes_1.default);
 app.use("/api/positions", positionRoutes_1.default);
