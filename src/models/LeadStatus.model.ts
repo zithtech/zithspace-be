@@ -1,4 +1,4 @@
-import pool from '@/config/dbPool';
+import pool from '@/config/dbpool';
 
 export interface LeadStatusData {
   id?: string;
