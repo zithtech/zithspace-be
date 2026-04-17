@@ -1,5 +1,4 @@
 import { Response } from "express";
-import { prisma } from "@/config/database";
 import {
   AuthRequest,
   ApiResponse,
@@ -7,7 +6,8 @@ import {
   ValidationError,
   CreateCustomerData,
   UpdateCustomerData,
-} from "@/types";
+} from "../types";
+import { CustomerModel } from "../models/customer.model";
 
 export class CustomerController {
   /**
@@ -25,31 +25,13 @@ export class CustomerController {
 
       const { page = 1, limit = 20, search, isActive } = req.query;
 
-      const where: any = { tenantId: req.tenantId };
-
-      if (search) {
-        where.OR = [
-          { companyName: { contains: search as string, mode: "insensitive" } },
-          { email: { contains: search as string, mode: "insensitive" } },
-          { phone: { contains: search as string, mode: "insensitive" } },
-        ];
-      }
-
-      if (isActive !== undefined) {
-        where.isActive = isActive === "true";
-      }
-
-      const skip = (Number(page) - 1) * Number(limit);
-
-      const [customers, total] = await Promise.all([
-        prisma.customer.findMany({
-          where,
-          skip,
-          take: Number(limit),
-          orderBy: { createdAt: "desc" },
-        }),
-        prisma.customer.count({ where }),
-      ]);
+      const { customers, total } = await CustomerModel.getCustomers(
+        req.tenantId,
+        Number(page),
+        Number(limit),
+        search as string,
+        isActive !== undefined ? isActive === "true" : undefined
+      );
 
       res.status(200).json({
         success: true,
@@ -79,9 +61,7 @@ export class CustomerController {
     try {
       const { id } = req.params;
 
-      const customer = await prisma.customer.findFirst({
-        where: { id, tenantId: req.tenantId },
-      });
+      const customer = await CustomerModel.getCustomerById(req.tenantId!, id);
 
       if (!customer) {
         res
@@ -130,32 +110,15 @@ export class CustomerController {
     // This is the key fix to prevent unique constraint errors on empty strings.
     const sanitizedEmail = customerData.email?.trim() || undefined;
 
-    // 3. Check email uniqueness only if a valid email string exists
-    if (sanitizedEmail) {
-      const existing = await prisma.customer.findFirst({
-        where: {
-          tenantId: req.tenantId,
-          email: sanitizedEmail,
-        },
-      });
-
-      if (existing) {
-        throw new ValidationError(
-          "Customer with this email already exists in this tenant",
-        );
-      }
-    }
-
-    // 4. Create the customer
-    const newCustomer = await prisma.customer.create({
-      data: {
+    // 3. Create the customer (model handles uniqueness check)
+    const newCustomer = await CustomerModel.createCustomer(
+      req.tenantId,
+      {
         ...customerData,
         email: sanitizedEmail, // Use the sanitized value here
-        tenantId: req.tenantId,
-        createdBy: req.user.id,
-        updatedBy: req.user.id,
       },
-    });
+      req.user.id
+    );
 
     res.status(201).json({
       success: true,
@@ -166,19 +129,19 @@ export class CustomerController {
   } catch (error: any) {
     console.error("Create customer error:", error);
 
-    // Handle Prisma Unique Constraint Errors (P2002)
-    if (error.code === 'P2002') {
-      res.status(400).json({
-        success: false,
-        error: "A customer with this email already exists in this tenant.",
-      } as ApiResponse);
-      return;
-    }
-
     if (error instanceof ValidationError) {
       res.status(400).json({ 
         success: false, 
         error: error.message 
+      } as ApiResponse);
+      return;
+    }
+
+    // Handle unique constraint errors from raw queries
+    if (error.message && error.message.includes('already exists')) {
+      res.status(400).json({
+        success: false,
+        error: error.message,
       } as ApiResponse);
       return;
     }
@@ -211,72 +174,13 @@ static async updateCustomer(req: AuthRequest, res: Response): Promise<void> {
     delete (updates as any).createdAt;
     delete (updates as any).createdBy;
 
-    // Fetch existing customer
-    const existingCustomer = await prisma.customer.findFirst({
-      where: { id, tenantId: req.tenantId },
-    });
-
-    if (!existingCustomer) {
-      throw new NotFoundError("Customer not found in this tenant");
-    }
-
-    // Normalize updates: convert empty strings to null, ignore undefined
-    const normalizedUpdates: any = {};
-    Object.entries(updates).forEach(([key, value]) => {
-      if (value === "") {
-        normalizedUpdates[key] = null;
-      } else if (value !== undefined) {
-        normalizedUpdates[key] = value;
-      }
-    });
-
-    // Company name uniqueness check
-    if (
-      normalizedUpdates.companyName &&
-      normalizedUpdates.companyName !== existingCustomer.companyName
-    ) {
-      const existingCompany = await prisma.customer.findFirst({
-        where: {
-          tenantId: req.tenantId,
-          companyName: normalizedUpdates.companyName,
-          NOT: { id },
-        },
-      });
-      if (existingCompany) {
-        throw new ValidationError(
-          "Another customer with this company name already exists"
-        );
-      }
-    }
-
-    // Email uniqueness check
-    if (
-      normalizedUpdates.email &&
-      normalizedUpdates.email !== existingCustomer.email
-    ) {
-      const duplicateEmail = await prisma.customer.findFirst({
-        where: {
-          tenantId: req.tenantId,
-          email: normalizedUpdates.email,
-          NOT: { id },
-        },
-      });
-      if (duplicateEmail) {
-        throw new ValidationError(
-          "Another customer with this email already exists"
-        );
-      }
-    }
-
-    // Update the customer
-    const updatedCustomer = await prisma.customer.update({
-      where: { id },
-      data: {
-        ...normalizedUpdates,
-        updatedBy: req.user.id,
-        updatedAt: new Date(),
-      },
-    });
+    // Update the customer (model handles all validation and uniqueness checks)
+    const updatedCustomer = await CustomerModel.updateCustomer(
+      req.tenantId,
+      id,
+      updates,
+      req.user.id
+    );
 
     res.status(200).json({
       success: true,
@@ -293,6 +197,15 @@ static async updateCustomer(req: AuthRequest, res: Response): Promise<void> {
 
     if (error instanceof ValidationError) {
       res.status(400).json({ success: false, error: error.message } as ApiResponse);
+      return;
+    }
+
+    // Handle unique constraint errors from raw queries
+    if (error.message && error.message.includes('already exists')) {
+      res.status(400).json({
+        success: false,
+        error: error.message,
+      } as ApiResponse);
       return;
     }
 
@@ -313,26 +226,23 @@ static async updateCustomer(req: AuthRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
 
-      const existing = await prisma.customer.findFirst({
-        where: { id, tenantId: req.tenantId },
-      });
-
-      if (!existing) {
-        res
-          .status(404)
-          .json({ success: false, error: "Customer not found" } as ApiResponse);
-        return;
-      }
-
-      // Soft delete is optional; for now, we do a hard delete:
-      await prisma.customer.delete({ where: { id } });
+      await CustomerModel.deleteCustomer(req.tenantId!, id);
 
       res.status(200).json({
         success: true,
         message: "Customer deleted successfully",
       } as ApiResponse);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Delete customer error:", error);
+
+      if (error.message && error.message.includes('not found')) {
+        res.status(404).json({
+          success: false,
+          error: "Customer not found",
+        } as ApiResponse);
+        return;
+      }
+
       res.status(500).json({
         success: false,
         error: "Failed to delete customer",
@@ -348,11 +258,7 @@ static async updateCustomer(req: AuthRequest, res: Response): Promise<void> {
     res: Response,
   ): Promise<void> {
     try {
-      const customers = await prisma.customer.findMany({
-        where: { tenantId: req.tenantId, isActive: true },
-        select: { id: true, companyName: true, email: true },
-        orderBy: { companyName: "asc" },
-      });
+      const customers = await CustomerModel.getCustomersForSelect(req.tenantId!);
 
       const formatted = customers.map((c) => ({
         value: c.id,

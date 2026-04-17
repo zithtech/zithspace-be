@@ -1,15 +1,15 @@
 import { Response } from 'express';
-import { prisma } from "@/config/database";
 import { 
   AuthRequest, 
   ApiResponse, 
   NotFoundError, 
   ValidationError 
-} from '@/types';
+} from '../types';
 import { 
   CreateInvoiceTemplateDto, 
   UpdateInvoiceTemplateDto 
-} from '@/types/invoiceTemplate';
+} from '../types/invoiceTemplate';
+import { InvoiceTemplateModel } from '../models/invoiceTemplate.model';
 
 export class InvoiceTemplateController {
   
@@ -28,58 +28,18 @@ export class InvoiceTemplateController {
         throw new ValidationError('Name and billing type are required');
       }
 
-      const existingDuplicate = await prisma.invoiceTemplate.findFirst({
-        where: {
-          tenantId: req.tenantId,
-          name: name,
-          description: description || null
-        }
-      });
-      
-      if (existingDuplicate) {
-        throw new ValidationError('A template with this exact same name and description already exists');
-      }
+      const template = await InvoiceTemplateModel.createTemplate(
+        req.tenantId,
+        { name, description, billingType, isDefault, isActive, fields },
+        req.user.id
+      );
 
-      const template = await prisma.$transaction(async (tx) => {
-        // If this is set as default, unset other defaults for this tenant
-        if (isDefault) {
-          await tx.invoiceTemplate.updateMany({
-            where: { tenantId: req.tenantId, isDefault: true },
-            data: { isDefault: false }
-          });
-        }
-
-        return await tx.invoiceTemplate.create({
-          data: {
-            tenantId: req.tenantId!,
-            name,
-            description,
-            billingType,
-            isDefault: !!isDefault,
-            isActive: isActive !== false,
-            createdById: req.user!.id,
-            fields: {
-              create: fields.map(field => ({
-                fieldKey: field.fieldKey,
-                fieldLabel: field.fieldLabel,
-                fieldType: field.fieldType,
-                fieldOrder: field.fieldOrder,
-                isRequired: !!field.isRequired,
-                isSystem: !!field.isSystem,
-                options: field.options || [],
-              }))
-            }
-          },
-          include: { fields: true }
-        });
-      }, {
-        maxWait: 5000, // 5s to acquire a connection
-        timeout: 10000, // 10s execution limit
-      });
+      // Get the template with fields for response
+      const templateWithFields = await InvoiceTemplateModel.getTemplateById(req.tenantId, template.id);
 
       res.status(201).json({
         success: true,
-        data: template,
+        data: templateWithFields,
         message: 'Invoice template created successfully'
       } as ApiResponse);
 
@@ -99,20 +59,23 @@ export class InvoiceTemplateController {
     try {
       if (!req.tenantId) throw new ValidationError('Tenant context required');
 
-      const templates = await prisma.invoiceTemplate.findMany({
-        where: { tenantId: req.tenantId },
-        include: { 
-          _count: { select: { fields: true } },
-          fields: {
-            orderBy: { fieldOrder: 'asc' }
-          }
-        },
-        orderBy: { createdAt: 'desc' }
-      });
+      const templates = await InvoiceTemplateModel.getTemplates(req.tenantId);
+
+      // Get fields for each template
+      const templatesWithFields = await Promise.all(
+        templates.map(async (template) => {
+          const templateWithFields = await InvoiceTemplateModel.getTemplateById(req.tenantId, template.id);
+          return {
+            ...template,
+            fields: templateWithFields?.fields || [],
+            _count: { fields: templateWithFields?.fields?.length || 0 }
+          };
+        })
+      );
 
       res.status(200).json({
         success: true,
-        data: templates
+        data: templatesWithFields
       } as ApiResponse);
 
     } catch (error: any) {
@@ -131,20 +94,16 @@ export class InvoiceTemplateController {
       if (!req.tenantId) throw new ValidationError('Tenant context required');
 
       const { id } = req.params;
-      const template = await prisma.invoiceTemplate.findFirst({
-        where: { id, tenantId: req.tenantId },
-        include: {
-          fields: {
-            orderBy: { fieldOrder: 'asc' }
-          }
-        }
-      });
+      const templateResult = await InvoiceTemplateModel.getTemplateById(req.tenantId, id);
 
-      if (!template) throw new NotFoundError('Invoice template not found');
+      if (!templateResult) throw new NotFoundError('Invoice template not found');
 
       res.status(200).json({
         success: true,
-        data: template
+        data: {
+          ...templateResult.template,
+          fields: templateResult.fields
+        }
       } as ApiResponse);
 
     } catch (error: any) {
@@ -167,98 +126,22 @@ export class InvoiceTemplateController {
       const { id } = req.params;
       const { name, description, billingType, isDefault, isActive, fields }: UpdateInvoiceTemplateDto = req.body;
 
-      const updatedTemplate = await prisma.$transaction(async (tx) => {
-        const existing = await tx.invoiceTemplate.findFirst({
-          where: { id, tenantId: req.tenantId }
-        });
+      const updatedTemplate = await InvoiceTemplateModel.updateTemplate(
+        req.tenantId,
+        id,
+        { name, description, billingType, isDefault, isActive, fields },
+        req.user.id
+      );
 
-        if (!existing) throw new NotFoundError('Invoice template not found');
-
-        const existingDuplicate = await tx.invoiceTemplate.findFirst({
-          where: {
-            tenantId: req.tenantId,
-            id: { not: id },
-            name: name !== undefined ? name : existing.name,
-            description: (description !== undefined ? description : existing.description) || null
-          }
-        });
-
-        if (existingDuplicate) {
-          throw new ValidationError('A template with this exact same name and description already exists');
-        }
-
-        // If this is set as default, unset other defaults
-        if (isDefault) {
-          await tx.invoiceTemplate.updateMany({
-            where: { tenantId: req.tenantId, isDefault: true, id: { not: id } },
-            data: { isDefault: false }
-          });
-        }
-
-        // Manage fields if provided
-        if (fields) {
-          const incomingFieldIds = fields.filter(f => f.id).map(f => f.id!);
-          
-          // Delete removed fields
-          await tx.invoiceTemplateField.deleteMany({
-            where: {
-              templateId: id,
-              id: { notIn: incomingFieldIds }
-            }
-          });
-
-          // Update existing and create new fields
-          for (const field of fields) {
-            const fieldData = {
-              fieldKey: field.fieldKey,
-              fieldLabel: field.fieldLabel,
-              fieldType: field.fieldType,
-              fieldOrder: field.fieldOrder,
-              isRequired: !!field.isRequired,
-              isSystem: !!field.isSystem,
-              options: field.options || [],
-            };
-
-            if (field.id) {
-              await tx.invoiceTemplateField.update({
-                where: { id: field.id },
-                data: fieldData
-              });
-            } else {
-              await tx.invoiceTemplateField.create({
-                data: {
-                  ...fieldData,
-                  templateId: id
-                }
-              });
-            }
-          }
-        }
-
-        // Update template metadata
-        return await tx.invoiceTemplate.update({
-          where: { id },
-          data: {
-            name,
-            description,
-            billingType,
-            isDefault: isDefault !== undefined ? !!isDefault : undefined,
-            isActive: isActive !== undefined ? !!isActive : undefined,
-          },
-          include: { 
-            fields: {
-              orderBy: { fieldOrder: 'asc' }
-            }
-          }
-        });
-      }, {
-        maxWait: 5000,
-        timeout: 10000,
-      });
+      // Get the updated template with fields for response
+      const templateWithFields = await InvoiceTemplateModel.getTemplateById(req.tenantId, id);
 
       res.status(200).json({
         success: true,
-        data: updatedTemplate,
+        data: {
+          ...updatedTemplate,
+          fields: templateWithFields?.fields || []
+        },
         message: 'Invoice template updated successfully'
       } as ApiResponse);
 
@@ -281,15 +164,7 @@ export class InvoiceTemplateController {
 
       const { id } = req.params;
       
-      const existing = await prisma.invoiceTemplate.findFirst({
-        where: { id, tenantId: req.tenantId }
-      });
-
-      if (!existing) throw new NotFoundError('Invoice template not found');
-
-      await prisma.invoiceTemplate.delete({
-        where: { id }
-      });
+      await InvoiceTemplateModel.deleteTemplate(req.tenantId, id);
 
       res.status(200).json({
         success: true,
