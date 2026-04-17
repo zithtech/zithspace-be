@@ -18,7 +18,7 @@ class AttendanceController {
             }
             const { page = 1, limit = 20, userId, member, // Alias for userId (used by frontend)
             date, status, startDate, endDate, search, // Search by member name
-            sortBy = "date", sortOrder = "desc", } = req.query;
+            projectId, sortBy = "date", sortOrder = "desc", } = req.query;
             // Build filter query
             const where = {
                 tenantId: req.tenantId,
@@ -29,14 +29,22 @@ class AttendanceController {
                 where.userId = targetUserId;
             if (status)
                 where.status = status;
-            // Handle search by member name
-            if (search) {
-                where.user = {
-                    name: {
+            // Handle search by member name and project filter
+            if (search || projectId) {
+                where.user = {};
+                if (search) {
+                    where.user.name = {
                         contains: search,
                         mode: "insensitive",
-                    },
-                };
+                    };
+                }
+                if (projectId) {
+                    where.user.projectMemberships = {
+                        some: {
+                            projectId: projectId,
+                        },
+                    };
+                }
             }
             if (date) {
                 const targetDate = new Date(date);
@@ -686,6 +694,26 @@ class AttendanceController {
                         },
                     },
                 });
+                // Recalculate work minutes if clock-in or clock-out changed
+                if (updateData.clockIn || updateData.clockOut) {
+                    const finalClockIn = updateData.clockIn || attendanceRecord.clockIn;
+                    const finalClockOut = updateData.clockOut || attendanceRecord.clockOut;
+                    if (finalClockIn && finalClockOut) {
+                        const totalWorkMinutes = Math.floor((new Date(finalClockOut).getTime() - new Date(finalClockIn).getTime()) / 60000);
+                        const effectiveWorkMinutes = totalWorkMinutes - (attendanceRecord.totalBreakMinutes || 0);
+                        // Update with calculated minutes
+                        await client.attendance.update({
+                            where: { id: attendanceRecord.id },
+                            data: {
+                                totalWorkMinutes,
+                                effectiveWorkMinutes,
+                            }
+                        });
+                        // Update the record in memory for response
+                        attendanceRecord.totalWorkMinutes = totalWorkMinutes;
+                        attendanceRecord.effectiveWorkMinutes = effectiveWorkMinutes;
+                    }
+                }
                 // Transform data to use 'member' instead of 'user'
                 const attendance = {
                     ...attendanceRecord,
@@ -711,6 +739,47 @@ class AttendanceController {
             res.status(500).json({
                 success: false,
                 error: "Failed to update attendance record",
+            });
+        }
+    }
+    /**
+     * Delete attendance record (tenant-aware)
+     */
+    static async deleteAttendance(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { id } = req.params;
+            await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+                // Check if attendance record exists and belongs to tenant
+                const record = await client.attendance.findFirst({
+                    where: {
+                        id,
+                        tenantId: req.tenantId,
+                    },
+                });
+                if (!record) {
+                    throw new types_1.NotFoundError("Attendance record not found in this tenant");
+                }
+                await client.attendance.delete({
+                    where: { id },
+                });
+                res.status(200).json({
+                    success: true,
+                    message: "Attendance record deleted successfully",
+                });
+            });
+        }
+        catch (error) {
+            console.error("Delete attendance error:", error);
+            res.status(error instanceof types_1.NotFoundError ? 404 : 500).json({
+                success: false,
+                error: error.message || "Failed to delete attendance record",
             });
         }
     }

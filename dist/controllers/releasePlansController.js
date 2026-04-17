@@ -410,7 +410,17 @@ class ReleasePlansController {
             }
             await database_1.prisma.ticket.updateMany({
                 where: matchData,
-                data: resetData
+                data: {
+                    ...resetData,
+                    releasePlanId: null,
+                    sprintPlanId: null,
+                    demoPlanId: null,
+                    bucketId: null,
+                    isArchived: false,
+                    archivedAt: null,
+                    archivedById: null,
+                    updatedAt: new Date(),
+                }
             });
             await database_1.prisma.releasePlan.delete({
                 where: { id },
@@ -589,8 +599,13 @@ class ReleasePlansController {
                         status: { notIn: ["completed"] },
                     },
                     data: {
-                        sprintPlanId: null, // Remove sprint association
-                        isArchived: false, // Ensure not archived
+                        sprintPlanId: null,
+                        releasePlanId: null,
+                        demoPlanId: null,
+                        bucketId: null,
+                        isArchived: false,
+                        archivedAt: null,
+                        archivedById: null,
                         updatedAt: new Date(),
                     },
                 }),

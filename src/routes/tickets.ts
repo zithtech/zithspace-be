@@ -301,4 +301,18 @@ router.delete(
   TicketController.deleteAttachment,
 );
 
+/**
+ * @route   PUT /api/tickets/:ticketId/attachments/:attachmentId
+ * @desc    Rename attachment (tenant-aware)
+ * @access  Private (attachment uploader or admin)
+ * @param   ticketId - Ticket ID
+ * @param   attachmentId - Attachment ID
+ * @body    { newFileName: string }
+ */
+router.put(
+  "/:ticketId/attachments/:attachmentId",
+  requirePermission(Permissions.TICKET_UPDATE),
+  TicketController.renameAttachment,
+);
+
 export default router;

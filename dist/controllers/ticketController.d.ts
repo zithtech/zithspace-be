@@ -100,6 +100,10 @@ export declare class TicketController {
      */
     static uploadAttachment(req: AuthRequest, res: Response): Promise<void>;
     /**
+     * Rename ticket attachment (tenant-aware)
+     */
+    static renameAttachment(req: AuthRequest, res: Response): Promise<void>;
+    /**
      * Get attachments for a ticket (tenant-aware)
      */
     static getAttachments(req: AuthRequest, res: Response): Promise<void>;

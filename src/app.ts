@@ -54,6 +54,9 @@ import shortcutRoutes from "@/routes/shortcut.routes";
 import employeeWorkDetailRoutes from "@/routes/employeeWorkDetailes";
 import employeeTimelineRoutes from "@/routes/employeeTimeline";
 import skillExperienceRoutes from "@/routes/skillExperience.routes";
+import escalationCategoryRoutes from "@/routes/escalationCategoryV2.routes";
+import escalationStatusRoutes from "@/routes/escalationStatus.RoutesV2";
+import escalationPriorityRoutes from "@/routes/escalationPriorities.Routes";
 
 // main
 import employeeOnboardingRoutes from "@/routes/onboardingRoutes";
@@ -101,11 +104,13 @@ import recruitmentActionRoutes from "@/routes/recruitmentAction.routes";
 import candidateRoutes from "@/routes/candidateRoutes";
 import companyLocationRoutes from "@/routes/companyLocationRoutes";
 import openingManagementRoutes from "@/routes/openingManagementRoutes";
-import escalationSettingsRoutes from "./routes/escalationSettingsRoutes";
-import escalationRoutes from "./routes/escalationRoutes";
+
 import leadRoutes from "@/routes/lead.routes";
 import leadSettingsRoutes from "@/routes/leadSettings.routes";
 import generateRoutes from "@/routes/generate.routes";
+// import escalationSettingsRoutes from "./routes/escalationSettingsRoutes";
+// import escalationRoutes from "./routes/escalationRoutes";
+import escalationRoutesV2 from "./routes/escalationRoutesV2";
 // Load environment
 dotenv.config();
 console.log("🚀 API Starting up...");
@@ -238,8 +243,8 @@ app.use("/api/shifts", shiftRoutes);
 app.use("/api/transactions", transactionRoutes);
 app.use("/api/release-plans", releasePlanRoutes);
 app.use("/api/settings", settingRoutes);
-app.use("/api/escalation-settings", escalationSettingsRoutes);
-app.use("/api/escalations", escalationRoutes);
+//app.use("/api/escalation-settings", escalationSettingsRoutes);
+// app.use("/api/escalations", escalationRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/daily-updates", dailyUpdateRoutes);
 app.use("/api/dashboard", dashboardRoutes);
@@ -282,6 +287,12 @@ app.use("/api/zoho", calendarRoutes);
 app.use("/api/leave-allocation", leaveAllocationRoutes);
 app.use("/api/leave-request", leaveRequestRoutes);
 app.use("/api/leave-balances", leaveBalanceRoutes);
+
+//Escalation
+app.use("/api/escalation-categories", escalationCategoryRoutes);
+app.use("/api/escalation-statuses", escalationStatusRoutes);
+app.use("/api/escalation-priorities", escalationPriorityRoutes);
+app.use("/api/escalations-v2", escalationRoutesV2);
 
 app.use("/api/time-tracking", timeTrackingRoutes);
 
