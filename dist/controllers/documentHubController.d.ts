@@ -13,7 +13,9 @@ export declare class DocumentHubController {
     static getDocumentHistory(req: AuthRequest, res: Response): Promise<void>;
     static getAllDocumentHubs(req: AuthRequest, res: Response): Promise<void>;
     static deleteDocumentHub(req: AuthRequest, res: Response): Promise<void>;
+    static updateDocumentHub(req: AuthRequest, res: Response): Promise<void>;
     static deleteTreeNode(req: AuthRequest, res: Response): Promise<void>;
+    private static deleteNodeRecursive;
     /**
      * Delete individual document (soft delete)
      */
@@ -30,6 +32,11 @@ export declare class DocumentHubController {
      * Restore document
      */
     static restoreDocument(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Restore tree node (folder/section)
+     */
+    static restoreTreeNode(req: AuthRequest, res: Response): Promise<void>;
+    private static restoreNodeRecursive;
     /**
      * Share document (update visibility and share token)
      */

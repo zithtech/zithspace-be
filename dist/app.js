@@ -55,6 +55,9 @@ const messages_1 = __importDefault(require("@/routes/messages"));
 const shortcut_routes_1 = __importDefault(require("@/routes/shortcut.routes"));
 const employeeWorkDetailes_1 = __importDefault(require("@/routes/employeeWorkDetailes"));
 const employeeTimeline_1 = __importDefault(require("@/routes/employeeTimeline"));
+const escalationCategoryV2_routes_1 = __importDefault(require("@/routes/escalationCategoryV2.routes"));
+const escalationStatus_RoutesV2_1 = __importDefault(require("@/routes/escalationStatus.RoutesV2"));
+const escalationPriorities_Routes_1 = __importDefault(require("@/routes/escalationPriorities.Routes"));
 // main
 const onboardingRoutes_1 = __importDefault(require("@/routes/onboardingRoutes"));
 const auth_2 = __importDefault(require("@/routes/auth"));
@@ -98,6 +101,9 @@ const recruitmentAction_routes_1 = __importDefault(require("@/routes/recruitment
 const candidateRoutes_1 = __importDefault(require("@/routes/candidateRoutes"));
 const companyLocationRoutes_1 = __importDefault(require("@/routes/companyLocationRoutes"));
 const openingManagementRoutes_1 = __importDefault(require("@/routes/openingManagementRoutes"));
+// import escalationSettingsRoutes from "./routes/escalationSettingsRoutes";
+// import escalationRoutes from "./routes/escalationRoutes";
+const escalationRoutesV2_1 = __importDefault(require("./routes/escalationRoutesV2"));
 // Load environment
 dotenv_1.default.config();
 console.log("🚀 API Starting up...");
@@ -203,6 +209,8 @@ app.use("/api/shifts", shifts_1.default);
 app.use("/api/transactions", transactions_1.default);
 app.use("/api/release-plans", releasePlans_1.default);
 app.use("/api/settings", settings_1.default);
+//app.use("/api/escalation-settings", escalationSettingsRoutes);
+// app.use("/api/escalations", escalationRoutes);
 app.use("/api/user", user_1.default);
 app.use("/api/daily-updates", dailyUpdates_1.default);
 app.use("/api/dashboard", dashboard_1.default);
@@ -241,6 +249,11 @@ app.use("/api/zoho", calendar_1.default);
 app.use("/api/leave-allocation", leaveAllocationRoutes_1.default);
 app.use("/api/leave-request", leaveRequestRoutes_1.default);
 app.use("/api/leave-balances", leaveBalanceRoutes_1.default);
+//Escalation
+app.use("/api/escalation-categories", escalationCategoryV2_routes_1.default);
+app.use("/api/escalation-statuses", escalationStatus_RoutesV2_1.default);
+app.use("/api/escalation-priorities", escalationPriorities_Routes_1.default);
+app.use("/api/escalations-v2", escalationRoutesV2_1.default);
 app.use("/api/time-tracking", timeTracking_1.default);
 app.use("/api/candidates", candidateRoutes_1.default);
 app.use("/api/recruitment-statuses", recruitmentStatus_routes_1.default);
