@@ -20,6 +20,29 @@ export interface LeadData {
   timeline_end?: Date;
   posted_on?: Date;
   documents?: { name: string; url: string }[];
+  
+  // Job Metadata
+  external_job_id?: string;
+  experience_level?: string;
+  job_type?: string;
+  budget?: string;
+  hourly_rate?: string;
+  
+  // Client Quality Data
+  client_rating?: string;
+  client_spend?: string;
+  client_jobs_posted?: string;
+  client_payment_verified?: boolean;
+  client_phone_verified?: boolean;
+  
+  // AI & Proposal Data
+  ai_score?: number;
+  proposal_text?: string;
+  template_used?: string;
+  platform?: string;
+  internal_notes?: string;
+  skill_analysis?: any;
+  ai_summary?: string;
 }
 
 export class LeadModel {
@@ -32,8 +55,12 @@ export class LeadModel {
         tenant_id, client_name, client_mail, client_phone, client_location,
         title, summary, skills, duration, hour_based_amount,
         job_link, est_project_duration, status, actions_item,
-        timeline_start, timeline_end, posted_on, documents
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+        timeline_start, timeline_end, posted_on, documents,
+        external_job_id, experience_level, job_type, budget, hourly_rate,
+        client_rating, client_spend, client_jobs_posted, client_payment_verified,
+        client_phone_verified, ai_score, proposal_text, template_used, platform,
+        internal_notes, skill_analysis, ai_summary
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
       RETURNING *;
     `;
 
@@ -55,7 +82,24 @@ export class LeadModel {
       data.timeline_start,
       data.timeline_end,
       data.posted_on || new Date(),
-      JSON.stringify(data.documents || [])
+      JSON.stringify(data.documents || []),
+      data.external_job_id,
+      data.experience_level,
+      data.job_type,
+      data.budget,
+      data.hourly_rate,
+      data.client_rating,
+      data.client_spend,
+      data.client_jobs_posted,
+      data.client_payment_verified || false,
+      data.client_phone_verified || false,
+      data.ai_score || 0,
+      data.proposal_text,
+      data.template_used,
+      data.platform || 'Upwork',
+      data.internal_notes,
+      data.skill_analysis ? JSON.stringify(data.skill_analysis) : null,
+      data.ai_summary
     ];
 
     try {

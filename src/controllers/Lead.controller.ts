@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '@/types';
 import { LeadModel } from '@/models/Lead.model';
+import { LeadStatusModel } from '@/models/LeadStatus.model';
 
 export class LeadController {
   
@@ -22,7 +23,18 @@ export class LeadController {
       };
 
       console.log('--- CREATE LEAD REQUEST ---');
-      console.log('Body:', JSON.stringify(req.body, null, 2));
+      console.log('Incoming Body Fields:', Object.keys(req.body));
+      console.log('AI Summary Received:', req.body.ai_summary || req.body.aiSummary ? 'YES' : 'NO');
+
+      // Fetch default status if not provided in request (or if it's the generic 'Open')
+      let statusToSet = req.body.status;
+      const defaultStatus = await LeadStatusModel.findDefault(tenantId);
+      
+      if (!statusToSet || (statusToSet.toLowerCase() === 'open' && defaultStatus)) {
+        if (defaultStatus) {
+          statusToSet = defaultStatus.name;
+        }
+      }
 
       const leadData = {
         tenant_id: tenantId,
@@ -37,12 +49,38 @@ export class LeadController {
         hour_based_amount: req.body.hourBasedAmount,
         job_link: req.body.jobLink,
         est_project_duration: req.body.estOrProjectDuration,
-        status: req.body.status,
+        status: statusToSet,
         actions_item: req.body.actions,
         timeline_start: parseDate(req.body.timeline?.[0]),
         timeline_end: parseDate(req.body.timeline?.[1]),
         posted_on: parseDate(req.body.postedOn) || new Date(),
-        documents: req.body.documents
+        
+        // Job Metadata
+        external_job_id: req.body.externalJobId,
+        experience_level: req.body.experienceLevel,
+        job_type: req.body.jobType,
+        budget: req.body.budget,
+        hourly_rate: req.body.hourlyRate,
+        
+        // Client Quality Data
+        client_rating: req.body.clientRating,
+        client_spend: req.body.clientSpend,
+        client_jobs_posted: req.body.clientJobsPosted,
+        client_payment_verified: req.body.clientPaymentVerified,
+        client_phone_verified: req.body.clientPhoneVerified,
+        
+        // AI & Proposal Data
+        ai_score: req.body.aiScore,
+        proposal_text: req.body.proposalText,
+        template_used: req.body.templateUsed,
+        platform: req.body.platform || (req.body.jobLink?.toLowerCase().includes('upwork.com') ? 'Upwork' : 
+                   req.body.jobLink?.toLowerCase().includes('freelancer.com') ? 'Freelancer' :
+                   req.body.jobLink?.toLowerCase().includes('fiverr.com') ? 'Fiverr' :
+                   req.body.jobLink?.toLowerCase().includes('linkedin.com') ? 'LinkedIn' : 'Upwork'),
+        internal_notes: req.body.internalNotes,
+        skill_analysis: req.body.skillAnalysis,
+        ai_summary: req.body.ai_summary || req.body.aiSummary,
+        documents: req.body.attachments || req.body.documents
       };
 
       console.log('Mapped LeadData:', JSON.stringify(leadData, null, 2));
@@ -55,6 +93,15 @@ export class LeadController {
       });
     } catch (error: any) {
       console.error('Create Lead Error:', error);
+      
+      // Handle Unique Constraint Violation (Postgres Error 23505)
+      if (error.code === '23505') {
+        return res.status(409).json({ 
+          success: false, 
+          error: 'A lead with this job link already exists in your pipeline.' 
+        });
+      }
+
       return res.status(500).json({
         success: false,
         error: error.message || 'Internal server error',
@@ -146,7 +193,32 @@ export class LeadController {
         status: 'status',
         actions: 'actions_item',
         postedOn: 'posted_on',
-        documents: 'documents'
+        documents: 'documents',
+        
+        // Job Metadata
+        externalJobId: 'external_job_id',
+        experienceLevel: 'experience_level',
+        jobType: 'job_type',
+        budget: 'budget',
+        hourlyRate: 'hourly_rate',
+        
+        // Client Quality Data
+        clientRating: 'client_rating',
+        clientSpend: 'client_spend',
+        clientJobsPosted: 'client_jobs_posted',
+        clientPaymentVerified: 'client_payment_verified',
+        clientPhoneVerified: 'client_phone_verified',
+        
+        // AI & Proposal Data
+        aiScore: 'ai_score',
+        proposalText: 'proposal_text',
+        templateUsed: 'template_used',
+        platform: 'platform',
+        internalNotes: 'internal_notes',
+        skillAnalysis: 'skill_analysis',
+        aiSummary: 'ai_summary',
+        ai_summary: 'ai_summary',
+        attachments: 'documents'
       };
 
       const parseDate = (val: any) => {
@@ -184,6 +256,15 @@ export class LeadController {
       });
     } catch (error: any) {
       console.error('Update Lead Error:', error);
+
+      // Handle Unique Constraint Violation (Postgres Error 23505)
+      if (error.code === '23505') {
+        return res.status(409).json({ 
+          success: false, 
+          error: 'Update failed: Another lead already exists with this job link.' 
+        });
+      }
+
       return res.status(500).json({
         success: false,
         error: error.message || 'Internal server error'

@@ -6,11 +6,10 @@ import { resolveTenant, requireTenant } from '@/middleware/tenantContext';
 const router = Router();
 
 /**
- * Apply tenant resolution to all lead routes
+ * Apply tenant resolution to all lead routes (no authentication required)
  */
 router.use(resolveTenant);
 router.use(requireTenant);
-router.use(authenticateToken);
 
 /**
  * Lead Routes

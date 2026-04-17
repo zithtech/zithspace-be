@@ -100,6 +100,9 @@ const companyLocationRoutes_1 = __importDefault(require("@/routes/companyLocatio
 const openingManagementRoutes_1 = __importDefault(require("@/routes/openingManagementRoutes"));
 const escalationSettingsRoutes_1 = __importDefault(require("./routes/escalationSettingsRoutes"));
 const escalationRoutes_1 = __importDefault(require("./routes/escalationRoutes"));
+const lead_routes_1 = __importDefault(require("@/routes/lead.routes"));
+const leadSettings_routes_1 = __importDefault(require("@/routes/leadSettings.routes"));
+const generate_routes_1 = __importDefault(require("@/routes/generate.routes"));
 // Load environment
 dotenv_1.default.config();
 console.log("🚀 API Starting up...");
@@ -116,6 +119,7 @@ const allowedOrigins = [
     "https://zithmi.zithspace.com",
     /\.zithspace\.com$/,
     /\.zithtech\.com$/, // allow any subdomain like dinesh.zithtech.com
+    /^chrome-extension:\/\/[a-z]{32}$/, // Allow Chrome extensions
 ];
 app.use((0, cors_1.default)({
     origin: (origin, callback) => {
@@ -189,6 +193,7 @@ app.get("/api/direct-test", (req, res) => {
 app.get("/api/debug-ping-unique", (req, res) => res.json({ success: true, message: "Debug route is active" }));
 app.use("/api", proxyRoutes_1.default);
 app.use("/api/auth", auth_1.default);
+app.use("/api/generate", generate_routes_1.default);
 app.use("/api/projects", projects_1.default);
 app.use("/api/tenants", tenants_1.default);
 app.use("/api/calendar", calendar_1.default);
@@ -232,6 +237,8 @@ app.use("/api/grades", gradeRoutes_1.default);
 app.use("/api/payroll", payroll_1.default);
 app.use("/api/company-locations", companyLocationRoutes_1.default);
 app.use("/api/opening-management", openingManagementRoutes_1.default);
+app.use("/api/leads", lead_routes_1.default);
+app.use("/api/lead-settings", leadSettings_routes_1.default);
 app.use("/api/departments", departmentRoutes_1.default);
 app.use("/api/sub-departments", subDepartmentRoutes_1.default);
 app.use("/api/positions", positionRoutes_1.default);
