@@ -55,6 +55,7 @@ const messages_1 = __importDefault(require("@/routes/messages"));
 const shortcut_routes_1 = __importDefault(require("@/routes/shortcut.routes"));
 const employeeWorkDetailes_1 = __importDefault(require("@/routes/employeeWorkDetailes"));
 const employeeTimeline_1 = __importDefault(require("@/routes/employeeTimeline"));
+const skillExperience_routes_1 = __importDefault(require("@/routes/skillExperience.routes"));
 const escalationCategoryV2_routes_1 = __importDefault(require("@/routes/escalationCategoryV2.routes"));
 const escalationStatus_RoutesV2_1 = __importDefault(require("@/routes/escalationStatus.RoutesV2"));
 const escalationPriorities_Routes_1 = __importDefault(require("@/routes/escalationPriorities.Routes"));
@@ -101,6 +102,9 @@ const recruitmentAction_routes_1 = __importDefault(require("@/routes/recruitment
 const candidateRoutes_1 = __importDefault(require("@/routes/candidateRoutes"));
 const companyLocationRoutes_1 = __importDefault(require("@/routes/companyLocationRoutes"));
 const openingManagementRoutes_1 = __importDefault(require("@/routes/openingManagementRoutes"));
+const lead_routes_1 = __importDefault(require("@/routes/lead.routes"));
+const leadSettings_routes_1 = __importDefault(require("@/routes/leadSettings.routes"));
+const generate_routes_1 = __importDefault(require("@/routes/generate.routes"));
 // import escalationSettingsRoutes from "./routes/escalationSettingsRoutes";
 // import escalationRoutes from "./routes/escalationRoutes";
 const escalationRoutesV2_1 = __importDefault(require("./routes/escalationRoutesV2"));
@@ -121,6 +125,7 @@ const allowedOrigins = [
     "https://zithmi.zithspace.com",
     /\.zithspace\.com$/,
     /\.zithtech\.com$/, // allow any subdomain like dinesh.zithtech.com
+    /^chrome-extension:\/\/[a-z]{32}$/, // Allow Chrome extensions
 ];
 app.use((0, cors_1.default)({
     origin: (origin, callback) => {
@@ -194,6 +199,7 @@ app.get("/api/direct-test", (req, res) => {
 app.get("/api/debug-ping-unique", (req, res) => res.json({ success: true, message: "Debug route is active" }));
 app.use("/api", proxyRoutes_1.default);
 app.use("/api/auth", auth_1.default);
+app.use("/api/generate", generate_routes_1.default);
 app.use("/api/projects", projects_1.default);
 app.use("/api/tenants", tenants_1.default);
 app.use("/api/calendar", calendar_1.default);
@@ -238,6 +244,9 @@ app.use("/api/grades", gradeRoutes_1.default);
 app.use("/api/payroll", payroll_1.default);
 app.use("/api/company-locations", companyLocationRoutes_1.default);
 app.use("/api/opening-management", openingManagementRoutes_1.default);
+app.use("/api/leads", lead_routes_1.default);
+app.use("/api/lead-settings", leadSettings_routes_1.default);
+app.use("/api", skillExperience_routes_1.default);
 app.use("/api/departments", departmentRoutes_1.default);
 app.use("/api/sub-departments", subDepartmentRoutes_1.default);
 app.use("/api/positions", positionRoutes_1.default);

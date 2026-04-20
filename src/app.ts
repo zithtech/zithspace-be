@@ -53,6 +53,7 @@ import messageRoutes from "@/routes/messages";
 import shortcutRoutes from "@/routes/shortcut.routes";
 import employeeWorkDetailRoutes from "@/routes/employeeWorkDetailes";
 import employeeTimelineRoutes from "@/routes/employeeTimeline";
+import skillExperienceRoutes from "@/routes/skillExperience.routes";
 import escalationCategoryRoutes from "@/routes/escalationCategoryV2.routes";
 import escalationStatusRoutes from "@/routes/escalationStatus.RoutesV2";
 import escalationPriorityRoutes from "@/routes/escalationPriorities.Routes";
@@ -103,6 +104,10 @@ import recruitmentActionRoutes from "@/routes/recruitmentAction.routes";
 import candidateRoutes from "@/routes/candidateRoutes";
 import companyLocationRoutes from "@/routes/companyLocationRoutes";
 import openingManagementRoutes from "@/routes/openingManagementRoutes";
+
+import leadRoutes from "@/routes/lead.routes";
+import leadSettingsRoutes from "@/routes/leadSettings.routes";
+import generateRoutes from "@/routes/generate.routes";
 // import escalationSettingsRoutes from "./routes/escalationSettingsRoutes";
 // import escalationRoutes from "./routes/escalationRoutes";
 import escalationRoutesV2 from "./routes/escalationRoutesV2";
@@ -125,6 +130,7 @@ const allowedOrigins = [
   "https://zithmi.zithspace.com",
   /\.zithspace\.com$/,
   /\.zithtech\.com$/, // allow any subdomain like dinesh.zithtech.com
+  /^chrome-extension:\/\/[a-z]{32}$/, // Allow Chrome extensions
 ];
 
 app.use(
@@ -221,6 +227,7 @@ app.get("/api/debug-ping-unique", (req, res) => res.json({ success: true, messag
 
 app.use("/api", proxyRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/generate", generateRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/tenants", tenantRoutes);
 app.use("/api/calendar", calendarRoutes);
@@ -265,6 +272,9 @@ app.use("/api/grades", gradeRoutes);
 app.use("/api/payroll", payrollRoutes);
 app.use("/api/company-locations", companyLocationRoutes);
 app.use("/api/opening-management", openingManagementRoutes);
+app.use("/api/leads", leadRoutes);
+app.use("/api/lead-settings", leadSettingsRoutes);
+app.use("/api", skillExperienceRoutes);
 
 app.use("/api/departments", departmentRoutes);
 app.use("/api/sub-departments", subDepartmentRoutes);
