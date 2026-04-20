@@ -44,7 +44,7 @@ function mapRowToInvoiceTemplate(row: any): InvoiceTemplate {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     createdById: row.created_by,
-    updatedById: row.updated_by_id,
+    updatedById: null,
   };
 }
 
@@ -103,18 +103,18 @@ export class InvoiceTemplateModel {
       if (data.isDefault) {
         const unsetDefaultQuery = `
           UPDATE invoice_templates 
-          SET is_default = false, updated_by_id_id = $1, updated_at = NOW()
-          WHERE tenant_id = $2 AND billing_type = $3 AND is_default = true
+          SET is_default = false, updated_at = NOW()
+          WHERE tenant_id = $1 AND billing_type = $2 AND is_default = true
         `;
-        await client.query(unsetDefaultQuery, [userId, tenantId, data.billingType]);
+        await client.query(unsetDefaultQuery, [tenantId, data.billingType]);
       }
 
       // Insert the template
       const insertTemplateQuery = `
         INSERT INTO invoice_templates (
           tenant_id, name, description, billing_type, is_default, is_active,
-          created_by, updated_by_id_id, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+          created_by, created_at, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
         RETURNING *
       `;
       
@@ -125,7 +125,6 @@ export class InvoiceTemplateModel {
         data.billingType,
         data.isDefault || false,
         data.isActive !== undefined ? data.isActive : true,
-        userId,
         userId
       ];
 
@@ -140,8 +139,8 @@ export class InvoiceTemplateModel {
           const insertFieldQuery = `
             INSERT INTO invoice_template_fields (
               template_id, field_key, field_label, field_type, field_order,
-              is_required, is_system, options, created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+              is_required, is_system, options, created_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
             RETURNING *
           `;
           
@@ -249,10 +248,10 @@ export class InvoiceTemplateModel {
       if (data.isDefault && !existingTemplate.is_default) {
         const unsetDefaultQuery = `
           UPDATE invoice_templates 
-          SET is_default = false, updated_by_id_id = $1, updated_at = NOW()
+          SET is_default = false,  = $1, updated_at = NOW()
           WHERE tenant_id = $2 AND billing_type = $3 AND is_default = true AND id != $4
         `;
-        await client.query(unsetDefaultQuery, [userId, tenantId, existingTemplate.billing_type, templateId]);
+        await client.query(unsetDefaultQuery, [tenantId, existingTemplate.billing_type, templateId]);
       }
 
       // Build dynamic update query
@@ -285,9 +284,7 @@ export class InvoiceTemplateModel {
         throw new Error('No fields to update');
       }
 
-      updateFields.push(`updated_by_id_id = $${paramIndex++}`);
       updateFields.push(`updated_at = NOW()`);
-      updateValues.push(userId);
 
       const updateQuery = `
         UPDATE invoice_templates 
@@ -312,8 +309,8 @@ export class InvoiceTemplateModel {
             const insertFieldQuery = `
               INSERT INTO invoice_template_fields (
                 template_id, field_key, field_label, field_type, field_order,
-                is_required, is_system, options, created_at, updated_at
-              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())
+                is_required, is_system, options, created_at
+              ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
               RETURNING *
             `;
             

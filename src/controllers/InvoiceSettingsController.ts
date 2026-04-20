@@ -1,11 +1,31 @@
 import { Response } from 'express';
-import { prisma } from "@/config/database";
 import {
   AuthRequest,
   ApiResponse,
   NotFoundError,
   ValidationError,
 } from '@/types';
+import {
+  getSettingsProfiles,
+  getSettingsProfileById,
+  createSettingsProfile,
+  updateSettingsProfile,
+  deleteSettingsProfile,
+  setActiveProfile,
+  getActiveSettingsProfile
+} from '@/models/settingsProfile.model';
+import {
+  createGeneralSetting,
+  updateGeneralSetting
+} from '@/models/generalSettings.model';
+import {
+  createInvoiceSetting,
+  updateInvoiceSetting
+} from '@/models/invoiceSettings.model';
+import {
+  createPaymentSetting,
+  updatePaymentSetting
+} from '@/models/paymentSettings.model';
 
 const parseInvoiceFormat = (formatString: string) => {
   // Finds the sequence of # inside curly braces (e.g., {####})
@@ -58,28 +78,16 @@ export class InvoiceSettingsController {
         sortOrder = 'desc' 
       } = req.query;
 
-      const where: any = { tenantId: req.tenantId };
-      if (isActive !== 'all') where.isActive = isActive === 'true';
-      if (search) where.name = { contains: search as string, mode: 'insensitive' };
+      const options = {
+        page: Number(page),
+        limit: Number(limit),
+        isActive: isActive === 'all' ? 'all' : isActive === 'true',
+        search: search as string,
+        sortBy: sortBy as string,
+        sortOrder: sortOrder as 'asc' | 'desc'
+      } as const;
 
-      const orderBy: any = { [sortBy as string]: sortOrder === 'desc' ? 'desc' : 'asc' };
-      const skip = (Number(page) - 1) * Number(limit);
-
-      const [profiles, total] = await Promise.all([
-        prisma.settingsProfile.findMany({ 
-          where, 
-          orderBy, 
-          skip, 
-          take: Number(limit),
-          include: {
-            general: true,
-            invoice: true,
-            payment: true,
-          }
-        }),
-        prisma.settingsProfile.count({ where })
-      ]);
-
+      const { profiles, total } = await getSettingsProfiles(req.tenantId, options);
       const totalPages = Math.ceil(total / Number(limit));
 
       res.status(200).json({
@@ -107,14 +115,7 @@ export class InvoiceSettingsController {
       if (!req.tenantId) throw new ValidationError('Tenant context required');
 
       const { id } = req.params;
-      const profile = await prisma.settingsProfile.findFirst({ 
-        where: { id, tenantId: req.tenantId },
-        include: {
-          general: true,
-          invoice: true,
-          payment: true
-        }
-      });
+      const profile = await getSettingsProfileById(id, req.tenantId);
       
       if (!profile) throw new NotFoundError('Profile not found');
       
@@ -156,49 +157,60 @@ export class InvoiceSettingsController {
     const parsedInvoiceData = parseInvoiceFormat(invoiceFormatString);
     // --- DYNAMIC DESTRUCTURING END ---
 
-    const newProfile = await prisma.settingsProfile.create({
-      data: {
-        name,
-        isActive: false,
-        tenant: { connect: { id: req.tenantId } },
-        createdBy: req.user.id,
-
-        general: {
-          create: {
-            ...general,
-            gstin: general.gstin === "" ? null : general.gstin,
-            pan: general.pan === "" ? null : general.pan,
-            tenant: { connect: { id: req.tenantId } },
-            createdBy: req.user.id,
-          }
-        },
-
-        invoice: {
-          create: {
-            ...parsedInvoiceData, // This now contains dynamic padding, resetYearly, etc.
-            tenant: { connect: { id: req.tenantId } },
-            createdBy: req.user.id,
-          }
-        },
-
-        payment: {
-          create: {
-            ...payment,
-            tenant: { connect: { id: req.tenantId } },
-            createdBy: req.user.id,
-          }
-        },
-      },
-      include: {
-        general: true,
-        invoice: true,
-        payment: true
-      }
+    // Create general setting
+    const generalSetting = await createGeneralSetting({
+      tenantId: req.tenantId,
+      companyName: general.companyName || '',
+      address: general.address || {},
+      primaryColor: general.primaryColor || '#000000',
+      currency: general.currency || 'USD',
+      dateFormat: general.dateFormat || 'DD/MM/YYYY',
+      companyLogo: general.companyLogo,
+      signature: general.signature,
+      gstin: general.gstin === "" ? null : general.gstin,
+      pan: general.pan === "" ? null : general.pan,
+      createdBy: req.user.id,
     });
+
+    // Create invoice setting
+    const invoiceSetting = await createInvoiceSetting({
+      tenantId: req.tenantId,
+      format: parsedInvoiceData.format,
+      nextNumber: parsedInvoiceData.nextNumber,
+      resetYearly: parsedInvoiceData.resetYearly,
+      lastResetYear: parsedInvoiceData.lastResetYear,
+      padding: parsedInvoiceData.padding,
+      createdBy: req.user.id,
+    });
+
+    // Create payment setting
+    const paymentSetting = await createPaymentSetting({
+      tenantId: req.tenantId,
+      bankName: payment.bankName || '',
+      accountNumber: payment.accountNumber || '',
+      ifscCode: payment.ifscCode || '',
+      branchName: payment.branchName || '',
+      qrCode: payment.qrCode,
+      createdBy: req.user.id,
+    });
+
+    // Create settings profile
+    const newProfile = await createSettingsProfile({
+      tenantId: req.tenantId,
+      name,
+      isActive: false,
+      generalId: generalSetting.id,
+      invoiceId: invoiceSetting.id,
+      paymentId: paymentSetting.id,
+      createdBy: req.user.id,
+    });
+
+    // Get the complete profile with relations
+    const completeProfile = await getSettingsProfileById(newProfile.id, req.tenantId);
 
     res.status(201).json({
       success: true,
-      data: newProfile,
+      data: completeProfile,
       message: 'Profile created successfully'
     } as ApiResponse);
 
@@ -221,67 +233,47 @@ export class InvoiceSettingsController {
     const { name, general, invoice, payment } = req.body;
 
     // 1. Fetch existing profile to get foreign keys (generalId, invoiceId, etc.)
-    const existing = await prisma.settingsProfile.findFirst({ 
-      where: { id, tenantId: req.tenantId } 
-    });
+    const existing = await getSettingsProfileById(id, req.tenantId);
     
     if (!existing) {
       res.status(404).json({ success: false, error: 'Profile not found' });
       return;
     }
 
-    // 2. Perform the update with explicit 'where' for children
-    const updatedProfile = await prisma.settingsProfile.update({
-      where: { id },
-      data: {
-        name,
+    // 2. Update related settings if provided
+    if (general) {
+      await updateGeneralSetting(existing.generalId, req.tenantId, {
+        ...general,
+        gstin: general.gstin === "" ? null : general.gstin,
+        pan: general.pan === "" ? null : general.pan,
         updatedBy: req.user.id,
-        
-        // Update General Settings
-        general: general ? {
-          update: {
-            where: { id: existing.generalId },
-            data: { 
-              ...general, 
-              gstin: general.gstin === "" ? null : general.gstin,
-              pan: general.pan === "" ? null : general.pan,
-              id: undefined, // Strip ID so Prisma doesn't try to overwrite PK
-              tenantId: undefined,
-              updatedBy: req.user.id 
-            }
-          }
-        } : undefined,
+      });
+    }
 
-        // Update Invoice Settings
-        invoice: invoice ? {
-          update: {
-            where: { id: existing.invoiceId },
-            data: { 
-              ...invoice, 
-              id: undefined,
-              tenantId: undefined,
-              updatedBy: req.user.id 
-            }
-          }
-        } : undefined,
+    if (invoice) {
+      await updateInvoiceSetting(existing.invoiceId, req.tenantId, {
+        ...invoice,
+        updatedBy: req.user.id,
+      });
+    }
 
-        // Update Payment Settings
-        payment: payment ? {
-          update: {
-            where: { id: existing.paymentId },
-            data: { 
-              ...payment, 
-              id: undefined,
-              tenantId: undefined,
-              updatedBy: req.user.id 
-            }
-          }
-        } : undefined,
-      },
-      include: { general: true, invoice: true, payment: true }
+    if (payment) {
+      await updatePaymentSetting(existing.paymentId, req.tenantId, {
+        ...payment,
+        updatedBy: req.user.id,
+      });
+    }
+
+    // 3. Update the profile
+    const updatedProfile = await updateSettingsProfile(id, req.tenantId, {
+      name,
+      updatedBy: req.user.id,
     });
 
-    res.status(200).json({ success: true, data: updatedProfile });
+    // 4. Get the complete updated profile with relations
+    const completeProfile = await getSettingsProfileById(id, req.tenantId);
+
+    res.status(200).json({ success: true, data: completeProfile });
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, error: 'Internal Server Error' });
@@ -298,26 +290,21 @@ static async hardDeleteProfile(req: AuthRequest, res: Response): Promise<void> {
     if (!req.tenantId) throw new ValidationError('Tenant context required');
     const { id } = req.params;
 
-    // 1. Fetch the profile to get the IDs of the related settings
-    const profile = await prisma.settingsProfile.findFirst({
-      where: { id, tenantId: req.tenantId }
-    });
+    // 1. Fetch the profile to verify it exists
+    const profile = await getSettingsProfileById(id, req.tenantId);
 
     if (!profile) throw new NotFoundError('Profile not found');
 
-    // 2. Transaction: Delete Parent first, then orphaned Children
-    // This prevents foreign key constraint violations
-    await prisma.$transaction([
-      prisma.settingsProfile.delete({ where: { id: profile.id } }),
-      prisma.generalSetting.delete({ where: { id: profile.generalId } }),
-      prisma.invoiceSetting.delete({ where: { id: profile.invoiceId } }),
-      prisma.paymentSetting.delete({ where: { id: profile.paymentId } }),
-    ]);
+    // 2. Delete the profile (cascade will handle related settings due to ON DELETE CASCADE)
+    const success = await deleteSettingsProfile(id, req.tenantId);
+
+    if (!success) {
+      throw new Error('Failed to delete profile');
+    }
 
     res.status(200).json({ success: true, message: 'Profile deleted permanently' });
 
   } catch (error: any) {
-    // Log the actual Prisma error to your server terminal to see the code (e.g., P2003)
     console.error('Hard delete error:', error);
     res.status(500).json({ success: false, error: 'Failed to delete profile' });
   }
@@ -335,14 +322,16 @@ static async hardDeleteProfile(req: AuthRequest, res: Response): Promise<void> {
     // 1. Read the boolean state from the body (sent from frontend)
     const { isActive } = req.body; 
 
-    // 2. Perform a single update ONLY on the targeted profile
-    const updatedProfile = await prisma.settingsProfile.update({
-      where: { id, tenantId: req.tenantId },
-      data: {
-        isActive: isActive,
-        updatedBy: req.user.id,
-      }
+    // 2. Update the profile status
+    const updatedProfile = await updateSettingsProfile(id, req.tenantId, {
+      isActive,
+      updatedBy: req.user.id,
     });
+
+    if (!updatedProfile) {
+      res.status(404).json({ success: false, error: 'Profile not found' });
+      return;
+    }
 
     res.status(200).json({ 
       success: true, 
@@ -360,21 +349,11 @@ static async getActiveProfiles(req: AuthRequest, res: Response): Promise<void> {
   try {
     if (!req.tenantId) throw new ValidationError('Tenant context required');
 
-    const activeProfiles = await prisma.settingsProfile.findMany({
-      where: {
-        tenantId: req.tenantId,
-        isActive: true // <--- The filter
-      },
-      include: {
-        general: true,
-        invoice: true,
-        payment: true
-      }
-    });
+    const activeProfile = await getActiveSettingsProfile(req.tenantId);
 
-    const sanitized = activeProfiles.map(p => InvoiceSettingsController.sanitizeProfile(p));
+    const sanitized = activeProfile ? InvoiceSettingsController.sanitizeProfile(activeProfile) : [];
 
-    res.status(200).json({ success: true, data: sanitized });
+    res.status(200).json({ success: true, data: Array.isArray(sanitized) ? sanitized : [sanitized] });
   } catch (error: any) {
     res.status(500).json({ success: false, error: 'Failed to fetch active profiles' });
   }
