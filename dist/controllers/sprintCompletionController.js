@@ -54,7 +54,7 @@ class SprintCompletionController {
                     sprintPlanId: sprintId,
                     tenantId: req.tenantId,
                     isDeleted: false,
-                    parentId: null, // Only parent tickets (not subtasks)
+                    // Removed parentId: null to include subtasks in completion summary
                 },
                 select: {
                     id: true,
@@ -72,8 +72,8 @@ class SprintCompletionController {
                 orderBy: { createdAt: "asc" },
             });
             // Separate completed and pending tickets
-            const completedTickets = tickets.filter((t) => t.status === "completed");
-            const pendingTickets = tickets.filter((t) => t.status !== "completed");
+            const completedTickets = tickets.filter((t) => t.status.toLowerCase() === "completed" || t.status.toLowerCase() === "live");
+            const pendingTickets = tickets.filter((t) => t.status.toLowerCase() !== "completed" && t.status.toLowerCase() !== "live");
             // Get available sprints for destination (same project, status: planning or active)
             const availableSprints = await database_1.prisma.releasePlan.findMany({
                 where: {
@@ -485,7 +485,10 @@ class SprintCompletionController {
                 where: {
                     sprintPlanId: sprintId,
                     tenantId: req.tenantId,
-                    status: { not: "completed" },
+                    isDeleted: false,
+                    NOT: {
+                        status: { in: ['completed', 'live', 'COMPLETED', 'LIVE'] }
+                    }
                 },
             });
             if (unresolvedTickets > 0 && !force) {
@@ -501,7 +504,10 @@ class SprintCompletionController {
                 where: {
                     tenantId: req.tenantId,
                     OR: [
-                        { sprintPlanId: sprintId, status: "completed" },
+                        {
+                            sprintPlanId: sprintId,
+                            status: { in: ['completed', 'live', 'COMPLETED', 'LIVE'] }
+                        },
                         // Include tickets that were moved but marked as completed
                         {
                             completedAt: {
@@ -516,19 +522,18 @@ class SprintCompletionController {
             const totalCompletedPoints = completedTickets.reduce((sum, t) => sum + (t.storyPoint || 0), 0);
             // Complete sprint and archive completed tickets in transaction
             const updatedSprint = await database_1.prisma.$transaction(async (tx) => {
-                // Archive all completed tickets from this sprint
+                // Archive all completed/live tickets from this sprint
                 await tx.ticket.updateMany({
                     where: {
                         sprintPlanId: sprintId,
                         tenantId: req.tenantId,
-                        status: "completed",
+                        status: { in: ['completed', 'live', 'COMPLETED', 'LIVE'] },
                         isDeleted: false,
                     },
                     data: {
                         isArchived: true,
                         archivedAt: new Date(),
                         archivedById: req.user.id,
-                        sprintPlanId: null, // Remove from sprint
                         updatedAt: new Date(),
                     },
                 });
