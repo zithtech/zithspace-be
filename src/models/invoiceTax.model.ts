@@ -229,6 +229,7 @@ export async function getInvoiceTaxesSummary(invoiceId: string, tenantId: string
 export async function createMultipleInvoiceTaxes(
   taxes: CreateInvoiceTaxData[]
 ): Promise<InvoiceTax[]> {
+  const { v4: uuidv4 } = require('uuid');
   const client = await pool.connect();
   
   try {
@@ -237,15 +238,17 @@ export async function createMultipleInvoiceTaxes(
     const createdTaxes: InvoiceTax[] = [];
     
     for (const tax of taxes) {
+      const id = uuidv4();
       const query = `
         INSERT INTO invoice_taxes (
-          tenant_id, invoice_id, tax_name, tax_rate, tax_amount, created_by
+          id, tenant_id, invoice_id, tax_name, tax_rate, tax_amount, created_by
         ) 
-        VALUES ($1, $2, $3, $4, $5, $6)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING *
       `;
       
       const values = [
+        id,
         tax.tenantId,
         tax.invoiceId,
         tax.taxName,

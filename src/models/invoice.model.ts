@@ -174,19 +174,23 @@ function mapRowToInvoice(row: any): Invoice {
  * Create a new invoice
  */
 export async function createInvoice(data: CreateInvoiceData): Promise<Invoice> {
+  const { v4: uuidv4 } = require('uuid');
+  const id = uuidv4();
+  
   const query = `
     INSERT INTO invoices (
-      tenant_id, invoice_number, customer_id, customer_snapshot, invoice_date, due_date,
+      id, tenant_id, invoice_number, customer_id, customer_snapshot, invoice_date, due_date,
       invoice_type, currency, recurring_frequency, tax_inclusive, subtotal, tax_total,
       paid_amount, balance_due, notes, terms, created_by, settings_profile_id,
       pdf_url, status, description, discount_total, grand_total, project_id,
       template_id, metadata
     ) 
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)
     RETURNING *
   `;
   
   const values = [
+    id,
     data.tenantId,
     data.invoiceNumber,
     data.customerId,

@@ -34,15 +34,19 @@ function mapRowToInvoiceAttachment(row: any): InvoiceAttachment {
  * Create a new invoice attachment
  */
 export async function createInvoiceAttachment(data: CreateInvoiceAttachmentData): Promise<InvoiceAttachment> {
+  const { v4: uuidv4 } = require('uuid');
+  const id = uuidv4();
+  
   const query = `
     INSERT INTO invoice_attachments (
-      invoice_id, file_name, file_url, uploaded_by
+      id, invoice_id, file_name, file_url, uploaded_by
     ) 
-    VALUES ($1, $2, $3, $4)
+    VALUES ($1, $2, $3, $4, $5)
     RETURNING *
   `;
   
   const values = [
+    id,
     data.invoiceId,
     data.fileName,
     data.fileUrl,
