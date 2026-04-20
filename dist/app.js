@@ -104,6 +104,7 @@ const openingManagementRoutes_1 = __importDefault(require("@/routes/openingManag
 // import escalationSettingsRoutes from "./routes/escalationSettingsRoutes";
 // import escalationRoutes from "./routes/escalationRoutes";
 const escalationRoutesV2_1 = __importDefault(require("./routes/escalationRoutesV2"));
+const proposals_1 = __importDefault(require("@/routes/proposals"));
 // Load environment
 dotenv_1.default.config();
 console.log("🚀 API Starting up...");
@@ -222,6 +223,7 @@ app.use("/api/leave-types", leaveTypeRoutes_1.default);
 app.use("/api/customers", customerRoutes_1.default);
 app.use("/api/invoicesetting", invoiceSettingsRoutes_1.default);
 app.use("/api/invoices", invoice_1.default);
+app.use("/api/proposals", proposals_1.default);
 app.use("/api/invoice-templates", invoiceTemplate_1.default);
 //app.use("/api/invoice",invoicedownload)
 app.use("/api/buckets", buckets_1.default);
