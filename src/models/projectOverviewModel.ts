@@ -43,6 +43,7 @@ export interface ProjectOverviewData {
   team: Array<{
     id: string;
     name: string;
+    avatarUrl: string | null;
     contribution: number;
     done: number;
     active: number;
@@ -142,7 +143,7 @@ export class ProjectOverviewModel {
       // 6. Team Progress
       const teamRes = await client.query(
         `SELECT 
-            u.id, u.name,
+            u.id, u.name, u.avatar_url,
             (SELECT count(*) FROM tickets t WHERE t.assignee_id = u.id AND t.project_id = $1 AND LOWER(t.status) IN ('completed', 'done', 'live', 'live (deployed)') AND t.is_deleted = false) as done_count,
             (SELECT count(*) FROM tickets t WHERE t.assignee_id = u.id AND t.project_id = $1 AND LOWER(t.status) IN ('in_progress', 'in_testing', 'started', 'active') AND t.is_deleted = false) as active_count,
             (SELECT count(*) FROM tickets t WHERE t.assignee_id = u.id AND t.project_id = $1 AND LOWER(t.status) IN ('not_started', 'todo', 'backlog') AND t.is_deleted = false) as todo_count,
@@ -162,6 +163,7 @@ export class ProjectOverviewModel {
         return {
           id: row.id,
           name: row.name,
+          avatarUrl: row.avatar_url,
           done,
           active,
           todo,

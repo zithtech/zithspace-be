@@ -1010,6 +1010,7 @@ export class UserController {
         email: member.workEmail,
         position: member.position?.title,
         role: member.role,
+        avatarUrl: member.avatarUrl,
       }));
 
       res.status(200).json({

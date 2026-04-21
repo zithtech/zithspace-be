@@ -102,10 +102,10 @@ export class EscalationModel {
                    ep.displayname as priority_name, ep.visualcolor as priority_color, ep.priorityweight as priority_weight,
                    es.displayname as status_name, es.visualcolor as status_color,
                    (SELECT json_build_object('name', p.name) FROM projects p WHERE p.id = e.project_id) as project,
-                   (SELECT json_build_object('id', u.id, 'name', u.name) FROM users u WHERE u.id = e.created_by_id) as "createdBy",
+                   (SELECT json_build_object('id', u.id, 'name', u.name, 'avatarUrl', u.avatar_url) FROM users u WHERE u.id = e.created_by_id) as "createdBy",
                    (
                        SELECT json_agg(json_build_object(
-                           'user', json_build_object('id', u_m.id, 'name', u_m.name)
+                           'user', json_build_object('id', u_m.id, 'name', u_m.name, 'avatarUrl', u_m.avatar_url)
                        ))
                        FROM escalation_team_members etm
                        JOIN users u_m ON etm.user_id = u_m.id
@@ -140,10 +140,10 @@ export class EscalationModel {
                    ep.displayname as priority_name, ep.visualcolor as priority_color, ep.priorityweight as priority_weight,
                    es.displayname as status_name, es.visualcolor as status_color,
                    (SELECT json_build_object('name', p.name) FROM projects p WHERE p.id = e.project_id) as project,
-                   (SELECT json_build_object('id', u.id, 'name', u.name) FROM users u WHERE u.id = e.created_by_id) as "createdBy",
+                   (SELECT json_build_object('id', u.id, 'name', u.name, 'avatarUrl', u.avatar_url) FROM users u WHERE u.id = e.created_by_id) as "createdBy",
                    (
                        SELECT json_agg(json_build_object(
-                           'user', json_build_object('id', u_m.id, 'name', u_m.name)
+                           'user', json_build_object('id', u_m.id, 'name', u_m.name, 'avatarUrl', u_m.avatar_url)
                        ))
                        FROM escalation_team_members etm
                        JOIN users u_m ON etm.user_id = u_m.id
