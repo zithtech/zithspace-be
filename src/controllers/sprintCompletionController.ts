@@ -68,7 +68,7 @@ export class SprintCompletionController {
           sprintPlanId: sprintId,
           tenantId: req.tenantId,
           isDeleted: false,
-          parentId: null, // Only parent tickets (not subtasks)
+          // Removed parentId: null to include subtasks in completion summary
         },
         select: {
           id: true,
@@ -87,8 +87,12 @@ export class SprintCompletionController {
       });
 
       // Separate completed and pending tickets
-      const completedTickets = tickets.filter((t) => t.status === "completed");
-      const pendingTickets = tickets.filter((t) => t.status !== "completed");
+      const completedTickets = tickets.filter((t) => 
+        t.status.toLowerCase() === "completed" || t.status.toLowerCase() === "live"
+      );
+      const pendingTickets = tickets.filter((t) => 
+        t.status.toLowerCase() !== "completed" && t.status.toLowerCase() !== "live"
+      );
 
       // Get available sprints for destination (same project, status: planning or active)
       const availableSprints = await prisma.releasePlan.findMany({
@@ -570,7 +574,10 @@ export class SprintCompletionController {
         where: {
           sprintPlanId: sprintId,
           tenantId: req.tenantId,
-          status: { not: "completed" },
+          isDeleted: false,
+          NOT: {
+            status: { in: ['completed', 'live', 'COMPLETED', 'LIVE'] }
+          }
         },
       });
 
@@ -588,7 +595,10 @@ export class SprintCompletionController {
         where: {
           tenantId: req.tenantId,
           OR: [
-            { sprintPlanId: sprintId, status: "completed" },
+            { 
+              sprintPlanId: sprintId, 
+              status: { in: ['completed', 'live', 'COMPLETED', 'LIVE'] }
+            },
             // Include tickets that were moved but marked as completed
             {
               completedAt: {
@@ -608,19 +618,18 @@ export class SprintCompletionController {
 
       // Complete sprint and archive completed tickets in transaction
       const updatedSprint = await prisma.$transaction(async (tx) => {
-        // Archive all completed tickets from this sprint
+        // Archive all completed/live tickets from this sprint
         await tx.ticket.updateMany({
           where: {
             sprintPlanId: sprintId,
             tenantId: req.tenantId,
-            status: "completed",
+            status: { in: ['completed', 'live', 'COMPLETED', 'LIVE'] },
             isDeleted: false,
           },
           data: {
             isArchived: true,
             archivedAt: new Date(),
             archivedById: req.user.id,
-            sprintPlanId: null, // Remove from sprint
             updatedAt: new Date(),
           },
         });

@@ -554,7 +554,13 @@ export class TicketController {
       };
 
       if (projectId) baseWhere.projectId = projectId;
-      if (priority) baseWhere.priority = priority;
+      if (priority) {
+        if (typeof priority === "string" && priority.includes(",")) {
+          baseWhere.priority = { in: priority.split(",").map((p) => p.trim()) };
+        } else {
+          baseWhere.priority = priority;
+        }
+      }
       if (assigneeId) {
         if (typeof assigneeId === "string" && assigneeId.includes(",")) {
           baseWhere.assigneeId = { in: assigneeId.split(",").map((id) => id.trim()) };
@@ -732,8 +738,20 @@ export class TicketController {
 
       const where: any = { ...baseWhere };
 
-      if (status) where.status = status;
-      if (priority) where.priority = priority;
+      if (status) {
+        if (typeof status === "string" && status.includes(",")) {
+          where.status = { in: status.split(",").map((s) => s.trim()) };
+        } else {
+          where.status = status;
+        }
+      }
+      if (priority) {
+        if (typeof priority === "string" && priority.includes(",")) {
+          where.priority = { in: priority.split(",").map((p) => p.trim()) };
+        } else {
+          where.priority = priority;
+        }
+      }
       if (projectId) where.projectId = projectId;
 
       // Handle single or multiple assignees
