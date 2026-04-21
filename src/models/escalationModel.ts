@@ -175,9 +175,9 @@ export class EscalationModel {
      * Update an escalation details
      */
     static async update(
-        id: string, 
-        tenantId: string, 
-        data: UpdateEscalationPayload, 
+        id: string,
+        tenantId: string,
+        data: UpdateEscalationPayload,
         updatedById: string
     ): Promise<any> {
         const fields: string[] = [];
