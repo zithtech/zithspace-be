@@ -120,6 +120,17 @@ router.put("/document/:id/share", (0, permission_1.requirePermission)(permission
  * @desc    Revoke document sharing
  * @access  Private
  */
-router.delete("/document/:id/share", (0, permission_1.requirePermission)(permissions_1.Permissions.DOCUMENT_UPDATE), documentHubController_1.DocumentHubController.revokeShare);
+/**
+ * @route   PUT /api/documenthub/:id/share
+ * @desc    Share entire document hub
+ * @access  Private
+ */
+router.put("/:id/share", (0, permission_1.requirePermission)(permissions_1.Permissions.DOCUMENT_UPDATE), documentHubController_1.DocumentHubController.shareDocumentHub);
+/**
+ * @route   DELETE /api/documenthub/:id/share
+ * @desc    Revoke hub sharing
+ * @access  Private
+ */
+router.delete("/:id/share", (0, permission_1.requirePermission)(permissions_1.Permissions.DOCUMENT_UPDATE), documentHubController_1.DocumentHubController.revokeHubShare);
 exports.default = router;
 //# sourceMappingURL=documenthub.js.map

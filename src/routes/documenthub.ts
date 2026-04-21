@@ -139,6 +139,18 @@ router.put("/document/:id/share", requirePermission(Permissions.DOCUMENT_UPDATE)
  * @desc    Revoke document sharing
  * @access  Private
  */
-router.delete("/document/:id/share", requirePermission(Permissions.DOCUMENT_UPDATE), DocumentHubController.revokeShare);
+/**
+ * @route   PUT /api/documenthub/:id/share
+ * @desc    Share entire document hub
+ * @access  Private
+ */
+router.put("/:id/share", requirePermission(Permissions.DOCUMENT_UPDATE), DocumentHubController.shareDocumentHub);
+
+/**
+ * @route   DELETE /api/documenthub/:id/share
+ * @desc    Revoke hub sharing
+ * @access  Private
+ */
+router.delete("/:id/share", requirePermission(Permissions.DOCUMENT_UPDATE), DocumentHubController.revokeHubShare);
 
 export default router;

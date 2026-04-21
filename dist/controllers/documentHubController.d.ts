@@ -49,4 +49,20 @@ export declare class DocumentHubController {
      * Get public document by share token
      */
     static getPublicDocument(req: any, res: Response): Promise<void>;
+    /**
+     * Share entire document hub
+     */
+    static shareDocumentHub(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Revoke document hub sharing
+     */
+    static revokeHubShare(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get public document hub by share token
+     */
+    static getPublicDocumentHub(req: any, res: Response): Promise<void>;
+    /**
+     * Get content of a document within a public hub
+     */
+    static getPublicHubDocumentContent(req: any, res: Response): Promise<void>;
 }
