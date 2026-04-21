@@ -12,6 +12,7 @@ export interface ProjectOverviewData {
     projectHead: string;
     teamCount: number;
     code: string | null;
+    projectHeadAvatar: string | null
   };
   ticketSummary: {
     total: number;
@@ -68,7 +69,7 @@ export class ProjectOverviewModel {
       // 1. Project Basic Info
       const projectRes = await client.query(
         `SELECT p.id, p.name, p.status, p.start_date, p.end_date, p.code, p.description, 
-                u.name as project_head,
+                u.name as project_head, u.avatar_url as project_head_avatar,
                 (SELECT count(*) FROM project_members pm WHERE pm.project_id = p.id) as team_count
          FROM projects p
          LEFT JOIN users u ON p.project_manager_id = u.id
@@ -221,6 +222,7 @@ export class ProjectOverviewModel {
           status: projectRow.status,
           progress: projectProgress,
           projectHead: projectRow.project_head || 'Not Assigned',
+          projectHeadAvatar: projectRow.project_head_avatar,
           teamCount: parseInt(projectRow.team_count || "0")
         },
         ticketSummary,
