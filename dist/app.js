@@ -412,7 +412,9 @@ const startServer = async () => {
     try {
         // Connect PostgreSQL
         await (0, database_1.connectDatabase)();
-        // console.log("Database connected");
+        // Initialize Tables
+        const { BidIQModel } = require("./models/BidIQ.model");
+        await BidIQModel.initTable();
         // Connect RabbitMQ
         // await connectRabbitMQ();
         // console.log("RabbitMQ connected");
