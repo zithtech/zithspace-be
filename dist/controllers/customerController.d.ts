@@ -1,5 +1,5 @@
 import { Response } from "express";
-import { AuthRequest } from "@/types";
+import { AuthRequest } from "../types";
 export declare class CustomerController {
     /**
      * Get all customers (tenant-aware, with pagination and search)

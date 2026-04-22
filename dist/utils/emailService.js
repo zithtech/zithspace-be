@@ -361,7 +361,7 @@ If you have any questions or concerns, please contact your manager or HR departm
     </div>
   `;
         const options = {
-            from: process.env.SMTP_FROM_EMAIL || 'noreply@zithtech.com',
+            from: data.from || process.env.SMTP_FROM_EMAIL || 'noreply@zithtech.com',
             to: data.to,
             subject,
             html

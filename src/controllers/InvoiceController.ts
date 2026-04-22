@@ -1,16 +1,78 @@
-
 import { Response } from 'express';
-import { Prisma,PaymentStatus } from '@prisma/client'; // Add this import
-import { prisma } from "@/config/database";
+import { 
+  InvoiceStatus, 
+  InvoiceType,
+  CreateInvoiceData,
+  UpdateInvoiceData,
+  getInvoiceById,
+  updateInvoiceStatus,
+  updateInvoiceStatusAndBalance,
+  createInvoice,
+  updateInvoice,
+  deleteInvoice,
+  getInvoices,
+  getInvoiceStats,
+  markInvoiceAsSent,
+  getAllInvoices,
+  getInvoiceByNumber,
+  getDeletedInvoices
+} from '../models/invoice.model';
+import { emailService } from '../utils/emailService';
+import { 
+  PaymentStatus,
+  PaymentMethod,
+  getInvoicePayments,
+  createInvoicePayment
+} from '../models/invoicePayment.model';
+import { createTransaction } from '../models/transaction.model';
 import { 
   AuthRequest, 
   ApiResponse, 
   NotFoundError, 
   ValidationError 
-} from '@/types';
-import { generateAndUploadInvoicePDF } from '@/services/pdfService';
-import { deleteFileFromR2 } from '@/utils/r2Client';
-import { EmailLoggerService } from '@/services/emailLoggerService';
+} from '../types';
+import { generateAndUploadInvoicePDF } from '../services/pdfService';
+import { deleteFileFromR2 } from '../utils/r2Client';
+import { EmailLoggerService } from '../services/emailLoggerService';
+import pool from '../config/dbpool';
+import { 
+  getSettingsProfileById
+} from '../models/settingsProfile.model';
+import { 
+  createMultipleInvoiceLineItems,
+  updateInvoiceLineItem,
+  deleteInvoiceLineItemsByInvoiceId,
+  CreateInvoiceLineItemData,
+  UpdateInvoiceLineItemData
+} from '../models/invoiceLineItem.model';
+import { 
+  createMultipleInvoiceTaxes,
+  deleteInvoiceTaxesByInvoiceId,
+  CreateInvoiceTaxData
+} from '../models/invoiceTax.model';
+import { 
+  createInvoiceAttachment,
+  deleteInvoiceAttachmentsByInvoiceId,
+  getInvoiceAttachments,
+  CreateInvoiceAttachmentData
+} from '../models/invoiceAttachment.model';
+import { 
+  getInvoiceLineItems
+} from '../models/invoiceLineItem.model';
+import { 
+  getInvoiceTaxes
+} from '../models/invoiceTax.model';
+import { 
+  createInvoiceActivityLog 
+} from '../models/invoiceActivityLog.model';
+import { 
+  deleteInvoice as softDeleteInvoice,
+  restoreInvoice,
+  hardDeleteInvoice
+} from '../models/invoice.model';
+import { 
+  PaymentStatus as InvoicePaymentStatus
+} from '../models/invoicePayment.model';
 
 export class InvoiceController {
 
@@ -43,18 +105,16 @@ export class InvoiceController {
       lineDiscountTotal += d;
 
       const linePrice = qty * price;
-      // 💡 Apply line-level discount BEFORE tax if we want consistent subtotal + tax = total
+      // Apply line-level discount BEFORE tax if we want consistent subtotal + tax = total
       const discountedBase = Math.max(0, linePrice - d);
 
       if (taxInclusive && taxRate > 0) {
         const netAmount = discountedBase / (1 + taxRate / 100);
-        const lineTax = discountedBase - netAmount;
         subtotal += netAmount;
-        taxTotal += lineTax;
+        taxTotal += discountedBase - netAmount;
       } else {
-        const lineTax = discountedBase * (taxRate / 100);
         subtotal += discountedBase;
-        taxTotal += lineTax;
+        taxTotal += discountedBase * (taxRate / 100);
       }
     });
 
@@ -80,721 +140,302 @@ export class InvoiceController {
   /** ====================
    *  Helper: Generate invoice number
    * ==================== */
-
-
-private static async generateInvoiceNumber(
-  dbClient: any,
-  tenantId: string, 
-  profileId: string
-): Promise<string> {
-  console.log('🔢 Generating invoice number - Tenant:', tenantId, 'Profile:', profileId);
-  
-  try {
-    // 1. Get the profile for formatting
-    const profile = await dbClient.settingsProfile.findFirst({
-      where: { id: profileId, tenantId },
-      include: { invoice: true }
-    });
-
-    if (!profile || !profile.invoice) {
-      throw new ValidationError('Invoice settings profile not found');
-    }
-
-    const settings = profile.invoice;
-    const now = new Date();
-    const currentYear = now.getFullYear();
+  private static async generateInvoiceNumber(
+    tenantId: string, 
+    profileId: string
+  ): Promise<string> {
+    console.log('Generating invoice number - Tenant:', tenantId, 'Profile:', profileId);
     
-    console.log('📋 Profile format:', profile.name, '-', settings.format);
+    try {
+      // 1. Get the profile for formatting
+      const profile = await getSettingsProfileById(profileId, tenantId);
 
-    // ✅ FIX: Get ALL invoices including soft-deleted ones
-    // Do NOT filter by deletedAt - we need to see deleted records too
-    const allInvoices = await dbClient.invoice.findMany({
-      where: { 
-        tenantId 
-        // ❌ NO deletedAt filter here - include ALL records
-      },
-      select: { 
-        invoiceNumber: true
+      if (!profile || !profile.invoice) {
+        throw new ValidationError('Invoice settings profile not found');
       }
-    });
 
-    console.log(`📊 Found ${allInvoices.length} total invoices (including deleted)`);
-
-    // Extract all numbers from existing invoices (including deleted)
-    let highestNumber = 0;
-    allInvoices.forEach((invoice: any) => {
-      // Match numbers at the end of the string
-      const match = invoice.invoiceNumber.match(/(\d+)$/);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        if (num > highestNumber) {
-          highestNumber = num;
-        }
-      }
-    });
-
-    console.log('📈 Highest invoice number ever used (including deleted):', highestNumber);
-
-    // Start from highest + 1 (NEVER reuse numbers)
-    let nextNumber = highestNumber + 1;
-    
-    // Check if yearly reset is enabled in profile settings
-    if (settings.resetYearly) {
-      // Check highest number for current year (including deleted)
-      let highestThisYear = 0;
-      allInvoices.forEach((inv: any) => {
-        if (inv.invoiceNumber.includes(`-${currentYear}-`) || 
-            inv.invoiceNumber.includes(`/${currentYear}/`)) {
-          const match = inv.invoiceNumber.match(/(\d+)$/);
-          if (match) {
-            const num = parseInt(match[1], 10);
-            if (num > highestThisYear) {
-              highestThisYear = num;
-            }
-          }
-        }
-      });
+      const settings = profile.invoice;
+      const now = new Date();
+      const currentYear = now.getFullYear();
       
-      if (highestThisYear === 0) {
-        // First invoice of the year
-        nextNumber = 1;
-        console.log('🔄 First invoice of the year, starting from 1');
-      } else {
-        nextNumber = highestThisYear + 1;
-        console.log(`📊 Highest in ${currentYear}: ${highestThisYear}, next: ${nextNumber}`);
-      }
-    }
+      console.log('Profile format:', profile.name, '-', settings.format);
 
-    console.log('🔢 Next invoice number (will not reuse deleted numbers):', nextNumber);
-
-    // Format the invoice number
-    const paddedNumber = nextNumber.toString().padStart(settings.padding, '0');
-    let formattedNumber = settings.format
-      .replace('{YYYY}', currentYear.toString())
-      .replace('{YY}', (currentYear % 100).toString().padStart(2, '0'))
-      .replace('{MM}', (now.getMonth() + 1).toString().padStart(2, '0'))
-      .replace('{DD}', now.getDate().toString().padStart(2, '0'))
-      .replace('{###}', paddedNumber);
-
-    console.log('✨ Formatted invoice number:', formattedNumber);
-
-    return formattedNumber;
-
-  } catch (error) {
-    console.error('❌ Error in generateInvoiceNumber:', error);
-    throw error;
-  }
-}
-
-  /** ====================
-   *  Get next invoice number (pre-generate)
-   * ==================== */
-
-
-
-
-static async getNextInvoiceNumber(req: AuthRequest, res: Response): Promise<void> {
-  try {
-    if (!req.tenantId) {
-      throw new ValidationError('Tenant context required');
-    }
-
-    const { profileId } = req.query;
-
-    // 1. Get profile for formatting (either specified or active)
-    const profile = await prisma.settingsProfile.findFirst({
-      where: { 
-        id: profileId ? String(profileId) : undefined,
-        tenantId: req.tenantId,
-        isActive: profileId ? undefined : true 
-      },
-      include: { invoice: true }
-    });
-
-    if (!profile?.invoice) {
-      throw new ValidationError('Invoice settings profile not found');
-    }
-
-    const settings = profile.invoice;
-    const currentYear = new Date().getFullYear();
-    
-    // 2. Get ALL invoices including soft-deleted for this tenant
-    const allInvoices = await prisma.invoice.findMany({
-      where: { tenantId: req.tenantId },
-      select: { invoiceNumber: true }
-    });
-
-    // 3. Calculate next number based on ALL invoices (including deleted)
-    let nextNumber: number;
-    
-    if (settings.resetYearly) {
-      // Find highest number in current year (including deleted)
-      let highestThisYear = 0;
-      allInvoices.forEach((invoice: any) => {
-        if (invoice.invoiceNumber.includes(`-${currentYear}-`) || 
-            invoice.invoiceNumber.includes(`/${currentYear}/`)) {
-          const match = invoice.invoiceNumber.match(/(\d+)$/);
-          if (match) {
-            const num = parseInt(match[1], 10);
-            if (num > highestThisYear) {
-              highestThisYear = num;
-            }
-          }
-        }
+      // Get ALL invoices including soft-deleted ones
+      const { invoices: allInvoices } = await getAllInvoices(tenantId, {
+        page: 1,
+        limit: 10000, // Get all invoices
+        status: 'all'
       });
-      
-      nextNumber = highestThisYear === 0 ? 1 : highestThisYear + 1;
-    } else {
-      // Find highest number ever (including deleted)
-      let highestOverall = 0;
-      allInvoices.forEach((invoice: any) => {
-        const match = invoice.invoiceNumber.match(/(\d+)$/);
-        if (match) {
-          const num = parseInt(match[1], 10);
-          if (num > highestOverall) {
-            highestOverall = num;
-          }
-        }
-      });
-      nextNumber = highestOverall + 1;
-    }
 
-    // 4. Format the number with profile's format
-    const padded = nextNumber.toString().padStart(settings.padding, '0');
-    const now = new Date();
-    
-    let invoiceNumber = settings.format
-      .replace('{YYYY}', currentYear.toString())
-      .replace('{YY}', (currentYear % 100).toString().padStart(2, '0'))
-      .replace('{MM}', (now.getMonth() + 1).toString().padStart(2, '0'))
-      .replace('{DD}', now.getDate().toString().padStart(2, '0'))
-      .replace('{###}', padded);
+      console.log(`Found ${allInvoices.length} total invoices (including deleted)`);
 
-    console.log('📝 Next invoice number for profile', profile.name, ':', invoiceNumber);
-
-    res.status(200).json({ 
-      success: true, 
-      data: { 
-        invoiceNumber,
-        nextNumber,
-        profileName: profile.name,
-        format: settings.format
-      } 
-    });
-  } catch (error: any) {
-    console.error('Get next invoice number error:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message || 'Failed to get next invoice number' 
-    } as ApiResponse);
-  }
-}
-
-  
-
-  /** ====================
-   *  Create Invoice
-   * ==================== */
-
-
-
-
-
-static async createInvoice(req: AuthRequest, res: Response): Promise<void> {
-  try {
-    console.log('🔵 CREATE INVOICE START ====================');
-    
-    if (!req.tenantId || !req.user) {
-      console.error('❌ Missing tenant context or user');
-      res.status(400).json({ 
-        success: false, 
-        error: 'Tenant context and authentication required' 
-      });
-      return;
-    }
-
-    console.log('Tenant ID:', req.tenantId);
-    console.log('User ID:', req.user.id);
-
-    console.log('📦 INCOMING PAYLOAD:', JSON.stringify(req.body, null, 2));
-
-    // Extract all fields from request body
-    const { 
-      items: legacyItems,
-      lineItems: modernItems,
-      discount = 0, 
-      customerId, 
-      customerSnapshot, 
-      settingsProfileId,
-      taxInclusive = false,
-      status = 'DRAFT',
-      currency = 'USD',
-      invoiceDate,
-      dueDate,
-      invoiceType = 'STANDARD',
-      notes = '',
-      terms = '',
-      description = '', 
-      templateId,
-      projectId,
-      metadata = {},
-      ...otherData 
-    } = req.body;
-
-    const items = modernItems || legacyItems;
-
-    // Validate required fields
-    if (!items || !items.length) {
-      throw new ValidationError('Invoice must have at least one item');
-    }
-
-    if (!customerId) {
-      throw new ValidationError('Customer ID is required');
-    }
-
-    if (!invoiceDate || !dueDate) {
-      throw new ValidationError('Invoice date and due date are required');
-    }
-
-    // 2️⃣ FETCH SETTINGS PROFILE
-    console.log('🔍 FETCHING SETTINGS PROFILE...');
-    let profile = await prisma.settingsProfile.findFirst({
-      where: { 
-        id: settingsProfileId || undefined, 
-        tenantId: req.tenantId,
-        isActive: settingsProfileId ? undefined : true 
-      },
-      include: { 
-        invoice: true, 
-        general: true, 
-        payment: true 
-      }
-    });
-
-    if (!profile) {
-      console.error('❌ Settings profile not found');
-      throw new ValidationError('No settings profile found');
-    }
-    
-    if (!profile.invoice) {
-      console.error('❌ Invoice settings not found in profile');
-      throw new ValidationError('No invoice settings found in profile');
-    }
-    
-    console.log('✅ Settings profile found:', profile.id, profile.name);
-
-    // 3️⃣ VALIDATE CUSTOMER
-    console.log('🔍 VALIDATING CUSTOMER...');
-    const customer = await prisma.customer.findUnique({
-      where: { 
-        id: customerId,
-        tenantId: req.tenantId,
-       
-      }
-    });
-
-    if (!customer) {
-      console.error('❌ Customer not found:', customerId);
-      throw new ValidationError(`Customer with ID ${customerId} not found`);
-    }
-    console.log('✅ Customer found:', customer.companyName);
-
-    // 4️⃣ BUILD CUSTOMER SNAPSHOT
-    console.log('📸 BUILDING CUSTOMER SNAPSHOT...');
-    let finalSnapshot = customerSnapshot;
-    if (!finalSnapshot) {
-      finalSnapshot = {
-        id: customer.id,
-        companyName: customer.companyName,
-        email: customer.email,
-        phone: customer.phone,
-        address: customer.address,
-        city: customer.city,
-        country: customer.country,
-        taxId: customer.taxId
-      };
-    }
-    console.log('✅ Customer snapshot prepared');
-
-    // 5️⃣ CALCULATE TOTALS
-    console.log('🧮 CALCULATING TOTALS...');
-    const totals = this.calculateTotals(items, Number(discount || 0), taxInclusive);
-    console.log('✅ Totals calculated:', totals);
-
-    // ⭐⭐⭐ GENERATE INVOICE NUMBER WITH RACE CONDITION PROTECTION
-    console.log('🔢 GENERATING INVOICE NUMBER...');
-    let invoiceNumber = await this.generateInvoiceNumber(prisma, req.tenantId, profile.id);
-    console.log('✅ Invoice number generated:', invoiceNumber);
-
-    // ✅ RACE CONDITION PROTECTION: Check if invoice number already exists
-    const existingInvoice = await prisma.invoice.findUnique({
-      where: { invoiceNumber }
-    });
-
-    if (existingInvoice) {
-      console.log('⚠️ Invoice number already exists, generating next available...');
-      
-      // Get highest number including soft-deleted invoices
-      const allInvoices = await prisma.invoice.findMany({
-        where: { tenantId: req.tenantId },
-        select: { invoiceNumber: true }
-      });
-      
+      // Extract numbers from existing invoices for current year only (for yearly reset)
       let highestNumber = 0;
-      allInvoices.forEach((inv: any) => {
-        const match = inv.invoiceNumber.match(/(\d+)$/);
-        if (match) {
-          const num = parseInt(match[1], 10);
-          if (num > highestNumber) highestNumber = num;
+      allInvoices.forEach((invoice: any) => {
+        // Check if invoice belongs to current year
+        const yearMatch = invoice.invoiceNumber.match(/(\d{4})/);
+        if (yearMatch && parseInt(yearMatch[1]) === currentYear) {
+          // Extract the sequence number (last part of the format)
+          const numberMatch = invoice.invoiceNumber.match(/(\d+)$/);
+          if (numberMatch) {
+            const num = parseInt(numberMatch[1], 10);
+            if (num > highestNumber) {
+              highestNumber = num;
+            }
+          }
         }
       });
-      
-      const nextNumber = highestNumber + 1;
-      const paddedNumber = nextNumber.toString().padStart(profile.invoice.padding, '0');
-      const currentYear = new Date().getFullYear();
-      
-      invoiceNumber = profile.invoice.format
+
+      let nextNumber = highestNumber + 1;
+      const paddedNumber = nextNumber.toString().padStart(settings.padding, '0');
+
+      // Format the invoice number and check for duplicates
+      let formattedNumber = settings.format
         .replace('{YYYY}', currentYear.toString())
         .replace('{YY}', (currentYear % 100).toString().padStart(2, '0'))
-        .replace('{MM}', (new Date().getMonth() + 1).toString().padStart(2, '0'))
-        .replace('{DD}', new Date().getDate().toString().padStart(2, '0'))
+        .replace('{MM}', (now.getMonth() + 1).toString().padStart(2, '0'))
+        .replace('{DD}', now.getDate().toString().padStart(2, '0'))
         .replace('{###}', paddedNumber);
+
+      // Check if the generated number already exists and increment if needed
+      let attempts = 0;
+      const maxAttempts = 10;
       
-      console.log('✅ Regenerated invoice number:', invoiceNumber);
-    }
-
-    // 6️⃣ CREATE INVOICE IN DATABASE (WITH TRANSACTION)
-    console.log('💾 CREATING INVOICE IN DATABASE (with transaction)...');
-    
-    const newInvoice = await prisma.$transaction(async (tx) => {
-      // Helper to get value from extraFields
-      const getVal = (obj: any, keys: string[]) => {
-        if (!obj) return 0;
-        for (const k of keys) {
-          const val = obj[k] ?? obj[k.toLowerCase()] ?? obj[k.charAt(0).toUpperCase() + k.slice(1).toLowerCase()];
-          if (val !== undefined && val !== null && val !== '') return Number(val);
+      while (attempts < maxAttempts) {
+        const existingInvoice = allInvoices.find((inv: any) => inv.invoiceNumber === formattedNumber);
+        
+        if (!existingInvoice) {
+          console.log(`Generated invoice number: ${formattedNumber}`);
+          return formattedNumber;
         }
-        return 0;
-      };
+        
+        // If duplicate exists, increment the number and try again
+        attempts++;
+        nextNumber = highestNumber + attempts;
+        const retryPaddedNumber = nextNumber.toString().padStart(settings.padding, '0');
+        
+        formattedNumber = settings.format
+          .replace('{YYYY}', currentYear.toString())
+          .replace('{YY}', (currentYear % 100).toString().padStart(2, '0'))
+          .replace('{MM}', (now.getMonth() + 1).toString().padStart(2, '0'))
+          .replace('{DD}', now.getDate().toString().padStart(2, '0'))
+          .replace('{###}', retryPaddedNumber);
+          
+        console.log(`Duplicate found, retrying with: ${formattedNumber} (attempt ${attempts})`);
+      }
 
+      throw new Error('Failed to generate unique invoice number after multiple attempts');
+
+    } catch (error) {
+      console.error('Error in generateInvoiceNumber:', error);
+      throw error;
+    }
+  }
+
+  /** ====================
+   *  CREATE INVOICE - PostgreSQL Version
+   * ==================== */
+  static async createInvoice(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      console.log('CREATE INVOICE START - PostgreSQL Version');
+      
+      if (!req.tenantId || !req.user) {
+        console.error('Missing tenant context or user');
+        res.status(400).json({ 
+          success: false, 
+          error: 'Tenant context and authentication required' 
+        });
+        return;
+      }
+
+      console.log('Tenant ID:', req.tenantId);
+      console.log('User ID:', req.user.id);
+
+      // Extract all fields from request body
       const { 
+        items: legacyItems,
+        lineItems: modernItems,
+        discount = 0, 
+        customerId, 
+        customerSnapshot, 
+        settingsProfileId,
+        taxInclusive = false,
+        status = 'DRAFT',
+        currency = 'USD',
+        invoiceDate,
+        dueDate,
+        invoiceType = 'STANDARD',
+        notes = '',
+        terms = '',
+        description = '', 
+        templateId,
+        projectId,
+        metadata = {},
         attachments = []
       } = req.body;
 
-      const createdInvoice = await tx.invoice.create({
-        data: {
-          tenantId: req.tenantId!,
-          invoiceNumber,
-          customerId,
-          invoiceDate: new Date(invoiceDate),
-          dueDate: new Date(dueDate),
-          invoiceType: invoiceType.toUpperCase() as any,
-          status: status.toUpperCase() as any,
-          currency: currency.toUpperCase() as any,
-          
-          // Calculated fields
-          subtotal: new Prisma.Decimal(totals.subtotal),
-          taxTotal: new Prisma.Decimal(totals.taxTotal),
-          grandTotal: new Prisma.Decimal(totals.grandTotal),
-          discountTotal: new Prisma.Decimal(totals.discountTotal),
-          paidAmount: new Prisma.Decimal(0),
-          balanceDue: new Prisma.Decimal(totals.balanceDue),
-          
-          // Optional fields with defaults
-          taxInclusive: Boolean(taxInclusive),
-          settingsProfileId: profile.id,
-          customerSnapshot: finalSnapshot as any,
-          notes: notes || '',
-          terms: terms || '',
-          description: description || '', // ✅ Added description field
-          templateId: templateId || null,
-          projectId: projectId || null,
-          metadata: metadata || {},
-          
-          // Audit fields
-          createdBy: req.user.id,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          
-          // Soft delete fields (explicitly set to null)
-          deletedAt: null,
-          deletedBy: null,
+      const items = modernItems || legacyItems;
 
-          // Line Items
-          lineItems: {
-            create: items.map((item: any, index: number) => {
-                const qty = Number(item.quantity || item.qty || 1);
-                const rate = Number(item.rate || item.price || 0);
-                const taxRateValue = getVal(item.extraFields, ['taxRate', 'tax', 'tax_rate', 'VAT', 'GST']);
-                const tr = Number(item.taxRate || item.tax || taxRateValue || 0);
-                const discountValue = getVal(item.extraFields, ['discount', 'dis', 'disc']);
-                const d = Number(discountValue || 0);
+      // Validate required fields
+      if (!items || !items.length) {
+        throw new ValidationError('Invoice must have at least one item');
+      }
 
-                const linePrice = qty * rate;
-                // Apply line-level discount before tax
-                const discountedBase = Math.max(0, linePrice - d);
-                
-                let lineSubtotal = discountedBase;
-                let lineTaxAmount = 0;
-                let lineTotal = 0;
+      if (!customerId) {
+        throw new ValidationError('Customer ID is required');
+      }
 
-                if (taxInclusive) {
-                  const netAmount = discountedBase / (1 + tr / 100);
-                  lineTaxAmount = discountedBase - netAmount;
-                  lineSubtotal = netAmount;
-                  lineTotal = discountedBase;
-                } else {
-                  lineTaxAmount = discountedBase * (tr / 100);
-                  lineSubtotal = discountedBase;
-                  lineTotal = discountedBase + lineTaxAmount;
-                }
+      if (!invoiceDate || !dueDate) {
+        throw new ValidationError('Invoice date and due date are required');
+      }
 
-                return {
-                  tenantId: req.tenantId,
-                  itemName: item.itemName || item.item || item.description || `Item ${index + 1}`,
-                  description: item.description || '',
-                  quantity: new Prisma.Decimal(qty),
-                  rate: new Prisma.Decimal(rate),
-                  taxRate: new Prisma.Decimal(tr),
-                  subtotal: new Prisma.Decimal(lineSubtotal),
-                  taxAmount: new Prisma.Decimal(lineTaxAmount),
-                  total: new Prisma.Decimal(lineTotal),
-                  extraFields: { 
-                    ...(item.extraFields || {}),
-                    ...(item.projectName ? { projectName: item.projectName } : {})
-                  },
-                  projectId: item.projectId || null,
-                  rowNumber: index + 1,
-                  createdBy: req.user.id,
-                  createdAt: new Date(),
-                  updatedAt: new Date(),
-                  deletedAt: null,
-                  deletedBy: null
-                };
-            })
-          },
+      // 1. FETCH SETTINGS PROFILE
+      console.log('FETCHING SETTINGS PROFILE...');
+      const profile = await getSettingsProfileById(
+        settingsProfileId || '', 
+        req.tenantId
+      );
 
-          // Aggregated Taxes
-          taxes: {
-            create: (() => {
-              const taxGroups = new Map<string, { rate: number, amount: number }>();
-              items.forEach((item: any) => {
-                const tr = Number(item.taxRate || item.tax || getVal(item.extraFields, ['taxRate', 'tax', 'tax_rate']) || 0);
-                if (tr > 0) {
-                  const qty = Number(item.quantity || item.qty || 1);
-                  const rate = Number(item.rate || item.price || 0);
-                  const discountValue = getVal(item.extraFields, ['discount', 'dis', 'disc']);
-                  const d = Number(discountValue || 0);
-                  const discountedBase = Math.max(0, (qty * rate) - d);
-                  
-                  let lineTaxAmount = 0;
-                  if (taxInclusive) {
-                    const netAmount = discountedBase / (1 + tr / 100);
-                    lineTaxAmount = discountedBase - netAmount;
-                  } else {
-                    lineTaxAmount = discountedBase * (tr / 100);
-                  }
-
-                  const key = `Tax ${tr}%`;
-                  const existing = taxGroups.get(key) || { rate: tr, amount: 0 };
-                  existing.amount += lineTaxAmount;
-                  taxGroups.set(key, existing);
-                }
-              });
-
-              return Array.from(taxGroups.entries()).map(([name, data]) => ({
-                tenantId: req.tenantId!,
-                taxName: name,
-                taxRate: new Prisma.Decimal(data.rate),
-                taxAmount: new Prisma.Decimal(data.amount),
-                createdBy: req.user!.id
-              }));
-            })(),
-          },
-
-          // Attachments
-          attachments: {
-            create: attachments.map((att: any) => ({
-              fileName: att.fileName || 'Attachment',
-              fileUrl: att.fileUrl,
-              uploadedBy: req.user!.id
-            }))
-          }
-        },
-        include: { 
-          lineItems: true, 
-          customer: true,
-          settingsProfile: true,
-          taxes: true,
-          attachments: true
-        }
-      });
-
-      return createdInvoice;
-    }, {
-      timeout: 10000,
-      maxWait: 5000
-    });
-
-    console.log('✅ INVOICE CREATED SUCCESSFULLY:', {
-      id: newInvoice.id,
-      invoiceNumber: newInvoice.invoiceNumber,
-      status: newInvoice.status,
-      total: newInvoice.grandTotal.toString()
-    });
-
-    // 7️⃣ GENERATE PDF (outside transaction)
-    console.log('📄 GENERATING PDF...');
-    try {
-      const publicUrl = await generateAndUploadInvoicePDF(newInvoice, profile);
+      if (!profile) {
+        console.error('Settings profile not found');
+        throw new ValidationError('No settings profile found');
+      }
       
-      // Skip updating invoice.pdfUrl as per user request (deprecated)
-      // await prisma.invoice.update({
-      //   where: { id: newInvoice.id },
-      //   data: { pdfUrl: publicUrl }
-      // });
+      if (!profile.invoice) {
+        console.error('Invoice settings not found in profile');
+        throw new ValidationError('No invoice settings found in profile');
+      }
       
-      await prisma.invoiceAttachment.create({
-        data: {
-          invoiceId: newInvoice.id,
-          fileName: `Invoice_${newInvoice.invoiceNumber}.pdf`,
-          fileUrl: publicUrl,
-          uploadedBy: req.user.id
-        }
-      });
+      console.log('Settings profile found:', profile.id, profile.name);
+
+      // 2. VALIDATE CUSTOMER (using a simple customer lookup for now)
+      console.log('VALIDATING CUSTOMER...');
+      // TODO: Implement customer validation with PostgreSQL model
+      console.log('Customer validation skipped for now (customer ID:', customerId, ')');
+
+      // 3. BUILD CUSTOMER SNAPSHOT
+      console.log('BUILDING CUSTOMER SNAPSHOT...');
+      let finalSnapshot = customerSnapshot;
+      if (!finalSnapshot) {
+        // TODO: Get customer details from PostgreSQL model
+        finalSnapshot = {
+          id: customerId,
+          companyName: 'Customer Name', // TODO: Get from customer model
+          email: '',
+          phone: '',
+          address: {},
+          city: '',
+          country: '',
+          taxId: ''
+        };
+      }
+      console.log('Customer snapshot prepared');
+
+      // 4. CALCULATE TOTALS
+      console.log('CALCULATING TOTALS...');
+      const totals = this.calculateTotals(items, Number(discount || 0), taxInclusive);
+      console.log('Totals calculated:', totals);
+
+      // 5. GENERATE INVOICE NUMBER
+      console.log('GENERATING INVOICE NUMBER...');
+      let invoiceNumber = await this.generateInvoiceNumber(req.tenantId, profile.id);
+      console.log('Invoice number generated:', invoiceNumber);
+
+      // 6. CHECK IF INVOICE NUMBER ALREADY EXISTS
+      console.log('CHECKING FOR DUPLICATE INVOICE NUMBER...');
+      const existingInvoice = await getInvoiceByNumber(invoiceNumber, req.tenantId);
       
-      console.log('✅ PDF generated and uploaded:', publicUrl);
-      (newInvoice as any).pdfUrl = publicUrl;
-    } catch (pdfError) {
-      console.error('⚠️ PDF Generation Error (non-critical):', pdfError);
-    }
-
-    console.log('🟢 CREATE INVOICE COMPLETE ====================');
-
-    res.status(201).json({ 
-      success: true, 
-      data: newInvoice, 
-      message: 'Invoice created successfully' 
-    } as ApiResponse);
-
-  } catch (error: any) {
-    console.error('🔴 CREATE INVOICE ERROR ====================');
-    console.error('Error Type:', error.constructor.name);
-    console.error('Error Message:', error.message);
-    console.error('Error Stack:', error.stack);
-    
-    if (error.code) {
-      console.error('Prisma Error Code:', error.code);
-      console.error('Prisma Error Meta:', error.meta);
-    }
-    
-    console.error('🔴 END ERROR ====================');
-
-    const statusCode = 
-      error instanceof ValidationError ? 400 :
-      error.code === 'P2003' ? 400 :
-      error.code === 'P2002' ? 409 :
-      500;
-
-    res.status(statusCode).json({
-      success: false,
-      error: error.message || 'Failed to create invoice',
-      code: error.code,
-      meta: error.meta
-    } as ApiResponse);
-  }
-}
-
-  /** ====================
-   *  Update invoice
-   * ==================== */
-
-
-
-
-
-  static async updateInvoice(req: AuthRequest, res: Response): Promise<void> {
-  try {
-    if (!req.tenantId || !req.user) {
-      throw new ValidationError('Tenant context and authentication required');
-    }
-
-    const { id } = req.params;
-    console.log(`📦 UPDATE PAYLOAD FOR ${id}:`, JSON.stringify(req.body, null, 2));
-
-    const { 
-      items: legacyItems,
-      lineItems: modernItems,
-      discount = 0, 
-      customerSnapshot, 
-      taxInclusive = false,
-      templateId,
-      projectId,
-      attachments = [],
-      metadata = {},
-      ...updateData 
-    } = req.body;
-
-    const items = modernItems || legacyItems || [];
-
-    if (!items.length) {
-      throw new ValidationError('Invoice must have at least one item');
-    }
-
-    // 1️⃣ Calculate totals 
-    const totals = this.calculateTotals(items, Number(discount || 0), taxInclusive);
-
-    // 2️⃣ Database Update Transaction
-    const updatedInvoice = await prisma.$transaction(
-      async (tx) => {
-        const existing = await tx.invoice.findFirst({
-          where: { 
-            id, 
-            tenantId: req.tenantId,
-            deletedAt: null // ✅ Add this to exclude soft-deleted invoices
-          },
+      if (existingInvoice) {
+        console.log('Invoice number already exists, regenerating...');
+        // Get all invoices to find next available number
+        const { invoices: allInvoices } = await getInvoices(req.tenantId, {
+          page: 1,
+          limit: 10000,
+          status: 'all'
         });
-        if (!existing) throw new NotFoundError('Invoice not found');
-
-        // Delete removed items (soft delete)
-        const incomingItemIds = items.filter((i: any) => i.id).map((i: any) => i.id);
-        await tx.invoiceLineItem.updateMany({
-          where: { 
-            invoiceId: id, 
-            id: { notIn: incomingItemIds }, 
-            tenantId: req.tenantId,
-            deletedAt: null // Only update non-deleted items
-          },
-          data: {
-            deletedAt: new Date(),
-            deletedBy: req.user.id,
-            updatedAt: new Date(),
-            updatedBy: req.user.id
+        
+        let highestNumber = 0;
+        allInvoices.forEach((inv: any) => {
+          const match = inv.invoiceNumber.match(/(\d+)$/);
+          if (match) {
+            const num = parseInt(match[1], 10);
+            if (num > highestNumber) highestNumber = num;
           }
         });
+        
+        const nextNumber = highestNumber + 1;
+        const paddedNumber = nextNumber.toString().padStart(profile.invoice.padding, '0');
+        const currentYear = new Date().getFullYear();
+        
+        invoiceNumber = profile.invoice.format
+          .replace('{YYYY}', currentYear.toString())
+          .replace('{YY}', (currentYear % 100).toString().padStart(2, '0'))
+          .replace('{MM}', (new Date().getMonth() + 1).toString().padStart(2, '0'))
+          .replace('{DD}', new Date().getDate().toString().padStart(2, '0'))
+          .replace('{###}', paddedNumber);
+        
+        console.log('Regenerated invoice number:', invoiceNumber);
+      }
 
-        // Prepare item operations
-        const usedIds = new Set<string>();
-        const itemOperations = items.map((item: any, index: number) => {
-          const getVal = (obj: any, keys: string[]) => {
-            if (!obj) return 0;
-            for (const k of keys) {
-              const val = obj[k] ?? obj[k.toLowerCase()] ?? obj[k.charAt(0).toUpperCase() + k.slice(1).toLowerCase()];
-              if (val !== undefined && val !== null && val !== '') return Number(val);
-            }
-            return 0;
-          };
+      // 7. CREATE INVOICE WITH POSTGRESQL
+      console.log('CREATING INVOICE WITH POSTGRESQL...');
+      
+      const invoiceData: CreateInvoiceData = {
+        tenantId: req.tenantId!,
+        invoiceNumber,
+        customerId,
+        customerSnapshot: finalSnapshot,
+        invoiceDate: new Date(invoiceDate),
+        dueDate: new Date(dueDate),
+        invoiceType: invoiceType.toUpperCase() as InvoiceType,
+        status: status.toUpperCase() as InvoiceStatus,
+        currency: currency.toUpperCase(),
+        
+        // Calculated fields
+        subtotal: totals.subtotal,
+        taxTotal: totals.taxTotal,
+        grandTotal: totals.grandTotal,
+        discountTotal: totals.discountTotal,
+        paidAmount: 0,
+        balanceDue: totals.balanceDue,
+        
+        // Optional fields with defaults
+        taxInclusive: Boolean(taxInclusive),
+        settingsProfileId: profile.id,
+        notes: notes || '',
+        terms: terms || '',
+        description: description || '',
+        templateId: templateId || null,
+        projectId: projectId || null,
+        metadata: metadata || {},
+        
+        createdBy: req.user.id
+      };
+
+      const createdInvoice = await createInvoice(invoiceData);
+      console.log('Invoice created successfully:', createdInvoice.id);
+
+      // 8. CREATE LINE ITEMS
+      console.log('CREATING LINE ITEMS...');
+      if (items && items.length > 0) {
+        const getVal = (obj: any, keys: string[]) => {
+          if (!obj) return 0;
+          for (const k of keys) {
+            const val = obj[k] ?? obj[k.toLowerCase()] ?? obj[k.charAt(0).toUpperCase() + k.slice(1).toLowerCase()];
+            if (val !== undefined && val !== null && val !== '') return Number(val);
+          }
+          return 0;
+        };
+
+        const lineItemsData: CreateInvoiceLineItemData[] = items.map((item: any, index: number) => {
           const qty = Number(item.quantity || item.qty || 1);
           const rate = Number(item.rate || item.price || 0);
-          
           const taxRateValue = getVal(item.extraFields, ['taxRate', 'tax', 'tax_rate', 'VAT', 'GST']);
           const tr = Number(item.taxRate || item.tax || taxRateValue || 0);
-
           const discountValue = getVal(item.extraFields, ['discount', 'dis', 'disc']);
           const d = Number(discountValue || 0);
 
           const linePrice = qty * rate;
-          // Apply line-level discount before tax
           const discountedBase = Math.max(0, linePrice - d);
           
           let lineSubtotal = discountedBase;
@@ -812,53 +453,34 @@ static async createInvoice(req: AuthRequest, res: Response): Promise<void> {
             lineTotal = discountedBase + lineTaxAmount;
           }
 
-          const itemData = {
-            itemName: item.itemName || item.item || item.description || 'Untitled Item',
+          return {
+            tenantId: req.tenantId!,
+            invoiceId: createdInvoice.id,
+            itemName: item.itemName || item.item || item.description || `Item ${index + 1}`,
             description: item.description || '',
-            projectId: item.projectId || null,
-            quantity: new Prisma.Decimal(qty),
-            rate: new Prisma.Decimal(rate),
-            taxRate: new Prisma.Decimal(tr),
+            quantity: qty,
+            rate: rate,
+            taxRate: tr,
+            subtotal: lineSubtotal,
+            taxAmount: lineTaxAmount,
+            total: lineTotal,
             extraFields: { 
               ...(item.extraFields || {}),
               ...(item.projectName ? { projectName: item.projectName } : {})
             },
+            projectId: item.projectId || null,
             rowNumber: index + 1,
-            subtotal: new Prisma.Decimal(lineSubtotal),
-            taxAmount: new Prisma.Decimal(lineTaxAmount),
-            total: new Prisma.Decimal(lineTotal),
-            tenantId: req.tenantId,
-            updatedBy: req.user.id,
-            updatedAt: new Date(),
-            deletedAt: null,
-            deletedBy: null
+            createdBy: req.user.id
           };
-  
-          // Check if ID is present and NOT already used in this transaction
-          const isReturningItem = item.id && !usedIds.has(item.id);
-          if (item.id) usedIds.add(item.id);
-
-          return isReturningItem 
-            ? tx.invoiceLineItem.update({ 
-                where: { id: item.id }, 
-                data: itemData 
-              })
-            : tx.invoiceLineItem.create({ 
-                data: { 
-                  ...itemData, 
-                  invoiceId: id, 
-                  createdBy: req.user.id,
-                  createdAt: new Date()
-                } 
-              });
         });
 
-        await Promise.all(itemOperations);
+        await createMultipleInvoiceLineItems(lineItemsData);
+        console.log('Line items created successfully');
+      }
 
-        // Update taxes
-        await tx.invoiceTax.deleteMany({ where: { invoiceId: id } });
-        const taxGroups = new Map<string, { rate: number, amount: number }>();
-        
+      // 9. CREATE TAXES
+      console.log('CREATING TAXES...');
+      if (items && items.length > 0) {
         const getVal = (obj: any, keys: string[]) => {
           if (!obj) return 0;
           for (const k of keys) {
@@ -868,10 +490,9 @@ static async createInvoice(req: AuthRequest, res: Response): Promise<void> {
           return 0;
         };
 
+        const taxGroups = new Map<string, { rate: number, amount: number }>();
         items.forEach((item: any) => {
-          const taxRateValue = getVal(item.extraFields, ['taxRate', 'tax', 'tax_rate', 'VAT', 'GST']);
-          const tr = Number(item.taxRate || item.tax || taxRateValue || 0);
-
+          const tr = Number(item.taxRate || item.tax || getVal(item.extraFields, ['taxRate', 'tax', 'tax_rate']) || 0);
           if (tr > 0) {
             const qty = Number(item.quantity || item.qty || 1);
             const rate = Number(item.rate || item.price || 0);
@@ -886,6 +507,7 @@ static async createInvoice(req: AuthRequest, res: Response): Promise<void> {
             } else {
               lineTaxAmount = discountedBase * (tr / 100);
             }
+
             const key = `Tax ${tr}%`;
             const existing = taxGroups.get(key) || { rate: tr, amount: 0 };
             existing.amount += lineTaxAmount;
@@ -893,1528 +515,1849 @@ static async createInvoice(req: AuthRequest, res: Response): Promise<void> {
           }
         });
 
-        await tx.invoiceTax.createMany({
-          data: Array.from(taxGroups.entries()).map(([name, data]) => ({
+        if (taxGroups.size > 0) {
+          const taxesData: CreateInvoiceTaxData[] = Array.from(taxGroups.entries()).map(([name, data]) => ({
+            tenantId: req.tenantId!,
+            invoiceId: createdInvoice.id,
+            taxName: name,
+            taxRate: data.rate,
+            taxAmount: data.amount,
+            createdBy: req.user!.id
+          }));
+
+          await createMultipleInvoiceTaxes(taxesData);
+          console.log('Taxes created successfully');
+        }
+      }
+
+      // 10. CREATE ATTACHMENTS
+      console.log('CREATING ATTACHMENTS...');
+      if (attachments && attachments.length > 0) {
+        for (const att of attachments) {
+          const attachmentData: CreateInvoiceAttachmentData = {
+            invoiceId: createdInvoice.id,
+            fileName: att.fileName || 'Attachment',
+            fileUrl: att.fileUrl,
+            uploadedBy: req.user!.id
+          };
+          
+          await createInvoiceAttachment(attachmentData);
+        }
+        console.log('Attachments created successfully');
+      }
+
+      // 11. LOG ACTIVITY
+      console.log('LOGGING ACTIVITY...');
+      await createInvoiceActivityLog({
+        invoiceId: createdInvoice.id,
+        action: 'CREATED',
+        performedBy: req.user.id,
+        metadata: {
+          invoiceNumber: createdInvoice.invoiceNumber,
+          total: createdInvoice.grandTotal,
+          itemCount: items.length
+        }
+      });
+
+      // 12. GENERATE PDF (outside transaction)
+      console.log('GENERATING PDF...');
+      try {
+        // Create a complete invoice object for PDF generation
+        const invoiceForPDF = {
+          ...createdInvoice,
+          lineItems: items,
+          customer: finalSnapshot,
+          settingsProfile: profile
+        };
+        
+        const publicUrl = await generateAndUploadInvoicePDF(invoiceForPDF, profile);
+        
+        // Create attachment for PDF
+        await createInvoiceAttachment({
+          invoiceId: createdInvoice.id,
+          fileName: `Invoice_${createdInvoice.invoiceNumber}.pdf`,
+          fileUrl: publicUrl,
+          uploadedBy: req.user.id
+        });
+        
+        console.log('PDF generated and uploaded:', publicUrl);
+        (createdInvoice as any).pdfUrl = publicUrl;
+      } catch (pdfError) {
+        console.error('PDF Generation Error (non-critical):', pdfError);
+      }
+
+      console.log('CREATE INVOICE COMPLETE ====================');
+
+      res.status(201).json({ 
+        success: true, 
+        data: createdInvoice, 
+        message: 'Invoice created successfully' 
+      } as ApiResponse);
+
+    } catch (error: any) {
+      console.error('CREATE INVOICE ERROR ====================');
+      console.error('Error Type:', error.constructor.name);
+      console.error('Error Message:', error.message);
+      console.error('Error Stack:', error.stack);
+      
+      console.error('END ERROR ====================');
+
+      const statusCode = 
+        error instanceof ValidationError ? 400 :
+        error.code === 'P2003' ? 400 :
+        error.code === 'P2002' ? 409 :
+        500;
+
+      res.status(statusCode).json({
+        success: false,
+        error: error.message || 'Failed to create invoice',
+        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
+      } as ApiResponse);
+    }
+  }
+
+  /** ====================
+   *  UPDATE INVOICE - PostgreSQL Version
+   * ==================== */
+  static async updateInvoice(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        throw new ValidationError('Tenant context and authentication required');
+      }
+
+      const { id } = req.params;
+      console.log(`UPDATE INVOICE START - ID: ${id}`);
+      console.log('REQUEST BODY DETAILS:', JSON.stringify(req.body, null, 2));
+
+      const { 
+        items: legacyItems,
+        lineItems: modernItems,
+        discount = 0, 
+        customerSnapshot, 
+        taxInclusive = false,
+        templateId,
+        projectId,
+        attachments = [],
+        metadata = {},
+        ...updateData 
+      } = req.body;
+
+      const items = modernItems || legacyItems || [];
+
+      if (!items.length) {
+        throw new ValidationError('Invoice must have at least one item');
+      }
+
+      // 1. Check if invoice exists
+      const existingInvoice = await getInvoiceById(id, req.tenantId);
+      if (!existingInvoice) {
+        throw new NotFoundError('Invoice not found');
+      }
+
+      // 2. Calculate totals 
+      const totals = this.calculateTotals(items, Number(discount || 0), taxInclusive);
+
+      // 3. Update line items
+      console.log('UPDATING LINE ITEMS...');
+      
+      // Get existing line items to determine which ones to delete
+      const existingLineItems = await getInvoiceLineItems(id, req.tenantId);
+      const incomingItemIds = items.filter((i: any) => i.id).map((i: any) => i.id);
+      
+      console.log('LINE ITEMS UPDATE DEBUG:', {
+        existingCount: existingLineItems.length,
+        incomingCount: items.length,
+        incomingItemIds: incomingItemIds,
+        existingIds: existingLineItems.map(item => item.id)
+      });
+      
+      // Soft delete line items that are not in the incoming items
+      const itemsToDelete = existingLineItems.filter(item => !incomingItemIds.includes(item.id));
+      
+      if (itemsToDelete.length > 0) {
+        console.log('Deleting line items:', itemsToDelete.length);
+        for (const itemToDelete of itemsToDelete) {
+          await deleteInvoiceLineItemsByInvoiceId(itemToDelete.id, req.tenantId);
+        }
+      } else {
+        console.log('No line items to delete');
+      }
+
+      // Update or create line items
+      const getVal = (obj: any, keys: string[]) => {
+        if (!obj) return 0;
+        for (const k of keys) {
+          const val = obj[k] ?? obj[k.toLowerCase()] ?? obj[k.charAt(0).toUpperCase() + k.slice(1).toLowerCase()];
+          if (val !== undefined && val !== null && val !== '') return Number(val);
+        }
+        return 0;
+      };
+
+      const lineItemsOperations = items.map(async (item: any, index: number) => {
+        const qty = Number(item.quantity || item.qty || 1);
+        const rate = Number(item.rate || item.price || 0);
+        
+        const taxRateValue = getVal(item.extraFields, ['taxRate', 'tax', 'tax_rate', 'VAT', 'GST']);
+        const tr = Number(item.taxRate || item.tax || taxRateValue || 0);
+
+        const discountValue = getVal(item.extraFields, ['discount', 'dis', 'disc']);
+        const d = Number(discountValue || 0);
+
+        const linePrice = qty * rate;
+        const discountedBase = Math.max(0, linePrice - d);
+        
+        let lineSubtotal = discountedBase;
+        let lineTaxAmount = 0;
+        let lineTotal = 0;
+
+        if (taxInclusive) {
+          const netAmount = discountedBase / (1 + tr / 100);
+          lineTaxAmount = discountedBase - netAmount;
+          lineSubtotal = netAmount;
+          lineTotal = discountedBase;
+        } else {
+          lineTaxAmount = discountedBase * (tr / 100);
+          lineSubtotal = discountedBase;
+          lineTotal = discountedBase + lineTaxAmount;
+        }
+
+        const itemName = item.itemName || item.item || item.description || 'Untitled Item';
+        const lineItemData: UpdateInvoiceLineItemData = {
+          itemName,
+          description: item.description || '',
+          projectId: item.projectId || null,
+          quantity: qty,
+          rate: rate,
+          taxRate: tr,
+          extraFields: { 
+            ...(item.extraFields || {}),
+            ...(item.projectName ? { projectName: item.projectName } : {})
+          },
+          rowNumber: index + 1,
+          subtotal: lineSubtotal,
+          taxAmount: lineTaxAmount,
+          total: lineTotal,
+          updatedBy: req.user.id
+        };
+
+        // Update existing item or create new one
+        if (item.id) {
+          return await updateInvoiceLineItem(item.id, req.tenantId, lineItemData);
+        } else {
+          // Create new line item
+          const createData: CreateInvoiceLineItemData = {
             tenantId: req.tenantId!,
             invoiceId: id,
-            taxName: name,
-            taxRate: new Prisma.Decimal(data.rate),
-            taxAmount: new Prisma.Decimal(data.amount),
-            createdBy: req.user!.id
-          }))
-        });
+            itemName,
+            description: item.description || '',
+            quantity: qty,
+            rate: rate,
+            taxRate: tr,
+            subtotal: lineSubtotal,
+            taxAmount: lineTaxAmount,
+            total: lineTotal,
+            extraFields: { 
+              ...(item.extraFields || {}),
+              ...(item.projectName ? { projectName: item.projectName } : {})
+            },
+            rowNumber: index + 1,
+            projectId: item.projectId || null,
+            createdBy: req.user.id
+          };
+          // For simplicity, we'll handle new items in a separate step
+          return createData;
+        }
+      });
 
-        // Update attachments
-        await tx.invoiceAttachment.deleteMany({ where: { invoiceId: id } });
-        await tx.invoiceAttachment.createMany({
-          data: attachments.map((att: any) => ({
+      // Execute line item operations
+      console.log('LINE ITEMS OPERATIONS DEBUG:', {
+        totalItems: items.length,
+        existingItems: items.filter(item => item.id).length,
+        newItems: items.filter(item => !item.id).length
+      });
+
+      // Execute updates for existing items
+      const existingItems = items.filter(item => item.id);
+      const updateResults = await Promise.all(
+        existingItems.map(async (item) => {
+          const qty = Number(item.quantity || item.qty || 1);
+          const rate = Number(item.rate || item.price || 0);
+          
+          const taxRateValue = getVal(item.extraFields, ['taxRate', 'tax', 'tax_rate', 'VAT', 'GST']);
+          const tr = Number(item.taxRate || item.tax || taxRateValue || 0);
+
+          const discountValue = getVal(item.extraFields, ['discount', 'dis', 'disc']);
+          const d = Number(discountValue || 0);
+
+          const linePrice = qty * rate;
+          const discountedBase = Math.max(0, linePrice - d);
+          
+          let lineSubtotal = discountedBase;
+          let lineTaxAmount = 0;
+          let lineTotal = 0;
+
+          if (taxInclusive) {
+            const netAmount = discountedBase / (1 + tr / 100);
+            lineTaxAmount = discountedBase - netAmount;
+            lineSubtotal = netAmount;
+            lineTotal = discountedBase;
+          } else {
+            lineTaxAmount = discountedBase * (tr / 100);
+            lineSubtotal = discountedBase;
+            lineTotal = discountedBase + lineTaxAmount;
+          }
+
+          const itemName = item.itemName || item.item || item.description || 'Untitled Item';
+          const lineItemData: UpdateInvoiceLineItemData = {
+            itemName,
+            description: item.description || '',
+            projectId: item.projectId || null,
+            quantity: qty,
+            rate: rate,
+            taxRate: tr,
+            extraFields: { 
+              ...(item.extraFields || {}),
+              ...(item.projectName ? { projectName: item.projectName } : {})
+            },
+            rowNumber: items.indexOf(item) + 1,
+            subtotal: lineSubtotal,
+            taxAmount: lineTaxAmount,
+            total: lineTotal,
+            updatedBy: req.user.id
+          };
+
+          return await updateInvoiceLineItem(item.id, req.tenantId, lineItemData);
+        })
+      );
+
+      console.log(`Executed ${updateResults.length} line item updates`);
+
+      // Create new items
+      const newItems = items.filter(item => !item.id);
+      if (newItems.length > 0) {
+        console.log(`Creating ${newItems.length} new line items`);
+        const newLineItemsData = newItems.map((item, index) => {
+          const qty = Number(item.quantity || item.qty || 1);
+          const rate = Number(item.rate || item.price || 0);
+          
+          const taxRateValue = getVal(item.extraFields, ['taxRate', 'tax', 'tax_rate', 'VAT', 'GST']);
+          const tr = Number(item.taxRate || item.tax || taxRateValue || 0);
+
+          const discountValue = getVal(item.extraFields, ['discount', 'dis', 'disc']);
+          const d = Number(discountValue || 0);
+
+          const linePrice = qty * rate;
+          const discountedBase = Math.max(0, linePrice - d);
+          
+          let lineSubtotal = discountedBase;
+          let lineTaxAmount = 0;
+          let lineTotal = 0;
+
+          if (taxInclusive) {
+            const netAmount = discountedBase / (1 + tr / 100);
+            lineTaxAmount = discountedBase - netAmount;
+            lineSubtotal = netAmount;
+            lineTotal = discountedBase;
+          } else {
+            lineTaxAmount = discountedBase * (tr / 100);
+            lineSubtotal = discountedBase;
+            lineTotal = discountedBase + lineTaxAmount;
+          }
+
+          const itemName = item.itemName || item.item || item.description || 'Untitled Item';
+          
+          return {
+            tenantId: req.tenantId!,
+            invoiceId: id,
+            itemName,
+            description: item.description || '',
+            quantity: qty,
+            rate: rate,
+            taxRate: tr,
+            subtotal: lineSubtotal,
+            taxAmount: lineTaxAmount,
+            total: lineTotal,
+            extraFields: { 
+              ...(item.extraFields || {}),
+              ...(item.projectName ? { projectName: item.projectName } : {})
+            },
+            rowNumber: existingItems.length + index + 1,
+            projectId: item.projectId || null,
+            createdBy: req.user.id
+          };
+        });
+        
+        await createMultipleInvoiceLineItems(newLineItemsData);
+        console.log('New line items created successfully');
+      }
+
+      const newLineItems: CreateInvoiceLineItemData[] = [];
+      for (const operation of lineItemsOperations) {
+        // Check if this is a new line item (createData object)
+        // New items will have invoiceId but no id property
+        if (operation && typeof operation === 'object' && 'invoiceId' in operation && !('id' in operation)) {
+          newLineItems.push(operation as CreateInvoiceLineItemData);
+        }
+      }
+
+      // Create new line items if any
+      if (newLineItems.length > 0) {
+        console.log(`Creating ${newLineItems.length} new line items:`, newLineItems.map(item => ({
+          itemName: item.itemName,
+          quantity: item.quantity,
+          rate: item.rate,
+          subtotal: item.subtotal,
+          total: item.total,
+          invoiceId: item.invoiceId,
+          createdBy: item.createdBy
+        })));
+        const createResult = await createMultipleInvoiceLineItems(newLineItems);
+        console.log('New line items creation result:', createResult);
+      } else {
+        console.log('No new line items to create');
+      }
+
+      // 4. Update taxes
+      console.log('UPDATING TAXES...');
+      await deleteInvoiceTaxesByInvoiceId(id, req.tenantId);
+      
+      const taxGroups = new Map<string, { rate: number, amount: number }>();
+      
+      items.forEach((item: any) => {
+        const taxRateValue = getVal(item.extraFields, ['taxRate', 'tax', 'tax_rate', 'VAT', 'GST']);
+        const tr = Number(item.taxRate || item.tax || taxRateValue || 0);
+
+        if (tr > 0) {
+          const qty = Number(item.quantity || item.qty || 1);
+          const rate = Number(item.rate || item.price || 0);
+          const discountValue = getVal(item.extraFields, ['discount', 'dis', 'disc']);
+          const d = Number(discountValue || 0);
+          const discountedBase = Math.max(0, (qty * rate) - d);
+          
+          let lineTaxAmount = 0;
+          if (taxInclusive) {
+            const netAmount = discountedBase / (1 + tr / 100);
+            lineTaxAmount = discountedBase - netAmount;
+          } else {
+            lineTaxAmount = discountedBase * (tr / 100);
+          }
+          const key = `Tax ${tr}%`;
+          const existing = taxGroups.get(key) || { rate: tr, amount: 0 };
+          existing.amount += lineTaxAmount;
+          taxGroups.set(key, existing);
+        }
+      });
+
+      if (taxGroups.size > 0) {
+        const taxesData: CreateInvoiceTaxData[] = Array.from(taxGroups.entries()).map(([name, data]) => ({
+          tenantId: req.tenantId!,
+          invoiceId: id,
+          taxName: name,
+          taxRate: data.rate,
+          taxAmount: data.amount,
+          createdBy: req.user!.id
+        }));
+
+        await createMultipleInvoiceTaxes(taxesData);
+      }
+
+      // 5. Update attachments
+      console.log('UPDATING ATTACHMENTS...');
+      await deleteInvoiceAttachmentsByInvoiceId(id);
+      
+      if (attachments.length > 0) {
+        for (const att of attachments) {
+          const attachmentData: CreateInvoiceAttachmentData = {
             invoiceId: id,
             fileName: att.fileName || 'Attachment',
             fileUrl: att.fileUrl,
             uploadedBy: req.user!.id
-          }))
-        });
-
-        // Update invoice
-        return await tx.invoice.update({
-          where: { id },
-          data: {
-            ...updateData,
-            templateId: templateId || null,
-            projectId: projectId || null,
-            taxInclusive,
-            discountTotal: new Prisma.Decimal(totals.discountTotal),
-            subtotal: new Prisma.Decimal(totals.subtotal),
-            taxTotal: new Prisma.Decimal(totals.taxTotal),
-            grandTotal: new Prisma.Decimal(totals.grandTotal),
-            balanceDue: new Prisma.Decimal(totals.balanceDue),
-            metadata: metadata || {},
-            customerSnapshot,
-            updatedBy: req.user.id,
-            updatedAt: new Date()
-          },
-          include: { 
-            lineItems: true, 
-            customer: true,
-            taxes: true,
-            attachments: true
-          },
-        });
-      },
-      { maxWait: 10000, timeout: 30000 }
-    );
-
-    // Regenerate PDF
-    try {
-      console.log(`Regenerating PDF for updated invoice: ${updatedInvoice.invoiceNumber}`);
-      
-      const profile = await prisma.settingsProfile.findFirst({
-        where: { 
-          id: updatedInvoice.settingsProfileId, 
-          tenantId: req.tenantId 
-        },
-        include: {
-          general: true,
-          payment: true
+          };
+          
+          await createInvoiceAttachment(attachmentData);
         }
-      });
-
-      const publicUrl = await generateAndUploadInvoicePDF(updatedInvoice, profile);
-
-      // Skip updating invoice.pdfUrl (deprecated)
-      // await prisma.invoice.update({
-      //   where: { id: updatedInvoice.id },
-      //   data: { pdfUrl: publicUrl }
-      // });
-
-      await prisma.invoiceAttachment.create({
-        data: {
-          invoiceId: updatedInvoice.id,
-          fileName: `Invoice_${updatedInvoice.invoiceNumber}.pdf`,
-          fileUrl: publicUrl,
-          uploadedBy: req.user.id
-        }
-      });
-
-      (updatedInvoice as any).pdfUrl = publicUrl;
-      
-      console.log("PDF successfully updated in R2");
-    } catch (pdfError) {
-      console.error('Non-critical error: Failed to update PDF during invoice update:', pdfError);
-    }
-
-    res.status(200).json({
-      success: true,
-      data: updatedInvoice,
-      message: 'Invoice updated successfully',
-    } as ApiResponse);
-
-  } catch (error: any) {
-    console.error('=== UPDATE INVOICE ERROR ===', error);
-    res.status(
-      error instanceof NotFoundError ? 404 :
-      error instanceof ValidationError ? 400 : 500
-    ).json({ 
-      success: false, 
-      error: error.message || 'Failed to update invoice' 
-    } as ApiResponse);
-  }
-}
-
-
-
-  static async getInvoiceById(req: AuthRequest, res: Response): Promise<void> {
-  try {
-    if (!req.tenantId) throw new ValidationError('Tenant context required');
-
-    const { id } = req.params;
-    const invoice = await prisma.invoice.findFirst({
-      where: {
-        tenantId: req.tenantId,
-        deletedAt: null, // ✅ Add this to exclude soft-deleted invoices
-        OR: [
-          { id: id },             // Try searching by UUID
-          { invoiceNumber: id }   // Try searching by Display Number
-        ]
-      },
-      include: { 
-        customer: true, 
-        lineItems: true, 
-        createdByUser: true, 
-        updatedByUser: true,
-        taxes: true,
-        attachments: true
       }
-    });
 
-    if (!invoice) {
+      // 6. Update main invoice
+      console.log('UPDATING MAIN INVOICE...');
+      const invoiceUpdateData: UpdateInvoiceData = {
+        ...updateData,
+        templateId: templateId || null,
+        projectId: projectId || null,
+        taxInclusive,
+        discountTotal: totals.discountTotal,
+        subtotal: totals.subtotal,
+        taxTotal: totals.taxTotal,
+        grandTotal: totals.grandTotal,
+        balanceDue: totals.balanceDue,
+        metadata: metadata || {},
+        updatedBy: req.user.id
+      };
+
+      // Add customer snapshot if provided
+      if (customerSnapshot !== undefined) {
+        invoiceUpdateData.customerSnapshot = customerSnapshot;
+      }
+
+      console.log('INVOICE UPDATE DATA BEING SAVED:', JSON.stringify(invoiceUpdateData, null, 2));
+      const updatedInvoice = await updateInvoice(id, req.tenantId, invoiceUpdateData);
+
+      if (!updatedInvoice) {
+        throw new Error('Failed to update invoice');
+      }
+
+      // 7. Log activity
+      console.log('LOGGING ACTIVITY...');
+      await createInvoiceActivityLog({
+        invoiceId: id,
+        action: 'UPDATED',
+        performedBy: req.user.id,
+        metadata: {
+          itemCount: items.length,
+          total: totals.grandTotal,
+          updatedFields: Object.keys(updateData)
+        }
+      });
+
+      // 8. Regenerate PDF
+      console.log('REGENERATING PDF...');
+      try {
+        // Get settings profile for PDF generation
+        const profile = await getSettingsProfileById(
+          updatedInvoice.settingsProfileId!, 
+          req.tenantId
+        );
+
+        if (profile) {
+          // Create a complete invoice object for PDF generation
+          const invoiceForPDF = {
+            ...updatedInvoice,
+            lineItems: items,
+            customer: customerSnapshot || { companyName: 'Customer' },
+            settingsProfile: profile
+          };
+          
+          const publicUrl = await generateAndUploadInvoicePDF(invoiceForPDF, profile);
+
+          // Create attachment for PDF
+          await createInvoiceAttachment({
+            invoiceId: updatedInvoice.id,
+            fileName: `Invoice_${updatedInvoice.invoiceNumber}.pdf`,
+            fileUrl: publicUrl,
+            uploadedBy: req.user.id
+          });
+          
+          console.log('PDF successfully updated:', publicUrl);
+          (updatedInvoice as any).pdfUrl = publicUrl;
+        }
+      } catch (pdfError) {
+        console.error('PDF Generation Error (non-critical):', pdfError);
+      }
+
+      console.log('UPDATE INVOICE COMPLETE ====');
+      console.log('FINAL INVOICE DATA:', {
+        id: updatedInvoice.id,
+        invoiceNumber: updatedInvoice.invoiceNumber,
+        invoiceDate: updatedInvoice.invoiceDate,
+        dueDate: updatedInvoice.dueDate,
+        grandTotal: updatedInvoice.grandTotal
+      });
+
+      res.status(200).json({
+        success: true,
+        data: updatedInvoice,
+        message: 'Invoice updated successfully',
+      } as ApiResponse);
+
+    } catch (error: any) {
+      console.error('UPDATE INVOICE ERROR ====================');
+      console.error('Error Type:', error.constructor.name);
+      console.error('Error Message:', error.message);
+      console.error('Error Stack:', error.stack);
+      
+      console.error('END ERROR ====================');
+
+      const statusCode = 
+        error instanceof NotFoundError ? 404 :
+        error instanceof ValidationError ? 400 : 500;
+
+      res.status(statusCode).json({ 
+        success: false, 
+        error: error.message || 'Failed to update invoice',
+        ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
+      } as ApiResponse);
+    }
+  }
+
+  /** ====================
+   *  GET INVOICE BY ID - PostgreSQL Version
+   * ==================== */
+  static async getInvoiceById(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId) {
+        throw new ValidationError('Tenant context required');
+      }
+
+      const { id } = req.params;
+      console.log(`GET INVOICE BY ID - ID: ${id}`);
+
+      // Try to find invoice by ID first, then by invoice number
+      let invoice = await getInvoiceById(id, req.tenantId);
+      
+      if (!invoice) {
+        // Try searching by invoice number
+        invoice = await getInvoiceByNumber(id, req.tenantId);
+      }
+
+      if (!invoice) {
         res.status(404).json({ success: false, message: 'Invoice not found' });
         return;
-    }
-
-    console.log(`🔍 FETCHED INVOICE ${id}:`, {
-      invoiceNumber: invoice.invoiceNumber,
-      templateId: invoice.templateId,
-      lineItemsCount: invoice.lineItems.length
-    });
-    
-    console.log("Retrieved invoice discount:", invoice.discountTotal);
-    console.log("Invoice totals:", {
-      subtotal: invoice.subtotal,
-      taxTotal: invoice.taxTotal,
-      total: invoice.grandTotal,
-      balanceDue: invoice.balanceDue,
-      discount: invoice.discountTotal
-    });
-    
-    res.status(200).json({ success: true, data: invoice } as ApiResponse);
-  } catch (error: any) {
-    console.error('Get invoice error:', error);
-    res.status(error instanceof NotFoundError ? 404 : 500).json({ 
-      success: false, 
-      error: error.message || 'Failed to fetch invoice' 
-    } as ApiResponse);
-  }
-}
-
-
-static async deleteInvoice(req: AuthRequest, res: Response): Promise<void> {
-  try {
-    if (!req.tenantId || !req.user) throw new ValidationError('Tenant context required');
-
-    const { id } = req.params;
-    
-    const existing = await prisma.invoice.findFirst({ 
-      where: { 
-        id, 
-        tenantId: req.tenantId,
-        deletedAt: null
-      },
-      include: { attachments: true }
-    });
-
-    if (!existing) throw new NotFoundError('Invoice not found');
-
-    // 1. DELETE FROM R2 
-    // a. Cleanup attachments (including PDFs)
-    if (existing.attachments?.length > 0) {
-      for (const att of existing.attachments) {
-        try {
-          await deleteFileFromR2(att.fileUrl, req.tenantId);
-        } catch (r2Error) {
-          console.error(`Failed to cleanup R2 file ${att.fileUrl} during invoice deletion:`, r2Error);
-        }
-      }
-    }
-
-    // b. Legacy Cleanup (If a PDF URL exists on the invoice record itself)
-    if (existing.pdfUrl) {
-      try {
-        await deleteFileFromR2(existing.pdfUrl, req.tenantId);
-      } catch (r2Error) {
-        console.error('Failed to cleanup legacy R2 PDF during invoice deletion:', r2Error);
-      }
-    }
-
-    const now = new Date();
-    const userId = req.user.id;
-
-    // 2. SOFT DELETE FROM DATABASE - Fixed typing
-    await prisma.$transaction([
-      // Soft delete invoice items
-      prisma.invoiceLineItem.updateMany({
-        where: { 
-          invoiceId: id, 
-          tenantId: req.tenantId 
-        },
-        data: {
-          deletedAt: now,
-          deletedBy: userId,
-          updatedAt: now,
-          updatedBy: userId
-        }
-      }),
-      // Soft delete invoice
-      prisma.invoice.update({
-        where: { 
-          id, 
-          tenantId: req.tenantId 
-        },
-        data: { 
-          deletedAt: now,
-          deletedBy: userId,
-          updatedAt: now,
-          updatedBy: userId
-        }
-      })
-    ]);
-    
-    res.status(200).json({ 
-      success: true, 
-      message: 'Invoice deleted successfully' 
-    } as ApiResponse);
-
-  } catch (error: any) {
-    console.error('Delete invoice error:', error);
-    res.status(error instanceof NotFoundError ? 404 : 500).json({ 
-      success: false, 
-      error: error.message || 'Failed to delete invoice' 
-    } as ApiResponse);
-  }
-}
-
-
-/** ====================
- * Send Invoice Email
- * ==================== */
-
-
-
-static async sendEmail(req: AuthRequest, res: Response): Promise<void> {
-  // Declare invoice variable OUTSIDE try block
-  let invoice: any = null;
-  
-  try {
-    if (!req.tenantId || !req.user) {
-      throw new ValidationError('Tenant context and authentication required');
-    }
-
-    const { id } = req.params;
-    const { to, subject, message, pdfUrl } = req.body;
-
-    // 1. Fetch invoice
-    invoice = await prisma.invoice.findFirst({
-      where: { 
-        id, 
-        tenantId: req.tenantId,
-        deletedAt: null 
-      },
-      include: { 
-        customer: true,
-        settingsProfile: true,
-        attachments: true
-      }
-    });
-
-    if (!invoice) throw new NotFoundError('Invoice not found');
-
-    // Find PDF in attachments if not provided in body
-    const pdfAttachment = invoice.attachments?.find((a: any) => a.fileName.toLowerCase().endsWith('.pdf') || a.fileUrl.toLowerCase().endsWith('.pdf'));
-    const finalPdfUrl = pdfUrl || pdfAttachment?.fileUrl || (invoice as any).pdfUrl;
-
-    // 2. Determine recipient and customer details
-    const snapshot = invoice.customerSnapshot as any;
-    const recipientEmail = to || snapshot?.email || invoice.customer?.email;
-    const customerName = snapshot?.companyName || invoice.customer?.companyName || "Valued Customer";
-
-    if (!recipientEmail) {
-      throw new ValidationError("No recipient email address found for this customer.");
-    }
-
-    // 3. Format amount and due date
-    const amount = `${invoice.currency} ${Number(invoice.grandTotal).toLocaleString()}`;
-    const dueDate = new Date(invoice.dueDate).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-
-    // 4. Send email - GET HTML FROM EMAIL SERVICE
-    const emailService = (await import('@/utils/emailService')).default;
-
-    const { success: emailSuccess, html: emailHtml } = await emailService.sendInvoiceEmail({
-      to: recipientEmail,
-      subject: subject || `Invoice ${invoice.invoiceNumber} from Zithtech`,
-      customerName: customerName,
-      invoiceNumber: invoice.invoiceNumber,
-      amount: amount,
-      dueDate: dueDate,
-      customMessage: message,
-      pdfUrl: finalPdfUrl
-    });
-
-    if (!emailSuccess) {
-      throw new Error("Failed to send email via SMTP provider");
-    }
-
-    // ✅ 5. LOG THE SUCCESSFUL EMAIL - USING HTML FROM EMAIL SERVICE
-    await EmailLoggerService.logEmail({
-      tenantId: req.tenantId,
-      
-      // Module information
-      module: 'INVOICE',
-      moduleId: invoice.id,
-      moduleNumber: invoice.invoiceNumber,
-      
-      // Email content - USE THE HTML RETURNED FROM EMAIL SERVICE
-      to: recipientEmail,
-      from: process.env.SMTP_FROM_EMAIL || 'noreply@zithtech.com',
-      fromName: 'Zithtech',
-      subject: subject || `Invoice ${invoice.invoiceNumber} from Zithtech`,
-      html: emailHtml, // ✅ EXACT HTML THAT WAS SENT - NO DUPLICATION
-      plainText: message || "Please find your invoice details below.",
-      
-      // Customer information
-      customerId: invoice.customerId,
-      customerName: customerName,
-      customerEmail: recipientEmail,
-      
-      // Invoice specific fields
-      amount: amount,
-      dueDate: dueDate,
-      currency: invoice.currency,
-      
-      // Attachment
-      hasAttachment: !!(pdfUrl || invoice.pdfUrl),
-      attachmentUrl: pdfUrl || invoice.pdfUrl,
-      attachmentName: `Invoice_${invoice.invoiceNumber}.pdf`,
-      
-      // Status
-      status: 'SENT',
-      
-      // User who sent
-      sentBy: req.user.id,
-      sentByUser: req.user.email || req.user.name,
-      
-      // Optional metadata
-      metadata: {
-        invoiceDate: invoice.invoiceDate,
-        total: invoice.grandTotal,
-        description: invoice.description
-      }
-    });
-
-    // 6. Update Database
-    const updateData: any = {
-      // updatedBy: req.user.id,
-      updatedAt: new Date(),
-      sentAt: invoice.sentAt || new Date(),
-      // lastEmailSentAt: new Date()
-    };
-
-    const statusesThatCanBeSent = ['DRAFT', 'PENDING', 'APPROVED'];
-    if (statusesThatCanBeSent.includes(invoice.status)) {
-      updateData.status = 'SENT';
-    }
-
-    await prisma.invoice.update({
-      where: { id },
-      data: updateData
-    });
-
-    // 7. Success message
-    let successMessage = '';
-    if (invoice.status === 'PAID') {
-      successMessage = `✅ Invoice ${invoice.invoiceNumber} email resent successfully to ${recipientEmail} (Status: PAID)`;
-    } else if (invoice.status === 'PARTIALLY_PAID') {
-      successMessage = `✅ Invoice ${invoice.invoiceNumber} email resent successfully to ${recipientEmail} (Status: PARTIALLY PAID)`;
-    } else if (invoice.status === 'CANCELLED') {
-      successMessage = `✅ Invoice ${invoice.invoiceNumber} email resent successfully to ${recipientEmail} (Status: CANCELLED)`;
-    } else {
-      successMessage = `✅ Invoice ${invoice.invoiceNumber} sent successfully to ${recipientEmail} (Status: SENT)`;
-    }
-
-    res.status(200).json({ 
-      success: true, 
-      message: successMessage,
-      data: { 
-        sentAt: new Date(),
-        status: updateData.status || invoice.status,
-        emailSent: true,
-        recipient: recipientEmail,
-        invoiceNumber: invoice.invoiceNumber
-      }
-    });
-
-  } catch (error: any) {
-    console.error('Send invoice email error:', error);
-    
-    // ❌ 8. LOG THE FAILED EMAIL ATTEMPT
-    if (req.tenantId && req.user && invoice) {
-      try {
-        const failedRecipient = req.body.to || invoice.customer?.email || 'unknown';
-        const failedSubject = req.body.subject || `Invoice ${invoice.invoiceNumber} from Zithtech`;
-        
-        // For failed emails, we don't have HTML, so pass empty string
-        await EmailLoggerService.logEmail({
-          tenantId: req.tenantId,
-          module: 'INVOICE',
-          moduleId: invoice.id,
-          moduleNumber: invoice.invoiceNumber,
-          to: failedRecipient,
-          from: process.env.SMTP_FROM_EMAIL || 'noreply@zithtech.com',
-          fromName: 'Zithtech',
-          subject: failedSubject,
-          html: '', // No HTML for failed emails
-          plainText: req.body.message,
-          customerId: invoice.customerId,
-          customerName: invoice.customerSnapshot?.companyName || invoice.customer?.companyName || 'Unknown',
-          customerEmail: failedRecipient,
-          amount: `${invoice.currency} ${Number(invoice.grandTotal).toLocaleString()}`,
-          dueDate: new Date(invoice.dueDate).toLocaleDateString('en-US', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric'
-          }),
-          currency: invoice.currency,
-          status: 'FAILED',
-          errorMessage: error.message,
-          sentBy: req.user.id,
-          sentByUser: req.user.email || req.user.name
-        });
-      } catch (logError) {
-        console.error('Failed to log email error:', logError);
-      }
-    }
-
-    res.status(error instanceof NotFoundError ? 404 : 500).json({ 
-      success: false, 
-      error: error.message || 'Failed to send invoice email' 
-    });
-  }
-}
-
-
-static async updateStatus(req: AuthRequest, res: Response): Promise<void> {
-  try {
-    if (!req.tenantId || !req.user) {
-      throw new ValidationError('Tenant context required');
-    }
-
-    const { id } = req.params;
-    const { status, payment } = req.body; 
-
-    if (!status) throw new ValidationError("Status is required");
-
-    // 1️⃣ Fetch invoice - exclude soft-deleted
-    const invoice = await prisma.invoice.findFirst({
-      where: { 
-        id, 
-        tenantId: req.tenantId,
-        deletedAt: null // ✅ Add this to exclude soft-deleted invoices
-      },
-      select: {
-        id: true,
-        status: true,
-        paidAmount: true,
-        balanceDue: true,
-        invoiceNumber: true,
-        settingsProfileId: true,
-        grandTotal: true,
-        firstPaymentDate: true,
-        lastPaymentDate: true,
-        fullyPaidDate: true,
-        sentAt: true,
-        paidAt: true,
-        cancelledAt: true
-      }
-    });
-
-    if (!invoice) throw new NotFoundError('Invoice not found');
-
-    // 2️⃣ Allowed status transitions
-    const allowedTransitions: Record<string,string[]> = {
-      DRAFT: ["PENDING","APPROVAL","SENT","CANCELLED"],
-      PENDING: ["APPROVAL","SENT","CANCELLED"],
-      APPROVAL: ["SENT","CANCELLED"],
-      SENT: ["PAID","PARTIALLY_PAID","OVERDUE","CANCELLED"],
-      OVERDUE: ["PAID","PARTIALLY_PAID","CANCELLED"],
-      PARTIALLY_PAID: ["PARTIALLY_PAID","PAID","OVERDUE","CANCELLED"],
-      PAID: [],
-      CANCELLED: []
-    };
-
-    if (!allowedTransitions[invoice.status]?.includes(status)) {
-      throw new ValidationError(`Cannot change status from ${invoice.status} to ${status}`);
-    }
-
-    // 3️⃣ Convert Decimals to numbers for calculation
-    const currentPaid = invoice.paidAmount instanceof Prisma.Decimal
-      ? invoice.paidAmount.toNumber()
-      : Number(invoice.paidAmount);
-
-    const currentBalance = invoice.balanceDue instanceof Prisma.Decimal
-      ? invoice.balanceDue.toNumber()
-      : Number(invoice.balanceDue);
-
-    const invoiceTotal = invoice.grandTotal instanceof Prisma.Decimal
-      ? invoice.grandTotal.toNumber()
-      : Number(invoice.grandTotal);
-
-    let newPaid = currentPaid;
-    let newBalance = currentBalance;
-
-    // 4️⃣ Handle payment info if marking as PAID or PARTIALLY_PAID
-    let paymentEntry: any = null;
-    let amountToPay = 0;
-    
-    if (status === "PAID" || status === "PARTIALLY_PAID") {
-      if (!payment || !payment.amount || !payment.method) {
-        throw new ValidationError("Payment info (amount & method) is required when marking as PAID or PARTIALLY_PAID");
       }
 
-      amountToPay = Number(payment.amount);
-      if (amountToPay <= 0) {
-        throw new ValidationError("Payment amount must be greater than 0");
-      }
-
-      if (amountToPay > currentBalance) {
-        throw new ValidationError(`Payment amount cannot exceed remaining balance (${currentBalance})`);
-      }
-
-      newPaid += amountToPay;
-      newBalance = Math.max(0, currentBalance - amountToPay);
-
-      paymentEntry = {
-        tenantId: req.tenantId,
-        invoiceId: invoice.id,
-        amount: new Prisma.Decimal(amountToPay),
-        paymentMethod: payment.method,
-        description: payment.description || "",
-        paymentDate: payment.date ? new Date(payment.date) : new Date(),
-        status: PaymentStatus.COMPLETED,
-        createdBy: req.user.id,
-        balanceBefore: new Prisma.Decimal(currentBalance),
-        balanceAfter: new Prisma.Decimal(newBalance),
-        referenceId: payment.referenceId || undefined
-      };
-    }
-
-    // 5️⃣ Prepare invoice update data with date tracking
-    const updateData: any = {
-      status,
-      updatedBy: req.user.id,
-      updatedAt: new Date(),
-      paidAmount: new Prisma.Decimal(newPaid),
-      balanceDue: new Prisma.Decimal(newBalance)
-    };
-
-    // Update payment tracking dates
-    if (paymentEntry && amountToPay > 0) {
-      const now = new Date();
-      
-      if (currentPaid === 0 && !invoice.firstPaymentDate) {
-        updateData.firstPaymentDate = now;
-      }
-      
-      updateData.lastPaymentDate = now;
-      
-      if (newBalance === 0 && !invoice.fullyPaidDate) {
-        updateData.fullyPaidDate = now;
-      }
-    }
-
-    // Set status event dates
-    if (status === "PAID" && invoice.status !== "PAID") {
-      updateData.paidAt = new Date();
-      if (!paymentEntry && !invoice.fullyPaidDate) {
-        updateData.fullyPaidDate = new Date();
-      }
-    }
-    
-    if (status === "SENT" && invoice.status !== "SENT" && !invoice.sentAt) {
-      updateData.sentAt = new Date();
-    }
-    
-    if (status === "CANCELLED" && invoice.status !== "CANCELLED" && !invoice.cancelledAt) {
-      updateData.cancelledAt = new Date();
-    }
-
-    // 6️⃣ Run transaction to update invoice and create payment if needed
-    const updatedInvoice = await prisma.$transaction(async (tx) => {
-      const updated = await tx.invoice.update({
-        where: { id },
-        data: updateData,
-        include: {
-          customer: true,
-          lineItems: {
-            where: { deletedAt: null } // ✅ Only include non-deleted items
-          },
-          payments: true
-        }
-      });
-
-      if (paymentEntry) {
-        await tx.invoicePayment.create({ data: paymentEntry });
-      }
-
-      return updated;
-    });
-
-    res.status(200).json({
-      success: true,
-      data: updatedInvoice,
-      message: 'Invoice status and payments updated successfully'
-    } as ApiResponse);
-
-  } catch (error: any) {
-    console.error('Update status error:', error);
-    res.status(
-      error instanceof ValidationError ? 400 :
-      error instanceof NotFoundError ? 404 : 500
-    ).json({
-      success: false,
-      error: error.message || 'Failed to update invoice status'
-    } as ApiResponse);
-  }
-}
-
-
-
-static async getInvoices(req: AuthRequest, res: Response): Promise<void> {
-  try {
-    if (!req.tenantId) throw new ValidationError('Tenant context required');
-
-    const { page = 1, limit = 20, status, customerId, search } = req.query;
-    const skip = (Number(page) - 1) * Number(limit);
-
-    const where: any = { 
-      tenantId: req.tenantId,
-      deletedAt: null // ✅ Add this to exclude soft-deleted invoices
-    };
-    
-    if (status) where.status = status;
-    if (customerId) where.customerId = customerId;
-    if (search) {
-      where.OR = [
-        { invoiceNumber: { contains: search as string, mode: 'insensitive' } },
-        { customer: { companyName: { contains: search as string, mode: 'insensitive' } } }
-      ];
-    }
-
-    const [invoices, total] = await Promise.all([
-      prisma.invoice.findMany({
-        where,
-        include: { customer: true },
-        orderBy: { createdAt: 'desc' },
-        skip,
-        take: Number(limit)
-      }),
-      prisma.invoice.count({ where })
-    ]);
-
-    const totalPages = Math.ceil(total / Number(limit));
-
-    res.status(200).json({ 
-      success: true, 
-      data: invoices, 
-      pagination: { 
-        page: Number(page), 
-        limit: Number(limit), 
-        total, 
-        pages: totalPages 
-      } 
-    } as ApiResponse);
-  } catch (error: any) {
-    console.error('Get invoices error:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message || 'Failed to fetch invoices' 
-    } as ApiResponse);
-  }
-}
-
-
-
-
-
-static async downloadInvoice(req: AuthRequest, res: Response): Promise<void> {
-  try {
-    if (!req.tenantId) {
-      throw new ValidationError('Tenant context required');
-    }
-
-    const { id } = req.params;
-
-    const invoice = await prisma.invoice.findFirst({
-      where: {
-        id,
-        tenantId: req.tenantId,
-        deletedAt: null // ✅ Add this to exclude soft-deleted invoices
-      }
-    });
-
-    if (!invoice) {
-      res.status(404).json({ success: false, error: 'Invoice not found' });
-      return;
-    }
-
-    const attachments = await prisma.invoiceAttachment.findMany({
-      where: { invoiceId: id }
-    });
-    
-    // Find latest PDF attachment
-    const pdfAttachment = attachments.find(a => a.fileName.toLowerCase().endsWith('.pdf') || a.fileUrl.toLowerCase().endsWith('.pdf'));
-    let pdfUrl = pdfAttachment?.fileUrl || (invoice as any).pdfUrl;
-
-    // 🔁 Generate PDF if missing
-    if (!pdfUrl) {
-      const profile = await prisma.settingsProfile.findFirst({
-        where: {
-          id: invoice.settingsProfileId,
-          tenantId: req.tenantId
-        },
-        include: {
-          general: true,
-          payment: true
-        }
-      });
-
-      if (!profile) {
-        throw new Error('Settings profile not found for PDF generation');
-      }
-
-      pdfUrl = await generateAndUploadInvoicePDF(invoice as any, profile);
-
-      await prisma.invoiceAttachment.create({
-        data: {
-          invoiceId: invoice.id,
-          fileName: `Invoice_${invoice.invoiceNumber}.pdf`,
-          fileUrl: pdfUrl,
-          uploadedBy: req.user.id
-        }
-      });
-    }
-
-    // 🧠 IMPORTANT: Backend fetches the PDF
-    const pdfResponse = await fetch(pdfUrl);
-
-    if (!pdfResponse.ok) {
-      throw new Error(`Failed to fetch PDF from R2 (${pdfResponse.status})`);
-    }
-
-    const pdfBuffer = Buffer.from(await pdfResponse.arrayBuffer());
-
-    // ✅ Correct headers
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader(
-      'Content-Disposition',
-      `inline; filename="Invoice-${invoice.invoiceNumber}.pdf"`
-    );
-    res.setHeader('Content-Length', pdfBuffer.length.toString());
-
-    res.send(pdfBuffer);
-
-  } catch (error: any) {
-    console.error('DOWNLOAD INVOICE ERROR:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message || 'Failed to download invoice'
-    });
-  }
-}
-
-
-
-
-
-
-
-
-static async getPaymentHistory(req: AuthRequest, res: Response): Promise<void> {
-  try {
-    if (!req.tenantId) throw new ValidationError('Tenant context required');
-
-    const { invoiceId } = req.params;
-
-    // 1️⃣ Fetch invoice with customer details - exclude soft-deleted
-    const invoice = await prisma.invoice.findFirst({
-      where: { 
-        id: invoiceId, 
-        tenantId: req.tenantId,
-        deletedAt: null // ✅ Add this to exclude soft-deleted invoices
-      },
-      select: {
-        id: true,
-        invoiceNumber: true,
-        invoiceDate: true,
-        dueDate: true,
-        grandTotal: true,
-        paidAmount: true,
-        balanceDue: true,
-        status: true,
-        firstPaymentDate: true,
-        lastPaymentDate: true,
-        fullyPaidDate: true,
-        sentAt: true,
-        paidAt: true,
-        cancelledAt: true,
-        customer: {
-          select: {
-            companyName: true,
-            email: true,
-            phone: true
-          }
-        },
-        customerSnapshot: true
-      }
-    });
-
-    if (!invoice) {
-      throw new NotFoundError('Invoice not found');
-    }
-
-    // 2️⃣ Fetch all payments with balance tracking
-    const payments = await prisma.invoicePayment.findMany({
-      where: { 
-        invoiceId, 
-        tenantId: req.tenantId 
-      },
-      include: {
-        createdByUser: { 
-          select: { 
-            id: true, 
-            name: true
-          } 
-        }
-      },
-      orderBy: { paymentDate: 'asc' }
-    });
-
-    // 3️⃣ Calculate running totals for detailed history
-    let runningPaid = 0;
-    let runningBalance = Number(invoice.grandTotal);
-    
-    const paymentHistory = payments.map((payment) => {
-      const paymentAmount = Number(payment.amount);
-      const paymentDate = payment.paymentDate;
-      
-      const balanceBeforeValue = payment.balanceBefore ? 
-        Number(payment.balanceBefore) : runningBalance;
-      
-      let balanceAfterValue: number;
-
-      if (payment.balanceAfter) {
-        balanceAfterValue = Number(payment.balanceAfter);
-      } else {
-        if (payment.status === 'COMPLETED') {
-          balanceAfterValue = runningBalance - paymentAmount;
-        } else if (payment.status === 'REFUNDED') {
-          balanceAfterValue = runningBalance + paymentAmount;
-        } else {
-          balanceAfterValue = runningBalance;
-        }
-      }
-
-      if (payment.status === 'COMPLETED') {
-        runningPaid += paymentAmount;
-        runningBalance = balanceAfterValue;
-      } else if (payment.status === 'REFUNDED') {
-        runningPaid = Math.max(0, runningPaid - paymentAmount);
-        runningBalance = balanceAfterValue;
-      }
-
-      const dateObj = new Date(paymentDate);
-      const timeString = dateObj.toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: true
-      });
-
-      return {
-        id: payment.id,
-        date: paymentDate.toISOString().split('T')[0],
-        time: timeString,
-        amount: paymentAmount.toFixed(2),
-        paymentMethod: payment.paymentMethod || 'OTHER',
-        status: payment.status,
-        referenceId: payment.referenceId || '',
-        description: payment.description || '',
-        balanceBefore: balanceBeforeValue.toFixed(2),
-        balanceAfter: balanceAfterValue.toFixed(2),
-        totalPaid: runningPaid.toFixed(2),
-        balanceDue: runningBalance.toFixed(2),
-        processedBy: payment.createdByUser?.name || 'System',
-        paymentDate: paymentDate,
-        createdAt: payment.createdAt,
-        updatedAt: payment.updatedAt
-      };
-    });
-
-    // 4️⃣ Calculate summary statistics
-    const completedPayments = payments.filter(p => p.status === 'COMPLETED');
-    const refundedPayments = payments.filter(p => p.status === 'REFUNDED');
-    const failedPayments = payments.filter(p => p.status === 'FAILED');
-    const pendingPayments = payments.filter(p => p.status === 'PENDING');
-    
-    const totalPaid = completedPayments.reduce((sum, p) => sum + Number(p.amount), 0);
-    const totalRefunded = refundedPayments.reduce((sum, p) => sum + Number(p.amount), 0);
-    const netPaid = totalPaid - totalRefunded;
-    const currentBalance = Math.max(0, Number(invoice.grandTotal) - netPaid);
-
-    const summary = {
-      invoiceNumber: invoice.invoiceNumber,
-      customerName: (invoice.customerSnapshot as any)?.companyName || invoice.customer?.companyName,
-      invoiceDate: invoice.invoiceDate,
-      dueDate: invoice.dueDate,
-      totalAmount: Number(invoice.grandTotal).toFixed(2),
-      totalPaid: totalPaid.toFixed(2),
-      totalRefunded: totalRefunded.toFixed(2),
-      netPaid: netPaid.toFixed(2),
-      balanceDue: currentBalance.toFixed(2),
-      invoiceStatus: invoice.status,
-      paymentCount: payments.length,
-      completedPayments: completedPayments.length,
-      refundedPayments: refundedPayments.length,
-      failedPayments: failedPayments.length,
-      pendingPayments: pendingPayments.length,
-      firstPaymentDate: invoice.firstPaymentDate,
-      lastPaymentDate: invoice.lastPaymentDate,
-      fullyPaidDate: invoice.fullyPaidDate,
-      sentAt: invoice.sentAt,
-      paidAt: invoice.paidAt,
-      cancelledAt: invoice.cancelledAt
-    };
-
-    res.status(200).json({
-      success: true,
-      data: {
-        summary,
-        payments: paymentHistory,
-        rawPayments: payments.map(p => ({
-          id: p.id,
-          amount: p.amount,
-          description: p.description,
-          paymentDate: p.paymentDate,
-          paymentMethod: p.paymentMethod,
-          status: p.status,
-          referenceId: p.referenceId,
-          balanceBefore: p.balanceBefore,
-          balanceAfter: p.balanceAfter,
-          createdByUser: p.createdByUser,
-          createdAt: p.createdAt,
-          updatedAt: p.updatedAt
-        }))
-      },
-      invoiceNumber: invoice.invoiceNumber
-    } as ApiResponse);
-
-  } catch (error: any) {
-    console.error('Get payment history error:', error);
-    res.status(
-      error instanceof ValidationError ? 400 :
-      error instanceof NotFoundError ? 404 : 500
-    ).json({
-      success: false,
-      error: error.message || 'Failed to fetch payment history'
-    } as ApiResponse);
-  }
-}
-
-
-
-
-
-
-  static async checkPDFStatus(req: AuthRequest, res: Response): Promise<void> {
-  try {
-    const { invoiceNumber } = req.params;
-    
-    console.log(`🔍 CHECKING PDF STATUS FOR: ${invoiceNumber}`);
-    
-    // 1. Find the invoice
-    const invoice = await prisma.invoice.findFirst({
-      where: { 
-        invoiceNumber,
-        tenantId: req.tenantId 
-      },
-      select: {
-        id: true,
-        invoiceNumber: true,
-        pdfUrl: true,
-        createdAt: true
-      }
-    });
-
-    if (!invoice) {
-      res.status(404).json({ success: false, error: "Invoice not found" });
-      return;
-    }
-
-    // 2. Look for PDF in attachments first
-    const attachments = await prisma.invoiceAttachment.findMany({
-      where: { invoiceId: invoice.id }
-    });
-    const pdfAttachment = attachments.find(a => a.fileName.toLowerCase().endsWith('.pdf') || a.fileUrl.toLowerCase().endsWith('.pdf'));
-    const finalPdfUrl = pdfAttachment?.fileUrl || (invoice as any).pdfUrl;
-
-    console.log('📋 Invoice found:', {
-      number: invoice.invoiceNumber,
-      pdfUrl: finalPdfUrl,
-      created: invoice.createdAt
-    });
-
-    // 2. If no PDF URL, it was never generated
-    if (!finalPdfUrl) {
-      res.json({ 
-        success: true, 
-        status: 'NO_PDF_URL',
-        message: 'No PDF URL stored in database' 
-      });
-      return;
-    }
-
-    // 3. Test if the PDF URL actually works
-    console.log('🔗 Testing PDF URL:', finalPdfUrl);
-    
-    let pdfExists = false;
-    let statusCode = 0;
-    let errorMessage = '';
-    
-    try {
-      const response = await fetch(finalPdfUrl, { method: 'HEAD' });
-      statusCode = response.status;
-      pdfExists = response.ok;
-      
-      console.log('✅ PDF URL test result:', {
-        status: response.status,
-        ok: response.ok
-      });
-    } catch (fetchError: any) {
-      errorMessage = fetchError.message;
-      console.error('❌ PDF URL test failed:', fetchError.message);
-    }
-
-    // 4. Return results
-    res.json({
-      success: true,
-      data: {
+      console.log(`FETCHED INVOICE ${id}:`, {
         invoiceNumber: invoice.invoiceNumber,
-        pdfUrl: invoice.pdfUrl,
-        pdfExists,
-        statusCode,
-        errorMessage,
-        // What the URL should be:
-        expectedUrl: `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/b85c1b5b-77a3-4281-9147-51d6bd3ee94d/invoices/Invoice-${invoiceNumber}.pdf`
+        templateId: invoice.templateId
+      });
+
+      // Get related data
+      const [lineItems, taxes, attachments] = await Promise.all([
+        getInvoiceLineItems(invoice.id, req.tenantId),
+        getInvoiceTaxes(invoice.id, req.tenantId),
+        getInvoiceAttachments(invoice.id)
+      ]);
+
+      // Debug line items data
+      console.log("RETRIEVED LINE ITEMS FOR EDIT:", {
+        count: lineItems.length,
+        items: lineItems.map(item => ({
+          id: item.id,
+          itemName: item.itemName,
+          quantity: item.quantity,
+          rate: item.rate,
+          subtotal: item.subtotal,
+          total: item.total,
+          deletedAt: item.deletedAt
+        }))
+      });
+
+      // Check if line items have been soft-deleted
+      const deletedLineItems = lineItems.filter(item => item.deletedAt !== null);
+      if (deletedLineItems.length > 0) {
+        console.log("WARNING: Found deleted line items:", deletedLineItems.length);
       }
-    });
 
-  } catch (error: any) {
-    console.error('Check PDF status error:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
-    });
+      // Combine all data
+      const invoiceWithDetails = {
+        ...invoice,
+        lineItems,
+        taxes,
+        attachments,
+        // TODO: Add customer data when customer model is available
+        customer: invoice.customerSnapshot || null
+      };
+
+      console.log("Retrieved invoice totals:", {
+        subtotal: invoice.subtotal,
+        taxTotal: invoice.taxTotal,
+        total: invoice.grandTotal,
+        balanceDue: invoice.balanceDue,
+        discount: invoice.discountTotal,
+        lineItemsCount: lineItems.length,
+        taxesCount: taxes.length,
+        attachmentsCount: attachments.length
+      });
+      
+      res.status(200).json({ success: true, data: invoiceWithDetails } as ApiResponse);
+    } catch (error: any) {
+      console.error('Get invoice error:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: error.message || 'Failed to fetch invoice' 
+      } as ApiResponse);
+    }
   }
-}
 
-/**
- * Restore a soft-deleted invoice
- */
-static async restoreInvoice(req: AuthRequest, res: Response): Promise<void> {
-  try {
-    if (!req.tenantId || !req.user) {
-      throw new ValidationError('Tenant context and authentication required');
-    }
-
-    const { id } = req.params;
-    
-    // Find the soft-deleted invoice
-    const existing = await prisma.invoice.findFirst({ 
-      where: { 
-        id, 
-        tenantId: req.tenantId,
-        deletedAt: { not: null } // Only find deleted invoices
-      } 
-    });
-
-    if (!existing) {
-      throw new NotFoundError('Deleted invoice not found');
-    }
-
-    // Restore invoice and items
-    await prisma.$transaction([
-      // Restore invoice items
-      prisma.invoiceLineItem.updateMany({
-        where: { 
-          invoiceId: id, 
-          tenantId: req.tenantId 
-        },
-        data: { 
-          deletedAt: null,
-          deletedBy: null,
-          updatedAt: new Date(),
-          updatedBy: req.user.id
-        }
-      }),
-      // Restore invoice
-      prisma.invoice.update({
-        where: { 
-          id, 
-          tenantId: req.tenantId 
-        },
-        data: { 
-          deletedAt: null,
-          deletedBy: null,
-          updatedAt: new Date(),
-          updatedBy: req.user.id
-        }
-      })
-    ]);
-    
-    // Fetch the restored invoice with items
-    const restoredInvoice = await prisma.invoice.findFirst({
-      where: {
-        id,
-        tenantId: req.tenantId
-      },
-      include: {
-        customer: true,
-        lineItems: {
-          where: { deletedAt: null }
-        },
-        settingsProfile: true
+  /** ====================
+   *  GET INVOICES - PostgreSQL Version
+   * ==================== */
+  static async getInvoices(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId) {
+        throw new ValidationError('Tenant context required');
       }
-    });
-    
-    res.status(200).json({ 
-      success: true, 
-      data: restoredInvoice,
-      message: 'Invoice restored successfully' 
-    } as ApiResponse);
 
-  } catch (error: any) {
-    console.error('Restore invoice error:', error);
-    res.status(error instanceof NotFoundError ? 404 : 500).json({ 
-      success: false, 
-      error: error.message || 'Failed to restore invoice' 
-    } as ApiResponse);
+      const { 
+        page = 1, 
+        limit = 20, 
+        status, 
+        customerId, 
+        search,
+        sortBy = 'createdAt',
+        sortOrder = 'desc'
+      } = req.query;
+
+      console.log(`GET INVOICES - Page: ${page}, Limit: ${limit}`);
+
+      // Handle status parameter properly
+      let statusFilter: 'all' | InvoiceStatus = 'all';
+      if (status && status !== 'all') {
+        statusFilter = status as InvoiceStatus;
+      }
+
+      const options = {
+        page: Number(page),
+        limit: Number(limit),
+        status: statusFilter,
+        customerId: customerId as string,
+        search: search as string,
+        sortBy: sortBy as string,
+        sortOrder: sortOrder as 'asc' | 'desc'
+      };
+
+      const { invoices, total } = await getInvoices(req.tenantId, options);
+
+      const totalPages = Math.ceil(total / Number(limit));
+
+      console.log(`Retrieved ${invoices.length} invoices out of ${total} total`);
+
+      res.status(200).json({ 
+        success: true, 
+        data: invoices, 
+        pagination: { 
+          page: Number(page), 
+          limit: Number(limit), 
+          total, 
+          pages: totalPages 
+        } 
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error('Get invoices error:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: error.message || 'Failed to fetch invoices' 
+      } as ApiResponse);
+    }
   }
-}
 
-/**
- * Permanently delete invoice from database (hard delete)
- * Use with caution - this cannot be undone!
- */
-static async permanentDeleteInvoice(req: AuthRequest, res: Response): Promise<void> {
-  try {
-    if (!req.tenantId || !req.user) {
-      throw new ValidationError('Tenant context and authentication required');
+  /** ====================
+   *  DELETE INVOICE (Soft Delete) - PostgreSQL Version
+   * ==================== */
+  static async deleteInvoice(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        throw new ValidationError('Tenant context and authentication required');
+      }
+
+      const { id } = req.params;
+      console.log(`DELETE INVOICE - ID: ${id}`);
+
+      // Check if invoice exists and is not already deleted
+      const existingInvoice = await getInvoiceById(id, req.tenantId);
+      if (!existingInvoice) {
+        throw new NotFoundError('Invoice not found');
+      }
+
+      // Soft delete the invoice
+      const deleted = await softDeleteInvoice(id, req.tenantId, req.user.id);
+      
+      if (!deleted) {
+        throw new Error('Failed to delete invoice');
+      }
+
+      // Log activity
+      await createInvoiceActivityLog({
+        invoiceId: id,
+        action: 'DELETED',
+        performedBy: req.user.id,
+        metadata: {
+          invoiceNumber: existingInvoice.invoiceNumber,
+          total: existingInvoice.grandTotal
+        }
+      });
+
+      console.log(`Invoice ${id} soft deleted successfully`);
+
+      res.status(200).json({
+        success: true,
+        message: 'Invoice moved to trash successfully',
+      } as ApiResponse);
+
+    } catch (error: any) {
+      console.error('Delete invoice error:', error);
+      res.status(
+        error instanceof NotFoundError ? 404 :
+        error instanceof ValidationError ? 400 : 500
+      ).json({ 
+        success: false, 
+        error: error.message || 'Failed to delete invoice' 
+      } as ApiResponse);
     }
-
-    const { id } = req.params;
-    
-    // Check if user has admin role (you need to add role check)
-    // if (req.user.role !== 'ADMIN') {
-    //   throw new ValidationError('Only admins can permanently delete invoices');
-    // }
-    
-    const existing = await prisma.invoice.findFirst({ 
-      where: { 
-        id, 
-        tenantId: req.tenantId 
-      } 
-    });
-
-    if (!existing) {
-      throw new NotFoundError('Invoice not found');
-    }
-
-    // Permanently delete from database
-    await prisma.$transaction([
-      prisma.invoiceLineItem.deleteMany({
-        where: { invoiceId: id, tenantId: req.tenantId }
-      }),
-      prisma.invoicePayment.deleteMany({
-        where: { invoiceId: id, tenantId: req.tenantId }
-      }),
-      prisma.invoiceTax.deleteMany({
-        where: { invoiceId: id, tenantId: req.tenantId }
-      }),
-      prisma.invoiceAttachment.deleteMany({
-        where: { invoiceId: id }
-      }),
-      prisma.invoice.delete({ 
-        where: { id, tenantId: req.tenantId } 
-      })
-    ]);
-    
-    res.status(200).json({ 
-      success: true, 
-      message: 'Invoice permanently deleted from database' 
-    } as ApiResponse);
-
-  } catch (error: any) {
-    console.error('Permanent delete invoice error:', error);
-    res.status(error instanceof NotFoundError ? 404 : 500).json({ 
-      success: false, 
-      error: error.message || 'Failed to permanently delete invoice' 
-    } as ApiResponse);
   }
-}
 
+  /** ====================
+   *  RESTORE INVOICE - PostgreSQL Version
+   * ==================== */
+  static async restoreInvoice(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        throw new ValidationError('Tenant context and authentication required');
+      }
 
-/**
- * Get all soft-deleted invoices
- */
-static async getDeletedInvoices(req: AuthRequest, res: Response): Promise<void> {
-  try {
-    if (!req.tenantId) throw new ValidationError('Tenant context required');
+      const { id } = req.params;
+      console.log(`RESTORE INVOICE - ID: ${id}`);
 
-    const { page = 1, limit = 20, search } = req.query;
-    const skip = (Number(page) - 1) * Number(limit);
+      // Restore the invoice
+      const restored = await restoreInvoice(id, req.tenantId, req.user.id);
+      
+      if (!restored) {
+        throw new NotFoundError('Deleted invoice not found');
+      }
 
-    const where: any = { 
-      tenantId: req.tenantId,
-      deletedAt: { not: null } // Only soft-deleted invoices
-    };
+      // Log activity
+      await createInvoiceActivityLog({
+        invoiceId: id,
+        action: 'RESTORED',
+        performedBy: req.user.id,
+        metadata: {
+          restoredAt: new Date()
+        }
+      });
 
-    if (search) {
-      where.OR = [
-        { invoiceNumber: { contains: search as string, mode: 'insensitive' } },
-        { customer: { companyName: { contains: search as string, mode: 'insensitive' } } }
-      ];
+      console.log(`Invoice ${id} restored successfully`);
+
+      res.status(200).json({
+        success: true,
+        message: 'Invoice restored successfully',
+      } as ApiResponse);
+
+    } catch (error: any) {
+      console.error('Restore invoice error:', error);
+      res.status(
+        error instanceof NotFoundError ? 404 :
+        error instanceof ValidationError ? 400 : 500
+      ).json({ 
+        success: false, 
+        error: error.message || 'Failed to restore invoice' 
+      } as ApiResponse);
     }
+  }
 
-    const [invoices, total] = await Promise.all([
-      prisma.invoice.findMany({
-        where,
-        include: { 
-          customer: true,
-          deletedByUser: {
-            select: { id: true, name: true }
+  /** ====================
+   *  HARD DELETE INVOICE (Permanent) - PostgreSQL Version
+   * ==================== */
+  static async permanentDeleteInvoice(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        throw new ValidationError('Tenant context and authentication required');
+      }
+
+      const { id } = req.params;
+      console.log(`PERMANENT DELETE INVOICE - ID: ${id}`);
+
+      // Check if invoice exists (including deleted ones) with retry logic
+      let existingInvoice = null;
+      let foundInDeleted = null;
+      
+      try {
+        existingInvoice = await getInvoiceById(id, req.tenantId);
+      } catch (error: any) {
+        console.log('Error getting invoice by ID, trying deleted invoices:', error.message);
+        if (error.code === 'ETIMEDOUT') {
+          // Retry once for timeout
+          try {
+            existingInvoice = await getInvoiceById(id, req.tenantId);
+          } catch (retryError: any) {
+            console.log('Retry also failed, proceeding to check deleted invoices');
           }
-        },
-        orderBy: { deletedAt: 'desc' },
-        skip,
-        take: Number(limit)
-      }),
-      prisma.invoice.count({ where })
-    ]);
+        }
+      }
+      
+      if (!existingInvoice) {
+        // Try to find in deleted invoices as well
+        const deletedInvoicesResponse = await getDeletedInvoices(req.tenantId);
+        foundInDeleted = deletedInvoicesResponse.invoices.find(inv => inv.id === id || inv.invoiceNumber === id);
+        
+        if (!foundInDeleted) {
+          throw new NotFoundError('Invoice not found');
+        }
+        console.log('Found invoice in deleted invoices, proceeding with permanent delete');
+      }
 
-    const totalPages = Math.ceil(total / Number(limit));
+      // Hard delete the invoice (cascade deletion)
+      const deleted = await hardDeleteInvoice(id, req.tenantId);
+      
+      if (!deleted) {
+        throw new Error('Failed to permanently delete invoice');
+      }
 
-    res.status(200).json({ 
-      success: true, 
-      data: invoices, 
-      pagination: { 
-        page: Number(page), 
-        limit: Number(limit), 
-        total, 
-        pages: totalPages 
-      } 
-    } as ApiResponse);
-  } catch (error: any) {
-    console.error('Get deleted invoices error:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message || 'Failed to fetch deleted invoices' 
-    } as ApiResponse);
+      // Log activity (before deletion)
+      const invoiceForLog = existingInvoice || foundInDeleted;
+      await createInvoiceActivityLog({
+        invoiceId: id,
+        action: 'PERMANENTLY_DELETED',
+        performedBy: req.user.id,
+        metadata: {
+          invoiceNumber: invoiceForLog?.invoiceNumber || 'Unknown',
+          total: invoiceForLog?.grandTotal || 0
+        }
+      });
+
+      console.log(`Invoice ${id} permanently deleted successfully`);
+
+      res.status(200).json({
+        success: true,
+        message: 'Invoice permanently deleted successfully',
+      } as ApiResponse);
+
+    } catch (error: any) {
+      console.error('Permanent delete invoice error:', error);
+      res.status(
+        error instanceof NotFoundError ? 404 :
+        error instanceof ValidationError ? 400 : 500
+      ).json({ 
+        success: false, 
+        error: error.message || 'Failed to permanently delete invoice' 
+      } as ApiResponse);
+    }
   }
-}
 
+  /** ====================
+   *  GET DELETED INVOICES - PostgreSQL Version
+   * ==================== */
+  static async getDeletedInvoices(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId) {
+        throw new ValidationError('Tenant context required');
+      }
 
-  /**
-   * Bulk restore soft-deleted invoices
-   */
+      const { 
+        page = 1, 
+        limit = 20, 
+        search,
+        sortBy = 'deletedAt',
+        sortOrder = 'desc'
+      } = req.query;
+
+      console.log(`GET DELETED INVOICES - Page: ${page}, Limit: ${limit}`);
+
+      const options = {
+        page: Number(page),
+        limit: Number(limit),
+        status: 'all' as 'all' | InvoiceStatus, // Get all invoices including deleted ones
+        customerId: undefined,
+        search: search as string,
+        sortBy: sortBy as string,
+        sortOrder: sortOrder as 'asc' | 'desc'
+      };
+
+      const { invoices, total } = await getDeletedInvoices(req.tenantId, options);
+
+      // Filter to only show deleted invoices
+      const deletedInvoices = invoices.filter(inv => inv.deletedAt !== null);
+
+      const totalPages = Math.ceil(total / Number(limit));
+
+      console.log(`Retrieved ${deletedInvoices.length} deleted invoices out of ${total} total`);
+
+      res.status(200).json({ 
+        success: true, 
+        data: deletedInvoices, 
+        pagination: { 
+          page: Number(page), 
+          limit: Number(limit), 
+          total: deletedInvoices.length, 
+          pages: totalPages 
+        } 
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error('Get deleted invoices error:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: error.message || 'Failed to fetch deleted invoices' 
+      } as ApiResponse);
+    }
+  }
+
+  /** ====================
+   *  BULK RESTORE INVOICES - PostgreSQL Version
+   * ==================== */
   static async bulkRestoreInvoices(req: AuthRequest, res: Response): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
         throw new ValidationError('Tenant context and authentication required');
       }
 
-      const { ids } = req.body;
+      const { invoiceIds, ids } = req.body;
+      const invoiceIdsToRestore = invoiceIds || ids;
+      console.log(`BULK RESTORE INVOICES - Count: ${invoiceIdsToRestore?.length || 0}`);
 
-      if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      if (!invoiceIdsToRestore || !Array.isArray(invoiceIdsToRestore) || invoiceIdsToRestore.length === 0) {
         throw new ValidationError('Invoice IDs array is required');
       }
 
-      // Verify invoices exist in trash and belong to tenant
-      const invoices = await prisma.invoice.findMany({
-        where: {
-          id: { in: ids },
-          tenantId: req.tenantId,
-          deletedAt: { not: null }
+      let restoredCount = 0;
+      let failedCount = 0;
+      const errors: string[] = [];
+
+      for (const id of invoiceIdsToRestore) {
+        try {
+          const restored = await restoreInvoice(id, req.tenantId, req.user.id);
+          if (restored) {
+            restoredCount++;
+          } else {
+            failedCount++;
+            errors.push(`Invoice ${id} not found or not deleted`);
+          }
+        } catch (error) {
+          failedCount++;
+          errors.push(`Invoice ${id}: ${error.message}`);
+        }
+      }
+
+      // Log bulk activity
+      await createInvoiceActivityLog({
+        invoiceId: 'bulk-operation',
+        action: 'BULK_RESTORED',
+        performedBy: req.user.id,
+        metadata: {
+          restoredCount,
+          failedCount,
+          invoiceIds,
+          errors
         }
       });
 
-      if (invoices.length === 0) {
-        throw new NotFoundError('No valid deleted invoices found to restore');
-      }
+      console.log(`Bulk restore completed: ${restoredCount} restored, ${failedCount} failed`);
 
-      const invoiceIdsToRestore = invoices.map(i => i.id);
-
-      // Restore invoices and items in transaction
-      await prisma.$transaction([
-        prisma.invoiceLineItem.updateMany({
-          where: { 
-            invoiceId: { in: invoiceIdsToRestore }, 
-            tenantId: req.tenantId 
-          },
-          data: { 
-            deletedAt: null,
-            deletedBy: null,
-            updatedAt: new Date(),
-            updatedBy: req.user.id
-          }
-        }),
-        prisma.invoice.updateMany({
-          where: { 
-            id: { in: invoiceIdsToRestore }, 
-            tenantId: req.tenantId 
-          },
-          data: { 
-            deletedAt: null,
-            deletedBy: null,
-            updatedAt: new Date(),
-            updatedBy: req.user.id
-          }
-        })
-      ]);
-
-      res.status(200).json({ 
-        success: true, 
-        data: { restoredCount: invoices.length },
-        message: `${invoices.length} invoice(s) restored successfully` 
+      res.status(200).json({
+        success: true,
+        message: `Restored ${restoredCount} invoices successfully`,
+        data: {
+          restoredCount,
+          failedCount,
+          errors
+        }
       } as ApiResponse);
 
     } catch (error: any) {
       console.error('Bulk restore invoices error:', error);
-      res.status(error instanceof NotFoundError ? 404 : 400).json({ 
+      res.status(
+        error instanceof ValidationError ? 400 : 500
+      ).json({ 
         success: false, 
         error: error.message || 'Failed to restore invoices' 
       } as ApiResponse);
     }
   }
 
-  /**
-   * Bulk permanent delete invoices from database
-   */
+  /** ====================
+   *  BULK HARD DELETE INVOICES - PostgreSQL Version
+   * ==================== */
   static async bulkPermanentDeleteInvoices(req: AuthRequest, res: Response): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
         throw new ValidationError('Tenant context and authentication required');
       }
 
-      const { ids } = req.body;
+      const { invoiceIds, ids } = req.body;
+      const invoiceIdsToDelete = invoiceIds || ids;
+      console.log(`BULK PERMANENT DELETE INVOICES - Count: ${invoiceIdsToDelete?.length || 0}`);
 
-      if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      if (!invoiceIdsToDelete || !Array.isArray(invoiceIdsToDelete) || invoiceIdsToDelete.length === 0) {
         throw new ValidationError('Invoice IDs array is required');
       }
 
-      const invoices = await prisma.invoice.findMany({
-        where: {
-          id: { in: ids },
-          tenantId: req.tenantId,
-          deletedAt: { not: null }
+      let deletedCount = 0;
+      let failedCount = 0;
+      const errors: string[] = [];
+
+      for (const id of invoiceIdsToDelete) {
+        try {
+          const deleted = await hardDeleteInvoice(id, req.tenantId);
+          if (deleted) {
+            deletedCount++;
+          } else {
+            failedCount++;
+            errors.push(`Invoice ${id} not found`);
+          }
+        } catch (error) {
+          failedCount++;
+          errors.push(`Invoice ${id}: ${error.message}`);
+        }
+      }
+
+      // Log bulk activity
+      await createInvoiceActivityLog({
+        invoiceId: 'bulk-operation',
+        action: 'BULK_PERMANENTLY_DELETED',
+        performedBy: req.user.id,
+        metadata: {
+          deletedCount,
+          failedCount,
+          invoiceIds,
+          errors
         }
       });
 
-      if (invoices.length === 0) {
-        throw new NotFoundError('No valid deleted invoices found to permanently delete');
-      }
+      console.log(`Bulk permanent delete completed: ${deletedCount} deleted, ${failedCount} failed`);
 
-      const invoiceIdsToDelete = invoices.map(i => i.id);
-
-      // Permanently delete from database in transaction
-      await prisma.$transaction([
-        prisma.invoiceLineItem.deleteMany({
-          where: { invoiceId: { in: invoiceIdsToDelete }, tenantId: req.tenantId }
-        }),
-        prisma.invoicePayment.deleteMany({
-          where: { invoiceId: { in: invoiceIdsToDelete }, tenantId: req.tenantId }
-        }),
-        prisma.invoiceTax.deleteMany({
-          where: { invoiceId: { in: invoiceIdsToDelete }, tenantId: req.tenantId }
-        }),
-        prisma.invoiceAttachment.deleteMany({
-          where: { invoiceId: { in: invoiceIdsToDelete } }
-        }),
-        prisma.invoice.deleteMany({ 
-          where: { id: { in: invoiceIdsToDelete }, tenantId: req.tenantId } 
-        })
-      ]);
-
-      res.status(200).json({ 
-        success: true, 
-        data: { deletedCount: invoices.length },
-        message: `${invoices.length} invoice(s) permanently deleted` 
+      res.status(200).json({
+        success: true,
+        message: `Permanently deleted ${deletedCount} invoices successfully`,
+        data: {
+          deletedCount,
+          failedCount,
+          errors
+        }
       } as ApiResponse);
 
     } catch (error: any) {
       console.error('Bulk permanent delete invoices error:', error);
-      res.status(error instanceof NotFoundError ? 404 : 400).json({ 
+      res.status(
+        error instanceof ValidationError ? 400 : 500
+      ).json({ 
         success: false, 
         error: error.message || 'Failed to permanently delete invoices' 
       } as ApiResponse);
     }
   }
 
-  /**
-   * Bulk soft-delete invoices (Move to Trash)
-   */
+  /** ====================
+   *  BULK DELETE INVOICES (Soft Delete) - PostgreSQL Version
+   * ==================== */
   static async bulkDeleteInvoices(req: AuthRequest, res: Response): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
         throw new ValidationError('Tenant context and authentication required');
       }
 
-      const { ids } = req.body;
+      const { invoiceIds, ids } = req.body;
+      const invoiceIdsToDelete = invoiceIds || ids;
+      console.log(`BULK DELETE INVOICES - Count: ${invoiceIdsToDelete?.length || 0}`);
+      console.log('Bulk delete request body:', req.body);
 
-      if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      if (!invoiceIdsToDelete || !Array.isArray(invoiceIdsToDelete)) {
         throw new ValidationError('Invoice IDs array is required');
       }
 
-      const now = new Date();
-      const userId = req.user.id;
+      if (invoiceIdsToDelete.length === 0) {
+        console.log('No invoice IDs provided for bulk delete');
+        res.status(200).json({
+          success: true,
+          message: 'No invoices selected for deletion',
+          data: {
+            deletedCount: 0,
+            failedCount: 0,
+            errors: []
+          }
+        } as ApiResponse);
+        return;
+      }
 
-      // 1. Fetch invoices to cleanup R2
-      const invoices = await prisma.invoice.findMany({
-        where: {
-          id: { in: ids },
-          tenantId: req.tenantId,
-          deletedAt: null
-        },
-        include: { attachments: true }
+      let deletedCount = 0;
+      let failedCount = 0;
+      const errors: string[] = [];
+
+      for (const id of invoiceIdsToDelete) {
+        try {
+          const deleted = await softDeleteInvoice(id, req.tenantId, req.user.id);
+          if (deleted) {
+            deletedCount++;
+          } else {
+            failedCount++;
+            errors.push(`Invoice ${id} not found`);
+          }
+        } catch (error) {
+          failedCount++;
+          errors.push(`Invoice ${id}: ${error.message}`);
+        }
+      }
+
+      // Log bulk activity
+      await createInvoiceActivityLog({
+        invoiceId: 'bulk-operation',
+        action: 'BULK_DELETED',
+        performedBy: req.user.id,
+        metadata: {
+          deletedCount,
+          failedCount,
+          invoiceIds,
+          errors
+        }
       });
 
-      if (invoices.length === 0) {
-        throw new NotFoundError('No valid invoices found to delete');
-      }
+      console.log(`Bulk delete completed: ${deletedCount} deleted, ${failedCount} failed`);
 
-      const validIds = invoices.map(i => i.id);
-
-      // 2. Cleanup R2 for all invoices in bulk
-      for (const inv of invoices) {
-        // Cleanup attachments
-        if (inv.attachments?.length > 0) {
-          for (const att of inv.attachments) {
-            try {
-              await deleteFileFromR2(att.fileUrl, req.tenantId);
-            } catch (r2Error) {
-              console.error(`Failed to cleanup R2 file ${att.fileUrl} during bulk deletion:`, r2Error);
-            }
-          }
+      res.status(200).json({
+        success: true,
+        message: `Moved ${deletedCount} invoices to trash successfully`,
+        data: {
+          deletedCount,
+          failedCount,
+          errors
         }
-        // Cleanup legacy PDF
-        if (inv.pdfUrl) {
-          try {
-            await deleteFileFromR2(inv.pdfUrl, req.tenantId);
-          } catch (r2Error) {
-            console.error('Failed to cleanup legacy R2 PDF during bulk deletion:', r2Error);
-          }
-        }
-      }
-
-      // 3. Update database in transaction
-      await prisma.$transaction([
-        prisma.invoiceLineItem.updateMany({
-          where: { 
-            invoiceId: { in: validIds }, 
-            tenantId: req.tenantId 
-          },
-          data: {
-            deletedAt: now,
-            deletedBy: userId,
-            updatedAt: now,
-            updatedBy: userId
-          }
-        }),
-        prisma.invoice.updateMany({
-          where: { 
-            id: { in: validIds }, 
-            tenantId: req.tenantId 
-          },
-          data: { 
-            deletedAt: now,
-            deletedBy: userId,
-            updatedAt: now,
-            updatedBy: userId
-          }
-        })
-      ]);
-
-      res.status(200).json({ 
-        success: true, 
-        data: { deletedCount: invoices.length },
-        message: `${invoices.length} invoice(s) moved to trash successfully` 
       } as ApiResponse);
 
     } catch (error: any) {
       console.error('Bulk delete invoices error:', error);
-      res.status(error instanceof NotFoundError ? 404 : 400).json({ 
+      res.status(
+        error instanceof ValidationError ? 400 : 500
+      ).json({ 
         success: false, 
-        error: error.message || 'Failed to move invoices to trash' 
+        error: error.message || 'Failed to delete invoices' 
+      } as ApiResponse);
+    }
+  }
+
+  /** ====================
+   *  SEND EMAIL - PostgreSQL Version
+   * ==================== */
+  static async sendEmail(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        throw new ValidationError('Tenant context and authentication required');
+      }
+
+      const { id } = req.params;
+      const { to, subject, message, pdfUrl } = req.body;
+      console.log(`SEND EMAIL - Invoice ID: ${id}`);
+
+      // Get invoice with complete data
+      const invoice = await getInvoiceById(id, req.tenantId);
+      if (!invoice) {
+        throw new NotFoundError('Invoice not found');
+      }
+
+      // Get attachments to find PDF
+      const attachments = await getInvoiceAttachments(invoice.id);
+      const pdfAttachment = attachments.find(a => a.fileName.toLowerCase().endsWith('.pdf') || a.fileUrl.toLowerCase().endsWith('.pdf'));
+      let finalPdfUrl = pdfUrl || pdfAttachment?.fileUrl || (invoice as any).pdfUrl;
+
+      // Validate PDF exists
+      let isPdfValid = false;
+      if (finalPdfUrl) {
+        try {
+          const checkRes = await fetch(finalPdfUrl, { method: 'HEAD' });
+          if (checkRes.ok) isPdfValid = true;
+        } catch (e) {
+          console.warn(`PDF Check failed for ${finalPdfUrl}`, e);
+        }
+      }
+
+      // Generate PDF if missing or invalid
+      if (!isPdfValid) {
+        console.log('PDF missing or invalid, regenerating...');
+        const profile = await getSettingsProfileById(invoice.settingsProfileId!, req.tenantId);
+        if (!profile) {
+          throw new Error('Settings profile not found for PDF regeneration');
+        }
+        finalPdfUrl = await generateAndUploadInvoicePDF(invoice, profile);
+        
+        await createInvoiceAttachment({
+          invoiceId: invoice.id,
+          fileName: `Invoice_${invoice.invoiceNumber}.pdf`,
+          fileUrl: finalPdfUrl,
+          uploadedBy: req.user.id
+        });
+      }
+
+      // Determine recipient email
+      const snapshot = invoice.customerSnapshot as any;
+      const recipientEmail = invoice.customerSnapshot?.email || to || snapshot?.email;
+      const customerName = invoice.customerSnapshot?.companyName || snapshot?.companyName || "Valued Customer";
+
+      if (!recipientEmail) {
+        throw new ValidationError("No recipient email address found for this customer.");
+      }
+
+      // Send actual email using email service
+      const emailResult = await emailService.sendInvoiceEmail({
+        to: recipientEmail,
+        subject: `Invoice ${invoice.invoiceNumber} from Zithtech`,
+        customerName,
+        invoiceNumber: invoice.invoiceNumber,
+        amount: invoice.grandTotal ? invoice.grandTotal.toString() : '0.00',
+        dueDate: invoice.dueDate ? invoice.dueDate.toLocaleDateString() : new Date().toLocaleDateString(),
+        pdfUrl: finalPdfUrl
+      });
+
+      if (emailResult.success) {
+        console.log(`✅ Email sent successfully to ${recipientEmail}`);
+        res.status(200).json({
+          success: true,
+          message: 'Email sent successfully',
+          data: {
+            recipientEmail,
+            customerName,
+            pdfUrl: finalPdfUrl,
+            invoiceNumber: invoice.invoiceNumber
+          }
+        } as ApiResponse);
+      } else {
+        console.error(`❌ Failed to send email to ${recipientEmail}`);
+        res.status(500).json({
+          success: false,
+          error: 'Failed to send email'
+        } as ApiResponse);
+      }
+
+    } catch (error: any) {
+      console.error('Send email error:', error);
+      res.status(
+        error instanceof NotFoundError ? 404 :
+        error instanceof ValidationError ? 400 : 500
+      ).json({ 
+        success: false, 
+        error: error.message || 'Failed to send email' 
+      } as ApiResponse);
+    }
+  }
+
+  /** ====================
+   *  UPDATE STATUS - PostgreSQL Version
+   * ==================== */
+  static async updateStatus(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId) {
+        throw new ValidationError('Tenant context required');
+      }
+
+      const { id } = req.params;
+      const { status, payment, paidAmount, balanceAmount, paymentMethod, paymentDate } = req.body;
+      
+      // Extract payment details from nested payment object or flat structure
+      const extractedPaidAmount = payment?.amount || paidAmount;
+      const extractedPaymentMethod = payment?.method || paymentMethod;
+      const extractedPaymentDate = payment?.date || paymentDate;
+      const extractedBalanceAmount = balanceAmount; // balanceAmount is only at root level
+      
+      console.log(`UPDATE STATUS - ID: ${id}, Status: ${status}`);
+      console.log('PAYMENT DETAILS:', {
+        paidAmount: extractedPaidAmount,
+        balanceAmount: extractedBalanceAmount,
+        paymentMethod: extractedPaymentMethod,
+        paymentDate: extractedPaymentDate,
+        originalPaymentObject: payment
+      });
+
+      // Validate status
+      if (!status) {
+        throw new ValidationError('Status is required');
+      }
+      
+      const normalizedStatus = status.toUpperCase();
+      if (!Object.values(InvoiceStatus).includes(normalizedStatus)) {
+        throw new ValidationError(`Invalid status: ${status}. Valid statuses: ${Object.values(InvoiceStatus).join(', ')}`);
+      }
+
+      // Check if invoice exists
+      const existingInvoice = await getInvoiceById(id, req.tenantId);
+      if (!existingInvoice) {
+        throw new NotFoundError('Invoice not found');
+      }
+
+      // Validate payment details for payment-related statuses BEFORE updating
+      if (normalizedStatus === InvoiceStatus.PARTIALLY_PAID || normalizedStatus === InvoiceStatus.PAID) {
+        if (!extractedPaidAmount || extractedPaidAmount <= 0) {
+          throw new ValidationError(`Paid amount is required and must be greater than 0 for ${normalizedStatus} status. Received: ${extractedPaidAmount}`);
+        }
+        
+        if (!extractedPaymentMethod) {
+          throw new ValidationError(`Payment method is required for ${normalizedStatus} status. Valid methods: CASH, BANK_TRANSFER, CREDIT_CARD, DEBIT_CARD, CHECK, ONLINE_PAYMENT, OTHER`);
+        }
+
+        // Validate payment amount doesn't exceed total
+        const paymentAmount = Number(extractedPaidAmount);
+        if (paymentAmount > existingInvoice.grandTotal) {
+          throw new ValidationError(`Payment amount (${paymentAmount}) cannot exceed invoice total (${existingInvoice.grandTotal})`);
+        }
+      }
+
+      // For payment-related statuses, update both status and balance
+      if (normalizedStatus === InvoiceStatus.PARTIALLY_PAID || normalizedStatus === InvoiceStatus.PAID) {
+        // Get current invoice details for payment calculation
+        const currentInvoice = await getInvoiceById(id, req.tenantId);
+        if (!currentInvoice) {
+          throw new NotFoundError('Invoice not found');
+        }
+
+        // Use actual payment amount from request
+        const paymentAmount = Number(extractedPaidAmount);
+        
+        // Calculate balance after payment
+        const balanceBefore = currentInvoice.balanceDue;
+        const balanceAfter = extractedBalanceAmount !== undefined ? Number(extractedBalanceAmount) : 
+          (normalizedStatus === InvoiceStatus.PAID ? 0 : balanceBefore - paymentAmount);
+        
+        // Calculate new paid amount
+        const newPaidAmount = (currentInvoice.paidAmount || 0) + paymentAmount;
+        
+        // Update both status and balance in one operation
+        const updated = await updateInvoiceStatusAndBalance(
+          id, 
+          req.tenantId, 
+          normalizedStatus as InvoiceStatus, 
+          balanceAfter, 
+          newPaidAmount,
+          req.user.id
+        );
+        
+        if (!updated) {
+          throw new Error('Failed to update invoice status and balance');
+        }
+
+        // Create payment record
+        try {
+          // Map payment method string to enum
+          let paymentMethodEnum = PaymentMethod.OTHER;
+          if (extractedPaymentMethod) {
+            const methodUpper = extractedPaymentMethod.toUpperCase();
+            switch (methodUpper) {
+              case 'CASH':
+                paymentMethodEnum = PaymentMethod.CASH;
+                break;
+              case 'BANK_TRANSFER':
+              case 'TRANSFER':
+                paymentMethodEnum = PaymentMethod.BANK_TRANSFER;
+                break;
+              case 'CREDIT_CARD':
+              case 'CARD':
+                paymentMethodEnum = PaymentMethod.CREDIT_CARD;
+                break;
+              case 'DEBIT_CARD':
+                paymentMethodEnum = PaymentMethod.DEBIT_CARD;
+                break;
+              case 'CHECK':
+              case 'CHEQUE':
+                paymentMethodEnum = PaymentMethod.CHECK;
+                break;
+              case 'ONLINE_PAYMENT':
+              case 'ONLINE':
+                paymentMethodEnum = PaymentMethod.ONLINE_PAYMENT;
+                break;
+              default:
+                paymentMethodEnum = PaymentMethod.OTHER;
+            }
+          }
+          
+          await createInvoicePayment({
+            tenantId: req.tenantId!,
+            invoiceId: id,
+            amount: paymentAmount,
+            description: `Payment for status update to ${normalizedStatus}`,
+            paymentDate: extractedPaymentDate ? new Date(extractedPaymentDate) : new Date(),
+            paymentMethod: paymentMethodEnum,
+            status: InvoicePaymentStatus.COMPLETED,
+            createdBy: req.user.id,
+            balanceBefore: balanceBefore,
+            balanceAfter: balanceAfter
+          });
+          
+          console.log(`Payment record created: Amount=${paymentAmount}, Method=${paymentMethodEnum}, Balance Before=${balanceBefore}, Balance After=${balanceAfter}`);
+          
+          // Create transaction for the payment
+          try {
+            await createTransaction({
+              userId: req.user.id,
+              type: 'income', // Invoice payments are income
+              amount: paymentAmount,
+              description: `Payment received for invoice ${currentInvoice.invoiceNumber}`,
+              category: 'client_payment',
+              date: extractedPaymentDate ? new Date(extractedPaymentDate) : new Date(),
+              metadata: {
+                invoiceId: id,
+                invoiceNumber: currentInvoice.invoiceNumber,
+                paymentMethod: paymentMethodEnum,
+                paymentStatus: normalizedStatus
+              }
+            }, req.tenantId!);
+            
+            console.log(`Transaction created for invoice payment: Amount=${paymentAmount}, Invoice=${currentInvoice.invoiceNumber}`);
+          } catch (transactionError: any) {
+            console.error('Failed to create transaction for invoice payment:', transactionError);
+            // Don't fail the payment update if transaction creation fails
+          }
+        } catch (paymentError: any) {
+          console.error('Failed to create payment record:', paymentError);
+          // Don't fail the status update if payment creation fails
+        }
+      } else {
+        // For non-payment statuses, just update the status
+        const updated = await updateInvoiceStatus(id, req.tenantId, normalizedStatus as InvoiceStatus, req.user.id);
+        
+        if (!updated) {
+          throw new Error('Failed to update invoice status');
+        }
+      }
+
+      // Log activity
+      await createInvoiceActivityLog({
+        invoiceId: id,
+        action: 'STATUS_UPDATED',
+        performedBy: req.user.id,
+        metadata: {
+          oldStatus: existingInvoice.status,
+          newStatus: normalizedStatus,
+          updatedBy: req.user.id
+        }
+      });
+
+      console.log(`Invoice ${id} status updated to ${status}`);
+
+      res.status(200).json({
+        success: true,
+        data: {
+          id,
+          invoiceNumber: existingInvoice.invoiceNumber,
+          oldStatus: existingInvoice.status,
+          newStatus: normalizedStatus
+        }
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error('Update status error:', error);
+      res.status(
+        error instanceof NotFoundError ? 404 :
+        error instanceof ValidationError ? 400 : 500
+      ).json({ 
+        success: false, 
+        error: error.message || 'Failed to update invoice status' 
+      } as ApiResponse);
+    }
+  }
+
+  /** ====================
+   *  DOWNLOAD INVOICE - PostgreSQL Version
+   * ==================== */
+  static async downloadInvoice(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId) {
+        throw new ValidationError('Tenant context required');
+      }
+
+      const { id } = req.params;
+      console.log(`DOWNLOAD INVOICE - ID: ${id}`);
+
+      // Get invoice with related data
+      const invoice = await getInvoiceById(id, req.tenantId);
+      if (!invoice) {
+        res.status(404).json({ success: false, error: 'Invoice not found' });
+        return;
+      }
+
+      // Get attachments to find PDF
+      const attachments = await getInvoiceAttachments(invoice.id);
+      const pdfAttachment = attachments.find(a => a.fileName.toLowerCase().endsWith('.pdf') || a.fileUrl.toLowerCase().endsWith('.pdf'));
+      let pdfUrl = pdfAttachment?.fileUrl || (invoice as any).pdfUrl;
+
+      // Generate PDF if missing
+      if (!pdfUrl) {
+        console.log('PDF missing, generating...');
+        const profile = await getSettingsProfileById(invoice.settingsProfileId!, req.tenantId);
+        if (!profile) {
+          throw new Error('Settings profile not found for PDF generation');
+        }
+        
+        pdfUrl = await generateAndUploadInvoicePDF(invoice, profile);
+        
+        await createInvoiceAttachment({
+          invoiceId: invoice.id,
+          fileName: `Invoice_${invoice.invoiceNumber}.pdf`,
+          fileUrl: pdfUrl,
+          uploadedBy: req.user.id
+        });
+      }
+
+      // Fetch the PDF from R2
+      const https = require('https');
+      const http = require('http');
+      const url = require('url');
+      
+      const pdfUrlParsed = url.parse(pdfUrl);
+      const client = pdfUrlParsed.protocol === 'https:' ? https : http;
+      
+      client.get(pdfUrl, (pdfRes: any) => {
+        if (pdfRes.statusCode !== 200) {
+          console.error(`Failed to fetch PDF: ${pdfRes.statusCode}`);
+          res.status(500).json({ success: false, error: 'Failed to fetch PDF file' });
+          return;
+        }
+
+        // Set proper headers for PDF download
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="Invoice-${invoice.invoiceNumber}.pdf"`);
+        res.setHeader('Cache-Control', 'no-cache');
+
+        // Pipe the PDF response to the client
+        pdfRes.pipe(res);
+      }).on('error', (err: any) => {
+        console.error('Error fetching PDF:', err);
+        res.status(500).json({ success: false, error: 'Failed to fetch PDF file' });
+      });
+
+      // Log activity
+      await createInvoiceActivityLog({
+        invoiceId: id,
+        action: 'DOWNLOADED',
+        performedBy: req.user.id,
+        metadata: {
+          pdfUrl,
+          downloadedAt: new Date()
+        }
+      });
+
+      console.log(`Invoice ${id} PDF downloaded successfully`);
+
+    } catch (error: any) {
+      console.error('Download invoice error:', error);
+      res.status(
+        error instanceof NotFoundError ? 404 : 500
+      ).json({ 
+        success: false, 
+        error: error.message || 'Failed to download invoice' 
+      } as ApiResponse);
+    }
+  }
+
+  /** ====================
+   *  GET PAYMENT HISTORY - PostgreSQL Version
+   * ==================== */
+  static async getPaymentHistory(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId) {
+        throw new ValidationError('Tenant context required');
+      }
+
+      const id = req.params.id || req.params.invoiceId;
+      const { page = 1, limit = 20 } = req.query;
+      console.log(`GET PAYMENT HISTORY - Invoice ID: ${id}`);
+
+      if (!id) {
+        throw new ValidationError('Invoice ID is required');
+      }
+
+      // Check if invoice exists
+      const invoice = await getInvoiceById(id, req.tenantId);
+      if (!invoice) {
+        throw new NotFoundError('Invoice not found');
+      }
+
+      // Get payment history
+      const payments = await getInvoicePayments(id, req.tenantId);
+      const total = payments.length;
+
+      const totalPages = Math.ceil(total / Number(limit));
+
+      // Calculate summary values
+      const completedPayments = payments.filter(p => p.status === 'COMPLETED');
+      const refundedPayments = payments.filter(p => p.status === 'REFUNDED');
+      const totalPaid = completedPayments.reduce((sum, payment) => sum + payment.amount, 0);
+      const totalRefunded = refundedPayments.reduce((sum, payment) => sum + payment.amount, 0);
+      
+      console.log(`Retrieved ${payments.length} payments out of ${total} total`);
+      console.log(`Payment Summary - Total Paid: ${totalPaid}, Total Refunded: ${totalRefunded}, Invoice Total: ${invoice.grandTotal}`);
+
+      res.status(200).json({ 
+        success: true, 
+        data: {
+          payments,
+          summary: {
+            invoiceNumber: invoice.invoiceNumber,
+            customerName: (invoice.customerSnapshot as any)?.companyName || 'Unknown',
+            totalAmount: invoice.grandTotal,
+            totalPaid: totalPaid,
+            totalRefunded: totalRefunded,
+            balanceDue: invoice.grandTotal - totalPaid + totalRefunded,
+            paymentCount: payments.length,
+            completedPayments: completedPayments.length,
+            refundedPayments: refundedPayments.length
+          },
+          pagination: { 
+            page: Number(page), 
+            limit: Number(limit), 
+            total, 
+            pages: totalPages 
+          }
+        } 
+      } as ApiResponse);
+
+    } catch (error: any) {
+      console.error('Get payment history error:', error);
+      res.status(
+        error instanceof NotFoundError ? 404 : 500
+      ).json({ 
+        success: false, 
+        error: error.message || 'Failed to fetch payment history' 
+      } as ApiResponse);
+    }
+  }
+
+  /** ====================
+   *  GET NEXT INVOICE NUMBER - PostgreSQL Version
+   * ==================== */
+  static async getNextInvoiceNumber(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId) {
+        throw new ValidationError('Tenant context required');
+      }
+
+      const { profileId } = req.query;
+      console.log(`GET NEXT INVOICE NUMBER - Profile ID: ${profileId}`);
+
+      // Get profile for formatting
+      const profile = await getSettingsProfileById(profileId as string, req.tenantId);
+      if (!profile || !profile.invoice) {
+        throw new ValidationError('Invoice settings profile not found');
+      }
+
+      const settings = profile.invoice;
+      const currentYear = new Date().getFullYear();
+      
+      // Get ALL invoices including soft-deleted ones
+      const { invoices: allInvoices } = await getAllInvoices(req.tenantId, {
+        page: 1,
+        limit: 10000, // Get all invoices
+        status: 'all'
+      });
+
+      // Calculate next number based on ALL invoices (including deleted)
+      let nextNumber: number;
+      
+      if (settings.resetYearly) {
+        // Find highest number in current year (including deleted) - using improved logic
+        let highestThisYear = 0;
+        allInvoices.forEach((invoice: any) => {
+          // Check if invoice belongs to current year
+          const yearMatch = invoice.invoiceNumber.match(/(\d{4})/);
+          if (yearMatch && parseInt(yearMatch[1]) === currentYear) {
+            // Extract the sequence number (last part of format)
+            const numberMatch = invoice.invoiceNumber.match(/(\d+)$/);
+            if (numberMatch) {
+              const num = parseInt(numberMatch[1], 10);
+              if (num > highestThisYear) {
+                highestThisYear = num;
+              }
+            }
+          }
+        });
+        
+        nextNumber = highestThisYear === 0 ? 1 : highestThisYear + 1;
+      } else {
+        // Find highest number ever (including deleted)
+        let highestOverall = 0;
+        allInvoices.forEach((invoice: any) => {
+          const match = invoice.invoiceNumber.match(/(\d+)$/);
+          if (match) {
+            const num = parseInt(match[1], 10);
+            if (num > highestOverall) {
+              highestOverall = num;
+            }
+          }
+        });
+        nextNumber = highestOverall + 1;
+      }
+
+      // Format the number
+      const padded = nextNumber.toString().padStart(settings.padding, '0');
+      const now = new Date();
+      
+      let invoiceNumber = settings.format
+        .replace('{YYYY}', currentYear.toString())
+        .replace('{YY}', (currentYear % 100).toString().padStart(2, '0'))
+        .replace('{MM}', (now.getMonth() + 1).toString().padStart(2, '0'))
+        .replace('{DD}', now.getDate().toString().padStart(2, '0'))
+        .replace('{###}', padded);
+
+      console.log(`Next invoice number for profile ${profile.name}: ${invoiceNumber}`);
+
+      res.status(200).json({ 
+        success: true, 
+        data: { 
+          invoiceNumber,
+          nextNumber,
+          profileName: profile.name,
+          format: settings.format
+        }
+      } as ApiResponse);
+
+    } catch (error: any) {
+      console.error('Get next invoice number error:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: error.message || 'Failed to get next invoice number' 
+      } as ApiResponse);
+    }
+  }
+
+  /** ====================
+   *  CHECK PDF STATUS - PostgreSQL Version
+   * ==================== */
+  static async checkPDFStatus(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId) {
+        throw new ValidationError('Tenant context required');
+      }
+
+      const { invoiceNumber } = req.params;
+      console.log(`CHECK PDF STATUS - Invoice Number: ${invoiceNumber}`);
+
+      // Get invoice by number
+      const invoice = await getInvoiceByNumber(invoiceNumber, req.tenantId);
+      if (!invoice) {
+        res.status(404).json({ success: false, error: 'Invoice not found' });
+        return;
+      }
+
+      // Get attachments to find PDF
+      const attachments = await getInvoiceAttachments(invoice.id);
+      const pdfAttachment = attachments.find(a => a.fileName.toLowerCase().endsWith('.pdf') || a.fileUrl.toLowerCase().endsWith('.pdf'));
+      const pdfUrl = pdfAttachment?.fileUrl || (invoice as any).pdfUrl;
+
+      // Check PDF status
+      let pdfExists = false;
+      let statusCode = 0;
+      let errorMessage = '';
+
+      if (pdfUrl) {
+        try {
+          const response = await fetch(pdfUrl, { method: 'HEAD' });
+          statusCode = response.status;
+          pdfExists = response.ok;
+        } catch (fetchError: any) {
+          errorMessage = fetchError.message;
+          console.error('PDF URL test failed:', fetchError.message);
+        }
+      }
+
+      // Log activity
+      await createInvoiceActivityLog({
+        invoiceId: invoice.id,
+        action: 'PDF_STATUS_CHECKED',
+        performedBy: req.user.id,
+        metadata: {
+          pdfUrl,
+          pdfExists,
+          statusCode,
+          errorMessage
+        }
+      });
+
+      res.json({
+        success: true,
+        data: {
+          invoiceNumber: invoice.invoiceNumber,
+          pdfUrl,
+          pdfExists,
+          statusCode,
+          errorMessage,
+          expectedUrl: `https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/b85c1b5b-77a3-4281-9147-51d6bd3ee94d/invoices/Invoice-${invoiceNumber}.pdf`
+        }
+      } as ApiResponse);
+
+    } catch (error: any) {
+      console.error('Check PDF status error:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: error.message || 'Failed to check PDF status' 
       } as ApiResponse);
     }
   }
