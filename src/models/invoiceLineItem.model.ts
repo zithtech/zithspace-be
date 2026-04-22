@@ -94,9 +94,9 @@ export async function createInvoiceLineItem(data: CreateInvoiceLineItemData): Pr
   const query = `
     INSERT INTO invoice_line_items (
       tenant_id, invoice_id, item_name, description, quantity, rate, tax_rate,
-      created_by, row_number, project_id, hours, subtotal, tax_amount, total, extra_fields
+      created_by, row_number, project_id, hours, subtotal, tax_amount, total, extra_fields, deleted_at
     ) 
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NULL)
     RETURNING *
   `;
   
@@ -367,9 +367,9 @@ export async function createMultipleInvoiceLineItems(
       const query = `
         INSERT INTO invoice_line_items (
           id, tenant_id, invoice_id, item_name, description, quantity, rate, tax_rate,
-          created_by, row_number, project_id, hours, subtotal, tax_amount, total, extra_fields
+          created_by, row_number, project_id, hours, subtotal, tax_amount, total, extra_fields, deleted_at
         ) 
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NULL)
         RETURNING *
       `;
       

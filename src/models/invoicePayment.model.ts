@@ -89,16 +89,20 @@ function mapRowToInvoicePayment(row: any): InvoicePayment {
  * Create a new invoice payment
  */
 export async function createInvoicePayment(data: CreateInvoicePaymentData): Promise<InvoicePayment> {
+  const { v4: uuidv4 } = require('uuid');
+  const paymentId = uuidv4();
+  
   const query = `
     INSERT INTO invoice_payments (
-      tenant_id, invoice_id, amount, description, payment_date, payment_method,
+      id, tenant_id, invoice_id, amount, description, payment_date, payment_method,
       status, created_by, reference_id, balance_before, balance_after
     ) 
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
     RETURNING *
   `;
   
   const values = [
+    paymentId,
     data.tenantId,
     data.invoiceId,
     data.amount,

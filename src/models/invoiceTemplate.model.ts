@@ -248,8 +248,8 @@ export class InvoiceTemplateModel {
       if (data.isDefault && !existingTemplate.is_default) {
         const unsetDefaultQuery = `
           UPDATE invoice_templates 
-          SET is_default = false,  = $1, updated_at = NOW()
-          WHERE tenant_id = $2 AND billing_type = $3 AND is_default = true AND id != $4
+          SET is_default = false, updated_at = NOW()
+          WHERE tenant_id = $1 AND billing_type = $2 AND is_default = true AND id != $3
         `;
         await client.query(unsetDefaultQuery, [tenantId, existingTemplate.billing_type, templateId]);
       }

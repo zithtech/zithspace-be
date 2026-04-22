@@ -1,6 +1,5 @@
 
 
-import { Prisma } from '@prisma/client';
 
 /**
  * --- ENUMS ---

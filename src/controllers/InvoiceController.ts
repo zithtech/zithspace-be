@@ -1,27 +1,40 @@
 import { Response } from 'express';
-import { PaymentStatus } from '../models/invoicePayment.model';
+import { 
+  InvoiceStatus, 
+  InvoiceType,
+  CreateInvoiceData,
+  UpdateInvoiceData,
+  getInvoiceById,
+  updateInvoiceStatus,
+  updateInvoiceStatusAndBalance,
+  createInvoice,
+  updateInvoice,
+  deleteInvoice,
+  getInvoices,
+  getInvoiceStats,
+  markInvoiceAsSent,
+  getAllInvoices,
+  getInvoiceByNumber,
+  getDeletedInvoices
+} from '../models/invoice.model';
+import { emailService } from '../utils/emailService';
+import { 
+  PaymentStatus,
+  PaymentMethod,
+  getInvoicePayments,
+  createInvoicePayment
+} from '../models/invoicePayment.model';
+import { createTransaction } from '../models/transaction.model';
 import { 
   AuthRequest, 
   ApiResponse, 
   NotFoundError, 
   ValidationError 
-} from '@/types';
-import { generateAndUploadInvoicePDF } from '@/services/pdfService';
-import { deleteFileFromR2 } from '@/utils/r2Client';
-import { EmailLoggerService } from '@/services/emailLoggerService';
-
-// Import PostgreSQL models
-import { 
-  createInvoice,
-  getInvoiceByNumber,
-  getInvoices,
-  updateInvoice,
-  getInvoiceById,
-  InvoiceStatus,
-  InvoiceType,
-  CreateInvoiceData,
-  UpdateInvoiceData
-} from '../models/invoice.model';
+} from '../types';
+import { generateAndUploadInvoicePDF } from '../services/pdfService';
+import { deleteFileFromR2 } from '../utils/r2Client';
+import { EmailLoggerService } from '../services/emailLoggerService';
+import pool from '../config/dbpool';
 import { 
   getSettingsProfileById
 } from '../models/settingsProfile.model';
@@ -55,13 +68,10 @@ import {
 import { 
   deleteInvoice as softDeleteInvoice,
   restoreInvoice,
-  hardDeleteInvoice,
-  getInvoices as getDeletedInvoices,
-  updateInvoiceStatus,
-  markInvoiceAsSent
+  hardDeleteInvoice
 } from '../models/invoice.model';
 import { 
-  getInvoicePayments
+  PaymentStatus as InvoicePaymentStatus
 } from '../models/invoicePayment.model';
 
 export class InvoiceController {
@@ -151,7 +161,7 @@ export class InvoiceController {
       console.log('Profile format:', profile.name, '-', settings.format);
 
       // Get ALL invoices including soft-deleted ones
-      const { invoices: allInvoices } = await getInvoices(tenantId, {
+      const { invoices: allInvoices } = await getAllInvoices(tenantId, {
         page: 1,
         limit: 10000, // Get all invoices
         status: 'all'
@@ -159,32 +169,62 @@ export class InvoiceController {
 
       console.log(`Found ${allInvoices.length} total invoices (including deleted)`);
 
-      // Extract all numbers from existing invoices (including deleted)
+      // Extract numbers from existing invoices for current year only (for yearly reset)
       let highestNumber = 0;
       allInvoices.forEach((invoice: any) => {
-        // Match numbers at the end of the string
-        const match = invoice.invoiceNumber.match(/(\d+)$/);
-        if (match) {
-          const num = parseInt(match[1], 10);
-          if (num > highestNumber) {
-            highestNumber = num;
+        // Check if invoice belongs to current year
+        const yearMatch = invoice.invoiceNumber.match(/(\d{4})/);
+        if (yearMatch && parseInt(yearMatch[1]) === currentYear) {
+          // Extract the sequence number (last part of the format)
+          const numberMatch = invoice.invoiceNumber.match(/(\d+)$/);
+          if (numberMatch) {
+            const num = parseInt(numberMatch[1], 10);
+            if (num > highestNumber) {
+              highestNumber = num;
+            }
           }
         }
       });
 
-      const nextNumber = highestNumber + 1;
+      let nextNumber = highestNumber + 1;
       const paddedNumber = nextNumber.toString().padStart(settings.padding, '0');
 
-      // Format the invoice number
-      const formattedNumber = settings.format
+      // Format the invoice number and check for duplicates
+      let formattedNumber = settings.format
         .replace('{YYYY}', currentYear.toString())
         .replace('{YY}', (currentYear % 100).toString().padStart(2, '0'))
         .replace('{MM}', (now.getMonth() + 1).toString().padStart(2, '0'))
         .replace('{DD}', now.getDate().toString().padStart(2, '0'))
         .replace('{###}', paddedNumber);
 
-      console.log('Generated invoice number:', formattedNumber);
-      return formattedNumber;
+      // Check if the generated number already exists and increment if needed
+      let attempts = 0;
+      const maxAttempts = 10;
+      
+      while (attempts < maxAttempts) {
+        const existingInvoice = allInvoices.find((inv: any) => inv.invoiceNumber === formattedNumber);
+        
+        if (!existingInvoice) {
+          console.log(`Generated invoice number: ${formattedNumber}`);
+          return formattedNumber;
+        }
+        
+        // If duplicate exists, increment the number and try again
+        attempts++;
+        nextNumber = highestNumber + attempts;
+        const retryPaddedNumber = nextNumber.toString().padStart(settings.padding, '0');
+        
+        formattedNumber = settings.format
+          .replace('{YYYY}', currentYear.toString())
+          .replace('{YY}', (currentYear % 100).toString().padStart(2, '0'))
+          .replace('{MM}', (now.getMonth() + 1).toString().padStart(2, '0'))
+          .replace('{DD}', now.getDate().toString().padStart(2, '0'))
+          .replace('{###}', retryPaddedNumber);
+          
+        console.log(`Duplicate found, retrying with: ${formattedNumber} (attempt ${attempts})`);
+      }
+
+      throw new Error('Failed to generate unique invoice number after multiple attempts');
 
     } catch (error) {
       console.error('Error in generateInvoiceNumber:', error);
@@ -587,6 +627,7 @@ export class InvoiceController {
 
       const { id } = req.params;
       console.log(`UPDATE INVOICE START - ID: ${id}`);
+      console.log('REQUEST BODY DETAILS:', JSON.stringify(req.body, null, 2));
 
       const { 
         items: legacyItems,
@@ -620,12 +661,26 @@ export class InvoiceController {
       console.log('UPDATING LINE ITEMS...');
       
       // Get existing line items to determine which ones to delete
+      const existingLineItems = await getInvoiceLineItems(id, req.tenantId);
       const incomingItemIds = items.filter((i: any) => i.id).map((i: any) => i.id);
       
-      // Soft delete removed items
-      if (incomingItemIds.length > 0) {
-        // TODO: Implement soft delete for line items - for now we'll handle in the transaction
-        console.log('Items to keep:', incomingItemIds.length);
+      console.log('LINE ITEMS UPDATE DEBUG:', {
+        existingCount: existingLineItems.length,
+        incomingCount: items.length,
+        incomingItemIds: incomingItemIds,
+        existingIds: existingLineItems.map(item => item.id)
+      });
+      
+      // Soft delete line items that are not in the incoming items
+      const itemsToDelete = existingLineItems.filter(item => !incomingItemIds.includes(item.id));
+      
+      if (itemsToDelete.length > 0) {
+        console.log('Deleting line items:', itemsToDelete.length);
+        for (const itemToDelete of itemsToDelete) {
+          await deleteInvoiceLineItemsByInvoiceId(itemToDelete.id, req.tenantId);
+        }
+      } else {
+        console.log('No line items to delete');
       }
 
       // Update or create line items
@@ -715,16 +770,151 @@ export class InvoiceController {
       });
 
       // Execute line item operations
+      console.log('LINE ITEMS OPERATIONS DEBUG:', {
+        totalItems: items.length,
+        existingItems: items.filter(item => item.id).length,
+        newItems: items.filter(item => !item.id).length
+      });
+
+      // Execute updates for existing items
+      const existingItems = items.filter(item => item.id);
+      const updateResults = await Promise.all(
+        existingItems.map(async (item) => {
+          const qty = Number(item.quantity || item.qty || 1);
+          const rate = Number(item.rate || item.price || 0);
+          
+          const taxRateValue = getVal(item.extraFields, ['taxRate', 'tax', 'tax_rate', 'VAT', 'GST']);
+          const tr = Number(item.taxRate || item.tax || taxRateValue || 0);
+
+          const discountValue = getVal(item.extraFields, ['discount', 'dis', 'disc']);
+          const d = Number(discountValue || 0);
+
+          const linePrice = qty * rate;
+          const discountedBase = Math.max(0, linePrice - d);
+          
+          let lineSubtotal = discountedBase;
+          let lineTaxAmount = 0;
+          let lineTotal = 0;
+
+          if (taxInclusive) {
+            const netAmount = discountedBase / (1 + tr / 100);
+            lineTaxAmount = discountedBase - netAmount;
+            lineSubtotal = netAmount;
+            lineTotal = discountedBase;
+          } else {
+            lineTaxAmount = discountedBase * (tr / 100);
+            lineSubtotal = discountedBase;
+            lineTotal = discountedBase + lineTaxAmount;
+          }
+
+          const itemName = item.itemName || item.item || item.description || 'Untitled Item';
+          const lineItemData: UpdateInvoiceLineItemData = {
+            itemName,
+            description: item.description || '',
+            projectId: item.projectId || null,
+            quantity: qty,
+            rate: rate,
+            taxRate: tr,
+            extraFields: { 
+              ...(item.extraFields || {}),
+              ...(item.projectName ? { projectName: item.projectName } : {})
+            },
+            rowNumber: items.indexOf(item) + 1,
+            subtotal: lineSubtotal,
+            taxAmount: lineTaxAmount,
+            total: lineTotal,
+            updatedBy: req.user.id
+          };
+
+          return await updateInvoiceLineItem(item.id, req.tenantId, lineItemData);
+        })
+      );
+
+      console.log(`Executed ${updateResults.length} line item updates`);
+
+      // Create new items
+      const newItems = items.filter(item => !item.id);
+      if (newItems.length > 0) {
+        console.log(`Creating ${newItems.length} new line items`);
+        const newLineItemsData = newItems.map((item, index) => {
+          const qty = Number(item.quantity || item.qty || 1);
+          const rate = Number(item.rate || item.price || 0);
+          
+          const taxRateValue = getVal(item.extraFields, ['taxRate', 'tax', 'tax_rate', 'VAT', 'GST']);
+          const tr = Number(item.taxRate || item.tax || taxRateValue || 0);
+
+          const discountValue = getVal(item.extraFields, ['discount', 'dis', 'disc']);
+          const d = Number(discountValue || 0);
+
+          const linePrice = qty * rate;
+          const discountedBase = Math.max(0, linePrice - d);
+          
+          let lineSubtotal = discountedBase;
+          let lineTaxAmount = 0;
+          let lineTotal = 0;
+
+          if (taxInclusive) {
+            const netAmount = discountedBase / (1 + tr / 100);
+            lineTaxAmount = discountedBase - netAmount;
+            lineSubtotal = netAmount;
+            lineTotal = discountedBase;
+          } else {
+            lineTaxAmount = discountedBase * (tr / 100);
+            lineSubtotal = discountedBase;
+            lineTotal = discountedBase + lineTaxAmount;
+          }
+
+          const itemName = item.itemName || item.item || item.description || 'Untitled Item';
+          
+          return {
+            tenantId: req.tenantId!,
+            invoiceId: id,
+            itemName,
+            description: item.description || '',
+            quantity: qty,
+            rate: rate,
+            taxRate: tr,
+            subtotal: lineSubtotal,
+            taxAmount: lineTaxAmount,
+            total: lineTotal,
+            extraFields: { 
+              ...(item.extraFields || {}),
+              ...(item.projectName ? { projectName: item.projectName } : {})
+            },
+            rowNumber: existingItems.length + index + 1,
+            projectId: item.projectId || null,
+            createdBy: req.user.id
+          };
+        });
+        
+        await createMultipleInvoiceLineItems(newLineItemsData);
+        console.log('New line items created successfully');
+      }
+
       const newLineItems: CreateInvoiceLineItemData[] = [];
       for (const operation of lineItemsOperations) {
-        if (typeof operation === 'object' && 'invoiceId' in operation) {
+        // Check if this is a new line item (createData object)
+        // New items will have invoiceId but no id property
+        if (operation && typeof operation === 'object' && 'invoiceId' in operation && !('id' in operation)) {
           newLineItems.push(operation as CreateInvoiceLineItemData);
         }
       }
 
       // Create new line items if any
       if (newLineItems.length > 0) {
-        await createMultipleInvoiceLineItems(newLineItems);
+        console.log(`Creating ${newLineItems.length} new line items:`, newLineItems.map(item => ({
+          itemName: item.itemName,
+          quantity: item.quantity,
+          rate: item.rate,
+          subtotal: item.subtotal,
+          total: item.total,
+          invoiceId: item.invoiceId,
+          createdBy: item.createdBy
+        })));
+        const createResult = await createMultipleInvoiceLineItems(newLineItems);
+        console.log('New line items creation result:', createResult);
+      } else {
+        console.log('No new line items to create');
       }
 
       // 4. Update taxes
@@ -809,6 +999,7 @@ export class InvoiceController {
         invoiceUpdateData.customerSnapshot = customerSnapshot;
       }
 
+      console.log('INVOICE UPDATE DATA BEING SAVED:', JSON.stringify(invoiceUpdateData, null, 2));
       const updatedInvoice = await updateInvoice(id, req.tenantId, invoiceUpdateData);
 
       if (!updatedInvoice) {
@@ -863,7 +1054,14 @@ export class InvoiceController {
         console.error('PDF Generation Error (non-critical):', pdfError);
       }
 
-      console.log('UPDATE INVOICE COMPLETE ====================');
+      console.log('UPDATE INVOICE COMPLETE ====');
+      console.log('FINAL INVOICE DATA:', {
+        id: updatedInvoice.id,
+        invoiceNumber: updatedInvoice.invoiceNumber,
+        invoiceDate: updatedInvoice.invoiceDate,
+        dueDate: updatedInvoice.dueDate,
+        grandTotal: updatedInvoice.grandTotal
+      });
 
       res.status(200).json({
         success: true,
@@ -927,6 +1125,26 @@ export class InvoiceController {
         getInvoiceTaxes(invoice.id, req.tenantId),
         getInvoiceAttachments(invoice.id)
       ]);
+
+      // Debug line items data
+      console.log("RETRIEVED LINE ITEMS FOR EDIT:", {
+        count: lineItems.length,
+        items: lineItems.map(item => ({
+          id: item.id,
+          itemName: item.itemName,
+          quantity: item.quantity,
+          rate: item.rate,
+          subtotal: item.subtotal,
+          total: item.total,
+          deletedAt: item.deletedAt
+        }))
+      });
+
+      // Check if line items have been soft-deleted
+      const deletedLineItems = lineItems.filter(item => item.deletedAt !== null);
+      if (deletedLineItems.length > 0) {
+        console.log("WARNING: Found deleted line items:", deletedLineItems.length);
+      }
 
       // Combine all data
       const invoiceWithDetails = {
@@ -1136,10 +1354,33 @@ export class InvoiceController {
       const { id } = req.params;
       console.log(`PERMANENT DELETE INVOICE - ID: ${id}`);
 
-      // Check if invoice exists
-      const existingInvoice = await getInvoiceById(id, req.tenantId);
+      // Check if invoice exists (including deleted ones) with retry logic
+      let existingInvoice = null;
+      let foundInDeleted = null;
+      
+      try {
+        existingInvoice = await getInvoiceById(id, req.tenantId);
+      } catch (error: any) {
+        console.log('Error getting invoice by ID, trying deleted invoices:', error.message);
+        if (error.code === 'ETIMEDOUT') {
+          // Retry once for timeout
+          try {
+            existingInvoice = await getInvoiceById(id, req.tenantId);
+          } catch (retryError: any) {
+            console.log('Retry also failed, proceeding to check deleted invoices');
+          }
+        }
+      }
+      
       if (!existingInvoice) {
-        throw new NotFoundError('Invoice not found');
+        // Try to find in deleted invoices as well
+        const deletedInvoicesResponse = await getDeletedInvoices(req.tenantId);
+        foundInDeleted = deletedInvoicesResponse.invoices.find(inv => inv.id === id || inv.invoiceNumber === id);
+        
+        if (!foundInDeleted) {
+          throw new NotFoundError('Invoice not found');
+        }
+        console.log('Found invoice in deleted invoices, proceeding with permanent delete');
       }
 
       // Hard delete the invoice (cascade deletion)
@@ -1150,13 +1391,14 @@ export class InvoiceController {
       }
 
       // Log activity (before deletion)
+      const invoiceForLog = existingInvoice || foundInDeleted;
       await createInvoiceActivityLog({
         invoiceId: id,
         action: 'PERMANENTLY_DELETED',
         performedBy: req.user.id,
         metadata: {
-          invoiceNumber: existingInvoice.invoiceNumber,
-          total: existingInvoice.grandTotal
+          invoiceNumber: invoiceForLog?.invoiceNumber || 'Unknown',
+          total: invoiceForLog?.grandTotal || 0
         }
       });
 
@@ -1245,10 +1487,11 @@ export class InvoiceController {
         throw new ValidationError('Tenant context and authentication required');
       }
 
-      const { invoiceIds } = req.body;
-      console.log(`BULK RESTORE INVOICES - Count: ${invoiceIds?.length || 0}`);
+      const { invoiceIds, ids } = req.body;
+      const invoiceIdsToRestore = invoiceIds || ids;
+      console.log(`BULK RESTORE INVOICES - Count: ${invoiceIdsToRestore?.length || 0}`);
 
-      if (!invoiceIds || !Array.isArray(invoiceIds) || invoiceIds.length === 0) {
+      if (!invoiceIdsToRestore || !Array.isArray(invoiceIdsToRestore) || invoiceIdsToRestore.length === 0) {
         throw new ValidationError('Invoice IDs array is required');
       }
 
@@ -1256,7 +1499,7 @@ export class InvoiceController {
       let failedCount = 0;
       const errors: string[] = [];
 
-      for (const id of invoiceIds) {
+      for (const id of invoiceIdsToRestore) {
         try {
           const restored = await restoreInvoice(id, req.tenantId, req.user.id);
           if (restored) {
@@ -1316,10 +1559,11 @@ export class InvoiceController {
         throw new ValidationError('Tenant context and authentication required');
       }
 
-      const { invoiceIds } = req.body;
-      console.log(`BULK PERMANENT DELETE INVOICES - Count: ${invoiceIds?.length || 0}`);
+      const { invoiceIds, ids } = req.body;
+      const invoiceIdsToDelete = invoiceIds || ids;
+      console.log(`BULK PERMANENT DELETE INVOICES - Count: ${invoiceIdsToDelete?.length || 0}`);
 
-      if (!invoiceIds || !Array.isArray(invoiceIds) || invoiceIds.length === 0) {
+      if (!invoiceIdsToDelete || !Array.isArray(invoiceIdsToDelete) || invoiceIdsToDelete.length === 0) {
         throw new ValidationError('Invoice IDs array is required');
       }
 
@@ -1327,7 +1571,7 @@ export class InvoiceController {
       let failedCount = 0;
       const errors: string[] = [];
 
-      for (const id of invoiceIds) {
+      for (const id of invoiceIdsToDelete) {
         try {
           const deleted = await hardDeleteInvoice(id, req.tenantId);
           if (deleted) {
@@ -1387,18 +1631,34 @@ export class InvoiceController {
         throw new ValidationError('Tenant context and authentication required');
       }
 
-      const { invoiceIds } = req.body;
-      console.log(`BULK DELETE INVOICES - Count: ${invoiceIds?.length || 0}`);
+      const { invoiceIds, ids } = req.body;
+      const invoiceIdsToDelete = invoiceIds || ids;
+      console.log(`BULK DELETE INVOICES - Count: ${invoiceIdsToDelete?.length || 0}`);
+      console.log('Bulk delete request body:', req.body);
 
-      if (!invoiceIds || !Array.isArray(invoiceIds) || invoiceIds.length === 0) {
+      if (!invoiceIdsToDelete || !Array.isArray(invoiceIdsToDelete)) {
         throw new ValidationError('Invoice IDs array is required');
+      }
+
+      if (invoiceIdsToDelete.length === 0) {
+        console.log('No invoice IDs provided for bulk delete');
+        res.status(200).json({
+          success: true,
+          message: 'No invoices selected for deletion',
+          data: {
+            deletedCount: 0,
+            failedCount: 0,
+            errors: []
+          }
+        } as ApiResponse);
+        return;
       }
 
       let deletedCount = 0;
       let failedCount = 0;
       const errors: string[] = [];
 
-      for (const id of invoiceIds) {
+      for (const id of invoiceIdsToDelete) {
         try {
           const deleted = await softDeleteInvoice(id, req.tenantId, req.user.id);
           if (deleted) {
@@ -1510,20 +1770,36 @@ export class InvoiceController {
         throw new ValidationError("No recipient email address found for this customer.");
       }
 
-      // TODO: Implement email sending logic when email service is available
-      // For now, just return success with PDF URL
-      console.log(`Email prepared for ${recipientEmail}, PDF: ${finalPdfUrl}`);
+      // Send actual email using email service
+      const emailResult = await emailService.sendInvoiceEmail({
+        to: recipientEmail,
+        subject: `Invoice ${invoice.invoiceNumber} from Zithtech`,
+        customerName,
+        invoiceNumber: invoice.invoiceNumber,
+        amount: invoice.grandTotal ? invoice.grandTotal.toString() : '0.00',
+        dueDate: invoice.dueDate ? invoice.dueDate.toLocaleDateString() : new Date().toLocaleDateString(),
+        pdfUrl: finalPdfUrl
+      });
 
-      res.status(200).json({
-        success: true,
-        message: 'Email prepared successfully',
-        data: {
-          recipientEmail,
-          customerName,
-          pdfUrl: finalPdfUrl,
-          invoiceNumber: invoice.invoiceNumber
-        }
-      } as ApiResponse);
+      if (emailResult.success) {
+        console.log(`✅ Email sent successfully to ${recipientEmail}`);
+        res.status(200).json({
+          success: true,
+          message: 'Email sent successfully',
+          data: {
+            recipientEmail,
+            customerName,
+            pdfUrl: finalPdfUrl,
+            invoiceNumber: invoice.invoiceNumber
+          }
+        } as ApiResponse);
+      } else {
+        console.error(`❌ Failed to send email to ${recipientEmail}`);
+        res.status(500).json({
+          success: false,
+          error: 'Failed to send email'
+        } as ApiResponse);
+      }
 
     } catch (error: any) {
       console.error('Send email error:', error);
@@ -1542,17 +1818,36 @@ export class InvoiceController {
    * ==================== */
   static async updateStatus(req: AuthRequest, res: Response): Promise<void> {
     try {
-      if (!req.tenantId || !req.user) {
+      if (!req.tenantId) {
         throw new ValidationError('Tenant context required');
       }
 
       const { id } = req.params;
-      const { status } = req.body;
-      console.log(`UPDATE STATUS - Invoice ID: ${id}, Status: ${status}`);
+      const { status, payment, paidAmount, balanceAmount, paymentMethod, paymentDate } = req.body;
+      
+      // Extract payment details from nested payment object or flat structure
+      const extractedPaidAmount = payment?.amount || paidAmount;
+      const extractedPaymentMethod = payment?.method || paymentMethod;
+      const extractedPaymentDate = payment?.date || paymentDate;
+      const extractedBalanceAmount = balanceAmount; // balanceAmount is only at root level
+      
+      console.log(`UPDATE STATUS - ID: ${id}, Status: ${status}`);
+      console.log('PAYMENT DETAILS:', {
+        paidAmount: extractedPaidAmount,
+        balanceAmount: extractedBalanceAmount,
+        paymentMethod: extractedPaymentMethod,
+        paymentDate: extractedPaymentDate,
+        originalPaymentObject: payment
+      });
 
       // Validate status
-      if (!Object.values(InvoiceStatus).includes(status.toUpperCase())) {
-        throw new ValidationError(`Invalid status: ${status}`);
+      if (!status) {
+        throw new ValidationError('Status is required');
+      }
+      
+      const normalizedStatus = status.toUpperCase();
+      if (!Object.values(InvoiceStatus).includes(normalizedStatus)) {
+        throw new ValidationError(`Invalid status: ${status}. Valid statuses: ${Object.values(InvoiceStatus).join(', ')}`);
       }
 
       // Check if invoice exists
@@ -1561,11 +1856,138 @@ export class InvoiceController {
         throw new NotFoundError('Invoice not found');
       }
 
-      // Update status
-      const updated = await updateInvoiceStatus(id, req.tenantId, status.toUpperCase() as InvoiceStatus, req.user.id);
-      
-      if (!updated) {
-        throw new Error('Failed to update invoice status');
+      // Validate payment details for payment-related statuses BEFORE updating
+      if (normalizedStatus === InvoiceStatus.PARTIALLY_PAID || normalizedStatus === InvoiceStatus.PAID) {
+        if (!extractedPaidAmount || extractedPaidAmount <= 0) {
+          throw new ValidationError(`Paid amount is required and must be greater than 0 for ${normalizedStatus} status. Received: ${extractedPaidAmount}`);
+        }
+        
+        if (!extractedPaymentMethod) {
+          throw new ValidationError(`Payment method is required for ${normalizedStatus} status. Valid methods: CASH, BANK_TRANSFER, CREDIT_CARD, DEBIT_CARD, CHECK, ONLINE_PAYMENT, OTHER`);
+        }
+
+        // Validate payment amount doesn't exceed total
+        const paymentAmount = Number(extractedPaidAmount);
+        if (paymentAmount > existingInvoice.grandTotal) {
+          throw new ValidationError(`Payment amount (${paymentAmount}) cannot exceed invoice total (${existingInvoice.grandTotal})`);
+        }
+      }
+
+      // For payment-related statuses, update both status and balance
+      if (normalizedStatus === InvoiceStatus.PARTIALLY_PAID || normalizedStatus === InvoiceStatus.PAID) {
+        // Get current invoice details for payment calculation
+        const currentInvoice = await getInvoiceById(id, req.tenantId);
+        if (!currentInvoice) {
+          throw new NotFoundError('Invoice not found');
+        }
+
+        // Use actual payment amount from request
+        const paymentAmount = Number(extractedPaidAmount);
+        
+        // Calculate balance after payment
+        const balanceBefore = currentInvoice.balanceDue;
+        const balanceAfter = extractedBalanceAmount !== undefined ? Number(extractedBalanceAmount) : 
+          (normalizedStatus === InvoiceStatus.PAID ? 0 : balanceBefore - paymentAmount);
+        
+        // Calculate new paid amount
+        const newPaidAmount = (currentInvoice.paidAmount || 0) + paymentAmount;
+        
+        // Update both status and balance in one operation
+        const updated = await updateInvoiceStatusAndBalance(
+          id, 
+          req.tenantId, 
+          normalizedStatus as InvoiceStatus, 
+          balanceAfter, 
+          newPaidAmount,
+          req.user.id
+        );
+        
+        if (!updated) {
+          throw new Error('Failed to update invoice status and balance');
+        }
+
+        // Create payment record
+        try {
+          // Map payment method string to enum
+          let paymentMethodEnum = PaymentMethod.OTHER;
+          if (extractedPaymentMethod) {
+            const methodUpper = extractedPaymentMethod.toUpperCase();
+            switch (methodUpper) {
+              case 'CASH':
+                paymentMethodEnum = PaymentMethod.CASH;
+                break;
+              case 'BANK_TRANSFER':
+              case 'TRANSFER':
+                paymentMethodEnum = PaymentMethod.BANK_TRANSFER;
+                break;
+              case 'CREDIT_CARD':
+              case 'CARD':
+                paymentMethodEnum = PaymentMethod.CREDIT_CARD;
+                break;
+              case 'DEBIT_CARD':
+                paymentMethodEnum = PaymentMethod.DEBIT_CARD;
+                break;
+              case 'CHECK':
+              case 'CHEQUE':
+                paymentMethodEnum = PaymentMethod.CHECK;
+                break;
+              case 'ONLINE_PAYMENT':
+              case 'ONLINE':
+                paymentMethodEnum = PaymentMethod.ONLINE_PAYMENT;
+                break;
+              default:
+                paymentMethodEnum = PaymentMethod.OTHER;
+            }
+          }
+          
+          await createInvoicePayment({
+            tenantId: req.tenantId!,
+            invoiceId: id,
+            amount: paymentAmount,
+            description: `Payment for status update to ${normalizedStatus}`,
+            paymentDate: extractedPaymentDate ? new Date(extractedPaymentDate) : new Date(),
+            paymentMethod: paymentMethodEnum,
+            status: InvoicePaymentStatus.COMPLETED,
+            createdBy: req.user.id,
+            balanceBefore: balanceBefore,
+            balanceAfter: balanceAfter
+          });
+          
+          console.log(`Payment record created: Amount=${paymentAmount}, Method=${paymentMethodEnum}, Balance Before=${balanceBefore}, Balance After=${balanceAfter}`);
+          
+          // Create transaction for the payment
+          try {
+            await createTransaction({
+              userId: req.user.id,
+              type: 'income', // Invoice payments are income
+              amount: paymentAmount,
+              description: `Payment received for invoice ${currentInvoice.invoiceNumber}`,
+              category: 'client_payment',
+              date: extractedPaymentDate ? new Date(extractedPaymentDate) : new Date(),
+              metadata: {
+                invoiceId: id,
+                invoiceNumber: currentInvoice.invoiceNumber,
+                paymentMethod: paymentMethodEnum,
+                paymentStatus: normalizedStatus
+              }
+            }, req.tenantId!);
+            
+            console.log(`Transaction created for invoice payment: Amount=${paymentAmount}, Invoice=${currentInvoice.invoiceNumber}`);
+          } catch (transactionError: any) {
+            console.error('Failed to create transaction for invoice payment:', transactionError);
+            // Don't fail the payment update if transaction creation fails
+          }
+        } catch (paymentError: any) {
+          console.error('Failed to create payment record:', paymentError);
+          // Don't fail the status update if payment creation fails
+        }
+      } else {
+        // For non-payment statuses, just update the status
+        const updated = await updateInvoiceStatus(id, req.tenantId, normalizedStatus as InvoiceStatus, req.user.id);
+        
+        if (!updated) {
+          throw new Error('Failed to update invoice status');
+        }
       }
 
       // Log activity
@@ -1575,7 +1997,7 @@ export class InvoiceController {
         performedBy: req.user.id,
         metadata: {
           oldStatus: existingInvoice.status,
-          newStatus: status.toUpperCase(),
+          newStatus: normalizedStatus,
           updatedBy: req.user.id
         }
       });
@@ -1584,15 +2006,13 @@ export class InvoiceController {
 
       res.status(200).json({
         success: true,
-        message: 'Invoice status updated successfully',
         data: {
           id,
           invoiceNumber: existingInvoice.invoiceNumber,
           oldStatus: existingInvoice.status,
-          newStatus: status.toUpperCase()
+          newStatus: normalizedStatus
         }
       } as ApiResponse);
-
     } catch (error: any) {
       console.error('Update status error:', error);
       res.status(
@@ -1647,6 +2067,33 @@ export class InvoiceController {
         });
       }
 
+      // Fetch the PDF from R2
+      const https = require('https');
+      const http = require('http');
+      const url = require('url');
+      
+      const pdfUrlParsed = url.parse(pdfUrl);
+      const client = pdfUrlParsed.protocol === 'https:' ? https : http;
+      
+      client.get(pdfUrl, (pdfRes: any) => {
+        if (pdfRes.statusCode !== 200) {
+          console.error(`Failed to fetch PDF: ${pdfRes.statusCode}`);
+          res.status(500).json({ success: false, error: 'Failed to fetch PDF file' });
+          return;
+        }
+
+        // Set proper headers for PDF download
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="Invoice-${invoice.invoiceNumber}.pdf"`);
+        res.setHeader('Cache-Control', 'no-cache');
+
+        // Pipe the PDF response to the client
+        pdfRes.pipe(res);
+      }).on('error', (err: any) => {
+        console.error('Error fetching PDF:', err);
+        res.status(500).json({ success: false, error: 'Failed to fetch PDF file' });
+      });
+
       // Log activity
       await createInvoiceActivityLog({
         invoiceId: id,
@@ -1658,15 +2105,7 @@ export class InvoiceController {
         }
       });
 
-      console.log(`Invoice ${id} PDF ready for download: ${pdfUrl}`);
-
-      res.status(200).json({
-        success: true,
-        data: {
-          invoice,
-          pdfUrl
-        }
-      } as ApiResponse);
+      console.log(`Invoice ${id} PDF downloaded successfully`);
 
     } catch (error: any) {
       console.error('Download invoice error:', error);
@@ -1688,9 +2127,13 @@ export class InvoiceController {
         throw new ValidationError('Tenant context required');
       }
 
-      const { id } = req.params;
+      const id = req.params.id || req.params.invoiceId;
       const { page = 1, limit = 20 } = req.query;
       console.log(`GET PAYMENT HISTORY - Invoice ID: ${id}`);
+
+      if (!id) {
+        throw new ValidationError('Invoice ID is required');
+      }
 
       // Check if invoice exists
       const invoice = await getInvoiceById(id, req.tenantId);
@@ -1704,16 +2147,36 @@ export class InvoiceController {
 
       const totalPages = Math.ceil(total / Number(limit));
 
+      // Calculate summary values
+      const completedPayments = payments.filter(p => p.status === 'COMPLETED');
+      const refundedPayments = payments.filter(p => p.status === 'REFUNDED');
+      const totalPaid = completedPayments.reduce((sum, payment) => sum + payment.amount, 0);
+      const totalRefunded = refundedPayments.reduce((sum, payment) => sum + payment.amount, 0);
+      
       console.log(`Retrieved ${payments.length} payments out of ${total} total`);
+      console.log(`Payment Summary - Total Paid: ${totalPaid}, Total Refunded: ${totalRefunded}, Invoice Total: ${invoice.grandTotal}`);
 
       res.status(200).json({ 
         success: true, 
-        data: payments, 
-        pagination: { 
-          page: Number(page), 
-          limit: Number(limit), 
-          total, 
-          pages: totalPages 
+        data: {
+          payments,
+          summary: {
+            invoiceNumber: invoice.invoiceNumber,
+            customerName: (invoice.customerSnapshot as any)?.companyName || 'Unknown',
+            totalAmount: invoice.grandTotal,
+            totalPaid: totalPaid,
+            totalRefunded: totalRefunded,
+            balanceDue: invoice.grandTotal - totalPaid + totalRefunded,
+            paymentCount: payments.length,
+            completedPayments: completedPayments.length,
+            refundedPayments: refundedPayments.length
+          },
+          pagination: { 
+            page: Number(page), 
+            limit: Number(limit), 
+            total, 
+            pages: totalPages 
+          }
         } 
       } as ApiResponse);
 
@@ -1750,7 +2213,7 @@ export class InvoiceController {
       const currentYear = new Date().getFullYear();
       
       // Get ALL invoices including soft-deleted ones
-      const { invoices: allInvoices } = await getInvoices(req.tenantId, {
+      const { invoices: allInvoices } = await getAllInvoices(req.tenantId, {
         page: 1,
         limit: 10000, // Get all invoices
         status: 'all'
@@ -1760,14 +2223,16 @@ export class InvoiceController {
       let nextNumber: number;
       
       if (settings.resetYearly) {
-        // Find highest number in current year (including deleted)
+        // Find highest number in current year (including deleted) - using improved logic
         let highestThisYear = 0;
         allInvoices.forEach((invoice: any) => {
-          if (invoice.invoiceNumber.includes(`-${currentYear}-`) || 
-              invoice.invoiceNumber.includes(`/${currentYear}/`)) {
-            const match = invoice.invoiceNumber.match(/(\d+)$/);
-            if (match) {
-              const num = parseInt(match[1], 10);
+          // Check if invoice belongs to current year
+          const yearMatch = invoice.invoiceNumber.match(/(\d{4})/);
+          if (yearMatch && parseInt(yearMatch[1]) === currentYear) {
+            // Extract the sequence number (last part of format)
+            const numberMatch = invoice.invoiceNumber.match(/(\d+)$/);
+            if (numberMatch) {
+              const num = parseInt(numberMatch[1], 10);
               if (num > highestThisYear) {
                 highestThisYear = num;
               }

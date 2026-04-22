@@ -12,7 +12,8 @@ import {
   updateSettingsProfile,
   deleteSettingsProfile,
   setActiveProfile,
-  getActiveSettingsProfile
+  getActiveSettingsProfile,
+  getAllActiveSettingsProfiles
 } from '@/models/settingsProfile.model';
 import {
   createGeneralSetting,
@@ -349,11 +350,11 @@ static async getActiveProfiles(req: AuthRequest, res: Response): Promise<void> {
   try {
     if (!req.tenantId) throw new ValidationError('Tenant context required');
 
-    const activeProfile = await getActiveSettingsProfile(req.tenantId);
+    const activeProfiles = await getAllActiveSettingsProfiles(req.tenantId);
 
-    const sanitized = activeProfile ? InvoiceSettingsController.sanitizeProfile(activeProfile) : [];
+    const sanitized = activeProfiles.map(profile => InvoiceSettingsController.sanitizeProfile(profile));
 
-    res.status(200).json({ success: true, data: Array.isArray(sanitized) ? sanitized : [sanitized] });
+    res.status(200).json({ success: true, data: sanitized });
   } catch (error: any) {
     res.status(500).json({ success: false, error: 'Failed to fetch active profiles' });
   }

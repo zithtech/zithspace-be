@@ -482,7 +482,7 @@ export async function deleteSettingsProfile(id: string, tenantId: string): Promi
 }
 
 /**
- * Get active settings profile for a tenant
+ * Get active settings profile for a tenant (single - for backward compatibility)
  */
 export async function getActiveSettingsProfile(tenantId: string): Promise<SettingsProfile | null> {
   const query = `
@@ -586,6 +586,112 @@ export async function getActiveSettingsProfile(tenantId: string): Promise<Settin
   };
 
   return mapRowToSettingsProfile(mappedRow);
+}
+
+/**
+ * Get ALL active settings profiles for a tenant
+ */
+export async function getAllActiveSettingsProfiles(tenantId: string): Promise<SettingsProfile[]> {
+  const query = `
+    SELECT 
+      sp.*,
+      gs.id as general_id,
+      gs.tenant_id as general_tenant_id,
+      gs.company_name as general_company_name,
+      gs.address as general_address,
+      gs.primary_color as general_primary_color,
+      gs.currency as general_currency,
+      gs.date_format as general_date_format,
+      gs.company_logo as general_company_logo,
+      gs.signature as general_signature,
+      gs.gstin as general_gstin,
+      gs.pan as general_pan,
+      gs.created_by as general_created_by,
+      gs.updated_by as general_updated_by,
+      gs.created_at as general_created_at,
+      gs.updated_at as general_updated_at,
+      inv.id as invoice_id,
+      inv.tenant_id as invoice_tenant_id,
+      inv.format as invoice_format,
+      inv.next_number as invoice_next_number,
+      inv.reset_yearly as invoice_reset_yearly,
+      inv.last_reset_year as invoice_last_reset_year,
+      inv.padding as invoice_padding,
+      inv.created_by as invoice_created_by,
+      inv.updated_by as invoice_updated_by,
+      inv.created_at as invoice_created_at,
+      inv.updated_at as invoice_updated_at,
+      ps.id as payment_id,
+      ps.tenant_id as payment_tenant_id,
+      ps.bank_name as payment_bank_name,
+      ps.account_number as payment_account_number,
+      ps.ifsc_code as payment_ifsc_code,
+      ps.branch_name as payment_branch_name,
+      ps.qr_code as payment_qr_code,
+      ps.created_by as payment_created_by,
+      ps.updated_by as payment_updated_by,
+      ps.created_at as payment_created_at,
+      ps.updated_at as payment_updated_at
+    FROM settings_profiles sp
+    LEFT JOIN general_settings gs ON sp.general_id = gs.id
+    LEFT JOIN invoice_settings inv ON sp.invoice_id = inv.id
+    LEFT JOIN payment_settings ps ON sp.payment_id = ps.id
+    WHERE sp.tenant_id = $1 AND sp.is_active = true
+    ORDER BY sp.created_at DESC
+  `;
+  
+  const result = await pool.query(query, [tenantId]);
+  
+  return result.rows.map(row => {
+    const mappedRow = {
+      ...row,
+      general: row.general_id ? {
+        id: row.general_id,
+        tenantId: row.general_tenant_id,
+        companyName: row.general_company_name,
+        address: row.general_address,
+        primaryColor: row.general_primary_color,
+        currency: row.general_currency,
+        dateFormat: row.general_date_format,
+        companyLogo: row.general_company_logo,
+        signature: row.general_signature,
+        gstin: row.general_gstin,
+        pan: row.general_pan,
+        createdBy: row.general_created_by,
+        updatedBy: row.general_updated_by,
+        createdAt: row.general_created_at,
+        updatedAt: row.general_updated_at,
+      } : null,
+      invoice: row.invoice_id ? {
+        id: row.invoice_id,
+        tenantId: row.invoice_tenant_id,
+        format: row.invoice_format,
+        nextNumber: row.invoice_next_number,
+        resetYearly: row.invoice_reset_yearly,
+        lastResetYear: row.invoice_last_reset_year,
+        padding: row.invoice_padding,
+        createdBy: row.invoice_created_by,
+        updatedBy: row.invoice_updated_by,
+        createdAt: row.invoice_created_at,
+        updatedAt: row.invoice_updated_at,
+      } : null,
+      payment: row.payment_id ? {
+        id: row.payment_id,
+        tenantId: row.payment_tenant_id,
+        bankName: row.payment_bank_name,
+        accountNumber: row.payment_account_number,
+        ifscCode: row.payment_ifsc_code,
+        branchName: row.payment_branch_name,
+        qrCode: row.payment_qr_code,
+        createdBy: row.payment_created_by,
+        updatedBy: row.payment_updated_by,
+        createdAt: row.payment_created_at,
+        updatedAt: row.payment_updated_at,
+      } : null,
+    };
+
+    return mapRowToSettingsProfile(mappedRow);
+  });
 }
 
 /**

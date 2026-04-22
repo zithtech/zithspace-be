@@ -531,7 +531,11 @@ export async function getInvoices(
     'balanceDue': 'balance_due',
     'status': 'status',
     'taxTotal': 'tax_total',
-    'paidAmount': 'paid_amount'
+    'paidAmount': 'paid_amount',
+    'deletedAt': 'deleted_at',
+    'deletedBy': 'deleted_by',
+    'grandTotal': 'grand_total',
+    'discountTotal': 'discount_total'
   };
   
   const dbColumnName = columnMapping[sortBy] || sortBy;
@@ -587,6 +591,28 @@ export async function updateInvoiceStatus(
 }
 
 /**
+ * Update invoice status and balance due
+ */
+export async function updateInvoiceStatusAndBalance(
+  id: string, 
+  tenantId: string, 
+  status: InvoiceStatus, 
+  balanceDue: number,
+  paidAmount: number,
+  updatedBy: string
+): Promise<Invoice | null> {
+  const query = `
+    UPDATE invoices 
+    SET status = $1, balance_due = $2, paid_amount = $3, updated_by = $4, updated_at = CURRENT_TIMESTAMP
+    WHERE id = $5 AND tenant_id = $6 AND deleted_at IS NULL
+    RETURNING *
+  `;
+
+  const result = await pool.query(query, [status, balanceDue, paidAmount, updatedBy, id, tenantId]);
+  return result.rows.length > 0 ? mapRowToInvoice(result.rows[0]) : null;
+}
+
+/**
  * Mark invoice as sent
  */
 export async function markInvoiceAsSent(
@@ -628,6 +654,194 @@ export async function updateInvoicePayment(
 
   const result = await pool.query(query, [paidAmount, balanceDue, status, updatedBy, id, tenantId]);
   return result.rows.length > 0 ? mapRowToInvoice(result.rows[0]) : null;
+}
+
+/**
+ * Get all invoices for a tenant (including deleted ones) - for invoice number generation
+ */
+export async function getAllInvoices(
+  tenantId: string,
+  options: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    customerId?: string;
+    search?: string;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
+  } = {}
+): Promise<{ invoices: Invoice[]; total: number }> {
+  const {
+    page = 1,
+    limit = 20,
+    status = 'all',
+    customerId,
+    search,
+    sortBy = 'created_at',
+    sortOrder = 'desc'
+  } = options;
+
+  const whereConditions: string[] = ['tenant_id = $1']; // NO deleted_at filter - gets ALL invoices
+  const values: any[] = [tenantId];
+  let paramIndex = 2;
+
+  if (status !== 'all') {
+    whereConditions.push(`status = $${paramIndex++}`);
+    values.push(status);
+  }
+
+  if (customerId) {
+    whereConditions.push(`customer_id = $${paramIndex++}`);
+    values.push(customerId);
+  }
+
+  if (search) {
+    whereConditions.push(`(invoice_number ILIKE $${paramIndex++} OR notes ILIKE $${paramIndex++})`);
+    values.push(`%${search}%`, `%${search}%`);
+  }
+
+  // Map camelCase field names to snake_case database column names
+  const columnMapping: { [key: string]: string } = {
+    'createdAt': 'created_at',
+    'updatedAt': 'updated_at',
+    'invoiceDate': 'invoice_date',
+    'dueDate': 'due_date',
+    'invoiceNumber': 'invoice_number',
+    'subtotal': 'subtotal',
+    'balanceDue': 'balance_due',
+    'status': 'status',
+    'taxTotal': 'tax_total',
+    'paidAmount': 'paid_amount',
+    'deletedAt': 'deleted_at',
+    'deletedBy': 'deleted_by',
+    'grandTotal': 'grand_total',
+    'discountTotal': 'discount_total'
+  };
+  
+  const dbColumnName = columnMapping[sortBy] || sortBy;
+  const orderByClause = `ORDER BY ${dbColumnName} ${sortOrder.toUpperCase()}`;
+  const offset = (page - 1) * limit;
+
+  const query = `
+    SELECT * FROM invoices 
+    WHERE ${whereConditions.join(' AND ')}
+    ${orderByClause}
+    LIMIT $${paramIndex++} OFFSET $${paramIndex}
+  `;
+
+  const countQuery = `
+    SELECT COUNT(*) as total
+    FROM invoices
+    WHERE ${whereConditions.join(' AND ')}
+  `;
+
+  values.push(limit, offset);
+
+  const [invoicesResult, countResult] = await Promise.all([
+    pool.query(query, values),
+    pool.query(countQuery, values.slice(0, -2))
+  ]);
+
+  const invoices = invoicesResult.rows.map(mapRowToInvoice);
+
+  return {
+    invoices,
+    total: parseInt(countResult.rows[0].total)
+  };
+}
+
+/**
+ * Get deleted invoices for a tenant
+ */
+export async function getDeletedInvoices(
+  tenantId: string,
+  options: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    customerId?: string;
+    search?: string;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
+  } = {}
+): Promise<{ invoices: Invoice[]; total: number }> {
+  const {
+    page = 1,
+    limit = 20,
+    status = 'all',
+    customerId,
+    search,
+    sortBy = 'deleted_at',
+    sortOrder = 'desc'
+  } = options;
+
+  const whereConditions: string[] = ['tenant_id = $1 AND deleted_at IS NOT NULL'];
+  const values: any[] = [tenantId];
+  let paramIndex = 2;
+
+  if (status !== 'all') {
+    whereConditions.push(`status = $${paramIndex++}`);
+    values.push(status);
+  }
+
+  if (customerId) {
+    whereConditions.push(`customer_id = $${paramIndex++}`);
+    values.push(customerId);
+  }
+
+  if (search) {
+    whereConditions.push(`(invoice_number ILIKE $${paramIndex++} OR notes ILIKE $${paramIndex++})`);
+    values.push(`%${search}%`, `%${search}%`);
+  }
+
+  // Map camelCase field names to snake_case database column names
+  const columnMapping: { [key: string]: string } = {
+    'createdAt': 'created_at',
+    'updatedAt': 'updated_at',
+    'invoiceDate': 'invoice_date',
+    'dueDate': 'due_date',
+    'invoiceNumber': 'invoice_number',
+    'subtotal': 'subtotal',
+    'balanceDue': 'balance_due',
+    'status': 'status',
+    'taxTotal': 'tax_total',
+    'paidAmount': 'paid_amount',
+    'deletedAt': 'deleted_at',
+    'deletedBy': 'deleted_by',
+    'grandTotal': 'grand_total',
+    'discountTotal': 'discount_total'
+  };
+  
+  const dbColumnName = columnMapping[sortBy] || sortBy;
+  const orderByClause = `ORDER BY ${dbColumnName} ${sortOrder.toUpperCase()}`;
+  const offset = (page - 1) * limit;
+
+  const query = `
+    SELECT * FROM invoices 
+    WHERE ${whereConditions.join(' AND ')}
+    ${orderByClause}
+    LIMIT $${paramIndex++} OFFSET $${paramIndex}
+  `;
+
+  const countQuery = `
+    SELECT COUNT(*) as total
+    FROM invoices
+    WHERE ${whereConditions.join(' AND ')}
+  `;
+
+  values.push(limit, offset);
+
+  const [invoicesResult, countResult] = await Promise.all([
+    pool.query(query, values),
+    pool.query(countQuery, values.slice(0, -2))
+  ]);
+
+  const invoices = invoicesResult.rows.map(mapRowToInvoice);
+
+  return {
+    invoices,
+    total: parseInt(countResult.rows[0].total)
+  };
 }
 
 /**

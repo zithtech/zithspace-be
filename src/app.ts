@@ -43,6 +43,7 @@ import customerRoutes from "@/routes/customerRoutes";
 import invoiceSettingRoutes from "@/routes/invoiceSettingsRoutes";
 import invoice from "@/routes/invoice";
 import invoiceTemplate from "@/routes/invoiceTemplate";
+import categoryRoutes from "@/routes/categoryRoutes";
 import bucketRoutes from "@/routes/buckets";
 import trashRoutes from "@/routes/trash";
 import sprintCompletionRoutes from "@/routes/sprintCompletion";
@@ -250,6 +251,7 @@ app.use("/api/customers", customerRoutes);
 app.use("/api/invoicesetting", invoiceSettingRoutes);
 app.use("/api/invoices", invoice);
 app.use("/api/invoice-templates", invoiceTemplate);
+app.use("/api/categories", categoryRoutes);
 //app.use("/api/invoice",invoicedownload)
 app.use("/api/buckets", bucketRoutes);
 app.use("/api/trash", trashRoutes);
