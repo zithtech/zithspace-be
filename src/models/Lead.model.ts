@@ -20,21 +20,21 @@ export interface LeadData {
   timeline_end?: Date;
   posted_on?: Date;
   documents?: { name: string; url: string }[];
-  
+
   // Job Metadata
   external_job_id?: string;
   experience_level?: string;
   job_type?: string;
   budget?: string;
   hourly_rate?: string;
-  
+
   // Client Quality Data
   client_rating?: string;
   client_spend?: string;
   client_jobs_posted?: string;
   client_payment_verified?: boolean;
   client_phone_verified?: boolean;
-  
+
   // AI & Proposal Data
   ai_score?: number;
   proposal_text?: string;
@@ -151,7 +151,16 @@ export class LeadModel {
     Object.entries(data).forEach(([key, value]) => {
       if (key !== 'id' && key !== 'tenant_id') {
         fields.push(`${key} = $${placeholderIndex}`);
-        values.push(Array.isArray(value) || typeof value === 'object' ? JSON.stringify(value) : value);
+
+        // Fix: Avoid stringifying null values which leads to "null" string in DB
+        if (value === null) {
+          values.push(null);
+        } else if (Array.isArray(value) || typeof value === 'object') {
+          values.push(JSON.stringify(value));
+        } else {
+          values.push(value);
+        }
+
         placeholderIndex++;
       }
     });
