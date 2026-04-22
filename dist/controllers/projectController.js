@@ -60,7 +60,7 @@ class ProjectController {
                     where,
                     include: {
                         projectManager: {
-                            select: { id: true, name: true, workEmail: true, position: true },
+                            select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
                         },
                         members: {
                             select: {
@@ -70,12 +70,13 @@ class ProjectController {
                                         name: true,
                                         workEmail: true,
                                         position: true,
+                                        avatarUrl: true,
                                     },
                                 },
                             },
                         },
                         createdBy: {
-                            select: { id: true, name: true, workEmail: true },
+                            select: { id: true, name: true, workEmail: true, avatarUrl: true },
                         },
                     },
                     orderBy,
@@ -131,6 +132,7 @@ class ProjectController {
                             name: true,
                             workEmail: true,
                             position: true,
+                            avatarUrl: true,
                         },
                     },
                     members: {
@@ -141,6 +143,7 @@ class ProjectController {
                                     name: true,
                                     workEmail: true,
                                     position: true,
+                                    avatarUrl: true,
                                 },
                             },
                         },
@@ -151,6 +154,7 @@ class ProjectController {
                             name: true,
                             workEmail: true,
                             position: true,
+                            avatarUrl: true,
                         },
                     },
                 },

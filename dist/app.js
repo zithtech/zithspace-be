@@ -104,6 +104,7 @@ const openingManagementRoutes_1 = __importDefault(require("@/routes/openingManag
 // import escalationSettingsRoutes from "./routes/escalationSettingsRoutes";
 // import escalationRoutes from "./routes/escalationRoutes";
 const escalationRoutesV2_1 = __importDefault(require("./routes/escalationRoutesV2"));
+const projectOverviewRoutes_1 = __importDefault(require("./routes/projectOverviewRoutes"));
 // Load environment
 dotenv_1.default.config();
 console.log("🚀 API Starting up...");
@@ -255,6 +256,7 @@ app.use("/api/escalation-statuses", escalationStatus_RoutesV2_1.default);
 app.use("/api/escalation-priorities", escalationPriorities_Routes_1.default);
 app.use("/api/escalations-v2", escalationRoutesV2_1.default);
 app.use("/api/time-tracking", timeTracking_1.default);
+app.use("/api/projects", projectOverviewRoutes_1.default);
 app.use("/api/candidates", candidateRoutes_1.default);
 app.use("/api/recruitment-statuses", recruitmentStatus_routes_1.default);
 app.use("/api/recruitment-actions", recruitmentAction_routes_1.default);
