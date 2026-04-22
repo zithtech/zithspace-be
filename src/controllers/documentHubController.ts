@@ -170,7 +170,7 @@ export class DocumentHubController {
           tenantId: req.tenantId,
           isDeleted: false,
           OR: [
-            { visibility: { in: ["internal", "public"] } },
+            { visibility: "public" },
             { createdById: req.user.id },
           ],
         },
@@ -183,6 +183,10 @@ export class DocumentHubController {
           id,
           tenantId: req.tenantId,
           isDeleted: false,
+          OR: [
+            { visibility: "public" },
+            { createdById: req.user.id },
+          ],
         },
         include: {
           treeNodes: {
@@ -212,6 +216,38 @@ export class DocumentHubController {
           error: "Document Hub not found",
         } as ApiResponse);
         return;
+      }
+
+      // If user is not the creator, prune empty folders/sections in the tree
+      if (documentHub.createdById !== req.user.id) {
+        const nodes = documentHub.treeNodes;
+        const visibleNodeIds = new Set<string>();
+        const nodeMap = new Map<string, any>();
+
+        nodes.forEach(node => nodeMap.set(node.id, { ...node, children: [] }));
+
+        // Link children
+        nodes.forEach(node => {
+          if (node.parentId && nodeMap.has(node.parentId)) {
+            nodeMap.get(node.parentId).children.push(node.id);
+          }
+        });
+
+        const isNodeVisible = (nodeId: string): boolean => {
+          const node = nodeMap.get(nodeId);
+          if (!node) return false;
+
+          if (node.type === 'file') {
+            // Accessible file nodes are already filtered by the query, but double check
+            return !!node.documentId && accessibleDocIds.includes(node.documentId);
+          }
+
+          // For folder/section, visible if any child is visible
+          return node.children.some((childId: string) => isNodeVisible(childId));
+        };
+
+        const filteredNodes = nodes.filter(node => isNodeVisible(node.id));
+        (documentHub as any).treeNodes = filteredNodes;
       }
 
       res.status(200).json({
@@ -390,9 +426,7 @@ export class DocumentHubController {
           isDeleted: false,
           OR: [
             {
-              visibility: {
-                in: ["internal", "public"],
-              },
+              visibility: "public",
             },
             {
               createdById: req.user.id,
@@ -560,7 +594,7 @@ export class DocumentHubController {
           tenantId: req.tenantId,
           isDeleted: false,
           OR: [
-            { visibility: { in: ["internal", "public"] } },
+            { visibility: "public" },
             { createdById: req.user.id },
           ],
         },
@@ -572,6 +606,10 @@ export class DocumentHubController {
         where: {
           tenantId: req.tenantId,
           isDeleted: false,
+          OR: [
+            { visibility: "public" },
+            { createdById: req.user.id },
+          ],
         },
         include: {
           project: {
@@ -582,6 +620,10 @@ export class DocumentHubController {
           },
           createdBy: {
             select: { id: true, name: true, workEmail: true },
+          },
+          documents: {
+            where: { isDeleted: false },
+            select: { visibility: true, createdById: true }
           },
           treeNodes: {
             where: {
@@ -599,9 +641,24 @@ export class DocumentHubController {
         },
       });
 
+      // Filter DocumentHubs based on requirement:
+      // If total number of documents <= 0, hub should be visible only to creator.
+      // If all documents are private, hub should be visible only to creator.
+      const filteredDocumentHubs = documentHubs.filter((hub) => {
+        if (hub.createdById === req.user!.id) return true;
+
+        const docs = hub.documents || [];
+        if (docs.length <= 0) return false;
+
+        const hasPublicDoc = docs.some((doc) => doc.visibility === "public");
+        if (!hasPublicDoc) return false;
+
+        return true;
+      });
+
       res.status(200).json({
         success: true,
-        data: documentHubs,
+        data: filteredDocumentHubs,
       } as ApiResponse);
     } catch (error: any) {
       console.error("Get all document hubs error:", error);
@@ -1311,7 +1368,7 @@ export class DocumentHubController {
       const { id } = req.params;
       const { visibility } = req.body;
 
-      if (!['private', 'internal', 'public'].includes(visibility)) {
+      if (!['private', 'public'].includes(visibility)) {
         res.status(400).json({
           success: false,
           error: "Invalid visibility mode",
@@ -1456,7 +1513,11 @@ export class DocumentHubController {
         },
         include: {
           documentHub: {
-            select: { name: true }
+            select: { 
+              name: true,
+              shareToken: true,
+              visibility: true
+            }
           },
           createdBy: {
             select: { name: true }
@@ -1481,6 +1542,258 @@ export class DocumentHubController {
       res.status(500).json({
         success: false,
         error: "Failed to fetch public document",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Share entire document hub
+   */
+  static async shareDocumentHub(
+    req: AuthRequest,
+    res: Response,
+  ): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { id } = req.params;
+      const { visibility } = req.body;
+
+      if (!['private', 'public'].includes(visibility)) {
+        res.status(400).json({
+          success: false,
+          error: "Invalid visibility mode",
+        } as ApiResponse);
+        return;
+      }
+
+      const hub = await prisma.documentHub.findFirst({
+        where: {
+          id,
+          tenantId: req.tenantId,
+          isDeleted: false,
+        },
+      });
+
+      if (!hub) {
+        res.status(404).json({
+          success: false,
+          error: "Document Hub not found",
+        } as ApiResponse);
+        return;
+      }
+
+      // Check ownership
+      if (hub.createdById !== req.user.id) {
+        res.status(403).json({
+          success: false,
+          error: "You don't have permission to change sharing settings",
+        } as ApiResponse);
+        return;
+      }
+
+      let shareToken = (hub as any).shareToken;
+
+      // Generate token if public and doesn't have one
+      if (visibility === 'public') {
+        if (!shareToken) {
+          shareToken = crypto.randomBytes(32).toString('hex');
+        }
+      } else {
+        shareToken = null;
+      }
+
+      const updatedHub = await prisma.documentHub.update({
+        where: { id },
+        data: {
+          visibility: visibility as any,
+          shareToken: shareToken as any,
+        },
+      });
+
+      res.status(200).json({
+        success: true,
+        data: updatedHub,
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Share document hub error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to update hub sharing settings",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Revoke document hub sharing
+   */
+  static async revokeHubShare(
+    req: AuthRequest,
+    res: Response,
+  ): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { id } = req.params;
+
+      const hub = await prisma.documentHub.findFirst({
+        where: {
+          id,
+          tenantId: req.tenantId,
+          isDeleted: false,
+        },
+      });
+
+      if (!hub) {
+        res.status(404).json({
+          success: false,
+          error: "Document Hub not found",
+        } as ApiResponse);
+        return;
+      }
+
+      // Check ownership
+      if (hub.createdById !== req.user.id) {
+        res.status(403).json({
+          success: false,
+          error: "You don't have permission to revoke sharing",
+        } as ApiResponse);
+        return;
+      }
+
+      await prisma.documentHub.update({
+        where: { id },
+        data: {
+          visibility: 'private' as any,
+          shareToken: null as any,
+        },
+      });
+
+      res.status(200).json({
+        success: true,
+        message: "Hub sharing revoked",
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Revoke hub share error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to revoke hub sharing",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Get public document hub by share token
+   */
+  static async getPublicDocumentHub(req: any, res: Response): Promise<void> {
+    try {
+      const { token } = req.params;
+
+      const hub = await prisma.documentHub.findFirst({
+        where: {
+          shareToken: token as any,
+          visibility: 'public' as any,
+          isDeleted: false,
+        },
+        include: {
+          createdBy: {
+            select: { name: true }
+          },
+          treeNodes: {
+            where: { isDeleted: false },
+            orderBy: { position: "asc" }
+          }
+        }
+      });
+
+      if (!hub) {
+        res.status(404).json({
+          success: false,
+          error: "Public hub not found or access expired",
+        } as ApiResponse);
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        data: hub,
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Get public hub error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to fetch public hub",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Get content of a document within a public hub
+   */
+  static async getPublicHubDocumentContent(req: any, res: Response): Promise<void> {
+    try {
+      const { token, documentId } = req.params;
+
+      // 1. Verify the hub exists and is public
+      const hub = await prisma.documentHub.findFirst({
+        where: {
+          shareToken: token as any,
+          visibility: 'public' as any,
+          isDeleted: false,
+        },
+      });
+
+      if (!hub) {
+        res.status(404).json({
+          success: false,
+          error: "Public hub not found or access expired",
+        } as ApiResponse);
+        return;
+      }
+
+      // 2. Verify the document belongs to this hub
+      const document = await prisma.document.findFirst({
+        where: {
+          id: documentId,
+          documentHubId: hub.id,
+          isDeleted: false,
+        },
+        include: {
+          createdBy: {
+            select: { name: true }
+          }
+        }
+      });
+
+      if (!document) {
+        res.status(404).json({
+          success: false,
+          error: "Document not found in this hub",
+        } as ApiResponse);
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        data: document,
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Get public hub document content error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to fetch document content",
       } as ApiResponse);
     }
   }
