@@ -1,3 +1,6 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 if (process.env.NODE_ENV !== "development") {
   require("module-alias/register");
 }
@@ -6,7 +9,6 @@ import cors from "cors";
 import morgan from "morgan";
 import compression from "compression";
 import cookieParser from "cookie-parser";
-import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
 import session from "express-session";
 import bcrypt from "bcryptjs";
