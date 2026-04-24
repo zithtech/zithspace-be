@@ -1,3 +1,6 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 if (process.env.NODE_ENV !== "development") {
   require("module-alias/register");
 }
@@ -6,7 +9,6 @@ import cors from "cors";
 import morgan from "morgan";
 import compression from "compression";
 import cookieParser from "cookie-parser";
-import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
 import session from "express-session";
 import bcrypt from "bcryptjs";
@@ -43,6 +45,7 @@ import customerRoutes from "@/routes/customerRoutes";
 import invoiceSettingRoutes from "@/routes/invoiceSettingsRoutes";
 import invoice from "@/routes/invoice";
 import invoiceTemplate from "@/routes/invoiceTemplate";
+import categoryRoutes from "@/routes/categoryRoutes";
 import bucketRoutes from "@/routes/buckets";
 import trashRoutes from "@/routes/trash";
 import sprintCompletionRoutes from "@/routes/sprintCompletion";
@@ -251,6 +254,7 @@ app.use("/api/customers", customerRoutes);
 app.use("/api/invoicesetting", invoiceSettingRoutes);
 app.use("/api/invoices", invoice);
 app.use("/api/invoice-templates", invoiceTemplate);
+app.use("/api/categories", categoryRoutes);
 //app.use("/api/invoice",invoicedownload)
 app.use("/api/buckets", bucketRoutes);
 app.use("/api/trash", trashRoutes);

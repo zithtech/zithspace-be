@@ -65,6 +65,7 @@ export declare class EmailLoggerService {
             html: string;
             metadata: import("@prisma/client/runtime/library").JsonValue | null;
             dueDate: string | null;
+            customerId: string | null;
             currency: string | null;
             module: string;
             moduleId: string;
@@ -81,7 +82,6 @@ export declare class EmailLoggerService {
             openedAt: Date | null;
             clickedAt: Date | null;
             sentByUser: string | null;
-            customerId: string | null;
             sentBy: string;
         })[];
         pagination: {
@@ -127,6 +127,7 @@ export declare class EmailLoggerService {
         html: string;
         metadata: import("@prisma/client/runtime/library").JsonValue | null;
         dueDate: string | null;
+        customerId: string | null;
         currency: string | null;
         module: string;
         moduleId: string;
@@ -143,7 +144,6 @@ export declare class EmailLoggerService {
         openedAt: Date | null;
         clickedAt: Date | null;
         sentByUser: string | null;
-        customerId: string | null;
         sentBy: string;
     }>;
     /**
@@ -181,6 +181,7 @@ export declare class EmailLoggerService {
         html: string;
         metadata: import("@prisma/client/runtime/library").JsonValue | null;
         dueDate: string | null;
+        customerId: string | null;
         currency: string | null;
         module: string;
         moduleId: string;
@@ -197,7 +198,6 @@ export declare class EmailLoggerService {
         openedAt: Date | null;
         clickedAt: Date | null;
         sentByUser: string | null;
-        customerId: string | null;
         sentBy: string;
     }>;
 }
