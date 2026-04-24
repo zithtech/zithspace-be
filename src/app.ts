@@ -56,6 +56,7 @@ import employeeTimelineRoutes from "@/routes/employeeTimeline";
 import escalationCategoryRoutes from "@/routes/escalationCategoryV2.routes";
 import escalationStatusRoutes from "@/routes/escalationStatus.RoutesV2";
 import escalationPriorityRoutes from "@/routes/escalationPriorities.Routes";
+import aiRoutes from "@/routes/ai";
 
 // main
 import employeeOnboardingRoutes from "@/routes/onboardingRoutes";
@@ -283,6 +284,7 @@ app.use("/api/escalation-categories", escalationCategoryRoutes);
 app.use("/api/escalation-statuses", escalationStatusRoutes);
 app.use("/api/escalation-priorities", escalationPriorityRoutes);
 app.use("/api/escalations-v2", escalationRoutesV2);
+app.use("/api/ai", aiRoutes);
 
 app.use("/api/time-tracking", timeTrackingRoutes);
 

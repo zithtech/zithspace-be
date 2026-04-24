@@ -59,6 +59,7 @@ export class DocumentHubController {
           projectId: projectId,
           ticketId: ticketId,
           createdById: req.user.id,
+          visibility: "public",
         },
         include: {
           createdBy: {
