@@ -99,6 +99,7 @@ export declare class EmailLoggerService {
             companyName: string;
             country: string | null;
             pan: string | null;
+            isActive: boolean;
             city: string | null;
             id: string;
             tenantId: string;
