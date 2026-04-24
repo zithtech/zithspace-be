@@ -133,6 +133,7 @@ model User {
   zoho_token_expiry                                        DateTime?                           @db.Timestamptz(6)
   zoho_calendar_id                                         String?                             @db.VarChar
   positionId                                               String?                             @map("position_id")
+  avatarUrl                                                String?                             @map("avatar_url")
   zoho_last_sync                                           DateTime?                           @db.Timestamptz(6)
   employeeId                                               String?                             @map("employee_id") @db.Uuid
   EmployerManagementCreated                              EmployerManagement[]                @relation("EmployerManagementCreatedBy")

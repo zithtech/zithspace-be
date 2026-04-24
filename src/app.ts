@@ -109,6 +109,7 @@ import openingManagementRoutes from "@/routes/openingManagementRoutes";
 // import escalationSettingsRoutes from "./routes/escalationSettingsRoutes";
 // import escalationRoutes from "./routes/escalationRoutes";
 import escalationRoutesV2 from "./routes/escalationRoutesV2";
+import projectOverviewRoutes from "./routes/projectOverviewRoutes";
 // Load environment
 dotenv.config();
 console.log("🚀 API Starting up...");
@@ -289,6 +290,7 @@ app.use("/api/escalation-priorities", escalationPriorityRoutes);
 app.use("/api/escalations-v2", escalationRoutesV2);
 
 app.use("/api/time-tracking", timeTrackingRoutes);
+app.use("/api/projects", projectOverviewRoutes);
 
 app.use("/api/candidates", candidateRoutes);
 
