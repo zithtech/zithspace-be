@@ -81,6 +81,7 @@ export class TicketController {
             select: {
               name: true,
               position: true,
+              avatarUrl: true,
             },
           },
           createdBy: {
@@ -464,7 +465,7 @@ export class TicketController {
             select: { id: true, name: true, workEmail: true, position: true },
           },
           assignee: {
-            select: { id: true, name: true, workEmail: true, position: true },
+            select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
           },
           reportTo: {
             select: { id: true, name: true, workEmail: true, position: true },
@@ -643,7 +644,8 @@ export class TicketController {
                   select: {
                     id: true,
                     name: true,
-                    workEmail: true
+                    workEmail: true,
+                    avatarUrl: true
                   }
                 },
                 project: {
@@ -848,7 +850,7 @@ export class TicketController {
               select: { id: true, name: true, workEmail: true },
             },
             assignee: {
-              select: { id: true, name: true, workEmail: true },
+              select: { id: true, name: true, workEmail: true, avatarUrl: true },
             },
             project: {
               select: { id: true, name: true, code: true },

@@ -69,6 +69,7 @@ class DashboardController {
                                 id: true,
                                 name: true,
                                 position: true,
+                                avatarUrl: true,
                             },
                         },
                         ticket: {
@@ -127,6 +128,7 @@ class DashboardController {
                             id: true,
                             name: true,
                             position: true,
+                            avatarUrl: true,
                             workDays: true,
                         },
                     });
@@ -142,6 +144,7 @@ class DashboardController {
                                     id: true,
                                     name: true,
                                     position: true,
+                                    avatarUrl: true,
                                 },
                             },
                         },
@@ -191,11 +194,13 @@ class DashboardController {
                             name: u.name,
                             position: u.position,
                             id: u.id,
+                            avatarUrl: u.avatarUrl,
                         })),
                         absentList: absentList.map((u) => ({
                             name: u.name,
                             position: u.position,
                             id: u.id,
+                            avatarUrl: u.avatarUrl,
                         })),
                     };
                 })(),
@@ -266,6 +271,7 @@ class DashboardController {
                                 id: true,
                                 name: true,
                                 position: true,
+                                avatarUrl: true,
                             },
                         },
                     },
@@ -338,6 +344,7 @@ class DashboardController {
                                 id: true,
                                 name: true,
                                 position: true,
+                                avatarUrl: true,
                             },
                         });
                         return {
@@ -510,7 +517,7 @@ class DashboardController {
                     target: activity.ticket?.title || "Unknown",
                     ticketNumber: activity.ticket?.ticketNumber,
                     time: activity.timestamp,
-                    avatar: activity.performedBy.name.charAt(0).toUpperCase(),
+                    avatar: activity.performedBy.avatarUrl,
                 })),
                 upcomingTasks: formattedUpcomingTasks,
                 projectProgress: projectProgressData,

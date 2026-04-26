@@ -81,7 +81,7 @@ export class ProjectController {
           where,
           include: {
             projectManager: {
-              select: { id: true, name: true, workEmail: true, position: true },
+              select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
             },
             members: {
               select: {
@@ -91,12 +91,13 @@ export class ProjectController {
                     name: true,
                     workEmail: true,
                     position: true,
+                    avatarUrl: true,
                   },
                 },
               },
             },
             createdBy: {
-              select: { id: true, name: true, workEmail: true },
+              select: { id: true, name: true, workEmail: true, avatarUrl: true },
             },
           },
           orderBy,
@@ -157,6 +158,7 @@ export class ProjectController {
               name: true,
               workEmail: true,
               position: true,
+              avatarUrl: true,
             },
           },
           members: {
@@ -167,6 +169,7 @@ export class ProjectController {
                   name: true,
                   workEmail: true,
                   position: true,
+                  avatarUrl: true,
                 },
               },
             },
@@ -177,6 +180,7 @@ export class ProjectController {
               name: true,
               workEmail: true,
               position: true,
+              avatarUrl: true,
             },
           },
         },
