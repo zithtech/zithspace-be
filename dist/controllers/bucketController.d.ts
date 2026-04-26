@@ -42,4 +42,12 @@ export declare class BucketController {
      * Unassign tickets from bucket (tenant-aware)
      */
     static unassignTicketsFromBucket(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Move all tickets in a bucket to a specific sprint (tenant-aware)
+     */
+    static moveBucketToSprint(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Move all tickets in a bucket back to backlog (tenant-aware)
+     */
+    static moveBucketToBacklog(req: AuthRequest, res: Response): Promise<void>;
 }

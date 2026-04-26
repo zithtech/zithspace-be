@@ -390,9 +390,8 @@ export class BucketController {
       if (existingBucket) {
         res.status(409).json({
           success: false,
-          error: `A bucket named "${name}" already exists in this ${
-            projectId ? "project" : "workspace"
-          }`,
+          error: `A bucket named "${name}" already exists in this ${projectId ? "project" : "workspace"
+            }`,
         } as ApiResponse);
         return;
       }
@@ -495,9 +494,8 @@ export class BucketController {
         if (duplicateBucket) {
           res.status(409).json({
             success: false,
-            error: `A bucket named "${name}" already exists in this ${
-              existingBucket.projectId ? "project" : "workspace"
-            }`,
+            error: `A bucket named "${name}" already exists in this ${existingBucket.projectId ? "project" : "workspace"
+              }`,
           } as ApiResponse);
           return;
         }
@@ -951,6 +949,150 @@ export class BucketController {
       res.status(500).json({
         success: false,
         error: "Failed to unassign tickets from bucket",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Move all tickets in a bucket to a specific sprint (tenant-aware)
+   */
+  static async moveBucketToSprint(
+    req: AuthRequest,
+    res: Response,
+  ): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { id } = req.params;
+      const { sprintId } = req.body;
+
+      if (!sprintId) {
+        res.status(400).json({
+          success: false,
+          error: "Sprint ID is required",
+        } as ApiResponse);
+        return;
+      }
+
+      // Verify bucket exists
+      const bucket = await prisma.bucket.findFirst({
+        where: { id, tenantId: req.tenantId },
+      });
+
+      if (!bucket) {
+        throw new NotFoundError("Bucket not found");
+      }
+
+      // Verify sprint exists and belongs to tenant
+      const sprint = await prisma.releasePlan.findFirst({
+        where: { id: sprintId, tenantId: req.tenantId },
+      });
+
+      if (!sprint) {
+        throw new NotFoundError("Sprint not found");
+      }
+
+      // Move all tickets in bucket to this sprint
+      const result = await prisma.ticket.updateMany({
+        where: {
+          bucketId: id,
+          tenantId: req.tenantId,
+          isDeleted: false,
+        },
+        data: {
+          sprintPlanId: sprintId,
+          releasePlanId: null, // Clear release plan
+          demoPlanId: null, // Clear demo plan
+          updatedAt: new Date(),
+        },
+      });
+
+      res.status(200).json({
+        success: true,
+        data: { movedCount: result.count },
+        message: `${result.count} ticket(s) moved to sprint successfully`,
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Move bucket to sprint error:", error);
+      if (error instanceof NotFoundError) {
+        res.status(404).json({
+          success: false,
+          error: error.message,
+        } as ApiResponse);
+        return;
+      }
+      res.status(500).json({
+        success: false,
+        error: "Failed to move bucket to sprint",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Move all tickets in a bucket back to backlog (tenant-aware)
+   */
+  static async moveBucketToBacklog(
+    req: AuthRequest,
+    res: Response,
+  ): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { id } = req.params;
+
+      // Verify bucket exists
+      const bucket = await prisma.bucket.findFirst({
+        where: { id, tenantId: req.tenantId },
+      });
+
+      if (!bucket) {
+        throw new NotFoundError("Bucket not found");
+      }
+
+      // Move all tickets in bucket back to backlog
+      const result = await prisma.ticket.updateMany({
+        where: {
+          bucketId: id,
+          tenantId: req.tenantId,
+          isDeleted: false,
+        },
+        data: {
+          sprintPlanId: null,
+          releasePlanId: null,
+          demoPlanId: null,
+          updatedAt: new Date(),
+        },
+      });
+
+      res.status(200).json({
+        success: true,
+        data: { movedCount: result.count },
+        message: `${result.count} ticket(s) moved to backlog successfully`,
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Move bucket to backlog error:", error);
+      if (error instanceof NotFoundError) {
+        res.status(404).json({
+          success: false,
+          error: error.message,
+        } as ApiResponse);
+        return;
+      }
+      res.status(500).json({
+        success: false,
+        error: "Failed to move bucket to backlog",
       } as ApiResponse);
     }
   }

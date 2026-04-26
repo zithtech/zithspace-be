@@ -98,6 +98,21 @@ router.post('/:id/assign', requirePermission(Permissions.TICKET_UPDATE), BucketC
  * @param   id - Bucket ID
  * @body    { ticketIds: string[] }
  */
-router.post('/:id/unassign', requirePermission(Permissions.TICKET_UPDATE), BucketController.unassignTicketsFromBucket);
+/**
+ * @route   POST /api/buckets/:id/move-to-sprint
+ * @desc    Move all tickets in bucket to specific sprint (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   id - Bucket ID
+ * @body    { sprintId: string }
+ */
+router.post('/:id/move-to-sprint', requirePermission(Permissions.TICKET_UPDATE), BucketController.moveBucketToSprint);
+
+/**
+ * @route   POST /api/buckets/:id/move-to-backlog
+ * @desc    Move all tickets in bucket back to backlog (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @param   id - Bucket ID
+ */
+router.post('/:id/move-to-backlog', requirePermission(Permissions.TICKET_UPDATE), BucketController.moveBucketToBacklog);
 
 export default router;
