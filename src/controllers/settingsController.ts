@@ -134,14 +134,15 @@ export class SettingsController {
           { value: 'Enhancement', label: 'Enhancement', color: '#722ed1', description: 'Enhancement' }
         ],
         statuses: getOptions('status').length ? getOptions('status') : [
-          { value: 'not_started', label: 'Not Started', color: '#d9d9d9', description: 'Task not started' },
-          { value: 'in_progress', label: 'In Progress', color: '#1890ff', description: 'Task in progress' },
-          { value: 'dev_complete', label: 'Dev Complete', color: '#2db7f5', description: 'Development completed' },
-          { value: 'in_testing', label: 'Testing', color: '#fa8c16', description: 'In testing phase' },
-          { value: 'in_review', label: 'In Review', color: '#722ed1', description: 'Under review' },
-          { value: 'completed', label: 'Completed', color: '#52c41a', description: 'Task completed' },
-          { value: 'live', label: 'Live', color: '#0050b3', description: 'Deployed to production' },
-          { value: 'pause', label: 'Pause', color: '#fa8c16', description: 'Task paused' },
+          { value: 'not_started', label: 'Not Started', color: '#8c8c8c', description: 'Task not started' },
+          { value: 'in_progress', label: 'In Progress', color: '#1677ff', description: 'Task in progress' },
+          { value: 'dev_complete', label: 'Dev Complete', color: '#13c2c2', description: 'Development completed' },
+          { value: 'dev_testing', label: 'Dev Testing', color: '#faad14', description: 'Developer verification phase' },
+          { value: 'in_review', label: 'In Review', color: '#722ed1', description: 'Peer or lead review' },
+          { value: 'live', label: 'Live', color: '#2f54eb', description: 'Deployed to production environment' },
+          { value: 'live_testing', label: 'Live Testing', color: '#1d39c4', description: 'Verification in production' },
+          { value: 'completed', label: 'Completed', color: '#52c41a', description: 'Task officially completed' },
+          { value: 'pause', label: 'Pause', color: '#fa8c16', description: 'Task temporarily paused' },
         ],
         platforms: getOptions('platform').length ? getOptions('platform') : [
           { value: 'Development', label: 'Development', color: '#1890ff', description: 'Software development tasks' },
