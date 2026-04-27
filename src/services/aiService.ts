@@ -72,7 +72,7 @@ export class AIService {
     const userPrompt = `Document Title: "${title}"
       Context: "${context}"
       Format: Array of blocks with id, type (paragraph, heading, bulletListItem, numberedListItem, checkListItem), props, content, and children.
-      Requirement: Provide extremely comprehensive and detailed professional documentation content for this specific topic. Include at least 5-10 distinct blocks including multiple subheadings, detailed paragraphs, and list items. Ensure the content is rich, technical, and highly relevant. Must be valid JSON and BlockNote compatible.
+      Requirement: Provide ONLY a skeleton outline of main topics and headings for this document. DO NOT generate full paragraphs. Use headings and bullet points to outline what should be covered. Return 3-5 distinct blocks. Must be valid JSON and BlockNote compatible.
     `;
 
     let attempts = 0;
@@ -171,6 +171,45 @@ export class AIService {
     } catch (error) {
       console.error("AI Process Selected Text Error:", error);
       throw new Error("Failed to process selected text");
+    }
+  }
+
+  /**
+   * Generate content for multiple documents in a single call
+   */
+  static async generateBulkDocumentContent(files: { title: string, contentPrompt?: string }[], hubContext: string): Promise<Record<string, any[]>> {
+    const systemPrompt = `
+      You are an expert documentation writer. Generate concise content for multiple documents in BlockNote JSON format.
+      Return a JSON object where each key is the exact document title and the value is an array of BlockNote blocks.
+      Return ONLY the JSON. No markdown.
+      
+      CRITICAL REQUIREMENT: 
+      - DO NOT include "link" inside the "styles" object. 
+      - If you need to include a link, the format for inline content MUST be: { "type": "text", "text": "...", "styles": {}, "link": "URL" }.
+      - Use standard block types: paragraph, heading, bulletListItem, numberedListItem, checkListItem.
+    `;
+
+    const userPrompt = `
+      Hub Context: ${hubContext}
+      Documents to generate:
+      ${files.map(f => `- ${f.title}${f.contentPrompt ? `: ${f.contentPrompt}` : ""}`).join("\n")}
+
+      Requirement: For each document, provide ONLY a skeleton outline of main topics and headings. DO NOT generate full paragraphs. Use headings and bullet points to list the key areas to be covered. Return 3-5 blocks per document.
+      Format:
+      {
+        "Title 1": [ { "type": "heading", ... }, { "type": "bulletListItem", ... } ],
+        "Title 2": [ ... ]
+      }
+    `;
+
+    try {
+      const result = await model.generateContent(`${systemPrompt}\n\n${userPrompt}`);
+      const text = this.cleanJSONResponse(result.response.text());
+      return JSON.parse(text);
+    } catch (error) {
+      console.error("AI Generate Bulk Content Error:", error);
+      // Fallback: return empty object so documents are created with empty content instead of failing
+      return {};
     }
   }
 }

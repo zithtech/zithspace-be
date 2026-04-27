@@ -186,7 +186,7 @@ export class AIController {
   }
 
   /**
-   * Create the skeleton structure for a Document Hub (No content generation yet)
+   * Create the skeleton structure for a Document Hub AND generate content in a single pass
    */
   static async executeHubStructure(req: AuthRequest, res: Response): Promise<void> {
     try {
@@ -201,24 +201,62 @@ export class AIController {
         return;
       }
 
+      // Fetch hub details for context
+      const hub = await prisma.documentHub.findUnique({
+        where: { id: hubId },
+        include: { project: true, ticket: true }
+      });
+
+      const hubContext = hub ? `
+        Hub Name: ${hub.name}
+        ${hub.project ? `Project: ${hub.project.name} (${hub.project.description || ""})` : ""}
+        ${hub.ticket ? `Ticket: ${hub.ticket.title} (ID: ${hub.ticket.ticketNumber || hub.ticket.id})` : ""}
+      ` : "";
+
+      // 1. Flatten structure to find all files
+      const filesToGenerate: { title: string, contentPrompt?: string }[] = [];
+      const findFiles = (nodes: any[]) => {
+        nodes.forEach(node => {
+          if (node.type === "file") {
+            filesToGenerate.push({ title: node.title, contentPrompt: node.contentPrompt });
+          }
+          if (node.children && node.children.length > 0) {
+            findFiles(node.children);
+          }
+        });
+      };
+      findFiles(structure);
+
+      // 2. Generate all content in ONE AI call
+      let bulkContent: Record<string, any[]> = {};
+      if (filesToGenerate.length > 0) {
+        bulkContent = await AIService.generateBulkDocumentContent(filesToGenerate, hubContext);
+      }
+
       const createdNodes: { documentId: string; title: string; type: string }[] = [];
 
-      // Helper function to recursively create nodes
+      // 3. Helper function to recursively create nodes with the generated content
       const createNodes = async (nodes: any[], parentId: string | null = null) => {
         for (let i = 0; i < nodes.length; i++) {
           const node = nodes[i];
           
-          // Create an empty document first
-          const doc = await prisma.document.create({
-            data: {
-              tenantId: req.tenantId!,
-              documentHubId: hubId,
-              title: node.title,
-              content: [], // Empty initially
-              createdById: req.user!.id,
-              visibility: "public"
-            },
-          });
+          let documentId: string | null = null;
+
+          // Only create a Document record if it's a file
+          if (node.type === "file") {
+            const content = bulkContent[node.title] || [];
+            const doc = await prisma.document.create({
+              data: {
+                tenantId: req.tenantId!,
+                documentHubId: hubId,
+                title: node.title,
+                content: content,
+                createdById: req.user!.id,
+                visibility: "public"
+              },
+            });
+            documentId = doc.id;
+          }
 
           const newNode = await prisma.documentTree.create({
             data: {
@@ -229,12 +267,12 @@ export class AIController {
               type: node.type,
               position: i,
               createdById: req.user!.id,
-              documentId: doc.id,
+              documentId: documentId,
             },
           });
 
           createdNodes.push({
-            documentId: doc.id,
+            documentId: documentId || "",
             title: node.title,
             type: node.type
           });
@@ -250,10 +288,10 @@ export class AIController {
       res.status(201).json({
         success: true,
         data: createdNodes,
-        message: "Hub structure created successfully",
+        message: "Hub structure and content generated successfully in one pass",
       } as ApiResponse);
     } catch (error: any) {
-      console.error("AI Controller Structure Creation Error:", error);
+      console.error("AI Controller Unified Creation Error:", error);
       res.status(500).json({ success: false, error: error.message } as ApiResponse);
     }
   }
