@@ -79,6 +79,7 @@ class AttendanceController {
                                     name: true,
                                     workEmail: true,
                                     position: true,
+                                    avatarUrl: true,
                                 },
                             },
                         },
@@ -144,6 +145,7 @@ class AttendanceController {
                                 name: true,
                                 workEmail: true,
                                 position: true,
+                                avatarUrl: true,
                             },
                         },
                     },
@@ -242,6 +244,7 @@ class AttendanceController {
                                     name: true,
                                     workEmail: true,
                                     position: true,
+                                    avatarUrl: true,
                                 },
                             },
                         },
@@ -264,6 +267,7 @@ class AttendanceController {
                                     name: true,
                                     workEmail: true,
                                     position: true,
+                                    avatarUrl: true,
                                 },
                             },
                         },
@@ -341,7 +345,7 @@ class AttendanceController {
                     },
                     include: {
                         user: {
-                            select: { id: true, name: true, workEmail: true, position: true },
+                            select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
                         },
                     },
                 });
@@ -692,7 +696,7 @@ class AttendanceController {
                     },
                     include: {
                         user: {
-                            select: { id: true, name: true, workEmail: true, position: true },
+                            select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
                         },
                     },
                 });
@@ -914,7 +918,7 @@ class AttendanceController {
                     },
                     include: {
                         user: {
-                            select: { id: true, name: true, workEmail: true, position: true },
+                            select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
                         },
                     },
                 });
