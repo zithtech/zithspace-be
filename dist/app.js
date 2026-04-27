@@ -111,6 +111,7 @@ const generate_routes_1 = __importDefault(require("@/routes/generate.routes"));
 // import escalationRoutes from "./routes/escalationRoutes";
 const escalationRoutesV2_1 = __importDefault(require("./routes/escalationRoutesV2"));
 const proposals_1 = __importDefault(require("@/routes/proposals"));
+const projectOverviewRoutes_1 = __importDefault(require("./routes/projectOverviewRoutes"));
 // Load environment
 dotenv_1.default.config();
 console.log("🚀 API Starting up...");
