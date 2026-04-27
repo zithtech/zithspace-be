@@ -119,9 +119,16 @@ export class LeadModel {
    */
   static async findAll(tenantId: string): Promise<any[]> {
     const query = `
-      SELECT * FROM leads 
-      WHERE tenant_id = $1 
-      ORDER BY created_at DESC;
+      SELECT l.*, p.id as proposal_id
+      FROM leads l
+      LEFT JOIN (
+        SELECT DISTINCT ON (lead_id) id, lead_id 
+        FROM proposals 
+        WHERE tenant_id = $1 
+        ORDER BY lead_id, created_at DESC
+      ) p ON l.id = p.lead_id
+      WHERE l.tenant_id = $1 
+      ORDER BY l.created_at DESC;
     `;
     const result = await pool.query(query, [tenantId]);
     return result.rows;

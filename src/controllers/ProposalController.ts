@@ -84,7 +84,7 @@ export class ProposalController {
    */
   static async createProposal(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const { title, client_name, blocks, status = 'draft' } = req.body;
+      const { title, client_name, blocks, status = 'draft', lead_id } = req.body;
       const tenantId = req.tenantId;
       const userId = req.user?.id;
 
@@ -93,6 +93,7 @@ export class ProposalController {
 
       const proposal = await ProposalModel.create({
         tenant_id: tenantId,
+        lead_id,
         title,
         client_name,
         blocks_data: blocks,
@@ -116,14 +117,15 @@ export class ProposalController {
   static async updateProposal(req: AuthRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
-      const { title, client_name, blocks, status } = req.body;
+      const { title, client_name, blocks, status, lead_id } = req.body;
       const tenantId = req.tenantId;
 
       const proposal = await ProposalModel.update(id, tenantId, {
         title,
         client_name,
         blocks_data: blocks,
-        status
+        status,
+        lead_id
       });
 
       if (!proposal) {
@@ -224,6 +226,7 @@ export class ProposalController {
 
       const proposal = await ProposalModel.create({
         tenant_id: tenantId,
+        lead_id: leadId,
         title: `Proposal: ${lead.title}`,
         client_name: lead.client_name,
         blocks_data: blocks,
@@ -260,7 +263,7 @@ export class ProposalController {
 
       res.status(200).json({
         success: true,
-        data: { blocks, title: `Proposal: ${lead.title}`, client_name: lead.client_name },
+        data: { blocks, title: `Proposal: ${lead.title}`, client_name: lead.client_name, lead_id: leadId },
         message: 'AI Proposal content generated'
       });
     } catch (error: any) {

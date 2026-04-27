@@ -336,16 +336,22 @@ export class LeadController {
 
       // 2. Create or find the Client (ClientV2)
       let clientId;
+      const clientName = req.body.client_name || lead.client_name || 'New Client';
+      const clientLocation = req.body.client_location || lead.client_location;
+      const projectTitle = req.body.title || lead.title;
+      const projectSummary = req.body.summary || lead.summary;
+      const projectBudget = req.body.budget || lead.budget;
+
       const existingClientSearch = await pool.query(
         'SELECT id FROM clients_v2 WHERE tenant_id = $1 AND company_name = $2 LIMIT 1',
-        [tenantId, lead.client_name || '']
+        [tenantId, clientName]
       );
 
       if (existingClientSearch.rows.length > 0) {
         clientId = existingClientSearch.rows[0].id;
       } else {
         // Generate Client Code
-        const clientPrefix = (lead.client_name || 'CLT')
+        const clientPrefix = (clientName)
           .replace(/[^a-zA-Z]/g, "")
           .substring(0, 3)
           .toUpperCase();
@@ -356,13 +362,13 @@ export class LeadController {
           `INSERT INTO clients_v2 (id, tenant_id, client_code, company_name, client_type, status, billing_address, country, created_by_id, created_at, updated_at) 
            VALUES (gen_random_uuid(), $1, $2, $3, 'Enterprise', 'Prospect', $4, $5, $6, NOW(), NOW()) 
            RETURNING id`,
-          [tenantId, clientCode, lead.client_name || 'New Client', lead.client_location, 'International', req.user.id]
+          [tenantId, clientCode, clientName, clientLocation, 'International', req.user.id]
         );
         clientId = newClient.rows[0].id;
       }
 
       // 3. Create the project (Raw SQL)
-      const namePrefix = (lead.title || 'PRJ')
+      const namePrefix = (projectTitle || 'PRJ')
         .replace(/[^a-zA-Z]/g, "")
         .substring(0, 3)
         .toUpperCase();
@@ -373,16 +379,16 @@ export class LeadController {
         `INSERT INTO projects (id, tenant_id, name, code, description, status, start_date, project_manager_id, created_by_id, created_at, updated_at)
          VALUES (gen_random_uuid(), $1, $2, $3, $4, 'active', NOW(), $5, $5, NOW(), NOW())
          RETURNING id, name, code`,
-        [tenantId, lead.title, projectCode, lead.summary || `Project created from lead: ${lead.title}`, req.user.id]
+        [tenantId, projectTitle, projectCode, projectSummary || `Project created from lead: ${projectTitle}`, req.user.id]
       );
 
       const project = newProject.rows[0];
 
       // 4. Link Client and Project in client_projects table
       // Clean budget string (remove $, commas, etc)
-      const cleanBudget = typeof lead.budget === 'string' 
-        ? parseFloat(lead.budget.replace(/[^0-9.]/g, '')) || 0
-        : (lead.budget || 0);
+      const cleanBudget = typeof projectBudget === 'string' 
+        ? parseFloat(projectBudget.replace(/[^0-9.]/g, '')) || 0
+        : (projectBudget || 0);
 
       await pool.query(
         `INSERT INTO client_projects (id, tenant_id, client_id, project_id, created_at, updated_at, budget)

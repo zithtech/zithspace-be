@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { LeadController } from '@/controllers/Lead.controller';
 import { BidIQController } from '@/controllers/BidIQ.controller';
-import { authenticateToken } from '@/middleware/auth';
+import { authenticateToken, optionalAuth } from '@/middleware/auth';
 import { resolveTenant, requireTenant } from '@/middleware/tenantContext';
 
 const router = Router();
@@ -11,12 +11,14 @@ const router = Router();
  */
 router.use(resolveTenant);
 router.use(requireTenant);
-router.use(authenticateToken);
-
 /**
  * Lead Routes
  */
-router.post('/', LeadController.createLead);
+// Allow lead creation with optional auth (to support extensions)
+router.post('/', optionalAuth, LeadController.createLead);
+
+// Strictly protected routes
+router.use(authenticateToken);
 router.get('/', LeadController.getLeads);
 router.get('/:id', LeadController.getLead);
 router.put('/:id', LeadController.updateLead);

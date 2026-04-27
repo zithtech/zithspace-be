@@ -3,6 +3,7 @@ import pool from '@/config/dbpool';
 export interface ProposalData {
   id?: string;
   tenant_id: string;
+  lead_id?: string;
   title: string;
   client_name?: string;
   blocks_data: any;
@@ -18,13 +19,14 @@ export class ProposalModel {
    */
   static async create(data: ProposalData): Promise<any> {
     const query = `
-      INSERT INTO proposals (tenant_id, title, client_name, blocks_data, status, created_by)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO proposals (tenant_id, lead_id, title, client_name, blocks_data, status, created_by)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *;
     `;
 
     const values = [
       data.tenant_id,
+      data.lead_id,
       data.title,
       data.client_name,
       typeof data.blocks_data === 'string' ? data.blocks_data : JSON.stringify(data.blocks_data),
