@@ -251,6 +251,7 @@ export interface LoginResponse {
         tenantId: string;
         tenantName: string;
         tenantLogo: string | null;
+        avatarUrl: any | null;
         isActive: boolean;
     };
     message: string;
@@ -519,6 +520,7 @@ export interface CreateCustomerData {
     taxId?: string;
     gstin?: string;
     pan?: string;
+    isActive?: boolean;
 }
 export interface UpdateCustomerData {
     companyName?: string;
@@ -530,6 +532,7 @@ export interface UpdateCustomerData {
     taxId?: string;
     gstin?: string;
     pan?: string;
+    isActive?: boolean;
 }
 export declare class ValidationError extends Error {
     readonly field?: string;

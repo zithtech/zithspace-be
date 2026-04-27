@@ -45,6 +45,7 @@ declare class EmailService {
     sendLeaveRejectionEmail(data: LeaveRejectionEmailData): Promise<boolean>;
     sendInvoiceEmail(data: {
         to: string;
+        from?: string;
         subject: string;
         customerName: string;
         invoiceNumber: string;

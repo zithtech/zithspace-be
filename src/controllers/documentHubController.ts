@@ -743,15 +743,7 @@ export class DocumentHubController {
       }
 
       const { id } = req.params;
-      const { name } = req.body;
-
-      if (!name || name.trim() === "") {
-        res.status(400).json({
-          success: false,
-          error: "Document Hub Name is required",
-        } as ApiResponse);
-        return;
-      }
+      const { name, projectId, ticketId } = req.body;
 
       const documentHub = await prisma.documentHub.findFirst({
         where: {
@@ -769,21 +761,59 @@ export class DocumentHubController {
         return;
       }
 
-      // Check authorization (only creator can rename hub for now)
+      // Check authorization (only creator can update hub for now)
       if (documentHub.createdById !== req.user.id) {
         res.status(403).json({
           success: false,
-          error: "You don't have permission to rename this Document Hub",
+          error: "You don't have permission to update this Document Hub",
         } as ApiResponse);
         return;
       }
 
+      // Validate project if provided
+      if (projectId) {
+        const project = await prisma.project.findFirst({
+          where: {
+            id: projectId,
+            tenantId: req.tenantId,
+          },
+        });
+
+        if (!project) {
+          throw new ValidationError("Project not found in this tenant");
+        }
+      }
+
+      const updateData: any = {
+        updatedAt: new Date(),
+      };
+
+      if (name !== undefined) {
+        if (name.trim() === "") {
+          throw new ValidationError("Document Hub Name cannot be empty");
+        }
+        updateData.name = name;
+      }
+
+      if (projectId !== undefined) {
+        updateData.projectId = projectId;
+      }
+
+      if (ticketId !== undefined) {
+        updateData.ticketId = ticketId;
+      }
+
       const updatedDocumentHub = await prisma.documentHub.update({
         where: { id },
-        data: {
-          name,
-          updatedAt: new Date(),
-        },
+        data: updateData,
+        include: {
+          project: {
+            select: { id: true, name: true, code: true },
+          },
+          ticket: {
+            select: { id: true, title: true, status: true, ticketNumber: true },
+          },
+        }
       });
 
       // Emit socket event
@@ -796,10 +826,23 @@ export class DocumentHubController {
       res.status(200).json({
         success: true,
         data: updatedDocumentHub,
-        message: "Document Hub renamed successfully",
+        debug: {
+          receivedTicketId: ticketId,
+          updatedAt: updateData.updatedAt
+        },
+        message: "Document Hub updated successfully",
       } as ApiResponse);
     } catch (error: any) {
       console.error("Update document hub error:", error);
+
+      if (error instanceof ValidationError) {
+        res.status(400).json({
+          success: false,
+          error: error.message,
+        } as ApiResponse);
+        return;
+      }
+
       res.status(500).json({
         success: false,
         error: "Failed to update document hub",

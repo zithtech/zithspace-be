@@ -1,3 +1,6 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 if (process.env.NODE_ENV !== "development") {
   require("module-alias/register");
 }
@@ -6,7 +9,6 @@ import cors from "cors";
 import morgan from "morgan";
 import compression from "compression";
 import cookieParser from "cookie-parser";
-import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
 import session from "express-session";
 import bcrypt from "bcryptjs";
@@ -43,6 +45,7 @@ import customerRoutes from "@/routes/customerRoutes";
 import invoiceSettingRoutes from "@/routes/invoiceSettingsRoutes";
 import invoice from "@/routes/invoice";
 import invoiceTemplate from "@/routes/invoiceTemplate";
+import categoryRoutes from "@/routes/categoryRoutes";
 import bucketRoutes from "@/routes/buckets";
 import trashRoutes from "@/routes/trash";
 import sprintCompletionRoutes from "@/routes/sprintCompletion";
@@ -112,6 +115,7 @@ import generateRoutes from "@/routes/generate.routes";
 // import escalationRoutes from "./routes/escalationRoutes";
 import escalationRoutesV2 from "./routes/escalationRoutesV2";
 import proposalRoutes from "@/routes/proposals";
+import projectOverviewRoutes from "./routes/projectOverviewRoutes";
 // Load environment
 dotenv.config();
 console.log("🚀 API Starting up...");
@@ -259,6 +263,7 @@ app.use("/api/invoicesetting", invoiceSettingRoutes);
 app.use("/api/invoices", invoice);
 app.use("/api/proposals", proposalRoutes);
 app.use("/api/invoice-templates", invoiceTemplate);
+app.use("/api/categories", categoryRoutes);
 //app.use("/api/invoice",invoicedownload)
 app.use("/api/buckets", bucketRoutes);
 app.use("/api/trash", trashRoutes);
@@ -297,6 +302,7 @@ app.use("/api/escalation-priorities", escalationPriorityRoutes);
 app.use("/api/escalations-v2", escalationRoutesV2);
 
 app.use("/api/time-tracking", timeTrackingRoutes);
+app.use("/api/projects", projectOverviewRoutes);
 
 app.use("/api/candidates", candidateRoutes);
 
