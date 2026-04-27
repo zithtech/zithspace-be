@@ -97,6 +97,7 @@ export async function getTransactions(
         'id', u.id,
         'name', u.name,
         'workEmail', u.work_email,
+        'avatarUrl', u.avatar_url,
         'position', CASE WHEN p.id IS NOT NULL THEN json_build_object(
           'id', p.id,
           'tenantId', p.tenant_id,
@@ -166,6 +167,7 @@ export async function getTransactionById(id: string, tenantId: string): Promise<
         'id', u.id,
         'name', u.name,
         'workEmail', u.work_email,
+        'avatarUrl', u.avatar_url,
         'position', CASE WHEN p.id IS NOT NULL THEN json_build_object(
           'title', p.title
         ) ELSE NULL END
@@ -400,6 +402,7 @@ export async function getTransactionSummaryQuery(tenantId: string, start?: Date,
         'id', u.id,
         'name', u.name,
         'workEmail', u.work_email,
+        'avatarUrl', u.avatar_url,
         'position', CASE WHEN p.id IS NOT NULL THEN json_build_object('title', p.title) ELSE NULL END
       ) as user
     FROM transactions t

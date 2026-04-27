@@ -42,7 +42,7 @@ export class TimeTrackingController {
         include: {
           project: { select: { id: true, name: true, code: true } },
           ticket: { select: { id: true, title: true, ticketNumber: true, estimateHours: true } },
-          user: { select: { id: true, name: true, workEmail: true } },
+          user: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
           logs: { orderBy: { createdAt: 'desc' } }
         },
         orderBy: { startTime: 'desc' }
@@ -98,6 +98,7 @@ export class TimeTrackingController {
         include: {
           project: { select: { id: true, name: true, code: true } },
           ticket: { select: { id: true, title: true, ticketNumber: true, estimateHours: true } },
+          user: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
           logs: { orderBy: { createdAt: 'desc' } }
         }
       });
@@ -171,6 +172,7 @@ export class TimeTrackingController {
         include: {
           project: { select: { id: true, name: true, code: true } },
           ticket: { select: { id: true, title: true, ticketNumber: true, estimateHours: true } },
+          user: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
           logs: { orderBy: { createdAt: 'desc' } }
         }
       });
@@ -220,6 +222,7 @@ export class TimeTrackingController {
         include: {
           project: { select: { id: true, name: true, code: true } },
           ticket: { select: { id: true, title: true, ticketNumber: true, estimateHours: true } },
+          user: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
           logs: { orderBy: { createdAt: 'desc' } }
         }
       });
@@ -259,6 +262,7 @@ export class TimeTrackingController {
         include: {
           project: { select: { id: true, name: true, code: true } },
           ticket: { select: { id: true, title: true, ticketNumber: true, estimateHours: true } },
+          user: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
           logs: { orderBy: { createdAt: 'desc' } }
         }
       });
@@ -315,6 +319,7 @@ export class TimeTrackingController {
         include: {
           project: { select: { id: true, name: true, code: true } },
           ticket: { select: { id: true, title: true, ticketNumber: true, estimateHours: true } },
+          user: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
           logs: { orderBy: { createdAt: 'desc' } }
         }
       });
@@ -450,6 +455,7 @@ export class TimeTrackingController {
         include: {
           project: { select: { id: true, name: true, code: true } },
           ticket: { select: { id: true, title: true, ticketNumber: true, estimateHours: true } },
+          user: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
           logs: { orderBy: { createdAt: 'desc' } }
         }
       });

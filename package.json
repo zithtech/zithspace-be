@@ -19,7 +19,7 @@
     "postinstall": "prisma generate"
   },
   "_moduleAliases": {
-    "@": "dist"
+    "@": "src"
   },
   "keywords": [
     "express",
