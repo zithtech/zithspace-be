@@ -170,18 +170,22 @@ export class ProjectOverviewModel {
           todo,
           assigned,
           totalHours: Math.round((parseInt(row.total_seconds || "0") / 3600) * 10) / 10,
-          contribution: assigned > 0 ? Math.round((done / assigned) * 100) : 0
+          contribution: ticketSummary.completed > 0 ? Math.round((done / ticketSummary.completed) * 100) : 0,
+          totalProjectDone: ticketSummary.completed
         };
       });
 
+      // Sort team by contribution (highest percentage first)
+      team.sort((a, b) => b.contribution - a.contribution);
+
       // 7. Recent Activities
       const activitiesRes = await client.query(
-        `SELECT scl.id, scl.action, scl.performed_at as timestamp, u.name as user_name, t.ticket_number, t.title as ticket_title
-         FROM sprint_completion_logs scl
-         JOIN users u ON scl.performed_by_id = u.id
-         JOIN tickets t ON scl.ticket_id = t.id
-         WHERE scl.project_id = $1 AND scl.tenant_id = $2
-         ORDER BY scl.performed_at DESC LIMIT 10`,
+        `SELECT al.id, al.action, al.timestamp, u.name as user_name, t.ticket_number, t.title as ticket_title
+         FROM ticket_activity_log al
+         JOIN users u ON al.performed_by_id = u.id
+         JOIN tickets t ON al.ticket_id = t.id
+         WHERE t.project_id = $1 AND al.tenant_id = $2
+         ORDER BY al.timestamp DESC LIMIT 10`,
         [projectId, tenantId]
       );
       const activities = activitiesRes.rows.map(row => ({
