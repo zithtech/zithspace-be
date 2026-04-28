@@ -166,8 +166,8 @@ class TimesheetController {
                     where,
                     include: {
                         rows: true,
-                        user: { select: { id: true, name: true } },
-                        approvedBy: { select: { id: true, name: true } },
+                        user: { select: { id: true, name: true, avatarUrl: true } },
+                        approvedBy: { select: { id: true, name: true, avatarUrl: true } },
                     },
                     orderBy: { weekStart: "desc" },
                     skip,
@@ -210,8 +210,8 @@ class TimesheetController {
                 where: { id, tenantId: req.tenantId },
                 include: {
                     rows: true,
-                    user: { select: { id: true, name: true } },
-                    approvedBy: { select: { id: true, name: true } },
+                    user: { select: { id: true, name: true, avatarUrl: true } },
+                    approvedBy: { select: { id: true, name: true, avatarUrl: true } },
                 },
             });
             if (!timesheet)

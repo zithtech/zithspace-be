@@ -62,7 +62,7 @@ export class DocumentHubController {
         },
         include: {
           createdBy: {
-            select: { id: true, name: true, workEmail: true },
+            select: { id: true, name: true, workEmail: true, avatarUrl: true },
           },
           project: {
             select: { id: true, name: true, code: true },
@@ -205,7 +205,7 @@ export class DocumentHubController {
             select: { id: true, name: true, code: true },
           },
           createdBy: {
-            select: { id: true, name: true, workEmail: true },
+            select: { id: true, name: true, workEmail: true, avatarUrl: true },
           },
         },
       });
@@ -557,6 +557,7 @@ export class DocumentHubController {
               id: true,
               name: true,
               workEmail: true,
+              avatarUrl: true,
             },
           },
         },
@@ -619,7 +620,7 @@ export class DocumentHubController {
             select: { id: true, title: true, status: true, ticketNumber: true },
           },
           createdBy: {
-            select: { id: true, name: true, workEmail: true },
+            select: { id: true, name: true, workEmail: true, avatarUrl: true },
           },
           documents: {
             where: { isDeleted: false },
@@ -812,6 +813,9 @@ export class DocumentHubController {
           },
           ticket: {
             select: { id: true, title: true, status: true, ticketNumber: true },
+          },
+          createdBy: {
+            select: { id: true, name: true, workEmail: true, avatarUrl: true },
           },
         }
       });
@@ -1072,7 +1076,7 @@ export class DocumentHubController {
           },
           include: {
             deletedBy: {
-              select: { id: true, name: true },
+              select: { id: true, name: true, avatarUrl: true },
             },
             project: {
               select: { id: true, name: true, code: true },
@@ -1093,7 +1097,7 @@ export class DocumentHubController {
           },
           include: {
             deletedBy: {
-              select: { id: true, name: true },
+              select: { id: true, name: true, avatarUrl: true },
             },
             documentHub: {
               select: { id: true, name: true },
@@ -1114,7 +1118,7 @@ export class DocumentHubController {
             const doc = await prisma.document.findUnique({
               where: { id: node.documentId || '' },
               include: {
-                deletedBy: { select: { id: true, name: true } },
+                deletedBy: { select: { id: true, name: true, avatarUrl: true } },
                 documentHub: { select: { id: true, name: true } }
               }
             });
@@ -1556,14 +1560,14 @@ export class DocumentHubController {
         },
         include: {
           documentHub: {
-            select: { 
+            select: {
               name: true,
               shareToken: true,
               visibility: true
             }
           },
           createdBy: {
-            select: { name: true }
+            select: { name: true, avatarUrl: true }
           }
         }
       });
@@ -1752,7 +1756,7 @@ export class DocumentHubController {
         },
         include: {
           createdBy: {
-            select: { name: true }
+            select: { name: true, avatarUrl: true }
           },
           treeNodes: {
             where: { isDeleted: false },
@@ -1815,7 +1819,7 @@ export class DocumentHubController {
         },
         include: {
           createdBy: {
-            select: { name: true }
+            select: { name: true, avatarUrl: true }
           }
         }
       });

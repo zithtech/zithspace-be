@@ -42,6 +42,7 @@ export interface User {
     shiftAssignedDate?: Date;
     isActive: boolean;
     lastLoginAt?: Date;
+    avatarUrl?: string;
     createdAt: Date;
     updatedAt: Date;
     tenant?: Tenant;

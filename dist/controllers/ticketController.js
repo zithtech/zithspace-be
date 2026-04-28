@@ -75,6 +75,7 @@ class TicketController {
                     createdBy: {
                         select: {
                             name: true,
+                            avatarUrl: true,
                         },
                     },
                     comments: {
@@ -83,6 +84,7 @@ class TicketController {
                                 select: {
                                     name: true,
                                     position: true,
+                                    avatarUrl: true,
                                 },
                             },
                         },
@@ -93,6 +95,7 @@ class TicketController {
                             addedBy: {
                                 select: {
                                     name: true,
+                                    avatarUrl: true,
                                 },
                             },
                         },
@@ -115,6 +118,7 @@ class TicketController {
                             performedBy: {
                                 select: {
                                     name: true,
+                                    avatarUrl: true,
                                 },
                             },
                         },
@@ -386,13 +390,13 @@ class TicketController {
                 },
                 include: {
                     createdBy: {
-                        select: { id: true, name: true, workEmail: true, position: true },
+                        select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
                     },
                     assignee: {
                         select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
                     },
                     reportTo: {
-                        select: { id: true, name: true, workEmail: true, position: true },
+                        select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
                     },
                     project: {
                         select: { id: true, name: true, code: true, description: true },
@@ -829,7 +833,7 @@ class TicketController {
                         updatedAt: true,
                         // Exclude large fields: description (can be fetched in detail view)
                         createdBy: {
-                            select: { id: true, name: true, workEmail: true },
+                            select: { id: true, name: true, workEmail: true, avatarUrl: true },
                         },
                         assignee: {
                             select: { id: true, name: true, workEmail: true, avatarUrl: true },
@@ -930,13 +934,13 @@ class TicketController {
                     updatedAt: true,
                     // Optimized relations - only essential fields
                     createdBy: {
-                        select: { id: true, name: true, workEmail: true },
+                        select: { id: true, name: true, workEmail: true, avatarUrl: true },
                     },
                     assignee: {
-                        select: { id: true, name: true, workEmail: true },
+                        select: { id: true, name: true, workEmail: true, avatarUrl: true },
                     },
                     reportTo: {
-                        select: { id: true, name: true, workEmail: true },
+                        select: { id: true, name: true, workEmail: true, avatarUrl: true },
                     },
                     project: {
                         select: { id: true, name: true, code: true, description: true },
@@ -951,7 +955,7 @@ class TicketController {
                             status: true,
                             priority: true,
                             assignee: {
-                                select: { id: true, name: true, workEmail: true }
+                                select: { id: true, name: true, workEmail: true, avatarUrl: true }
                             },
                             type: true
                         },
@@ -1177,9 +1181,9 @@ class TicketController {
                     createdAt: true,
                     updatedAt: true,
                     // Relations
-                    createdBy: { select: { id: true, name: true, workEmail: true } },
-                    assignee: { select: { id: true, name: true, workEmail: true } },
-                    reportTo: { select: { id: true, name: true, workEmail: true } },
+                    createdBy: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
+                    assignee: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
+                    reportTo: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
                     project: { select: { id: true, name: true, code: true } },
                 },
             });
@@ -1367,7 +1371,8 @@ class TicketController {
                 await database_1.prisma.ticket.findMany({
                     where,
                     include: {
-                        createdBy: { select: { name: true, workEmail: true } },
+                        createdBy: { select: { name: true, workEmail: true, avatarUrl: true } },
+                        assignee: { select: { name: true, workEmail: true, avatarUrl: true } },
                         project: { select: { name: true, code: true } },
                     },
                     orderBy: { createdAt: "desc" },
@@ -1701,6 +1706,7 @@ class TicketController {
                             name: true,
                             workEmail: true,
                             position: true,
+                            avatarUrl: true,
                         },
                     },
                 },
@@ -1774,6 +1780,7 @@ class TicketController {
                             name: true,
                             workEmail: true,
                             position: true,
+                            avatarUrl: true,
                         },
                     },
                 },
@@ -2321,6 +2328,7 @@ class TicketController {
                             name: true,
                             workEmail: true,
                             position: true,
+                            avatarUrl: true,
                         },
                     },
                 },
