@@ -255,6 +255,7 @@ class UserController {
                     role: true,
                     position: { select: { id: true, title: true } },
                     isActive: true,
+                    avatarUrl: true,
                     createdAt: true,
                     reportsTo: {
                         select: {
@@ -381,6 +382,7 @@ class UserController {
                     position: { select: { id: true, title: true } },
                     workDays: true,
                     isActive: true,
+                    avatarUrl: true,
                     updatedAt: true,
                     assignedShift: {
                         select: {
