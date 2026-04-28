@@ -4,7 +4,12 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const dotenv_1 = __importDefault(require("dotenv"));
+const path_1 = __importDefault(require("path"));
+// Load backend-local .env first (highest priority), then fall back to parent
+// monorepo .env so a single root file works for both apps. dotenv.config()
+// won't override variables that are already set, so order = priority.
 dotenv_1.default.config();
+dotenv_1.default.config({ path: path_1.default.resolve(__dirname, "../../.env") });
 if (process.env.NODE_ENV !== "development") {
     require("module-alias/register");
 }

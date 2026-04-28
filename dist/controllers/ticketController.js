@@ -12,6 +12,7 @@ const r2Client_1 = require("@/utils/r2Client");
 const htmlSanitizer_1 = require("@/utils/htmlSanitizer");
 const socketService_1 = require("@/services/socketService");
 const cacheService_1 = __importDefault(require("@/utils/cacheService"));
+const aiTicketService_1 = require("@/services/aiTicketService");
 class TicketController {
     /**
      * Upload image to R2 for ticket description
@@ -74,6 +75,7 @@ class TicketController {
                     createdBy: {
                         select: {
                             name: true,
+                            avatarUrl: true,
                         },
                     },
                     comments: {
@@ -82,6 +84,7 @@ class TicketController {
                                 select: {
                                     name: true,
                                     position: true,
+                                    avatarUrl: true,
                                 },
                             },
                         },
@@ -92,6 +95,7 @@ class TicketController {
                             addedBy: {
                                 select: {
                                     name: true,
+                                    avatarUrl: true,
                                 },
                             },
                         },
@@ -114,6 +118,7 @@ class TicketController {
                             performedBy: {
                                 select: {
                                     name: true,
+                                    avatarUrl: true,
                                 },
                             },
                         },
@@ -385,13 +390,13 @@ class TicketController {
                 },
                 include: {
                     createdBy: {
-                        select: { id: true, name: true, workEmail: true, position: true },
+                        select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
                     },
                     assignee: {
                         select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
                     },
                     reportTo: {
-                        select: { id: true, name: true, workEmail: true, position: true },
+                        select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
                     },
                     project: {
                         select: { id: true, name: true, code: true, description: true },
@@ -440,6 +445,87 @@ class TicketController {
         }
     }
     /**
+     * Generate a structured ticket draft from a free-form description using AI.
+     * Does not persist anything — the client previews and edits, then calls POST /api/tickets.
+     */
+    static async aiGenerateTicket(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { description, title } = req.body;
+            const seed = [title, description].filter(Boolean).join("\n\n").trim();
+            if (!seed || seed.length < 5) {
+                res.status(400).json({
+                    success: false,
+                    error: "Description is required (min 5 characters)",
+                });
+                return;
+            }
+            if (seed.length > 8000) {
+                res.status(400).json({
+                    success: false,
+                    error: "Description is too long (max 8000 characters)",
+                });
+                return;
+            }
+            const { draft, source, fallbackReason } = await (0, aiTicketService_1.generateTicketDraft)(seed);
+            res.status(200).json({
+                success: true,
+                data: { ...draft, source, fallbackReason },
+                message: "Ticket draft generated",
+            });
+        }
+        catch (error) {
+            console.error("AI generate ticket error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to generate ticket draft",
+            });
+        }
+    }
+    /**
+     * Regenerate just the subtasks for a Zai-drafted ticket, with caller-specified
+     * shape (count + hours-each). Doesn't persist anything.
+     */
+    static async aiGenerateSubtasks(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { description, count, hoursEach } = req.body;
+            const seed = String(description || "").trim();
+            if (!seed || seed.length < 5) {
+                res.status(400).json({
+                    success: false,
+                    error: "Description is required (min 5 characters)",
+                });
+                return;
+            }
+            const result = await (0, aiTicketService_1.generateSubtasks)({ description: seed, count, hoursEach });
+            res.status(200).json({
+                success: true,
+                data: result,
+                message: "Subtasks generated",
+            });
+        }
+        catch (error) {
+            console.error("AI generate subtasks error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to generate subtasks",
+            });
+        }
+    }
+    /**
      * Get tickets optimized for Kanban view (tenant-aware)
      * Returns tickets grouped by status with metadata
      */
@@ -452,7 +538,7 @@ class TicketController {
                 });
                 return;
             }
-            const { projectId, assigneeId, priority, search, limitPerColumn = 50, includeArchived = false, } = req.query;
+            const { projectId, assigneeId, priority, type, search, limitPerColumn = 50, includeArchived = false, } = req.query;
             // Build base filter
             const baseWhere = {
                 tenantId: req.tenantId,
@@ -469,6 +555,14 @@ class TicketController {
                 }
                 else {
                     baseWhere.priority = priority;
+                }
+            }
+            if (type) {
+                if (typeof type === "string" && type.includes(",")) {
+                    baseWhere.type = { in: type.split(",").map((t) => t.trim()) };
+                }
+                else {
+                    baseWhere.type = type;
                 }
             }
             if (assigneeId) {
@@ -614,7 +708,7 @@ class TicketController {
                 });
                 return;
             }
-            const { page = 1, limit = 20, status, priority, projectId, assigneeId, createdById, search, sortBy = "createdAt", sortOrder = "desc", startDate, endDate, includeArchived = false, archivedOnly = false, } = req.query;
+            const { page = 1, limit = 20, status, priority, type, projectId, assigneeId, createdById, search, sortBy = "createdAt", sortOrder = "desc", startDate, endDate, includeArchived = false, archivedOnly = false, } = req.query;
             // Build base filter
             const baseWhere = {
                 tenantId: req.tenantId,
@@ -638,6 +732,14 @@ class TicketController {
                 }
                 else {
                     where.priority = priority;
+                }
+            }
+            if (type) {
+                if (typeof type === "string" && type.includes(",")) {
+                    where.type = { in: type.split(",").map((t) => t.trim()) };
+                }
+                else {
+                    where.type = type;
                 }
             }
             if (projectId)
@@ -731,7 +833,7 @@ class TicketController {
                         updatedAt: true,
                         // Exclude large fields: description (can be fetched in detail view)
                         createdBy: {
-                            select: { id: true, name: true, workEmail: true },
+                            select: { id: true, name: true, workEmail: true, avatarUrl: true },
                         },
                         assignee: {
                             select: { id: true, name: true, workEmail: true, avatarUrl: true },
@@ -783,9 +885,11 @@ class TicketController {
                 return;
             }
             const { id } = req.params;
-            // Check cache first
+            // Check cache first — only honor cache entries that contain the new
+            // sprint/release/bucket linkage fields. Older cached payloads are missing
+            // them and would make the drawer mis-detect sprint membership.
             const cached = await cacheService_1.default.getTicket(id, req.tenantId);
-            if (cached) {
+            if (cached && 'sprintPlanId' in cached) {
                 res.status(200).json({
                     success: true,
                     data: cached,
@@ -821,17 +925,22 @@ class TicketController {
                     metadata: true,
                     parentTickets: true,
                     parentId: true, // IMPORTANT: Include parentId for subtask navigation
+                    sprintPlanId: true, // Required so the detail drawer knows sprint membership
+                    releasePlanId: true, // Required for release-plan linkage in detail drawer
+                    demoPlanId: true, // Required for demo-plan linkage in detail drawer
+                    bucketId: true, // Required for bucket linkage in detail drawer
+                    isArchived: true,
                     createdAt: true,
                     updatedAt: true,
                     // Optimized relations - only essential fields
                     createdBy: {
-                        select: { id: true, name: true, workEmail: true },
+                        select: { id: true, name: true, workEmail: true, avatarUrl: true },
                     },
                     assignee: {
-                        select: { id: true, name: true, workEmail: true },
+                        select: { id: true, name: true, workEmail: true, avatarUrl: true },
                     },
                     reportTo: {
-                        select: { id: true, name: true, workEmail: true },
+                        select: { id: true, name: true, workEmail: true, avatarUrl: true },
                     },
                     project: {
                         select: { id: true, name: true, code: true, description: true },
@@ -846,7 +955,7 @@ class TicketController {
                             status: true,
                             priority: true,
                             assignee: {
-                                select: { id: true, name: true, workEmail: true }
+                                select: { id: true, name: true, workEmail: true, avatarUrl: true }
                             },
                             type: true
                         },
@@ -1072,9 +1181,9 @@ class TicketController {
                     createdAt: true,
                     updatedAt: true,
                     // Relations
-                    createdBy: { select: { id: true, name: true, workEmail: true } },
-                    assignee: { select: { id: true, name: true, workEmail: true } },
-                    reportTo: { select: { id: true, name: true, workEmail: true } },
+                    createdBy: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
+                    assignee: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
+                    reportTo: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
                     project: { select: { id: true, name: true, code: true } },
                 },
             });
@@ -1262,7 +1371,8 @@ class TicketController {
                 await database_1.prisma.ticket.findMany({
                     where,
                     include: {
-                        createdBy: { select: { name: true, workEmail: true } },
+                        createdBy: { select: { name: true, workEmail: true, avatarUrl: true } },
+                        assignee: { select: { name: true, workEmail: true, avatarUrl: true } },
                         project: { select: { name: true, code: true } },
                     },
                     orderBy: { createdAt: "desc" },
@@ -1596,6 +1706,7 @@ class TicketController {
                             name: true,
                             workEmail: true,
                             position: true,
+                            avatarUrl: true,
                         },
                     },
                 },
@@ -1669,6 +1780,7 @@ class TicketController {
                             name: true,
                             workEmail: true,
                             position: true,
+                            avatarUrl: true,
                         },
                     },
                 },
@@ -2216,6 +2328,7 @@ class TicketController {
                             name: true,
                             workEmail: true,
                             position: true,
+                            avatarUrl: true,
                         },
                     },
                 },

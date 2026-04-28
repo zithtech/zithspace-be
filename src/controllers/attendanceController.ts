@@ -104,6 +104,7 @@ export class AttendanceController {
                   name: true,
                   workEmail: true,
                   position: true,
+                  avatarUrl: true,
                 },
               },
             },
@@ -179,6 +180,7 @@ export class AttendanceController {
                   name: true,
                   workEmail: true,
                   position: true,
+                  avatarUrl: true,
                 },
               },
             },
@@ -289,6 +291,7 @@ export class AttendanceController {
                   name: true,
                   workEmail: true,
                   position: true,
+                  avatarUrl: true,
                 },
               },
             },
@@ -310,6 +313,7 @@ export class AttendanceController {
                   name: true,
                   workEmail: true,
                   position: true,
+                  avatarUrl: true,
                 },
               },
             },
@@ -408,7 +412,7 @@ export class AttendanceController {
           },
           include: {
             user: {
-              select: { id: true, name: true, workEmail: true, position: true },
+              select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
             },
           },
         });
@@ -846,7 +850,7 @@ export class AttendanceController {
           },
           include: {
             user: {
-              select: { id: true, name: true, workEmail: true, position: true },
+              select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
             },
           },
         });
@@ -1119,7 +1123,7 @@ export class AttendanceController {
           },
           include: {
             user: {
-              select: { id: true, name: true, workEmail: true, position: true },
+              select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
             },
           },
         });

@@ -892,6 +892,7 @@ class DailyUpdateController {
                                 id: true,
                                 name: true,
                                 position: true,
+                                avatarUrl: true,
                             },
                         },
                     },
