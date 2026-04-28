@@ -1,5 +1,10 @@
 import dotenv from "dotenv";
+import path from "path";
+// Load backend-local .env first (highest priority), then fall back to parent
+// monorepo .env so a single root file works for both apps. dotenv.config()
+// won't override variables that are already set, so order = priority.
 dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, "../../.env") });
 
 if (process.env.NODE_ENV !== "development") {
   require("module-alias/register");

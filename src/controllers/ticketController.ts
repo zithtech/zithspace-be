@@ -19,6 +19,7 @@ import {
 import { sanitizeHtmlContent, validateHtmlLength } from "@/utils/htmlSanitizer";
 import { socketService } from "@/services/socketService";
 import cacheService from "@/utils/cacheService";
+import { generateTicketDraft, generateSubtasks } from "@/services/aiTicketService";
 
 export class TicketController {
   /**
@@ -523,6 +524,100 @@ export class TicketController {
   }
 
   /**
+   * Generate a structured ticket draft from a free-form description using AI.
+   * Does not persist anything — the client previews and edits, then calls POST /api/tickets.
+   */
+  static async aiGenerateTicket(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { description, title } = req.body as { description?: string; title?: string };
+
+      const seed = [title, description].filter(Boolean).join("\n\n").trim();
+      if (!seed || seed.length < 5) {
+        res.status(400).json({
+          success: false,
+          error: "Description is required (min 5 characters)",
+        } as ApiResponse);
+        return;
+      }
+
+      if (seed.length > 8000) {
+        res.status(400).json({
+          success: false,
+          error: "Description is too long (max 8000 characters)",
+        } as ApiResponse);
+        return;
+      }
+
+      const { draft, source, fallbackReason } = await generateTicketDraft(seed);
+
+      res.status(200).json({
+        success: true,
+        data: { ...draft, source, fallbackReason },
+        message: "Ticket draft generated",
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("AI generate ticket error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to generate ticket draft",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Regenerate just the subtasks for a Zai-drafted ticket, with caller-specified
+   * shape (count + hours-each). Doesn't persist anything.
+   */
+  static async aiGenerateSubtasks(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { description, count, hoursEach } = req.body as {
+        description?: string;
+        count?: number;
+        hoursEach?: number;
+      };
+
+      const seed = String(description || "").trim();
+      if (!seed || seed.length < 5) {
+        res.status(400).json({
+          success: false,
+          error: "Description is required (min 5 characters)",
+        } as ApiResponse);
+        return;
+      }
+
+      const result = await generateSubtasks({ description: seed, count, hoursEach });
+
+      res.status(200).json({
+        success: true,
+        data: result,
+        message: "Subtasks generated",
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("AI generate subtasks error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to generate subtasks",
+      } as ApiResponse);
+    }
+  }
+
+  /**
    * Get tickets optimized for Kanban view (tenant-aware)
    * Returns tickets grouped by status with metadata
    */
@@ -540,6 +635,7 @@ export class TicketController {
         projectId,
         assigneeId,
         priority,
+        type,
         search,
         limitPerColumn = 50,
         includeArchived = false,
@@ -560,6 +656,13 @@ export class TicketController {
           baseWhere.priority = { in: priority.split(",").map((p) => p.trim()) };
         } else {
           baseWhere.priority = priority;
+        }
+      }
+      if (type) {
+        if (typeof type === "string" && type.includes(",")) {
+          baseWhere.type = { in: type.split(",").map((t) => t.trim()) };
+        } else {
+          baseWhere.type = type;
         }
       }
       if (assigneeId) {
@@ -717,6 +820,7 @@ export class TicketController {
         limit = 20,
         status,
         priority,
+        type,
         projectId,
         assigneeId,
         createdById,
@@ -752,6 +856,13 @@ export class TicketController {
           where.priority = { in: priority.split(",").map((p) => p.trim()) };
         } else {
           where.priority = priority;
+        }
+      }
+      if (type) {
+        if (typeof type === "string" && type.includes(",")) {
+          where.type = { in: type.split(",").map((t) => t.trim()) };
+        } else {
+          where.type = type;
         }
       }
       if (projectId) where.projectId = projectId;
@@ -903,9 +1014,11 @@ export class TicketController {
 
       const { id } = req.params;
 
-      // Check cache first
+      // Check cache first — only honor cache entries that contain the new
+      // sprint/release/bucket linkage fields. Older cached payloads are missing
+      // them and would make the drawer mis-detect sprint membership.
       const cached = await cacheService.getTicket(id, req.tenantId);
-      if (cached) {
+      if (cached && 'sprintPlanId' in (cached as any)) {
         res.status(200).json({
           success: true,
           data: cached,
@@ -942,6 +1055,11 @@ export class TicketController {
           metadata: true,
           parentTickets: true,
           parentId: true, // IMPORTANT: Include parentId for subtask navigation
+          sprintPlanId: true,   // Required so the detail drawer knows sprint membership
+          releasePlanId: true,  // Required for release-plan linkage in detail drawer
+          demoPlanId: true,     // Required for demo-plan linkage in detail drawer
+          bucketId: true,       // Required for bucket linkage in detail drawer
+          isArchived: true,
           createdAt: true,
           updatedAt: true,
           // Optimized relations - only essential fields
