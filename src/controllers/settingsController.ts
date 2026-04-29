@@ -1033,8 +1033,7 @@ export class SettingsController {
         return;
       }
 
-      const { includeInactive } = req.query;
-      const activeOnly = includeInactive !== 'true';
+      const activeOnly = req.query.activeOnly === 'true'; 
 
 
       const where: any = { tenantId: req.tenantId };
@@ -1101,7 +1100,7 @@ export class SettingsController {
       }
 
       const { type } = req.params;
-      const { includeInactive } = req.query;
+
 
       // Map frontend type to backend category
       const validTypes = ['platform', 'stack', 'priority', 'taskLevel', 'taskType', 'status'];
@@ -1113,7 +1112,7 @@ export class SettingsController {
         return;
       }
 
-      const activeOnly = includeInactive !== 'true';
+      const activeOnly = req.query.activeOnly === 'true'; 
 
 
       const where: any = {

@@ -4,3 +4,119 @@
 2026-04-27T09:28:55.116Z - Final data for Update: {"updatedAt":"2026-04-27T09:28:55.116Z","title":"Zithspace Landing page ui changes"}
 2026-04-27T09:29:35.884Z - Updating ticket 1b354a67-e8f2-481f-aeb7-2806499c3703. Payload: {"description":"<p><u>asdad</u></p>"}
 2026-04-27T09:29:36.436Z - Final data for Update: {"updatedAt":"2026-04-27T09:29:36.434Z","description":"<p><u>asdad</u></p>"}
+2026-04-28T10:51:43.387Z - Updating ticket 26ff61bf-b3a7-4bba-bc72-e68cbda532f2. Payload: {"releasePlan":null}
+2026-04-28T10:51:43.533Z - Final data for Update: {"updatedAt":"2026-04-28T10:51:43.533Z","releasePlanId":null,"sprintPlanId":null,"demoPlanId":null,"bucketId":null,"isArchived":false,"archivedAt":null,"archivedById":null}
+2026-04-28T10:51:56.442Z - Updating ticket 26ff61bf-b3a7-4bba-bc72-e68cbda532f2. Payload: {"releasePlan":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-28T10:51:56.516Z - Final data for Update: {"updatedAt":"2026-04-28T10:51:56.516Z","releasePlanId":null,"sprintPlanId":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-28T12:32:44.374Z - Updating ticket 7efcbfa8-ebb3-4f2e-b58d-b0b1e1d6c371. Payload: {"releasePlan":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-28T12:32:44.486Z - Final data for Update: {"updatedAt":"2026-04-28T12:32:44.486Z","releasePlanId":null,"sprintPlanId":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-28T12:59:09.462Z - Updating ticket 732cd4e9-5fe9-4b7f-ac7f-7bf9afacb103. Payload: {"releasePlan":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-28T12:59:09.558Z - Final data for Update: {"updatedAt":"2026-04-28T12:59:09.558Z","releasePlanId":null,"sprintPlanId":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-28T17:03:59.371Z - Updating ticket 64026554-b660-4a26-b8ac-4b8d8d23d594. Payload: {"sprintPlanId":"99941450-a6cb-4a0c-9acb-61b1b40bef11","bucketId":null}
+2026-04-28T17:03:59.754Z - Final data for Update: {"updatedAt":"2026-04-28T17:03:59.753Z","sprintPlanId":"99941450-a6cb-4a0c-9acb-61b1b40bef11","bucketId":null}
+2026-04-29T02:10:56.700Z - Updating ticket 26ff61bf-b3a7-4bba-bc72-e68cbda532f2. Payload: {"releasePlan":null}
+2026-04-29T02:10:56.919Z - Final data for Update: {"updatedAt":"2026-04-29T02:10:56.918Z","releasePlanId":null,"sprintPlanId":null,"demoPlanId":null,"bucketId":null,"isArchived":false,"archivedAt":null,"archivedById":null}
+2026-04-29T02:23:57.966Z - Updating ticket 392db9c7-13a8-478c-bc05-b696bc1783bd. Payload: {"releasePlan":null}
+2026-04-29T02:24:01.537Z - Final data for Update: {"updatedAt":"2026-04-29T02:24:01.536Z","releasePlanId":null,"sprintPlanId":null,"demoPlanId":null,"bucketId":null,"isArchived":false,"archivedAt":null,"archivedById":null}
+2026-04-29T02:24:12.144Z - Updating ticket 392db9c7-13a8-478c-bc05-b696bc1783bd. Payload: {"releasePlan":null}
+2026-04-29T02:24:15.006Z - Final data for Update: {"updatedAt":"2026-04-29T02:24:15.006Z","releasePlanId":null,"sprintPlanId":null,"demoPlanId":null,"bucketId":null,"isArchived":false,"archivedAt":null,"archivedById":null}
+2026-04-29T02:24:22.533Z - Updating ticket 392db9c7-13a8-478c-bc05-b696bc1783bd. Payload: {"releasePlan":null}
+2026-04-29T02:24:23.306Z - Final data for Update: {"updatedAt":"2026-04-29T02:24:23.305Z","releasePlanId":null,"sprintPlanId":null,"demoPlanId":null,"bucketId":null,"isArchived":false,"archivedAt":null,"archivedById":null}
+2026-04-29T02:24:30.910Z - Updating ticket 392db9c7-13a8-478c-bc05-b696bc1783bd. Payload: {"releasePlan":null}
+2026-04-29T02:24:32.427Z - Final data for Update: {"updatedAt":"2026-04-29T02:24:32.427Z","releasePlanId":null,"sprintPlanId":null,"demoPlanId":null,"bucketId":null,"isArchived":false,"archivedAt":null,"archivedById":null}
+2026-04-29T02:24:41.368Z - Updating ticket c852fda7-b9c6-4a79-b850-d19be32ade5a. Payload: {"releasePlan":null}
+2026-04-29T02:24:42.405Z - Final data for Update: {"updatedAt":"2026-04-29T02:24:42.405Z","releasePlanId":null,"sprintPlanId":null,"demoPlanId":null,"bucketId":null,"isArchived":false,"archivedAt":null,"archivedById":null}
+2026-04-29T02:24:56.822Z - Updating ticket d771e91e-0d51-42b2-bfb2-30a3bf83fd3f. Payload: {"releasePlan":null}
+2026-04-29T02:24:57.094Z - Final data for Update: {"updatedAt":"2026-04-29T02:24:57.094Z","releasePlanId":null,"sprintPlanId":null,"demoPlanId":null,"bucketId":null,"isArchived":false,"archivedAt":null,"archivedById":null}
+2026-04-29T02:25:13.210Z - Updating ticket 6f793245-5d46-41d6-bde7-a66fccc3251e. Payload: {"releasePlan":null}
+2026-04-29T02:25:13.374Z - Final data for Update: {"updatedAt":"2026-04-29T02:25:13.374Z","releasePlanId":null,"sprintPlanId":null,"demoPlanId":null,"bucketId":null,"isArchived":false,"archivedAt":null,"archivedById":null}
+2026-04-29T02:25:22.020Z - Updating ticket 6f793245-5d46-41d6-bde7-a66fccc3251e. Payload: {"releasePlan":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T02:25:22.590Z - Final data for Update: {"updatedAt":"2026-04-29T02:25:22.590Z","releasePlanId":null,"sprintPlanId":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T02:25:34.883Z - Updating ticket a2e7dbb2-c089-445a-8d66-5f2537dda3a1. Payload: {"releasePlan":null}
+2026-04-29T02:25:35.083Z - Final data for Update: {"updatedAt":"2026-04-29T02:25:35.083Z","releasePlanId":null,"sprintPlanId":null,"demoPlanId":null,"bucketId":null,"isArchived":false,"archivedAt":null,"archivedById":null}
+2026-04-29T02:25:43.530Z - Updating ticket a2e7dbb2-c089-445a-8d66-5f2537dda3a1. Payload: {"releasePlan":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T02:25:43.893Z - Final data for Update: {"updatedAt":"2026-04-29T02:25:43.893Z","releasePlanId":null,"sprintPlanId":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T02:25:55.950Z - Updating ticket a2e7dbb2-c089-445a-8d66-5f2537dda3a1. Payload: {"releasePlan":null}
+2026-04-29T02:25:56.075Z - Final data for Update: {"updatedAt":"2026-04-29T02:25:56.075Z","releasePlanId":null,"sprintPlanId":null,"demoPlanId":null,"bucketId":null,"isArchived":false,"archivedAt":null,"archivedById":null}
+2026-04-29T02:34:54.999Z - Updating ticket a2e7dbb2-c089-445a-8d66-5f2537dda3a1. Payload: {"releasePlan":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T02:34:55.402Z - Final data for Update: {"updatedAt":"2026-04-29T02:34:55.402Z","releasePlanId":null,"sprintPlanId":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T02:35:16.458Z - Updating ticket a2e7dbb2-c089-445a-8d66-5f2537dda3a1. Payload: {"releasePlan":null}
+2026-04-29T02:35:16.706Z - Final data for Update: {"updatedAt":"2026-04-29T02:35:16.706Z","releasePlanId":null,"sprintPlanId":null,"demoPlanId":null,"bucketId":null,"isArchived":false,"archivedAt":null,"archivedById":null}
+2026-04-29T02:36:57.531Z - Updating ticket a2e7dbb2-c089-445a-8d66-5f2537dda3a1. Payload: {"releasePlan":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T02:36:58.616Z - Final data for Update: {"updatedAt":"2026-04-29T02:36:58.616Z","releasePlanId":null,"sprintPlanId":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T02:37:06.921Z - Updating ticket a2e7dbb2-c089-445a-8d66-5f2537dda3a1. Payload: {"releasePlan":null}
+2026-04-29T02:37:07.091Z - Final data for Update: {"updatedAt":"2026-04-29T02:37:07.091Z","releasePlanId":null,"sprintPlanId":null,"demoPlanId":null,"bucketId":null,"isArchived":false,"archivedAt":null,"archivedById":null}
+2026-04-29T02:37:54.431Z - Updating ticket a855513f-1712-4206-b9ef-77311dc71ede. Payload: {"releasePlan":null}
+2026-04-29T02:37:54.608Z - Final data for Update: {"updatedAt":"2026-04-29T02:37:54.608Z","releasePlanId":null,"sprintPlanId":null,"demoPlanId":null,"bucketId":null,"isArchived":false,"archivedAt":null,"archivedById":null}
+2026-04-29T02:38:17.988Z - Updating ticket a855513f-1712-4206-b9ef-77311dc71ede. Payload: {"releasePlan":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T02:38:18.474Z - Final data for Update: {"updatedAt":"2026-04-29T02:38:18.466Z","releasePlanId":null,"sprintPlanId":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T02:39:19.411Z - Updating ticket a855513f-1712-4206-b9ef-77311dc71ede. Payload: {"releasePlan":null}
+2026-04-29T02:39:19.595Z - Final data for Update: {"updatedAt":"2026-04-29T02:39:19.595Z","releasePlanId":null,"sprintPlanId":null,"demoPlanId":null,"bucketId":null,"isArchived":false,"archivedAt":null,"archivedById":null}
+2026-04-29T02:42:03.518Z - Updating ticket ff56be1b-25a5-4956-b6ee-3db8070893f6. Payload: {"releasePlan":null}
+2026-04-29T02:42:03.651Z - Final data for Update: {"updatedAt":"2026-04-29T02:42:03.651Z","releasePlanId":null,"sprintPlanId":null,"demoPlanId":null,"bucketId":null,"isArchived":false,"archivedAt":null,"archivedById":null}
+2026-04-29T02:42:10.462Z - Updating ticket ff56be1b-25a5-4956-b6ee-3db8070893f6. Payload: {"releasePlan":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T02:42:10.793Z - Final data for Update: {"updatedAt":"2026-04-29T02:42:10.793Z","releasePlanId":null,"sprintPlanId":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T03:50:24.636Z - Updating ticket b2629f9f-ac81-421a-853a-ad6df76618d5. Payload: {"assignee":"5fb01f2a-c111-45aa-961a-fcb1d23ef517"}
+2026-04-29T03:50:24.949Z - Update ticket error for b2629f9f-ac81-421a-853a-ad6df76618d5: PrismaClientKnownRequestError: 
+[31mInvalid [1m`prisma.ticket.findFirst()`[22m invocation in[39m
+[4mC:\Users\Bharathi-Zithtech\Desktop\zithspace\zithspace-be\src\controllers\ticketController.ts:1230:50[24m
+
+  [2m[90m1227[39m [34m}[39m[22m
+  [2m[90m1228[39m [22m
+  [2m[90m1229[39m [90m// Verify ticket exists and belongs to tenant[39m[22m
+[1m[31m→[39m[22m [2m[90m1230[39m [36mconst[39m existingTicket = [36mawait[39m prisma[34m.[39mticket[34m.[39m[36mfindFirst[39m[34m([39m[22m
+Too many database connections opened: FATAL: sorry, too many clients already
+Prisma Accelerate has built-in connection pooling to prevent such errors: https://pris.ly/client/error-accelerate
+    at $n.handleRequestError (C:\Users\Bharathi-Zithtech\Desktop\zithspace\zithspace-be\node_modules\@prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (C:\Users\Bharathi-Zithtech\Desktop\zithspace\zithspace-be\node_modules\@prisma\client\runtime\library.js:121:6623)
+    at $n.request (C:\Users\Bharathi-Zithtech\Desktop\zithspace\zithspace-be\node_modules\@prisma\client\runtime\library.js:121:6307)
+    at async l (C:\Users\Bharathi-Zithtech\Desktop\zithspace\zithspace-be\node_modules\@prisma\client\runtime\library.js:130:9633)
+    at async updateTicket (C:\Users\Bharathi-Zithtech\Desktop\zithspace\zithspace-be\src\controllers\ticketController.ts:1230:30)
+2026-04-29T03:50:32.772Z - Updating ticket b2629f9f-ac81-421a-853a-ad6df76618d5. Payload: {"assignee":"5fb01f2a-c111-45aa-961a-fcb1d23ef517"}
+2026-04-29T03:50:33.008Z - Update ticket error for b2629f9f-ac81-421a-853a-ad6df76618d5: PrismaClientKnownRequestError: 
+[31mInvalid [1m`prisma.ticket.findFirst()`[22m invocation in[39m
+[4mC:\Users\Bharathi-Zithtech\Desktop\zithspace\zithspace-be\src\controllers\ticketController.ts:1230:50[24m
+
+  [2m[90m1227[39m [34m}[39m[22m
+  [2m[90m1228[39m [22m
+  [2m[90m1229[39m [90m// Verify ticket exists and belongs to tenant[39m[22m
+[1m[31m→[39m[22m [2m[90m1230[39m [36mconst[39m existingTicket = [36mawait[39m prisma[34m.[39mticket[34m.[39m[36mfindFirst[39m[34m([39m[22m
+Too many database connections opened: FATAL: sorry, too many clients already
+Prisma Accelerate has built-in connection pooling to prevent such errors: https://pris.ly/client/error-accelerate
+    at $n.handleRequestError (C:\Users\Bharathi-Zithtech\Desktop\zithspace\zithspace-be\node_modules\@prisma\client\runtime\library.js:121:7315)
+    at $n.handleAndLogRequestError (C:\Users\Bharathi-Zithtech\Desktop\zithspace\zithspace-be\node_modules\@prisma\client\runtime\library.js:121:6623)
+    at $n.request (C:\Users\Bharathi-Zithtech\Desktop\zithspace\zithspace-be\node_modules\@prisma\client\runtime\library.js:121:6307)
+    at async l (C:\Users\Bharathi-Zithtech\Desktop\zithspace\zithspace-be\node_modules\@prisma\client\runtime\library.js:130:9633)
+    at async updateTicket (C:\Users\Bharathi-Zithtech\Desktop\zithspace\zithspace-be\src\controllers\ticketController.ts:1230:30)
+2026-04-29T05:30:07.901Z - Updating ticket b2629f9f-ac81-421a-853a-ad6df76618d5. Payload: {"assignee":"0f74b580-7afc-4fa8-b6cb-79117896d76c"}
+2026-04-29T05:30:07.974Z - Final data for Update: {"updatedAt":"2026-04-29T05:30:07.973Z","assigneeId":"0f74b580-7afc-4fa8-b6cb-79117896d76c"}
+2026-04-29T05:30:12.645Z - Updating ticket b2629f9f-ac81-421a-853a-ad6df76618d5. Payload: {"assignee":"eeda4822-3911-4a63-93ac-4c342f373bcd"}
+2026-04-29T05:30:12.700Z - Final data for Update: {"updatedAt":"2026-04-29T05:30:12.700Z","assigneeId":"eeda4822-3911-4a63-93ac-4c342f373bcd"}
+2026-04-29T05:31:23.715Z - Updating ticket 8636bd2d-ad1c-4456-8e03-76196e331da0. Payload: {"releasePlan":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T05:31:23.817Z - Final data for Update: {"updatedAt":"2026-04-29T05:31:23.817Z","releasePlanId":null,"sprintPlanId":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T05:53:02.253Z - Updating ticket f6f32c12-62ca-4343-80fb-e29b01c44aae. Payload: {"releasePlan":null}
+2026-04-29T05:53:02.317Z - Final data for Update: {"updatedAt":"2026-04-29T05:53:02.317Z","releasePlanId":null,"sprintPlanId":null,"demoPlanId":null,"bucketId":null,"isArchived":false,"archivedAt":null,"archivedById":null}
+2026-04-29T05:53:07.969Z - Updating ticket f6f32c12-62ca-4343-80fb-e29b01c44aae. Payload: {"releasePlan":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T05:53:08.105Z - Final data for Update: {"updatedAt":"2026-04-29T05:53:08.105Z","releasePlanId":null,"sprintPlanId":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T05:53:16.809Z - Updating ticket f6f32c12-62ca-4343-80fb-e29b01c44aae. Payload: {"releasePlan":null}
+2026-04-29T05:53:16.872Z - Final data for Update: {"updatedAt":"2026-04-29T05:53:16.872Z","releasePlanId":null,"sprintPlanId":null,"demoPlanId":null,"bucketId":null,"isArchived":false,"archivedAt":null,"archivedById":null}
+2026-04-29T05:53:39.472Z - Updating ticket f6f32c12-62ca-4343-80fb-e29b01c44aae. Payload: {"releasePlan":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T05:53:39.565Z - Final data for Update: {"updatedAt":"2026-04-29T05:53:39.565Z","releasePlanId":null,"sprintPlanId":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T06:39:31.146Z - Updating ticket f6f32c12-62ca-4343-80fb-e29b01c44aae. Payload: {"releasePlan":null}
+2026-04-29T06:39:31.209Z - Final data for Update: {"updatedAt":"2026-04-29T06:39:31.209Z","releasePlanId":null,"sprintPlanId":null,"demoPlanId":null,"bucketId":null,"isArchived":false,"archivedAt":null,"archivedById":null}
+2026-04-29T06:39:36.800Z - Updating ticket f6f32c12-62ca-4343-80fb-e29b01c44aae. Payload: {"releasePlan":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T06:39:36.951Z - Final data for Update: {"updatedAt":"2026-04-29T06:39:36.951Z","releasePlanId":null,"sprintPlanId":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T06:39:43.532Z - Updating ticket f6f32c12-62ca-4343-80fb-e29b01c44aae. Payload: {"releasePlan":null}
+2026-04-29T06:39:43.709Z - Final data for Update: {"updatedAt":"2026-04-29T06:39:43.709Z","releasePlanId":null,"sprintPlanId":null,"demoPlanId":null,"bucketId":null,"isArchived":false,"archivedAt":null,"archivedById":null}
+2026-04-29T07:58:25.415Z - Updating ticket 01bf492d-466a-4298-9061-c375a4fce641. Payload: {"releasePlan":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T07:58:25.525Z - Final data for Update: {"updatedAt":"2026-04-29T07:58:25.525Z","releasePlanId":null,"sprintPlanId":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T07:58:27.668Z - Updating ticket ab23275c-5299-47d4-a172-3d6de387d120. Payload: {"releasePlan":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T07:58:27.724Z - Final data for Update: {"updatedAt":"2026-04-29T07:58:27.724Z","releasePlanId":null,"sprintPlanId":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T07:58:30.299Z - Updating ticket a7e1145f-7363-4c68-b8a7-25ddc13dd0c2. Payload: {"releasePlan":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T07:58:30.355Z - Final data for Update: {"updatedAt":"2026-04-29T07:58:30.355Z","releasePlanId":null,"sprintPlanId":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T08:01:42.623Z - Updating ticket 01bf492d-466a-4298-9061-c375a4fce641. Payload: {"releasePlan":null}
+2026-04-29T08:01:42.676Z - Final data for Update: {"updatedAt":"2026-04-29T08:01:42.676Z","releasePlanId":null,"sprintPlanId":null,"demoPlanId":null,"bucketId":null,"isArchived":false,"archivedAt":null,"archivedById":null}
+2026-04-29T08:01:47.643Z - Updating ticket 13bcf5fd-0c52-4ceb-8cb5-f07ed0432137. Payload: {"releasePlan":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T08:01:47.730Z - Final data for Update: {"updatedAt":"2026-04-29T08:01:47.729Z","releasePlanId":null,"sprintPlanId":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T08:01:53.764Z - Updating ticket f2cb247d-44b8-4f43-9790-9b434e86b88e. Payload: {"releasePlan":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}
+2026-04-29T08:01:53.831Z - Final data for Update: {"updatedAt":"2026-04-29T08:01:53.830Z","releasePlanId":null,"sprintPlanId":"99941450-a6cb-4a0c-9acb-61b1b40bef11"}

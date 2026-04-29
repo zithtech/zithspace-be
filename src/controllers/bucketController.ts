@@ -1007,6 +1007,7 @@ export class BucketController {
         },
         data: {
           sprintPlanId: sprintId,
+          bucketId: null, // Clear bucket assignment when moving to sprint
           releasePlanId: null, // Clear release plan
           demoPlanId: null, // Clear demo plan
           updatedAt: new Date(),
@@ -1070,6 +1071,7 @@ export class BucketController {
         },
         data: {
           sprintPlanId: null,
+          bucketId: null, // Clear bucket assignment when moving back to backlog
           releasePlanId: null,
           demoPlanId: null,
           updatedAt: new Date(),
