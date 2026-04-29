@@ -940,8 +940,7 @@ class SettingsController {
                 });
                 return;
             }
-            const { includeInactive } = req.query;
-            const activeOnly = includeInactive !== 'true';
+            const activeOnly = req.query.activeOnly === 'true';
             const where = { tenantId: req.tenantId };
             if (activeOnly) {
                 where.isActive = true;
@@ -1000,7 +999,6 @@ class SettingsController {
                 return;
             }
             const { type } = req.params;
-            const { includeInactive } = req.query;
             // Map frontend type to backend category
             const validTypes = ['platform', 'stack', 'priority', 'taskLevel', 'taskType', 'status'];
             if (!type || !validTypes.includes(type)) {
@@ -1010,7 +1008,7 @@ class SettingsController {
                 });
                 return;
             }
-            const activeOnly = includeInactive !== 'true';
+            const activeOnly = req.query.activeOnly === 'true';
             const where = {
                 tenantId: req.tenantId,
                 category: type
