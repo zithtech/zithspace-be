@@ -7,9 +7,126 @@ import {
   ValidationError,
 } from "@/types";
 import { socketService } from "@/services/socketService";
+import { generateDocumentDraft, rewriteSelection } from "@/services/aiDocumentService";
 import crypto from "crypto";
 
 export class DocumentHubController {
+  /**
+   * Generate a documentation draft from a free-form prompt.
+   * Returns { hubName, fileTitle, contentHtml }. Does NOT persist anything —
+   * the client makes follow-up calls to create the hub and write the file.
+   */
+  static async aiGenerateDocument(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { prompt } = req.body as { prompt?: string };
+      const seed = (prompt || "").trim();
+
+      if (!seed || seed.length < 5) {
+        res.status(400).json({
+          success: false,
+          error: "Prompt is required (min 5 characters)",
+        } as ApiResponse);
+        return;
+      }
+      if (seed.length > 8000) {
+        res.status(400).json({
+          success: false,
+          error: "Prompt is too long (max 8000 characters)",
+        } as ApiResponse);
+        return;
+      }
+
+      const { draft, source, fallbackReason } = await generateDocumentDraft(seed);
+
+      res.status(200).json({
+        success: true,
+        data: { ...draft, source, fallbackReason },
+        message: "Document draft generated",
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("AI generate document error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to generate document draft",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Rewrite a selected excerpt of a document according to a user instruction.
+   * Used by the inline Zai menu in the editor when a user selects text.
+   * Does NOT persist anything — the client applies the result.
+   */
+  static async aiRewriteSelection(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { text, instruction } = req.body as {
+        text?: string;
+        instruction?: string;
+      };
+      const cleanText = (text || "").trim();
+      const cleanInstruction = (instruction || "").trim();
+
+      if (!cleanText || cleanText.length < 2) {
+        res.status(400).json({
+          success: false,
+          error: "Selected text is required (min 2 characters)",
+        } as ApiResponse);
+        return;
+      }
+      if (cleanText.length > 8000) {
+        res.status(400).json({
+          success: false,
+          error: "Selected text is too long (max 8000 characters)",
+        } as ApiResponse);
+        return;
+      }
+      if (!cleanInstruction || cleanInstruction.length < 2) {
+        res.status(400).json({
+          success: false,
+          error: "Instruction is required",
+        } as ApiResponse);
+        return;
+      }
+      if (cleanInstruction.length > 500) {
+        res.status(400).json({
+          success: false,
+          error: "Instruction is too long (max 500 characters)",
+        } as ApiResponse);
+        return;
+      }
+
+      const result = await rewriteSelection(cleanText, cleanInstruction);
+
+      res.status(200).json({
+        success: true,
+        data: result,
+        message: "Selection rewritten",
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("AI rewrite selection error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to rewrite selection",
+      } as ApiResponse);
+    }
+  }
+
   /**
    * Create a new Document HUb (tenant-aware)
    */
@@ -355,12 +472,16 @@ export class DocumentHubController {
       }
 
       const { id } = req.params;
-      const { title } = req.body;
+      const { title, parentId } = req.body as {
+        title?: string;
+        parentId?: string | null;
+      };
 
-      if (!title) {
+      // Either title OR a parentId update must be supplied.
+      if (title === undefined && parentId === undefined) {
         res.status(400).json({
           success: false,
-          error: "Title is required",
+          error: "Provide title or parentId to update",
         } as ApiResponse);
         return;
       }
@@ -381,13 +502,87 @@ export class DocumentHubController {
         return;
       }
 
+      // --- Validate parentId move (drag-drop) ---
+      if (parentId !== undefined) {
+        if (parentId === id) {
+          res.status(400).json({
+            success: false,
+            error: "Cannot move a node into itself",
+          } as ApiResponse);
+          return;
+        }
+
+        if (parentId !== null) {
+          const parent = await prisma.documentTree.findFirst({
+            where: {
+              id: parentId,
+              tenantId: req.tenantId,
+              isDeleted: false,
+            },
+          });
+
+          if (!parent) {
+            res.status(404).json({
+              success: false,
+              error: "Parent node not found",
+            } as ApiResponse);
+            return;
+          }
+
+          if (parent.documentHubId !== node.documentHubId) {
+            res.status(400).json({
+              success: false,
+              error: "Cannot move a node across hubs",
+            } as ApiResponse);
+            return;
+          }
+
+          // Files can't host children, only folders/sections.
+          if (parent.type === "file") {
+            res.status(400).json({
+              success: false,
+              error: "Files cannot contain other items",
+            } as ApiResponse);
+            return;
+          }
+
+          // Cycle check: walk the parent chain — `id` must not appear.
+          let cursor: typeof parent | null = parent;
+          while (cursor) {
+            if (cursor.id === id) {
+              res.status(400).json({
+                success: false,
+                error: "Cannot move a folder into one of its descendants",
+              } as ApiResponse);
+              return;
+            }
+            if (!cursor.parentId) break;
+            cursor = await prisma.documentTree.findFirst({
+              where: {
+                id: cursor.parentId,
+                tenantId: req.tenantId,
+                isDeleted: false,
+              },
+            });
+          }
+        }
+      }
+
+      const updateData: any = {};
+      if (title !== undefined) updateData.title = title;
+      if (parentId !== undefined) updateData.parentId = parentId;
+
       const updatedNode = await prisma.documentTree.update({
         where: { id },
-        data: { title },
+        data: updateData,
       });
 
       // If it's a file and has a documentId, update the document title too
-      if (node.type === "file" && node.documentId) {
+      if (
+        title !== undefined &&
+        node.type === "file" &&
+        node.documentId
+      ) {
         await prisma.document.update({
           where: { id: node.documentId },
           data: { title },
@@ -467,7 +662,11 @@ export class DocumentHubController {
       }
 
       const { id } = req.params;
-      const { content, title } = req.body;
+      const { content, title, expectedVersion } = req.body as {
+        content?: any;
+        title?: string;
+        expectedVersion?: number;
+      };
 
       const document = await prisma.document.findFirst({
         where: {
@@ -497,15 +696,63 @@ export class DocumentHubController {
         return;
       }
 
-      const updatedDocument = await prisma.document.update({
-        where: {
-          id,
-        },
+      // Optimistic concurrency: when the client sends an expectedVersion, refuse
+      // the write if it doesn't match the current row. The frontend autosave
+      // pipeline uses this to halt and prompt the user instead of silently
+      // overwriting changes from a concurrent editor / browser tab.
+      if (
+        expectedVersion !== undefined &&
+        expectedVersion !== null &&
+        (document as any).version !== expectedVersion
+      ) {
+        res.status(409).json({
+          success: false,
+          error: "Document was modified by another session",
+          data: {
+            currentVersion: (document as any).version,
+            expectedVersion,
+            document,
+          },
+        } as ApiResponse);
+        return;
+      }
+
+      // Atomic version check + bump in a single SQL statement so two concurrent
+      // requests can't both pass the check above and then both overwrite.
+      // updateMany returns the affected row count; 0 means somebody else won.
+      const writeWhere: any = { id, tenantId: req.tenantId };
+      if (expectedVersion !== undefined && expectedVersion !== null) {
+        writeWhere.version = expectedVersion;
+      }
+      const updateResult = await prisma.document.updateMany({
+        where: writeWhere,
         data: {
-          content: content !== undefined ? content : document.content,
-          title: title !== undefined ? title : document.title,
+          ...(content !== undefined ? { content } : {}),
+          ...(title !== undefined ? { title } : {}),
+          version: { increment: 1 },
           updatedAt: new Date(),
         },
+      });
+
+      if (updateResult.count === 0) {
+        // Race lost — someone updated the document between our read and write.
+        const fresh = await prisma.document.findFirst({
+          where: { id, tenantId: req.tenantId, isDeleted: false },
+        });
+        res.status(409).json({
+          success: false,
+          error: "Document was modified by another session",
+          data: {
+            currentVersion: fresh ? (fresh as any).version : null,
+            expectedVersion,
+            document: fresh,
+          },
+        } as ApiResponse);
+        return;
+      }
+
+      const updatedDocument = await prisma.document.findFirst({
+        where: { id, tenantId: req.tenantId },
       });
 
       // Create history entry
@@ -530,6 +777,181 @@ export class DocumentHubController {
       res.status(500).json({
         success: false,
         error: "Failed to update document",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Star a document hub for the current user (raw SQL — no Prisma model).
+   * Idempotent: a duplicate (user, hub) pair is a no-op.
+   */
+  static async starDocumentHub(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+      const { id: hubId } = req.params;
+
+      // Verify the hub exists and belongs to this tenant before recording a
+      // star against it.
+      // The Prisma-managed `document_hub` table stores id/tenantId as TEXT,
+      // not UUID — so do NOT cast the parameters here.
+      const hubRows: Array<{ id: string }> = await prisma.$queryRaw`
+        SELECT id FROM document_hub
+        WHERE id = ${hubId}
+          AND "tenantId" = ${req.tenantId}
+          AND (is_deleted = false OR is_deleted IS NULL)
+        LIMIT 1
+      `;
+      if (!hubRows.length) {
+        res.status(404).json({
+          success: false,
+          error: "Document hub not found",
+        } as ApiResponse);
+        return;
+      }
+
+      // Generate the UUID in Node so we don't depend on the pgcrypto extension
+      // being enabled on the database.
+      const newId = crypto.randomUUID();
+      await prisma.$executeRaw`
+        INSERT INTO document_hub_stars (id, user_id, hub_id, tenant_id)
+        VALUES (
+          ${newId}::uuid,
+          ${req.user.id}::uuid,
+          ${hubId}::uuid,
+          ${req.tenantId}::uuid
+        )
+        ON CONFLICT (user_id, hub_id) DO NOTHING
+      `;
+
+      res.status(200).json({
+        success: true,
+        message: "Hub starred",
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Star hub error:", error?.message || error, error?.code);
+      res.status(500).json({
+        success: false,
+        error: error?.message || "Failed to star hub",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Remove the current user's star from a document hub (raw SQL).
+   */
+  static async unstarDocumentHub(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+      const { id: hubId } = req.params;
+
+      await prisma.$executeRaw`
+        DELETE FROM document_hub_stars
+        WHERE user_id = ${req.user.id}::uuid
+          AND hub_id  = ${hubId}::uuid
+          AND tenant_id = ${req.tenantId}::uuid
+      `;
+
+      res.status(200).json({
+        success: true,
+        message: "Hub unstarred",
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Unstar hub error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to unstar hub",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Delete a single version from a document's history. Uses a raw SQL DELETE
+   * (with parameterised values) to keep the query explicit and side-effect-
+   * free. The latest version is protected — that's the live document; the
+   * client should call the document-delete endpoint instead.
+   */
+  static async deleteDocumentHistoryEntry(
+    req: AuthRequest,
+    res: Response,
+  ): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { id: documentId, historyId } = req.params;
+
+      // The Prisma-managed `document_history` table stores id/documentId/
+      // tenantId as TEXT — do NOT cast the parameters to ::uuid.
+      const rows: Array<{ id: string; created_at: Date }> =
+        await prisma.$queryRaw`
+          SELECT id, "createdAt" AS created_at
+          FROM document_history
+          WHERE id = ${historyId}
+            AND "documentId" = ${documentId}
+            AND "tenantId" = ${req.tenantId}
+          LIMIT 1
+        `;
+
+      if (!rows.length) {
+        res.status(404).json({
+          success: false,
+          error: "History entry not found",
+        } as ApiResponse);
+        return;
+      }
+
+      // Refuse to delete the most-recent version — it represents the live
+      // document state and removing it would leave the doc in an inconsistent
+      // history.
+      const latest: Array<{ id: string }> = await prisma.$queryRaw`
+        SELECT id
+        FROM document_history
+        WHERE "documentId" = ${documentId}
+          AND "tenantId" = ${req.tenantId}
+        ORDER BY "createdAt" DESC
+        LIMIT 1
+      `;
+      if (latest.length && latest[0].id === historyId) {
+        res.status(400).json({
+          success: false,
+          error: "Cannot delete the latest version",
+        } as ApiResponse);
+        return;
+      }
+
+      await prisma.$executeRaw`
+        DELETE FROM document_history
+        WHERE id = ${historyId}
+          AND "documentId" = ${documentId}
+          AND "tenantId" = ${req.tenantId}
+      `;
+
+      res.status(200).json({
+        success: true,
+        message: "Version deleted",
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Delete history entry error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to delete version",
       } as ApiResponse);
     }
   }
@@ -589,6 +1011,14 @@ export class DocumentHubController {
         return;
       }
 
+      // Optional ticketId filter — used by the ticket detail drawer to list
+      // hubs linked to a specific ticket. Trim and validate as UUID-ish so
+      // a typo doesn't drop us into a query that surprisingly returns all rows.
+      const ticketIdFilter =
+        typeof req.query.ticketId === "string" && req.query.ticketId.trim()
+          ? req.query.ticketId.trim()
+          : undefined;
+
       // Fetch all accessible document IDs in this tenant for the user
       const accessibleDocs = await prisma.document.findMany({
         where: {
@@ -607,6 +1037,7 @@ export class DocumentHubController {
         where: {
           tenantId: req.tenantId,
           isDeleted: false,
+          ...(ticketIdFilter ? { ticketId: ticketIdFilter } : {}),
           OR: [
             { visibility: "public" },
             { createdById: req.user.id },
@@ -657,9 +1088,22 @@ export class DocumentHubController {
         return true;
       });
 
+      // Fetch this user's stars in one shot via raw SQL and decorate the
+      // hubs with `isStarred`.
+      const starredRows: Array<{ hub_id: string }> = await prisma.$queryRaw`
+        SELECT hub_id FROM document_hub_stars
+        WHERE user_id = ${req.user.id}::uuid
+          AND tenant_id = ${req.tenantId}::uuid
+      `;
+      const starredSet = new Set(starredRows.map((r) => r.hub_id));
+      const enrichedHubs = filteredDocumentHubs.map((hub) => ({
+        ...hub,
+        isStarred: starredSet.has(hub.id),
+      }));
+
       res.status(200).json({
         success: true,
-        data: filteredDocumentHubs,
+        data: enrichedHubs,
       } as ApiResponse);
     } catch (error: any) {
       console.error("Get all document hubs error:", error);

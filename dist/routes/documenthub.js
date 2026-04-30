@@ -13,6 +13,20 @@ router.use(tenantContext_1.resolveTenant);
 router.use(auth_1.authenticateToken);
 router.use(auth_1.requireAuth);
 /**
+ * @route   POST /api/documenthub/ai-generate
+ * @desc    Generate a documentation draft from a free-form prompt (Gemini-backed,
+ *          mock fallback). Does not persist; client creates the hub afterwards.
+ * @access  Private (DOCUMENT_CREATE)
+ */
+router.post("/ai-generate", (0, permission_1.requirePermission)(permissions_1.Permissions.DOCUMENT_CREATE), documentHubController_1.DocumentHubController.aiGenerateDocument);
+/**
+ * @route   POST /api/documenthub/ai-rewrite
+ * @desc    Rewrite a selected excerpt of a document per a user instruction.
+ *          Used by the inline Zai menu in the editor.
+ * @access  Private (DOCUMENT_UPDATE)
+ */
+router.post("/ai-rewrite", (0, permission_1.requirePermission)(permissions_1.Permissions.DOCUMENT_UPDATE), documentHubController_1.DocumentHubController.aiRewriteSelection);
+/**
  * @route   GET /api/documenthub
  * @desc    Get all document hubs
  * @access  Public (all users)
@@ -98,6 +112,12 @@ router.put("/document/:id", (0, permission_1.requirePermission)(permissions_1.Pe
  */
 router.get("/document/:id/history", (0, permission_1.requirePermission)(permissions_1.Permissions.DOCUMENT_READ), documentHubController_1.DocumentHubController.getDocumentHistory);
 /**
+ * @route   DELETE /api/documenthub/document/:id/history/:historyId
+ * @desc    Delete a single version from a document's history
+ * @access  Private (DOCUMENT_DELETE)
+ */
+router.delete("/document/:id/history/:historyId", (0, permission_1.requirePermission)(permissions_1.Permissions.DOCUMENT_DELETE), documentHubController_1.DocumentHubController.deleteDocumentHistoryEntry);
+/**
  * @route   DELETE /api/documenthub/document/:id
  * @desc    Delete document by id (soft delete)
  * @access  Private
@@ -126,6 +146,18 @@ router.put("/document/:id/share", (0, permission_1.requirePermission)(permission
  * @access  Private
  */
 router.put("/:id/share", (0, permission_1.requirePermission)(permissions_1.Permissions.DOCUMENT_UPDATE), documentHubController_1.DocumentHubController.shareDocumentHub);
+/**
+ * @route   POST /api/documenthub/:id/star
+ * @desc    Star a document hub for the current user (raw SQL — no Prisma model)
+ * @access  Private (DOCUMENT_READ)
+ */
+router.post("/:id/star", (0, permission_1.requirePermission)(permissions_1.Permissions.DOCUMENT_READ), documentHubController_1.DocumentHubController.starDocumentHub);
+/**
+ * @route   DELETE /api/documenthub/:id/star
+ * @desc    Remove the current user's star from a document hub (raw SQL)
+ * @access  Private (DOCUMENT_READ)
+ */
+router.delete("/:id/star", (0, permission_1.requirePermission)(permissions_1.Permissions.DOCUMENT_READ), documentHubController_1.DocumentHubController.unstarDocumentHub);
 /**
  * @route   DELETE /api/documenthub/:id/share
  * @desc    Revoke hub sharing
