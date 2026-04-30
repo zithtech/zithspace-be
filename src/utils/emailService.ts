@@ -434,6 +434,7 @@ If you have any questions or concerns, please contact your manager or HR departm
 
 async sendInvoiceEmail(data: {
   to: string;
+  from?: string;
   subject: string;
   customerName: string;
   invoiceNumber: string;
@@ -466,7 +467,7 @@ async sendInvoiceEmail(data: {
   `;
 
   const options: any = { 
-    from: process.env.SMTP_FROM_EMAIL || 'noreply@zithtech.com',
+    from: data.from || process.env.SMTP_FROM_EMAIL || 'noreply@zithtech.com',
     to: data.to, 
     subject, 
     html 

@@ -44,6 +44,13 @@ router.get("/trash", requirePermission(Permissions.DOCUMENT_READ), DocumentHubCo
 router.get("/:id", requirePermission(Permissions.DOCUMENT_READ), DocumentHubController.getDocumentHubById);
 
 /**
+ * @route   PATCH /api/documenthub/:id
+ * @desc    Update documenthub (rename)
+ * @access  Public (all users)
+ */
+router.patch("/:id", requirePermission(Permissions.DOCUMENT_UPDATE), DocumentHubController.updateDocumentHub);
+
+/**
  * @route   DELETE /api/documenthub/:id
  * @desc    Delete documenthub by id
  * @access  Public (all users)
@@ -77,6 +84,13 @@ router.put("/node/:id", requirePermission(Permissions.DOCUMENT_UPDATE), Document
  * @access  Public (all users)
  */
 router.delete("/node/:id", requirePermission(Permissions.DOCUMENT_DELETE), DocumentHubController.deleteTreeNode);
+
+/**
+ * @route   POST /api/documenthub/node/:id/restore
+ * @desc    Restore document tree node by id
+ * @access  Private
+ */
+router.post("/node/:id/restore", requirePermission(Permissions.DOCUMENT_UPDATE), DocumentHubController.restoreTreeNode);
 
 /**
  * @route   GET /api/documenthub/document/:id
@@ -125,6 +139,18 @@ router.put("/document/:id/share", requirePermission(Permissions.DOCUMENT_UPDATE)
  * @desc    Revoke document sharing
  * @access  Private
  */
-router.delete("/document/:id/share", requirePermission(Permissions.DOCUMENT_UPDATE), DocumentHubController.revokeShare);
+/**
+ * @route   PUT /api/documenthub/:id/share
+ * @desc    Share entire document hub
+ * @access  Private
+ */
+router.put("/:id/share", requirePermission(Permissions.DOCUMENT_UPDATE), DocumentHubController.shareDocumentHub);
+
+/**
+ * @route   DELETE /api/documenthub/:id/share
+ * @desc    Revoke hub sharing
+ * @access  Private
+ */
+router.delete("/:id/share", requirePermission(Permissions.DOCUMENT_UPDATE), DocumentHubController.revokeHubShare);
 
 export default router;

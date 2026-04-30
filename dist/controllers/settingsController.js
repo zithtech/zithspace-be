@@ -32,10 +32,10 @@ class SettingsController {
                 });
                 return;
             }
-            // OPTIMIZED: Run all queries in parallel instead of sequential
-            const [users, projects, releasePlans] = await Promise.all([
+            // Fetch parallel data including dynamic dropdown options
+            const [users, projects, releasePlans, dropdownOptions] = await Promise.all([
                 // Get all users for assignee dropdowns
-                await database_1.prisma.user.findMany({
+                database_1.prisma.user.findMany({
                     where: {
                         tenantId: req.tenantId,
                         isActive: true
@@ -49,7 +49,7 @@ class SettingsController {
                     orderBy: { name: 'asc' }
                 }),
                 // Get all projects
-                await database_1.prisma.project.findMany({
+                database_1.prisma.project.findMany({
                     where: {
                         tenantId: req.tenantId,
                         status: 'active'
@@ -63,7 +63,7 @@ class SettingsController {
                     orderBy: { name: 'asc' }
                 }),
                 // Get active release plans
-                await database_1.prisma.releasePlan.findMany({
+                database_1.prisma.releasePlan.findMany({
                     where: {
                         tenantId: req.tenantId,
                         status: { in: ['planning', 'active'] },
@@ -82,32 +82,55 @@ class SettingsController {
                         }
                     },
                     orderBy: { version: 'asc' }
+                }),
+                // Get all managed dropdown options
+                database_1.prisma.dropdownOption.findMany({
+                    where: {
+                        tenantId: req.tenantId,
+                        isActive: true
+                    },
+                    orderBy: [
+                        { category: 'asc' },
+                        { order: 'asc' },
+                        { label: 'asc' }
+                    ]
                 })
             ]);
-            // Default configuration values (can be made tenant-specific in the future)
+            // Helper to extract options by category
+            const getOptions = (category) => dropdownOptions
+                .filter(opt => opt.category === category)
+                .map((opt) => ({
+                value: opt.value,
+                label: opt.label,
+                color: opt.color || undefined,
+                description: opt.description || undefined,
+                order: opt.order
+            }));
+            // Default fallback values if no database options exist
             const configurations = {
-                // Static dropdown options
-                priorities: [
+                priorities: getOptions('priority').length ? getOptions('priority') : [
                     { value: 'P1', label: 'High (P1)', color: '#ff4d4f', description: 'Critical priority' },
                     { value: 'P2', label: 'Medium (P2)', color: '#fa8c16', description: 'Medium priority' },
                     { value: 'P3', label: 'Lite (P3)', color: '#52c41a', description: 'Low priority' }
                 ],
-                taskTypes: [
+                taskTypes: getOptions('taskType').length ? getOptions('taskType') : [
                     { value: 'Bug', label: 'Bug', color: '#ff4d4f', description: 'Bug fix' },
                     { value: 'Task', label: 'Task', color: '#1890ff', description: 'General task' },
                     { value: 'Feat', label: 'Feature', color: '#52c41a', description: 'New feature' },
                     { value: 'Enhancement', label: 'Enhancement', color: '#722ed1', description: 'Enhancement' }
                 ],
-                statuses: [
-                    { value: 'not_started', label: 'Not Started', color: '#d9d9d9', description: 'Task not started' },
-                    { value: 'in_progress', label: 'In Progress', color: '#1890ff', description: 'Task in progress' },
-                    { value: 'dev_complete', label: 'Dev Complete', color: '#2db7f5', description: 'Development completed' },
-                    { value: 'in_testing', label: 'Testing', color: '#fa8c16', description: 'In testing phase' },
-                    { value: 'in_review', label: 'In Review', color: '#722ed1', description: 'Under review' },
-                    { value: 'completed', label: 'Completed', color: '#52c41a', description: 'Task completed' },
-                    { value: 'live', label: 'Live', color: '#0050b3', description: 'Deployed to production' },
+                statuses: getOptions('status').length ? getOptions('status') : [
+                    { value: 'not_started', label: 'Not Started', color: '#8c8c8c', description: 'Task not started' },
+                    { value: 'in_progress', label: 'In Progress', color: '#1677ff', description: 'Task in progress' },
+                    { value: 'dev_complete', label: 'Dev Complete', color: '#13c2c2', description: 'Development completed' },
+                    { value: 'dev_testing', label: 'Dev Testing', color: '#faad14', description: 'Developer verification phase' },
+                    { value: 'in_review', label: 'In Review', color: '#722ed1', description: 'Peer or lead review' },
+                    { value: 'live', label: 'Live', color: '#2f54eb', description: 'Deployed to production environment' },
+                    { value: 'live_testing', label: 'Live Testing', color: '#1d39c4', description: 'Verification in production' },
+                    { value: 'completed', label: 'Completed', color: '#52c41a', description: 'Task officially completed' },
+                    { value: 'pause', label: 'Pause', color: '#fa8c16', description: 'Task temporarily paused' },
                 ],
-                platforms: [
+                platforms: getOptions('platform').length ? getOptions('platform') : [
                     { value: 'Development', label: 'Development', color: '#1890ff', description: 'Software development tasks' },
                     { value: 'UI/UX', label: 'UI/UX', color: '#722ed1', description: 'User interface and experience design' },
                     { value: 'PM', label: 'PM', color: '#fa8c16', description: 'Project management tasks' },
@@ -115,12 +138,12 @@ class SettingsController {
                     { value: 'DevOps', label: 'DevOps', color: '#eb2f96', description: 'DevOps and infrastructure' },
                     { value: 'Testing', label: 'Testing', color: '#13c2c2', description: 'Quality assurance and testing' }
                 ],
-                stacks: [
+                stacks: getOptions('stack').length ? getOptions('stack') : [
                     { value: 'Front End', label: 'Front End', color: '#1890ff', description: 'Frontend development' },
                     { value: 'Back End', label: 'Back End', color: '#52c41a', description: 'Backend development' },
                     { value: 'Full Stack', label: 'Full Stack', color: '#722ed1', description: 'Full stack development' }
                 ],
-                taskLevels: [
+                taskLevels: getOptions('taskLevel').length ? getOptions('taskLevel') : [
                     { value: 'Easy', label: 'Easy', color: '#52c41a', description: 'Simple task' },
                     { value: 'Lite', label: 'Lite', color: '#1890ff', description: 'Light complexity' },
                     { value: 'Medium', label: 'Medium', color: '#fa8c16', description: 'Medium complexity' },
@@ -1112,6 +1135,7 @@ class SettingsController {
     }
     /**
      * Update an existing dropdown option (tenant-aware)
+     * FIXED: Allows order-only updates
      */
     static async updateDropdownOption(req, res) {
         try {
@@ -1123,24 +1147,41 @@ class SettingsController {
                 return;
             }
             const { id } = req.params;
-            const { value, label, color, description, isActive } = req.body;
-            if (!value || !label) {
-                res.status(400).json({
-                    success: false,
-                    error: 'Value and label are required'
-                });
-                return;
-            }
-            // Verify option exists and belongs to tenant
+            const { value, label, color, description, isActive, order } = req.body;
+            console.log('=== UPDATE DROPDOWN OPTION DEBUG ===');
+            console.log('Received order value:', order);
+            console.log('Received value:', value);
+            console.log('Received label:', label);
+            console.log('Full body:', req.body);
+            // Verify option exists
             const existingOption = await database_1.prisma.dropdownOption.findFirst({
                 where: { id, tenantId: req.tenantId }
             });
             if (!existingOption) {
                 throw new types_1.NotFoundError('Dropdown option not found');
             }
-            const updateData = { value, label };
-            if (typeof isActive === 'boolean') {
+            // ✅ CRITICAL FIX: Build update data dynamically
+            const updateData = {};
+            // Only add fields that are provided
+            if (value !== undefined)
+                updateData.value = value;
+            if (label !== undefined)
+                updateData.label = label;
+            if (color !== undefined)
+                updateData.color = color;
+            if (description !== undefined)
+                updateData.description = description;
+            if (isActive !== undefined)
                 updateData.isActive = isActive;
+            if (order !== undefined)
+                updateData.order = order; // ✅ ORDER FIELD ADDED!
+            // If no fields to update
+            if (Object.keys(updateData).length === 0) {
+                res.status(400).json({
+                    success: false,
+                    error: 'No fields to update'
+                });
+                return;
             }
             const updatedOption = await database_1.prisma.dropdownOption.update({
                 where: { id },
@@ -1167,13 +1208,6 @@ class SettingsController {
                 res.status(404).json({
                     success: false,
                     error: error.message
-                });
-                return;
-            }
-            if (error.code === 'P2002') {
-                res.status(400).json({
-                    success: false,
-                    error: 'A dropdown option with this value already exists for this type'
                 });
                 return;
             }

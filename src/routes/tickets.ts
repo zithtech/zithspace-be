@@ -154,6 +154,22 @@ router.delete(
 router.post("/upload-image", requirePermission(Permissions.TICKET_CREATE), TicketController.uploadImage);
 
 /**
+ * @route   POST /api/tickets/ai-generate
+ * @desc    Generate a structured ticket draft from a free-form description (no persistence)
+ * @access  Private (authenticated users within tenant)
+ * @body    { description: string, title?: string }
+ */
+router.post("/ai-generate", requirePermission(Permissions.TICKET_CREATE), TicketController.aiGenerateTicket);
+
+/**
+ * @route   POST /api/tickets/ai-generate-subtasks
+ * @desc    Regenerate the subtask list for a Zai-drafted ticket with caller-specified shape (count + hoursEach)
+ * @access  Private (authenticated users within tenant)
+ * @body    { description: string, count?: number, hoursEach?: number }
+ */
+router.post("/ai-generate-subtasks", requirePermission(Permissions.TICKET_CREATE), TicketController.aiGenerateSubtasks);
+
+/**
  * @route   POST /api/tickets
  * @desc    Create a new ticket (tenant-aware)
  * @access  Private (authenticated users within tenant)
@@ -299,6 +315,20 @@ router.delete(
   "/:ticketId/attachments/:attachmentId",
   requirePermission(Permissions.TICKET_UPDATE),
   TicketController.deleteAttachment,
+);
+
+/**
+ * @route   PUT /api/tickets/:ticketId/attachments/:attachmentId
+ * @desc    Rename attachment (tenant-aware)
+ * @access  Private (attachment uploader or admin)
+ * @param   ticketId - Ticket ID
+ * @param   attachmentId - Attachment ID
+ * @body    { newFileName: string }
+ */
+router.put(
+  "/:ticketId/attachments/:attachmentId",
+  requirePermission(Permissions.TICKET_UPDATE),
+  TicketController.renameAttachment,
 );
 
 export default router;

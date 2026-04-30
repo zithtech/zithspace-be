@@ -123,6 +123,20 @@ router.delete("/:id/code/pull-requests/:prId", (0, permission_1.requirePermissio
  */
 router.post("/upload-image", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_CREATE), ticketController_1.TicketController.uploadImage);
 /**
+ * @route   POST /api/tickets/ai-generate
+ * @desc    Generate a structured ticket draft from a free-form description (no persistence)
+ * @access  Private (authenticated users within tenant)
+ * @body    { description: string, title?: string }
+ */
+router.post("/ai-generate", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_CREATE), ticketController_1.TicketController.aiGenerateTicket);
+/**
+ * @route   POST /api/tickets/ai-generate-subtasks
+ * @desc    Regenerate the subtask list for a Zai-drafted ticket with caller-specified shape (count + hoursEach)
+ * @access  Private (authenticated users within tenant)
+ * @body    { description: string, count?: number, hoursEach?: number }
+ */
+router.post("/ai-generate-subtasks", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_CREATE), ticketController_1.TicketController.aiGenerateSubtasks);
+/**
  * @route   POST /api/tickets
  * @desc    Create a new ticket (tenant-aware)
  * @access  Private (authenticated users within tenant)
@@ -246,5 +260,14 @@ router.get("/:id/attachments", (0, permission_1.requirePermission)(permissions_1
  * @param   attachmentId - Attachment ID
  */
 router.delete("/:ticketId/attachments/:attachmentId", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_UPDATE), ticketController_1.TicketController.deleteAttachment);
+/**
+ * @route   PUT /api/tickets/:ticketId/attachments/:attachmentId
+ * @desc    Rename attachment (tenant-aware)
+ * @access  Private (attachment uploader or admin)
+ * @param   ticketId - Ticket ID
+ * @param   attachmentId - Attachment ID
+ * @body    { newFileName: string }
+ */
+router.put("/:ticketId/attachments/:attachmentId", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_UPDATE), ticketController_1.TicketController.renameAttachment);
 exports.default = router;
 //# sourceMappingURL=tickets.js.map

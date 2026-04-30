@@ -7,6 +7,7 @@ exports.UserController = void 0;
 const database_1 = require("@/config/database");
 const types_1 = require("@/types");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
+const r2Client_1 = require("@/utils/r2Client");
 class UserController {
     /**
      * Get all members/users with filtering and pagination (tenant-aware)
@@ -55,6 +56,7 @@ class UserController {
                         personalEmail: true,
                         phone: true,
                         role: true,
+                        avatarUrl: true,
                         position: { select: { id: true, title: true } },
                         isActive: true,
                         lastLoginAt: true,
@@ -121,6 +123,7 @@ class UserController {
                     personalEmail: true,
                     phone: true,
                     role: true,
+                    avatarUrl: true,
                     position: { select: { id: true, title: true } },
                     reportsToId: true,
                     dateOfBirth: true,
@@ -252,6 +255,7 @@ class UserController {
                     role: true,
                     position: { select: { id: true, title: true } },
                     isActive: true,
+                    avatarUrl: true,
                     createdAt: true,
                     reportsTo: {
                         select: {
@@ -378,6 +382,7 @@ class UserController {
                     position: { select: { id: true, title: true } },
                     workDays: true,
                     isActive: true,
+                    avatarUrl: true,
                     updatedAt: true,
                     assignedShift: {
                         select: {
@@ -564,6 +569,7 @@ class UserController {
                     personalEmail: true,
                     phone: true,
                     role: true,
+                    avatarUrl: true,
                     position: { select: { id: true, title: true } },
                     dateOfBirth: true,
                     workDays: true,
@@ -631,6 +637,21 @@ class UserController {
                 updateData.dateOfBirth = new Date(updateData.dateOfBirth);
             if (updateData.personalEmail)
                 updateData.personalEmail = updateData.personalEmail.toLowerCase();
+            // Handle avatar upload if provided as base64
+            if (updateData.avatarUrl && updateData.avatarUrl.startsWith('data:image')) {
+                try {
+                    const uploadedUrl = await (0, r2Client_1.uploadImageToR2)(updateData.avatarUrl, req.tenantId);
+                    updateData.avatarUrl = uploadedUrl;
+                }
+                catch (error) {
+                    console.error("Avatar upload error:", error);
+                    res.status(400).json({
+                        success: false,
+                        error: "Failed to upload avatar: " + error.message,
+                    });
+                    return;
+                }
+            }
             const updatedUser = await database_1.prisma.user.update({
                 where: { id: userId },
                 data: {
@@ -643,6 +664,7 @@ class UserController {
                     workEmail: true,
                     personalEmail: true,
                     phone: true,
+                    avatarUrl: true,
                     position: { select: { id: true, title: true } },
                     dateOfBirth: true,
                     workDays: true,
@@ -843,19 +865,23 @@ class UserController {
                 where,
                 select: {
                     id: true,
+                    employeeId: true,
                     name: true,
                     workEmail: true,
                     position: { select: { id: true, title: true } },
                     role: true,
+                    avatarUrl: true,
                 },
                 orderBy: { name: "asc" },
             });
             const formattedMembers = members.map((member) => ({
                 value: member.id,
+                employeeId: member.employeeId,
                 label: member.name,
                 email: member.workEmail,
                 position: member.position?.title,
                 role: member.role,
+                avatarUrl: member.avatarUrl,
             }));
             res.status(200).json({
                 success: true,

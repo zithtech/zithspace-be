@@ -1,8 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TransactionsController = void 0;
-const database_1 = require("@/config/database");
 const types_1 = require("@/types");
+const transaction_model_1 = require("../models/transaction.model");
 class TransactionsController {
     /**
      * Get all transactions with filtering and pagination (tenant-aware)
@@ -17,61 +17,25 @@ class TransactionsController {
                 return;
             }
             const { page = 1, limit = 20, type, category, userId, member, startDate, endDate, search, sortBy = 'date', sortOrder = 'desc' } = req.query;
-            // Build filter query
-            const where = {
-                tenantId: req.tenantId,
-            };
-            if (type)
-                where.type = type;
-            if (category)
-                where.category = category;
             // Accept both userId and member parameters
             const userIdParam = userId || member;
-            if (userIdParam)
-                where.userId = userIdParam;
-            if (startDate && endDate) {
-                where.date = {
-                    gte: new Date(startDate),
-                    lte: new Date(endDate),
-                };
-            }
-            if (search) {
-                where.OR = [
-                    { description: { contains: search, mode: 'insensitive' } },
-                    { category: { contains: search, mode: 'insensitive' } }
-                ];
-            }
-            // Build sort object
-            const orderBy = {};
-            orderBy[sortBy] = sortOrder === 'desc' ? 'desc' : 'asc';
-            // Execute query with pagination
-            const skip = (Number(page) - 1) * Number(limit);
-            const [transactions, total] = await Promise.all([
-                database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                    return await client.transaction.findMany({
-                        where,
-                        include: {
-                            user: {
-                                select: { id: true, name: true, workEmail: true, position: true }
-                            }
-                        },
-                        orderBy: [
-                            orderBy,
-                            { createdAt: 'desc' }
-                        ],
-                        skip,
-                        take: Number(limit),
-                    });
-                }),
-                database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                    return await client.transaction.count({ where });
-                })
-            ]);
+            const { transactions, total } = await (0, transaction_model_1.getTransactions)(req.tenantId, {
+                page: Number(page),
+                limit: Number(limit),
+                type: type,
+                category: category,
+                userId: userIdParam,
+                startDate: startDate,
+                endDate: endDate,
+                search: search,
+                sortBy: sortBy,
+                sortOrder: sortOrder
+            });
             // Transform transactions to match frontend expectations
             const transformedTransactions = transactions.map((t) => ({
                 ...t,
                 member: t.user,
-                type: (t.type === 'income' || t.type === 'bonus') ? 'credit' : 'debit'
+                type: (t.type === 'income' || t.type === 'bonus' || t.type === 'credit') ? 'credit' : 'debit'
             }));
             const totalPages = Math.ceil(total / Number(limit));
             res.status(200).json({
@@ -108,19 +72,7 @@ class TransactionsController {
                 return;
             }
             const { id } = req.params;
-            const transaction = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                return await client.transaction.findFirst({
-                    where: {
-                        id,
-                        tenantId: req.tenantId,
-                    },
-                    include: {
-                        user: {
-                            select: { id: true, name: true, workEmail: true, position: true }
-                        }
-                    }
-                });
-            });
+            const transaction = await (0, transaction_model_1.getTransactionById)(id, req.tenantId);
             if (!transaction) {
                 res.status(404).json({
                     success: false,
@@ -187,47 +139,34 @@ class TransactionsController {
                 });
                 return;
             }
-            await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                // Validate user exists and belongs to tenant
-                const user = await client.user.findFirst({
-                    where: {
-                        id: userId,
-                        tenantId: req.tenantId,
-                        isActive: true,
-                    }
-                });
-                if (!user) {
-                    throw new types_1.ValidationError('User not found in this tenant');
-                }
-                // Create transaction
-                const newTransaction = await client.transaction.create({
-                    data: {
-                        tenantId: req.tenantId,
-                        userId: userId,
-                        type: backendType,
-                        amount: transactionData.amount,
-                        description: transactionData.description,
-                        category: transactionData.category,
-                        date: transactionData.date ? new Date(transactionData.date) : new Date(),
-                        metadata: transactionData.metadata || {},
-                    },
-                    include: {
-                        user: {
-                            select: { id: true, name: true, workEmail: true, position: true }
-                        }
-                    }
-                });
-                // Transform response to match frontend expectations
-                const transformedTransaction = {
-                    ...newTransaction,
-                    member: newTransaction.user,
-                    type: (newTransaction.type === 'income' || newTransaction.type === 'bonus') ? 'credit' : 'debit'
-                };
-                res.status(201).json({
-                    success: true,
-                    data: transformedTransaction,
-                    message: 'Transaction created successfully'
-                });
+            // Validate user exists and belongs to tenant
+            const user = await (0, transaction_model_1.checkUserInTenant)(userId, req.tenantId);
+            if (!user) {
+                throw new types_1.ValidationError('User not found in this tenant');
+            }
+            // Create transaction
+            const newTransaction = await (0, transaction_model_1.createTransaction)({
+                userId,
+                type: backendType,
+                amount: transactionData.amount,
+                description: transactionData.description,
+                category: transactionData.category,
+                date: transactionData.date,
+                metadata: transactionData.metadata
+            }, req.tenantId);
+            if (!newTransaction) {
+                throw new Error('Failed to create transaction');
+            }
+            // Transform response to match frontend expectations
+            const transformedTransaction = {
+                ...newTransaction,
+                member: newTransaction.user,
+                type: (newTransaction.type === 'income' || newTransaction.type === 'bonus' || newTransaction.type === 'credit') ? 'credit' : 'debit'
+            };
+            res.status(201).json({
+                success: true,
+                data: transformedTransaction,
+                message: 'Transaction created successfully'
             });
         }
         catch (error) {
@@ -289,43 +228,25 @@ class TransactionsController {
                 });
                 return;
             }
-            await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                // Check if transaction exists and belongs to tenant
-                const existingTransaction = await client.transaction.findFirst({
-                    where: {
-                        id,
-                        tenantId: req.tenantId,
-                    }
-                });
-                if (!existingTransaction) {
-                    throw new types_1.NotFoundError('Transaction not found in this tenant');
-                }
-                // Convert date if provided
-                if (updates.date)
-                    updates.date = new Date(updates.date);
-                const updatedTransaction = await client.transaction.update({
-                    where: { id },
-                    data: {
-                        ...updates,
-                        updatedAt: new Date()
-                    },
-                    include: {
-                        user: {
-                            select: { id: true, name: true, workEmail: true, position: true }
-                        }
-                    }
-                });
-                // Transform response to match frontend expectations
-                const transformedTransaction = {
-                    ...updatedTransaction,
-                    member: updatedTransaction.user,
-                    type: (updatedTransaction.type === 'income' || updatedTransaction.type === 'bonus') ? 'credit' : 'debit'
-                };
-                res.status(200).json({
-                    success: true,
-                    data: transformedTransaction,
-                    message: 'Transaction updated successfully'
-                });
+            // Check if transaction exists and belongs to tenant
+            const existingTransaction = await (0, transaction_model_1.getTransactionById)(id, req.tenantId);
+            if (!existingTransaction) {
+                throw new types_1.NotFoundError('Transaction not found in this tenant');
+            }
+            const updatedTransaction = await (0, transaction_model_1.updateTransaction)(id, req.tenantId, updates);
+            if (!updatedTransaction) {
+                throw new Error('Failed to update transaction');
+            }
+            // Transform response to match frontend expectations
+            const transformedTransaction = {
+                ...updatedTransaction,
+                member: updatedTransaction.user,
+                type: (updatedTransaction.type === 'income' || updatedTransaction.type === 'bonus' || updatedTransaction.type === 'credit') ? 'credit' : 'debit'
+            };
+            res.status(200).json({
+                success: true,
+                data: transformedTransaction,
+                message: 'Transaction updated successfully'
             });
         }
         catch (error) {
@@ -356,23 +277,14 @@ class TransactionsController {
                 return;
             }
             const { id } = req.params;
-            await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                const existingTransaction = await client.transaction.findFirst({
-                    where: {
-                        id,
-                        tenantId: req.tenantId,
-                    }
-                });
-                if (!existingTransaction) {
-                    throw new types_1.NotFoundError('Transaction not found in this tenant');
-                }
-                await client.transaction.delete({
-                    where: { id }
-                });
-                res.status(200).json({
-                    success: true,
-                    message: 'Transaction deleted successfully'
-                });
+            const existingTransaction = await (0, transaction_model_1.getTransactionById)(id, req.tenantId);
+            if (!existingTransaction) {
+                throw new types_1.NotFoundError('Transaction not found in this tenant');
+            }
+            await (0, transaction_model_1.deleteTransactionQuery)(id, req.tenantId);
+            res.status(200).json({
+                success: true,
+                message: 'Transaction deleted successfully'
             });
         }
         catch (error) {
@@ -403,66 +315,10 @@ class TransactionsController {
                 return;
             }
             const { userId } = req.params;
-            const balance = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                // Validate user exists and belongs to tenant
-                const user = await client.user.findFirst({
-                    where: {
-                        id: userId,
-                        tenantId: req.tenantId,
-                    },
-                    select: { id: true, name: true, workEmail: true }
-                });
-                if (!user) {
-                    throw new types_1.NotFoundError('User not found in this tenant');
-                }
-                // Calculate balance using aggregation
-                const balanceData = await client.transaction.groupBy({
-                    by: ['type'],
-                    where: {
-                        userId,
-                        tenantId: req.tenantId,
-                    },
-                    _sum: {
-                        amount: true
-                    }
-                });
-                let income = 0;
-                let expense = 0;
-                let bonus = 0;
-                let deduction = 0;
-                balanceData.forEach((item) => {
-                    const amount = item._sum.amount || 0;
-                    switch (item.type) {
-                        case 'income':
-                            income = amount;
-                            break;
-                        case 'expense':
-                            expense = amount;
-                            break;
-                        case 'bonus':
-                            bonus = amount;
-                            break;
-                        case 'deduction':
-                            deduction = amount;
-                            break;
-                    }
-                });
-                const totalCredits = income + bonus;
-                const totalDebits = expense + deduction;
-                const netBalance = totalCredits - totalDebits;
-                return {
-                    user,
-                    balance: {
-                        income,
-                        expense,
-                        bonus,
-                        deduction,
-                        totalCredits,
-                        totalDebits,
-                        netBalance
-                    }
-                };
-            });
+            const balance = await (0, transaction_model_1.getUserBalanceQuery)(userId, req.tenantId);
+            if (!balance) {
+                throw new types_1.NotFoundError('User not found in this tenant');
+            }
             res.status(200).json({
                 success: true,
                 data: balance
@@ -495,67 +351,7 @@ class TransactionsController {
                 });
                 return;
             }
-            const balance = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                // Calculate overall balance using aggregation
-                const balanceData = await client.transaction.groupBy({
-                    by: ['type'],
-                    where: {
-                        tenantId: req.tenantId,
-                    },
-                    _sum: {
-                        amount: true
-                    },
-                    _count: true
-                });
-                let income = 0, incomeCount = 0;
-                let expense = 0, expenseCount = 0;
-                let bonus = 0, bonusCount = 0;
-                let deduction = 0, deductionCount = 0;
-                balanceData.forEach((item) => {
-                    const amount = item._sum.amount || 0;
-                    const count = item._count || 0;
-                    switch (item.type) {
-                        case 'income':
-                            income = amount;
-                            incomeCount = count;
-                            break;
-                        case 'expense':
-                            expense = amount;
-                            expenseCount = count;
-                            break;
-                        case 'bonus':
-                            bonus = amount;
-                            bonusCount = count;
-                            break;
-                        case 'deduction':
-                            deduction = amount;
-                            deductionCount = count;
-                            break;
-                    }
-                });
-                const totalCredits = income + bonus;
-                const totalDebits = expense + deduction;
-                const netBalance = totalCredits - totalDebits;
-                const totalTransactions = incomeCount + expenseCount + bonusCount + deductionCount;
-                return {
-                    balance: {
-                        income,
-                        expense,
-                        bonus,
-                        deduction,
-                        totalCredits,
-                        totalDebits,
-                        netBalance
-                    },
-                    counts: {
-                        income: incomeCount,
-                        expense: expenseCount,
-                        bonus: bonusCount,
-                        deduction: deductionCount,
-                        totalTransactions
-                    }
-                };
-            });
+            const balance = await (0, transaction_model_1.getAccountBalanceQuery)(req.tenantId);
             res.status(200).json({
                 success: true,
                 data: balance
@@ -589,73 +385,7 @@ class TransactionsController {
             const startDate = new Date(targetYear, targetMonth - 1, 1);
             const endDate = new Date(targetYear, targetMonth, 0);
             endDate.setHours(23, 59, 59, 999);
-            const summary = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                const monthlyData = await client.transaction.groupBy({
-                    by: ['type'],
-                    where: {
-                        tenantId: req.tenantId,
-                        date: {
-                            gte: startDate,
-                            lte: endDate,
-                        },
-                    },
-                    _sum: {
-                        amount: true
-                    },
-                    _count: true
-                });
-                let income = 0, incomeCount = 0;
-                let expense = 0, expenseCount = 0;
-                let bonus = 0, bonusCount = 0;
-                let deduction = 0, deductionCount = 0;
-                monthlyData.forEach((item) => {
-                    const amount = item._sum.amount || 0;
-                    const count = item._count || 0;
-                    switch (item.type) {
-                        case 'income':
-                            income = amount;
-                            incomeCount = count;
-                            break;
-                        case 'expense':
-                            expense = amount;
-                            expenseCount = count;
-                            break;
-                        case 'bonus':
-                            bonus = amount;
-                            bonusCount = count;
-                            break;
-                        case 'deduction':
-                            deduction = amount;
-                            deductionCount = count;
-                            break;
-                    }
-                });
-                const totalCredits = income + bonus;
-                const totalDebits = expense + deduction;
-                const netAmount = totalCredits - totalDebits;
-                const totalTransactions = incomeCount + expenseCount + bonusCount + deductionCount;
-                return {
-                    year: targetYear,
-                    month: targetMonth,
-                    monthName: startDate.toLocaleString('default', { month: 'long' }),
-                    summary: {
-                        income,
-                        expense,
-                        bonus,
-                        deduction,
-                        totalCredits,
-                        totalDebits,
-                        netAmount
-                    },
-                    counts: {
-                        income: incomeCount,
-                        expense: expenseCount,
-                        bonus: bonusCount,
-                        deduction: deductionCount,
-                        totalTransactions
-                    }
-                };
-            });
+            const summary = await (0, transaction_model_1.getMonthlySummaryQuery)(req.tenantId, startDate, endDate, targetYear, targetMonth, startDate.toLocaleString('default', { month: 'long' }));
             res.status(200).json({
                 success: true,
                 data: summary
@@ -691,127 +421,9 @@ class TransactionsController {
                     }
                 };
             }
-            const summary = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                // Overall balance and counts
-                const overallData = await client.transaction.groupBy({
-                    by: ['type'],
-                    where: {
-                        tenantId: req.tenantId,
-                        ...dateFilter,
-                    },
-                    _sum: {
-                        amount: true
-                    },
-                    _count: true
-                });
-                let totalCredits = 0;
-                let totalDebits = 0;
-                let creditCount = 0;
-                let debitCount = 0;
-                overallData.forEach((item) => {
-                    const amount = item._sum.amount || 0;
-                    const count = item._count || 0;
-                    if (item.type === 'income' || item.type === 'bonus') {
-                        totalCredits += amount;
-                        creditCount += count;
-                    }
-                    else {
-                        totalDebits += amount;
-                        debitCount += count;
-                    }
-                });
-                // Category breakdown
-                const categoryBreakdown = await client.transaction.groupBy({
-                    by: ['category'],
-                    where: {
-                        tenantId: req.tenantId,
-                        category: { not: null },
-                        ...dateFilter,
-                    },
-                    _sum: {
-                        amount: true
-                    },
-                    _count: true,
-                    orderBy: {
-                        _sum: {
-                            amount: 'desc'
-                        }
-                    }
-                });
-                const formattedCategoryBreakdown = categoryBreakdown.map((item) => ({
-                    category: item.category,
-                    total: item._sum.amount || 0,
-                    count: item._count || 0,
-                }));
-                // Recent transactions
-                const recentTransactions = await client.transaction.findMany({
-                    where: {
-                        tenantId: req.tenantId,
-                        ...dateFilter,
-                    },
-                    include: {
-                        user: {
-                            select: { id: true, name: true, workEmail: true, position: true }
-                        }
-                    },
-                    orderBy: { date: 'desc' },
-                    take: 10
-                });
-                // Transform recent transactions to match frontend expectations
-                const transformedRecentTransactions = recentTransactions.map((t) => ({
-                    ...t,
-                    member: t.user,
-                    type: (t.type === 'income' || t.type === 'bonus') ? 'credit' : 'debit'
-                }));
-                // Calculate this month's data for monthly trend
-                const now = new Date();
-                const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-                const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-                endOfMonth.setHours(23, 59, 59, 999);
-                const thisMonthData = await client.transaction.groupBy({
-                    by: ['type'],
-                    where: {
-                        tenantId: req.tenantId,
-                        date: {
-                            gte: startOfMonth,
-                            lte: endOfMonth,
-                        }
-                    },
-                    _sum: {
-                        amount: true
-                    }
-                });
-                let monthCredits = 0;
-                let monthDebits = 0;
-                thisMonthData.forEach((item) => {
-                    const amount = item._sum.amount || 0;
-                    if (item.type === 'income' || item.type === 'bonus') {
-                        monthCredits += amount;
-                    }
-                    else {
-                        monthDebits += amount;
-                    }
-                });
-                return {
-                    balance: {
-                        credits: totalCredits, // Rename to match frontend
-                        debits: totalDebits, // Rename to match frontend
-                        net: totalCredits - totalDebits, // Rename to match frontend
-                        creditCount,
-                        debitCount,
-                        totalCount: creditCount + debitCount, // Rename to match frontend
-                    },
-                    categoryBreakdown: formattedCategoryBreakdown,
-                    monthlyTrend: [{
-                            month: now.toLocaleString('default', { month: 'long' }),
-                            year: now.getFullYear(),
-                            credits: monthCredits,
-                            debits: monthDebits,
-                            net: monthCredits - monthDebits
-                        }],
-                    recentTransactions: transformedRecentTransactions,
-                };
-            });
+            const start = startDate ? new Date(startDate) : undefined;
+            const end = endDate ? new Date(endDate) : undefined;
+            const summary = await (0, transaction_model_1.getTransactionSummaryQuery)(req.tenantId, start, end);
             res.status(200).json({
                 success: true,
                 data: summary

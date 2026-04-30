@@ -829,6 +829,131 @@ class BucketController {
             });
         }
     }
+    /**
+     * Move all tickets in a bucket to a specific sprint (tenant-aware)
+     */
+    static async moveBucketToSprint(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { id } = req.params;
+            const { sprintId } = req.body;
+            if (!sprintId) {
+                res.status(400).json({
+                    success: false,
+                    error: "Sprint ID is required",
+                });
+                return;
+            }
+            // Verify bucket exists
+            const bucket = await database_1.prisma.bucket.findFirst({
+                where: { id, tenantId: req.tenantId },
+            });
+            if (!bucket) {
+                throw new types_1.NotFoundError("Bucket not found");
+            }
+            // Verify sprint exists and belongs to tenant
+            const sprint = await database_1.prisma.releasePlan.findFirst({
+                where: { id: sprintId, tenantId: req.tenantId },
+            });
+            if (!sprint) {
+                throw new types_1.NotFoundError("Sprint not found");
+            }
+            // Move all tickets in bucket to this sprint
+            const result = await database_1.prisma.ticket.updateMany({
+                where: {
+                    bucketId: id,
+                    tenantId: req.tenantId,
+                    isDeleted: false,
+                },
+                data: {
+                    sprintPlanId: sprintId,
+                    releasePlanId: null, // Clear release plan
+                    demoPlanId: null, // Clear demo plan
+                    updatedAt: new Date(),
+                },
+            });
+            res.status(200).json({
+                success: true,
+                data: { movedCount: result.count },
+                message: `${result.count} ticket(s) moved to sprint successfully`,
+            });
+        }
+        catch (error) {
+            console.error("Move bucket to sprint error:", error);
+            if (error instanceof types_1.NotFoundError) {
+                res.status(404).json({
+                    success: false,
+                    error: error.message,
+                });
+                return;
+            }
+            res.status(500).json({
+                success: false,
+                error: "Failed to move bucket to sprint",
+            });
+        }
+    }
+    /**
+     * Move all tickets in a bucket back to backlog (tenant-aware)
+     */
+    static async moveBucketToBacklog(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { id } = req.params;
+            // Verify bucket exists
+            const bucket = await database_1.prisma.bucket.findFirst({
+                where: { id, tenantId: req.tenantId },
+            });
+            if (!bucket) {
+                throw new types_1.NotFoundError("Bucket not found");
+            }
+            // Move all tickets in bucket back to backlog
+            const result = await database_1.prisma.ticket.updateMany({
+                where: {
+                    bucketId: id,
+                    tenantId: req.tenantId,
+                    isDeleted: false,
+                },
+                data: {
+                    sprintPlanId: null,
+                    releasePlanId: null,
+                    demoPlanId: null,
+                    updatedAt: new Date(),
+                },
+            });
+            res.status(200).json({
+                success: true,
+                data: { movedCount: result.count },
+                message: `${result.count} ticket(s) moved to backlog successfully`,
+            });
+        }
+        catch (error) {
+            console.error("Move bucket to backlog error:", error);
+            if (error instanceof types_1.NotFoundError) {
+                res.status(404).json({
+                    success: false,
+                    error: error.message,
+                });
+                return;
+            }
+            res.status(500).json({
+                success: false,
+                error: "Failed to move bucket to backlog",
+            });
+        }
+    }
 }
 exports.BucketController = BucketController;
 //# sourceMappingURL=bucketController.js.map

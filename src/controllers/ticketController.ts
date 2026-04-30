@@ -19,6 +19,7 @@ import {
 import { sanitizeHtmlContent, validateHtmlLength } from "@/utils/htmlSanitizer";
 import { socketService } from "@/services/socketService";
 import cacheService from "@/utils/cacheService";
+import { generateTicketDraft, generateSubtasks } from "@/services/aiTicketService";
 
 export class TicketController {
   /**
@@ -81,11 +82,13 @@ export class TicketController {
             select: {
               name: true,
               position: true,
+              avatarUrl: true,
             },
           },
           createdBy: {
             select: {
               name: true,
+              avatarUrl: true,
             },
           },
           comments: {
@@ -94,6 +97,7 @@ export class TicketController {
                 select: {
                   name: true,
                   position: true,
+                  avatarUrl: true,
                 },
               },
             },
@@ -104,6 +108,7 @@ export class TicketController {
               addedBy: {
                 select: {
                   name: true,
+                  avatarUrl: true,
                 },
               },
             },
@@ -126,6 +131,7 @@ export class TicketController {
               performedBy: {
                 select: {
                   name: true,
+                  avatarUrl: true,
                 },
               },
             },
@@ -461,13 +467,13 @@ export class TicketController {
         },
         include: {
           createdBy: {
-            select: { id: true, name: true, workEmail: true, position: true },
+            select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
           },
           assignee: {
-            select: { id: true, name: true, workEmail: true, position: true },
+            select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
           },
           reportTo: {
-            select: { id: true, name: true, workEmail: true, position: true },
+            select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
           },
           project: {
             select: { id: true, name: true, code: true, description: true },
@@ -522,6 +528,100 @@ export class TicketController {
   }
 
   /**
+   * Generate a structured ticket draft from a free-form description using AI.
+   * Does not persist anything — the client previews and edits, then calls POST /api/tickets.
+   */
+  static async aiGenerateTicket(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { description, title } = req.body as { description?: string; title?: string };
+
+      const seed = [title, description].filter(Boolean).join("\n\n").trim();
+      if (!seed || seed.length < 5) {
+        res.status(400).json({
+          success: false,
+          error: "Description is required (min 5 characters)",
+        } as ApiResponse);
+        return;
+      }
+
+      if (seed.length > 8000) {
+        res.status(400).json({
+          success: false,
+          error: "Description is too long (max 8000 characters)",
+        } as ApiResponse);
+        return;
+      }
+
+      const { draft, source, fallbackReason } = await generateTicketDraft(seed);
+
+      res.status(200).json({
+        success: true,
+        data: { ...draft, source, fallbackReason },
+        message: "Ticket draft generated",
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("AI generate ticket error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to generate ticket draft",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Regenerate just the subtasks for a Zai-drafted ticket, with caller-specified
+   * shape (count + hours-each). Doesn't persist anything.
+   */
+  static async aiGenerateSubtasks(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { description, count, hoursEach } = req.body as {
+        description?: string;
+        count?: number;
+        hoursEach?: number;
+      };
+
+      const seed = String(description || "").trim();
+      if (!seed || seed.length < 5) {
+        res.status(400).json({
+          success: false,
+          error: "Description is required (min 5 characters)",
+        } as ApiResponse);
+        return;
+      }
+
+      const result = await generateSubtasks({ description: seed, count, hoursEach });
+
+      res.status(200).json({
+        success: true,
+        data: result,
+        message: "Subtasks generated",
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("AI generate subtasks error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to generate subtasks",
+      } as ApiResponse);
+    }
+  }
+
+  /**
    * Get tickets optimized for Kanban view (tenant-aware)
    * Returns tickets grouped by status with metadata
    */
@@ -539,6 +639,7 @@ export class TicketController {
         projectId,
         assigneeId,
         priority,
+        type,
         search,
         limitPerColumn = 50,
         includeArchived = false,
@@ -554,7 +655,20 @@ export class TicketController {
       };
 
       if (projectId) baseWhere.projectId = projectId;
-      if (priority) baseWhere.priority = priority;
+      if (priority) {
+        if (typeof priority === "string" && priority.includes(",")) {
+          baseWhere.priority = { in: priority.split(",").map((p) => p.trim()) };
+        } else {
+          baseWhere.priority = priority;
+        }
+      }
+      if (type) {
+        if (typeof type === "string" && type.includes(",")) {
+          baseWhere.type = { in: type.split(",").map((t) => t.trim()) };
+        } else {
+          baseWhere.type = type;
+        }
+      }
       if (assigneeId) {
         if (typeof assigneeId === "string" && assigneeId.includes(",")) {
           baseWhere.assigneeId = { in: assigneeId.split(",").map((id) => id.trim()) };
@@ -566,6 +680,7 @@ export class TicketController {
         baseWhere.OR = [
           { title: { contains: search as string, mode: "insensitive" } },
           { ticketNumber: { contains: search as string, mode: "insensitive" } },
+          { project: { code: { contains: search as string, mode: "insensitive" } } },
         ];
       }
 
@@ -636,7 +751,8 @@ export class TicketController {
                   select: {
                     id: true,
                     name: true,
-                    workEmail: true
+                    workEmail: true,
+                    avatarUrl: true
                   }
                 },
                 project: {
@@ -708,6 +824,7 @@ export class TicketController {
         limit = 20,
         status,
         priority,
+        type,
         projectId,
         assigneeId,
         createdById,
@@ -731,8 +848,27 @@ export class TicketController {
 
       const where: any = { ...baseWhere };
 
-      if (status) where.status = status;
-      if (priority) where.priority = priority;
+      if (status) {
+        if (typeof status === "string" && status.includes(",")) {
+          where.status = { in: status.split(",").map((s) => s.trim()) };
+        } else {
+          where.status = status;
+        }
+      }
+      if (priority) {
+        if (typeof priority === "string" && priority.includes(",")) {
+          where.priority = { in: priority.split(",").map((p) => p.trim()) };
+        } else {
+          where.priority = priority;
+        }
+      }
+      if (type) {
+        if (typeof type === "string" && type.includes(",")) {
+          where.type = { in: type.split(",").map((t) => t.trim()) };
+        } else {
+          where.type = type;
+        }
+      }
       if (projectId) where.projectId = projectId;
 
       // Handle single or multiple assignees
@@ -755,6 +891,7 @@ export class TicketController {
           { title: { contains: search as string, mode: "insensitive" } },
           { description: { contains: search as string, mode: "insensitive" } },
           { ticketNumber: { contains: search as string, mode: "insensitive" } },
+          { project: { code: { contains: search as string, mode: "insensitive" } } },
         ];
       }
 
@@ -825,10 +962,10 @@ export class TicketController {
             updatedAt: true,
             // Exclude large fields: description (can be fetched in detail view)
             createdBy: {
-              select: { id: true, name: true, workEmail: true },
+              select: { id: true, name: true, workEmail: true, avatarUrl: true },
             },
             assignee: {
-              select: { id: true, name: true, workEmail: true },
+              select: { id: true, name: true, workEmail: true, avatarUrl: true },
             },
             project: {
               select: { id: true, name: true, code: true },
@@ -881,9 +1018,11 @@ export class TicketController {
 
       const { id } = req.params;
 
-      // Check cache first
+      // Check cache first — only honor cache entries that contain the new
+      // sprint/release/bucket linkage fields. Older cached payloads are missing
+      // them and would make the drawer mis-detect sprint membership.
       const cached = await cacheService.getTicket(id, req.tenantId);
-      if (cached) {
+      if (cached && 'sprintPlanId' in (cached as any)) {
         res.status(200).json({
           success: true,
           data: cached,
@@ -920,17 +1059,22 @@ export class TicketController {
           metadata: true,
           parentTickets: true,
           parentId: true, // IMPORTANT: Include parentId for subtask navigation
+          sprintPlanId: true,   // Required so the detail drawer knows sprint membership
+          releasePlanId: true,  // Required for release-plan linkage in detail drawer
+          demoPlanId: true,     // Required for demo-plan linkage in detail drawer
+          bucketId: true,       // Required for bucket linkage in detail drawer
+          isArchived: true,
           createdAt: true,
           updatedAt: true,
           // Optimized relations - only essential fields
           createdBy: {
-            select: { id: true, name: true, workEmail: true },
+            select: { id: true, name: true, workEmail: true, avatarUrl: true },
           },
           assignee: {
-            select: { id: true, name: true, workEmail: true },
+            select: { id: true, name: true, workEmail: true, avatarUrl: true },
           },
           reportTo: {
-            select: { id: true, name: true, workEmail: true },
+            select: { id: true, name: true, workEmail: true, avatarUrl: true },
           },
           project: {
             select: { id: true, name: true, code: true, description: true },
@@ -945,7 +1089,7 @@ export class TicketController {
               status: true,
               priority: true,
               assignee: {
-                select: { id: true, name: true, workEmail: true }
+                select: { id: true, name: true, workEmail: true, avatarUrl: true }
               },
               type: true
             },
@@ -1014,16 +1158,16 @@ export class TicketController {
       if (updates.assignee !== undefined) {
         // Handle explicit null, empty string, or object ID
         const val = updates.assignee;
-        mappedUpdates.assigneeId = (val === '' || val === null) 
-          ? null 
+        mappedUpdates.assigneeId = (val === '' || val === null)
+          ? null
           : (typeof val === 'object' ? val.id : val);
         delete mappedUpdates.assignee;
       }
 
       if (updates.reportTo !== undefined) {
         const val = updates.reportTo;
-        mappedUpdates.reportToId = (val === '' || val === null) 
-          ? null 
+        mappedUpdates.reportToId = (val === '' || val === null)
+          ? null
           : (typeof val === 'object' ? val.id : val);
         delete mappedUpdates.reportTo;
       }
@@ -1036,11 +1180,17 @@ export class TicketController {
 
       // Handle releasePlan / sprint assignment smart mapping
       if (updates.releasePlan !== undefined || updates.sprintPlan !== undefined) {
-        const planId = updates.releasePlan || updates.sprintPlan;
+        // FIX: Use explicit check to allow 'null' to pass through correctly
+        const planId = updates.releasePlan !== undefined ? updates.releasePlan : updates.sprintPlan;
 
         if (planId === null || planId === 'null' || planId === '') {
           mappedUpdates.sprintPlanId = null;
           mappedUpdates.releasePlanId = null;
+          mappedUpdates.demoPlanId = null;
+          mappedUpdates.bucketId = null;
+          mappedUpdates.isArchived = false;
+          mappedUpdates.archivedAt = null;
+          mappedUpdates.archivedById = null;
         } else if (typeof planId === 'string') {
           try {
             const plan = await prisma.releasePlan.findUnique({ where: { id: planId } });
@@ -1145,11 +1295,11 @@ export class TicketController {
 
       // 2. Clear out non-scalar fields and read-only fields
       const scalarFields = [
-        'title', 'description', 'status', 'priority', 'type', 
+        'title', 'description', 'status', 'priority', 'type',
         'platform', 'stack', 'taskLevel', 'storyPoint', 'estimateHours',
-        'assigneeId', 'reportToId', 'projectId', 'releasePlanId', 
-        'sprintPlanId', 'demoPlanId', 'bucketId', 'startDate', 'endDate', 
-        'dueDate', 'completedAt', 'tags', 'metadata', 'isArchived', 
+        'assigneeId', 'reportToId', 'projectId', 'releasePlanId',
+        'sprintPlanId', 'demoPlanId', 'bucketId', 'startDate', 'endDate',
+        'dueDate', 'completedAt', 'tags', 'metadata', 'isArchived',
         'archivedAt', 'archivedById', 'epicId', 'parentId', 'rank'
       ];
 
@@ -1163,7 +1313,7 @@ export class TicketController {
           let val = mappedUpdates[field];
           if (field === 'storyPoint' && val !== null) val = parseInt(val, 10);
           if (field === 'estimateHours' && val !== null) val = parseFloat(val);
-          
+
           dataToUpdate[field] = val;
         }
       });
@@ -1198,9 +1348,9 @@ export class TicketController {
           createdAt: true,
           updatedAt: true,
           // Relations
-          createdBy: { select: { id: true, name: true, workEmail: true } },
-          assignee: { select: { id: true, name: true, workEmail: true } },
-          reportTo: { select: { id: true, name: true, workEmail: true } },
+          createdBy: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
+          assignee: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
+          reportTo: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
           project: { select: { id: true, name: true, code: true } },
         },
       });
@@ -1320,11 +1470,36 @@ export class TicketController {
         throw new NotFoundError("Ticket not found in this tenant");
       }
 
-      await prisma.ticket.delete({
+      // Move to trash (soft delete)
+      await prisma.ticket.update({
         where: { id },
+        data: {
+          isDeleted: true,
+          deletedAt: new Date(),
+          deletedById: req.user.id,
+          updatedAt: new Date(),
+        },
       });
 
-      socketService.emitToTenant(req.tenantId, "ticket:deleted", { id });
+      // Log activity
+      try {
+        await prisma.ticketActivityLog.create({
+          data: {
+            ticketId: id,
+            tenantId: req.tenantId,
+            action: "Ticket Moved to Trash",
+            performedById: req.user.id,
+            details: {
+              ticketNumber: ticket.ticketNumber,
+              title: ticket.title,
+            },
+          },
+        });
+      } catch (logError) {
+        console.error("Failed to log ticket deletion activity:", logError);
+      }
+
+      socketService.emitToTenant(req.tenantId, "ticket:deleted", { id, isSoftDelete: true });
 
       const invalidationPromises: Promise<any>[] = [
         cacheService.invalidateTicket(id, req.tenantId)
@@ -1388,7 +1563,8 @@ export class TicketController {
         await prisma.ticket.findMany({
           where,
           include: {
-            createdBy: { select: { name: true, workEmail: true } },
+            createdBy: { select: { name: true, workEmail: true, avatarUrl: true } },
+            assignee: { select: { name: true, workEmail: true, avatarUrl: true } },
             project: { select: { name: true, code: true } },
           },
           orderBy: { createdAt: "desc" },
@@ -1770,6 +1946,7 @@ export class TicketController {
               name: true,
               workEmail: true,
               position: true,
+              avatarUrl: true,
             },
           },
         },
@@ -1851,6 +2028,7 @@ export class TicketController {
               name: true,
               workEmail: true,
               position: true,
+              avatarUrl: true,
             },
           },
         },
@@ -2477,6 +2655,7 @@ export class TicketController {
               name: true,
               workEmail: true,
               position: true,
+              avatarUrl: true,
             },
           },
         },
@@ -2606,6 +2785,114 @@ export class TicketController {
       res.status(500).json({
         success: false,
         error: error.message || "Failed to upload attachment",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Rename ticket attachment (tenant-aware)
+   */
+  static async renameAttachment(
+    req: AuthRequest,
+    res: Response
+  ): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { ticketId, attachmentId } = req.params;
+      const { newFileName } = req.body;
+
+      if (!newFileName) {
+        res.status(400).json({
+          success: false,
+          error: "New file name is required",
+        } as ApiResponse);
+        return;
+      }
+
+      // Verify ticket exists and belongs to tenant
+      const ticket = await prisma.ticket.findFirst({
+        where: {
+          id: ticketId,
+          tenantId: req.tenantId,
+          isDeleted: false,
+        },
+      });
+
+      if (!ticket) {
+        throw new NotFoundError("Ticket not found");
+      }
+
+      // Verify attachment exists and belongs to this ticket and tenant
+      const attachment = await prisma.ticketAttachment.findFirst({
+        where: {
+          id: attachmentId,
+          ticketId: ticketId,
+          tenantId: req.tenantId,
+        },
+      });
+
+      if (!attachment) {
+        throw new NotFoundError("Attachment not found");
+      }
+
+      const oldFileName = attachment.fileName;
+
+      // Update attachment record
+      const updatedAttachment = await prisma.ticketAttachment.update({
+        where: { id: attachmentId },
+        data: {
+          fileName: newFileName,
+          updatedAt: new Date(),
+        },
+        include: {
+          uploadedBy: {
+            select: {
+              id: true,
+              name: true,
+              workEmail: true,
+              position: true,
+            },
+          },
+        },
+      });
+
+      // Log activity
+      await prisma.ticketActivityLog.create({
+        data: {
+          ticketId,
+          tenantId: req.tenantId,
+          action: "Attachment Renamed",
+          performedById: req.user!.id,
+          details: { oldFileName, newFileName, attachmentId },
+        },
+      });
+
+      res.status(200).json({
+        success: true,
+        data: updatedAttachment,
+        message: "Attachment renamed successfully",
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Rename attachment error:", error);
+
+      if (error instanceof NotFoundError) {
+        res.status(404).json({
+          success: false,
+          error: error.message,
+        } as ApiResponse);
+        return;
+      }
+
+      res.status(500).json({
+        success: false,
+        error: "Failed to rename attachment",
       } as ApiResponse);
     }
   }
@@ -2949,7 +3236,7 @@ export class TicketController {
         } as ApiResponse);
         return;
       }
-
+ // Calculate detailed progress
       // Calculate detailed progress
       const totalStories = epic.stories.length;
       const completedStories = epic.stories.filter(

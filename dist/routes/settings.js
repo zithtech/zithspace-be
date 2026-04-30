@@ -106,6 +106,13 @@ router.get('/dropdown-options/:type', (0, permission_1.requirePermission)(permis
  */
 router.post('/dropdown-options', (0, permission_1.requirePermission)(permissions_1.Permissions.SETTINGS_UPDATE), settingsController_1.SettingsController.createDropdownOption);
 /**
+ * @route   PUT /api/settings/dropdown-options/reorder
+ * @desc    Reorder dropdown options (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @body    { items: [{ id, order }] }
+ */
+router.put('/dropdown-options/reorder', (0, permission_1.requirePermission)(permissions_1.Permissions.SETTINGS_UPDATE), settingsController_1.SettingsController.reorderDropdownOptions);
+/**
  * @route   PUT /api/settings/dropdown-options/:id
  * @desc    Update an existing dropdown option (tenant-aware)
  * @access  Private (authenticated users within tenant)
@@ -120,12 +127,5 @@ router.put('/dropdown-options/:id', (0, permission_1.requirePermission)(permissi
  * @param   id - Dropdown option ID
  */
 router.delete('/dropdown-options/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.SETTINGS_UPDATE), settingsController_1.SettingsController.deleteDropdownOption);
-/**
- * @route   PUT /api/settings/dropdown-options/reorder
- * @desc    Reorder dropdown options (tenant-aware)
- * @access  Private (authenticated users within tenant)
- * @body    { items: [{ id, order }] }
- */
-router.put('/dropdown-options/reorder', (0, permission_1.requirePermission)(permissions_1.Permissions.SETTINGS_UPDATE), settingsController_1.SettingsController.reorderDropdownOptions);
 exports.default = router;
 //# sourceMappingURL=settings.js.map

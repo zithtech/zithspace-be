@@ -12,6 +12,7 @@ const r2Client_1 = require("@/utils/r2Client");
 const htmlSanitizer_1 = require("@/utils/htmlSanitizer");
 const socketService_1 = require("@/services/socketService");
 const cacheService_1 = __importDefault(require("@/utils/cacheService"));
+const aiTicketService_1 = require("@/services/aiTicketService");
 class TicketController {
     /**
      * Upload image to R2 for ticket description
@@ -68,11 +69,13 @@ class TicketController {
                         select: {
                             name: true,
                             position: true,
+                            avatarUrl: true,
                         },
                     },
                     createdBy: {
                         select: {
                             name: true,
+                            avatarUrl: true,
                         },
                     },
                     comments: {
@@ -81,6 +84,7 @@ class TicketController {
                                 select: {
                                     name: true,
                                     position: true,
+                                    avatarUrl: true,
                                 },
                             },
                         },
@@ -91,6 +95,7 @@ class TicketController {
                             addedBy: {
                                 select: {
                                     name: true,
+                                    avatarUrl: true,
                                 },
                             },
                         },
@@ -113,6 +118,7 @@ class TicketController {
                             performedBy: {
                                 select: {
                                     name: true,
+                                    avatarUrl: true,
                                 },
                             },
                         },
@@ -384,13 +390,13 @@ class TicketController {
                 },
                 include: {
                     createdBy: {
-                        select: { id: true, name: true, workEmail: true, position: true },
+                        select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
                     },
                     assignee: {
-                        select: { id: true, name: true, workEmail: true, position: true },
+                        select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
                     },
                     reportTo: {
-                        select: { id: true, name: true, workEmail: true, position: true },
+                        select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
                     },
                     project: {
                         select: { id: true, name: true, code: true, description: true },
@@ -439,6 +445,87 @@ class TicketController {
         }
     }
     /**
+     * Generate a structured ticket draft from a free-form description using AI.
+     * Does not persist anything — the client previews and edits, then calls POST /api/tickets.
+     */
+    static async aiGenerateTicket(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { description, title } = req.body;
+            const seed = [title, description].filter(Boolean).join("\n\n").trim();
+            if (!seed || seed.length < 5) {
+                res.status(400).json({
+                    success: false,
+                    error: "Description is required (min 5 characters)",
+                });
+                return;
+            }
+            if (seed.length > 8000) {
+                res.status(400).json({
+                    success: false,
+                    error: "Description is too long (max 8000 characters)",
+                });
+                return;
+            }
+            const { draft, source, fallbackReason } = await (0, aiTicketService_1.generateTicketDraft)(seed);
+            res.status(200).json({
+                success: true,
+                data: { ...draft, source, fallbackReason },
+                message: "Ticket draft generated",
+            });
+        }
+        catch (error) {
+            console.error("AI generate ticket error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to generate ticket draft",
+            });
+        }
+    }
+    /**
+     * Regenerate just the subtasks for a Zai-drafted ticket, with caller-specified
+     * shape (count + hours-each). Doesn't persist anything.
+     */
+    static async aiGenerateSubtasks(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { description, count, hoursEach } = req.body;
+            const seed = String(description || "").trim();
+            if (!seed || seed.length < 5) {
+                res.status(400).json({
+                    success: false,
+                    error: "Description is required (min 5 characters)",
+                });
+                return;
+            }
+            const result = await (0, aiTicketService_1.generateSubtasks)({ description: seed, count, hoursEach });
+            res.status(200).json({
+                success: true,
+                data: result,
+                message: "Subtasks generated",
+            });
+        }
+        catch (error) {
+            console.error("AI generate subtasks error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to generate subtasks",
+            });
+        }
+    }
+    /**
      * Get tickets optimized for Kanban view (tenant-aware)
      * Returns tickets grouped by status with metadata
      */
@@ -451,7 +538,7 @@ class TicketController {
                 });
                 return;
             }
-            const { projectId, assigneeId, priority, search, limitPerColumn = 50, includeArchived = false, } = req.query;
+            const { projectId, assigneeId, priority, type, search, limitPerColumn = 50, includeArchived = false, } = req.query;
             // Build base filter
             const baseWhere = {
                 tenantId: req.tenantId,
@@ -462,8 +549,22 @@ class TicketController {
             };
             if (projectId)
                 baseWhere.projectId = projectId;
-            if (priority)
-                baseWhere.priority = priority;
+            if (priority) {
+                if (typeof priority === "string" && priority.includes(",")) {
+                    baseWhere.priority = { in: priority.split(",").map((p) => p.trim()) };
+                }
+                else {
+                    baseWhere.priority = priority;
+                }
+            }
+            if (type) {
+                if (typeof type === "string" && type.includes(",")) {
+                    baseWhere.type = { in: type.split(",").map((t) => t.trim()) };
+                }
+                else {
+                    baseWhere.type = type;
+                }
+            }
             if (assigneeId) {
                 if (typeof assigneeId === "string" && assigneeId.includes(",")) {
                     baseWhere.assigneeId = { in: assigneeId.split(",").map((id) => id.trim()) };
@@ -476,6 +577,7 @@ class TicketController {
                 baseWhere.OR = [
                     { title: { contains: search, mode: "insensitive" } },
                     { ticketNumber: { contains: search, mode: "insensitive" } },
+                    { project: { code: { contains: search, mode: "insensitive" } } },
                 ];
             }
             // Handle releasePlanId, sprintId, demoId filtering
@@ -544,7 +646,8 @@ class TicketController {
                                 select: {
                                     id: true,
                                     name: true,
-                                    workEmail: true
+                                    workEmail: true,
+                                    avatarUrl: true
                                 }
                             },
                             project: {
@@ -605,7 +708,7 @@ class TicketController {
                 });
                 return;
             }
-            const { page = 1, limit = 20, status, priority, projectId, assigneeId, createdById, search, sortBy = "createdAt", sortOrder = "desc", startDate, endDate, includeArchived = false, archivedOnly = false, } = req.query;
+            const { page = 1, limit = 20, status, priority, type, projectId, assigneeId, createdById, search, sortBy = "createdAt", sortOrder = "desc", startDate, endDate, includeArchived = false, archivedOnly = false, } = req.query;
             // Build base filter
             const baseWhere = {
                 tenantId: req.tenantId,
@@ -615,10 +718,30 @@ class TicketController {
                 bucketId: null, // Exclude tickets in buckets (they should only show in bucket view)
             };
             const where = { ...baseWhere };
-            if (status)
-                where.status = status;
-            if (priority)
-                where.priority = priority;
+            if (status) {
+                if (typeof status === "string" && status.includes(",")) {
+                    where.status = { in: status.split(",").map((s) => s.trim()) };
+                }
+                else {
+                    where.status = status;
+                }
+            }
+            if (priority) {
+                if (typeof priority === "string" && priority.includes(",")) {
+                    where.priority = { in: priority.split(",").map((p) => p.trim()) };
+                }
+                else {
+                    where.priority = priority;
+                }
+            }
+            if (type) {
+                if (typeof type === "string" && type.includes(",")) {
+                    where.type = { in: type.split(",").map((t) => t.trim()) };
+                }
+                else {
+                    where.type = type;
+                }
+            }
             if (projectId)
                 where.projectId = projectId;
             // Handle single or multiple assignees
@@ -641,6 +764,7 @@ class TicketController {
                     { title: { contains: search, mode: "insensitive" } },
                     { description: { contains: search, mode: "insensitive" } },
                     { ticketNumber: { contains: search, mode: "insensitive" } },
+                    { project: { code: { contains: search, mode: "insensitive" } } },
                 ];
             }
             // Handle releasePlanId, sprintId, demoId filtering
@@ -709,10 +833,10 @@ class TicketController {
                         updatedAt: true,
                         // Exclude large fields: description (can be fetched in detail view)
                         createdBy: {
-                            select: { id: true, name: true, workEmail: true },
+                            select: { id: true, name: true, workEmail: true, avatarUrl: true },
                         },
                         assignee: {
-                            select: { id: true, name: true, workEmail: true },
+                            select: { id: true, name: true, workEmail: true, avatarUrl: true },
                         },
                         project: {
                             select: { id: true, name: true, code: true },
@@ -761,9 +885,11 @@ class TicketController {
                 return;
             }
             const { id } = req.params;
-            // Check cache first
+            // Check cache first — only honor cache entries that contain the new
+            // sprint/release/bucket linkage fields. Older cached payloads are missing
+            // them and would make the drawer mis-detect sprint membership.
             const cached = await cacheService_1.default.getTicket(id, req.tenantId);
-            if (cached) {
+            if (cached && 'sprintPlanId' in cached) {
                 res.status(200).json({
                     success: true,
                     data: cached,
@@ -799,17 +925,22 @@ class TicketController {
                     metadata: true,
                     parentTickets: true,
                     parentId: true, // IMPORTANT: Include parentId for subtask navigation
+                    sprintPlanId: true, // Required so the detail drawer knows sprint membership
+                    releasePlanId: true, // Required for release-plan linkage in detail drawer
+                    demoPlanId: true, // Required for demo-plan linkage in detail drawer
+                    bucketId: true, // Required for bucket linkage in detail drawer
+                    isArchived: true,
                     createdAt: true,
                     updatedAt: true,
                     // Optimized relations - only essential fields
                     createdBy: {
-                        select: { id: true, name: true, workEmail: true },
+                        select: { id: true, name: true, workEmail: true, avatarUrl: true },
                     },
                     assignee: {
-                        select: { id: true, name: true, workEmail: true },
+                        select: { id: true, name: true, workEmail: true, avatarUrl: true },
                     },
                     reportTo: {
-                        select: { id: true, name: true, workEmail: true },
+                        select: { id: true, name: true, workEmail: true, avatarUrl: true },
                     },
                     project: {
                         select: { id: true, name: true, code: true, description: true },
@@ -824,7 +955,7 @@ class TicketController {
                             status: true,
                             priority: true,
                             assignee: {
-                                select: { id: true, name: true, workEmail: true }
+                                select: { id: true, name: true, workEmail: true, avatarUrl: true }
                             },
                             type: true
                         },
@@ -903,10 +1034,16 @@ class TicketController {
             }
             // Handle releasePlan / sprint assignment smart mapping
             if (updates.releasePlan !== undefined || updates.sprintPlan !== undefined) {
-                const planId = updates.releasePlan || updates.sprintPlan;
+                // FIX: Use explicit check to allow 'null' to pass through correctly
+                const planId = updates.releasePlan !== undefined ? updates.releasePlan : updates.sprintPlan;
                 if (planId === null || planId === 'null' || planId === '') {
                     mappedUpdates.sprintPlanId = null;
                     mappedUpdates.releasePlanId = null;
+                    mappedUpdates.demoPlanId = null;
+                    mappedUpdates.bucketId = null;
+                    mappedUpdates.isArchived = false;
+                    mappedUpdates.archivedAt = null;
+                    mappedUpdates.archivedById = null;
                 }
                 else if (typeof planId === 'string') {
                     try {
@@ -1044,9 +1181,9 @@ class TicketController {
                     createdAt: true,
                     updatedAt: true,
                     // Relations
-                    createdBy: { select: { id: true, name: true, workEmail: true } },
-                    assignee: { select: { id: true, name: true, workEmail: true } },
-                    reportTo: { select: { id: true, name: true, workEmail: true } },
+                    createdBy: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
+                    assignee: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
+                    reportTo: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
                     project: { select: { id: true, name: true, code: true } },
                 },
             });
@@ -1151,10 +1288,35 @@ class TicketController {
             if (!ticket) {
                 throw new types_1.NotFoundError("Ticket not found in this tenant");
             }
-            await database_1.prisma.ticket.delete({
+            // Move to trash (soft delete)
+            await database_1.prisma.ticket.update({
                 where: { id },
+                data: {
+                    isDeleted: true,
+                    deletedAt: new Date(),
+                    deletedById: req.user.id,
+                    updatedAt: new Date(),
+                },
             });
-            socketService_1.socketService.emitToTenant(req.tenantId, "ticket:deleted", { id });
+            // Log activity
+            try {
+                await database_1.prisma.ticketActivityLog.create({
+                    data: {
+                        ticketId: id,
+                        tenantId: req.tenantId,
+                        action: "Ticket Moved to Trash",
+                        performedById: req.user.id,
+                        details: {
+                            ticketNumber: ticket.ticketNumber,
+                            title: ticket.title,
+                        },
+                    },
+                });
+            }
+            catch (logError) {
+                console.error("Failed to log ticket deletion activity:", logError);
+            }
+            socketService_1.socketService.emitToTenant(req.tenantId, "ticket:deleted", { id, isSoftDelete: true });
             const invalidationPromises = [
                 cacheService_1.default.invalidateTicket(id, req.tenantId)
             ];
@@ -1209,7 +1371,8 @@ class TicketController {
                 await database_1.prisma.ticket.findMany({
                     where,
                     include: {
-                        createdBy: { select: { name: true, workEmail: true } },
+                        createdBy: { select: { name: true, workEmail: true, avatarUrl: true } },
+                        assignee: { select: { name: true, workEmail: true, avatarUrl: true } },
                         project: { select: { name: true, code: true } },
                     },
                     orderBy: { createdAt: "desc" },
@@ -1543,6 +1706,7 @@ class TicketController {
                             name: true,
                             workEmail: true,
                             position: true,
+                            avatarUrl: true,
                         },
                     },
                 },
@@ -1616,6 +1780,7 @@ class TicketController {
                             name: true,
                             workEmail: true,
                             position: true,
+                            avatarUrl: true,
                         },
                     },
                 },
@@ -2163,6 +2328,7 @@ class TicketController {
                             name: true,
                             workEmail: true,
                             position: true,
+                            avatarUrl: true,
                         },
                     },
                 },
@@ -2272,6 +2438,99 @@ class TicketController {
             res.status(500).json({
                 success: false,
                 error: error.message || "Failed to upload attachment",
+            });
+        }
+    }
+    /**
+     * Rename ticket attachment (tenant-aware)
+     */
+    static async renameAttachment(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { ticketId, attachmentId } = req.params;
+            const { newFileName } = req.body;
+            if (!newFileName) {
+                res.status(400).json({
+                    success: false,
+                    error: "New file name is required",
+                });
+                return;
+            }
+            // Verify ticket exists and belongs to tenant
+            const ticket = await database_1.prisma.ticket.findFirst({
+                where: {
+                    id: ticketId,
+                    tenantId: req.tenantId,
+                    isDeleted: false,
+                },
+            });
+            if (!ticket) {
+                throw new types_1.NotFoundError("Ticket not found");
+            }
+            // Verify attachment exists and belongs to this ticket and tenant
+            const attachment = await database_1.prisma.ticketAttachment.findFirst({
+                where: {
+                    id: attachmentId,
+                    ticketId: ticketId,
+                    tenantId: req.tenantId,
+                },
+            });
+            if (!attachment) {
+                throw new types_1.NotFoundError("Attachment not found");
+            }
+            const oldFileName = attachment.fileName;
+            // Update attachment record
+            const updatedAttachment = await database_1.prisma.ticketAttachment.update({
+                where: { id: attachmentId },
+                data: {
+                    fileName: newFileName,
+                    updatedAt: new Date(),
+                },
+                include: {
+                    uploadedBy: {
+                        select: {
+                            id: true,
+                            name: true,
+                            workEmail: true,
+                            position: true,
+                        },
+                    },
+                },
+            });
+            // Log activity
+            await database_1.prisma.ticketActivityLog.create({
+                data: {
+                    ticketId,
+                    tenantId: req.tenantId,
+                    action: "Attachment Renamed",
+                    performedById: req.user.id,
+                    details: { oldFileName, newFileName, attachmentId },
+                },
+            });
+            res.status(200).json({
+                success: true,
+                data: updatedAttachment,
+                message: "Attachment renamed successfully",
+            });
+        }
+        catch (error) {
+            console.error("Rename attachment error:", error);
+            if (error instanceof types_1.NotFoundError) {
+                res.status(404).json({
+                    success: false,
+                    error: error.message,
+                });
+                return;
+            }
+            res.status(500).json({
+                success: false,
+                error: "Failed to rename attachment",
             });
         }
     }
@@ -2580,6 +2839,7 @@ class TicketController {
                 });
                 return;
             }
+            // Calculate detailed progress
             // Calculate detailed progress
             const totalStories = epic.stories.length;
             const completedStories = epic.stories.filter((s) => s.status === "completed").length;

@@ -14,19 +14,32 @@ export class EmployeeExitController {
         return;
       }
 
-      const { employeeId, resignationDate, proposedLastWorkingDay } = req.body;
+      console.log("[EmployeeExitController] Creating exit request with body:", req.body);
 
-      if (!employeeId || !resignationDate || !proposedLastWorkingDay) {
-        res.status(400).json({ success: false, error: "Missing required fields" } as ApiResponse);
+      // Handle employeeId if it's sent as an object {value, label} or a string
+      const rawEmployeeId = req.body.employeeId;
+      const inputEmployeeId = typeof rawEmployeeId === 'object' && rawEmployeeId !== null 
+        ? rawEmployeeId.value 
+        : rawEmployeeId;
+
+      const { resignationDate, proposedLastWorkingDay } = req.body;
+
+      if (!inputEmployeeId || !resignationDate || !proposedLastWorkingDay) {
+        console.warn("[EmployeeExitController] Missing required fields:", { inputEmployeeId, resignationDate, proposedLastWorkingDay });
+        res.status(400).json({ success: false, error: "Required fields are missing" } as ApiResponse);
         return;
       }
 
-      const exitRequest = await employeeExitService.createExitRequest(tenantId, req.body, userId);
+      // Update body with sanitized ID
+      const sanitizedBody = { ...req.body, employeeId: inputEmployeeId };
+
+      const exitRequest = await employeeExitService.createExitRequest(tenantId, sanitizedBody, userId);
+      console.log("[EmployeeExitController] Exit request created successfully:", exitRequest.id);
 
       TenantLogger.info("Employee exit request created successfully", {
         tenantId,
         userId,
-        metadata: { employeeId }
+        metadata: { employeeId: inputEmployeeId }
       });
 
       res.status(201).json({

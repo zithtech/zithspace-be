@@ -10,6 +10,7 @@ import {
   ChangePasswordData,
 } from "@/types";
 import bcrypt from "bcryptjs";
+import { uploadImageToR2 } from "@/utils/r2Client";
 
 export class UserController {
   /**
@@ -72,6 +73,7 @@ export class UserController {
             personalEmail: true,
             phone: true,
             role: true,
+            avatarUrl: true,
             position: { select: { id: true, title: true } },
             isActive: true,
             lastLoginAt: true,
@@ -143,6 +145,7 @@ export class UserController {
           personalEmail: true,
           phone: true,
           role: true,
+          avatarUrl: true,
           position: { select: { id: true, title: true } },
           reportsToId: true,
           dateOfBirth: true,
@@ -292,6 +295,7 @@ export class UserController {
           role: true,
           position: { select: { id: true, title: true } },
           isActive: true,
+          avatarUrl: true,
           createdAt: true,
           reportsTo: {
             select: {
@@ -440,6 +444,7 @@ export class UserController {
           position: { select: { id: true, title: true } },
           workDays: true,
           isActive: true,
+          avatarUrl: true,
           updatedAt: true,
           assignedShift: {
             select: {
@@ -646,6 +651,7 @@ export class UserController {
           personalEmail: true,
           phone: true,
           role: true,
+          avatarUrl: true,
           position: { select: { id: true, title: true } },
           dateOfBirth: true,
           workDays: true,
@@ -721,6 +727,21 @@ export class UserController {
         updateData.dateOfBirth = new Date(updateData.dateOfBirth);
       if (updateData.personalEmail)
         updateData.personalEmail = updateData.personalEmail.toLowerCase();
+      
+      // Handle avatar upload if provided as base64
+      if (updateData.avatarUrl && updateData.avatarUrl.startsWith('data:image')) {
+        try {
+          const uploadedUrl = await uploadImageToR2(updateData.avatarUrl, req.tenantId);
+          updateData.avatarUrl = uploadedUrl;
+        } catch (error: any) {
+          console.error("Avatar upload error:", error);
+          res.status(400).json({
+            success: false,
+            error: "Failed to upload avatar: " + error.message,
+          } as ApiResponse);
+          return;
+        }
+      }
 
       const updatedUser = await prisma.user.update({
         where: { id: userId },
@@ -734,6 +755,7 @@ export class UserController {
           workEmail: true,
           personalEmail: true,
           phone: true,
+          avatarUrl: true,
           position: { select: { id: true, title: true } },
           dateOfBirth: true,
           workDays: true,
@@ -973,20 +995,24 @@ export class UserController {
         where,
         select: {
           id: true,
+          employeeId: true,
           name: true,
           workEmail: true,
           position: { select: { id: true, title: true } },
           role: true,
+          avatarUrl: true,
         },
         orderBy: { name: "asc" },
       });
 
       const formattedMembers = members.map((member) => ({
         value: member.id,
+        employeeId: member.employeeId,
         label: member.name,
         email: member.workEmail,
         position: member.position?.title,
         role: member.role,
+        avatarUrl: member.avatarUrl,
       }));
 
       res.status(200).json({

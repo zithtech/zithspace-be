@@ -18,6 +18,16 @@ export declare class TicketController {
      */
     static createTicket(req: AuthRequest, res: Response): Promise<void>;
     /**
+     * Generate a structured ticket draft from a free-form description using AI.
+     * Does not persist anything — the client previews and edits, then calls POST /api/tickets.
+     */
+    static aiGenerateTicket(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Regenerate just the subtasks for a Zai-drafted ticket, with caller-specified
+     * shape (count + hours-each). Doesn't persist anything.
+     */
+    static aiGenerateSubtasks(req: AuthRequest, res: Response): Promise<void>;
+    /**
      * Get tickets optimized for Kanban view (tenant-aware)
      * Returns tickets grouped by status with metadata
      */
@@ -99,6 +109,10 @@ export declare class TicketController {
      * Upload attachment to ticket (tenant-aware)
      */
     static uploadAttachment(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Rename ticket attachment (tenant-aware)
+     */
+    static renameAttachment(req: AuthRequest, res: Response): Promise<void>;
     /**
      * Get attachments for a ticket (tenant-aware)
      */

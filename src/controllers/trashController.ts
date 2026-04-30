@@ -74,7 +74,7 @@ export class TrashController {
             type: true,
             deletedAt: true,
             deletedBy: {
-              select: { id: true, name: true, workEmail: true },
+              select: { id: true, name: true, workEmail: true, avatarUrl: true },
             },
             project: {
               select: { id: true, name: true, code: true },

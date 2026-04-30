@@ -3,6 +3,13 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+const dotenv_1 = __importDefault(require("dotenv"));
+const path_1 = __importDefault(require("path"));
+// Load backend-local .env first (highest priority), then fall back to parent
+// monorepo .env so a single root file works for both apps. dotenv.config()
+// won't override variables that are already set, so order = priority.
+dotenv_1.default.config();
+dotenv_1.default.config({ path: path_1.default.resolve(__dirname, "../../.env") });
 if (process.env.NODE_ENV !== "development") {
     require("module-alias/register");
 }
@@ -11,7 +18,6 @@ const cors_1 = __importDefault(require("cors"));
 const morgan_1 = __importDefault(require("morgan"));
 const compression_1 = __importDefault(require("compression"));
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
-const dotenv_1 = __importDefault(require("dotenv"));
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const express_session_1 = __importDefault(require("express-session"));
 // Import configurations
@@ -45,6 +51,7 @@ const customerRoutes_1 = __importDefault(require("@/routes/customerRoutes"));
 const invoiceSettingsRoutes_1 = __importDefault(require("@/routes/invoiceSettingsRoutes"));
 const invoice_1 = __importDefault(require("@/routes/invoice"));
 const invoiceTemplate_1 = __importDefault(require("@/routes/invoiceTemplate"));
+const categoryRoutes_1 = __importDefault(require("@/routes/categoryRoutes"));
 const buckets_1 = __importDefault(require("@/routes/buckets"));
 const trash_1 = __importDefault(require("@/routes/trash"));
 const sprintCompletion_1 = __importDefault(require("@/routes/sprintCompletion"));
@@ -55,6 +62,10 @@ const messages_1 = __importDefault(require("@/routes/messages"));
 const shortcut_routes_1 = __importDefault(require("@/routes/shortcut.routes"));
 const employeeWorkDetailes_1 = __importDefault(require("@/routes/employeeWorkDetailes"));
 const employeeTimeline_1 = __importDefault(require("@/routes/employeeTimeline"));
+const skillExperience_routes_1 = __importDefault(require("@/routes/skillExperience.routes"));
+const escalationCategoryV2_routes_1 = __importDefault(require("@/routes/escalationCategoryV2.routes"));
+const escalationStatus_RoutesV2_1 = __importDefault(require("@/routes/escalationStatus.RoutesV2"));
+const escalationPriorities_Routes_1 = __importDefault(require("@/routes/escalationPriorities.Routes"));
 // main
 const onboardingRoutes_1 = __importDefault(require("@/routes/onboardingRoutes"));
 const auth_2 = __importDefault(require("@/routes/auth"));
@@ -105,6 +116,14 @@ const RabbitMQService_1 = require("@/utils/RabbitMQService");
 const CalendarSyncWorker_1 = require("@/workers/CalendarSyncWorker");
 const MailSyncWorker_1 = require("@/workers/MailSyncWorker");
 const MailController_1 = require("@/controllers/MailController");
+const lead_routes_1 = __importDefault(require("@/routes/lead.routes"));
+const leadSettings_routes_1 = __importDefault(require("@/routes/leadSettings.routes"));
+const generate_routes_1 = __importDefault(require("@/routes/generate.routes"));
+// import escalationSettingsRoutes from "./routes/escalationSettingsRoutes";
+// import escalationRoutes from "./routes/escalationRoutes";
+const escalationRoutesV2_1 = __importDefault(require("./routes/escalationRoutesV2"));
+const proposals_1 = __importDefault(require("@/routes/proposals"));
+const projectOverviewRoutes_1 = __importDefault(require("./routes/projectOverviewRoutes"));
 // Load environment
 dotenv_1.default.config();
 console.log("🚀 API Starting up...");
@@ -121,6 +140,7 @@ const allowedOrigins = [
     "https://zithmi.zithspace.com",
     /\.zithspace\.com$/,
     /\.zithtech\.com$/, // allow any subdomain like dinesh.zithtech.com
+    /^chrome-extension:\/\/[a-z]{32}$/, // Allow Chrome extensions
 ];
 app.use((0, cors_1.default)({
     origin: (origin, callback) => {
@@ -194,6 +214,7 @@ app.get("/api/direct-test", (req, res) => {
 app.get("/api/debug-ping-unique", (req, res) => res.json({ success: true, message: "Debug route is active" }));
 app.use("/api", proxyRoutes_1.default);
 app.use("/api/auth", auth_1.default);
+app.use("/api/generate", generate_routes_1.default);
 app.use("/api/projects", projects_1.default);
 app.use("/api/tenants", tenants_1.default);
 app.use("/api/calendar", calendar_1.default);
@@ -210,8 +231,8 @@ app.use("/api/shifts", shifts_1.default);
 app.use("/api/transactions", transactions_1.default);
 app.use("/api/release-plans", releasePlans_1.default);
 app.use("/api/settings", settings_1.default);
-app.use("/api/escalation-settings", escalationSettingsRoutes_1.default);
-app.use("/api/escalations", escalationRoutes_1.default);
+//app.use("/api/escalation-settings", escalationSettingsRoutes);
+// app.use("/api/escalations", escalationRoutes);
 app.use("/api/user", user_1.default);
 app.use("/api/daily-updates", dailyUpdates_1.default);
 app.use("/api/dashboard", dashboard_1.default);
@@ -223,7 +244,9 @@ app.use("/api/leave-types", leaveTypeRoutes_1.default);
 app.use("/api/customers", customerRoutes_1.default);
 app.use("/api/invoicesetting", invoiceSettingsRoutes_1.default);
 app.use("/api/invoices", invoice_1.default);
+app.use("/api/proposals", proposals_1.default);
 app.use("/api/invoice-templates", invoiceTemplate_1.default);
+app.use("/api/categories", categoryRoutes_1.default);
 //app.use("/api/invoice",invoicedownload)
 app.use("/api/buckets", buckets_1.default);
 app.use("/api/trash", trash_1.default);
@@ -237,6 +260,9 @@ app.use("/api/grades", gradeRoutes_1.default);
 app.use("/api/payroll", payroll_1.default);
 app.use("/api/company-locations", companyLocationRoutes_1.default);
 app.use("/api/opening-management", openingManagementRoutes_1.default);
+app.use("/api/leads", lead_routes_1.default);
+app.use("/api/lead-settings", leadSettings_routes_1.default);
+app.use("/api", skillExperience_routes_1.default);
 app.use("/api/departments", departmentRoutes_1.default);
 app.use("/api/sub-departments", subDepartmentRoutes_1.default);
 app.use("/api/positions", positionRoutes_1.default);
@@ -252,7 +278,13 @@ app.use("/api/mail", mail_1.default);
 app.use("/api/leave-allocation", leaveAllocationRoutes_1.default);
 app.use("/api/leave-request", leaveRequestRoutes_1.default);
 app.use("/api/leave-balances", leaveBalanceRoutes_1.default);
+//Escalation
+app.use("/api/escalation-categories", escalationCategoryV2_routes_1.default);
+app.use("/api/escalation-statuses", escalationStatus_RoutesV2_1.default);
+app.use("/api/escalation-priorities", escalationPriorities_Routes_1.default);
+app.use("/api/escalations-v2", escalationRoutesV2_1.default);
 app.use("/api/time-tracking", timeTracking_1.default);
+app.use("/api/projects", projectOverviewRoutes_1.default);
 app.use("/api/candidates", candidateRoutes_1.default);
 app.use("/api/recruitment-statuses", recruitmentStatus_routes_1.default);
 app.use("/api/recruitment-actions", recruitmentAction_routes_1.default);
@@ -412,6 +444,15 @@ const startServer = async () => {
             // In a SaaS environment, we log and continue, 
             // as the app might still handle HTTP requests while MQ recovers.
         }
+        // Initialize Tables
+        const { BidIQModel } = require("./models/BidIQ.model");
+        await BidIQModel.initTable();
+        // Connect RabbitMQ
+        // await connectRabbitMQ();
+        // console.log("RabbitMQ connected");
+        // Start workers
+        // const { startWorker } = require("@/workers/leaveAllocationWorker");
+        // await startWorker();
         const PORT = parseInt(process.env.PORT || "5000");
         server = app.listen(PORT, () => {
             // console.log(`Zithmi Backend running on port ${PORT}`);

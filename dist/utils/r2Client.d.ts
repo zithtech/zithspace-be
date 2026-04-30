@@ -108,3 +108,12 @@ export declare function cleanupOrphanedImages(oldHtml: string, newHtml: string, 
  * @param expiresIn - Expiration time in seconds (default 24 hours)
  */
 export declare function generatePresignedUrl(fileUrl: string, expiresIn?: number): Promise<string>;
+/**
+ * Upload Escalation document to Cloudflare R2
+ * @param base64File - Base64 encoded file string
+ * @param fileName - Original file name
+ * @param tenantId - Tenant ID
+ * @param escalationId - Temporary or generated escalation ID
+ * @returns Public URL of uploaded document
+ */
+export declare function uploadEscalationDocumentToR2(base64File: string, fileName: string, tenantId: string, escalationId: string): Promise<string>;

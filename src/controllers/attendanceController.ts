@@ -32,6 +32,7 @@ export class AttendanceController {
         startDate,
         endDate,
         search, // Search by member name
+        projectId,
         sortBy = "date",
         sortOrder = "desc",
       } = req.query;
@@ -47,14 +48,24 @@ export class AttendanceController {
 
       if (status) where.status = status;
 
-      // Handle search by member name
-      if (search) {
-        where.user = {
-          name: {
+      // Handle search by member name and project filter
+      if (search || projectId) {
+        where.user = {};
+        
+        if (search) {
+          where.user.name = {
             contains: search as string,
             mode: "insensitive",
-          },
-        };
+          };
+        }
+        
+        if (projectId) {
+          where.user.projectMemberships = {
+            some: {
+              projectId: projectId as string,
+            },
+          };
+        }
       }
 
       if (date) {
@@ -93,6 +104,7 @@ export class AttendanceController {
                   name: true,
                   workEmail: true,
                   position: true,
+                  avatarUrl: true,
                 },
               },
             },
@@ -168,6 +180,7 @@ export class AttendanceController {
                   name: true,
                   workEmail: true,
                   position: true,
+                  avatarUrl: true,
                 },
               },
             },
@@ -278,6 +291,7 @@ export class AttendanceController {
                   name: true,
                   workEmail: true,
                   position: true,
+                  avatarUrl: true,
                 },
               },
             },
@@ -299,6 +313,7 @@ export class AttendanceController {
                   name: true,
                   workEmail: true,
                   position: true,
+                  avatarUrl: true,
                 },
               },
             },
@@ -397,7 +412,7 @@ export class AttendanceController {
           },
           include: {
             user: {
-              select: { id: true, name: true, workEmail: true, position: true },
+              select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
             },
           },
         });
@@ -630,6 +645,7 @@ export class AttendanceController {
                   name: true,
                   workEmail: true,
                   position: true,
+                  avatarUrl: true,
                 },
               },
               shift: true,
@@ -653,6 +669,7 @@ export class AttendanceController {
               id: record.user.id,
               name: record.user.name,
               position: record.user.position,
+              avatarUrl: record.user.avatarUrl,
               status: record.status.toLowerCase(),
               clockInTime: record.clockIn,
               clockOutTime: record.clockOut,
@@ -833,10 +850,36 @@ export class AttendanceController {
           },
           include: {
             user: {
-              select: { id: true, name: true, workEmail: true, position: true },
+              select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
             },
           },
         });
+
+        // Recalculate work minutes if clock-in or clock-out changed
+        if (updateData.clockIn || updateData.clockOut) {
+          const finalClockIn = updateData.clockIn || attendanceRecord.clockIn;
+          const finalClockOut = updateData.clockOut || attendanceRecord.clockOut;
+
+          if (finalClockIn && finalClockOut) {
+            const totalWorkMinutes = Math.floor(
+              (new Date(finalClockOut).getTime() - new Date(finalClockIn).getTime()) / 60000
+            );
+            const effectiveWorkMinutes = totalWorkMinutes - (attendanceRecord.totalBreakMinutes || 0);
+
+            // Update with calculated minutes
+            await client.attendance.update({
+              where: { id: attendanceRecord.id },
+              data: {
+                totalWorkMinutes,
+                effectiveWorkMinutes,
+              }
+            });
+
+            // Update the record in memory for response
+            attendanceRecord.totalWorkMinutes = totalWorkMinutes;
+            attendanceRecord.effectiveWorkMinutes = effectiveWorkMinutes;
+          }
+        }
 
         // Transform data to use 'member' instead of 'user'
         const attendance = {
@@ -865,6 +908,52 @@ export class AttendanceController {
       res.status(500).json({
         success: false,
         error: "Failed to update attendance record",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Delete attendance record (tenant-aware)
+   */
+  static async deleteAttendance(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { id } = req.params;
+
+      await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+        // Check if attendance record exists and belongs to tenant
+        const record = await client.attendance.findFirst({
+          where: {
+            id,
+            tenantId: req.tenantId,
+          },
+        });
+
+        if (!record) {
+          throw new NotFoundError("Attendance record not found in this tenant");
+        }
+
+        await client.attendance.delete({
+          where: { id },
+        });
+
+        res.status(200).json({
+          success: true,
+          message: "Attendance record deleted successfully",
+        } as ApiResponse);
+      });
+    } catch (error: any) {
+      console.error("Delete attendance error:", error);
+      res.status(error instanceof NotFoundError ? 404 : 500).json({
+        success: false,
+        error: error.message || "Failed to delete attendance record",
       } as ApiResponse);
     }
   }
@@ -1034,7 +1123,7 @@ export class AttendanceController {
           },
           include: {
             user: {
-              select: { id: true, name: true, workEmail: true, position: true },
+              select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
             },
           },
         });

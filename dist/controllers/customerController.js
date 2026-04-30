@@ -1,8 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CustomerController = void 0;
-const database_1 = require("@/config/database");
-const types_1 = require("@/types");
+const types_1 = require("../types");
+const customer_model_1 = require("../models/customer.model");
 class CustomerController {
     /**
      * Get all customers (tenant-aware, with pagination and search)
@@ -16,25 +16,8 @@ class CustomerController {
                 });
                 return;
             }
-            const { page = 1, limit = 20, search } = req.query;
-            const where = { tenantId: req.tenantId };
-            if (search) {
-                where.OR = [
-                    { companyName: { contains: search, mode: "insensitive" } },
-                    { email: { contains: search, mode: "insensitive" } },
-                    { phone: { contains: search, mode: "insensitive" } },
-                ];
-            }
-            const skip = (Number(page) - 1) * Number(limit);
-            const [customers, total] = await Promise.all([
-                database_1.prisma.customer.findMany({
-                    where,
-                    skip,
-                    take: Number(limit),
-                    orderBy: { createdAt: "desc" },
-                }),
-                database_1.prisma.customer.count({ where }),
-            ]);
+            const { page = 1, limit = 20, search, isActive } = req.query;
+            const { customers, total } = await customer_model_1.CustomerModel.getCustomers(req.tenantId, Number(page), Number(limit), search, isActive !== undefined ? isActive === "true" : undefined);
             res.status(200).json({
                 success: true,
                 data: customers,
@@ -62,9 +45,7 @@ class CustomerController {
     static async getCustomerById(req, res) {
         try {
             const { id } = req.params;
-            const customer = await database_1.prisma.customer.findFirst({
-                where: { id, tenantId: req.tenantId },
-            });
+            const customer = await customer_model_1.CustomerModel.getCustomerById(req.tenantId, id);
             if (!customer) {
                 res
                     .status(404)
@@ -105,28 +86,11 @@ class CustomerController {
             // 2. SANITIZE EMAIL: Convert empty strings or whitespace-only strings to undefined.
             // This is the key fix to prevent unique constraint errors on empty strings.
             const sanitizedEmail = customerData.email?.trim() || undefined;
-            // 3. Check email uniqueness only if a valid email string exists
-            if (sanitizedEmail) {
-                const existing = await database_1.prisma.customer.findFirst({
-                    where: {
-                        tenantId: req.tenantId,
-                        email: sanitizedEmail,
-                    },
-                });
-                if (existing) {
-                    throw new types_1.ValidationError("Customer with this email already exists in this tenant");
-                }
-            }
-            // 4. Create the customer
-            const newCustomer = await database_1.prisma.customer.create({
-                data: {
-                    ...customerData,
-                    email: sanitizedEmail, // Use the sanitized value here
-                    tenantId: req.tenantId,
-                    createdBy: req.user.id,
-                    updatedBy: req.user.id,
-                },
-            });
+            // 3. Create the customer (model handles uniqueness check)
+            const newCustomer = await customer_model_1.CustomerModel.createCustomer(req.tenantId, {
+                ...customerData,
+                email: sanitizedEmail, // Use the sanitized value here
+            }, req.user.id);
             res.status(201).json({
                 success: true,
                 data: newCustomer,
@@ -135,18 +99,18 @@ class CustomerController {
         }
         catch (error) {
             console.error("Create customer error:", error);
-            // Handle Prisma Unique Constraint Errors (P2002)
-            if (error.code === 'P2002') {
-                res.status(400).json({
-                    success: false,
-                    error: "A customer with this email already exists in this tenant.",
-                });
-                return;
-            }
             if (error instanceof types_1.ValidationError) {
                 res.status(400).json({
                     success: false,
                     error: error.message
+                });
+                return;
+            }
+            // Handle unique constraint errors from raw queries
+            if (error.message && error.message.includes('already exists')) {
+                res.status(400).json({
+                    success: false,
+                    error: error.message,
                 });
                 return;
             }
@@ -174,60 +138,8 @@ class CustomerController {
             delete updates.tenantId;
             delete updates.createdAt;
             delete updates.createdBy;
-            // Fetch existing customer
-            const existingCustomer = await database_1.prisma.customer.findFirst({
-                where: { id, tenantId: req.tenantId },
-            });
-            if (!existingCustomer) {
-                throw new types_1.NotFoundError("Customer not found in this tenant");
-            }
-            // Normalize updates: convert empty strings to null, ignore undefined
-            const normalizedUpdates = {};
-            Object.entries(updates).forEach(([key, value]) => {
-                if (value === "") {
-                    normalizedUpdates[key] = null;
-                }
-                else if (value !== undefined) {
-                    normalizedUpdates[key] = value;
-                }
-            });
-            // Company name uniqueness check
-            if (normalizedUpdates.companyName &&
-                normalizedUpdates.companyName !== existingCustomer.companyName) {
-                const existingCompany = await database_1.prisma.customer.findFirst({
-                    where: {
-                        tenantId: req.tenantId,
-                        companyName: normalizedUpdates.companyName,
-                        NOT: { id },
-                    },
-                });
-                if (existingCompany) {
-                    throw new types_1.ValidationError("Another customer with this company name already exists");
-                }
-            }
-            // Email uniqueness check
-            if (normalizedUpdates.email &&
-                normalizedUpdates.email !== existingCustomer.email) {
-                const duplicateEmail = await database_1.prisma.customer.findFirst({
-                    where: {
-                        tenantId: req.tenantId,
-                        email: normalizedUpdates.email,
-                        NOT: { id },
-                    },
-                });
-                if (duplicateEmail) {
-                    throw new types_1.ValidationError("Another customer with this email already exists");
-                }
-            }
-            // Update the customer
-            const updatedCustomer = await database_1.prisma.customer.update({
-                where: { id },
-                data: {
-                    ...normalizedUpdates,
-                    updatedBy: req.user.id,
-                    updatedAt: new Date(),
-                },
-            });
+            // Update the customer (model handles all validation and uniqueness checks)
+            const updatedCustomer = await customer_model_1.CustomerModel.updateCustomer(req.tenantId, id, updates, req.user.id);
             res.status(200).json({
                 success: true,
                 data: updatedCustomer,
@@ -244,6 +156,14 @@ class CustomerController {
                 res.status(400).json({ success: false, error: error.message });
                 return;
             }
+            // Handle unique constraint errors from raw queries
+            if (error.message && error.message.includes('already exists')) {
+                res.status(400).json({
+                    success: false,
+                    error: error.message,
+                });
+                return;
+            }
             res.status(500).json({
                 success: false,
                 error: "Failed to update customer",
@@ -256,17 +176,7 @@ class CustomerController {
     static async deleteCustomer(req, res) {
         try {
             const { id } = req.params;
-            const existing = await database_1.prisma.customer.findFirst({
-                where: { id, tenantId: req.tenantId },
-            });
-            if (!existing) {
-                res
-                    .status(404)
-                    .json({ success: false, error: "Customer not found" });
-                return;
-            }
-            // Soft delete is optional; for now, we do a hard delete:
-            await database_1.prisma.customer.delete({ where: { id } });
+            await customer_model_1.CustomerModel.deleteCustomer(req.tenantId, id);
             res.status(200).json({
                 success: true,
                 message: "Customer deleted successfully",
@@ -274,6 +184,13 @@ class CustomerController {
         }
         catch (error) {
             console.error("Delete customer error:", error);
+            if (error.message && error.message.includes('not found')) {
+                res.status(404).json({
+                    success: false,
+                    error: "Customer not found",
+                });
+                return;
+            }
             res.status(500).json({
                 success: false,
                 error: "Failed to delete customer",
@@ -285,11 +202,7 @@ class CustomerController {
      */
     static async getCustomersForSelect(req, res) {
         try {
-            const customers = await database_1.prisma.customer.findMany({
-                where: { tenantId: req.tenantId },
-                select: { id: true, companyName: true, email: true },
-                orderBy: { companyName: "asc" },
-            });
+            const customers = await customer_model_1.CustomerModel.getCustomersForSelect(req.tenantId);
             const formatted = customers.map((c) => ({
                 value: c.id,
                 label: c.companyName,

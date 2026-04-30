@@ -13,7 +13,9 @@ export declare class DocumentHubController {
     static getDocumentHistory(req: AuthRequest, res: Response): Promise<void>;
     static getAllDocumentHubs(req: AuthRequest, res: Response): Promise<void>;
     static deleteDocumentHub(req: AuthRequest, res: Response): Promise<void>;
+    static updateDocumentHub(req: AuthRequest, res: Response): Promise<void>;
     static deleteTreeNode(req: AuthRequest, res: Response): Promise<void>;
+    private static deleteNodeRecursive;
     /**
      * Delete individual document (soft delete)
      */
@@ -31,6 +33,11 @@ export declare class DocumentHubController {
      */
     static restoreDocument(req: AuthRequest, res: Response): Promise<void>;
     /**
+     * Restore tree node (folder/section)
+     */
+    static restoreTreeNode(req: AuthRequest, res: Response): Promise<void>;
+    private static restoreNodeRecursive;
+    /**
      * Share document (update visibility and share token)
      */
     static shareDocument(req: AuthRequest, res: Response): Promise<void>;
@@ -42,4 +49,20 @@ export declare class DocumentHubController {
      * Get public document by share token
      */
     static getPublicDocument(req: any, res: Response): Promise<void>;
+    /**
+     * Share entire document hub
+     */
+    static shareDocumentHub(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Revoke document hub sharing
+     */
+    static revokeHubShare(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get public document hub by share token
+     */
+    static getPublicDocumentHub(req: any, res: Response): Promise<void>;
+    /**
+     * Get content of a document within a public hub
+     */
+    static getPublicHubDocumentContent(req: any, res: Response): Promise<void>;
 }
