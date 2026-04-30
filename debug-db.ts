@@ -1,4 +1,4 @@
-import pool from './src/config/dbPool';
+import pool from './src/config/dbpool';
 
 async function checkTable() {
   try {
