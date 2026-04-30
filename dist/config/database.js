@@ -19,7 +19,6 @@ if (process.env.NODE_ENV !== 'production') {
 }
 /**
  * Tenant-aware Prisma client that sets tenant context for RLS
- * OPTIMIZED: Reduces redundant context setting
  */
 class TenantAwarePrisma {
     constructor() {
@@ -42,6 +41,7 @@ class TenantAwarePrisma {
             this.currentTenantId = tenantId;
         }
         catch (error) {
+            console.error('Failed to set tenant context:', error);
             console.error('Failed to set tenant context:', error);
             throw error;
         }
