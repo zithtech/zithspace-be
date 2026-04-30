@@ -55,6 +55,8 @@ class EmailService {
   }
 
   private initializeTransporter() {
+
+    
     const emailConfig = {
       host: process.env.SMTP_HOST || "smtp.gmail.com",
       port: parseInt(process.env.SMTP_PORT || "587"),
