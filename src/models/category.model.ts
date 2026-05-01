@@ -36,8 +36,7 @@ export interface UpdateCategoryData {
  * Create a new expense category
  */
 export async function createCategory(data: CreateCategoryData): Promise<Category> {
-  const { v4: uuidv4 } = require('uuid');
-  const id = uuidv4();
+  const id = require('crypto').randomUUID();
   const now = new Date();
 
   const query = `

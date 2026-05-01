@@ -174,8 +174,7 @@ function mapRowToInvoice(row: any): Invoice {
  * Create a new invoice
  */
 export async function createInvoice(data: CreateInvoiceData): Promise<Invoice> {
-  const { v4: uuidv4 } = require('uuid');
-  const id = uuidv4();
+  const id = require('crypto').randomUUID();
   
   const query = `
     INSERT INTO invoices (

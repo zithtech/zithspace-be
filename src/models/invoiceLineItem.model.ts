@@ -354,7 +354,6 @@ export async function getInvoiceLineItemsSummary(invoiceId: string, tenantId: st
 export async function createMultipleInvoiceLineItems(
   items: CreateInvoiceLineItemData[]
 ): Promise<InvoiceLineItem[]> {
-  const { v4: uuidv4 } = require('uuid');
   const client = await pool.connect();
   
   try {
@@ -363,7 +362,7 @@ export async function createMultipleInvoiceLineItems(
     const createdItems: InvoiceLineItem[] = [];
     
     for (const item of items) {
-      const id = uuidv4();
+      const id = require('crypto').randomUUID();
       const query = `
         INSERT INTO invoice_line_items (
           id, tenant_id, invoice_id, item_name, description, quantity, rate, tax_rate,

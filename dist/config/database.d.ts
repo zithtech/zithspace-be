@@ -5,7 +5,6 @@ declare global {
 export declare const prisma: PrismaClient<import(".prisma/client").Prisma.PrismaClientOptions, never, import("@prisma/client/runtime/library").DefaultArgs>;
 /**
  * Tenant-aware Prisma client that sets tenant context for RLS
- * OPTIMIZED: Reduces redundant context setting
  */
 export declare class TenantAwarePrisma {
     private client;
