@@ -876,6 +876,13 @@ export class BucketController {
         },
       });
 
+      // Emit socket event
+      socketService.emitToTenant(req.tenantId, "bucket:tickets_assigned", {
+        bucketId: id,
+        ticketIds,
+        count: result.count
+      });
+
       res.status(200).json({
         success: true,
         data: { assignedCount: result.count },
@@ -937,6 +944,13 @@ export class BucketController {
           bucketId: null,
           updatedAt: new Date(),
         },
+      });
+
+      // Emit socket event
+      socketService.emitToTenant(req.tenantId, "bucket:tickets_unassigned", {
+        bucketId: id,
+        ticketIds,
+        count: result.count
       });
 
       res.status(200).json({
@@ -1013,6 +1027,13 @@ export class BucketController {
         },
       });
 
+      // Emit socket event
+      socketService.emitToTenant(req.tenantId, "bucket:moved_to_sprint", {
+        bucketId: id,
+        sprintId,
+        count: result.count
+      });
+
       res.status(200).json({
         success: true,
         data: { movedCount: result.count },
@@ -1074,6 +1095,12 @@ export class BucketController {
           demoPlanId: null,
           updatedAt: new Date(),
         },
+      });
+
+      // Emit socket event
+      socketService.emitToTenant(req.tenantId, "bucket:moved_to_backlog", {
+        bucketId: id,
+        count: result.count
       });
 
       res.status(200).json({

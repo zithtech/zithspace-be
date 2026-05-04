@@ -11,6 +11,7 @@ import {
 } from "@/types";
 import { RBACService } from '@/modules/rbac/rbac.service';
 import { Permissions } from '@/types/permissions';
+import { socketService } from '@/services/socketService';
 
 export class ProjectController {
   /**
@@ -345,6 +346,9 @@ export class ProjectController {
         },
       });
 
+      // Emit socket event
+      socketService.emitToTenant(req.tenantId, "project:created", project);
+
       res.status(201).json({
         success: true,
         data: project,
@@ -514,6 +518,9 @@ export class ProjectController {
         },
       });
 
+      // Emit socket event
+      socketService.emitToTenant(req.tenantId, "project:updated", project);
+
       res.status(200).json({
         success: true,
         data: project,
@@ -589,6 +596,9 @@ export class ProjectController {
       await prisma.project.delete({
         where: { id },
       });
+
+      // Emit socket event
+      socketService.emitToTenant(req.tenantId, "project:deleted", { id });
 
       res.status(200).json({
         success: true,

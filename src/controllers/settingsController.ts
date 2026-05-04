@@ -6,6 +6,7 @@ import {
   NotFoundError,
   ValidationError
 } from '@/types';
+import { socketService } from '@/services/socketService';
 
 // Simple in-memory cache for ticket configurations
 const configCache = new Map<string, { data: any; timestamp: number }>();
@@ -571,6 +572,9 @@ export class SettingsController {
         },
         message: 'Workflow template updated successfully'
       } as ApiResponse);
+
+      // Emit real-time signal
+      socketService.emitToTenant(req.tenantId!, 'settings:ticket_config_updated', { action: 'workflow_updated', projectId });
     } catch (error: any) {
       console.error('Update workflow template error:', error);
 
@@ -845,6 +849,9 @@ export class SettingsController {
         data: updatedTenant,
         message: 'Tenant settings updated successfully'
       } as ApiResponse);
+
+      // Emit real-time signal
+      socketService.emitToTenant(req.tenantId!, 'settings:tenant_updated', updatedTenant);
     } catch (error) {
       console.error('Update tenant settings error:', error);
       res.status(500).json({
@@ -1234,6 +1241,9 @@ export class SettingsController {
         },
         message: 'Dropdown option created successfully'
       } as ApiResponse);
+
+      // Emit real-time signal
+      socketService.emitToTenant(req.tenantId!, 'settings:ticket_config_updated', { type: newOption.category, action: 'created' });
     } catch (error: any) {
       console.error('Create dropdown option error:', error);
 
@@ -1322,6 +1332,9 @@ export class SettingsController {
       },
       message: 'Dropdown option updated successfully'
     } as ApiResponse);
+
+    // Emit real-time signal
+    socketService.emitToTenant(req.tenantId!, 'settings:ticket_config_updated', { type: updatedOption.category, action: 'updated' });
   } catch (error: any) {
     console.error('Update dropdown option error:', error);
 
@@ -1378,6 +1391,9 @@ export class SettingsController {
         success: true,
         message: 'Dropdown option deleted successfully'
       } as ApiResponse);
+
+      // Emit real-time signal
+      socketService.emitToTenant(req.tenantId!, 'settings:ticket_config_updated', { type: existingOption.category, action: 'deleted' });
     } catch (error: any) {
       console.error('Delete dropdown option error:', error);
 
@@ -1438,6 +1454,9 @@ export class SettingsController {
         success: true,
         message: 'Dropdown options reordered successfully'
       } as ApiResponse);
+
+      // Emit real-time signal
+      socketService.emitToTenant(req.tenantId!, 'settings:ticket_config_updated', { action: 'reordered' });
     } catch (error) {
       console.error('Reorder dropdown options error:', error);
       res.status(500).json({

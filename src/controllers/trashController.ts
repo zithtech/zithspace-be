@@ -499,6 +499,12 @@ export class TrashController {
         cacheService.invalidateTicket(ticket.id, req.tenantId)
       );
       await Promise.allSettled(cachePromises);
+      
+      // Emit socket event for trash emptied
+      socketService.emitToTenant(req.tenantId, "trash:emptied", {
+        projectId,
+        count: tickets.length
+      });
 
       res.status(200).json({
         success: true,

@@ -329,6 +329,9 @@ export class DocumentHubController {
         },
       });
 
+      // Emit socket event
+      socketService.emitToTenant(req.tenantId, "documenthub:tree_updated", { documentHubId, action: 'node_created' });
+
       res.status(201).json({
         success: true,
         data: newNode,
@@ -385,6 +388,9 @@ export class DocumentHubController {
         where: { id },
         data: { title },
       });
+
+      // Emit socket event
+      socketService.emitToTenant(req.tenantId, "documenthub:tree_updated", { documentHubId: updatedNode.documentHubId, action: 'node_updated' });
 
       // If it's a file and has a documentId, update the document title too
       if (node.type === "file" && node.documentId) {
@@ -507,6 +513,9 @@ export class DocumentHubController {
           updatedAt: new Date(),
         },
       });
+
+      // Emit socket event
+      socketService.emitToTenant(req.tenantId, "document:updated", { id, documentHubId: updatedDocument.documentHubId });
 
       // Create history entry
       if (content !== undefined) {
@@ -901,6 +910,9 @@ export class DocumentHubController {
         success: true,
         message: "Node and its contents moved to trash",
       } as ApiResponse);
+
+      // Emit socket event
+      socketService.emitToTenant(req.tenantId, "documenthub:tree_updated", { documentHubId: node.documentHubId, action: 'node_deleted' });
     } catch (error: any) {
       console.error("Delete tree node error:", error);
       res.status(500).json({
@@ -1040,6 +1052,9 @@ export class DocumentHubController {
         success: true,
         message: "Document moved to trash",
       } as ApiResponse);
+
+      // Emit socket event
+      socketService.emitToTenant(req.tenantId, "documenthub:tree_updated", { documentHubId: document.documentHubId, action: 'document_deleted' });
     } catch (error: any) {
       console.error("Delete document error:", error);
       res.status(500).json({
@@ -1189,6 +1204,9 @@ export class DocumentHubController {
         success: true,
         message: "Document Hub restored successfully",
       } as ApiResponse);
+
+      // Emit socket event
+      socketService.emitToTenant(req.tenantId, "documenthub:restored", { id });
     } catch (error: any) {
       console.error("Restore document hub error:", error);
       res.status(500).json({
@@ -1259,6 +1277,9 @@ export class DocumentHubController {
         success: true,
         message: "Document restored successfully",
       } as ApiResponse);
+
+      // Emit socket event
+      socketService.emitToTenant(req.tenantId, "documenthub:tree_updated", { documentHubId: document.documentHubId, action: 'document_restored' });
     } catch (error: any) {
       console.error("Restore document error:", error);
       res.status(500).json({
@@ -1327,6 +1348,9 @@ export class DocumentHubController {
         success: true,
         message: "Folder and its contents restored successfully",
       } as ApiResponse);
+
+      // Emit socket event
+      socketService.emitToTenant(req.tenantId, "documenthub:tree_updated", { documentHubId, action: 'node_restored' });
     } catch (error: any) {
       console.error("Restore tree node error:", error);
       res.status(500).json({
@@ -1472,6 +1496,9 @@ export class DocumentHubController {
         data: updatedDocument,
         message: `Document visibility updated to ${visibility}`,
       } as ApiResponse);
+
+      // Emit socket event
+      socketService.emitToTenant(req.tenantId, "document:updated", { id, documentHubId: updatedDocument.documentHubId, visibility });
     } catch (error: any) {
       console.error("Share document error:", error);
       res.status(500).json({
@@ -1668,6 +1695,9 @@ export class DocumentHubController {
         success: true,
         data: updatedHub,
       } as ApiResponse);
+
+      // Emit socket event
+      socketService.emitToTenant(req.tenantId, "documenthub:updated", { id, visibility });
     } catch (error: any) {
       console.error("Share document hub error:", error);
       res.status(500).json({
@@ -1732,6 +1762,9 @@ export class DocumentHubController {
         success: true,
         message: "Hub sharing revoked",
       } as ApiResponse);
+
+      // Emit socket event
+      socketService.emitToTenant(req.tenantId, "documenthub:updated", { id, visibility: 'private' });
     } catch (error: any) {
       console.error("Revoke hub share error:", error);
       res.status(500).json({

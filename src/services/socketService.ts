@@ -42,16 +42,16 @@ export class SocketService {
       }
 
       try {
-        const decoded = jwt.verify(
-          token,
-          process.env.JWT_SECRET || "your-secret-key"
-        ) as AuthTokenPayload;
+        // Use central JWT utility for consistency
+        const { JWTUtils } = require("../utils/jwt");
+        const decoded = JWTUtils.verifyAccessToken(token);
         
         // Attach user info to socket
         (socket as any).user = decoded;
         next();
-      } catch (err) {
-        next(new Error("Authentication error: Invalid token"));
+      } catch (err: any) {
+        console.error("Socket Auth Error:", err.message);
+        next(new Error(`Authentication error: ${err.message}`));
       }
     });
 

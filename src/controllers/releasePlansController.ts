@@ -6,6 +6,7 @@ import {
   NotFoundError,
   ValidationError,
 } from "@/types";
+import { socketService } from "@/services/socketService";
 
 export class ReleasePlansController {
   /**
@@ -307,6 +308,9 @@ export class ReleasePlansController {
         });
       }
 
+      // Emit socket event
+      socketService.emitToTenant(req.tenantId, "plan:created", newReleasePlan);
+
       res.status(201).json({
         success: true,
         data: newReleasePlan,
@@ -405,6 +409,9 @@ export class ReleasePlansController {
         where: { id },
       });
 
+      // Emit socket event
+      socketService.emitToTenant(req.tenantId, "plan:updated", updatedPlan);
+
       res.status(200).json({
         success: true,
         data: updatedPlan,
@@ -481,6 +488,9 @@ export class ReleasePlansController {
       await prisma.releasePlan.delete({
         where: { id },
       });
+
+      // Emit socket event
+      socketService.emitToTenant(req.tenantId, "plan:deleted", { id });
 
       res.status(200).json({
         success: true,
@@ -571,6 +581,9 @@ export class ReleasePlansController {
           updatedAt: new Date(),
         },
       });
+
+      // Emit socket event
+      socketService.emitToTenant(req.tenantId, "sprint:started", updatedSprint);
 
       res.status(200).json({
         success: true,
@@ -697,6 +710,9 @@ export class ReleasePlansController {
       const updatedSprint = await prisma.releasePlan.findUnique({
         where: { id },
       });
+
+      // Emit socket event
+      socketService.emitToTenant(req.tenantId, "sprint:completed", updatedSprint);
 
       res.status(200).json({
         success: true,
