@@ -42,6 +42,11 @@ export declare class TicketController {
      */
     static getTicketById(req: AuthRequest, res: Response): Promise<void>;
     /**
+     * Get distinct tags used across all tickets in the tenant.
+     * Uses raw SQL via pg pool to UNNEST the text[] tags column.
+     */
+    static getAllTags(req: AuthRequest, res: Response): Promise<void>;
+    /**
      * Update ticket (tenant-aware)
      */
     static updateTicket(req: AuthRequest, res: Response): Promise<void>;

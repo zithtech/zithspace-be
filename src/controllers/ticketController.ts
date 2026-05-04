@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import fs from "fs";
 import path from "path";
 import { prisma } from "@/config/database";
+import pool from "@/config/dbpool";
 import {
   AuthRequest,
   ApiResponse,
@@ -723,7 +724,7 @@ export class TicketController {
         }
       }
 
-      const statuses = ['not_started', 'in_progress', 'dev_complete', 'in_testing', 'in_review', 'completed', 'live'];
+      const statuses = ['not_started', 'in_progress', 'dev_complete', 'dev_testing', 'in_review', 'live', 'live_testing', 'completed', 'pause'];
       const limit = Number(limitPerColumn);
 
       // Fetch tickets for each status in parallel
@@ -885,6 +886,15 @@ export class TicketController {
       }
 
       if (createdById) where.createdById = createdById;
+
+      // Filter by tags (comma-separated). Match tickets that have ANY of the given tags.
+      const { tags: tagsParam } = req.query;
+      if (tagsParam && typeof tagsParam === 'string' && tagsParam.trim()) {
+        const tagList = tagsParam.split(',').map(t => t.trim()).filter(Boolean);
+        if (tagList.length > 0) {
+          where.tags = { hasSome: tagList };
+        }
+      }
 
       if (search) {
         where.OR = [
@@ -1126,6 +1136,46 @@ export class TicketController {
   }
 
   /**
+   * Get distinct tags used across all tickets in the tenant.
+   * Uses raw SQL via pg pool to UNNEST the text[] tags column.
+   */
+  static async getAllTags(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context required",
+        } as ApiResponse);
+        return;
+      }
+
+      const sql = `
+        SELECT DISTINCT btrim(tag) AS tag
+        FROM tickets t, UNNEST(t.tags) AS tag
+        WHERE t.tenant_id = $1
+          AND COALESCE(t.is_deleted, false) = false
+          AND tag IS NOT NULL
+          AND btrim(tag) <> ''
+        ORDER BY tag ASC;
+      `;
+
+      const result = await pool.query(sql, [req.tenantId]);
+      const tags = result.rows.map((r: { tag: string }) => r.tag);
+
+      res.status(200).json({
+        success: true,
+        data: tags,
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Get all tags error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to fetch tags",
+      } as ApiResponse);
+    }
+  }
+
+  /**
    * Update ticket (tenant-aware)
    */
   static async updateTicket(req: AuthRequest, res: Response): Promise<void> {
@@ -1345,6 +1395,7 @@ export class TicketController {
           sprintPlanId: true,  // CRITICAL: Include sprint assignment
           releasePlanId: true,
           demoPlanId: true,
+          tags: true,
           createdAt: true,
           updatedAt: true,
           // Relations
