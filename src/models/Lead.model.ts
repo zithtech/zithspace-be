@@ -127,7 +127,7 @@ export class LeadModel {
         WHERE tenant_id = $1 
         ORDER BY lead_id, created_at DESC
       ) p ON l.id = p.lead_id
-      WHERE l.tenant_id = $1 
+      WHERE l.tenant_id = $1 AND l.is_deleted = false
       ORDER BY l.created_at DESC;
     `;
     const result = await pool.query(query, [tenantId]);
@@ -140,7 +140,7 @@ export class LeadModel {
   static async findById(id: string, tenantId: string): Promise<any> {
     const query = `
       SELECT * FROM leads 
-      WHERE id = $1 AND tenant_id = $2;
+      WHERE id = $1 AND tenant_id = $2 AND is_deleted = false;
     `;
     const result = await pool.query(query, [id, tenantId]);
     return result.rows[0];
@@ -195,14 +195,99 @@ export class LeadModel {
   }
 
   /**
-   * Delete a lead
+   * Soft delete a lead
    */
   static async delete(id: string, tenantId: string): Promise<boolean> {
     const query = `
-      DELETE FROM leads 
+      UPDATE leads 
+      SET is_deleted = true, deleted_at = NOW()
       WHERE id = $1 AND tenant_id = $2;
     `;
     const result = await pool.query(query, [id, tenantId]);
     return (result.rowCount ?? 0) > 0;
+  }
+
+  /**
+   * Find all trashed leads for a specific tenant (only within last 7 days)
+   */
+  static async findAllDeleted(tenantId: string): Promise<any[]> {
+    const query = `
+      SELECT l.*, p.id as proposal_id
+      FROM leads l
+      LEFT JOIN (
+        SELECT DISTINCT ON (lead_id) id, lead_id 
+        FROM proposals 
+        WHERE tenant_id = $1 
+        ORDER BY lead_id, created_at DESC
+      ) p ON l.id = p.lead_id
+      WHERE l.tenant_id = $1 
+        AND l.is_deleted = true 
+        AND l.deleted_at >= NOW() - INTERVAL '7 days'
+      ORDER BY l.deleted_at DESC;
+    `;
+    const result = await pool.query(query, [tenantId]);
+    return result.rows;
+  }
+
+  /**
+   * Restore a trashed lead
+   */
+  static async restore(id: string, tenantId: string): Promise<boolean> {
+    const query = `
+      UPDATE leads 
+      SET is_deleted = false, deleted_at = NULL
+      WHERE id = $1 AND tenant_id = $2;
+    `;
+    const result = await pool.query(query, [id, tenantId]);
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  /**
+   * Permanently delete a lead
+   */
+  static async permanentDelete(id: string, tenantId: string): Promise<boolean> {
+    const query = `
+      DELETE FROM leads 
+      WHERE id = $1 AND tenant_id = $2 AND is_deleted = true;
+    `;
+    const result = await pool.query(query, [id, tenantId]);
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  /**
+   * Permanently delete all trashed leads for a specific tenant
+   */
+  static async emptyTrash(tenantId: string): Promise<number> {
+    const query = `
+      DELETE FROM leads 
+      WHERE tenant_id = $1 AND is_deleted = true;
+    `;
+    const result = await pool.query(query, [tenantId]);
+    return result.rowCount ?? 0;
+  }
+
+  /**
+   * Bulk restore leads from trash
+   */
+  static async bulkRestore(ids: string[], tenantId: string): Promise<number> {
+    const query = `
+      UPDATE leads 
+      SET is_deleted = false, deleted_at = NULL
+      WHERE id = ANY($1) AND tenant_id = $2;
+    `;
+    const result = await pool.query(query, [ids, tenantId]);
+    return result.rowCount ?? 0;
+  }
+
+  /**
+   * Bulk permanent delete leads
+   */
+  static async bulkPermanentDelete(ids: string[], tenantId: string): Promise<number> {
+    const query = `
+      DELETE FROM leads 
+      WHERE id = ANY($1) AND tenant_id = $2 AND is_deleted = true;
+    `;
+    const result = await pool.query(query, [ids, tenantId]);
+    return result.rowCount ?? 0;
   }
 }

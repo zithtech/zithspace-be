@@ -20,8 +20,14 @@ router.post('/', optionalAuth, LeadController.createLead);
 // Strictly protected routes
 router.use(authenticateToken);
 router.get('/', LeadController.getLeads);
+router.get('/trash', LeadController.getTrashLeads);
+router.delete('/trash/empty', LeadController.emptyTrash);
+router.post('/trash/bulk-restore', LeadController.bulkRestoreLeads);
+router.post('/trash/bulk-permanent-delete', LeadController.bulkPermanentlyDeleteLeads);
 router.get('/:id', LeadController.getLead);
 router.put('/:id', LeadController.updateLead);
+router.post('/:id/restore', LeadController.restoreLead);
+router.delete('/:id/permanent', LeadController.permanentlyDeleteLead);
 router.delete('/:id', LeadController.deleteLead);
 router.post('/:id/analyze', BidIQController.analyzeLead);
 router.post('/:id/onboard', LeadController.onboardLead);
