@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { LeadController } from '@/controllers/Lead.controller';
 import { BidIQController } from '@/controllers/BidIQ.controller';
 import { authenticateToken, optionalAuth } from '@/middleware/auth';
+import { requirePermission } from '@/middleware/permission';
+import { Permissions } from '@/types/permissions';
 import { resolveTenant, requireTenant } from '@/middleware/tenantContext';
 
 const router = Router();
@@ -19,11 +21,11 @@ router.post('/', optionalAuth, LeadController.createLead);
 
 // Strictly protected routes
 router.use(authenticateToken);
-router.get('/', LeadController.getLeads);
-router.get('/:id', LeadController.getLead);
-router.put('/:id', LeadController.updateLead);
-router.delete('/:id', LeadController.deleteLead);
-router.post('/:id/analyze', BidIQController.analyzeLead);
-router.post('/:id/onboard', LeadController.onboardLead);
+router.get('/', requirePermission(Permissions.LEAD_READ), LeadController.getLeads);
+router.get('/:id', requirePermission(Permissions.LEAD_READ), LeadController.getLead);
+router.put('/:id', requirePermission(Permissions.LEAD_UPDATE), LeadController.updateLead);
+router.delete('/:id', requirePermission(Permissions.LEAD_DELETE), LeadController.deleteLead);
+router.post('/:id/analyze', requirePermission(Permissions.LEAD_MANAGE), BidIQController.analyzeLead);
+router.post('/:id/onboard', requirePermission(Permissions.LEAD_MANAGE), LeadController.onboardLead);
 
 export default router;
