@@ -308,7 +308,7 @@ class BucketController {
                 });
                 return;
             }
-            const { name, description, color = "#6366f1", projectId = null, isShared = false, } = req.body;
+            const { name, description, color = "#6366f1", projectId = null, isShared = true, } = req.body;
             // Validate required fields
             if (!name || name.trim() === "") {
                 res.status(400).json({
@@ -875,6 +875,7 @@ class BucketController {
                     sprintPlanId: sprintId,
                     releasePlanId: null, // Clear release plan
                     demoPlanId: null, // Clear demo plan
+                    bucketId: null, // Clear bucket assignment so they show in main views
                     updatedAt: new Date(),
                 },
             });
@@ -930,6 +931,7 @@ class BucketController {
                     sprintPlanId: null,
                     releasePlanId: null,
                     demoPlanId: null,
+                    bucketId: null, // Clear bucket assignment so they show in main views
                     updatedAt: new Date(),
                 },
             });
