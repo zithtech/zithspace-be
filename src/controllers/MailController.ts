@@ -22,7 +22,8 @@ export class MailController {
 
             const account = await prisma.mail_accounts.findFirst({
                 where: { user_id: userId, tenant_id: tenantId, is_active: true },
-                select: { email: true, provider: true }
+                select: { email: true, provider: true },
+                orderBy: { updated_at: 'desc' }
             });
 
             if (!account) {
@@ -1069,7 +1070,7 @@ export class MailController {
                 });
             }
 
-            // Delete each account and its logs
+            // Hard disconnect: delete accounts and related data
             // Cascades handle threads, messages, attachments
             for (const acc of accounts) {
                 await prisma.mail_sync_logs.deleteMany({
@@ -1079,6 +1080,17 @@ export class MailController {
                     where: { id: acc.id }
                 });
             }
+            // Also clear shared tokens in CalendarIntegration if any
+            await prisma.calendarIntegration.updateMany({
+                where: {
+                    userId: userId,
+                    provider: providerUpper as any
+                },
+                data: {
+                    accessToken: "",
+                    refreshToken: null
+                }
+            });
 
             return res.json({
                 success: true,

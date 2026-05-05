@@ -69,7 +69,17 @@ export class UnifiedAuthService {
         // 1. Get user email for MailAccount identification
         const email = await this.getUserEmail(provider, authResult.accessToken);
 
-        // 2. Create/Update mail_accounts FIRST to get an ID (with NULL tokens)
+        // 2. Deactivate all other mail accounts for this user/tenant before connecting the new one
+        await prisma.mail_accounts.updateMany({
+            where: {
+                user_id: userId,
+                tenant_id: tenantId,
+                is_active: true
+            },
+            data: { is_active: false }
+        });
+
+        // 3. Create/Update mail_accounts (with NULL tokens)
         const mailAccount = await prisma.mail_accounts.upsert({
             where: {
                 provider_email_tenant_id: {

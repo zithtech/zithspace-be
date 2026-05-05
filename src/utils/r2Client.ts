@@ -45,9 +45,9 @@ export async function uploadImageToR2(
 ): Promise<string> {
   try {
     // Extract content type and base64 data
-    const matches = base64Image.match(/^data:(image\/\w+);base64,(.+)$/);
+    const matches = base64Image.match(/^data:(image\/\w+);base64,(.*)$/);
     if (!matches) {
-      throw new Error("Invalid image format. Expected base64 encoded image.");
+      throw new Error(`Invalid image format. Expected data URI. Received prefix: ${base64Image.substring(0, 30)}...`);
     }
 
     const contentType = matches[1];
@@ -129,9 +129,9 @@ export async function uploadFileToR2(
 ): Promise<{ fileUrl: string; fileSize: number; fileType: string }> {
   try {
     // Extract content type and base64 data
-    const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+    const matches = base64File.match(/^data:([^;]+);base64,(.*)$/);
     if (!matches) {
-      throw new Error("Invalid file format. Expected base64 encoded file.");
+      throw new Error(`Invalid file format. Expected data URI (data:mime/type;base64,data...). Received prefix: ${base64File.substring(0, 30)}...`);
     }
 
     const contentType = matches[1];
@@ -194,7 +194,7 @@ export async function uploadRequisitionAttachmentToR2(
   category: string,
 ): Promise<{ fileUrl: string; fileSize: number; fileType: string }> {
   try {
-    const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+    const matches = base64File.match(/^data:([^;]+);base64,(.*)$/);
     if (!matches) {
       throw new Error("Invalid file format. Expected base64 encoded file.");
     }
@@ -260,7 +260,7 @@ export async function uploadEmployeeDocumentToR2(
   documentType: string,
 ): Promise<string> {
   try {
-    const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+    const matches = base64File.match(/^data:([^;]+);base64,(.*)$/);
     if (!matches) {
       throw new Error("Invalid file format. Expected base64 encoded file.");
     }
@@ -310,7 +310,7 @@ export async function uploadClientDocumentToR2(
   documentType: string,
 ): Promise<string> {
   try {
-    const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+    const matches = base64File.match(/^data:([^;]+);base64,(.*)$/);
     if (!matches) {
       throw new Error("Invalid file format. Expected base64 encoded file.");
     }
@@ -374,7 +374,7 @@ export async function uploadEmployeeAssetToR2({
       return base64;
     }
 
-    const matches = base64.match(/^data:([^;]+);base64,(.+)$/);
+    const matches = base64.match(/^data:([^;]+);base64,(.*)$/);
     if (!matches) {
       throw new Error("Invalid file format. Expected base64 encoded file.");
     }
@@ -422,7 +422,7 @@ export async function uploadCandidateDocumentToR2(
   documentType: string,
 ): Promise<string> {
   try {
-    const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+    const matches = base64File.match(/^data:([^;]+);base64,(.*)$/);
     if (!matches) {
       throw new Error("Invalid file format. Expected base64 encoded file.");
     }
@@ -684,7 +684,7 @@ export async function uploadEscalationDocumentToR2(
   escalationId: string,
 ): Promise<string> {
   try {
-    const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+    const matches = base64File.match(/^data:([^;]+);base64,(.*)$/);
     if (!matches) {
       throw new Error("Invalid file format. Expected base64 encoded file.");
     }

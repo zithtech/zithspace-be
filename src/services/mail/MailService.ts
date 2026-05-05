@@ -1,11 +1,13 @@
+import axios from "axios";
 import { prisma } from "../../config/database";
+import pool from "../../config/dbpool";
 import { mail_accounts, mail_threads, mail_messages, mail_attachments, mail_provider } from "@prisma/client";
 import { IMailProvider, MailMessageData, MailThreadData } from "./IMailProvider";
 import { PrismaClient } from "@prisma/client";
 
 import { MailProviderFactory } from "./MailProviderFactory";
 import { UnifiedAuthService } from "../UnifiedAuthService";
-import { uploadFileToR2 } from "../../utils/r2Client";
+import { uploadFileToR2, getFileBufferFromR2 } from "../../utils/r2Client";
 import { syncLogger } from "../../utils/logger";
 
 /**
@@ -571,12 +573,43 @@ export class MailService {
             return;
         }
 
+        // Process attachments: download if url is provided but no content
+        if (mailData.attachments && mailData.attachments.length > 0) {
+            const processedAttachments = [];
+            for (const att of mailData.attachments) {
+                if (!att.content && att.url) {
+                    try {
+                        syncLogger.info(`[MailService] Downloading attachment for sending: ${att.filename}`);
+                        let buffer: Buffer;
+                        if (att.url.includes('r2.cloudflarestorage.com') || att.url.includes('pub-7f315f14b4bb4930bd64cae157207c92.r2.dev')) {
+                            buffer = await getFileBufferFromR2(att.url);
+                        } else {
+                            const response = await axios.get(att.url, { responseType: 'arraybuffer' });
+                            buffer = Buffer.from(response.data);
+                        }
+                        processedAttachments.push({
+                            ...att,
+                            content: buffer
+                        });
+                    } catch (err: any) {
+                        syncLogger.error(`[MailService] Failed to download attachment ${att.filename} from ${att.url}: ${err.message}`);
+                        // Still include the attachment info, maybe the provider can handle the URL or it will be empty
+                        processedAttachments.push(att);
+                    }
+                } else {
+                    processedAttachments.push(att);
+                }
+            }
+            mailData.attachments = processedAttachments;
+        }
+
         const hasAttachments = mailData.attachments && mailData.attachments.length > 0;
 
         // Store original bodies to avoid saving appended cards to our local DB
         const originalBodyHtml = mailData.body;
         const originalBodyText = mailData.bodyText;
 
+        /* 
         if (hasAttachments) {
             const { attachmentSection, attachmentHtml } = MailService.generateAttachmentSection(mailData.attachments);
             mailData.body = (mailData.body || "") + attachmentHtml;
@@ -584,6 +617,7 @@ export class MailService {
                 mailData.bodyText += attachmentSection;
             }
         }
+        */
 
         const sendResult = await provider.sendMessage(accessToken, mailData) as { messageId: string, threadId?: string };
 
@@ -603,6 +637,123 @@ export class MailService {
         } catch (syncErr: any) {
             syncLogger.warn(`[MailService] Post-send sync failed (non-fatal): ${syncErr.message}`);
         }
+    }
+
+    /**
+     * Send a verification email for an invoice mail setting
+     */
+    static async sendVerificationEmail(tenantId: string, email: string, token: string) {
+        // Find a valid account for this tenant to send the email from.
+        // We can use the same account that is being verified if it's already integrated.
+        const account = await prisma.mail_accounts.findFirst({
+            where: { tenant_id: tenantId, email, is_active: true }
+        });
+
+        if (!account) {
+            throw new Error(`Integrated account for ${email} not found`);
+        }
+
+        const accessToken = await UnifiedAuthService.getValidAccessToken(account.user_id, account.provider as any);
+        const provider = MailProviderFactory.getProvider(account.provider);
+
+        const verificationUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/verify-mail?token=${token}`;
+
+        const html = `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e1e1e1; border-radius: 8px;">
+                <div style="background-color: #1677ff; color: white; padding: 24px; text-align: center;">
+                    <h1 style="margin: 0; font-size: 20px;">Verify Your Invoice Mail</h1>
+                </div>
+                <div style="padding: 24px; color: #333;">
+                    <p>Hi,</p>
+                    <p>You have selected <strong>${email}</strong> as your default invoice sender on Zithspace.</p>
+                    <p>Please click the button below to verify this email address and start using it for sending invoices.</p>
+                    <div style="margin: 30px 0; text-align: center;">
+                        <a href="${verificationUrl}" style="background-color: #1677ff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold;">Verify Email Address</a>
+                    </div>
+                    <p style="font-size: 12px; color: #666;">This link will expire in 24 hours. If you did not request this, please ignore this email.</p>
+                </div>
+            </div>
+        `;
+
+        await provider.sendMessage(accessToken, {
+            to: [email],
+            subject: "Verify your Invoice Mail Setting",
+            body: html,
+            from: email
+        });
+
+        syncLogger.info(`[MailService] Verification email sent to ${email}`);
+    }
+
+    /**
+     * Send an invoice email using the verified default invoice mail
+     */
+    static async sendInvoiceViaIntegratedMail(tenantId: string, data: {
+        to: string[];
+        subject: string;
+        body: string;
+        htmlBody?: string;
+        attachments?: any[];
+    }) {
+        const query = `
+            SELECT * FROM mail_settings 
+            WHERE tenant_id = $1 AND is_verified = TRUE AND is_default_invoice_mail = TRUE AND deleted_at IS NULL
+        `;
+        const result = await pool.query(query, [tenantId]);
+        const settings = result.rows[0];
+
+        if (!settings) {
+            throw new Error("No verified default invoice mail found for this tenant");
+        }
+
+        // Find the mail_account for this settings
+        const account = await prisma.mail_accounts.findFirst({
+            where: { tenant_id: tenantId, email: settings.email, is_active: true }
+        });
+
+        if (!account) {
+            throw new Error(`Integrated account for ${settings.email} not found`);
+        }
+
+        const accessToken = await UnifiedAuthService.getValidAccessToken(account.user_id, account.provider as any);
+        const provider = MailProviderFactory.getProvider(account.provider);
+
+        // Process attachments: download if url is provided but no content
+        const processedAttachments = [];
+        if (data.attachments && data.attachments.length > 0) {
+            for (const att of data.attachments) {
+                if (!att.content && att.url) {
+                    try {
+                        let buffer: Buffer;
+                        if (att.url.includes('r2.cloudflarestorage.com') || att.url.includes('pub-7f315f14b4bb4930bd64cae157207c92.r2.dev')) {
+                            buffer = await getFileBufferFromR2(att.url);
+                        } else {
+                            const response = await axios.get(att.url, { responseType: 'arraybuffer' });
+                            buffer = Buffer.from(response.data);
+                        }
+                        processedAttachments.push({
+                            ...att,
+                            content: buffer
+                        });
+                    } catch (err: any) {
+                        console.error(`[MailService] Failed to download attachment ${att.filename} from ${att.url}: ${err.message}`);
+                        // Still add it, maybe the provider can handle it or it's just missing
+                        processedAttachments.push(att);
+                    }
+                } else {
+                    processedAttachments.push(att);
+                }
+            }
+        }
+
+        return await provider.sendMessage(accessToken, {
+            to: data.to,
+            subject: data.subject,
+            body: data.body,
+            htmlBody: data.htmlBody,
+            from: settings.email,
+            attachments: processedAttachments
+        });
     }
 
     /**
@@ -807,7 +958,7 @@ export class MailService {
 
             // Handle attachments for drafts
             if (draftData.attachments && draftData.attachments.length > 0) {
-                // Ensure draft message has premium card UI if not already present
+                /*
                 let hasCardUI = draftData.body?.includes('background-color: #1a1a1a');
                 if (!hasCardUI) {
                     const { attachmentHtml } = MailService.generateAttachmentSection(draftData.attachments);
@@ -816,6 +967,7 @@ export class MailService {
                         data: { body_html: (draftData.body || "") + attachmentHtml }
                     } as any);
                 }
+                */
 
                 for (const att of draftData.attachments) {
                     if (!att.url) continue;

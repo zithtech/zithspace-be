@@ -3,6 +3,7 @@ import { Router } from "express";
 import { authenticateToken, requireAuth } from "@/middleware/auth";
 import { resolveTenant } from "@/middleware/tenantContext";
 import { MailController } from "@/controllers/MailController";
+import { MailSettingsController } from "@/controllers/MailSettingsController";
 
 const router = Router();
 
@@ -84,5 +85,13 @@ router.post("/upload-attachment", MailController.uploadAttachment);
  * @desc Disconnect mail provider and clear data
  */
 router.post("/:provider/disconnect", MailController.disconnect);
+
+/**
+ * Invoice Mail Settings
+ */
+router.get("/invoice-settings", MailSettingsController.getSettings);
+router.post("/invoice-mail", MailSettingsController.setInvoiceMail);
+router.post("/verify", MailSettingsController.verifyMail);
+router.post("/resend-verification", MailSettingsController.resendVerification);
 
 export default router;

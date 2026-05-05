@@ -197,6 +197,14 @@ export class CalendarController {
                 },
             });
 
+            // WIPE ALL LOCAL EVENTS TO PREVENT CROSS-PROVIDER LEAKAGE OR ORPHANED DATA
+            await prisma.calendarEvent.deleteMany({
+                where: {
+                    userId: req.user.id,
+                    provider: provider.toUpperCase() as CalendarProvider,
+                }
+            });
+
             res.status(200).json({
                 success: true,
                 message: `${provider} disconnected successfully`,

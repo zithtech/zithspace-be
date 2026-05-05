@@ -173,7 +173,7 @@ export class GoogleMailProvider implements IMailProvider {
         const cc = mailData.cc?.filter(Boolean).join(", ") || "";
         const bcc = mailData.bcc?.filter(Boolean).join(", ") || "";
         const subject = mailData.subject || "";
-        const body = mailData.body || "";
+        const htmlBody = mailData.htmlBody || mailData.body || "";
         const attachments = mailData.attachments || [];
 
         const boundary = "__boundary_marker__" + Date.now().toString(16);
@@ -189,11 +189,11 @@ export class GoogleMailProvider implements IMailProvider {
         ].filter(line => line !== null).join("\r\n");
 
         if (attachments.length === 0) {
-            email += `\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n${Buffer.from(body).toString('base64')}`;
+            email += `\r\nContent-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n${Buffer.from(htmlBody).toString('base64')}`;
         } else {
             email += `\r\nContent-Type: multipart/mixed; boundary="${boundary}"\r\n\r\n`;
             email += `--${boundary}\r\n`;
-            email += `Content-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n${Buffer.from(body).toString('base64')}\r\n\r\n`;
+            email += `Content-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n${Buffer.from(htmlBody).toString('base64')}\r\n\r\n`;
 
             for (const att of attachments) {
                 if (att.content) {

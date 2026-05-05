@@ -1,4 +1,5 @@
 import axios from "axios";
+import FormData from "form-data";
 import { IMailProvider, MailThreadData, MailMessageData } from "../IMailProvider";
 
 export class ZohoMailProvider implements IMailProvider {
@@ -133,7 +134,7 @@ export class ZohoMailProvider implements IMailProvider {
                 });
 
                 return (response.data.data || []).map((msg: any) => ({
-                    id: msg.messageId,
+                    id: `${msg.messageId}|${msg.folderId || fId}`,
                     subject: this.decodeHtml(msg.subject) || "No Subject",
                     lastMessageAt: new Date(parseInt(msg.receivedTime)),
                     messageCount: 1,
@@ -359,49 +360,68 @@ export class ZohoMailProvider implements IMailProvider {
         }];
     }
 
-    private async uploadAttachmentToZoho(accessToken: string, accountId: string, attachment: any): Promise<string> {
-        const url = `${this.ZOHO_MAIL_API}/accounts/${accountId}/messages/attachments`;
+    private async uploadAttachmentToZoho(accessToken: string, accountId: string, attachment: any): Promise<{storeName: string, attachmentName: string, attachmentPath: string}> {
+        const url = `${this.ZOHO_MAIL_API}/accounts/${accountId}/messages/attachments?uploadType=multipart`;
         
-        const boundary = "----ZithspaceBoundary" + Date.now().toString(16);
-        const header = `--${boundary}\r\nContent-Disposition: form-data; name="attach"; filename="${attachment.filename}"\r\nContent-Type: ${attachment.contentType}\r\n\r\n`;
-        const footer = `\r\n--${boundary}--\r\n`;
+        const form = new FormData();
         
-        const payload = Buffer.concat([
-            Buffer.from(header),
-            attachment.content instanceof Buffer ? attachment.content : Buffer.from(attachment.content),
-            Buffer.from(footer)
-        ]);
-
-        const response = await axios.post(url, payload, {
-            headers: {
-                "Authorization": `Zoho-oauthtoken ${accessToken}`,
-                "Content-Type": `multipart/form-data; boundary=${boundary}`,
-                "Content-Length": payload.length
-            }
+        form.append('attach', attachment.content instanceof Buffer ? attachment.content : Buffer.from(attachment.content), {
+            filename: attachment.filename,
+            contentType: attachment.contentType
         });
 
-        console.log(`[ZohoMailProvider] Upload Response for ${attachment.filename}:`, JSON.stringify(response.data));
+        try {
+            const response = await axios.post(url, form, {
+                headers: {
+                    "Authorization": `Zoho-oauthtoken ${accessToken}`,
+                    ...form.getHeaders()
+                }
+            });
 
-        if (!response.data || !response.data.data || !response.data.data.attachmentId) {
-            console.error("[ZohoMailProvider] Invalid response from Zoho attachment upload:", JSON.stringify(response.data));
-            throw new Error(`Failed to upload attachment to Zoho: ${JSON.stringify(response.data)}`);
+            console.log(`[ZohoMailProvider] Upload Response for ${attachment.filename}:`, JSON.stringify(response.data));
+
+            if (!response.data || !response.data.data || !response.data.data[0]) {
+                console.error("[ZohoMailProvider] Invalid response from Zoho attachment upload:", JSON.stringify(response.data));
+                throw new Error(`Failed to upload attachment to Zoho: ${JSON.stringify(response.data)}`);
+            }
+
+            // Zoho returns storeName, attachmentName, and attachmentPath
+            const attachmentData = response.data.data[0];
+            
+            if (!attachmentData.storeName || !attachmentData.attachmentName || !attachmentData.attachmentPath) {
+                console.error("[ZohoMailProvider] Incomplete attachment data in response:", JSON.stringify(response.data));
+                throw new Error(`Incomplete attachment data in Zoho response`);
+            }
+
+            return {
+                storeName: attachmentData.storeName,
+                attachmentName: attachmentData.attachmentName,
+                attachmentPath: attachmentData.attachmentPath
+            };
+        } catch (error: any) {
+            console.error(`[ZohoMailProvider] Upload error for ${attachment.filename}:`, {
+                status: error.response?.status,
+                statusText: error.response?.statusText,
+                data: error.response?.data,
+                headers: error.response?.headers,
+                url: url
+            });
+            throw error;
         }
-
-        return response.data.data.attachmentId;
     }
 
     async sendMessage(accessToken: string, mailData: Partial<MailMessageData>): Promise<{ messageId: string, threadId?: string } | void> {
         const accountId = await this.getZohoAccountId(accessToken);
 
-        let content = mailData.body || mailData.htmlBody || "";
-        const attachmentIds: string[] = [];
+        let content = mailData.htmlBody || mailData.body || "";
+        const uploadedAttachments: Array<{storeName: string, attachmentName: string, attachmentPath: string}> = [];
 
         if (mailData.attachments && mailData.attachments.length > 0) {
             for (const att of mailData.attachments) {
                 if (att.content) {
                     try {
-                        const attId = await this.uploadAttachmentToZoho(accessToken, accountId, att);
-                        attachmentIds.push(attId);
+                        const uploadedAtt = await this.uploadAttachmentToZoho(accessToken, accountId, att);
+                        uploadedAttachments.push(uploadedAtt);
                     } catch (err: any) {
                         console.error(`[ZohoMailProvider] Failed to upload attachment ${att.filename} to Zoho:`, err.message);
                     }
@@ -418,10 +438,11 @@ export class ZohoMailProvider implements IMailProvider {
             content: content
         };
 
-        if (attachmentIds.length > 0) {
-            payload.attachments = attachmentIds.map((id, index) => ({ 
-                attachmentId: id,
-                attachmentName: mailData.attachments![index].filename 
+        if (uploadedAttachments.length > 0) {
+            payload.attachments = uploadedAttachments.map(att => ({ 
+                storeName: att.storeName,
+                attachmentName: att.attachmentName,
+                attachmentPath: att.attachmentPath
             }));
         }
 
