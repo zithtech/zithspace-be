@@ -22,9 +22,10 @@ export declare class CalendarService {
         userId: string;
         created_by: string | null;
         updated_by: string | null;
+        provider: import(".prisma/client").$Enums.CalendarProvider;
         accessToken: string | null;
         calendarId: string | null;
-        provider: import(".prisma/client").$Enums.CalendarProvider;
+        mail_account_id: string | null;
         tokenExpiry: Date | null;
         googleSyncToken: string | null;
         googleChannelId: string | null;
@@ -40,7 +41,6 @@ export declare class CalendarService {
         lastSyncAt: Date | null;
         nextSyncDueAt: Date;
         syncErrorCount: number;
-        mail_account_id: string | null;
     }>;
     /**
      * Fetch events for a user/tenant, expanding recurring ones at runtime.
@@ -75,12 +75,12 @@ export declare class CalendarService {
         userId: string;
         title: string;
         description: string | null;
+        provider: import(".prisma/client").$Enums.CalendarProvider;
         isDeleted: boolean;
         startTime: Date;
         endTime: Date;
-        location: string | null;
         calendarId: string | null;
-        provider: import(".prisma/client").$Enums.CalendarProvider;
+        location: string | null;
         isRecurring: boolean | null;
         externalId: string;
         isAllDay: boolean | null;

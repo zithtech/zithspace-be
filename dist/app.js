@@ -110,8 +110,6 @@ const recruitmentAction_routes_1 = __importDefault(require("@/routes/recruitment
 const candidateRoutes_1 = __importDefault(require("@/routes/candidateRoutes"));
 const companyLocationRoutes_1 = __importDefault(require("@/routes/companyLocationRoutes"));
 const openingManagementRoutes_1 = __importDefault(require("@/routes/openingManagementRoutes"));
-const escalationSettingsRoutes_1 = __importDefault(require("./routes/escalationSettingsRoutes"));
-const escalationRoutes_1 = __importDefault(require("./routes/escalationRoutes"));
 const RabbitMQService_1 = require("@/utils/RabbitMQService");
 const CalendarSyncWorker_1 = require("@/workers/CalendarSyncWorker");
 const MailSyncWorker_1 = require("@/workers/MailSyncWorker");
@@ -275,6 +273,7 @@ app.use("/api/timesheets", timesheet_1.default);
 app.use("/api/zoho", calendar_1.default);
 app.get("/api/mail/attachments/download", MailController_1.MailController.downloadAttachment);
 app.use("/api/mail", mail_1.default);
+// app.use("/api/mail-configuration", mailConfigurationRoutes);
 app.use("/api/leave-allocation", leaveAllocationRoutes_1.default);
 app.use("/api/leave-request", leaveRequestRoutes_1.default);
 app.use("/api/leave-balances", leaveBalanceRoutes_1.default);
@@ -431,7 +430,9 @@ const startServer = async () => {
     try {
         // Connect PostgreSQL
         await (0, database_1.connectDatabase)();
-        // console.log("Database connected");
+        // Initialize Tables
+        const { BidIQModel } = require("./models/BidIQ.model");
+        await BidIQModel.initTable();
         // Connect RabbitMQ & Start Workers
         try {
             await RabbitMQService_1.rabbitMQService.connect();
@@ -444,15 +445,6 @@ const startServer = async () => {
             // In a SaaS environment, we log and continue, 
             // as the app might still handle HTTP requests while MQ recovers.
         }
-        // Initialize Tables
-        const { BidIQModel } = require("./models/BidIQ.model");
-        await BidIQModel.initTable();
-        // Connect RabbitMQ
-        // await connectRabbitMQ();
-        // console.log("RabbitMQ connected");
-        // Start workers
-        // const { startWorker } = require("@/workers/leaveAllocationWorker");
-        // await startWorker();
         const PORT = parseInt(process.env.PORT || "5000");
         server = app.listen(PORT, () => {
             // console.log(`Zithmi Backend running on port ${PORT}`);

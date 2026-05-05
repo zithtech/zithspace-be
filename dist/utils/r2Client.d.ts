@@ -109,11 +109,9 @@ export declare function cleanupOrphanedImages(oldHtml: string, newHtml: string, 
  */
 export declare function generatePresignedUrl(fileUrl: string, expiresIn?: number): Promise<string>;
 /**
- * Upload Escalation document to Cloudflare R2
- * @param base64File - Base64 encoded file string
- * @param fileName - Original file name
- * @param tenantId - Tenant ID
- * @param escalationId - Temporary or generated escalation ID
- * @returns Public URL of uploaded document
+ * Fetch a file from R2 and return its content as a Buffer
+ * Uses the internal S3 client with credentials.
+ * @param fileUrl - The public-facing URL of the file
  */
+export declare function getFileBufferFromR2(fileUrl: string): Promise<Buffer>;
 export declare function uploadEscalationDocumentToR2(base64File: string, fileName: string, tenantId: string, escalationId: string): Promise<string>;

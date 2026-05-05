@@ -169,6 +169,13 @@ class CalendarController {
                     provider: provider.toUpperCase(),
                 },
             });
+            // WIPE ALL LOCAL EVENTS TO PREVENT CROSS-PROVIDER LEAKAGE OR ORPHANED DATA
+            await database_1.prisma.calendarEvent.deleteMany({
+                where: {
+                    userId: req.user.id,
+                    provider: provider.toUpperCase(),
+                }
+            });
             res.status(200).json({
                 success: true,
                 message: `${provider} disconnected successfully`,
