@@ -7,6 +7,7 @@ exports.TicketController = void 0;
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
 const database_1 = require("@/config/database");
+const dbpool_1 = __importDefault(require("@/config/dbpool"));
 const types_1 = require("@/types");
 const r2Client_1 = require("@/utils/r2Client");
 const htmlSanitizer_1 = require("@/utils/htmlSanitizer");
@@ -621,7 +622,7 @@ class TicketController {
                     baseWhere.sprintPlanId = sprintId;
                 }
             }
-            const statuses = ['not_started', 'in_progress', 'dev_complete', 'in_testing', 'in_review', 'completed', 'live'];
+            const statuses = ['not_started', 'in_progress', 'dev_complete', 'dev_testing', 'in_review', 'live', 'live_testing', 'completed', 'pause'];
             const limit = Number(limitPerColumn);
             // Fetch tickets for each status in parallel
             const columnsData = await Promise.all(statuses.map(async (status) => {
@@ -759,6 +760,14 @@ class TicketController {
             }
             if (createdById)
                 where.createdById = createdById;
+            // Filter by tags (comma-separated). Match tickets that have ANY of the given tags.
+            const { tags: tagsParam } = req.query;
+            if (tagsParam && typeof tagsParam === 'string' && tagsParam.trim()) {
+                const tagList = tagsParam.split(',').map(t => t.trim()).filter(Boolean);
+                if (tagList.length > 0) {
+                    where.tags = { hasSome: tagList };
+                }
+            }
             if (search) {
                 where.OR = [
                     { title: { contains: search, mode: "insensitive" } },
@@ -989,6 +998,43 @@ class TicketController {
         }
     }
     /**
+     * Get distinct tags used across all tickets in the tenant.
+     * Uses raw SQL via pg pool to UNNEST the text[] tags column.
+     */
+    static async getAllTags(req, res) {
+        try {
+            if (!req.tenantId) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context required",
+                });
+                return;
+            }
+            const sql = `
+        SELECT DISTINCT btrim(tag) AS tag
+        FROM tickets t, UNNEST(t.tags) AS tag
+        WHERE t.tenant_id = $1
+          AND COALESCE(t.is_deleted, false) = false
+          AND tag IS NOT NULL
+          AND btrim(tag) <> ''
+        ORDER BY tag ASC;
+      `;
+            const result = await dbpool_1.default.query(sql, [req.tenantId]);
+            const tags = result.rows.map((r) => r.tag);
+            res.status(200).json({
+                success: true,
+                data: tags,
+            });
+        }
+        catch (error) {
+            console.error("Get all tags error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to fetch tags",
+            });
+        }
+    }
+    /**
      * Update ticket (tenant-aware)
      */
     static async updateTicket(req, res) {
@@ -1178,6 +1224,7 @@ class TicketController {
                     sprintPlanId: true, // CRITICAL: Include sprint assignment
                     releasePlanId: true,
                     demoPlanId: true,
+                    tags: true,
                     createdAt: true,
                     updatedAt: true,
                     // Relations

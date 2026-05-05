@@ -48,6 +48,12 @@ router.get("/my", (0, permission_1.requirePermission)(permissions_1.Permissions.
  */
 router.get("/epics", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_READ), ticketController_1.TicketController.getEpics);
 /**
+ * @route   GET /api/tickets/tags
+ * @desc    Get distinct tags used across all tickets in the tenant
+ * @access  Private (authenticated users within tenant)
+ */
+router.get("/tags", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_READ), ticketController_1.TicketController.getAllTags);
+/**
  * @route   GET /api/tickets/:id/epic-progress
  * @desc    Get Epic with detailed story progress (tenant-aware)
  * @access  Private (authenticated users within tenant)

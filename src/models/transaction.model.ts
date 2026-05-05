@@ -205,8 +205,7 @@ export async function checkUserInTenant(userId: string, tenantId: string): Promi
 }
 
 export async function createTransaction(data: any, tenantId: string): Promise<Transaction | null> {
-  const { v4: uuidv4 } = require('uuid');
-  const id = uuidv4();
+  const id = require('crypto').randomUUID();
   
   const query = `
     INSERT INTO transactions (

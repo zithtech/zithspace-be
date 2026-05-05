@@ -34,8 +34,7 @@ function mapRowToInvoiceAttachment(row: any): InvoiceAttachment {
  * Create a new invoice attachment
  */
 export async function createInvoiceAttachment(data: CreateInvoiceAttachmentData): Promise<InvoiceAttachment> {
-  const { v4: uuidv4 } = require('uuid');
-  const id = uuidv4();
+  const id = require('crypto').randomUUID();
   
   const query = `
     INSERT INTO invoice_attachments (

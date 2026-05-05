@@ -57,6 +57,14 @@ router.get('/user-projects', requirePermission(Permissions.PROJECT_READ), Projec
  */
 router.get('/user-projects-for-tickets', requirePermission(Permissions.PROJECT_READ), ProjectController.getUserProjectsForTickets);
 
+// Trash routes
+router.get('/trash', requirePermission(Permissions.PROJECT_READ), ProjectController.getTrashProjects);
+router.delete('/trash/empty', requirePermission(Permissions.PROJECT_DELETE), ProjectController.emptyTrash);
+router.post('/trash/bulk-restore', requirePermission(Permissions.PROJECT_UPDATE), ProjectController.bulkRestoreProjects);
+router.post('/trash/bulk-permanent-delete', requirePermission(Permissions.PROJECT_DELETE), ProjectController.bulkPermanentDeleteProjects);
+router.post('/:id/restore', requirePermission(Permissions.PROJECT_UPDATE), ProjectController.restoreProject);
+router.delete('/:id/permanent', requirePermission(Permissions.PROJECT_DELETE), ProjectController.permanentDeleteProject);
+
 /**
  * @route   GET /api/projects/:id/tickets/my
  * @desc    Get tickets assigned to current user in a project (for daily updates)

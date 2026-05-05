@@ -89,8 +89,7 @@ function mapRowToInvoicePayment(row: any): InvoicePayment {
  * Create a new invoice payment
  */
 export async function createInvoicePayment(data: CreateInvoicePaymentData): Promise<InvoicePayment> {
-  const { v4: uuidv4 } = require('uuid');
-  const paymentId = uuidv4();
+  const paymentId = require('crypto').randomUUID();
   
   const query = `
     INSERT INTO invoice_payments (
