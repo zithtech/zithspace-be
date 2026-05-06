@@ -453,6 +453,59 @@ export async function uploadCandidateDocumentToR2(
 }
 
 /**
+ * Upload a bug-list attachment to Cloudflare R2.
+ * Path: {tenantId}/bug-list/{folderId}/{sheetId}/{bugId}/{uniqueId}_{fileName}
+ */
+export async function uploadBugAttachmentToR2(
+  base64File: string,
+  fileName: string,
+  tenantId: string,
+  folderId: string,
+  sheetId: string,
+  bugId: string,
+): Promise<{ fileUrl: string; fileSize: number; fileType: string }> {
+  try {
+    const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+    if (!matches) {
+      throw new Error("Invalid file format. Expected base64 encoded file.");
+    }
+
+    const contentType = matches[1];
+    const base64Data = matches[2];
+    const buffer = Buffer.from(base64Data, "base64");
+
+    const fileSizeInBytes = buffer.length;
+    const fileSizeInMB = fileSizeInBytes / (1024 * 1024);
+    if (fileSizeInMB > 5) {
+      throw new Error("File size exceeds 5MB limit");
+    }
+
+    const uniqueId = nanoid(12);
+    const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+    const key = `${tenantId}/bug-list/${folderId}/${sheetId}/${bugId}/${uniqueId}_${sanitizedFileName}`;
+
+    await s3Client.send(
+      new PutObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+        CacheControl: "public, max-age=31536000",
+        ContentDisposition: `attachment; filename="${sanitizedFileName}"`,
+      }),
+    );
+
+    const baseUrl =
+      PUBLIC_URL || "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+    const fileUrl = `${baseUrl}/${key}`;
+    return { fileUrl, fileSize: fileSizeInBytes, fileType: contentType };
+  } catch (error: any) {
+    console.error("R2 bug attachment upload error:", error);
+    throw new Error(`Failed to upload bug attachment: ${error.message}`);
+  }
+}
+
+/**
  * Delete any file from Cloudflare R2
  * @param fileUrl - Full URL of the file to delete
  * @param tenantId - Tenant ID for validation
