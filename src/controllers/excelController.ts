@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { AuthRequest } from '@/types';
 import { dbPool } from '@/utils/dbPool';
-import { uploadFileToR2, deleteFileFromR2 } from '@/utils/r2Client';
+import { uploadFileToR2, deleteFileFromR2, getFileFromR2 } from '@/utils/r2Client';
 import axios from 'axios';
 
 
@@ -183,20 +183,22 @@ export class ExcelController {
     if (!fileUrl) return res.status(400).json({ success: false, error: 'No file URL provided' });
 
     try {
-      // Use axios on server side (no CORS)
-      const response = await axios.get(fileUrl as string, {
-        responseType: 'arraybuffer',
-        timeout: 10000
-      });
-
-      const content = Buffer.from(response.data).toString('utf-8');
+      // Use our R2 client to fetch the file (handles auth and parsing)
+      const buffer = await getFileFromR2(fileUrl as string);
+      
+      // Convert buffer to string
+      const content = buffer.toString('utf-8');
+      
       return res.status(200).json({
         success: true,
         data: JSON.parse(content)
       });
     } catch (err: any) {
       console.error('[ExcelProxy] Error:', err.message);
-      return res.status(500).json({ success: false, error: 'Failed to fetch file content from storage' });
+      return res.status(500).json({ 
+        success: false, 
+        error: err.message.includes('JSON') ? 'Invalid file format' : 'Failed to fetch file content from storage' 
+      });
     }
   }
 
