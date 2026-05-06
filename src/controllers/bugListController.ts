@@ -19,6 +19,7 @@ const ALLOWED_STATUS = new Set([
   "verified",
   "reopened",
   "trash",
+  "archived",
 ]);
 
 // Default seeds — used the first time a tenant lists severities/types
@@ -475,7 +476,7 @@ export class BugListController {
         `SELECT s.*,
                 (SELECT COUNT(*)::int FROM bugs b WHERE b.sheet_id = s.id) AS bug_count
            FROM bug_sheets s
-          WHERE s.folder_id = $1 AND s.tenant_id = $2
+          WHERE s.folder_id = $1 AND s.tenant_id = $2 AND s.status != 'archived'
           ORDER BY s.created_at ASC`,
         [folderId, req.tenantId],
       );
@@ -494,6 +495,46 @@ export class BugListController {
     } catch (err: any) {
       console.error("listSheets error:", err);
       bad(res, 500, err.message || "Failed to list sheets");
+    }
+  }
+
+  static async listArchivedSheets(req: AuthRequest, res: Response): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    try {
+      const result = await pool.query(
+        `SELECT s.*,
+                f.name as folder_name,
+                u.id AS creator_id, u.name AS creator_name, u.work_email AS creator_email, u.avatar_url AS creator_avatar,
+                (SELECT COUNT(*)::int FROM bugs b WHERE b.sheet_id = s.id) AS bug_count
+           FROM bug_sheets s
+           LEFT JOIN bug_folders f ON s.folder_id = f.id
+           LEFT JOIN users u ON u.id = s.created_by_id
+          WHERE s.tenant_id = $1 AND s.status = 'archived'
+          ORDER BY s.updated_at DESC`,
+        [req.tenantId],
+      );
+      const data = result.rows.map((row: any) => ({
+        id: row.id,
+        folderId: row.folder_id,
+        name: row.name,
+        description: row.description,
+        status: row.status,
+        createdById: row.created_by_id,
+        createdBy: row.creator_id ? {
+          id: row.creator_id,
+          name: row.creator_name,
+          email: row.creator_email,
+          avatarUrl: row.creator_avatar,
+        } : null,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        folderName: row.folder_name,
+        _count: { bugs: row.bug_count },
+      }));
+      res.json({ success: true, data });
+    } catch (err: any) {
+      console.error("listArchivedSheets error:", err);
+      bad(res, 500, err.message || "Failed to list archived sheets");
     }
   }
 
@@ -581,8 +622,8 @@ export class BugListController {
     if (!ensureAuth(req, res)) return;
     const { id } = req.params;
     const { status } = req.body;
-    if (!status || !["active", "current", "completed"].includes(status)) {
-      bad(res, 400, "status must be one of: active, current, completed");
+    if (!status || !["active", "current", "completed", "archived"].includes(status)) {
+      bad(res, 400, "status must be one of: active, current, completed, archived");
       return;
     }
     const client = await pool.connect();
@@ -614,6 +655,26 @@ export class BugListController {
           RETURNING *`,
         [status, id, req.tenantId],
       );
+      
+      // If archiving sheet, also archive all bugs in the sheet
+      // If restoring sheet, also restore all archived bugs in the sheet
+      if (status === "archived") {
+        await client.query(
+          `UPDATE bugs
+              SET status = 'archived', updated_at = NOW()
+            WHERE sheet_id = $1 AND tenant_id = $2 AND status NOT IN ('archived', 'deleted')`,
+          [id, req.tenantId]
+        );
+      } else if (status === "active" || status === "current" || status === "completed") {
+        // When restoring sheet, restore bugs that were archived when sheet was archived
+        await client.query(
+          `UPDATE bugs
+              SET status = 'new', updated_at = NOW()
+            WHERE sheet_id = $1 AND tenant_id = $2 AND status = 'archived'`,
+          [id, req.tenantId]
+        );
+      }
+      
       await client.query("COMMIT");
       const row = updated.rows[0];
       res.json({
@@ -716,11 +777,22 @@ export class BugListController {
       if (createdById) push("b.created_by_id = $$", createdById);
       if (assigneeId) push("b.assignee_id = $$", assigneeId);
       
-      // Default scope: exclude trash unless explicitly requested
+      // Default scope: exclude trash/archived unless explicitly requested
       if (scope === "trash") {
         push("b.status = $$", "trash");
+      } else if (scope === "archived") {
+        // Show bugs explicitly archived OR bugs in an archived sheet
+        push(
+          "(b.status = 'archived' OR EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = b.sheet_id AND s.status = 'archived'))",
+          null
+        );
+        // We pushed null but we don't need it because we didn't use $$
+        values.pop();
+        conditions.pop();
+        conditions.push("(b.status = 'archived' OR EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = b.sheet_id AND s.status = 'archived'))");
       } else {
-        conditions.push("b.status <> 'trash'");
+        conditions.push("b.status NOT IN ('trash', 'archived')");
+        conditions.push("NOT EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = b.sheet_id AND s.status = 'archived')");
       }
 
       if (scope === "mine") push("b.created_by_id = $$", req.user!.id);
@@ -1048,10 +1120,25 @@ export class BugListController {
     if (!ensureAuth(req, res)) return;
     const { id } = req.params;
     try {
-      const r = await pool.query(
-        `UPDATE bugs SET status = 'trash', updated_at = NOW()
-          WHERE id = $1 AND tenant_id = $2 RETURNING id`,
+      // First get current status to preserve it before moving to trash
+      const bugResult = await pool.query(
+        `SELECT status FROM bugs WHERE id = $1 AND tenant_id = $2`,
         [id, req.tenantId],
+      );
+      
+      if (bugResult.rows.length === 0) {
+        bad(res, 404, "Bug not found");
+        return;
+      }
+      
+      const currentStatus = bugResult.rows[0].status;
+      // Only preserve status if it's not already trash
+      const originalStatus = currentStatus === 'trash' ? null : currentStatus;
+      
+      const r = await pool.query(
+        `UPDATE bugs SET status = 'trash', original_status = $1, updated_at = NOW()
+          WHERE id = $2 AND tenant_id = $3 RETURNING id`,
+        [originalStatus, id, req.tenantId],
       );
       if (r.rowCount === 0) {
         bad(res, 404, "Bug not found");
@@ -1098,10 +1185,25 @@ export class BugListController {
     if (!ensureAuth(req, res)) return;
     const { id } = req.params;
     try {
-      const r = await pool.query(
-        `UPDATE bugs SET status = 'new', updated_at = NOW()
-          WHERE id = $1 AND tenant_id = $2 RETURNING id`,
+      // First get the bug to see if it has a preserved status
+      const bugResult = await pool.query(
+        `SELECT original_status FROM bugs WHERE id = $1 AND tenant_id = $2`,
         [id, req.tenantId],
+      );
+      
+      if (bugResult.rows.length === 0) {
+        bad(res, 404, "Bug not found");
+        return;
+      }
+      
+      const bug = bugResult.rows[0];
+      // If there's a preserved original status, use it; otherwise default to 'new'
+      const restoredStatus = bug.original_status || 'new';
+      
+      const r = await pool.query(
+        `UPDATE bugs SET status = $1, updated_at = NOW()
+          WHERE id = $2 AND tenant_id = $3 RETURNING id`,
+        [restoredStatus, id, req.tenantId],
       );
       if (r.rowCount === 0) {
         bad(res, 404, "Bug not found");
@@ -1149,9 +1251,13 @@ export class BugListController {
       return;
     }
     try {
+      // Update all bugs to preserve their original status before moving to trash
       const r = await pool.query(
-        `UPDATE bugs SET status = 'trash', updated_at = NOW()
-          WHERE id = ANY($1::text[]) AND tenant_id = $2`,
+        `UPDATE bugs 
+           SET status = 'trash', 
+               original_status = CASE WHEN status = 'trash' THEN NULL ELSE status END,
+               updated_at = NOW()
+         WHERE id = ANY($1::text[]) AND tenant_id = $2`,
         [bugIds, req.tenantId],
       );
       res.json({ success: true, data: { movedToTrash: r.rowCount } });
@@ -1199,9 +1305,17 @@ export class BugListController {
       return;
     }
     try {
+      // First get all bugs to restore their original statuses
+      const bugsResult = await pool.query(
+        `SELECT original_status FROM bugs WHERE id = ANY($1::text[]) AND tenant_id = $2`,
+        [bugIds, req.tenantId],
+      );
+      
+      // Update each bug with its original status, defaulting to 'new' if no original status
       const r = await pool.query(
-        `UPDATE bugs SET status = 'new', updated_at = NOW()
-          WHERE id = ANY($1::text[]) AND tenant_id = $2`,
+        `UPDATE bugs 
+           SET status = COALESCE(original_status, 'new'), updated_at = NOW()
+         WHERE id = ANY($1::text[]) AND tenant_id = $2`,
         [bugIds, req.tenantId],
       );
       res.json({ success: true, data: { restored: r.rowCount } });
@@ -1261,6 +1375,15 @@ export class BugListController {
       if (folderId) push("folder_id = $$", folderId);
       if (sheetId) push("sheet_id = $$", sheetId);
       if (scope === "mine") push("created_by_id = $$", req.user!.id);
+
+      if (scope === "trash") {
+        push("status = $$", "trash");
+      } else if (scope === "archived") {
+        conditions.push("(status = 'archived' OR EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = sheet_id AND s.status = 'archived'))");
+      } else {
+        conditions.push("status NOT IN ('trash', 'archived')");
+        conditions.push("NOT EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = sheet_id AND s.status = 'archived')");
+      }
 
       const where = conditions.join(" AND ");
       const [r, foldersRes, sheetsRes] = await Promise.all([

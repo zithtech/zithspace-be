@@ -19,6 +19,7 @@ router.delete("/folders/:id", requirePermission(Permissions.BUG_DELETE), BugList
 
 // ─── Sheets ────────────────────────────────────────────────────────────────
 router.get("/folders/:folderId/sheets", requirePermission(Permissions.BUG_READ), BugListController.listSheets);
+router.get("/sheets/archived", requirePermission(Permissions.BUG_READ), BugListController.listArchivedSheets);
 router.post("/folders/:folderId/sheets", requirePermission(Permissions.BUG_CREATE), BugListController.createSheet);
 router.put("/sheets/:id", requirePermission(Permissions.BUG_UPDATE), BugListController.updateSheet);
 router.patch("/sheets/:id/status", requirePermission(Permissions.BUG_UPDATE), BugListController.updateSheetStatus);
