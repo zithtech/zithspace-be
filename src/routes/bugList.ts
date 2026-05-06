@@ -32,13 +32,16 @@ router.post("/bugs", requirePermission(Permissions.BUG_CREATE), BugListControlle
 
 router.post("/bugs/bulk-status", requirePermission(Permissions.BUG_UPDATE), BugListController.bulkUpdateStatus);
 router.post("/bugs/bulk-delete", requirePermission(Permissions.BUG_DELETE), BugListController.bulkDelete);
+router.post("/bugs/bulk-permanent-delete", requirePermission(Permissions.BUG_DELETE), BugListController.bulkPermanentDelete);
+router.post("/bugs/bulk-restore", requirePermission(Permissions.BUG_UPDATE), BugListController.bulkRestore);
 router.post("/bugs/bulk-move", requirePermission(Permissions.BUG_UPDATE), BugListController.bulkMove);
 router.post("/bugs/bulk-convert", requirePermission(Permissions.BUG_MANAGE), BugListController.bulkConvertToTickets);
 
 router.get("/bugs/:id", requirePermission(Permissions.BUG_READ), BugListController.getBug);
 router.put("/bugs/:id", requirePermission(Permissions.BUG_UPDATE), BugListController.updateBug);
 router.delete("/bugs/:id", requirePermission(Permissions.BUG_DELETE), BugListController.deleteBug);
-
+router.delete("/bugs/:id/permanent", requirePermission(Permissions.BUG_DELETE), BugListController.permanentDeleteBug);
+router.post("/bugs/:id/restore", requirePermission(Permissions.BUG_UPDATE), BugListController.restoreBug);
 router.post("/bugs/:id/verify", requirePermission(Permissions.BUG_MANAGE), BugListController.verifyBug);
 router.post("/bugs/:id/reopen", requirePermission(Permissions.BUG_MANAGE), BugListController.reopenBug);
 

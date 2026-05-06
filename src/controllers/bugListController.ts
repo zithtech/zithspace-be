@@ -18,6 +18,7 @@ const ALLOWED_STATUS = new Set([
   "ignored",
   "verified",
   "reopened",
+  "trash",
 ]);
 
 // Default seeds — used the first time a tenant lists severities/types
@@ -687,6 +688,10 @@ export class BugListController {
       createdById,
       assigneeId,
       scope,
+      createdFrom,
+      createdTo,
+      updatedFrom,
+      updatedTo,
       page = "1",
       limit = "50",
       sortBy = "created_at",
@@ -710,7 +715,21 @@ export class BugListController {
       if (bugType) push("b.bug_type = $$", bugType);
       if (createdById) push("b.created_by_id = $$", createdById);
       if (assigneeId) push("b.assignee_id = $$", assigneeId);
+      
+      // Default scope: exclude trash unless explicitly requested
+      if (scope === "trash") {
+        push("b.status = $$", "trash");
+      } else {
+        conditions.push("b.status <> 'trash'");
+      }
+
       if (scope === "mine") push("b.created_by_id = $$", req.user!.id);
+
+      // Date Range Filters
+      if (createdFrom) push("b.created_at >= $$", createdFrom);
+      if (createdTo) push("b.created_at <= $$", createdTo);
+      if (updatedFrom) push("b.updated_at >= $$", updatedFrom);
+      if (updatedTo) push("b.updated_at <= $$", updatedTo);
       if (search) {
         push(
           "(b.title ILIKE $$ OR b.description ILIKE $$ OR $$ = ANY(b.tags))",
@@ -1029,10 +1048,37 @@ export class BugListController {
     if (!ensureAuth(req, res)) return;
     const { id } = req.params;
     try {
-      const att = await pool.query(
+      const r = await pool.query(
+        `UPDATE bugs SET status = 'trash', updated_at = NOW()
+          WHERE id = $1 AND tenant_id = $2 RETURNING id`,
+        [id, req.tenantId],
+      );
+      if (r.rowCount === 0) {
+        bad(res, 404, "Bug not found");
+        return;
+      }
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("deleteBug error:", err);
+      bad(res, 500, err.message || "Failed to move bug to trash");
+    }
+  }
+
+  static async permanentDeleteBug(req: AuthRequest, res: Response): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    const { id } = req.params;
+    try {
+      const attachments = await pool.query(
         `SELECT file_url FROM bug_attachments WHERE bug_id = $1`,
         [id],
       );
+      for (const att of attachments.rows) {
+        try {
+          await deleteFileFromR2(att.file_url, req.tenantId!);
+        } catch (e) {
+          console.error("R2 cleanup failed:", e);
+        }
+      }
       const r = await pool.query(
         `DELETE FROM bugs WHERE id = $1 AND tenant_id = $2`,
         [id, req.tenantId],
@@ -1041,17 +1087,30 @@ export class BugListController {
         bad(res, 404, "Bug not found");
         return;
       }
-      for (const a of att.rows) {
-        try {
-          await deleteFileFromR2(a.file_url, req.tenantId!);
-        } catch (e) {
-          console.error("R2 cleanup failed:", e);
-        }
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("permanentDeleteBug error:", err);
+      bad(res, 500, err.message || "Failed to delete bug permanently");
+    }
+  }
+
+  static async restoreBug(req: AuthRequest, res: Response): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    const { id } = req.params;
+    try {
+      const r = await pool.query(
+        `UPDATE bugs SET status = 'new', updated_at = NOW()
+          WHERE id = $1 AND tenant_id = $2 RETURNING id`,
+        [id, req.tenantId],
+      );
+      if (r.rowCount === 0) {
+        bad(res, 404, "Bug not found");
+        return;
       }
       res.json({ success: true });
     } catch (err: any) {
-      console.error("deleteBug error:", err);
-      bad(res, 500, err.message || "Failed to delete bug");
+      console.error("restoreBug error:", err);
+      bad(res, 500, err.message || "Failed to restore bug");
     }
   }
 
@@ -1071,7 +1130,7 @@ export class BugListController {
     }
     try {
       const r = await pool.query(
-        `UPDATE bugs SET status = $1
+        `UPDATE bugs SET status = $1, updated_at = NOW()
            WHERE id = ANY($2::text[]) AND tenant_id = $3`,
         [status, bugIds, req.tenantId],
       );
@@ -1090,12 +1149,29 @@ export class BugListController {
       return;
     }
     try {
-      const att = await pool.query(
-        `SELECT a.file_url
-           FROM bug_attachments a
-           JOIN bugs b ON b.id = a.bug_id
-          WHERE a.bug_id = ANY($1::text[]) AND b.tenant_id = $2`,
+      const r = await pool.query(
+        `UPDATE bugs SET status = 'trash', updated_at = NOW()
+          WHERE id = ANY($1::text[]) AND tenant_id = $2`,
         [bugIds, req.tenantId],
+      );
+      res.json({ success: true, data: { movedToTrash: r.rowCount } });
+    } catch (err: any) {
+      console.error("bulkDelete error:", err);
+      bad(res, 500, err.message || "Failed to move bugs to trash");
+    }
+  }
+
+  static async bulkPermanentDelete(req: AuthRequest, res: Response): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    const { bugIds } = req.body;
+    if (!Array.isArray(bugIds) || bugIds.length === 0) {
+      bad(res, 400, "bugIds must be a non-empty array");
+      return;
+    }
+    try {
+      const att = await pool.query(
+        `SELECT file_url FROM bug_attachments WHERE bug_id = ANY($1::text[])`,
+        [bugIds],
       );
       const r = await pool.query(
         `DELETE FROM bugs WHERE id = ANY($1::text[]) AND tenant_id = $2`,
@@ -1110,8 +1186,28 @@ export class BugListController {
       }
       res.json({ success: true, data: { deleted: r.rowCount } });
     } catch (err: any) {
-      console.error("bulkDelete error:", err);
-      bad(res, 500, err.message || "Failed to delete bugs");
+      console.error("bulkPermanentDelete error:", err);
+      bad(res, 500, err.message || "Failed to delete bugs permanently");
+    }
+  }
+
+  static async bulkRestore(req: AuthRequest, res: Response): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    const { bugIds } = req.body;
+    if (!Array.isArray(bugIds) || bugIds.length === 0) {
+      bad(res, 400, "bugIds must be a non-empty array");
+      return;
+    }
+    try {
+      const r = await pool.query(
+        `UPDATE bugs SET status = 'new', updated_at = NOW()
+          WHERE id = ANY($1::text[]) AND tenant_id = $2`,
+        [bugIds, req.tenantId],
+      );
+      res.json({ success: true, data: { restored: r.rowCount } });
+    } catch (err: any) {
+      console.error("bulkRestore error:", err);
+      bad(res, 500, err.message || "Failed to restore bugs");
     }
   }
 
