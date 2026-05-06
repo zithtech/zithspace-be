@@ -121,6 +121,7 @@ import generateRoutes from "@/routes/generate.routes";
 import escalationRoutesV2 from "./routes/escalationRoutesV2";
 import proposalRoutes from "@/routes/proposals";
 import projectOverviewRoutes from "./routes/projectOverviewRoutes";
+import { socketService } from "@/services/socketService";
 // Load environment
 dotenv.config();
 console.log("🚀 API Starting up...");
@@ -361,13 +362,13 @@ app.get("/api/health", (req: any, res) => {
 });
 
 // Handle Socket.io requests (to prevent)
-app.all("/socket.io/*", (req, res) => {
-  res.status(200).json({
-    success: false,
-    message: "Socket.io not configured on this server",
-    note: "WebSocket connections are not required for this application",
-  });
-});
+// app.all("/socket.io/*", (req, res) => {
+//   res.status(200).json({
+//     success: false,
+//     message: "Socket.io not configured on this server",
+//     note: "WebSocket connections are not required for this application",
+//   });
+// });
 
 // 404 handler
 app.use("*", (req, res) => {
@@ -498,6 +499,9 @@ const startServer = async () => {
       // console.log(`Environment: ${process.env.NODE_ENV}`);
       // console.log(`Health check: http://localhost:${PORT}/health`);
     });
+
+    // Initialize Socket.io
+    socketService.initialize(server);
 
     // Start trash auto-purge cron job
     const { startTrashAutoPurgeJob } = require("@/jobs/trashAutoPurge");
