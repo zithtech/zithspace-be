@@ -33,7 +33,7 @@ class SocketService {
                 return next(new Error("Authentication error: No token provided"));
             }
             try {
-                const decoded = jsonwebtoken_1.default.verify(token, process.env.JWT_SECRET || "your-secret-key");
+                const decoded = jsonwebtoken_1.default.verify(token, process.env.JWT_ACCESS_SECRET || "your-secret-key");
                 // Attach user info to socket
                 socket.user = decoded;
                 next();
