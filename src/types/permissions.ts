@@ -219,6 +219,13 @@ export const Permissions = {
 
   NOTIFICATION_READ: 'notification.read',
   BOOKMARK_READ:     'bookmark.read',
+
+  // ─── Time Tracking ───────────────────────────────────────────────
+  TIME_TRACKING_CREATE: 'time_tracking.create',
+  TIME_TRACKING_READ:   'time_tracking.read',
+  TIME_TRACKING_UPDATE: 'time_tracking.update',
+  TIME_TRACKING_DELETE: 'time_tracking.delete',
+  TIME_TRACKING_MANAGE: 'time_tracking.manage',
 } as const;
 
 export type Permission = (typeof Permissions)[keyof typeof Permissions];
@@ -263,6 +270,13 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.CHAT_CREATE, Permissions.CHAT_READ, Permissions.CHAT_UPDATE, Permissions.CHAT_DELETE, Permissions.CHAT_MANAGE,
     Permissions.SKILLS_CREATE, Permissions.SKILLS_READ, Permissions.SKILLS_UPDATE, Permissions.SKILLS_DELETE, Permissions.SKILLS_MANAGE,
     Permissions.NOTIFICATION_READ, Permissions.BOOKMARK_READ
+  ],
+  time_tracking: [
+    Permissions.TIME_TRACKING_CREATE,
+    Permissions.TIME_TRACKING_READ,
+    Permissions.TIME_TRACKING_UPDATE,
+    Permissions.TIME_TRACKING_DELETE,
+    Permissions.TIME_TRACKING_MANAGE,
   ],
 };
 

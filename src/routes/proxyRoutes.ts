@@ -15,7 +15,7 @@ router.get('/proxy-logo', async (req, res) => {
     }
 
     const response = await axios.get(url, { responseType: 'arraybuffer' });
-    const contentType = response.headers['content-type'] || 'image/jpeg';
+    const contentType = (response.headers['content-type'] as string) || 'image/jpeg';
       
     res.setHeader('Content-Type', contentType);
     res.setHeader('Access-Control-Allow-Origin', '*');

@@ -172,17 +172,17 @@ const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'squad.delete': 'Dissolve squads',
   'squad.manage': 'Full squad management',
 
-  'performance.read':   'View performance reviews and metrics',
+  'performance.read': 'View performance reviews and metrics',
   'performance.manage': 'Manage performance review cycles and settings',
 
   'opening.create': 'Post new job openings',
-  'opening.read':   'View active job openings',
+  'opening.read': 'View active job openings',
   'opening.update': 'Edit job opening details',
   'opening.delete': 'Remove job openings',
   'opening.manage': 'Full recruitment portal management',
 
   'profile.create': 'Create initial profile records',
-  'profile.read':   'View personal and public profile information',
+  'profile.read': 'View personal and public profile information',
   'profile.update': 'Update personal profile details',
   'profile.delete': 'Remove profile data',
   'profile.manage': 'Manage profile templates, custom fields, and visibility rules',
