@@ -500,32 +500,19 @@ const startServer = async () => {
       // console.log(`Environment: ${process.env.NODE_ENV}`);
       // console.log(`Health check: http://localhost:${PORT}/health`);
     });
+
+    // Start trash auto-purge cron job
+    const { startTrashAutoPurgeJob } = require("@/jobs/trashAutoPurge");
+    startTrashAutoPurgeJob();
+
   } catch (error) {
     console.error("Server startup failed:", error);
     process.exit(1);
   }
-};
+}
 
 startServer();
 
-// const PORT = parseInt(process.env.PORT || "5000");
-
-// const server = app.listen(PORT, () => {
-//   console.log(`Zithmi Backend V2 (Multi-Tenant) running on port ${PORT}`);
-//   console.log(`Environment: ${process.env.NODE_ENV}`);
-//   console.log(`Health check: http://localhost:${PORT}/health`);
-//   console.log(`Multi-tenant API: http://localhost:${PORT}/api/health`);
-//   console.log(`Database: PostgreSQL with Prisma`);
-//   console.log(`Features: Multi-tenant, RLS, Enhanced Auth, JWT`);
-
-//   // Initialize Socket.io
-//   const { socketService } = require("@/services/socketService");
-//   socketService.initialize(server);
-
-//   // Start trash auto-purge cron job
-//   const { startTrashAutoPurgeJob } = require("@/jobs/trashAutoPurge");
-//   startTrashAutoPurgeJob();
-// });
 
 // Graceful shutdown
 const gracefulShutdown = async (signal: string) => {

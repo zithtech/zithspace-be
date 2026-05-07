@@ -7,6 +7,7 @@ exports.startTrashAutoPurgeJob = startTrashAutoPurgeJob;
 exports.triggerManualPurge = triggerManualPurge;
 const node_cron_1 = __importDefault(require("node-cron"));
 const database_1 = require("../config/database");
+const dbpool_1 = __importDefault(require("../config/dbpool"));
 const cacheService_1 = require("../utils/cacheService");
 /**
  * Purge expired trash for a single tenant
@@ -97,8 +98,24 @@ async function purgeTrashForTenant(tenantId) {
     return {
         tenantId,
         ...result,
+        leadsDeleted: 0, // Placeholder for ticket-only stats
         duration,
     };
+}
+/**
+ * Purge expired leads for a single tenant
+ */
+async function purgeLeadsForTenant(tenantId) {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const query = `
+    DELETE FROM leads 
+    WHERE tenant_id = $1 
+      AND is_deleted = true 
+      AND deleted_at <= $2
+  `;
+    const result = await dbpool_1.default.query(query, [tenantId, sevenDaysAgo]);
+    return result.rowCount || 0;
 }
 /**
  * Run the trash auto-purge job for all tenants
@@ -118,6 +135,7 @@ async function runAutoPurgeJob() {
         totalAttachmentsDeleted: 0,
         totalLinksDeleted: 0,
         totalActivityLogsDeleted: 0,
+        totalLeadsDeleted: 0,
         errors: [],
         stats: [],
     };
@@ -139,6 +157,14 @@ async function runAutoPurgeJob() {
                 summary.totalAttachmentsDeleted += stats.attachmentsDeleted;
                 summary.totalLinksDeleted += stats.linksDeleted;
                 summary.totalActivityLogsDeleted += stats.activityLogsDeleted;
+                // Purge Leads
+                const leadsDeleted = await purgeLeadsForTenant(tenant.id);
+                summary.totalLeadsDeleted += leadsDeleted;
+                // Update stats for lead purging
+                const tenantStats = summary.stats.find(s => s.tenantId === tenant.id);
+                if (tenantStats) {
+                    tenantStats.leadsDeleted = leadsDeleted;
+                }
             }
             catch (error) {
                 console.error(`[Trash Auto-Purge] Error processing tenant ${tenant.id}:`, error);
@@ -169,6 +195,7 @@ async function runAutoPurgeJob() {
     console.log(`Total Attachments Deleted: ${summary.totalAttachmentsDeleted}`);
     console.log(`Total Links Deleted: ${summary.totalLinksDeleted}`);
     console.log(`Total Activity Logs Deleted: ${summary.totalActivityLogsDeleted}`);
+    console.log(`Total Leads Deleted: ${summary.totalLeadsDeleted}`);
     if (summary.errors.length > 0) {
         console.log(`\nErrors encountered: ${summary.errors.length}`);
         summary.errors.forEach(err => {
