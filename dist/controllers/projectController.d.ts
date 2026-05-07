@@ -18,9 +18,33 @@ export declare class ProjectController {
      */
     static updateProject(req: AuthRequest, res: Response): Promise<void>;
     /**
-     * Delete project (tenant-aware)
+     * Soft delete project (tenant-aware)
      */
     static deleteProject(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Restore project from trash (tenant-aware)
+     */
+    static restoreProject(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Permanently delete project (tenant-aware)
+     */
+    static permanentDeleteProject(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Empty trash (Permanently delete all DELETED projects for tenant)
+     */
+    static emptyTrash(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Bulk restore projects from trash
+     */
+    static bulkRestoreProjects(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Bulk permanently delete projects
+     */
+    static bulkPermanentDeleteProjects(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get all projects in trash (tenant-aware)
+     */
+    static getTrashProjects(req: AuthRequest, res: Response): Promise<void>;
     /**
      * Get project statistics (tenant-aware)
      */

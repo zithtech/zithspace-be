@@ -6,6 +6,7 @@ import {
   NotFoundError,
   ValidationError
 } from '@/types';
+import { socketService } from '@/services/socketService';
 
 // Simple in-memory cache for ticket configurations
 const configCache = new Map<string, { data: any; timestamp: number }>();
@@ -40,10 +41,10 @@ export class SettingsController {
         return;
       }
 
-      // OPTIMIZED: Run all queries in parallel instead of sequential
-      const [users, projects, releasePlans] = await Promise.all([
+      // Fetch parallel data including dynamic dropdown options
+      const [users, projects, releasePlans, dropdownOptions] = await Promise.all([
         // Get all users for assignee dropdowns
-        await prisma.user.findMany({
+        prisma.user.findMany({
           where: {
             tenantId: req.tenantId,
             isActive: true
@@ -58,7 +59,7 @@ export class SettingsController {
         }),
 
         // Get all projects
-        await prisma.project.findMany({
+        prisma.project.findMany({
           where: {
             tenantId: req.tenantId,
             status: 'active'
@@ -73,7 +74,7 @@ export class SettingsController {
         }),
 
         // Get active release plans
-        await prisma.releasePlan.findMany({
+        prisma.releasePlan.findMany({
           where: {
             tenantId: req.tenantId,
             status: { in: ['planning', 'active'] },
@@ -92,33 +93,59 @@ export class SettingsController {
             }
           },
           orderBy: { version: 'asc' }
+        }),
+
+        // Get all managed dropdown options
+        prisma.dropdownOption.findMany({
+          where: {
+            tenantId: req.tenantId,
+            isActive: true
+          },
+          orderBy: [
+            { category: 'asc' },
+            { order: 'asc' },
+            { label: 'asc' }
+          ]
         })
       ]);
 
-      // Default configuration values (can be made tenant-specific in the future)
+      // Helper to extract options by category
+      const getOptions = (category: string) => 
+        dropdownOptions
+          .filter(opt => opt.category === category)
+          .map((opt: any) => ({
+            value: opt.value,
+            label: opt.label,
+            color: opt.color || undefined,
+            description: opt.description || undefined,
+            order: opt.order
+          }));
+
+      // Default fallback values if no database options exist
       const configurations = {
-        // Static dropdown options
-        priorities: [
+        priorities: getOptions('priority').length ? getOptions('priority') : [
           { value: 'P1', label: 'High (P1)', color: '#ff4d4f', description: 'Critical priority' },
           { value: 'P2', label: 'Medium (P2)', color: '#fa8c16', description: 'Medium priority' },
           { value: 'P3', label: 'Lite (P3)', color: '#52c41a', description: 'Low priority' }
         ],
-        taskTypes: [
+        taskTypes: getOptions('taskType').length ? getOptions('taskType') : [
           { value: 'Bug', label: 'Bug', color: '#ff4d4f', description: 'Bug fix' },
           { value: 'Task', label: 'Task', color: '#1890ff', description: 'General task' },
           { value: 'Feat', label: 'Feature', color: '#52c41a', description: 'New feature' },
           { value: 'Enhancement', label: 'Enhancement', color: '#722ed1', description: 'Enhancement' }
         ],
-        statuses: [
-          { value: 'not_started', label: 'Not Started', color: '#d9d9d9', description: 'Task not started' },
-          { value: 'in_progress', label: 'In Progress', color: '#1890ff', description: 'Task in progress' },
-          { value: 'dev_complete', label: 'Dev Complete', color: '#2db7f5', description: 'Development completed' },
-          { value: 'in_testing', label: 'Testing', color: '#fa8c16', description: 'In testing phase' },
-          { value: 'in_review', label: 'In Review', color: '#722ed1', description: 'Under review' },
-          { value: 'completed', label: 'Completed', color: '#52c41a', description: 'Task completed' },
-          { value: 'live', label: 'Live', color: '#0050b3', description: 'Deployed to production' },
+        statuses: getOptions('status').length ? getOptions('status') : [
+          { value: 'not_started', label: 'Not Started', color: '#8c8c8c', description: 'Task not started' },
+          { value: 'in_progress', label: 'In Progress', color: '#1677ff', description: 'Task in progress' },
+          { value: 'dev_complete', label: 'Dev Complete', color: '#13c2c2', description: 'Development completed' },
+          { value: 'dev_testing', label: 'Dev Testing', color: '#faad14', description: 'Developer verification phase' },
+          { value: 'in_review', label: 'In Review', color: '#722ed1', description: 'Peer or lead review' },
+          { value: 'live', label: 'Live', color: '#2f54eb', description: 'Deployed to production environment' },
+          { value: 'live_testing', label: 'Live Testing', color: '#1d39c4', description: 'Verification in production' },
+          { value: 'completed', label: 'Completed', color: '#52c41a', description: 'Task officially completed' },
+          { value: 'pause', label: 'Pause', color: '#fa8c16', description: 'Task temporarily paused' },
         ],
-        platforms: [
+        platforms: getOptions('platform').length ? getOptions('platform') : [
           { value: 'Development', label: 'Development', color: '#1890ff', description: 'Software development tasks' },
           { value: 'UI/UX', label: 'UI/UX', color: '#722ed1', description: 'User interface and experience design' },
           { value: 'PM', label: 'PM', color: '#fa8c16', description: 'Project management tasks' },
@@ -126,12 +153,12 @@ export class SettingsController {
           { value: 'DevOps', label: 'DevOps', color: '#eb2f96', description: 'DevOps and infrastructure' },
           { value: 'Testing', label: 'Testing', color: '#13c2c2', description: 'Quality assurance and testing' }
         ],
-        stacks: [
+        stacks: getOptions('stack').length ? getOptions('stack') : [
           { value: 'Front End', label: 'Front End', color: '#1890ff', description: 'Frontend development' },
           { value: 'Back End', label: 'Back End', color: '#52c41a', description: 'Backend development' },
           { value: 'Full Stack', label: 'Full Stack', color: '#722ed1', description: 'Full stack development' }
         ],
-        taskLevels: [
+        taskLevels: getOptions('taskLevel').length ? getOptions('taskLevel') : [
           { value: 'Easy', label: 'Easy', color: '#52c41a', description: 'Simple task' },
           { value: 'Lite', label: 'Lite', color: '#1890ff', description: 'Light complexity' },
           { value: 'Medium', label: 'Medium', color: '#fa8c16', description: 'Medium complexity' },
@@ -1208,6 +1235,8 @@ export class SettingsController {
         },
         message: 'Dropdown option created successfully'
       } as ApiResponse);
+
+      socketService.emitToTenant(req.tenantId, 'settings:updated', { type: 'dropdown', action: 'create', category: type });
     } catch (error: any) {
       console.error('Create dropdown option error:', error);
 
@@ -1228,6 +1257,7 @@ export class SettingsController {
 
   /**
    * Update an existing dropdown option (tenant-aware)
+   * FIXED: Allows order-only updates
    */
   static async updateDropdownOption(req: AuthRequest, res: Response): Promise<void> {
     try {
@@ -1239,77 +1269,85 @@ export class SettingsController {
         return;
       }
 
-      const { id } = req.params;
-      const { value, label, color, description, isActive } = req.body;
+    const { id } = req.params;
+    const { value, label, color, description, isActive, order } = req.body;
+    console.log('=== UPDATE DROPDOWN OPTION DEBUG ===');
+    console.log('Received order value:', order);
+    console.log('Received value:', value);
+    console.log('Received label:', label);
+    console.log('Full body:', req.body);
 
-      if (!value || !label) {
-        res.status(400).json({
-          success: false,
-          error: 'Value and label are required'
-        } as ApiResponse);
-        return;
-      }
+    // Verify option exists
+    const existingOption = await prisma.dropdownOption.findFirst({
+      where: { id, tenantId: req.tenantId }
+    });
 
+    if (!existingOption) {
+      throw new NotFoundError('Dropdown option not found');
+    }
 
-      // Verify option exists and belongs to tenant
-      const existingOption = await prisma.dropdownOption.findFirst({
-        where: { id, tenantId: req.tenantId }
-      });
+    // ✅ CRITICAL FIX: Build update data dynamically
+    const updateData: any = {};
 
-      if (!existingOption) {
-        throw new NotFoundError('Dropdown option not found');
-      }
+    // Only add fields that are provided
+    if (value !== undefined) updateData.value = value;
+    if (label !== undefined) updateData.label = label;
+    if (color !== undefined) updateData.color = color;
+    if (description !== undefined) updateData.description = description;
+    if (isActive !== undefined) updateData.isActive = isActive;
+    if (order !== undefined) updateData.order = order;  // ✅ ORDER FIELD ADDED!
 
-      const updateData: any = { value, label };
-      if (typeof isActive === 'boolean') {
-        updateData.isActive = isActive;
-      }
+    // If no fields to update
+    if (Object.keys(updateData).length === 0) {
+      res.status(400).json({
+        success: false,
+        error: 'No fields to update'
+      } as ApiResponse);
+      return;
+    }
 
-      const updatedOption = await prisma.dropdownOption.update({
-        where: { id },
-        data: updateData
-      });
+    const updatedOption = await prisma.dropdownOption.update({
+      where: { id },
+      data: updateData
+    });
 
-
-      res.status(200).json({
-        success: true,
-        data: {
-          id: updatedOption.id,
-          type: updatedOption.category,
-          value: updatedOption.value,
-          label: updatedOption.label,
-          order: updatedOption.order,
-          isActive: updatedOption.isActive,
-          createdAt: updatedOption.createdAt,
-          updatedAt: updatedOption.updatedAt
-        },
+    res.status(200).json({
+      success: true,
+      data: {
+        id: updatedOption.id,
+        type: updatedOption.category,
+        value: updatedOption.value,
+        label: updatedOption.label,
+        order: updatedOption.order,
+        isActive: updatedOption.isActive,
+        createdAt: updatedOption.createdAt,
+        updatedAt: updatedOption.updatedAt
+      },
         message: 'Dropdown option updated successfully'
       } as ApiResponse);
+
+      socketService.emitToTenant(req.tenantId, 'settings:updated', { type: 'dropdown', action: 'update', category: updatedOption.category });
     } catch (error: any) {
-      console.error('Update dropdown option error:', error);
+    console.error('Update dropdown option error:', error);
 
-      if (error instanceof NotFoundError) {
-        res.status(404).json({
-          success: false,
-          error: error.message
-        } as ApiResponse);
-        return;
-      }
-
-      if (error.code === 'P2002') {
-        res.status(400).json({
-          success: false,
-          error: 'A dropdown option with this value already exists for this type'
-        } as ApiResponse);
-        return;
-      }
-
-      res.status(500).json({
+    if (error instanceof NotFoundError) {
+      res.status(404).json({
         success: false,
-        error: 'Failed to update dropdown option'
+        error: error.message
       } as ApiResponse);
+      return;
     }
+
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update dropdown option'
+    } as ApiResponse);
   }
+}
+
+
+ 
+ 
 
   /**
    * Delete a dropdown option (tenant-aware)
@@ -1345,6 +1383,8 @@ export class SettingsController {
         success: true,
         message: 'Dropdown option deleted successfully'
       } as ApiResponse);
+
+      socketService.emitToTenant(req.tenantId, 'settings:updated', { type: 'dropdown', action: 'delete', category: existingOption.category });
     } catch (error: any) {
       console.error('Delete dropdown option error:', error);
 
@@ -1405,6 +1445,8 @@ export class SettingsController {
         success: true,
         message: 'Dropdown options reordered successfully'
       } as ApiResponse);
+
+      socketService.emitToTenant(req.tenantId, 'settings:updated', { type: 'dropdown', action: 'reorder' });
     } catch (error) {
       console.error('Reorder dropdown options error:', error);
       res.status(500).json({

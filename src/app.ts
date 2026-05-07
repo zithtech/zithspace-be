@@ -1,3 +1,11 @@
+import dotenv from "dotenv";
+import path from "path";
+// Load backend-local .env first (highest priority), then fall back to parent
+// monorepo .env so a single root file works for both apps. dotenv.config()
+// won't override variables that are already set, so order = priority.
+dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+
 if (process.env.NODE_ENV !== "development") {
   require("module-alias/register");
 }
@@ -6,7 +14,6 @@ import cors from "cors";
 import morgan from "morgan";
 import compression from "compression";
 import cookieParser from "cookie-parser";
-import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
 import session from "express-session";
 import bcrypt from "bcryptjs";
@@ -43,6 +50,7 @@ import customerRoutes from "@/routes/customerRoutes";
 import invoiceSettingRoutes from "@/routes/invoiceSettingsRoutes";
 import invoice from "@/routes/invoice";
 import invoiceTemplate from "@/routes/invoiceTemplate";
+import categoryRoutes from "@/routes/categoryRoutes";
 import bucketRoutes from "@/routes/buckets";
 import trashRoutes from "@/routes/trash";
 import sprintCompletionRoutes from "@/routes/sprintCompletion";
@@ -53,6 +61,10 @@ import messageRoutes from "@/routes/messages";
 import shortcutRoutes from "@/routes/shortcut.routes";
 import employeeWorkDetailRoutes from "@/routes/employeeWorkDetailes";
 import employeeTimelineRoutes from "@/routes/employeeTimeline";
+import skillExperienceRoutes from "@/routes/skillExperience.routes";
+import escalationCategoryRoutes from "@/routes/escalationCategoryV2.routes";
+import escalationStatusRoutes from "@/routes/escalationStatus.RoutesV2";
+import escalationPriorityRoutes from "@/routes/escalationPriorities.Routes";
 
 // main
 import employeeOnboardingRoutes from "@/routes/onboardingRoutes";
@@ -100,9 +112,16 @@ import recruitmentActionRoutes from "@/routes/recruitmentAction.routes";
 import candidateRoutes from "@/routes/candidateRoutes";
 import companyLocationRoutes from "@/routes/companyLocationRoutes";
 import openingManagementRoutes from "@/routes/openingManagementRoutes";
-import escalationSettingsRoutes from "./routes/escalationSettingsRoutes";
-import escalationRoutes from "./routes/escalationRoutes";
 import excelRoutes from "./routes/excel";
+import leadRoutes from "@/routes/lead.routes";
+import leadSettingsRoutes from "@/routes/leadSettings.routes";
+import generateRoutes from "@/routes/generate.routes";
+// import escalationSettingsRoutes from "./routes/escalationSettingsRoutes";
+// import escalationRoutes from "./routes/escalationRoutes";
+import escalationRoutesV2 from "./routes/escalationRoutesV2";
+import proposalRoutes from "@/routes/proposals";
+import projectOverviewRoutes from "./routes/projectOverviewRoutes";
+import { socketService } from "@/services/socketService";
 // Load environment
 
 dotenv.config();
@@ -122,6 +141,7 @@ const allowedOrigins = [
   "https://zithmi.zithspace.com",
   /\.zithspace\.com$/,
   /\.zithtech\.com$/, // allow any subdomain like dinesh.zithtech.com
+  /^chrome-extension:\/\/[a-z]{32}$/, // Allow Chrome extensions
 ];
 
 app.use(
@@ -218,6 +238,7 @@ app.get("/api/debug-ping-unique", (req, res) => res.json({ success: true, messag
 
 app.use("/api", proxyRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/generate", generateRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/tenants", tenantRoutes);
 app.use("/api/calendar", calendarRoutes);
@@ -234,8 +255,8 @@ app.use("/api/shifts", shiftRoutes);
 app.use("/api/transactions", transactionRoutes);
 app.use("/api/release-plans", releasePlanRoutes);
 app.use("/api/settings", settingRoutes);
-app.use("/api/escalation-settings", escalationSettingsRoutes);
-app.use("/api/escalations", escalationRoutes);
+//app.use("/api/escalation-settings", escalationSettingsRoutes);
+// app.use("/api/escalations", escalationRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/daily-updates", dailyUpdateRoutes);
 app.use("/api/dashboard", dashboardRoutes);
@@ -247,7 +268,9 @@ app.use("/api/leave-types", leaveTypeRoutes);
 app.use("/api/customers", customerRoutes);
 app.use("/api/invoicesetting", invoiceSettingRoutes);
 app.use("/api/invoices", invoice);
+app.use("/api/proposals", proposalRoutes);
 app.use("/api/invoice-templates", invoiceTemplate);
+app.use("/api/categories", categoryRoutes);
 //app.use("/api/invoice",invoicedownload)
 app.use("/api/buckets", bucketRoutes);
 app.use("/api/trash", trashRoutes);
@@ -261,6 +284,9 @@ app.use("/api/grades", gradeRoutes);
 app.use("/api/payroll", payrollRoutes);
 app.use("/api/company-locations", companyLocationRoutes);
 app.use("/api/opening-management", openingManagementRoutes);
+app.use("/api/leads", leadRoutes);
+app.use("/api/lead-settings", leadSettingsRoutes);
+app.use("/api", skillExperienceRoutes);
 
 app.use("/api/departments", departmentRoutes);
 app.use("/api/sub-departments", subDepartmentRoutes);
@@ -276,8 +302,15 @@ app.use("/api/leave-allocation", leaveAllocationRoutes);
 app.use("/api/leave-request", leaveRequestRoutes);
 app.use("/api/leave-balances", leaveBalanceRoutes);
 
+//Escalation
+app.use("/api/escalation-categories", escalationCategoryRoutes);
+app.use("/api/escalation-statuses", escalationStatusRoutes);
+app.use("/api/escalation-priorities", escalationPriorityRoutes);
+app.use("/api/escalations-v2", escalationRoutesV2);
+
 app.use("/api/time-tracking", timeTrackingRoutes);
 app.use("/api/excel", excelRoutes);
+app.use("/api/projects", projectOverviewRoutes);
 
 app.use("/api/candidates", candidateRoutes);
 
@@ -332,13 +365,13 @@ app.get("/api/health", (req: any, res) => {
 });
 
 // Handle Socket.io requests (to prevent)
-app.all("/socket.io/*", (req, res) => {
-  res.status(200).json({
-    success: false,
-    message: "Socket.io not configured on this server",
-    note: "WebSocket connections are not required for this application",
-  });
-});
+// app.all("/socket.io/*", (req, res) => {
+//   res.status(200).json({
+//     success: false,
+//     message: "Socket.io not configured on this server",
+//     note: "WebSocket connections are not required for this application",
+//   });
+// });
 
 // 404 handler
 app.use("*", (req, res) => {
@@ -450,7 +483,10 @@ const startServer = async () => {
   try {
     // Connect PostgreSQL
     await connectDatabase();
-    // console.log("Database connected");
+    
+    // Initialize Tables
+    const { BidIQModel } = require("./models/BidIQ.model");
+    await BidIQModel.initTable();
 
     // Connect RabbitMQ
     // await connectRabbitMQ();
@@ -466,32 +502,22 @@ const startServer = async () => {
       // console.log(`Environment: ${process.env.NODE_ENV}`);
       // console.log(`Health check: http://localhost:${PORT}/health`);
     });
+
+    // Initialize Socket.io
+    socketService.initialize(server);
+
+    // Start trash auto-purge cron job
+    const { startTrashAutoPurgeJob } = require("@/jobs/trashAutoPurge");
+    startTrashAutoPurgeJob();
+
   } catch (error) {
     console.error("Server startup failed:", error);
     process.exit(1);
   }
-};
+}
 
 startServer();
 
-// const PORT = parseInt(process.env.PORT || "5000");
-
-// const server = app.listen(PORT, () => {
-//   console.log(`Zithmi Backend V2 (Multi-Tenant) running on port ${PORT}`);
-//   console.log(`Environment: ${process.env.NODE_ENV}`);
-//   console.log(`Health check: http://localhost:${PORT}/health`);
-//   console.log(`Multi-tenant API: http://localhost:${PORT}/api/health`);
-//   console.log(`Database: PostgreSQL with Prisma`);
-//   console.log(`Features: Multi-tenant, RLS, Enhanced Auth, JWT`);
-
-//   // Initialize Socket.io
-//   const { socketService } = require("@/services/socketService");
-//   socketService.initialize(server);
-
-//   // Start trash auto-purge cron job
-//   const { startTrashAutoPurgeJob } = require("@/jobs/trashAutoPurge");
-//   startTrashAutoPurgeJob();
-// });
 
 // Graceful shutdown
 const gracefulShutdown = async (signal: string) => {

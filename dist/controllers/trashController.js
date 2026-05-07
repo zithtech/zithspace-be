@@ -58,7 +58,7 @@ class TrashController {
                         type: true,
                         deletedAt: true,
                         deletedBy: {
-                            select: { id: true, name: true, workEmail: true },
+                            select: { id: true, name: true, workEmail: true, avatarUrl: true },
                         },
                         project: {
                             select: { id: true, name: true, code: true },
@@ -322,6 +322,14 @@ class TrashController {
                 await tx.ticketActivityLog.deleteMany({
                     where: { ticketId: { in: ticketIdsToDelete } },
                 });
+                // Delete time tracking entries
+                await tx.timeTrackingEntry.deleteMany({
+                    where: { ticketId: { in: ticketIdsToDelete } },
+                });
+                // Delete work entries
+                await tx.work_entry.deleteMany({
+                    where: { ticket_id: { in: ticketIdsToDelete } },
+                });
                 // Finally, delete the tickets themselves
                 await tx.ticket.deleteMany({
                     where: { id: { in: ticketIdsToDelete } },
@@ -415,6 +423,14 @@ class TrashController {
                 });
                 await tx.ticketActivityLog.deleteMany({
                     where: { ticketId: { in: ticketIdsToDelete } },
+                });
+                // Delete time tracking entries
+                await tx.timeTrackingEntry.deleteMany({
+                    where: { ticketId: { in: ticketIdsToDelete } },
+                });
+                // Delete work entries
+                await tx.work_entry.deleteMany({
+                    where: { ticket_id: { in: ticketIdsToDelete } },
                 });
                 // Delete tickets
                 await tx.ticket.deleteMany({

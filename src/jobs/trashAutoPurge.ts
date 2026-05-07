@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import { prisma } from '../config/database';
+import pool from '../config/dbpool';
 import { cacheService } from '../utils/cacheService';
 
 /**
@@ -31,6 +32,7 @@ interface PurgeStats {
   linksDeleted: number;
   activityLogsDeleted: number;
   duration: number; // in milliseconds
+  leadsDeleted?: number;
 }
 
 interface PurgeSummary {
@@ -43,6 +45,7 @@ interface PurgeSummary {
   totalAttachmentsDeleted: number;
   totalLinksDeleted: number;
   totalActivityLogsDeleted: number;
+  totalLeadsDeleted: number;
   errors: Array<{ tenantId: string; error: string }>;
   stats: PurgeStats[];
 }
@@ -152,8 +155,27 @@ async function purgeTrashForTenant(tenantId: string): Promise<PurgeStats> {
   return {
     tenantId,
     ...result,
+    leadsDeleted: 0, // Placeholder for ticket-only stats
     duration,
   };
+}
+
+/**
+ * Purge expired leads for a single tenant
+ */
+async function purgeLeadsForTenant(tenantId: string): Promise<number> {
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+  const query = `
+    DELETE FROM leads 
+    WHERE tenant_id = $1 
+      AND is_deleted = true 
+      AND deleted_at <= $2
+  `;
+  
+  const result = await pool.query(query, [tenantId, sevenDaysAgo]);
+  return result.rowCount || 0;
 }
 
 /**
@@ -175,6 +197,7 @@ async function runAutoPurgeJob(): Promise<PurgeSummary> {
     totalAttachmentsDeleted: 0,
     totalLinksDeleted: 0,
     totalActivityLogsDeleted: 0,
+    totalLeadsDeleted: 0,
     errors: [],
     stats: [],
   };
@@ -199,6 +222,16 @@ async function runAutoPurgeJob(): Promise<PurgeSummary> {
         summary.totalAttachmentsDeleted += stats.attachmentsDeleted;
         summary.totalLinksDeleted += stats.linksDeleted;
         summary.totalActivityLogsDeleted += stats.activityLogsDeleted;
+        
+        // Purge Leads
+        const leadsDeleted = await purgeLeadsForTenant(tenant.id);
+        summary.totalLeadsDeleted += leadsDeleted;
+        
+        // Update stats for lead purging
+        const tenantStats = summary.stats.find(s => s.tenantId === tenant.id);
+        if (tenantStats) {
+          tenantStats.leadsDeleted = leadsDeleted;
+        }
       } catch (error: any) {
         console.error(`[Trash Auto-Purge] Error processing tenant ${tenant.id}:`, error);
         summary.errors.push({
@@ -229,6 +262,7 @@ async function runAutoPurgeJob(): Promise<PurgeSummary> {
   console.log(`Total Attachments Deleted: ${summary.totalAttachmentsDeleted}`);
   console.log(`Total Links Deleted: ${summary.totalLinksDeleted}`);
   console.log(`Total Activity Logs Deleted: ${summary.totalActivityLogsDeleted}`);
+  console.log(`Total Leads Deleted: ${summary.totalLeadsDeleted}`);
   
   if (summary.errors.length > 0) {
     console.log(`\nErrors encountered: ${summary.errors.length}`);

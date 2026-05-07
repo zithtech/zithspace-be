@@ -7,8 +7,114 @@ exports.DocumentHubController = void 0;
 const database_1 = require("@/config/database");
 const types_1 = require("@/types");
 const socketService_1 = require("@/services/socketService");
+const aiDocumentService_1 = require("@/services/aiDocumentService");
 const crypto_1 = __importDefault(require("crypto"));
 class DocumentHubController {
+    /**
+     * Generate a documentation draft from a free-form prompt.
+     * Returns { hubName, fileTitle, contentHtml }. Does NOT persist anything —
+     * the client makes follow-up calls to create the hub and write the file.
+     */
+    static async aiGenerateDocument(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { prompt } = req.body;
+            const seed = (prompt || "").trim();
+            if (!seed || seed.length < 5) {
+                res.status(400).json({
+                    success: false,
+                    error: "Prompt is required (min 5 characters)",
+                });
+                return;
+            }
+            if (seed.length > 8000) {
+                res.status(400).json({
+                    success: false,
+                    error: "Prompt is too long (max 8000 characters)",
+                });
+                return;
+            }
+            const { draft, source, fallbackReason } = await (0, aiDocumentService_1.generateDocumentDraft)(seed);
+            res.status(200).json({
+                success: true,
+                data: { ...draft, source, fallbackReason },
+                message: "Document draft generated",
+            });
+        }
+        catch (error) {
+            console.error("AI generate document error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to generate document draft",
+            });
+        }
+    }
+    /**
+     * Rewrite a selected excerpt of a document according to a user instruction.
+     * Used by the inline Zai menu in the editor when a user selects text.
+     * Does NOT persist anything — the client applies the result.
+     */
+    static async aiRewriteSelection(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { text, instruction } = req.body;
+            const cleanText = (text || "").trim();
+            const cleanInstruction = (instruction || "").trim();
+            if (!cleanText || cleanText.length < 2) {
+                res.status(400).json({
+                    success: false,
+                    error: "Selected text is required (min 2 characters)",
+                });
+                return;
+            }
+            if (cleanText.length > 8000) {
+                res.status(400).json({
+                    success: false,
+                    error: "Selected text is too long (max 8000 characters)",
+                });
+                return;
+            }
+            if (!cleanInstruction || cleanInstruction.length < 2) {
+                res.status(400).json({
+                    success: false,
+                    error: "Instruction is required",
+                });
+                return;
+            }
+            if (cleanInstruction.length > 500) {
+                res.status(400).json({
+                    success: false,
+                    error: "Instruction is too long (max 500 characters)",
+                });
+                return;
+            }
+            const result = await (0, aiDocumentService_1.rewriteSelection)(cleanText, cleanInstruction);
+            res.status(200).json({
+                success: true,
+                data: result,
+                message: "Selection rewritten",
+            });
+        }
+        catch (error) {
+            console.error("AI rewrite selection error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to rewrite selection",
+            });
+        }
+    }
     /**
      * Create a new Document HUb (tenant-aware)
      */
@@ -53,7 +159,7 @@ class DocumentHubController {
                 },
                 include: {
                     createdBy: {
-                        select: { id: true, name: true, workEmail: true },
+                        select: { id: true, name: true, workEmail: true, avatarUrl: true },
                     },
                     project: {
                         select: { id: true, name: true, code: true },
@@ -147,7 +253,7 @@ class DocumentHubController {
                     tenantId: req.tenantId,
                     isDeleted: false,
                     OR: [
-                        { visibility: { in: ["internal", "public"] } },
+                        { visibility: "public" },
                         { createdById: req.user.id },
                     ],
                 },
@@ -159,6 +265,10 @@ class DocumentHubController {
                     id,
                     tenantId: req.tenantId,
                     isDeleted: false,
+                    OR: [
+                        { visibility: "public" },
+                        { createdById: req.user.id },
+                    ],
                 },
                 include: {
                     treeNodes: {
@@ -177,7 +287,7 @@ class DocumentHubController {
                         select: { id: true, name: true, code: true },
                     },
                     createdBy: {
-                        select: { id: true, name: true, workEmail: true },
+                        select: { id: true, name: true, workEmail: true, avatarUrl: true },
                     },
                 },
             });
@@ -187,6 +297,32 @@ class DocumentHubController {
                     error: "Document Hub not found",
                 });
                 return;
+            }
+            // If user is not the creator, prune empty folders/sections in the tree
+            if (documentHub.createdById !== req.user.id) {
+                const nodes = documentHub.treeNodes;
+                const visibleNodeIds = new Set();
+                const nodeMap = new Map();
+                nodes.forEach(node => nodeMap.set(node.id, { ...node, children: [] }));
+                // Link children
+                nodes.forEach(node => {
+                    if (node.parentId && nodeMap.has(node.parentId)) {
+                        nodeMap.get(node.parentId).children.push(node.id);
+                    }
+                });
+                const isNodeVisible = (nodeId) => {
+                    const node = nodeMap.get(nodeId);
+                    if (!node)
+                        return false;
+                    if (node.type === 'file') {
+                        // Accessible file nodes are already filtered by the query, but double check
+                        return !!node.documentId && accessibleDocIds.includes(node.documentId);
+                    }
+                    // For folder/section, visible if any child is visible
+                    return node.children.some((childId) => isNodeVisible(childId));
+                };
+                const filteredNodes = nodes.filter(node => isNodeVisible(node.id));
+                documentHub.treeNodes = filteredNodes;
             }
             res.status(200).json({
                 success: true,
@@ -257,6 +393,8 @@ class DocumentHubController {
                     documentId,
                 },
             });
+            // Emit socket event
+            socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:node_created", newNode);
             res.status(201).json({
                 success: true,
                 data: newNode,
@@ -280,11 +418,12 @@ class DocumentHubController {
                 return;
             }
             const { id } = req.params;
-            const { title } = req.body;
-            if (!title) {
+            const { title, parentId } = req.body;
+            // Either title OR a parentId update must be supplied.
+            if (title === undefined && parentId === undefined) {
                 res.status(400).json({
                     success: false,
-                    error: "Title is required",
+                    error: "Provide title or parentId to update",
                 });
                 return;
             }
@@ -302,17 +441,87 @@ class DocumentHubController {
                 });
                 return;
             }
+            // --- Validate parentId move (drag-drop) ---
+            if (parentId !== undefined) {
+                if (parentId === id) {
+                    res.status(400).json({
+                        success: false,
+                        error: "Cannot move a node into itself",
+                    });
+                    return;
+                }
+                if (parentId !== null) {
+                    const parent = await database_1.prisma.documentTree.findFirst({
+                        where: {
+                            id: parentId,
+                            tenantId: req.tenantId,
+                            isDeleted: false,
+                        },
+                    });
+                    if (!parent) {
+                        res.status(404).json({
+                            success: false,
+                            error: "Parent node not found",
+                        });
+                        return;
+                    }
+                    if (parent.documentHubId !== node.documentHubId) {
+                        res.status(400).json({
+                            success: false,
+                            error: "Cannot move a node across hubs",
+                        });
+                        return;
+                    }
+                    // Files can't host children, only folders/sections.
+                    if (parent.type === "file") {
+                        res.status(400).json({
+                            success: false,
+                            error: "Files cannot contain other items",
+                        });
+                        return;
+                    }
+                    // Cycle check: walk the parent chain — `id` must not appear.
+                    let cursor = parent;
+                    while (cursor) {
+                        if (cursor.id === id) {
+                            res.status(400).json({
+                                success: false,
+                                error: "Cannot move a folder into one of its descendants",
+                            });
+                            return;
+                        }
+                        if (!cursor.parentId)
+                            break;
+                        cursor = await database_1.prisma.documentTree.findFirst({
+                            where: {
+                                id: cursor.parentId,
+                                tenantId: req.tenantId,
+                                isDeleted: false,
+                            },
+                        });
+                    }
+                }
+            }
+            const updateData = {};
+            if (title !== undefined)
+                updateData.title = title;
+            if (parentId !== undefined)
+                updateData.parentId = parentId;
             const updatedNode = await database_1.prisma.documentTree.update({
                 where: { id },
-                data: { title },
+                data: updateData,
             });
             // If it's a file and has a documentId, update the document title too
-            if (node.type === "file" && node.documentId) {
+            if (title !== undefined &&
+                node.type === "file" &&
+                node.documentId) {
                 await database_1.prisma.document.update({
                     where: { id: node.documentId },
                     data: { title },
                 });
             }
+            // Emit socket event
+            socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:node_updated", updatedNode);
             res.status(200).json({
                 success: true,
                 data: updatedNode,
@@ -343,9 +552,7 @@ class DocumentHubController {
                     isDeleted: false,
                     OR: [
                         {
-                            visibility: {
-                                in: ["internal", "public"],
-                            },
+                            visibility: "public",
                         },
                         {
                             createdById: req.user.id,
@@ -383,7 +590,7 @@ class DocumentHubController {
                 return;
             }
             const { id } = req.params;
-            const { content, title } = req.body;
+            const { content, title, expectedVersion } = req.body;
             const document = await database_1.prisma.document.findFirst({
                 where: {
                     id,
@@ -407,15 +614,58 @@ class DocumentHubController {
                 });
                 return;
             }
-            const updatedDocument = await database_1.prisma.document.update({
-                where: {
-                    id,
-                },
+            // Optimistic concurrency: when the client sends an expectedVersion, refuse
+            // the write if it doesn't match the current row. The frontend autosave
+            // pipeline uses this to halt and prompt the user instead of silently
+            // overwriting changes from a concurrent editor / browser tab.
+            if (expectedVersion !== undefined &&
+                expectedVersion !== null &&
+                document.version !== expectedVersion) {
+                res.status(409).json({
+                    success: false,
+                    error: "Document was modified by another session",
+                    data: {
+                        currentVersion: document.version,
+                        expectedVersion,
+                        document,
+                    },
+                });
+                return;
+            }
+            // Atomic version check + bump in a single SQL statement so two concurrent
+            // requests can't both pass the check above and then both overwrite.
+            // updateMany returns the affected row count; 0 means somebody else won.
+            const writeWhere = { id, tenantId: req.tenantId };
+            if (expectedVersion !== undefined && expectedVersion !== null) {
+                writeWhere.version = expectedVersion;
+            }
+            const updateResult = await database_1.prisma.document.updateMany({
+                where: writeWhere,
                 data: {
-                    content: content !== undefined ? content : document.content,
-                    title: title !== undefined ? title : document.title,
+                    ...(content !== undefined ? { content } : {}),
+                    ...(title !== undefined ? { title } : {}),
+                    version: { increment: 1 },
                     updatedAt: new Date(),
                 },
+            });
+            if (updateResult.count === 0) {
+                // Race lost — someone updated the document between our read and write.
+                const fresh = await database_1.prisma.document.findFirst({
+                    where: { id, tenantId: req.tenantId, isDeleted: false },
+                });
+                res.status(409).json({
+                    success: false,
+                    error: "Document was modified by another session",
+                    data: {
+                        currentVersion: fresh ? fresh.version : null,
+                        expectedVersion,
+                        document: fresh,
+                    },
+                });
+                return;
+            }
+            const updatedDocument = await database_1.prisma.document.findFirst({
+                where: { id, tenantId: req.tenantId },
             });
             // Create history entry
             if (content !== undefined) {
@@ -428,6 +678,8 @@ class DocumentHubController {
                     },
                 });
             }
+            // Emit socket event
+            socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:document_updated", updatedDocument);
             res.status(200).json({
                 success: true,
                 data: updatedDocument,
@@ -439,6 +691,166 @@ class DocumentHubController {
             res.status(500).json({
                 success: false,
                 error: "Failed to update document",
+            });
+        }
+    }
+    /**
+     * Star a document hub for the current user (raw SQL — no Prisma model).
+     * Idempotent: a duplicate (user, hub) pair is a no-op.
+     */
+    static async starDocumentHub(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { id: hubId } = req.params;
+            // Verify the hub exists and belongs to this tenant before recording a
+            // star against it.
+            // The Prisma-managed `document_hub` table stores id/tenantId as TEXT,
+            // not UUID — so do NOT cast the parameters here.
+            const hubRows = await database_1.prisma.$queryRaw `
+        SELECT id FROM document_hub
+        WHERE id = ${hubId}
+          AND "tenantId" = ${req.tenantId}
+          AND (is_deleted = false OR is_deleted IS NULL)
+        LIMIT 1
+      `;
+            if (!hubRows.length) {
+                res.status(404).json({
+                    success: false,
+                    error: "Document hub not found",
+                });
+                return;
+            }
+            // Generate the UUID in Node so we don't depend on the pgcrypto extension
+            // being enabled on the database.
+            const newId = crypto_1.default.randomUUID();
+            await database_1.prisma.$executeRaw `
+        INSERT INTO document_hub_stars (id, user_id, hub_id, tenant_id)
+        VALUES (
+          ${newId}::uuid,
+          ${req.user.id}::uuid,
+          ${hubId}::uuid,
+          ${req.tenantId}::uuid
+        )
+        ON CONFLICT (user_id, hub_id) DO NOTHING
+      `;
+            res.status(200).json({
+                success: true,
+                message: "Hub starred",
+            });
+        }
+        catch (error) {
+            console.error("Star hub error:", error?.message || error, error?.code);
+            res.status(500).json({
+                success: false,
+                error: error?.message || "Failed to star hub",
+            });
+        }
+    }
+    /**
+     * Remove the current user's star from a document hub (raw SQL).
+     */
+    static async unstarDocumentHub(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { id: hubId } = req.params;
+            await database_1.prisma.$executeRaw `
+        DELETE FROM document_hub_stars
+        WHERE user_id = ${req.user.id}::uuid
+          AND hub_id  = ${hubId}::uuid
+          AND tenant_id = ${req.tenantId}::uuid
+      `;
+            res.status(200).json({
+                success: true,
+                message: "Hub unstarred",
+            });
+        }
+        catch (error) {
+            console.error("Unstar hub error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to unstar hub",
+            });
+        }
+    }
+    /**
+     * Delete a single version from a document's history. Uses a raw SQL DELETE
+     * (with parameterised values) to keep the query explicit and side-effect-
+     * free. The latest version is protected — that's the live document; the
+     * client should call the document-delete endpoint instead.
+     */
+    static async deleteDocumentHistoryEntry(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { id: documentId, historyId } = req.params;
+            // The Prisma-managed `document_history` table stores id/documentId/
+            // tenantId as TEXT — do NOT cast the parameters to ::uuid.
+            const rows = await database_1.prisma.$queryRaw `
+          SELECT id, "createdAt" AS created_at
+          FROM document_history
+          WHERE id = ${historyId}
+            AND "documentId" = ${documentId}
+            AND "tenantId" = ${req.tenantId}
+          LIMIT 1
+        `;
+            if (!rows.length) {
+                res.status(404).json({
+                    success: false,
+                    error: "History entry not found",
+                });
+                return;
+            }
+            // Refuse to delete the most-recent version — it represents the live
+            // document state and removing it would leave the doc in an inconsistent
+            // history.
+            const latest = await database_1.prisma.$queryRaw `
+        SELECT id
+        FROM document_history
+        WHERE "documentId" = ${documentId}
+          AND "tenantId" = ${req.tenantId}
+        ORDER BY "createdAt" DESC
+        LIMIT 1
+      `;
+            if (latest.length && latest[0].id === historyId) {
+                res.status(400).json({
+                    success: false,
+                    error: "Cannot delete the latest version",
+                });
+                return;
+            }
+            await database_1.prisma.$executeRaw `
+        DELETE FROM document_history
+        WHERE id = ${historyId}
+          AND "documentId" = ${documentId}
+          AND "tenantId" = ${req.tenantId}
+      `;
+            res.status(200).json({
+                success: true,
+                message: "Version deleted",
+            });
+        }
+        catch (error) {
+            console.error("Delete history entry error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to delete version",
             });
         }
     }
@@ -463,6 +875,7 @@ class DocumentHubController {
                             id: true,
                             name: true,
                             workEmail: true,
+                            avatarUrl: true,
                         },
                     },
                 },
@@ -492,13 +905,19 @@ class DocumentHubController {
                 });
                 return;
             }
+            // Optional ticketId filter — used by the ticket detail drawer to list
+            // hubs linked to a specific ticket. Trim and validate as UUID-ish so
+            // a typo doesn't drop us into a query that surprisingly returns all rows.
+            const ticketIdFilter = typeof req.query.ticketId === "string" && req.query.ticketId.trim()
+                ? req.query.ticketId.trim()
+                : undefined;
             // Fetch all accessible document IDs in this tenant for the user
             const accessibleDocs = await database_1.prisma.document.findMany({
                 where: {
                     tenantId: req.tenantId,
                     isDeleted: false,
                     OR: [
-                        { visibility: { in: ["internal", "public"] } },
+                        { visibility: "public" },
                         { createdById: req.user.id },
                     ],
                 },
@@ -509,6 +928,11 @@ class DocumentHubController {
                 where: {
                     tenantId: req.tenantId,
                     isDeleted: false,
+                    ...(ticketIdFilter ? { ticketId: ticketIdFilter } : {}),
+                    OR: [
+                        { visibility: "public" },
+                        { createdById: req.user.id },
+                    ],
                 },
                 include: {
                     project: {
@@ -518,7 +942,11 @@ class DocumentHubController {
                         select: { id: true, title: true, status: true, ticketNumber: true },
                     },
                     createdBy: {
-                        select: { id: true, name: true, workEmail: true },
+                        select: { id: true, name: true, workEmail: true, avatarUrl: true },
+                    },
+                    documents: {
+                        where: { isDeleted: false },
+                        select: { visibility: true, createdById: true }
                     },
                     treeNodes: {
                         where: {
@@ -535,9 +963,35 @@ class DocumentHubController {
                     createdAt: "desc",
                 },
             });
+            // Filter DocumentHubs based on requirement:
+            // If total number of documents <= 0, hub should be visible only to creator.
+            // If all documents are private, hub should be visible only to creator.
+            const filteredDocumentHubs = documentHubs.filter((hub) => {
+                if (hub.createdById === req.user.id)
+                    return true;
+                const docs = hub.documents || [];
+                if (docs.length <= 0)
+                    return false;
+                const hasPublicDoc = docs.some((doc) => doc.visibility === "public");
+                if (!hasPublicDoc)
+                    return false;
+                return true;
+            });
+            // Fetch this user's stars in one shot via raw SQL and decorate the
+            // hubs with `isStarred`.
+            const starredRows = await database_1.prisma.$queryRaw `
+        SELECT hub_id FROM document_hub_stars
+        WHERE user_id = ${req.user.id}::uuid
+          AND tenant_id = ${req.tenantId}::uuid
+      `;
+            const starredSet = new Set(starredRows.map((r) => r.hub_id));
+            const enrichedHubs = filteredDocumentHubs.map((hub) => ({
+                ...hub,
+                isStarred: starredSet.has(hub.id),
+            }));
             res.status(200).json({
                 success: true,
-                data: documentHubs,
+                data: enrichedHubs,
             });
         }
         catch (error) {
@@ -605,14 +1059,7 @@ class DocumentHubController {
                 return;
             }
             const { id } = req.params;
-            const { name } = req.body;
-            if (!name || name.trim() === "") {
-                res.status(400).json({
-                    success: false,
-                    error: "Document Hub Name is required",
-                });
-                return;
-            }
+            const { name, projectId, ticketId } = req.body;
             const documentHub = await database_1.prisma.documentHub.findFirst({
                 where: {
                     id,
@@ -627,31 +1074,77 @@ class DocumentHubController {
                 });
                 return;
             }
-            // Check authorization (only creator can rename hub for now)
+            // Check authorization (only creator can update hub for now)
             if (documentHub.createdById !== req.user.id) {
                 res.status(403).json({
                     success: false,
-                    error: "You don't have permission to rename this Document Hub",
+                    error: "You don't have permission to update this Document Hub",
                 });
                 return;
             }
+            // Validate project if provided
+            if (projectId) {
+                const project = await database_1.prisma.project.findFirst({
+                    where: {
+                        id: projectId,
+                        tenantId: req.tenantId,
+                    },
+                });
+                if (!project) {
+                    throw new types_1.ValidationError("Project not found in this tenant");
+                }
+            }
+            const updateData = {
+                updatedAt: new Date(),
+            };
+            if (name !== undefined) {
+                if (name.trim() === "") {
+                    throw new types_1.ValidationError("Document Hub Name cannot be empty");
+                }
+                updateData.name = name;
+            }
+            if (projectId !== undefined) {
+                updateData.projectId = projectId;
+            }
+            if (ticketId !== undefined) {
+                updateData.ticketId = ticketId;
+            }
             const updatedDocumentHub = await database_1.prisma.documentHub.update({
                 where: { id },
-                data: {
-                    name,
-                    updatedAt: new Date(),
-                },
+                data: updateData,
+                include: {
+                    project: {
+                        select: { id: true, name: true, code: true },
+                    },
+                    ticket: {
+                        select: { id: true, title: true, status: true, ticketNumber: true },
+                    },
+                    createdBy: {
+                        select: { id: true, name: true, workEmail: true, avatarUrl: true },
+                    },
+                }
             });
             // Emit socket event
             socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:updated", updatedDocumentHub);
             res.status(200).json({
                 success: true,
                 data: updatedDocumentHub,
-                message: "Document Hub renamed successfully",
+                debug: {
+                    receivedTicketId: ticketId,
+                    updatedAt: updateData.updatedAt
+                },
+                message: "Document Hub updated successfully",
             });
         }
         catch (error) {
             console.error("Update document hub error:", error);
+            if (error instanceof types_1.ValidationError) {
+                res.status(400).json({
+                    success: false,
+                    error: error.message,
+                });
+                return;
+            }
             res.status(500).json({
                 success: false,
                 error: "Failed to update document hub",
@@ -686,6 +1179,8 @@ class DocumentHubController {
             await database_1.prisma.$transaction(async (tx) => {
                 await DocumentHubController.deleteNodeRecursive(tx, id, req.tenantId, req.user.id, node.type, node.documentId);
             });
+            // Emit socket event
+            socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:node_deleted", { id });
             res.status(200).json({
                 success: true,
                 message: "Node and its contents moved to trash",
@@ -799,6 +1294,8 @@ class DocumentHubController {
                     deletedById: req.user.id,
                 },
             });
+            // Emit socket event
+            socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:document_deleted", { id });
             res.status(200).json({
                 success: true,
                 message: "Document moved to trash",
@@ -836,7 +1333,7 @@ class DocumentHubController {
                     },
                     include: {
                         deletedBy: {
-                            select: { id: true, name: true },
+                            select: { id: true, name: true, avatarUrl: true },
                         },
                         project: {
                             select: { id: true, name: true, code: true },
@@ -856,7 +1353,7 @@ class DocumentHubController {
                     },
                     include: {
                         deletedBy: {
-                            select: { id: true, name: true },
+                            select: { id: true, name: true, avatarUrl: true },
                         },
                         documentHub: {
                             select: { id: true, name: true },
@@ -876,7 +1373,7 @@ class DocumentHubController {
                         const doc = await database_1.prisma.document.findUnique({
                             where: { id: node.documentId || '' },
                             include: {
-                                deletedBy: { select: { id: true, name: true } },
+                                deletedBy: { select: { id: true, name: true, avatarUrl: true } },
                                 documentHub: { select: { id: true, name: true } }
                             }
                         });
@@ -936,6 +1433,8 @@ class DocumentHubController {
                     deletedById: null,
                 },
             });
+            // Emit socket event
+            socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:restored", documentHub);
             res.status(200).json({
                 success: true,
                 message: "Document Hub restored successfully",
@@ -997,6 +1496,8 @@ class DocumentHubController {
                     deletedById: null,
                 },
             });
+            // Emit socket event
+            socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:document_restored", { id });
             res.status(200).json({
                 success: true,
                 message: "Document restored successfully",
@@ -1051,6 +1552,8 @@ class DocumentHubController {
                 await DocumentHubController.restoreNodeRecursive(tx, id, req.tenantId, documentHubId, parentId || null // Move the root of the restored branch to the selected parent
                 );
             });
+            // Emit socket event
+            socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:node_restored", { id, documentHubId });
             res.status(200).json({
                 success: true,
                 message: "Folder and its contents restored successfully",
@@ -1122,7 +1625,7 @@ class DocumentHubController {
             }
             const { id } = req.params;
             const { visibility } = req.body;
-            if (!['private', 'internal', 'public'].includes(visibility)) {
+            if (!['private', 'public'].includes(visibility)) {
                 res.status(400).json({
                     success: false,
                     error: "Invalid visibility mode",
@@ -1168,6 +1671,8 @@ class DocumentHubController {
                     shareToken,
                 },
             });
+            // Emit socket event
+            socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:document_updated", updatedDocument);
             res.status(200).json({
                 success: true,
                 data: updatedDocument,
@@ -1224,6 +1729,8 @@ class DocumentHubController {
                     shareToken: null,
                 },
             });
+            // Emit socket event
+            socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:document_updated", { id, visibility: 'private' });
             res.status(200).json({
                 success: true,
                 message: "Document sharing revoked",
@@ -1251,10 +1758,14 @@ class DocumentHubController {
                 },
                 include: {
                     documentHub: {
-                        select: { name: true }
+                        select: {
+                            name: true,
+                            shareToken: true,
+                            visibility: true
+                        }
                     },
                     createdBy: {
-                        select: { name: true }
+                        select: { name: true, avatarUrl: true }
                     }
                 }
             });
@@ -1275,6 +1786,234 @@ class DocumentHubController {
             res.status(500).json({
                 success: false,
                 error: "Failed to fetch public document",
+            });
+        }
+    }
+    /**
+     * Share entire document hub
+     */
+    static async shareDocumentHub(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { id } = req.params;
+            const { visibility } = req.body;
+            if (!['private', 'public'].includes(visibility)) {
+                res.status(400).json({
+                    success: false,
+                    error: "Invalid visibility mode",
+                });
+                return;
+            }
+            const hub = await database_1.prisma.documentHub.findFirst({
+                where: {
+                    id,
+                    tenantId: req.tenantId,
+                    isDeleted: false,
+                },
+            });
+            if (!hub) {
+                res.status(404).json({
+                    success: false,
+                    error: "Document Hub not found",
+                });
+                return;
+            }
+            // Check ownership
+            if (hub.createdById !== req.user.id) {
+                res.status(403).json({
+                    success: false,
+                    error: "You don't have permission to change sharing settings",
+                });
+                return;
+            }
+            let shareToken = hub.shareToken;
+            // Generate token if public and doesn't have one
+            if (visibility === 'public') {
+                if (!shareToken) {
+                    shareToken = crypto_1.default.randomBytes(32).toString('hex');
+                }
+            }
+            else {
+                shareToken = null;
+            }
+            const updatedHub = await database_1.prisma.documentHub.update({
+                where: { id },
+                data: {
+                    visibility: visibility,
+                    shareToken: shareToken,
+                },
+            });
+            // Emit socket event
+            socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:updated", updatedHub);
+            res.status(200).json({
+                success: true,
+                data: updatedHub,
+            });
+        }
+        catch (error) {
+            console.error("Share document hub error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to update hub sharing settings",
+            });
+        }
+    }
+    /**
+     * Revoke document hub sharing
+     */
+    static async revokeHubShare(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { id } = req.params;
+            const hub = await database_1.prisma.documentHub.findFirst({
+                where: {
+                    id,
+                    tenantId: req.tenantId,
+                    isDeleted: false,
+                },
+            });
+            if (!hub) {
+                res.status(404).json({
+                    success: false,
+                    error: "Document Hub not found",
+                });
+                return;
+            }
+            // Check ownership
+            if (hub.createdById !== req.user.id) {
+                res.status(403).json({
+                    success: false,
+                    error: "You don't have permission to revoke sharing",
+                });
+                return;
+            }
+            await database_1.prisma.documentHub.update({
+                where: { id },
+                data: {
+                    visibility: 'private',
+                    shareToken: null,
+                },
+            });
+            // Emit socket event
+            socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:updated", { id, visibility: 'private' });
+            res.status(200).json({
+                success: true,
+                message: "Hub sharing revoked",
+            });
+        }
+        catch (error) {
+            console.error("Revoke hub share error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to revoke hub sharing",
+            });
+        }
+    }
+    /**
+     * Get public document hub by share token
+     */
+    static async getPublicDocumentHub(req, res) {
+        try {
+            const { token } = req.params;
+            const hub = await database_1.prisma.documentHub.findFirst({
+                where: {
+                    shareToken: token,
+                    visibility: 'public',
+                    isDeleted: false,
+                },
+                include: {
+                    createdBy: {
+                        select: { name: true, avatarUrl: true }
+                    },
+                    treeNodes: {
+                        where: { isDeleted: false },
+                        orderBy: { position: "asc" }
+                    }
+                }
+            });
+            if (!hub) {
+                res.status(404).json({
+                    success: false,
+                    error: "Public hub not found or access expired",
+                });
+                return;
+            }
+            res.status(200).json({
+                success: true,
+                data: hub,
+            });
+        }
+        catch (error) {
+            console.error("Get public hub error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to fetch public hub",
+            });
+        }
+    }
+    /**
+     * Get content of a document within a public hub
+     */
+    static async getPublicHubDocumentContent(req, res) {
+        try {
+            const { token, documentId } = req.params;
+            // 1. Verify the hub exists and is public
+            const hub = await database_1.prisma.documentHub.findFirst({
+                where: {
+                    shareToken: token,
+                    visibility: 'public',
+                    isDeleted: false,
+                },
+            });
+            if (!hub) {
+                res.status(404).json({
+                    success: false,
+                    error: "Public hub not found or access expired",
+                });
+                return;
+            }
+            // 2. Verify the document belongs to this hub
+            const document = await database_1.prisma.document.findFirst({
+                where: {
+                    id: documentId,
+                    documentHubId: hub.id,
+                    isDeleted: false,
+                },
+                include: {
+                    createdBy: {
+                        select: { name: true, avatarUrl: true }
+                    }
+                }
+            });
+            if (!document) {
+                res.status(404).json({
+                    success: false,
+                    error: "Document not found in this hub",
+                });
+                return;
+            }
+            res.status(200).json({
+                success: true,
+                data: document,
+            });
+        }
+        catch (error) {
+            console.error("Get public hub document content error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to fetch document content",
             });
         }
     }

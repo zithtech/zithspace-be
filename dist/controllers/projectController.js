@@ -30,8 +30,12 @@ class ProjectController {
                     { code: { contains: search, mode: "insensitive" } },
                 ];
             }
-            if (status)
+            if (status) {
                 where.status = status;
+            }
+            else {
+                where.status = { not: "DELETED" };
+            }
             if (projectManagerId)
                 where.projectManagerId = projectManagerId;
             if (userId) {
@@ -60,7 +64,7 @@ class ProjectController {
                     where,
                     include: {
                         projectManager: {
-                            select: { id: true, name: true, workEmail: true, position: true },
+                            select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
                         },
                         members: {
                             select: {
@@ -70,12 +74,13 @@ class ProjectController {
                                         name: true,
                                         workEmail: true,
                                         position: true,
+                                        avatarUrl: true,
                                     },
                                 },
                             },
                         },
                         createdBy: {
-                            select: { id: true, name: true, workEmail: true },
+                            select: { id: true, name: true, workEmail: true, avatarUrl: true },
                         },
                     },
                     orderBy,
@@ -131,6 +136,7 @@ class ProjectController {
                             name: true,
                             workEmail: true,
                             position: true,
+                            avatarUrl: true,
                         },
                     },
                     members: {
@@ -141,6 +147,7 @@ class ProjectController {
                                     name: true,
                                     workEmail: true,
                                     position: true,
+                                    avatarUrl: true,
                                 },
                             },
                         },
@@ -151,6 +158,7 @@ class ProjectController {
                             name: true,
                             workEmail: true,
                             position: true,
+                            avatarUrl: true,
                         },
                     },
                 },
@@ -461,7 +469,7 @@ class ProjectController {
         }
     }
     /**
-     * Delete project (tenant-aware)
+     * Soft delete project (tenant-aware)
      */
     static async deleteProject(req, res) {
         try {
@@ -482,23 +490,17 @@ class ProjectController {
             if (!project) {
                 throw new types_1.NotFoundError("Project not found in this tenant");
             }
-            // Check if project has active tickets
-            const activeTickets = await database_1.prisma.ticket.count({
-                where: {
-                    projectId: id,
-                    tenantId: req.tenantId,
-                    status: { in: ["NOT_STARTED", "IN_PROGRESS"] },
-                },
-            });
-            if (activeTickets > 0) {
-                throw new types_1.ValidationError(`Cannot delete project with ${activeTickets} active tickets. Please complete or reassign tickets first.`);
-            }
-            await database_1.prisma.project.delete({
+            // Instead of hard delete, set status to DELETED
+            await database_1.prisma.project.update({
                 where: { id },
+                data: {
+                    status: "DELETED",
+                    updatedAt: new Date()
+                },
             });
             res.status(200).json({
                 success: true,
-                message: "Project deleted successfully",
+                message: "Project moved to trash",
             });
         }
         catch (error) {
@@ -512,7 +514,245 @@ class ProjectController {
             }
             res.status(500).json({
                 success: false,
-                error: "Failed to delete project",
+                error: "Failed to move project to trash",
+            });
+        }
+    }
+    /**
+     * Restore project from trash (tenant-aware)
+     */
+    static async restoreProject(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { id } = req.params;
+            const project = await database_1.prisma.project.findFirst({
+                where: {
+                    id,
+                    tenantId: req.tenantId,
+                    status: "DELETED"
+                },
+            });
+            if (!project) {
+                throw new types_1.NotFoundError("Project not found in trash");
+            }
+            await database_1.prisma.project.update({
+                where: { id },
+                data: {
+                    status: "ACTIVE",
+                    updatedAt: new Date()
+                },
+            });
+            res.status(200).json({
+                success: true,
+                message: "Project restored successfully",
+            });
+        }
+        catch (error) {
+            console.error("Restore project error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to restore project",
+            });
+        }
+    }
+    /**
+     * Permanently delete project (tenant-aware)
+     */
+    static async permanentDeleteProject(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { id } = req.params;
+            const project = await database_1.prisma.project.findFirst({
+                where: {
+                    id,
+                    tenantId: req.tenantId,
+                    status: "DELETED"
+                },
+            });
+            if (!project) {
+                throw new types_1.NotFoundError("Project not found in trash");
+            }
+            // Here we do the actual hard delete
+            await database_1.prisma.project.delete({
+                where: { id },
+            });
+            res.status(200).json({
+                success: true,
+                message: "Project permanently deleted",
+            });
+        }
+        catch (error) {
+            console.error("Permanent delete project error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to delete project permanently",
+            });
+        }
+    }
+    /**
+     * Empty trash (Permanently delete all DELETED projects for tenant)
+     */
+    static async emptyTrash(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { count } = await database_1.prisma.project.deleteMany({
+                where: {
+                    tenantId: req.tenantId,
+                    status: "DELETED"
+                },
+            });
+            res.status(200).json({
+                success: true,
+                message: `Trash emptied: ${count} projects permanently deleted`,
+                data: { deletedCount: count }
+            });
+        }
+        catch (error) {
+            console.error("Empty trash error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to empty trash",
+            });
+        }
+    }
+    /**
+     * Bulk restore projects from trash
+     */
+    static async bulkRestoreProjects(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { ids } = req.body;
+            if (!ids || !Array.isArray(ids)) {
+                res.status(400).json({
+                    success: false,
+                    error: "Project IDs array required",
+                });
+                return;
+            }
+            const { count } = await database_1.prisma.project.updateMany({
+                where: {
+                    id: { in: ids },
+                    tenantId: req.tenantId,
+                    status: "DELETED"
+                },
+                data: {
+                    status: "ACTIVE",
+                    updatedAt: new Date()
+                },
+            });
+            res.status(200).json({
+                success: true,
+                message: `${count} projects restored successfully`,
+                data: { restoredCount: count }
+            });
+        }
+        catch (error) {
+            console.error("Bulk restore error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to restore projects",
+            });
+        }
+    }
+    /**
+     * Bulk permanently delete projects
+     */
+    static async bulkPermanentDeleteProjects(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { ids } = req.body;
+            if (!ids || !Array.isArray(ids)) {
+                res.status(400).json({
+                    success: false,
+                    error: "Project IDs array required",
+                });
+                return;
+            }
+            const { count } = await database_1.prisma.project.deleteMany({
+                where: {
+                    id: { in: ids },
+                    tenantId: req.tenantId,
+                    status: "DELETED"
+                },
+            });
+            res.status(200).json({
+                success: true,
+                message: `${count} projects permanently deleted`,
+                data: { deletedCount: count }
+            });
+        }
+        catch (error) {
+            console.error("Bulk permanent delete error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to delete projects permanently",
+            });
+        }
+    }
+    /**
+     * Get all projects in trash (tenant-aware)
+     */
+    static async getTrashProjects(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const projects = await database_1.prisma.project.findMany({
+                where: {
+                    tenantId: req.tenantId,
+                    status: "DELETED"
+                },
+                include: {
+                    projectManager: {
+                        select: { id: true, name: true, avatarUrl: true },
+                    },
+                },
+                orderBy: { updatedAt: "desc" }
+            });
+            res.status(200).json({
+                success: true,
+                data: projects,
+            });
+        }
+        catch (error) {
+            console.error("Get trash projects error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to fetch trashed projects",
             });
         }
     }
@@ -629,6 +869,7 @@ class ProjectController {
             const projects = await database_1.prisma.project.findMany({
                 where: {
                     tenantId: req.tenantId,
+                    status: { not: "DELETED" },
                 },
                 select: {
                     id: true,
@@ -684,7 +925,7 @@ class ProjectController {
             // 2. Determine Project Scope based on Role
             let whereClause = {
                 tenantId,
-                status: { not: "ARCHIVED" }, // Exclude archived by default
+                status: { notIn: ["ARCHIVED", "DELETED"] }, // Exclude archived and deleted
             };
             // STRICT ROLE LOGIC:
             // SUPER_ADMIN -> Sees ALL projects in tenant

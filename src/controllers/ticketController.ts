@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import fs from "fs";
 import path from "path";
 import { prisma } from "@/config/database";
+import pool from "@/config/dbpool";
 import {
   AuthRequest,
   ApiResponse,
@@ -19,6 +20,7 @@ import {
 import { sanitizeHtmlContent, validateHtmlLength } from "@/utils/htmlSanitizer";
 import { socketService } from "@/services/socketService";
 import cacheService from "@/utils/cacheService";
+import { generateTicketDraft, generateSubtasks } from "@/services/aiTicketService";
 
 export class TicketController {
   /**
@@ -81,11 +83,13 @@ export class TicketController {
             select: {
               name: true,
               position: true,
+              avatarUrl: true,
             },
           },
           createdBy: {
             select: {
               name: true,
+              avatarUrl: true,
             },
           },
           comments: {
@@ -94,6 +98,7 @@ export class TicketController {
                 select: {
                   name: true,
                   position: true,
+                  avatarUrl: true,
                 },
               },
             },
@@ -104,6 +109,7 @@ export class TicketController {
               addedBy: {
                 select: {
                   name: true,
+                  avatarUrl: true,
                 },
               },
             },
@@ -126,6 +132,7 @@ export class TicketController {
               performedBy: {
                 select: {
                   name: true,
+                  avatarUrl: true,
                 },
               },
             },
@@ -405,75 +412,101 @@ export class TicketController {
         }
       }
 
-      // Generate ticket number
-      // Generate ticket number safely by finding the last created ticket
-      const lastTicket = await prisma.ticket.findFirst({
-        where: { tenantId: req.tenantId },
-        orderBy: { createdAt: 'desc' } // Get the most recently created ticket
-      });
+      // Generate ticket number with retry logic to handle race conditions
+      let ticket;
+      let ticketNumber = "";
+      let attempts = 0;
+      const maxAttempts = 5;
 
-      let nextTicketNumber = 1;
-      if (lastTicket && lastTicket.ticketNumber) {
-        // Extract the number part from the last ticket (e.g., "PROJ-0005" -> 5)
-        const parts = lastTicket.ticketNumber.split('-');
-        const lastSeq = parseInt(parts[parts.length - 1]);
-        if (!isNaN(lastSeq)) {
-          nextTicketNumber = lastSeq + 1;
+      while (attempts < maxAttempts) {
+        attempts++;
+
+        // Find the last ticket number for THIS project specific prefix
+        const lastTicket = await prisma.ticket.findFirst({
+          where: { 
+            tenantId: req.tenantId,
+            ticketNumber: { startsWith: `${project.code || "TKT"}-` }
+          },
+          orderBy: { ticketNumber: 'desc' }
+        });
+
+        let nextTicketNumber = 1;
+        if (lastTicket && lastTicket.ticketNumber) {
+          const parts = lastTicket.ticketNumber.split('-');
+          const lastSeq = parseInt(parts[parts.length - 1]);
+          if (!isNaN(lastSeq)) {
+            nextTicketNumber = lastSeq + 1;
+          }
+        }
+
+        ticketNumber = `${project.code || "TKT"}-${nextTicketNumber
+          .toString()
+          .padStart(4, "0")}`;
+
+        try {
+          // Prepare metadata for additional fields not in schema
+          const metadata: any = {
+            parentTickets,
+            releasePlan,
+          };
+
+          // Create ticket with fields at root level (matching Prisma schema)
+          ticket = await prisma.ticket.create({
+            data: {
+              tenantId: req.tenantId,
+              title,
+              description: sanitizedDescription,
+              projectId,
+              status,
+              priority,
+              type: ticketType,
+              platform: platform || "Development",
+              stack: stack || null,
+              taskLevel: taskLevel || "Medium",
+              storyPoint: storyPoint || 1,
+              estimateHours: estimateHours || 0,
+              assigneeId: assigneeId || null,
+              reportToId: reportToId || null,
+              createdById: req.user!.id,
+              parentTickets: parentTickets || [],
+              parentId: parentId || null,
+              startDate: req.body.startDate ? new Date(req.body.startDate) : null,
+              endDate: req.body.endDate ? new Date(req.body.endDate) : null,
+              dueDate: dueDate ? new Date(dueDate) : null,
+              tags,
+              metadata,
+              ticketNumber,
+            },
+            include: {
+              createdBy: {
+                select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
+              },
+              assignee: {
+                select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
+              },
+              reportTo: {
+                select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
+              },
+              project: {
+                select: { id: true, name: true, code: true, description: true },
+              },
+            },
+          });
+          
+          // If creation succeeded, break the retry loop
+          break;
+        } catch (error: any) {
+          // Check if it's a unique constraint error on ticketNumber
+          if (error.code === 'P2002' && error.meta?.target?.includes('ticket_number')) {
+            console.warn(`Ticket number collision on ${ticketNumber}, attempt ${attempts}/${maxAttempts}. Retrying...`);
+            if (attempts >= maxAttempts) {
+              throw error; // Max attempts reached
+            }
+            continue; // Try again with a new number
+          }
+          throw error; // Rethrow other errors
         }
       }
-
-      const ticketNumber = `${project.code || "TKT"}-${nextTicketNumber
-        .toString()
-        .padStart(4, "0")}`;
-
-      // Prepare metadata for additional fields not in schema
-      const metadata: any = {
-        parentTickets,
-        releasePlan,
-      };
-
-      // Create ticket with fields at root level (matching Prisma schema)
-      const ticket = await prisma.ticket.create({
-        data: {
-          tenantId: req.tenantId,
-          title,
-          description: sanitizedDescription,
-          projectId,
-          status,
-          priority,
-          type: ticketType,
-          platform: platform || "Development",
-          stack: stack || null,
-          taskLevel: taskLevel || "Medium",
-          storyPoint: storyPoint || 1,
-          estimateHours: estimateHours || 0,
-          assigneeId: assigneeId || null,
-          reportToId: reportToId || null,
-          createdById: req.user!.id,
-          parentTickets: parentTickets || [],
-          parentId: parentId || null,
-          startDate: req.body.startDate ? new Date(req.body.startDate) : null,
-          endDate: req.body.endDate ? new Date(req.body.endDate) : null,
-          dueDate: dueDate ? new Date(dueDate) : null,
-          tags,
-          metadata,
-          ticketNumber,
-        },
-        include: {
-          createdBy: {
-            select: { id: true, name: true, workEmail: true, position: true },
-          },
-          assignee: {
-            select: { id: true, name: true, workEmail: true, position: true },
-          },
-          reportTo: {
-            select: { id: true, name: true, workEmail: true, position: true },
-          },
-          project: {
-            select: { id: true, name: true, code: true, description: true },
-          },
-        },
-      });
 
       socketService.emitToTenant(req.tenantId, "ticket:created", ticket);
 
@@ -522,6 +555,100 @@ export class TicketController {
   }
 
   /**
+   * Generate a structured ticket draft from a free-form description using AI.
+   * Does not persist anything — the client previews and edits, then calls POST /api/tickets.
+   */
+  static async aiGenerateTicket(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { description, title } = req.body as { description?: string; title?: string };
+
+      const seed = [title, description].filter(Boolean).join("\n\n").trim();
+      if (!seed || seed.length < 5) {
+        res.status(400).json({
+          success: false,
+          error: "Description is required (min 5 characters)",
+        } as ApiResponse);
+        return;
+      }
+
+      if (seed.length > 8000) {
+        res.status(400).json({
+          success: false,
+          error: "Description is too long (max 8000 characters)",
+        } as ApiResponse);
+        return;
+      }
+
+      const { draft, source, fallbackReason } = await generateTicketDraft(seed);
+
+      res.status(200).json({
+        success: true,
+        data: { ...draft, source, fallbackReason },
+        message: "Ticket draft generated",
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("AI generate ticket error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to generate ticket draft",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Regenerate just the subtasks for a Zai-drafted ticket, with caller-specified
+   * shape (count + hours-each). Doesn't persist anything.
+   */
+  static async aiGenerateSubtasks(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { description, count, hoursEach } = req.body as {
+        description?: string;
+        count?: number;
+        hoursEach?: number;
+      };
+
+      const seed = String(description || "").trim();
+      if (!seed || seed.length < 5) {
+        res.status(400).json({
+          success: false,
+          error: "Description is required (min 5 characters)",
+        } as ApiResponse);
+        return;
+      }
+
+      const result = await generateSubtasks({ description: seed, count, hoursEach });
+
+      res.status(200).json({
+        success: true,
+        data: result,
+        message: "Subtasks generated",
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("AI generate subtasks error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to generate subtasks",
+      } as ApiResponse);
+    }
+  }
+
+  /**
    * Get tickets optimized for Kanban view (tenant-aware)
    * Returns tickets grouped by status with metadata
    */
@@ -539,6 +666,7 @@ export class TicketController {
         projectId,
         assigneeId,
         priority,
+        type,
         search,
         limitPerColumn = 50,
         includeArchived = false,
@@ -554,7 +682,20 @@ export class TicketController {
       };
 
       if (projectId) baseWhere.projectId = projectId;
-      if (priority) baseWhere.priority = priority;
+      if (priority) {
+        if (typeof priority === "string" && priority.includes(",")) {
+          baseWhere.priority = { in: priority.split(",").map((p) => p.trim()) };
+        } else {
+          baseWhere.priority = priority;
+        }
+      }
+      if (type) {
+        if (typeof type === "string" && type.includes(",")) {
+          baseWhere.type = { in: type.split(",").map((t) => t.trim()) };
+        } else {
+          baseWhere.type = type;
+        }
+      }
       if (assigneeId) {
         if (typeof assigneeId === "string" && assigneeId.includes(",")) {
           baseWhere.assigneeId = { in: assigneeId.split(",").map((id) => id.trim()) };
@@ -609,7 +750,7 @@ export class TicketController {
         }
       }
 
-      const statuses = ['not_started', 'in_progress', 'dev_complete', 'in_testing', 'in_review', 'completed', 'live'];
+      const statuses = ['not_started', 'in_progress', 'dev_complete', 'dev_testing', 'in_review', 'live', 'live_testing', 'completed', 'pause'];
       const limit = Number(limitPerColumn);
 
       // Fetch tickets for each status in parallel
@@ -637,7 +778,8 @@ export class TicketController {
                   select: {
                     id: true,
                     name: true,
-                    workEmail: true
+                    workEmail: true,
+                    avatarUrl: true
                   }
                 },
                 project: {
@@ -709,6 +851,7 @@ export class TicketController {
         limit = 20,
         status,
         priority,
+        type,
         projectId,
         assigneeId,
         createdById,
@@ -732,8 +875,27 @@ export class TicketController {
 
       const where: any = { ...baseWhere };
 
-      if (status) where.status = status;
-      if (priority) where.priority = priority;
+      if (status) {
+        if (typeof status === "string" && status.includes(",")) {
+          where.status = { in: status.split(",").map((s) => s.trim()) };
+        } else {
+          where.status = status;
+        }
+      }
+      if (priority) {
+        if (typeof priority === "string" && priority.includes(",")) {
+          where.priority = { in: priority.split(",").map((p) => p.trim()) };
+        } else {
+          where.priority = priority;
+        }
+      }
+      if (type) {
+        if (typeof type === "string" && type.includes(",")) {
+          where.type = { in: type.split(",").map((t) => t.trim()) };
+        } else {
+          where.type = type;
+        }
+      }
       if (projectId) where.projectId = projectId;
 
       // Handle single or multiple assignees
@@ -750,6 +912,15 @@ export class TicketController {
       }
 
       if (createdById) where.createdById = createdById;
+
+      // Filter by tags (comma-separated). Match tickets that have ANY of the given tags.
+      const { tags: tagsParam } = req.query;
+      if (tagsParam && typeof tagsParam === 'string' && tagsParam.trim()) {
+        const tagList = tagsParam.split(',').map(t => t.trim()).filter(Boolean);
+        if (tagList.length > 0) {
+          where.tags = { hasSome: tagList };
+        }
+      }
 
       if (search) {
         where.OR = [
@@ -827,10 +998,10 @@ export class TicketController {
             updatedAt: true,
             // Exclude large fields: description (can be fetched in detail view)
             createdBy: {
-              select: { id: true, name: true, workEmail: true },
+              select: { id: true, name: true, workEmail: true, avatarUrl: true },
             },
             assignee: {
-              select: { id: true, name: true, workEmail: true },
+              select: { id: true, name: true, workEmail: true, avatarUrl: true },
             },
             project: {
               select: { id: true, name: true, code: true },
@@ -883,9 +1054,11 @@ export class TicketController {
 
       const { id } = req.params;
 
-      // Check cache first
+      // Check cache first — only honor cache entries that contain the new
+      // sprint/release/bucket linkage fields. Older cached payloads are missing
+      // them and would make the drawer mis-detect sprint membership.
       const cached = await cacheService.getTicket(id, req.tenantId);
-      if (cached) {
+      if (cached && 'sprintPlanId' in (cached as any)) {
         res.status(200).json({
           success: true,
           data: cached,
@@ -922,17 +1095,22 @@ export class TicketController {
           metadata: true,
           parentTickets: true,
           parentId: true, // IMPORTANT: Include parentId for subtask navigation
+          sprintPlanId: true,   // Required so the detail drawer knows sprint membership
+          releasePlanId: true,  // Required for release-plan linkage in detail drawer
+          demoPlanId: true,     // Required for demo-plan linkage in detail drawer
+          bucketId: true,       // Required for bucket linkage in detail drawer
+          isArchived: true,
           createdAt: true,
           updatedAt: true,
           // Optimized relations - only essential fields
           createdBy: {
-            select: { id: true, name: true, workEmail: true },
+            select: { id: true, name: true, workEmail: true, avatarUrl: true },
           },
           assignee: {
-            select: { id: true, name: true, workEmail: true },
+            select: { id: true, name: true, workEmail: true, avatarUrl: true },
           },
           reportTo: {
-            select: { id: true, name: true, workEmail: true },
+            select: { id: true, name: true, workEmail: true, avatarUrl: true },
           },
           project: {
             select: { id: true, name: true, code: true, description: true },
@@ -947,7 +1125,7 @@ export class TicketController {
               status: true,
               priority: true,
               assignee: {
-                select: { id: true, name: true, workEmail: true }
+                select: { id: true, name: true, workEmail: true, avatarUrl: true }
               },
               type: true
             },
@@ -979,6 +1157,46 @@ export class TicketController {
       res.status(500).json({
         success: false,
         error: "Failed to fetch ticket",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Get distinct tags used across all tickets in the tenant.
+   * Uses raw SQL via pg pool to UNNEST the text[] tags column.
+   */
+  static async getAllTags(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context required",
+        } as ApiResponse);
+        return;
+      }
+
+      const sql = `
+        SELECT DISTINCT btrim(tag) AS tag
+        FROM tickets t, UNNEST(t.tags) AS tag
+        WHERE t.tenant_id = $1
+          AND COALESCE(t.is_deleted, false) = false
+          AND tag IS NOT NULL
+          AND btrim(tag) <> ''
+        ORDER BY tag ASC;
+      `;
+
+      const result = await pool.query(sql, [req.tenantId]);
+      const tags = result.rows.map((r: { tag: string }) => r.tag);
+
+      res.status(200).json({
+        success: true,
+        data: tags,
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Get all tags error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to fetch tags",
       } as ApiResponse);
     }
   }
@@ -1203,12 +1421,13 @@ export class TicketController {
           sprintPlanId: true,  // CRITICAL: Include sprint assignment
           releasePlanId: true,
           demoPlanId: true,
+          tags: true,
           createdAt: true,
           updatedAt: true,
           // Relations
-          createdBy: { select: { id: true, name: true, workEmail: true } },
-          assignee: { select: { id: true, name: true, workEmail: true } },
-          reportTo: { select: { id: true, name: true, workEmail: true } },
+          createdBy: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
+          assignee: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
+          reportTo: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
           project: { select: { id: true, name: true, code: true } },
         },
       });
@@ -1421,7 +1640,8 @@ export class TicketController {
         await prisma.ticket.findMany({
           where,
           include: {
-            createdBy: { select: { name: true, workEmail: true } },
+            createdBy: { select: { name: true, workEmail: true, avatarUrl: true } },
+            assignee: { select: { name: true, workEmail: true, avatarUrl: true } },
             project: { select: { name: true, code: true } },
           },
           orderBy: { createdAt: "desc" },
@@ -1803,6 +2023,7 @@ export class TicketController {
               name: true,
               workEmail: true,
               position: true,
+              avatarUrl: true,
             },
           },
         },
@@ -1884,6 +2105,7 @@ export class TicketController {
               name: true,
               workEmail: true,
               position: true,
+              avatarUrl: true,
             },
           },
         },
@@ -2510,6 +2732,7 @@ export class TicketController {
               name: true,
               workEmail: true,
               position: true,
+              avatarUrl: true,
             },
           },
         },

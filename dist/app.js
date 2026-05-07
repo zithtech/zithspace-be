@@ -3,6 +3,13 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+const dotenv_1 = __importDefault(require("dotenv"));
+const path_1 = __importDefault(require("path"));
+// Load backend-local .env first (highest priority), then fall back to parent
+// monorepo .env so a single root file works for both apps. dotenv.config()
+// won't override variables that are already set, so order = priority.
+dotenv_1.default.config();
+dotenv_1.default.config({ path: path_1.default.resolve(__dirname, "../../.env") });
 if (process.env.NODE_ENV !== "development") {
     require("module-alias/register");
 }
@@ -11,7 +18,6 @@ const cors_1 = __importDefault(require("cors"));
 const morgan_1 = __importDefault(require("morgan"));
 const compression_1 = __importDefault(require("compression"));
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
-const dotenv_1 = __importDefault(require("dotenv"));
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const express_session_1 = __importDefault(require("express-session"));
 // Import configurations
@@ -45,6 +51,7 @@ const customerRoutes_1 = __importDefault(require("@/routes/customerRoutes"));
 const invoiceSettingsRoutes_1 = __importDefault(require("@/routes/invoiceSettingsRoutes"));
 const invoice_1 = __importDefault(require("@/routes/invoice"));
 const invoiceTemplate_1 = __importDefault(require("@/routes/invoiceTemplate"));
+const categoryRoutes_1 = __importDefault(require("@/routes/categoryRoutes"));
 const buckets_1 = __importDefault(require("@/routes/buckets"));
 const trash_1 = __importDefault(require("@/routes/trash"));
 const sprintCompletion_1 = __importDefault(require("@/routes/sprintCompletion"));
@@ -55,6 +62,10 @@ const messages_1 = __importDefault(require("@/routes/messages"));
 const shortcut_routes_1 = __importDefault(require("@/routes/shortcut.routes"));
 const employeeWorkDetailes_1 = __importDefault(require("@/routes/employeeWorkDetailes"));
 const employeeTimeline_1 = __importDefault(require("@/routes/employeeTimeline"));
+const skillExperience_routes_1 = __importDefault(require("@/routes/skillExperience.routes"));
+const escalationCategoryV2_routes_1 = __importDefault(require("@/routes/escalationCategoryV2.routes"));
+const escalationStatus_RoutesV2_1 = __importDefault(require("@/routes/escalationStatus.RoutesV2"));
+const escalationPriorities_Routes_1 = __importDefault(require("@/routes/escalationPriorities.Routes"));
 // main
 const onboardingRoutes_1 = __importDefault(require("@/routes/onboardingRoutes"));
 const auth_2 = __importDefault(require("@/routes/auth"));
@@ -98,8 +109,15 @@ const recruitmentAction_routes_1 = __importDefault(require("@/routes/recruitment
 const candidateRoutes_1 = __importDefault(require("@/routes/candidateRoutes"));
 const companyLocationRoutes_1 = __importDefault(require("@/routes/companyLocationRoutes"));
 const openingManagementRoutes_1 = __importDefault(require("@/routes/openingManagementRoutes"));
-const escalationSettingsRoutes_1 = __importDefault(require("./routes/escalationSettingsRoutes"));
-const escalationRoutes_1 = __importDefault(require("./routes/escalationRoutes"));
+const lead_routes_1 = __importDefault(require("@/routes/lead.routes"));
+const leadSettings_routes_1 = __importDefault(require("@/routes/leadSettings.routes"));
+const generate_routes_1 = __importDefault(require("@/routes/generate.routes"));
+// import escalationSettingsRoutes from "./routes/escalationSettingsRoutes";
+// import escalationRoutes from "./routes/escalationRoutes";
+const escalationRoutesV2_1 = __importDefault(require("./routes/escalationRoutesV2"));
+const proposals_1 = __importDefault(require("@/routes/proposals"));
+const projectOverviewRoutes_1 = __importDefault(require("./routes/projectOverviewRoutes"));
+const socketService_1 = require("@/services/socketService");
 // Load environment
 dotenv_1.default.config();
 console.log("🚀 API Starting up...");
@@ -116,6 +134,7 @@ const allowedOrigins = [
     "https://zithmi.zithspace.com",
     /\.zithspace\.com$/,
     /\.zithtech\.com$/, // allow any subdomain like dinesh.zithtech.com
+    /^chrome-extension:\/\/[a-z]{32}$/, // Allow Chrome extensions
 ];
 app.use((0, cors_1.default)({
     origin: (origin, callback) => {
@@ -189,6 +208,7 @@ app.get("/api/direct-test", (req, res) => {
 app.get("/api/debug-ping-unique", (req, res) => res.json({ success: true, message: "Debug route is active" }));
 app.use("/api", proxyRoutes_1.default);
 app.use("/api/auth", auth_1.default);
+app.use("/api/generate", generate_routes_1.default);
 app.use("/api/projects", projects_1.default);
 app.use("/api/tenants", tenants_1.default);
 app.use("/api/calendar", calendar_1.default);
@@ -205,8 +225,8 @@ app.use("/api/shifts", shifts_1.default);
 app.use("/api/transactions", transactions_1.default);
 app.use("/api/release-plans", releasePlans_1.default);
 app.use("/api/settings", settings_1.default);
-app.use("/api/escalation-settings", escalationSettingsRoutes_1.default);
-app.use("/api/escalations", escalationRoutes_1.default);
+//app.use("/api/escalation-settings", escalationSettingsRoutes);
+// app.use("/api/escalations", escalationRoutes);
 app.use("/api/user", user_1.default);
 app.use("/api/daily-updates", dailyUpdates_1.default);
 app.use("/api/dashboard", dashboard_1.default);
@@ -218,7 +238,9 @@ app.use("/api/leave-types", leaveTypeRoutes_1.default);
 app.use("/api/customers", customerRoutes_1.default);
 app.use("/api/invoicesetting", invoiceSettingsRoutes_1.default);
 app.use("/api/invoices", invoice_1.default);
+app.use("/api/proposals", proposals_1.default);
 app.use("/api/invoice-templates", invoiceTemplate_1.default);
+app.use("/api/categories", categoryRoutes_1.default);
 //app.use("/api/invoice",invoicedownload)
 app.use("/api/buckets", buckets_1.default);
 app.use("/api/trash", trash_1.default);
@@ -232,6 +254,9 @@ app.use("/api/grades", gradeRoutes_1.default);
 app.use("/api/payroll", payroll_1.default);
 app.use("/api/company-locations", companyLocationRoutes_1.default);
 app.use("/api/opening-management", openingManagementRoutes_1.default);
+app.use("/api/leads", lead_routes_1.default);
+app.use("/api/lead-settings", leadSettings_routes_1.default);
+app.use("/api", skillExperience_routes_1.default);
 app.use("/api/departments", departmentRoutes_1.default);
 app.use("/api/sub-departments", subDepartmentRoutes_1.default);
 app.use("/api/positions", positionRoutes_1.default);
@@ -245,7 +270,13 @@ app.use("/api/zoho", calendar_1.default);
 app.use("/api/leave-allocation", leaveAllocationRoutes_1.default);
 app.use("/api/leave-request", leaveRequestRoutes_1.default);
 app.use("/api/leave-balances", leaveBalanceRoutes_1.default);
+//Escalation
+app.use("/api/escalation-categories", escalationCategoryV2_routes_1.default);
+app.use("/api/escalation-statuses", escalationStatus_RoutesV2_1.default);
+app.use("/api/escalation-priorities", escalationPriorities_Routes_1.default);
+app.use("/api/escalations-v2", escalationRoutesV2_1.default);
 app.use("/api/time-tracking", timeTracking_1.default);
+app.use("/api/projects", projectOverviewRoutes_1.default);
 app.use("/api/candidates", candidateRoutes_1.default);
 app.use("/api/recruitment-statuses", recruitmentStatus_routes_1.default);
 app.use("/api/recruitment-actions", recruitmentAction_routes_1.default);
@@ -287,13 +318,13 @@ app.get("/api/health", (req, res) => {
     });
 });
 // Handle Socket.io requests (to prevent)
-app.all("/socket.io/*", (req, res) => {
-    res.status(200).json({
-        success: false,
-        message: "Socket.io not configured on this server",
-        note: "WebSocket connections are not required for this application",
-    });
-});
+// app.all("/socket.io/*", (req, res) => {
+//   res.status(200).json({
+//     success: false,
+//     message: "Socket.io not configured on this server",
+//     note: "WebSocket connections are not required for this application",
+//   });
+// });
 // 404 handler
 app.use("*", (req, res) => {
     res.status(404).json({
@@ -392,7 +423,9 @@ const startServer = async () => {
     try {
         // Connect PostgreSQL
         await (0, database_1.connectDatabase)();
-        // console.log("Database connected");
+        // Initialize Tables
+        const { BidIQModel } = require("./models/BidIQ.model");
+        await BidIQModel.initTable();
         // Connect RabbitMQ
         // await connectRabbitMQ();
         // console.log("RabbitMQ connected");
@@ -405,6 +438,11 @@ const startServer = async () => {
             // console.log(`Environment: ${process.env.NODE_ENV}`);
             // console.log(`Health check: http://localhost:${PORT}/health`);
         });
+        // Initialize Socket.io
+        socketService_1.socketService.initialize(server);
+        // Start trash auto-purge cron job
+        const { startTrashAutoPurgeJob } = require("@/jobs/trashAutoPurge");
+        startTrashAutoPurgeJob();
     }
     catch (error) {
         console.error("Server startup failed:", error);
@@ -412,21 +450,6 @@ const startServer = async () => {
     }
 };
 startServer();
-// const PORT = parseInt(process.env.PORT || "5000");
-// const server = app.listen(PORT, () => {
-//   console.log(`Zithmi Backend V2 (Multi-Tenant) running on port ${PORT}`);
-//   console.log(`Environment: ${process.env.NODE_ENV}`);
-//   console.log(`Health check: http://localhost:${PORT}/health`);
-//   console.log(`Multi-tenant API: http://localhost:${PORT}/api/health`);
-//   console.log(`Database: PostgreSQL with Prisma`);
-//   console.log(`Features: Multi-tenant, RLS, Enhanced Auth, JWT`);
-//   // Initialize Socket.io
-//   const { socketService } = require("@/services/socketService");
-//   socketService.initialize(server);
-//   // Start trash auto-purge cron job
-//   const { startTrashAutoPurgeJob } = require("@/jobs/trashAutoPurge");
-//   startTrashAutoPurgeJob();
-// });
 // Graceful shutdown
 const gracefulShutdown = async (signal) => {
     console.log(`\n${signal} received. Shutting down gracefully...`);

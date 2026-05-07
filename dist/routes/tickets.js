@@ -48,6 +48,12 @@ router.get("/my", (0, permission_1.requirePermission)(permissions_1.Permissions.
  */
 router.get("/epics", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_READ), ticketController_1.TicketController.getEpics);
 /**
+ * @route   GET /api/tickets/tags
+ * @desc    Get distinct tags used across all tickets in the tenant
+ * @access  Private (authenticated users within tenant)
+ */
+router.get("/tags", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_READ), ticketController_1.TicketController.getAllTags);
+/**
  * @route   GET /api/tickets/:id/epic-progress
  * @desc    Get Epic with detailed story progress (tenant-aware)
  * @access  Private (authenticated users within tenant)
@@ -122,6 +128,20 @@ router.delete("/:id/code/pull-requests/:prId", (0, permission_1.requirePermissio
  * @body    { image: string (base64), ticketId?: string }
  */
 router.post("/upload-image", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_CREATE), ticketController_1.TicketController.uploadImage);
+/**
+ * @route   POST /api/tickets/ai-generate
+ * @desc    Generate a structured ticket draft from a free-form description (no persistence)
+ * @access  Private (authenticated users within tenant)
+ * @body    { description: string, title?: string }
+ */
+router.post("/ai-generate", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_CREATE), ticketController_1.TicketController.aiGenerateTicket);
+/**
+ * @route   POST /api/tickets/ai-generate-subtasks
+ * @desc    Regenerate the subtask list for a Zai-drafted ticket with caller-specified shape (count + hoursEach)
+ * @access  Private (authenticated users within tenant)
+ * @body    { description: string, count?: number, hoursEach?: number }
+ */
+router.post("/ai-generate-subtasks", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_CREATE), ticketController_1.TicketController.aiGenerateSubtasks);
 /**
  * @route   POST /api/tickets
  * @desc    Create a new ticket (tenant-aware)

@@ -18,6 +18,16 @@ export declare class TicketController {
      */
     static createTicket(req: AuthRequest, res: Response): Promise<void>;
     /**
+     * Generate a structured ticket draft from a free-form description using AI.
+     * Does not persist anything — the client previews and edits, then calls POST /api/tickets.
+     */
+    static aiGenerateTicket(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Regenerate just the subtasks for a Zai-drafted ticket, with caller-specified
+     * shape (count + hours-each). Doesn't persist anything.
+     */
+    static aiGenerateSubtasks(req: AuthRequest, res: Response): Promise<void>;
+    /**
      * Get tickets optimized for Kanban view (tenant-aware)
      * Returns tickets grouped by status with metadata
      */
@@ -31,6 +41,11 @@ export declare class TicketController {
      * OPTIMIZED: Redis caching + removed comments/links (fetched separately)
      */
     static getTicketById(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get distinct tags used across all tickets in the tenant.
+     * Uses raw SQL via pg pool to UNNEST the text[] tags column.
+     */
+    static getAllTags(req: AuthRequest, res: Response): Promise<void>;
     /**
      * Update ticket (tenant-aware)
      */

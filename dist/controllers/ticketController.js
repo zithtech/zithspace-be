@@ -7,11 +7,13 @@ exports.TicketController = void 0;
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
 const database_1 = require("@/config/database");
+const dbpool_1 = __importDefault(require("@/config/dbpool"));
 const types_1 = require("@/types");
 const r2Client_1 = require("@/utils/r2Client");
 const htmlSanitizer_1 = require("@/utils/htmlSanitizer");
 const socketService_1 = require("@/services/socketService");
 const cacheService_1 = __importDefault(require("@/utils/cacheService"));
+const aiTicketService_1 = require("@/services/aiTicketService");
 class TicketController {
     /**
      * Upload image to R2 for ticket description
@@ -68,11 +70,13 @@ class TicketController {
                         select: {
                             name: true,
                             position: true,
+                            avatarUrl: true,
                         },
                     },
                     createdBy: {
                         select: {
                             name: true,
+                            avatarUrl: true,
                         },
                     },
                     comments: {
@@ -81,6 +85,7 @@ class TicketController {
                                 select: {
                                     name: true,
                                     position: true,
+                                    avatarUrl: true,
                                 },
                             },
                         },
@@ -91,6 +96,7 @@ class TicketController {
                             addedBy: {
                                 select: {
                                     name: true,
+                                    avatarUrl: true,
                                 },
                             },
                         },
@@ -113,6 +119,7 @@ class TicketController {
                             performedBy: {
                                 select: {
                                     name: true,
+                                    avatarUrl: true,
                                 },
                             },
                         },
@@ -332,71 +339,95 @@ class TicketController {
                     throw new types_1.ValidationError(`Cannot create subtask of a subtask. Ticket ${parentTicket.ticketNumber} is already a subtask.`);
                 }
             }
-            // Generate ticket number
-            // Generate ticket number safely by finding the last created ticket
-            const lastTicket = await database_1.prisma.ticket.findFirst({
-                where: { tenantId: req.tenantId },
-                orderBy: { createdAt: 'desc' } // Get the most recently created ticket
-            });
-            let nextTicketNumber = 1;
-            if (lastTicket && lastTicket.ticketNumber) {
-                // Extract the number part from the last ticket (e.g., "PROJ-0005" -> 5)
-                const parts = lastTicket.ticketNumber.split('-');
-                const lastSeq = parseInt(parts[parts.length - 1]);
-                if (!isNaN(lastSeq)) {
-                    nextTicketNumber = lastSeq + 1;
+            // Generate ticket number with retry logic to handle race conditions
+            let ticket;
+            let ticketNumber = "";
+            let attempts = 0;
+            const maxAttempts = 5;
+            while (attempts < maxAttempts) {
+                attempts++;
+                // Find the last ticket number for THIS project specific prefix
+                const lastTicket = await database_1.prisma.ticket.findFirst({
+                    where: {
+                        tenantId: req.tenantId,
+                        ticketNumber: { startsWith: `${project.code || "TKT"}-` }
+                    },
+                    orderBy: { ticketNumber: 'desc' }
+                });
+                let nextTicketNumber = 1;
+                if (lastTicket && lastTicket.ticketNumber) {
+                    const parts = lastTicket.ticketNumber.split('-');
+                    const lastSeq = parseInt(parts[parts.length - 1]);
+                    if (!isNaN(lastSeq)) {
+                        nextTicketNumber = lastSeq + 1;
+                    }
+                }
+                ticketNumber = `${project.code || "TKT"}-${nextTicketNumber
+                    .toString()
+                    .padStart(4, "0")}`;
+                try {
+                    // Prepare metadata for additional fields not in schema
+                    const metadata = {
+                        parentTickets,
+                        releasePlan,
+                    };
+                    // Create ticket with fields at root level (matching Prisma schema)
+                    ticket = await database_1.prisma.ticket.create({
+                        data: {
+                            tenantId: req.tenantId,
+                            title,
+                            description: sanitizedDescription,
+                            projectId,
+                            status,
+                            priority,
+                            type: ticketType,
+                            platform: platform || "Development",
+                            stack: stack || null,
+                            taskLevel: taskLevel || "Medium",
+                            storyPoint: storyPoint || 1,
+                            estimateHours: estimateHours || 0,
+                            assigneeId: assigneeId || null,
+                            reportToId: reportToId || null,
+                            createdById: req.user.id,
+                            parentTickets: parentTickets || [],
+                            parentId: parentId || null,
+                            startDate: req.body.startDate ? new Date(req.body.startDate) : null,
+                            endDate: req.body.endDate ? new Date(req.body.endDate) : null,
+                            dueDate: dueDate ? new Date(dueDate) : null,
+                            tags,
+                            metadata,
+                            ticketNumber,
+                        },
+                        include: {
+                            createdBy: {
+                                select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
+                            },
+                            assignee: {
+                                select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
+                            },
+                            reportTo: {
+                                select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
+                            },
+                            project: {
+                                select: { id: true, name: true, code: true, description: true },
+                            },
+                        },
+                    });
+                    // If creation succeeded, break the retry loop
+                    break;
+                }
+                catch (error) {
+                    // Check if it's a unique constraint error on ticketNumber
+                    if (error.code === 'P2002' && error.meta?.target?.includes('ticket_number')) {
+                        console.warn(`Ticket number collision on ${ticketNumber}, attempt ${attempts}/${maxAttempts}. Retrying...`);
+                        if (attempts >= maxAttempts) {
+                            throw error; // Max attempts reached
+                        }
+                        continue; // Try again with a new number
+                    }
+                    throw error; // Rethrow other errors
                 }
             }
-            const ticketNumber = `${project.code || "TKT"}-${nextTicketNumber
-                .toString()
-                .padStart(4, "0")}`;
-            // Prepare metadata for additional fields not in schema
-            const metadata = {
-                parentTickets,
-                releasePlan,
-            };
-            // Create ticket with fields at root level (matching Prisma schema)
-            const ticket = await database_1.prisma.ticket.create({
-                data: {
-                    tenantId: req.tenantId,
-                    title,
-                    description: sanitizedDescription,
-                    projectId,
-                    status,
-                    priority,
-                    type: ticketType,
-                    platform: platform || "Development",
-                    stack: stack || null,
-                    taskLevel: taskLevel || "Medium",
-                    storyPoint: storyPoint || 1,
-                    estimateHours: estimateHours || 0,
-                    assigneeId: assigneeId || null,
-                    reportToId: reportToId || null,
-                    createdById: req.user.id,
-                    parentTickets: parentTickets || [],
-                    parentId: parentId || null,
-                    startDate: req.body.startDate ? new Date(req.body.startDate) : null,
-                    endDate: req.body.endDate ? new Date(req.body.endDate) : null,
-                    dueDate: dueDate ? new Date(dueDate) : null,
-                    tags,
-                    metadata,
-                    ticketNumber,
-                },
-                include: {
-                    createdBy: {
-                        select: { id: true, name: true, workEmail: true, position: true },
-                    },
-                    assignee: {
-                        select: { id: true, name: true, workEmail: true, position: true },
-                    },
-                    reportTo: {
-                        select: { id: true, name: true, workEmail: true, position: true },
-                    },
-                    project: {
-                        select: { id: true, name: true, code: true, description: true },
-                    },
-                },
-            });
             socketService_1.socketService.emitToTenant(req.tenantId, "ticket:created", ticket);
             // Log activity
             await database_1.prisma.ticketActivityLog.create({
@@ -439,6 +470,87 @@ class TicketController {
         }
     }
     /**
+     * Generate a structured ticket draft from a free-form description using AI.
+     * Does not persist anything — the client previews and edits, then calls POST /api/tickets.
+     */
+    static async aiGenerateTicket(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { description, title } = req.body;
+            const seed = [title, description].filter(Boolean).join("\n\n").trim();
+            if (!seed || seed.length < 5) {
+                res.status(400).json({
+                    success: false,
+                    error: "Description is required (min 5 characters)",
+                });
+                return;
+            }
+            if (seed.length > 8000) {
+                res.status(400).json({
+                    success: false,
+                    error: "Description is too long (max 8000 characters)",
+                });
+                return;
+            }
+            const { draft, source, fallbackReason } = await (0, aiTicketService_1.generateTicketDraft)(seed);
+            res.status(200).json({
+                success: true,
+                data: { ...draft, source, fallbackReason },
+                message: "Ticket draft generated",
+            });
+        }
+        catch (error) {
+            console.error("AI generate ticket error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to generate ticket draft",
+            });
+        }
+    }
+    /**
+     * Regenerate just the subtasks for a Zai-drafted ticket, with caller-specified
+     * shape (count + hours-each). Doesn't persist anything.
+     */
+    static async aiGenerateSubtasks(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { description, count, hoursEach } = req.body;
+            const seed = String(description || "").trim();
+            if (!seed || seed.length < 5) {
+                res.status(400).json({
+                    success: false,
+                    error: "Description is required (min 5 characters)",
+                });
+                return;
+            }
+            const result = await (0, aiTicketService_1.generateSubtasks)({ description: seed, count, hoursEach });
+            res.status(200).json({
+                success: true,
+                data: result,
+                message: "Subtasks generated",
+            });
+        }
+        catch (error) {
+            console.error("AI generate subtasks error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to generate subtasks",
+            });
+        }
+    }
+    /**
      * Get tickets optimized for Kanban view (tenant-aware)
      * Returns tickets grouped by status with metadata
      */
@@ -451,7 +563,7 @@ class TicketController {
                 });
                 return;
             }
-            const { projectId, assigneeId, priority, search, limitPerColumn = 50, includeArchived = false, } = req.query;
+            const { projectId, assigneeId, priority, type, search, limitPerColumn = 50, includeArchived = false, } = req.query;
             // Build base filter
             const baseWhere = {
                 tenantId: req.tenantId,
@@ -462,8 +574,22 @@ class TicketController {
             };
             if (projectId)
                 baseWhere.projectId = projectId;
-            if (priority)
-                baseWhere.priority = priority;
+            if (priority) {
+                if (typeof priority === "string" && priority.includes(",")) {
+                    baseWhere.priority = { in: priority.split(",").map((p) => p.trim()) };
+                }
+                else {
+                    baseWhere.priority = priority;
+                }
+            }
+            if (type) {
+                if (typeof type === "string" && type.includes(",")) {
+                    baseWhere.type = { in: type.split(",").map((t) => t.trim()) };
+                }
+                else {
+                    baseWhere.type = type;
+                }
+            }
             if (assigneeId) {
                 if (typeof assigneeId === "string" && assigneeId.includes(",")) {
                     baseWhere.assigneeId = { in: assigneeId.split(",").map((id) => id.trim()) };
@@ -520,7 +646,7 @@ class TicketController {
                     baseWhere.sprintPlanId = sprintId;
                 }
             }
-            const statuses = ['not_started', 'in_progress', 'dev_complete', 'in_testing', 'in_review', 'completed', 'live'];
+            const statuses = ['not_started', 'in_progress', 'dev_complete', 'dev_testing', 'in_review', 'live', 'live_testing', 'completed', 'pause'];
             const limit = Number(limitPerColumn);
             // Fetch tickets for each status in parallel
             const columnsData = await Promise.all(statuses.map(async (status) => {
@@ -545,7 +671,8 @@ class TicketController {
                                 select: {
                                     id: true,
                                     name: true,
-                                    workEmail: true
+                                    workEmail: true,
+                                    avatarUrl: true
                                 }
                             },
                             project: {
@@ -606,7 +733,7 @@ class TicketController {
                 });
                 return;
             }
-            const { page = 1, limit = 20, status, priority, projectId, assigneeId, createdById, search, sortBy = "createdAt", sortOrder = "desc", startDate, endDate, includeArchived = false, archivedOnly = false, } = req.query;
+            const { page = 1, limit = 20, status, priority, type, projectId, assigneeId, createdById, search, sortBy = "createdAt", sortOrder = "desc", startDate, endDate, includeArchived = false, archivedOnly = false, } = req.query;
             // Build base filter
             const baseWhere = {
                 tenantId: req.tenantId,
@@ -616,10 +743,30 @@ class TicketController {
                 bucketId: null, // Exclude tickets in buckets (they should only show in bucket view)
             };
             const where = { ...baseWhere };
-            if (status)
-                where.status = status;
-            if (priority)
-                where.priority = priority;
+            if (status) {
+                if (typeof status === "string" && status.includes(",")) {
+                    where.status = { in: status.split(",").map((s) => s.trim()) };
+                }
+                else {
+                    where.status = status;
+                }
+            }
+            if (priority) {
+                if (typeof priority === "string" && priority.includes(",")) {
+                    where.priority = { in: priority.split(",").map((p) => p.trim()) };
+                }
+                else {
+                    where.priority = priority;
+                }
+            }
+            if (type) {
+                if (typeof type === "string" && type.includes(",")) {
+                    where.type = { in: type.split(",").map((t) => t.trim()) };
+                }
+                else {
+                    where.type = type;
+                }
+            }
             if (projectId)
                 where.projectId = projectId;
             // Handle single or multiple assignees
@@ -637,6 +784,14 @@ class TicketController {
             }
             if (createdById)
                 where.createdById = createdById;
+            // Filter by tags (comma-separated). Match tickets that have ANY of the given tags.
+            const { tags: tagsParam } = req.query;
+            if (tagsParam && typeof tagsParam === 'string' && tagsParam.trim()) {
+                const tagList = tagsParam.split(',').map(t => t.trim()).filter(Boolean);
+                if (tagList.length > 0) {
+                    where.tags = { hasSome: tagList };
+                }
+            }
             if (search) {
                 where.OR = [
                     { title: { contains: search, mode: "insensitive" } },
@@ -711,10 +866,10 @@ class TicketController {
                         updatedAt: true,
                         // Exclude large fields: description (can be fetched in detail view)
                         createdBy: {
-                            select: { id: true, name: true, workEmail: true },
+                            select: { id: true, name: true, workEmail: true, avatarUrl: true },
                         },
                         assignee: {
-                            select: { id: true, name: true, workEmail: true },
+                            select: { id: true, name: true, workEmail: true, avatarUrl: true },
                         },
                         project: {
                             select: { id: true, name: true, code: true },
@@ -763,9 +918,11 @@ class TicketController {
                 return;
             }
             const { id } = req.params;
-            // Check cache first
+            // Check cache first — only honor cache entries that contain the new
+            // sprint/release/bucket linkage fields. Older cached payloads are missing
+            // them and would make the drawer mis-detect sprint membership.
             const cached = await cacheService_1.default.getTicket(id, req.tenantId);
-            if (cached) {
+            if (cached && 'sprintPlanId' in cached) {
                 res.status(200).json({
                     success: true,
                     data: cached,
@@ -801,17 +958,22 @@ class TicketController {
                     metadata: true,
                     parentTickets: true,
                     parentId: true, // IMPORTANT: Include parentId for subtask navigation
+                    sprintPlanId: true, // Required so the detail drawer knows sprint membership
+                    releasePlanId: true, // Required for release-plan linkage in detail drawer
+                    demoPlanId: true, // Required for demo-plan linkage in detail drawer
+                    bucketId: true, // Required for bucket linkage in detail drawer
+                    isArchived: true,
                     createdAt: true,
                     updatedAt: true,
                     // Optimized relations - only essential fields
                     createdBy: {
-                        select: { id: true, name: true, workEmail: true },
+                        select: { id: true, name: true, workEmail: true, avatarUrl: true },
                     },
                     assignee: {
-                        select: { id: true, name: true, workEmail: true },
+                        select: { id: true, name: true, workEmail: true, avatarUrl: true },
                     },
                     reportTo: {
-                        select: { id: true, name: true, workEmail: true },
+                        select: { id: true, name: true, workEmail: true, avatarUrl: true },
                     },
                     project: {
                         select: { id: true, name: true, code: true, description: true },
@@ -826,7 +988,7 @@ class TicketController {
                             status: true,
                             priority: true,
                             assignee: {
-                                select: { id: true, name: true, workEmail: true }
+                                select: { id: true, name: true, workEmail: true, avatarUrl: true }
                             },
                             type: true
                         },
@@ -856,6 +1018,43 @@ class TicketController {
             res.status(500).json({
                 success: false,
                 error: "Failed to fetch ticket",
+            });
+        }
+    }
+    /**
+     * Get distinct tags used across all tickets in the tenant.
+     * Uses raw SQL via pg pool to UNNEST the text[] tags column.
+     */
+    static async getAllTags(req, res) {
+        try {
+            if (!req.tenantId) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context required",
+                });
+                return;
+            }
+            const sql = `
+        SELECT DISTINCT btrim(tag) AS tag
+        FROM tickets t, UNNEST(t.tags) AS tag
+        WHERE t.tenant_id = $1
+          AND COALESCE(t.is_deleted, false) = false
+          AND tag IS NOT NULL
+          AND btrim(tag) <> ''
+        ORDER BY tag ASC;
+      `;
+            const result = await dbpool_1.default.query(sql, [req.tenantId]);
+            const tags = result.rows.map((r) => r.tag);
+            res.status(200).json({
+                success: true,
+                data: tags,
+            });
+        }
+        catch (error) {
+            console.error("Get all tags error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to fetch tags",
             });
         }
     }
@@ -1049,12 +1248,13 @@ class TicketController {
                     sprintPlanId: true, // CRITICAL: Include sprint assignment
                     releasePlanId: true,
                     demoPlanId: true,
+                    tags: true,
                     createdAt: true,
                     updatedAt: true,
                     // Relations
-                    createdBy: { select: { id: true, name: true, workEmail: true } },
-                    assignee: { select: { id: true, name: true, workEmail: true } },
-                    reportTo: { select: { id: true, name: true, workEmail: true } },
+                    createdBy: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
+                    assignee: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
+                    reportTo: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
                     project: { select: { id: true, name: true, code: true } },
                 },
             });
@@ -1242,7 +1442,8 @@ class TicketController {
                 await database_1.prisma.ticket.findMany({
                     where,
                     include: {
-                        createdBy: { select: { name: true, workEmail: true } },
+                        createdBy: { select: { name: true, workEmail: true, avatarUrl: true } },
+                        assignee: { select: { name: true, workEmail: true, avatarUrl: true } },
                         project: { select: { name: true, code: true } },
                     },
                     orderBy: { createdAt: "desc" },
@@ -1576,6 +1777,7 @@ class TicketController {
                             name: true,
                             workEmail: true,
                             position: true,
+                            avatarUrl: true,
                         },
                     },
                 },
@@ -1649,6 +1851,7 @@ class TicketController {
                             name: true,
                             workEmail: true,
                             position: true,
+                            avatarUrl: true,
                         },
                     },
                 },
@@ -2196,6 +2399,7 @@ class TicketController {
                             name: true,
                             workEmail: true,
                             position: true,
+                            avatarUrl: true,
                         },
                     },
                 },

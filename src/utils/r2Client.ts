@@ -94,15 +94,15 @@ export async function uploadImageToR2(
     await s3Client.send(new PutObjectCommand(params));
 
     // Construct public URL
-    let baseUrl = (PUBLIC_URL && !PUBLIC_URL.includes('r2.cloudflarestorage.com')) 
-      ? PUBLIC_URL 
+    let baseUrl = (PUBLIC_URL && !PUBLIC_URL.includes('r2.cloudflarestorage.com'))
+      ? PUBLIC_URL
       : "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
-    
+
     // Remove trailing slash if present to avoid double slashes
     if (baseUrl.endsWith('/')) {
       baseUrl = baseUrl.slice(0, -1);
     }
-    
+
     const imageUrl = `${baseUrl}/${fileName}`;
 
     return imageUrl;
@@ -643,7 +643,7 @@ export async function getFileFromR2(fileUrl: string): Promise<Buffer> {
     });
 
     const response = await s3Client.send(command);
-    
+
     if (!response.Body) {
       throw new Error('Empty response body from R2');
     }
@@ -654,7 +654,7 @@ export async function getFileFromR2(fileUrl: string): Promise<Buffer> {
       if (typeof stream.transformToByteArray === 'function') {
         return Buffer.from(await stream.transformToByteArray());
       }
-      
+
       return new Promise((resolve, reject) => {
         const chunks: any[] = [];
         stream.on('data', (chunk: any) => chunks.push(chunk));
@@ -667,5 +667,52 @@ export async function getFileFromR2(fileUrl: string): Promise<Buffer> {
   } catch (error: any) {
     console.error("Error fetching file from R2:", error);
     throw new Error(`Failed to fetch file from storage: ${error.message}`);
+  }
+}
+
+/**
+ * Upload Escalation document to Cloudflare R2
+ * @param base64File - Base64 encoded file string
+ * @param fileName - Original file name
+ * @param tenantId - Tenant ID
+ * @param escalationId - Temporary or generated escalation ID
+ * @returns Public URL of uploaded document
+ */
+export async function uploadEscalationDocumentToR2(
+  base64File: string,
+  fileName: string,
+  tenantId: string,
+  escalationId: string,
+): Promise<string> {
+  try {
+    const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+    if (!matches) {
+      throw new Error("Invalid file format. Expected base64 encoded file.");
+    }
+
+    const contentType = matches[1];
+    const base64Data = matches[2];
+    const buffer = Buffer.from(base64Data, "base64");
+
+    const uniqueId = nanoid(12);
+    const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+    const key = `${tenantId}/escalations/${escalationId}/documents/${uniqueId}_${sanitizedFileName}`;
+
+    const params = {
+      Bucket: BUCKET_NAME,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+      CacheControl: "public, max-age=31536000",
+      ContentDisposition: `attachment; filename="${sanitizedFileName}"`
+    };
+
+    await s3Client.send(new PutObjectCommand(params));
+
+    const baseUrl = PUBLIC_URL || "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+    return `${baseUrl}/${key}`;
+  } catch (error: any) {
+    console.error("R2 escalation document upload error:", error);
+    throw new Error(`Failed to upload escalation document: ${error.message}`);
   }
 }

@@ -79,6 +79,7 @@ class AttendanceController {
                                     name: true,
                                     workEmail: true,
                                     position: true,
+                                    avatarUrl: true,
                                 },
                             },
                         },
@@ -144,6 +145,7 @@ class AttendanceController {
                                 name: true,
                                 workEmail: true,
                                 position: true,
+                                avatarUrl: true,
                             },
                         },
                     },
@@ -242,6 +244,7 @@ class AttendanceController {
                                     name: true,
                                     workEmail: true,
                                     position: true,
+                                    avatarUrl: true,
                                 },
                             },
                         },
@@ -264,6 +267,7 @@ class AttendanceController {
                                     name: true,
                                     workEmail: true,
                                     position: true,
+                                    avatarUrl: true,
                                 },
                             },
                         },
@@ -341,7 +345,7 @@ class AttendanceController {
                     },
                     include: {
                         user: {
-                            select: { id: true, name: true, workEmail: true, position: true },
+                            select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
                         },
                     },
                 });
@@ -527,6 +531,7 @@ class AttendanceController {
                                 name: true,
                                 workEmail: true,
                                 position: true,
+                                avatarUrl: true,
                             },
                         },
                         shift: true,
@@ -544,6 +549,7 @@ class AttendanceController {
                         id: record.user.id,
                         name: record.user.name,
                         position: record.user.position,
+                        avatarUrl: record.user.avatarUrl,
                         status: record.status.toLowerCase(),
                         clockInTime: record.clockIn,
                         clockOutTime: record.clockOut,
@@ -690,7 +696,7 @@ class AttendanceController {
                     },
                     include: {
                         user: {
-                            select: { id: true, name: true, workEmail: true, position: true },
+                            select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
                         },
                     },
                 });
@@ -912,7 +918,7 @@ class AttendanceController {
                     },
                     include: {
                         user: {
-                            select: { id: true, name: true, workEmail: true, position: true },
+                            select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
                         },
                     },
                 });
