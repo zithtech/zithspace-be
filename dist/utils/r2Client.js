@@ -13,6 +13,7 @@ exports.deleteImageFromR2 = deleteImageFromR2;
 exports.extractImageUrlsFromHtml = extractImageUrlsFromHtml;
 exports.cleanupOrphanedImages = cleanupOrphanedImages;
 exports.generatePresignedUrl = generatePresignedUrl;
+exports.getFileFromR2 = getFileFromR2;
 exports.uploadEscalationDocumentToR2 = uploadEscalationDocumentToR2;
 const client_s3_1 = require("@aws-sdk/client-s3");
 const s3_request_presigner_1 = require("@aws-sdk/s3-request-presigner");
@@ -482,6 +483,56 @@ async function generatePresignedUrl(fileUrl, expiresIn = 86400) {
     catch (error) {
         console.error("Error generating presigned URL:", error);
         throw new Error(`Failed to generate secure link: ${error.message}`);
+    }
+}
+/**
+ * Fetch file content directly from R2 using S3 client (for backend proxying)
+ * @param fileUrl - The public or private URL of the file
+ * @returns Buffer containing the file data
+ */
+async function getFileFromR2(fileUrl) {
+    try {
+        const url = new URL(fileUrl);
+        let key = '';
+        let bucket = BUCKET_NAME;
+        if (url.hostname.includes('r2.cloudflarestorage.com')) {
+            // Format: https://endpoint/bucket/key
+            const parts = url.pathname.split('/').filter(Boolean);
+            bucket = parts[0]; // First part is the bucket
+            key = parts.slice(1).join('/'); // Rest is the key
+        }
+        else {
+            // Format: https://pub-xxx.r2.dev/key
+            key = url.pathname.startsWith('/') ? url.pathname.slice(1) : url.pathname;
+        }
+        console.log(`[R2Client] Fetching from bucket: ${bucket}, key: ${key}`);
+        const command = new client_s3_1.GetObjectCommand({
+            Bucket: bucket,
+            Key: key,
+        });
+        const response = await exports.s3Client.send(command);
+        if (!response.Body) {
+            throw new Error('Empty response body from R2');
+        }
+        // Convert stream to Buffer
+        const streamToBuffer = async (stream) => {
+            if (stream instanceof Buffer)
+                return stream;
+            if (typeof stream.transformToByteArray === 'function') {
+                return Buffer.from(await stream.transformToByteArray());
+            }
+            return new Promise((resolve, reject) => {
+                const chunks = [];
+                stream.on('data', (chunk) => chunks.push(chunk));
+                stream.on('error', reject);
+                stream.on('end', () => resolve(Buffer.concat(chunks)));
+            });
+        };
+        return await streamToBuffer(response.Body);
+    }
+    catch (error) {
+        console.error("Error fetching file from R2:", error);
+        throw new Error(`Failed to fetch file from storage: ${error.message}`);
     }
 }
 /**
