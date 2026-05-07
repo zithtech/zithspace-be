@@ -44,7 +44,7 @@ export class SocketService {
       try {
         const decoded = jwt.verify(
           token,
-          process.env.JWT_SECRET || "your-secret-key"
+          process.env.JWT_ACCESS_SECRET || "your-secret-key"
         ) as AuthTokenPayload;
         
         // Attach user info to socket

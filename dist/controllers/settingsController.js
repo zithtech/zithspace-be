@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SettingsController = void 0;
 const database_1 = require("@/config/database");
 const types_1 = require("@/types");
+const socketService_1 = require("@/services/socketService");
 // Simple in-memory cache for ticket configurations
 const configCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -1117,6 +1118,7 @@ class SettingsController {
                 },
                 message: 'Dropdown option created successfully'
             });
+            socketService_1.socketService.emitToTenant(req.tenantId, 'settings:updated', { type: 'dropdown', action: 'create', category: type });
         }
         catch (error) {
             console.error('Create dropdown option error:', error);
@@ -1201,6 +1203,7 @@ class SettingsController {
                 },
                 message: 'Dropdown option updated successfully'
             });
+            socketService_1.socketService.emitToTenant(req.tenantId, 'settings:updated', { type: 'dropdown', action: 'update', category: updatedOption.category });
         }
         catch (error) {
             console.error('Update dropdown option error:', error);
@@ -1244,6 +1247,7 @@ class SettingsController {
                 success: true,
                 message: 'Dropdown option deleted successfully'
             });
+            socketService_1.socketService.emitToTenant(req.tenantId, 'settings:updated', { type: 'dropdown', action: 'delete', category: existingOption.category });
         }
         catch (error) {
             console.error('Delete dropdown option error:', error);
@@ -1293,6 +1297,7 @@ class SettingsController {
                 success: true,
                 message: 'Dropdown options reordered successfully'
             });
+            socketService_1.socketService.emitToTenant(req.tenantId, 'settings:updated', { type: 'dropdown', action: 'reorder' });
         }
         catch (error) {
             console.error('Reorder dropdown options error:', error);

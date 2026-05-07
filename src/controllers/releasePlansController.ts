@@ -6,6 +6,7 @@ import {
   NotFoundError,
   ValidationError,
 } from "@/types";
+import { socketService } from "@/services/socketService";
 
 export class ReleasePlansController {
   /**
@@ -313,8 +314,16 @@ export class ReleasePlansController {
         message: "Plan created successfully",
       } as ApiResponse);
 
+      socketService.emitToTenant(req.tenantId, "plan:created", newReleasePlan);
     } catch (error: any) {
       console.error("Create release plan error:", error);
+      if (error.code === 'P2002') {
+        res.status(400).json({
+          success: false,
+          error: `The name "${req.body.version}" already exists.`,
+        } as ApiResponse);
+        return;
+      }
       res.status(500).json({
         success: false,
         error: "Failed to create release plan",
@@ -411,8 +420,16 @@ export class ReleasePlansController {
         message: "Plan updated successfully",
       } as ApiResponse);
 
+      socketService.emitToTenant(req.tenantId, "plan:updated", updatedPlan);
     } catch (error: any) {
       console.error("Update plan error:", error);
+      if (error.code === 'P2002') {
+        res.status(400).json({
+          success: false,
+          error: `The name "${req.body.version}" already exists.`,
+        } as ApiResponse);
+        return;
+      }
       if (error instanceof NotFoundError) {
         res.status(404).json({ success: false, error: error.message } as ApiResponse);
         return;
@@ -486,6 +503,8 @@ export class ReleasePlansController {
         success: true,
         message: "Plan deleted successfully",
       } as ApiResponse);
+
+      socketService.emitToTenant(req.tenantId, "plan:deleted", { id });
     } catch (error) {
       console.error("Delete plan error:", error);
       res.status(500).json({
@@ -578,6 +597,7 @@ export class ReleasePlansController {
         message: "Sprint started successfully",
       } as ApiResponse);
 
+      socketService.emitToTenant(req.tenantId, "plan:updated", updatedSprint);
     } catch (error: any) {
       console.error("Start sprint error:", error);
       if (error instanceof NotFoundError) {
@@ -711,6 +731,7 @@ export class ReleasePlansController {
         },
       } as ApiResponse);
 
+      socketService.emitToTenant(req.tenantId, "plan:updated", updatedSprint);
     } catch (error: any) {
       console.error("Complete sprint error:", error);
       if (error instanceof NotFoundError) {
