@@ -13,17 +13,25 @@ router.use(requireAuth);
 
 // ─── Folders ───────────────────────────────────────────────────────────────
 router.get("/folders", requirePermission(Permissions.BUG_READ), BugListController.listFolders);
+router.get("/folders/archived", requirePermission(Permissions.BUG_READ), BugListController.listArchivedFolders);
+router.get("/folders/trashed", requirePermission(Permissions.BUG_READ), BugListController.listTrashedFolders);
 router.post("/folders", requirePermission(Permissions.BUG_CREATE), BugListController.createFolder);
 router.put("/folders/:id", requirePermission(Permissions.BUG_UPDATE), BugListController.updateFolder);
+router.patch("/folders/:id/archive", requirePermission(Permissions.BUG_UPDATE), BugListController.archiveFolder);
+router.post("/folders/:id/restore", requirePermission(Permissions.BUG_UPDATE), BugListController.restoreFolder);
 router.delete("/folders/:id", requirePermission(Permissions.BUG_DELETE), BugListController.deleteFolder);
+router.delete("/folders/:id/permanent", requirePermission(Permissions.BUG_DELETE), BugListController.permanentDeleteFolder);
 
 // ─── Sheets ────────────────────────────────────────────────────────────────
 router.get("/folders/:folderId/sheets", requirePermission(Permissions.BUG_READ), BugListController.listSheets);
 router.get("/sheets/archived", requirePermission(Permissions.BUG_READ), BugListController.listArchivedSheets);
+router.get("/sheets/trashed", requirePermission(Permissions.BUG_READ), BugListController.listTrashedSheets);
 router.post("/folders/:folderId/sheets", requirePermission(Permissions.BUG_CREATE), BugListController.createSheet);
 router.put("/sheets/:id", requirePermission(Permissions.BUG_UPDATE), BugListController.updateSheet);
 router.patch("/sheets/:id/status", requirePermission(Permissions.BUG_UPDATE), BugListController.updateSheetStatus);
 router.delete("/sheets/:id", requirePermission(Permissions.BUG_DELETE), BugListController.deleteSheet);
+router.post("/sheets/:id/restore", requirePermission(Permissions.BUG_UPDATE), BugListController.restoreSheet);
+router.delete("/sheets/:id/permanent", requirePermission(Permissions.BUG_DELETE), BugListController.permanentDeleteSheet);
 
 // ─── Bugs ──────────────────────────────────────────────────────────────────
 router.get("/stats", requirePermission(Permissions.BUG_READ), BugListController.getStats);

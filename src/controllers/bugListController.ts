@@ -314,7 +314,7 @@ export class BugListController {
                 (SELECT COUNT(*)::int FROM bug_sheets s WHERE s.folder_id = f.id AND s.status = 'completed') AS completed_sheet_count,
                 (SELECT COUNT(*)::int FROM bugs b WHERE b.folder_id = f.id) AS bug_count
            FROM bug_folders f
-          WHERE f.tenant_id = $1
+          WHERE f.tenant_id = $1 AND f.status NOT IN ('archived', 'trash')
           ORDER BY f.created_at DESC`,
         [req.tenantId],
       );
@@ -376,6 +376,7 @@ export class BugListController {
           projectId: row.project_id,
           clientId: row.client_id,
           color: row.color,
+          status: row.status,
           createdById: row.created_by_id,
           createdAt: row.created_at,
           updatedAt: row.updated_at,
@@ -432,8 +433,192 @@ export class BugListController {
     if (!ensureAuth(req, res)) return;
     const { id } = req.params;
     try {
-      // Cleanup R2 attachments first (best effort)
-      const attachments = await pool.query(
+      const owned = await pool.query(
+        `SELECT id, status FROM bug_folders WHERE id = $1 AND tenant_id = $2`,
+        [id, req.tenantId],
+      );
+      if (owned.rows.length === 0) {
+        bad(res, 404, "Folder not found");
+        return;
+      }
+      const currentStatus = owned.rows[0].status;
+      const originalStatus = currentStatus === 'trash' ? null : currentStatus;
+
+      const r = await pool.query(
+        `UPDATE bug_folders SET status = 'trash', original_status = $1, updated_at = NOW()
+          WHERE id = $2 AND tenant_id = $3 RETURNING id`,
+        [originalStatus, id, req.tenantId],
+      );
+      
+      if (r.rowCount === 0) {
+        bad(res, 404, "Folder not found");
+        return;
+      }
+
+      // Recursively trash sheets and bugs
+      await pool.query(
+        `UPDATE bug_sheets SET status = 'trash', original_status = status, updated_at = NOW()
+          WHERE folder_id = $1 AND tenant_id = $2 AND status != 'trash'`,
+        [id, req.tenantId]
+      );
+      await pool.query(
+        `UPDATE bugs SET status = 'trash', original_status = status, updated_at = NOW()
+          WHERE folder_id = $1 AND tenant_id = $2 AND status != 'trash'`,
+        [id, req.tenantId]
+      );
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("deleteFolder error:", err);
+      bad(res, 500, err.message || "Failed to move folder to trash");
+    }
+  }
+
+  static async archiveFolder(req: AuthRequest, res: Response): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    const { id } = req.params;
+    try {
+      const r = await pool.query(
+        `UPDATE bug_folders SET status = 'archived', updated_at = NOW()
+          WHERE id = $1 AND tenant_id = $2 RETURNING id`,
+        [id, req.tenantId],
+      );
+      if (r.rowCount === 0) {
+        bad(res, 404, "Folder not found");
+        return;
+      }
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("archiveFolder error:", err);
+      bad(res, 500, err.message || "Failed to archive folder");
+    }
+  }
+
+  static async listArchivedFolders(req: AuthRequest, res: Response): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    try {
+      const result = await pool.query(
+        `SELECT f.*,
+                u.id AS creator_id, u.name AS creator_name, u.work_email AS creator_email, u.avatar_url AS creator_avatar,
+                (SELECT COUNT(*)::int FROM bug_sheets s WHERE s.folder_id = f.id) AS sheet_count,
+                (SELECT COUNT(*)::int FROM bugs b WHERE b.folder_id = f.id) AS bug_count
+           FROM bug_folders f
+           LEFT JOIN users u ON u.id = f.created_by_id
+          WHERE f.tenant_id = $1 AND f.status = 'archived'
+          ORDER BY f.updated_at DESC`,
+        [req.tenantId],
+      );
+      const data = result.rows.map((row: any) => ({
+        id: row.id,
+        tenantId: row.tenant_id,
+        name: row.name,
+        description: row.description,
+        status: row.status,
+        color: row.color,
+        createdById: row.created_by_id,
+        createdBy: row.creator_id ? {
+          id: row.creator_id,
+          name: row.creator_name,
+          email: row.creator_email,
+          avatarUrl: row.creator_avatar,
+        } : null,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        _count: { sheets: row.sheet_count, bugs: row.bug_count },
+      }));
+      res.json({ success: true, data });
+    } catch (err: any) {
+      console.error("listArchivedFolders error:", err);
+      bad(res, 500, err.message || "Failed to list archived folders");
+    }
+  }
+
+  static async listTrashedFolders(req: AuthRequest, res: Response): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    try {
+      const result = await pool.query(
+        `SELECT f.*,
+                u.id AS creator_id, u.name AS creator_name, u.work_email AS creator_email, u.avatar_url AS creator_avatar,
+                (SELECT COUNT(*)::int FROM bug_sheets s WHERE s.folder_id = f.id) AS sheet_count,
+                (SELECT COUNT(*)::int FROM bugs b WHERE b.folder_id = f.id) AS bug_count
+           FROM bug_folders f
+           LEFT JOIN users u ON u.id = f.created_by_id
+          WHERE f.tenant_id = $1 AND f.status = 'trash'
+          ORDER BY f.updated_at DESC`,
+        [req.tenantId],
+      );
+      const data = result.rows.map((row: any) => ({
+        id: row.id,
+        tenantId: row.tenant_id,
+        name: row.name,
+        description: row.description,
+        status: row.status,
+        color: row.color,
+        createdById: row.created_by_id,
+        createdBy: row.creator_id ? {
+          id: row.creator_id,
+          name: row.creator_name,
+          email: row.creator_email,
+          avatarUrl: row.creator_avatar,
+        } : null,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        _count: { sheets: row.sheet_count, bugs: row.bug_count },
+      }));
+      res.json({ success: true, data });
+    } catch (err: any) {
+      console.error("listTrashedFolders error:", err);
+      bad(res, 500, err.message || "Failed to list trashed folders");
+    }
+  }
+
+  static async restoreFolder(req: AuthRequest, res: Response): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    const { id } = req.params;
+    try {
+      const folderResult = await pool.query(
+        `SELECT original_status FROM bug_folders WHERE id = $1 AND tenant_id = $2 AND status IN ('trash', 'archived')`,
+        [id, req.tenantId],
+      );
+      if (folderResult.rows.length === 0) {
+        bad(res, 404, "Item not found in trash or archive");
+        return;
+      }
+      const originalStatus = folderResult.rows[0].original_status || 'active';
+      await pool.query(
+        `UPDATE bug_folders SET status = $1, original_status = NULL, updated_at = NOW()
+          WHERE id = $2 AND tenant_id = $3`,
+        [originalStatus, id, req.tenantId],
+      );
+
+      // Recursively restore sheets and bugs
+      await pool.query(
+        `UPDATE bug_sheets SET status = COALESCE(original_status, 'active'), original_status = NULL, updated_at = NOW()
+          WHERE folder_id = $1 AND tenant_id = $2 AND status IN ('trash', 'archived')`,
+        [id, req.tenantId]
+      );
+      await pool.query(
+        `UPDATE bugs SET status = COALESCE(original_status, 'new'), original_status = NULL, updated_at = NOW()
+          WHERE folder_id = $1 AND tenant_id = $2 AND status IN ('trash', 'archived')`,
+        [id, req.tenantId]
+      );
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("restoreFolder error:", err);
+      bad(res, 500, err.message || "Failed to restore folder");
+    }
+  }
+
+  static async permanentDeleteFolder(req: AuthRequest, res: Response): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    const { id } = req.params;
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      
+      // Cleanup R2 attachments for all bugs in the folder
+      const attachments = await client.query(
         `SELECT a.file_url
            FROM bug_attachments a
            JOIN bugs b ON b.id = a.bug_id
@@ -447,18 +632,25 @@ export class BugListController {
           console.error("R2 cleanup failed:", e);
         }
       }
-      const r = await pool.query(
-        `DELETE FROM bug_folders WHERE id = $1 AND tenant_id = $2`,
+      
+      const r = await client.query(
+        `DELETE FROM bug_folders WHERE id = $1 AND tenant_id = $2 AND status = 'trash'`,
         [id, req.tenantId],
       );
       if (r.rowCount === 0) {
-        bad(res, 404, "Folder not found");
+        await client.query("ROLLBACK");
+        bad(res, 404, "Trashed folder not found");
         return;
       }
+      
+      await client.query("COMMIT");
       res.json({ success: true });
     } catch (err: any) {
-      console.error("deleteFolder error:", err);
-      bad(res, 500, err.message || "Failed to delete folder");
+      await client.query("ROLLBACK").catch(() => {});
+      console.error("permanentDeleteFolder error:", err);
+      bad(res, 500, err.message || "Failed to permanently delete folder");
+    } finally {
+      client.release();
     }
   }
 
@@ -483,7 +675,7 @@ export class BugListController {
         `SELECT s.*,
                 (SELECT COUNT(*)::int FROM bugs b WHERE b.sheet_id = s.id) AS bug_count
            FROM bug_sheets s
-          WHERE s.folder_id = $1 AND s.tenant_id = $2 AND s.status != 'archived'
+          WHERE s.folder_id = $1 AND s.tenant_id = $2 AND s.status NOT IN ('archived', 'trash')
           ORDER BY s.created_at ASC`,
         [folderId, req.tenantId],
       );
@@ -507,19 +699,27 @@ export class BugListController {
 
   static async listArchivedSheets(req: AuthRequest, res: Response): Promise<void> {
     if (!ensureAuth(req, res)) return;
+    const { folderId } = req.query;
     try {
-      const result = await pool.query(
-        `SELECT s.*,
+      let query = `SELECT s.*,
                 f.name as folder_name,
                 u.id AS creator_id, u.name AS creator_name, u.work_email AS creator_email, u.avatar_url AS creator_avatar,
                 (SELECT COUNT(*)::int FROM bugs b WHERE b.sheet_id = s.id) AS bug_count
            FROM bug_sheets s
            LEFT JOIN bug_folders f ON s.folder_id = f.id
            LEFT JOIN users u ON u.id = s.created_by_id
-          WHERE s.tenant_id = $1 AND s.status = 'archived'
-          ORDER BY s.updated_at DESC`,
-        [req.tenantId],
-      );
+           WHERE s.tenant_id = $1`;
+      const params = [req.tenantId];
+
+      if (folderId) {
+        query += ` AND s.folder_id = $2 AND EXISTS (SELECT 1 FROM bug_folders f3 WHERE f3.id = s.folder_id AND f3.status = 'archived') AND s.status != 'trash'`;
+        params.push(folderId as string);
+      } else {
+        query += ` AND s.status = 'archived' AND NOT EXISTS (SELECT 1 FROM bug_folders f2 WHERE f2.id = s.folder_id AND f2.status IN ('archived', 'trash'))`;
+      }
+
+      query += ` ORDER BY s.updated_at DESC`;
+      const result = await pool.query(query, params);
       const data = result.rows.map((row: any) => ({
         id: row.id,
         folderId: row.folder_id,
@@ -710,7 +910,166 @@ export class BugListController {
     if (!ensureAuth(req, res)) return;
     const { id } = req.params;
     try {
-      const attachments = await pool.query(
+      // First get current status to preserve it before moving to trash
+      const sheetResult = await pool.query(
+        `SELECT status FROM bug_sheets WHERE id = $1 AND tenant_id = $2`,
+        [id, req.tenantId],
+      );
+      if (sheetResult.rows.length === 0) {
+        bad(res, 404, "Sheet not found");
+        return;
+      }
+      
+      const currentStatus = sheetResult.rows[0].status;
+      // Only preserve status if it's not already trash
+      const originalStatus = currentStatus === 'trash' ? null : currentStatus;
+      
+      let r;
+      try {
+        // Try to use trash functionality (if migration has been run)
+        r = await pool.query(
+          `UPDATE bug_sheets SET status = 'trash', original_status = $1, updated_at = NOW()
+            WHERE id = $2 AND tenant_id = $3 RETURNING id`,
+          [originalStatus, id, req.tenantId],
+        );
+      } catch (migrationError: any) {
+        // Fallback: use archived status if migration hasn't been run yet
+        console.log("Migration not run yet, using archived status as fallback");
+        r = await pool.query(
+          `UPDATE bug_sheets SET status = 'archived', updated_at = NOW()
+            WHERE id = $1 AND tenant_id = $2 RETURNING id`,
+          [id, req.tenantId],
+        );
+      }
+      
+      if (r.rowCount === 0) {
+        bad(res, 404, "Sheet not found");
+        return;
+      }
+
+      // Recursively trash bugs
+      await pool.query(
+        `UPDATE bugs SET status = 'trash', original_status = status, updated_at = NOW()
+          WHERE sheet_id = $1 AND tenant_id = $2 AND status != 'trash'`,
+        [id, req.tenantId]
+      );
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("deleteSheet error:", err);
+      bad(res, 500, err.message || "Failed to move sheet to trash");
+    }
+  }
+
+  static async listTrashedSheets(req: AuthRequest, res: Response): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    const { folderId } = req.query;
+    try {
+      let result;
+      try {
+        let query = `SELECT s.*,
+                  f.name as folder_name,
+                  u.id AS creator_id, u.name AS creator_name, u.work_email AS creator_email, u.avatar_url AS creator_avatar,
+                  (SELECT COUNT(*)::int FROM bugs b WHERE b.sheet_id = s.id) AS bug_count
+             FROM bug_sheets s
+             LEFT JOIN bug_folders f ON s.folder_id = f.id
+             LEFT JOIN users u ON u.id = s.created_by_id
+            WHERE s.tenant_id = $1`;
+        const params = [req.tenantId];
+
+        if (folderId) {
+          query += ` AND s.folder_id = $2 AND EXISTS (SELECT 1 FROM bug_folders f3 WHERE f3.id = s.folder_id AND f3.status = 'trash')`;
+          params.push(folderId as string);
+        } else {
+          query += ` AND s.status = 'trash' AND NOT EXISTS (SELECT 1 FROM bug_folders f2 WHERE f2.id = s.folder_id AND f2.status = 'trash')`;
+        }
+
+        query += ` ORDER BY s.updated_at DESC`;
+        result = await pool.query(query, params);
+      } catch (migrationError: any) {
+        // Fallback: return empty array if migration hasn't been run yet
+        console.log("Migration not run yet, no trash functionality available");
+        res.json({ success: true, data: [] });
+        return;
+      }
+      
+      const data = result.rows.map((row: any) => ({
+        id: row.id,
+        folderId: row.folder_id,
+        name: row.name,
+        description: row.description,
+        status: row.status,
+        originalStatus: row.original_status,
+        createdById: row.created_by_id,
+        createdBy: row.creator_id ? {
+          id: row.creator_id,
+          name: row.creator_name,
+          email: row.creator_email,
+          avatarUrl: row.creator_avatar,
+        } : null,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        folderName: row.folder_name,
+        _count: { bugs: row.bug_count },
+      }));
+      res.json({ success: true, data });
+    } catch (err: any) {
+      console.error("listTrashedSheets error:", err);
+      bad(res, 500, err.message || "Failed to list trashed sheets");
+    }
+  }
+
+  static async restoreSheet(req: AuthRequest, res: Response): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    const { id } = req.params;
+    try {
+      const sheetResult = await pool.query(
+        `SELECT original_status FROM bug_sheets WHERE id = $1 AND tenant_id = $2 AND status IN ('trash', 'archived')`,
+        [id, req.tenantId],
+      );
+      if (sheetResult.rows.length === 0) {
+        bad(res, 404, "Item not found in trash or archive");
+        return;
+      }
+      
+      const originalStatus = sheetResult.rows[0].original_status || 'active';
+      
+      const r = await pool.query(
+        `UPDATE bug_sheets 
+           SET status = $1, 
+               original_status = NULL, 
+               updated_at = NOW()
+         WHERE id = $2 AND tenant_id = $3 RETURNING id`,
+        [originalStatus, id, req.tenantId],
+      );
+      if (r.rowCount === 0) {
+        bad(res, 404, "Sheet not found");
+        return;
+      }
+
+      // Recursively restore bugs
+      await pool.query(
+        `UPDATE bugs SET status = COALESCE(original_status, 'new'), original_status = NULL, updated_at = NOW()
+          WHERE sheet_id = $1 AND tenant_id = $2 AND status IN ('trash', 'archived')`,
+        [id, req.tenantId]
+      );
+
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("restoreSheet error:", err);
+      bad(res, 500, err.message || "Failed to restore sheet");
+    }
+  }
+
+  static async permanentDeleteSheet(req: AuthRequest, res: Response): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    const { id } = req.params;
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      
+      // Cleanup R2 attachments first
+      const attachments = await client.query(
         `SELECT a.file_url
            FROM bug_attachments a
            JOIN bugs b ON b.id = a.bug_id
@@ -724,18 +1083,26 @@ export class BugListController {
           console.error("R2 cleanup failed:", e);
         }
       }
-      const r = await pool.query(
-        `DELETE FROM bug_sheets WHERE id = $1 AND tenant_id = $2`,
+      
+      // Delete the sheet and related data (cascade will handle bugs and attachments)
+      const r = await client.query(
+        `DELETE FROM bug_sheets WHERE id = $1 AND tenant_id = $2 AND status = 'trash'`,
         [id, req.tenantId],
       );
       if (r.rowCount === 0) {
-        bad(res, 404, "Sheet not found");
+        await client.query("ROLLBACK");
+        bad(res, 404, "Trashed sheet not found");
         return;
       }
+      
+      await client.query("COMMIT");
       res.json({ success: true });
     } catch (err: any) {
-      console.error("deleteSheet error:", err);
-      bad(res, 500, err.message || "Failed to delete sheet");
+      await client.query("ROLLBACK").catch(() => {});
+      console.error("permanentDeleteSheet error:", err);
+      bad(res, 500, err.message || "Failed to permanently delete sheet");
+    } finally {
+      client.release();
     }
   }
 
@@ -786,20 +1153,27 @@ export class BugListController {
       
       // Default scope: exclude trash/archived unless explicitly requested
       if (scope === "trash") {
-        push("b.status = $$", "trash");
+        if (sheetId) {
+          push("b.sheet_id = $$ AND b.status = 'trash'", sheetId);
+        } else if (folderId) {
+          push("b.folder_id = $$ AND b.status = 'trash'", folderId);
+        } else {
+          // Show trashed bugs ONLY if their sheet/folder isn't trashed
+          push("b.status = $$ AND NOT EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = b.sheet_id AND s.status = 'trash') AND NOT EXISTS (SELECT 1 FROM bug_folders f WHERE f.id = b.folder_id AND f.status = 'trash')", "trash");
+        }
       } else if (scope === "archived") {
-        // Show bugs explicitly archived OR bugs in an archived sheet
-        push(
-          "(b.status = 'archived' OR EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = b.sheet_id AND s.status = 'archived'))",
-          null
-        );
-        // We pushed null but we don't need it because we didn't use $$
-        values.pop();
-        conditions.pop();
-        conditions.push("(b.status = 'archived' OR EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = b.sheet_id AND s.status = 'archived'))");
+        if (sheetId) {
+          push("b.sheet_id = $$ AND b.status = 'archived'", sheetId);
+        } else if (folderId) {
+          push("b.folder_id = $$ AND b.status = 'archived'", folderId);
+        } else {
+          // Standard archived view: exclude if parent is archived/trashed
+          conditions.push("(b.status = 'archived' AND NOT EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = b.sheet_id AND s.status IN ('archived', 'trash')) AND NOT EXISTS (SELECT 1 FROM bug_folders f WHERE f.id = b.folder_id AND f.status IN ('archived', 'trash')))");
+        }
       } else {
         conditions.push("b.status NOT IN ('trash', 'archived')");
         conditions.push("NOT EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = b.sheet_id AND s.status = 'archived')");
+        conditions.push("NOT EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = b.sheet_id AND s.status = 'trash')");
       }
 
       if (scope === "mine") push("b.created_by_id = $$", req.user!.id);
