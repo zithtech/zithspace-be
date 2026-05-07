@@ -117,6 +117,7 @@ const generate_routes_1 = __importDefault(require("@/routes/generate.routes"));
 const escalationRoutesV2_1 = __importDefault(require("./routes/escalationRoutesV2"));
 const proposals_1 = __importDefault(require("@/routes/proposals"));
 const projectOverviewRoutes_1 = __importDefault(require("./routes/projectOverviewRoutes"));
+const socketService_1 = require("@/services/socketService");
 // Load environment
 dotenv_1.default.config();
 console.log("🚀 API Starting up...");
@@ -317,13 +318,13 @@ app.get("/api/health", (req, res) => {
     });
 });
 // Handle Socket.io requests (to prevent)
-app.all("/socket.io/*", (req, res) => {
-    res.status(200).json({
-        success: false,
-        message: "Socket.io not configured on this server",
-        note: "WebSocket connections are not required for this application",
-    });
-});
+// app.all("/socket.io/*", (req, res) => {
+//   res.status(200).json({
+//     success: false,
+//     message: "Socket.io not configured on this server",
+//     note: "WebSocket connections are not required for this application",
+//   });
+// });
 // 404 handler
 app.use("*", (req, res) => {
     res.status(404).json({
@@ -437,6 +438,8 @@ const startServer = async () => {
             // console.log(`Environment: ${process.env.NODE_ENV}`);
             // console.log(`Health check: http://localhost:${PORT}/health`);
         });
+        // Initialize Socket.io
+        socketService_1.socketService.initialize(server);
         // Start trash auto-purge cron job
         const { startTrashAutoPurgeJob } = require("@/jobs/trashAutoPurge");
         startTrashAutoPurgeJob();
