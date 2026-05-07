@@ -288,7 +288,7 @@ export class LeadController {
   }
 
   /**
-   * Delete lead
+   * Delete lead (Soft delete)
    */
   static async deleteLead(req: AuthRequest, res: Response) {
     try {
@@ -306,10 +306,96 @@ export class LeadController {
 
       return res.status(200).json({
         success: true,
-        message: 'Lead deleted successfully'
+        message: 'Lead moved to Trash'
       });
     } catch (error: any) {
       console.error('Delete Lead Error:', error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || 'Internal server error'
+      });
+    }
+  }
+
+  /**
+   * Get all trashed leads
+   */
+  static async getTrashLeads(req: AuthRequest, res: Response) {
+    try {
+      const tenantId = req.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ success: false, error: 'Tenant context required' });
+      }
+
+      const leads = await LeadModel.findAllDeleted(tenantId);
+
+      return res.status(200).json({
+        success: true,
+        count: leads.length,
+        data: leads
+      });
+    } catch (error: any) {
+      console.error('Get Trash Leads Error:', error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || 'Internal server error'
+      });
+    }
+  }
+
+  /**
+   * Restore lead from trash
+   */
+  static async restoreLead(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+      const tenantId = req.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ success: false, error: 'Tenant context required' });
+      }
+
+      const success = await LeadModel.restore(id, tenantId);
+
+      if (!success) {
+        return res.status(404).json({ success: false, error: 'Lead not found in Trash' });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: 'Lead restored successfully'
+      });
+    } catch (error: any) {
+      console.error('Restore Lead Error:', error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || 'Internal server error'
+      });
+    }
+  }
+
+  /**
+   * Permanently delete lead
+   */
+  static async permanentlyDeleteLead(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+      const tenantId = req.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ success: false, error: 'Tenant context required' });
+      }
+
+      const success = await LeadModel.permanentDelete(id, tenantId);
+
+      if (!success) {
+        return res.status(404).json({ success: false, error: 'Lead not found in Trash' });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: 'Lead permanently deleted'
+      });
+    } catch (error: any) {
+      console.error('Permanent Delete Lead Error:', error);
       return res.status(500).json({
         success: false,
         error: error.message || 'Internal server error'
@@ -410,6 +496,86 @@ export class LeadController {
 
     } catch (error: any) {
       console.error('Lead Onboarding Error:', error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || 'Internal server error'
+      });
+    }
+  }
+
+  /**
+   * Empty Trash (Permanently delete all trashed leads for tenant)
+   */
+  static async emptyTrash(req: AuthRequest, res: Response) {
+    try {
+      const tenantId = req.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ success: false, error: 'Tenant context required' });
+      }
+
+      const count = await LeadModel.emptyTrash(tenantId);
+
+      return res.status(200).json({
+        success: true,
+        message: `Trash emptied: ${count} leads permanently deleted`,
+        data: { deletedCount: count }
+      });
+    } catch (error: any) {
+      console.error('Empty Trash Error:', error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || 'Internal server error'
+      });
+    }
+  }
+
+  /**
+   * Bulk Restore Leads
+   */
+  static async bulkRestoreLeads(req: AuthRequest, res: Response) {
+    try {
+      const tenantId = req.tenantId;
+      const { ids } = req.body;
+      if (!tenantId || !ids || !Array.isArray(ids)) {
+        return res.status(400).json({ success: false, error: 'Tenant context and IDs array required' });
+      }
+
+      const count = await LeadModel.bulkRestore(ids, tenantId);
+
+      return res.status(200).json({
+        success: true,
+        message: `${count} leads restored successfully`,
+        data: { restoredCount: count }
+      });
+    } catch (error: any) {
+      console.error('Bulk Restore Error:', error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || 'Internal server error'
+      });
+    }
+  }
+
+  /**
+   * Bulk Permanently Delete Leads
+   */
+  static async bulkPermanentlyDeleteLeads(req: AuthRequest, res: Response) {
+    try {
+      const tenantId = req.tenantId;
+      const { ids } = req.body;
+      if (!tenantId || !ids || !Array.isArray(ids)) {
+        return res.status(400).json({ success: false, error: 'Tenant context and IDs array required' });
+      }
+
+      const count = await LeadModel.bulkPermanentDelete(ids, tenantId);
+
+      return res.status(200).json({
+        success: true,
+        message: `${count} leads permanently deleted`,
+        data: { deletedCount: count }
+      });
+    } catch (error: any) {
+      console.error('Bulk Permanent Delete Error:', error);
       return res.status(500).json({
         success: false,
         error: error.message || 'Internal server error'

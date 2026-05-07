@@ -352,7 +352,7 @@ export class BucketController {
         description,
         color = "#6366f1",
         projectId = null,
-        isShared = false,
+        isShared = true,
       } = req.body;
 
       // Validate required fields
@@ -1009,6 +1009,7 @@ export class BucketController {
           sprintPlanId: sprintId,
           releasePlanId: null, // Clear release plan
           demoPlanId: null, // Clear demo plan
+          bucketId: null, // Clear bucket assignment so they show in main views
           updatedAt: new Date(),
         },
       });
@@ -1072,6 +1073,7 @@ export class BucketController {
           sprintPlanId: null,
           releasePlanId: null,
           demoPlanId: null,
+          bucketId: null, // Clear bucket assignment so they show in main views
           updatedAt: new Date(),
         },
       });

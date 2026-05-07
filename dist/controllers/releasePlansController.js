@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ReleasePlansController = void 0;
 const database_1 = require("@/config/database");
 const types_1 = require("@/types");
+const socketService_1 = require("@/services/socketService");
 class ReleasePlansController {
     /**
      * Get all release plans with filtering and pagination (tenant-aware)
@@ -270,9 +271,17 @@ class ReleasePlansController {
                 data: newReleasePlan,
                 message: "Plan created successfully",
             });
+            socketService_1.socketService.emitToTenant(req.tenantId, "plan:created", newReleasePlan);
         }
         catch (error) {
             console.error("Create release plan error:", error);
+            if (error.code === 'P2002') {
+                res.status(400).json({
+                    success: false,
+                    error: `The name "${req.body.version}" already exists.`,
+                });
+                return;
+            }
             res.status(500).json({
                 success: false,
                 error: "Failed to create release plan",
@@ -360,9 +369,17 @@ class ReleasePlansController {
                 data: updatedPlan,
                 message: "Plan updated successfully",
             });
+            socketService_1.socketService.emitToTenant(req.tenantId, "plan:updated", updatedPlan);
         }
         catch (error) {
             console.error("Update plan error:", error);
+            if (error.code === 'P2002') {
+                res.status(400).json({
+                    success: false,
+                    error: `The name "${req.body.version}" already exists.`,
+                });
+                return;
+            }
             if (error instanceof types_1.NotFoundError) {
                 res.status(404).json({ success: false, error: error.message });
                 return;
@@ -429,6 +446,7 @@ class ReleasePlansController {
                 success: true,
                 message: "Plan deleted successfully",
             });
+            socketService_1.socketService.emitToTenant(req.tenantId, "plan:deleted", { id });
         }
         catch (error) {
             console.error("Delete plan error:", error);
@@ -510,6 +528,7 @@ class ReleasePlansController {
                 data: updatedSprint,
                 message: "Sprint started successfully",
             });
+            socketService_1.socketService.emitToTenant(req.tenantId, "plan:updated", updatedSprint);
         }
         catch (error) {
             console.error("Start sprint error:", error);
@@ -626,6 +645,7 @@ class ReleasePlansController {
                     completedPoints,
                 },
             });
+            socketService_1.socketService.emitToTenant(req.tenantId, "plan:updated", updatedSprint);
         }
         catch (error) {
             console.error("Complete sprint error:", error);

@@ -6,6 +6,7 @@ import {
   NotFoundError,
   ValidationError
 } from '@/types';
+import { socketService } from '@/services/socketService';
 
 // Simple in-memory cache for ticket configurations
 const configCache = new Map<string, { data: any; timestamp: number }>();
@@ -1234,6 +1235,8 @@ export class SettingsController {
         },
         message: 'Dropdown option created successfully'
       } as ApiResponse);
+
+      socketService.emitToTenant(req.tenantId, 'settings:updated', { type: 'dropdown', action: 'create', category: type });
     } catch (error: any) {
       console.error('Create dropdown option error:', error);
 
@@ -1320,9 +1323,11 @@ export class SettingsController {
         createdAt: updatedOption.createdAt,
         updatedAt: updatedOption.updatedAt
       },
-      message: 'Dropdown option updated successfully'
-    } as ApiResponse);
-  } catch (error: any) {
+        message: 'Dropdown option updated successfully'
+      } as ApiResponse);
+
+      socketService.emitToTenant(req.tenantId, 'settings:updated', { type: 'dropdown', action: 'update', category: updatedOption.category });
+    } catch (error: any) {
     console.error('Update dropdown option error:', error);
 
     if (error instanceof NotFoundError) {
@@ -1378,6 +1383,8 @@ export class SettingsController {
         success: true,
         message: 'Dropdown option deleted successfully'
       } as ApiResponse);
+
+      socketService.emitToTenant(req.tenantId, 'settings:updated', { type: 'dropdown', action: 'delete', category: existingOption.category });
     } catch (error: any) {
       console.error('Delete dropdown option error:', error);
 
@@ -1438,6 +1445,8 @@ export class SettingsController {
         success: true,
         message: 'Dropdown options reordered successfully'
       } as ApiResponse);
+
+      socketService.emitToTenant(req.tenantId, 'settings:updated', { type: 'dropdown', action: 'reorder' });
     } catch (error) {
       console.error('Reorder dropdown options error:', error);
       res.status(500).json({

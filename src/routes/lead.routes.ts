@@ -27,5 +27,11 @@ router.put('/:id', requirePermission(Permissions.LEAD_UPDATE), LeadController.up
 router.delete('/:id', requirePermission(Permissions.LEAD_DELETE), LeadController.deleteLead);
 router.post('/:id/analyze', requirePermission(Permissions.LEAD_MANAGE), BidIQController.analyzeLead);
 router.post('/:id/onboard', requirePermission(Permissions.LEAD_MANAGE), LeadController.onboardLead);
+router.get('/trash', LeadController.getTrashLeads);
 
+router.delete('/trash/empty', LeadController.emptyTrash);
+router.post('/trash/bulk-restore', LeadController.bulkRestoreLeads);
+router.post('/trash/bulk-permanent-delete', LeadController.bulkPermanentlyDeleteLeads);
+router.post('/:id/restore', LeadController.restoreLead);
+router.delete('/:id/permanent', LeadController.permanentlyDeleteLead);
 export default router;

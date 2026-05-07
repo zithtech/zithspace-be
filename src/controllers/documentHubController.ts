@@ -446,6 +446,13 @@ export class DocumentHubController {
         },
       });
 
+      // Emit socket event
+      socketService.emitToTenant(
+        req.tenantId,
+        "documenthub:node_created",
+        newNode,
+      );
+
       res.status(201).json({
         success: true,
         data: newNode,
@@ -588,6 +595,13 @@ export class DocumentHubController {
           data: { title },
         });
       }
+
+      // Emit socket event
+      socketService.emitToTenant(
+        req.tenantId,
+        "documenthub:node_updated",
+        updatedNode,
+      );
 
       res.status(200).json({
         success: true,
@@ -766,6 +780,13 @@ export class DocumentHubController {
           },
         });
       }
+
+      // Emit socket event
+      socketService.emitToTenant(
+        req.tenantId,
+        "documenthub:document_updated",
+        updatedDocument,
+      );
 
       res.status(200).json({
         success: true,
@@ -1341,6 +1362,13 @@ export class DocumentHubController {
         );
       });
 
+      // Emit socket event
+      socketService.emitToTenant(
+        req.tenantId,
+        "documenthub:node_deleted",
+        { id },
+      );
+
       res.status(200).json({
         success: true,
         message: "Node and its contents moved to trash",
@@ -1479,6 +1507,13 @@ export class DocumentHubController {
           deletedById: req.user.id,
         },
       });
+
+      // Emit socket event
+      socketService.emitToTenant(
+        req.tenantId,
+        "documenthub:document_deleted",
+        { id },
+      );
 
       res.status(200).json({
         success: true,
@@ -1629,6 +1664,13 @@ export class DocumentHubController {
         },
       });
 
+      // Emit socket event
+      socketService.emitToTenant(
+        req.tenantId,
+        "documenthub:restored",
+        documentHub,
+      );
+
       res.status(200).json({
         success: true,
         message: "Document Hub restored successfully",
@@ -1699,6 +1741,13 @@ export class DocumentHubController {
         },
       });
 
+      // Emit socket event
+      socketService.emitToTenant(
+        req.tenantId,
+        "documenthub:document_restored",
+        { id },
+      );
+
       res.status(200).json({
         success: true,
         message: "Document restored successfully",
@@ -1766,6 +1815,13 @@ export class DocumentHubController {
           parentId || null // Move the root of the restored branch to the selected parent
         );
       });
+
+      // Emit socket event
+      socketService.emitToTenant(
+        req.tenantId,
+        "documenthub:node_restored",
+        { id, documentHubId },
+      );
 
       res.status(200).json({
         success: true,
@@ -1911,6 +1967,13 @@ export class DocumentHubController {
         },
       });
 
+      // Emit socket event
+      socketService.emitToTenant(
+        req.tenantId,
+        "documenthub:document_updated",
+        updatedDocument,
+      );
+
       res.status(200).json({
         success: true,
         data: updatedDocument,
@@ -1975,6 +2038,13 @@ export class DocumentHubController {
           shareToken: null,
         },
       });
+
+      // Emit socket event
+      socketService.emitToTenant(
+        req.tenantId,
+        "documenthub:document_updated",
+        { id, visibility: 'private' },
+      );
 
       res.status(200).json({
         success: true,
@@ -2108,6 +2178,13 @@ export class DocumentHubController {
         },
       });
 
+      // Emit socket event
+      socketService.emitToTenant(
+        req.tenantId,
+        "documenthub:updated",
+        updatedHub,
+      );
+
       res.status(200).json({
         success: true,
         data: updatedHub,
@@ -2171,6 +2248,13 @@ export class DocumentHubController {
           shareToken: null as any,
         },
       });
+
+      // Emit socket event
+      socketService.emitToTenant(
+        req.tenantId,
+        "documenthub:updated",
+        { id, visibility: 'private' },
+      );
 
       res.status(200).json({
         success: true,

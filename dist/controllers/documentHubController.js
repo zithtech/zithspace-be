@@ -393,6 +393,8 @@ class DocumentHubController {
                     documentId,
                 },
             });
+            // Emit socket event
+            socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:node_created", newNode);
             res.status(201).json({
                 success: true,
                 data: newNode,
@@ -518,6 +520,8 @@ class DocumentHubController {
                     data: { title },
                 });
             }
+            // Emit socket event
+            socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:node_updated", updatedNode);
             res.status(200).json({
                 success: true,
                 data: updatedNode,
@@ -674,6 +678,8 @@ class DocumentHubController {
                     },
                 });
             }
+            // Emit socket event
+            socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:document_updated", updatedDocument);
             res.status(200).json({
                 success: true,
                 data: updatedDocument,
@@ -1173,6 +1179,8 @@ class DocumentHubController {
             await database_1.prisma.$transaction(async (tx) => {
                 await DocumentHubController.deleteNodeRecursive(tx, id, req.tenantId, req.user.id, node.type, node.documentId);
             });
+            // Emit socket event
+            socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:node_deleted", { id });
             res.status(200).json({
                 success: true,
                 message: "Node and its contents moved to trash",
@@ -1286,6 +1294,8 @@ class DocumentHubController {
                     deletedById: req.user.id,
                 },
             });
+            // Emit socket event
+            socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:document_deleted", { id });
             res.status(200).json({
                 success: true,
                 message: "Document moved to trash",
@@ -1423,6 +1433,8 @@ class DocumentHubController {
                     deletedById: null,
                 },
             });
+            // Emit socket event
+            socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:restored", documentHub);
             res.status(200).json({
                 success: true,
                 message: "Document Hub restored successfully",
@@ -1484,6 +1496,8 @@ class DocumentHubController {
                     deletedById: null,
                 },
             });
+            // Emit socket event
+            socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:document_restored", { id });
             res.status(200).json({
                 success: true,
                 message: "Document restored successfully",
@@ -1538,6 +1552,8 @@ class DocumentHubController {
                 await DocumentHubController.restoreNodeRecursive(tx, id, req.tenantId, documentHubId, parentId || null // Move the root of the restored branch to the selected parent
                 );
             });
+            // Emit socket event
+            socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:node_restored", { id, documentHubId });
             res.status(200).json({
                 success: true,
                 message: "Folder and its contents restored successfully",
@@ -1655,6 +1671,8 @@ class DocumentHubController {
                     shareToken,
                 },
             });
+            // Emit socket event
+            socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:document_updated", updatedDocument);
             res.status(200).json({
                 success: true,
                 data: updatedDocument,
@@ -1711,6 +1729,8 @@ class DocumentHubController {
                     shareToken: null,
                 },
             });
+            // Emit socket event
+            socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:document_updated", { id, visibility: 'private' });
             res.status(200).json({
                 success: true,
                 message: "Document sharing revoked",
@@ -1829,6 +1849,8 @@ class DocumentHubController {
                     shareToken: shareToken,
                 },
             });
+            // Emit socket event
+            socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:updated", updatedHub);
             res.status(200).json({
                 success: true,
                 data: updatedHub,
@@ -1884,6 +1906,8 @@ class DocumentHubController {
                     shareToken: null,
                 },
             });
+            // Emit socket event
+            socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:updated", { id, visibility: 'private' });
             res.status(200).json({
                 success: true,
                 message: "Hub sharing revoked",
