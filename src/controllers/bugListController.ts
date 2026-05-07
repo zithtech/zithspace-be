@@ -22,6 +22,12 @@ const ALLOWED_STATUS = new Set([
   "archived",
 ]);
 
+const ALLOWED_BUG_STATUS = new Set([
+  "not started",
+  "pending", 
+  "completed",
+]);
+
 // Default seeds — used the first time a tenant lists severities/types
 const DEFAULT_SEVERITIES: {
   key: string;
@@ -255,6 +261,7 @@ function shapeBug(row: any, attachments: any[], externalLinks: any[]) {
     bugType: row.bug_type,
     severity: row.severity,
     status: row.status,
+    bugStatus: row.bug_status,
     tags: row.tags || [],
     ticketId: row.ticket_id,
     ticketNumber: row.ticket_number,
@@ -928,6 +935,7 @@ export class BugListController {
       severity,
       tags,
       assigneeId,
+      bugStatus,
       attachments,
       externalLinks,
     } = req.body;
@@ -953,6 +961,10 @@ export class BugListController {
         bad(res, 400, "Invalid bug type");
         return;
       }
+    }
+    if (bugStatus && !ALLOWED_BUG_STATUS.has(bugStatus)) {
+      bad(res, 400, "Invalid bug status. Must be: not started, pending, or completed");
+      return;
     }
 
     try {
@@ -985,8 +997,8 @@ export class BugListController {
       const insertRes = await pool.query(
         `INSERT INTO bugs
            (tenant_id, folder_id, sheet_id, bug_number, title, description, module,
-            bug_type, severity, status, tags, assignee_id, created_by_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12)
+            bug_type, severity, status, bug_status, tags, assignee_id, created_by_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13)
          RETURNING id`,
         [
           req.tenantId,
@@ -998,6 +1010,7 @@ export class BugListController {
           module || null,
           bugType || null,
           severity || null,
+          bugStatus || 'not started',
           Array.isArray(tags) ? tags : [],
           assigneeId || null,
           req.user!.id,
@@ -1033,6 +1046,7 @@ export class BugListController {
       bugType,
       severity,
       status,
+      bugStatus,
       tags,
       assigneeId,
       attachments,
@@ -1055,6 +1069,10 @@ export class BugListController {
     }
     if (status !== undefined && !ALLOWED_STATUS.has(status)) {
       bad(res, 400, "Invalid status");
+      return;
+    }
+    if (bugStatus !== undefined && bugStatus !== null && !ALLOWED_BUG_STATUS.has(bugStatus)) {
+      bad(res, 400, "Invalid bug status. Must be: not started, pending, or completed");
       return;
     }
 
@@ -1082,6 +1100,7 @@ export class BugListController {
       if (bugType !== undefined) set("bug_type", bugType);
       if (severity !== undefined) set("severity", severity);
       if (status !== undefined) set("status", status);
+      if (bugStatus !== undefined) set("bug_status", bugStatus);
       if (tags !== undefined) set("tags", Array.isArray(tags) ? tags : []);
       if (assigneeId !== undefined) set("assignee_id", assigneeId);
 
@@ -1393,6 +1412,7 @@ export class BugListController {
               COUNT(*) FILTER (WHERE status IN ('new','reopened'))::int AS open,
               COUNT(*) FILTER (WHERE severity = 'blocker' AND status NOT IN ('verified','ignored'))::int AS blockers,
               COUNT(*) FILTER (WHERE status = 'verified')::int AS verified,
+              COUNT(*) FILTER (WHERE bug_status = 'completed')::int AS completed,
               COUNT(*) FILTER (WHERE ticket_id IS NOT NULL)::int AS linked
              FROM bugs WHERE ${where}`,
           values,
@@ -1414,6 +1434,7 @@ export class BugListController {
           open: stats.open,
           blockers: stats.blockers,
           verified: stats.verified,
+          completed: stats.completed,
           linked: stats.linked,
           totalFolders: foldersRes.rows[0].c,
           totalSheets: sheetsRes.rows[0].c,
@@ -1536,6 +1557,8 @@ export class BugListController {
           bugIds,
           projectId: projectIdOverride,
           assigneeId,
+          attachments,
+          externalLinks,
         } = group;
         if (!title || !Array.isArray(bugIds) || bugIds.length === 0) continue;
 
@@ -1617,6 +1640,81 @@ export class BugListController {
              WHERE id = ANY($2::text[]) AND tenant_id = $3`,
           [ticketId, bugIds, req.tenantId],
         );
+
+        // Process ticket attachments if provided
+        if (attachments && Array.isArray(attachments) && attachments.length > 0) {
+          for (const attachment of attachments) {
+            const attachmentId = randomUUID();
+            const now = new Date().toISOString();
+            console.log("Debug - Attachment data:", {
+              attachmentId,
+              tenantId: req.tenantId,
+              ticketId,
+              userId: req.user!.id,
+              fileName: attachment.fileName,
+              fileUrl: attachment.fileUrl,
+              fileSize: attachment.fileSize,
+              fileType: attachment.fileType,
+            });
+            try {
+              const insertQuery = `
+                INSERT INTO ticket_attachments 
+                (id, tenant_id, ticket_id, uploaded_by_id, file_name, file_url, file_size, file_type, uploaded_at, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+              `;
+              
+              const currentTimestamp = new Date().toISOString();
+              await client.query(insertQuery, [
+                attachmentId,
+                req.tenantId,
+                ticketId,
+                req.user!.id,
+                attachment.fileName,
+                attachment.fileUrl,
+                Number(attachment.fileSize) || 0,
+                attachment.fileType || '',
+                currentTimestamp,
+                currentTimestamp,
+                currentTimestamp,
+              ]);
+            } catch (err) {
+              console.error("Error inserting attachment:", err);
+              throw err;
+            }
+          }
+        }
+
+        // Process ticket external links if provided
+        if (externalLinks && Array.isArray(externalLinks) && externalLinks.length > 0) {
+          for (const link of externalLinks) {
+            const linkId = randomUUID();
+            try {
+              const linkInsertQuery = `
+                INSERT INTO ticket_related_links 
+                   (id, tenant_id, ticket_id, added_by_id, title, description, url, link_type, added_at, created_at, updated_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+              `;
+
+              const linkTimestamp = new Date().toISOString();
+              await client.query(linkInsertQuery, [
+                linkId,
+                req.tenantId,
+                ticketId,
+                req.user!.id,
+                link.label || '',
+                '', // description - not provided from frontend
+                link.url,
+                'external',
+                linkTimestamp,
+                linkTimestamp,
+                linkTimestamp,
+              ]);
+            } catch (err) {
+              console.error("Error inserting link:", err);
+              throw err;
+            }
+          }
+        }
 
         created.push({
           ticketId,
