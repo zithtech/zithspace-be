@@ -339,71 +339,95 @@ class TicketController {
                     throw new types_1.ValidationError(`Cannot create subtask of a subtask. Ticket ${parentTicket.ticketNumber} is already a subtask.`);
                 }
             }
-            // Generate ticket number
-            // Generate ticket number safely by finding the last created ticket
-            const lastTicket = await database_1.prisma.ticket.findFirst({
-                where: { tenantId: req.tenantId },
-                orderBy: { createdAt: 'desc' } // Get the most recently created ticket
-            });
-            let nextTicketNumber = 1;
-            if (lastTicket && lastTicket.ticketNumber) {
-                // Extract the number part from the last ticket (e.g., "PROJ-0005" -> 5)
-                const parts = lastTicket.ticketNumber.split('-');
-                const lastSeq = parseInt(parts[parts.length - 1]);
-                if (!isNaN(lastSeq)) {
-                    nextTicketNumber = lastSeq + 1;
+            // Generate ticket number with retry logic to handle race conditions
+            let ticket;
+            let ticketNumber = "";
+            let attempts = 0;
+            const maxAttempts = 5;
+            while (attempts < maxAttempts) {
+                attempts++;
+                // Find the last ticket number for THIS project specific prefix
+                const lastTicket = await database_1.prisma.ticket.findFirst({
+                    where: {
+                        tenantId: req.tenantId,
+                        ticketNumber: { startsWith: `${project.code || "TKT"}-` }
+                    },
+                    orderBy: { ticketNumber: 'desc' }
+                });
+                let nextTicketNumber = 1;
+                if (lastTicket && lastTicket.ticketNumber) {
+                    const parts = lastTicket.ticketNumber.split('-');
+                    const lastSeq = parseInt(parts[parts.length - 1]);
+                    if (!isNaN(lastSeq)) {
+                        nextTicketNumber = lastSeq + 1;
+                    }
+                }
+                ticketNumber = `${project.code || "TKT"}-${nextTicketNumber
+                    .toString()
+                    .padStart(4, "0")}`;
+                try {
+                    // Prepare metadata for additional fields not in schema
+                    const metadata = {
+                        parentTickets,
+                        releasePlan,
+                    };
+                    // Create ticket with fields at root level (matching Prisma schema)
+                    ticket = await database_1.prisma.ticket.create({
+                        data: {
+                            tenantId: req.tenantId,
+                            title,
+                            description: sanitizedDescription,
+                            projectId,
+                            status,
+                            priority,
+                            type: ticketType,
+                            platform: platform || "Development",
+                            stack: stack || null,
+                            taskLevel: taskLevel || "Medium",
+                            storyPoint: storyPoint || 1,
+                            estimateHours: estimateHours || 0,
+                            assigneeId: assigneeId || null,
+                            reportToId: reportToId || null,
+                            createdById: req.user.id,
+                            parentTickets: parentTickets || [],
+                            parentId: parentId || null,
+                            startDate: req.body.startDate ? new Date(req.body.startDate) : null,
+                            endDate: req.body.endDate ? new Date(req.body.endDate) : null,
+                            dueDate: dueDate ? new Date(dueDate) : null,
+                            tags,
+                            metadata,
+                            ticketNumber,
+                        },
+                        include: {
+                            createdBy: {
+                                select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
+                            },
+                            assignee: {
+                                select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
+                            },
+                            reportTo: {
+                                select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
+                            },
+                            project: {
+                                select: { id: true, name: true, code: true, description: true },
+                            },
+                        },
+                    });
+                    // If creation succeeded, break the retry loop
+                    break;
+                }
+                catch (error) {
+                    // Check if it's a unique constraint error on ticketNumber
+                    if (error.code === 'P2002' && error.meta?.target?.includes('ticket_number')) {
+                        console.warn(`Ticket number collision on ${ticketNumber}, attempt ${attempts}/${maxAttempts}. Retrying...`);
+                        if (attempts >= maxAttempts) {
+                            throw error; // Max attempts reached
+                        }
+                        continue; // Try again with a new number
+                    }
+                    throw error; // Rethrow other errors
                 }
             }
-            const ticketNumber = `${project.code || "TKT"}-${nextTicketNumber
-                .toString()
-                .padStart(4, "0")}`;
-            // Prepare metadata for additional fields not in schema
-            const metadata = {
-                parentTickets,
-                releasePlan,
-            };
-            // Create ticket with fields at root level (matching Prisma schema)
-            const ticket = await database_1.prisma.ticket.create({
-                data: {
-                    tenantId: req.tenantId,
-                    title,
-                    description: sanitizedDescription,
-                    projectId,
-                    status,
-                    priority,
-                    type: ticketType,
-                    platform: platform || "Development",
-                    stack: stack || null,
-                    taskLevel: taskLevel || "Medium",
-                    storyPoint: storyPoint || 1,
-                    estimateHours: estimateHours || 0,
-                    assigneeId: assigneeId || null,
-                    reportToId: reportToId || null,
-                    createdById: req.user.id,
-                    parentTickets: parentTickets || [],
-                    parentId: parentId || null,
-                    startDate: req.body.startDate ? new Date(req.body.startDate) : null,
-                    endDate: req.body.endDate ? new Date(req.body.endDate) : null,
-                    dueDate: dueDate ? new Date(dueDate) : null,
-                    tags,
-                    metadata,
-                    ticketNumber,
-                },
-                include: {
-                    createdBy: {
-                        select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
-                    },
-                    assignee: {
-                        select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
-                    },
-                    reportTo: {
-                        select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
-                    },
-                    project: {
-                        select: { id: true, name: true, code: true, description: true },
-                    },
-                },
-            });
             socketService_1.socketService.emitToTenant(req.tenantId, "ticket:created", ticket);
             // Log activity
             await database_1.prisma.ticketActivityLog.create({
