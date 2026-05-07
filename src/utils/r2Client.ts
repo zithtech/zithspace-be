@@ -94,15 +94,15 @@ export async function uploadImageToR2(
     await s3Client.send(new PutObjectCommand(params));
 
     // Construct public URL
-    let baseUrl = (PUBLIC_URL && !PUBLIC_URL.includes('r2.cloudflarestorage.com')) 
-      ? PUBLIC_URL 
+    let baseUrl = (PUBLIC_URL && !PUBLIC_URL.includes('r2.cloudflarestorage.com'))
+      ? PUBLIC_URL
       : "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
-    
+
     // Remove trailing slash if present to avoid double slashes
     if (baseUrl.endsWith('/')) {
       baseUrl = baseUrl.slice(0, -1);
     }
-    
+
     const imageUrl = `${baseUrl}/${fileName}`;
 
     return imageUrl;
@@ -611,6 +611,62 @@ export async function generatePresignedUrl(
   } catch (error: any) {
     console.error("Error generating presigned URL:", error);
     throw new Error(`Failed to generate secure link: ${error.message}`);
+  }
+}
+
+/**
+ * Fetch file content directly from R2 using S3 client (for backend proxying)
+ * @param fileUrl - The public or private URL of the file
+ * @returns Buffer containing the file data
+ */
+export async function getFileFromR2(fileUrl: string): Promise<Buffer> {
+  try {
+    const url = new URL(fileUrl);
+    let key = '';
+    let bucket = BUCKET_NAME;
+
+    if (url.hostname.includes('r2.cloudflarestorage.com')) {
+      // Format: https://endpoint/bucket/key
+      const parts = url.pathname.split('/').filter(Boolean);
+      bucket = parts[0]; // First part is the bucket
+      key = parts.slice(1).join('/'); // Rest is the key
+    } else {
+      // Format: https://pub-xxx.r2.dev/key
+      key = url.pathname.startsWith('/') ? url.pathname.slice(1) : url.pathname;
+    }
+
+    console.log(`[R2Client] Fetching from bucket: ${bucket}, key: ${key}`);
+
+    const command = new GetObjectCommand({
+      Bucket: bucket,
+      Key: key,
+    });
+
+    const response = await s3Client.send(command);
+
+    if (!response.Body) {
+      throw new Error('Empty response body from R2');
+    }
+
+    // Convert stream to Buffer
+    const streamToBuffer = async (stream: any): Promise<Buffer> => {
+      if (stream instanceof Buffer) return stream;
+      if (typeof stream.transformToByteArray === 'function') {
+        return Buffer.from(await stream.transformToByteArray());
+      }
+
+      return new Promise((resolve, reject) => {
+        const chunks: any[] = [];
+        stream.on('data', (chunk: any) => chunks.push(chunk));
+        stream.on('error', reject);
+        stream.on('end', () => resolve(Buffer.concat(chunks)));
+      });
+    };
+
+    return await streamToBuffer(response.Body);
+  } catch (error: any) {
+    console.error("Error fetching file from R2:", error);
+    throw new Error(`Failed to fetch file from storage: ${error.message}`);
   }
 }
 

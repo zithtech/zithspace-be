@@ -109,6 +109,7 @@ const recruitmentAction_routes_1 = __importDefault(require("@/routes/recruitment
 const candidateRoutes_1 = __importDefault(require("@/routes/candidateRoutes"));
 const companyLocationRoutes_1 = __importDefault(require("@/routes/companyLocationRoutes"));
 const openingManagementRoutes_1 = __importDefault(require("@/routes/openingManagementRoutes"));
+const excel_1 = __importDefault(require("./routes/excel"));
 const lead_routes_1 = __importDefault(require("@/routes/lead.routes"));
 const leadSettings_routes_1 = __importDefault(require("@/routes/leadSettings.routes"));
 const generate_routes_1 = __importDefault(require("@/routes/generate.routes"));
@@ -276,6 +277,7 @@ app.use("/api/escalation-statuses", escalationStatus_RoutesV2_1.default);
 app.use("/api/escalation-priorities", escalationPriorities_Routes_1.default);
 app.use("/api/escalations-v2", escalationRoutesV2_1.default);
 app.use("/api/time-tracking", timeTracking_1.default);
+app.use("/api/excel", excel_1.default);
 app.use("/api/projects", projectOverviewRoutes_1.default);
 app.use("/api/candidates", candidateRoutes_1.default);
 app.use("/api/recruitment-statuses", recruitmentStatus_routes_1.default);

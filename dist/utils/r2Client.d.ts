@@ -109,6 +109,12 @@ export declare function cleanupOrphanedImages(oldHtml: string, newHtml: string, 
  */
 export declare function generatePresignedUrl(fileUrl: string, expiresIn?: number): Promise<string>;
 /**
+ * Fetch file content directly from R2 using S3 client (for backend proxying)
+ * @param fileUrl - The public or private URL of the file
+ * @returns Buffer containing the file data
+ */
+export declare function getFileFromR2(fileUrl: string): Promise<Buffer>;
+/**
  * Upload Escalation document to Cloudflare R2
  * @param base64File - Base64 encoded file string
  * @param fileName - Original file name

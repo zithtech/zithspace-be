@@ -112,7 +112,7 @@ import recruitmentActionRoutes from "@/routes/recruitmentAction.routes";
 import candidateRoutes from "@/routes/candidateRoutes";
 import companyLocationRoutes from "@/routes/companyLocationRoutes";
 import openingManagementRoutes from "@/routes/openingManagementRoutes";
-
+import excelRoutes from "./routes/excel";
 import leadRoutes from "@/routes/lead.routes";
 import leadSettingsRoutes from "@/routes/leadSettings.routes";
 import generateRoutes from "@/routes/generate.routes";
@@ -123,6 +123,7 @@ import proposalRoutes from "@/routes/proposals";
 import projectOverviewRoutes from "./routes/projectOverviewRoutes";
 import { socketService } from "@/services/socketService";
 // Load environment
+
 dotenv.config();
 console.log("🚀 API Starting up...");
 console.log("📅 Mounting calendar routes at /api/calendar");
@@ -308,9 +309,11 @@ app.use("/api/escalation-priorities", escalationPriorityRoutes);
 app.use("/api/escalations-v2", escalationRoutesV2);
 
 app.use("/api/time-tracking", timeTrackingRoutes);
+app.use("/api/excel", excelRoutes);
 app.use("/api/projects", projectOverviewRoutes);
 
 app.use("/api/candidates", candidateRoutes);
+
 
 app.use("/api/recruitment-statuses", recruitmentStatusRoutes);
 app.use("/api/recruitment-actions", recruitmentActionRoutes);
