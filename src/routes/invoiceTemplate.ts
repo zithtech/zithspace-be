@@ -15,18 +15,18 @@ router.use(requireAuth);
 // ==================== INVOICE TEMPLATE ROUTES ====================
 
 // Get all templates
-router.get('/', requirePermission(Permissions.INVOICE_READ), InvoiceTemplateController.getTemplates);
+router.get('/', requirePermission(Permissions.INVOICE_TEMPLATE_READ), InvoiceTemplateController.getTemplates);
 
 // Get template by ID
-router.get('/:id', requirePermission(Permissions.INVOICE_READ), InvoiceTemplateController.getTemplateById);
+router.get('/:id', requirePermission(Permissions.INVOICE_TEMPLATE_READ), InvoiceTemplateController.getTemplateById);
 
 // Create new template
-router.post('/', requirePermission(Permissions.INVOICE_CREATE), InvoiceTemplateController.createTemplate);
+router.post('/', requirePermission(Permissions.INVOICE_TEMPLATE_CREATE), InvoiceTemplateController.createTemplate);
 
 // Update template
-router.put('/:id', requirePermission(Permissions.INVOICE_UPDATE), InvoiceTemplateController.updateTemplate);
+router.put('/:id', requirePermission(Permissions.INVOICE_TEMPLATE_UPDATE), InvoiceTemplateController.updateTemplate);
 
 // Delete template
-router.delete('/:id', requirePermission(Permissions.INVOICE_DELETE), InvoiceTemplateController.deleteTemplate);
+router.delete('/:id', requirePermission(Permissions.INVOICE_TEMPLATE_DELETE), InvoiceTemplateController.deleteTemplate);
 
 export default router;
