@@ -52,32 +52,7 @@ export class CalendarController {
         }
     }
 
-    /**
-     * GET /api/calendar/:provider/connect
-     * Initiates the OAuth flow for a provider.
-     */
-    // static async connect(req: AuthRequest, res: Response): Promise<void> {
-    //     const { provider } = req.params;
-    //     try {
-    //         if (!req.user) {
-    //             res.status(401).json({ success: false, error: "Authentication required" });
-    //             return;
-    //         }
 
-    //         const authUrl = await CalendarService.getAuthUrl(provider.toUpperCase() as CalendarProvider, req.user.id);
-
-    //         res.status(200).json({
-    //             success: true,
-    //             data: { authUrl },
-    //         } as ApiResponse);
-    //     } catch (error) {
-    //         console.error("Calendar connect error:", error);
-    //         res.status(500).json({
-    //             success: false,
-    //             error: "Failed to initiate calendar connection",
-    //         } as ApiResponse);
-    //     }
-    // }
 
     /**
  * GET /api/calendar/:provider/connect
@@ -343,39 +318,7 @@ export class CalendarController {
      * POST /api/calendar/events
      * Creates a new event on a specific provider.
      */
-    // static async createEvent(req: AuthRequest, res: Response): Promise<void> {
-    //     try {
-    //         if (!req.user) {
-    //             res.status(401).json({ success: false, error: "Authentication required" });
-    //             return;
-    //         }
 
-    //         const { provider, ...eventData } = req.body;
-    //         if (!provider) {
-    //             res.status(400).json({ success: false, error: "Provider is required (ZOHO, GOOGLE, MICROSOFT)" });
-    //             return;
-    //         }
-
-    //         const event = await CalendarService.createEvent(
-    //             req.user.id,
-    //             req.user.tenantId!,
-    //             provider.toUpperCase() as CalendarProvider,
-    //             eventData
-    //         );
-
-    //         res.status(201).json({
-    //             success: true,
-    //             data: event,
-    //             message: "Event created successfully",
-    //         } as ApiResponse);
-    //     } catch (error: any) {
-    //         console.error("Create event error:", error);
-    //         res.status(500).json({
-    //             success: false,
-    //             error: error.message || "Failed to create event",
-    //         } as ApiResponse);
-    //     }
-    // }
 
     static async createEvent(req: AuthRequest, res: Response): Promise<void> {
         try {
