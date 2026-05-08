@@ -17,7 +17,8 @@ import {
   getInvoiceByNumber,
   getDeletedInvoices
 } from '../models/invoice.model';
-import { emailService } from '../utils/emailService';
+import { emailService, EmailService } from '../utils/emailService';
+import { MailService } from '../services/mail/MailService';
 import { 
   PaymentStatus,
   PaymentMethod,
@@ -1770,16 +1771,48 @@ export class InvoiceController {
         throw new ValidationError("No recipient email address found for this customer.");
       }
 
-      // Send actual email using email service
-      const emailResult = await emailService.sendInvoiceEmail({
-        to: recipientEmail,
-        subject: `Invoice ${invoice.invoiceNumber} from Zithtech`,
-        customerName,
-        invoiceNumber: invoice.invoiceNumber,
-        amount: invoice.grandTotal ? invoice.grandTotal.toString() : '0.00',
-        dueDate: invoice.dueDate ? invoice.dueDate.toLocaleDateString() : new Date().toLocaleDateString(),
-        pdfUrl: finalPdfUrl
-      });
+      // Check if there is a verified integrated default invoice mail
+      let emailResult;
+      try {
+        console.log(`[InvoiceController] Attempting to send via integrated mail for tenant ${req.tenantId}`);
+        
+        // Generate nice HTML content
+        const htmlContent = EmailService.generateInvoiceHtml({
+          customerName,
+          invoiceNumber: invoice.invoiceNumber,
+          amount: invoice.grandTotal ? invoice.grandTotal.toString() : '0.00',
+          dueDate: new Date(invoice.dueDate).toLocaleDateString(),
+          customMessage: message,
+          pdfUrl: finalPdfUrl
+        });
+
+        const mailResponse = await MailService.sendInvoiceViaIntegratedMail(req.tenantId, {
+          to: [recipientEmail],
+          subject: subject || `Invoice ${invoice.invoiceNumber} from Zithspace`,
+          body: message || `Dear ${customerName}, please find your invoice ${invoice.invoiceNumber} attached.`,
+          htmlBody: htmlContent,
+          attachments: finalPdfUrl ? [{
+            filename: `Invoice_${invoice.invoiceNumber}.pdf`,
+            url: finalPdfUrl,
+            contentType: 'application/pdf'
+          }] : []
+        });
+        emailResult = { success: true, data: mailResponse }; 
+      } catch (err: any) {
+        console.warn(`[InvoiceController] Integrated mail sending failed or not configured: ${err.message}. Falling back to SMTP.`);
+        
+        // Fallback to existing SMTP email service
+        emailResult = await emailService.sendInvoiceEmail({
+          to: recipientEmail,
+          subject: subject || `Invoice ${invoice.invoiceNumber} from Zithtech`,
+          customerName,
+          invoiceNumber: invoice.invoiceNumber,
+          amount: invoice.grandTotal ? invoice.grandTotal.toString() : '0.00',
+          dueDate: new Date(invoice.dueDate).toLocaleDateString(),
+          customMessage: message,
+          pdfUrl: finalPdfUrl
+        }, req.tenantId);
+      }
 
       if (emailResult.success) {
         console.log(`✅ Email sent successfully to ${recipientEmail}`);

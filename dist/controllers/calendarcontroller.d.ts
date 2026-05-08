@@ -35,6 +35,11 @@ export declare class CalendarController {
      */
     static getEvents(req: AuthRequest, res: Response): Promise<void>;
     /**
+     * POST /api/calendar/events/check-overlap
+     * Returns any events that overlap with the given time range for the current user.
+     */
+    static checkOverlap(req: AuthRequest, res: Response): Promise<void>;
+    /**
      * POST /api/calendar/events
      * Creates a new event on a specific provider.
      */

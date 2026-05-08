@@ -32,7 +32,7 @@ interface LeaveRejectionEmailData {
     durationType: string;
     rejectionReason: string;
 }
-declare class EmailService {
+export declare class EmailService {
     private transporter;
     constructor();
     private initializeTransporter;
@@ -40,9 +40,17 @@ declare class EmailService {
     private formatLeaveType;
     private formatDate;
     private formatDuration;
-    sendLeaveApplicationEmail(data: LeaveApplicationEmailData): Promise<boolean>;
-    sendLeaveApprovalEmail(data: LeaveApprovalEmailData): Promise<boolean>;
-    sendLeaveRejectionEmail(data: LeaveRejectionEmailData): Promise<boolean>;
+    sendLeaveApplicationEmail(data: LeaveApplicationEmailData, tenantId?: string): Promise<boolean>;
+    sendLeaveApprovalEmail(data: LeaveApprovalEmailData, tenantId?: string): Promise<boolean>;
+    sendLeaveRejectionEmail(data: LeaveRejectionEmailData, tenantId?: string): Promise<boolean>;
+    static generateInvoiceHtml(data: {
+        customerName: string;
+        invoiceNumber: string;
+        amount: string;
+        dueDate: string;
+        customMessage?: string;
+        pdfUrl?: string | null;
+    }): string;
     sendInvoiceEmail(data: {
         to: string;
         from?: string;
@@ -53,7 +61,7 @@ declare class EmailService {
         dueDate: string;
         customMessage?: string;
         pdfUrl?: string | null;
-    }): Promise<{
+    }, tenantId?: string): Promise<{
         success: boolean;
         html: string;
     }>;
@@ -64,7 +72,7 @@ declare class EmailService {
         year: number;
         excelBuffer: Buffer;
         fileName: string;
-    }): Promise<boolean>;
+    }, tenantId?: string): Promise<boolean>;
     sendPayslipEmail(data: {
         to: string;
         from?: string;
@@ -72,7 +80,7 @@ declare class EmailService {
         month: string;
         year: string;
         downloadUrl: string;
-    }): Promise<boolean>;
+    }, tenantId?: string): Promise<boolean>;
 }
 export declare const emailService: EmailService;
 export default emailService;

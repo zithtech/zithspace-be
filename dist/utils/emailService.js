@@ -3,14 +3,54 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.emailService = void 0;
+exports.emailService = exports.EmailService = void 0;
 const nodemailer_1 = __importDefault(require("nodemailer"));
+const mailConfiguration_model_1 = require("../models/mailConfiguration.model");
+const encryption_1 = require("../utils/encryption");
 class EmailService {
     constructor() {
         this.transporter = null;
-        this.initializeTransporter();
+        // Don't initialize transporter in constructor - we'll create it dynamically per tenant
     }
-    initializeTransporter() {
+    async initializeTransporter(tenantId) {
+        try {
+            // Try to get active mail configuration if tenantId is provided
+            if (tenantId) {
+                console.log("🔍 Looking for mail configuration for tenant:", tenantId);
+                const mailConfig = await (0, mailConfiguration_model_1.getActiveMailConfiguration)(tenantId);
+                if (mailConfig) {
+                    console.log("✅ Found active mail configuration:");
+                    console.log("  - Host:", mailConfig.smtpHost);
+                    console.log("  - Port:", mailConfig.smtpPort);
+                    console.log("  - Username:", mailConfig.smtpUsername);
+                    console.log("  - SSL:", mailConfig.enableSsl);
+                    console.log("  - Default From:", mailConfig.defaultFromEmail);
+                    // Decrypt the password
+                    const decryptedPassword = (0, encryption_1.decrypt)(mailConfig.smtpPassword);
+                    console.log("  - Password decrypted successfully");
+                    const emailConfig = {
+                        host: mailConfig.smtpHost,
+                        port: mailConfig.smtpPort,
+                        secure: mailConfig.enableSsl, // true for 465, false for other ports
+                        auth: {
+                            user: mailConfig.smtpUsername,
+                            pass: decryptedPassword,
+                        },
+                    };
+                    this.transporter = nodemailer_1.default.createTransport(emailConfig);
+                    console.log("✅ Email service initialized with mail configuration");
+                    return;
+                }
+                else {
+                    console.log("❌ No active mail configuration found for tenant:", tenantId);
+                }
+            }
+        }
+        catch (error) {
+            console.error("❌ Failed to initialize email service with mail config:", error);
+        }
+        // Fallback to environment variables if no mail config is available
+        console.warn("⚠️ No active mail configuration found, falling back to environment variables");
         const emailConfig = {
             host: process.env.SMTP_HOST || "smtp.gmail.com",
             port: parseInt(process.env.SMTP_PORT || "587"),
@@ -24,7 +64,7 @@ class EmailService {
         if (emailConfig.auth.user && emailConfig.auth.pass) {
             try {
                 this.transporter = nodemailer_1.default.createTransport(emailConfig);
-                console.log("✅ Email service initialized successfully");
+                console.log("✅ Email service initialized with environment variables");
             }
             catch (error) {
                 console.error("❌ Failed to initialize email service:", error);
@@ -33,10 +73,13 @@ class EmailService {
         }
         else {
             console.warn("⚠️ Email credentials not configured. Email notifications will be logged to console.");
+            this.transporter = null;
         }
     }
-    async sendEmail(options) {
+    async sendEmail(options, tenantId) {
         try {
+            // Initialize transporter with tenant-specific mail configuration
+            await this.initializeTransporter(tenantId);
             if (!this.transporter) {
                 // Log to console if transporter is not configured
                 console.log("\n📧 EMAIL NOTIFICATION (Not Sent - No SMTP Config):");
@@ -46,8 +89,36 @@ class EmailService {
                 console.log("---\n");
                 return true;
             }
+            let fromAddress = options.from;
+            console.log("🔍 Initial from address:", fromAddress);
+            // When using mail configuration, always use the SMTP username as from address
+            // to prevent relay errors, regardless of any custom from address provided
+            if (tenantId) {
+                console.log("🔍 Using mail configuration for tenant:", tenantId);
+                try {
+                    const mailConfig = await (0, mailConfiguration_model_1.getActiveMailConfiguration)(tenantId);
+                    if (mailConfig) {
+                        // Use the SMTP username as the from address to prevent relay errors
+                        // Most SMTP servers require the from address to match the authenticated user
+                        fromAddress = mailConfig.smtpUsername;
+                        console.log(`✅ Overriding with SMTP username as from address: ${fromAddress}`);
+                    }
+                    else {
+                        console.log("❌ No mail configuration found for from address");
+                    }
+                }
+                catch (error) {
+                    console.warn("❌ Could not get mail configuration for from address:", error);
+                }
+            }
+            // Fallback to environment variables if no mail config
+            if (!fromAddress) {
+                console.log("⚠️ Falling back to environment variables for from address");
+                fromAddress = process.env.SMTP_USER || `"${process.env.SMTP_FROM_NAME || "Zithmi"}" <${process.env.SMTP_FROM_EMAIL || "noreply@zithtech.com"}>`;
+                console.log(`📧 Using fallback from address: ${fromAddress}`);
+            }
             const mailOptions = {
-                from: options.from || `"${process.env.SMTP_FROM_NAME || "Zithmi"}" <${process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER}>`,
+                from: fromAddress,
                 to: options.to,
                 subject: options.subject,
                 html: options.html,
@@ -92,7 +163,7 @@ class EmailService {
         }
         return `${duration} day${duration !== 1 ? "s" : ""}`;
     }
-    async sendLeaveApplicationEmail(data) {
+    async sendLeaveApplicationEmail(data, tenantId) {
         const subject = `New Leave Request from ${data.employeeName}`;
         const html = `
       <!DOCTYPE html>
@@ -179,9 +250,9 @@ ${data.reason}
 
 Please log in to review and approve/reject this request.
     `;
-        return this.sendEmail({ to: data.to, subject, html, text });
+        return this.sendEmail({ to: data.to, subject, html, text }, tenantId);
     }
-    async sendLeaveApprovalEmail(data) {
+    async sendLeaveApprovalEmail(data, tenantId) {
         const subject = `✅ Your Leave Request has been Approved`;
         const html = `
       <!DOCTYPE html>
@@ -256,9 +327,9 @@ Duration: ${this.formatDuration(data.duration, data.durationType)}
 
 Enjoy your time off!
     `;
-        return this.sendEmail({ to: data.to, subject, html, text });
+        return this.sendEmail({ to: data.to, subject, html, text }, tenantId);
     }
-    async sendLeaveRejectionEmail(data) {
+    async sendLeaveRejectionEmail(data, tenantId) {
         const subject = `❌ Your Leave Request has been Rejected`;
         const html = `
       <!DOCTYPE html>
@@ -336,30 +407,33 @@ ${data.rejectionReason}
 
 If you have any questions or concerns, please contact your manager or HR department.
     `;
-        return this.sendEmail({ to: data.to, subject, html, text });
+        return this.sendEmail({ to: data.to, subject, html, text }, tenantId);
     }
-    async sendInvoiceEmail(data) {
+    static generateInvoiceHtml(data) {
+        return `
+      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e1e1e1; border-radius: 8px;">
+        <div style="background-color: #1677ff; color: white; padding: 24px; text-align: center;">
+          <h1 style="margin: 0; font-size: 20px;">Invoice ${data.invoiceNumber}</h1>
+        </div>
+        <div style="padding: 24px; color: #333;">
+          <p>Dear <strong>${data.customerName}</strong>,</p>
+          <p style="line-height: 1.6; color: #555;">${data.customMessage || "Please find your invoice details below."}</p>
+          <div style="margin: 20px 0; padding: 20px; background-color: #f0f5ff; border-radius: 4px; text-align: center;">
+            <div style="font-size: 12px; color: #666; text-transform: uppercase;">Amount Due</div>
+            <div style="font-size: 28px; font-weight: bold; color: #1677ff;">${data.amount}</div>
+            <div style="margin-top: 5px; color: #666;">Due by: ${data.dueDate}</div>
+          </div>
+          <p style="margin-top: 20px; font-size: 14px;">
+            📎 <a href="${data.pdfUrl}" style="color: #1677ff;">Download Invoice PDF</a>
+          </p>
+        </div>
+      </div>
+    `;
+    }
+    async sendInvoiceEmail(data, tenantId) {
         const subject = `Invoice ${data.invoiceNumber} from Zithtech`;
         // HTML Template
-        const html = `
-    <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e1e1e1; border-radius: 8px;">
-      <div style="background-color: #1677ff; color: white; padding: 24px; text-align: center;">
-        <h1 style="margin: 0; font-size: 20px;">Invoice ${data.invoiceNumber}</h1>
-      </div>
-      <div style="padding: 24px; color: #333;">
-        <p>Dear <strong>${data.customerName}</strong>,</p>
-        <p style="line-height: 1.6; color: #555;">${data.customMessage || "Please find your invoice details below."}</p>
-        <div style="margin: 20px 0; padding: 20px; background-color: #f0f5ff; border-radius: 4px; text-align: center;">
-          <div style="font-size: 12px; color: #666; text-transform: uppercase;">Amount Due</div>
-          <div style="font-size: 28px; font-weight: bold; color: #1677ff;">${data.amount}</div>
-          <div style="margin-top: 5px; color: #666;">Due by: ${data.dueDate}</div>
-        </div>
-        <p style="margin-top: 20px; font-size: 14px;">
-          📎 <a href="${data.pdfUrl}" style="color: #1677ff;">Download Invoice PDF</a>
-        </p>
-      </div>
-    </div>
-  `;
+        const html = EmailService.generateInvoiceHtml(data);
         const options = {
             from: data.from || process.env.SMTP_FROM_EMAIL || 'noreply@zithtech.com',
             to: data.to,
@@ -376,7 +450,7 @@ If you have any questions or concerns, please contact your manager or HR departm
         }
         // Send email
         try {
-            const result = await this.sendEmail(options);
+            const result = await this.sendEmail(options, tenantId);
             return {
                 success: result,
                 html // ✅ RETURN THE HTML THAT WAS SENT
@@ -390,7 +464,7 @@ If you have any questions or concerns, please contact your manager or HR departm
             };
         }
     }
-    async sendBankDisbursementEmail(data) {
+    async sendBankDisbursementEmail(data, tenantId) {
         const subject = `Bank Disbursement Sheet - ${data.companyName} (${data.month}/${data.year})`;
         const html = `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e1e1e1; border-radius: 8px;">
@@ -419,9 +493,9 @@ If you have any questions or concerns, please contact your manager or HR departm
                     contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
                 }]
         };
-        return this.sendEmail(options);
+        return this.sendEmail(options, tenantId);
     }
-    async sendPayslipEmail(data) {
+    async sendPayslipEmail(data, tenantId) {
         const subject = `Your Payslip for ${data.month} ${data.year} is ready`;
         const html = `
       <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e1e1e1; border-radius: 12px; overflow: hidden;">
@@ -465,9 +539,10 @@ ${data.downloadUrl}
 
 Note: This link will expire in 24 hours.
     `;
-        return this.sendEmail({ to: data.to, from: data.from, subject, html, text });
+        return this.sendEmail({ to: data.to, from: data.from, subject, html, text }, tenantId);
     }
 }
+exports.EmailService = EmailService;
 // Export singleton instance
 exports.emailService = new EmailService();
 exports.default = exports.emailService;

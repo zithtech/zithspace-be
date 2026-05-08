@@ -28,6 +28,7 @@ export const s3Client = new S3Client({
     accessKeyId: ACCESS_KEY_ID!,
     secretAccessKey: SECRET_ACCESS_KEY!,
   },
+  forcePathStyle: true
 });
 
 /**
@@ -44,9 +45,9 @@ export async function uploadImageToR2(
 ): Promise<string> {
   try {
     // Extract content type and base64 data
-    const matches = base64Image.match(/^data:(image\/\w+);base64,(.+)$/);
+    const matches = base64Image.match(/^data:(image\/\w+);base64,(.*)$/);
     if (!matches) {
-      throw new Error("Invalid image format. Expected base64 encoded image.");
+      throw new Error(`Invalid image format. Expected data URI. Received prefix: ${base64Image.substring(0, 30)}...`);
     }
 
     const contentType = matches[1];
@@ -128,9 +129,9 @@ export async function uploadFileToR2(
 ): Promise<{ fileUrl: string; fileSize: number; fileType: string }> {
   try {
     // Extract content type and base64 data
-    const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+    const matches = base64File.match(/^data:([^;]+);base64,(.*)$/);
     if (!matches) {
-      throw new Error("Invalid file format. Expected base64 encoded file.");
+      throw new Error(`Invalid file format. Expected data URI (data:mime/type;base64,data...). Received prefix: ${base64File.substring(0, 30)}...`);
     }
 
     const contentType = matches[1];
@@ -193,7 +194,7 @@ export async function uploadRequisitionAttachmentToR2(
   category: string,
 ): Promise<{ fileUrl: string; fileSize: number; fileType: string }> {
   try {
-    const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+    const matches = base64File.match(/^data:([^;]+);base64,(.*)$/);
     if (!matches) {
       throw new Error("Invalid file format. Expected base64 encoded file.");
     }
@@ -259,7 +260,7 @@ export async function uploadEmployeeDocumentToR2(
   documentType: string,
 ): Promise<string> {
   try {
-    const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+    const matches = base64File.match(/^data:([^;]+);base64,(.*)$/);
     if (!matches) {
       throw new Error("Invalid file format. Expected base64 encoded file.");
     }
@@ -309,7 +310,7 @@ export async function uploadClientDocumentToR2(
   documentType: string,
 ): Promise<string> {
   try {
-    const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+    const matches = base64File.match(/^data:([^;]+);base64,(.*)$/);
     if (!matches) {
       throw new Error("Invalid file format. Expected base64 encoded file.");
     }
@@ -373,7 +374,7 @@ export async function uploadEmployeeAssetToR2({
       return base64;
     }
 
-    const matches = base64.match(/^data:([^;]+);base64,(.+)$/);
+    const matches = base64.match(/^data:([^;]+);base64,(.*)$/);
     if (!matches) {
       throw new Error("Invalid file format. Expected base64 encoded file.");
     }
@@ -421,7 +422,7 @@ export async function uploadCandidateDocumentToR2(
   documentType: string,
 ): Promise<string> {
   try {
-    const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+    const matches = base64File.match(/^data:([^;]+);base64,(.*)$/);
     if (!matches) {
       throw new Error("Invalid file format. Expected base64 encoded file.");
     }
@@ -652,7 +653,15 @@ export async function generatePresignedUrl(
     // Extract key from URL
     // URL format: https://pub-xxx.r2.dev/tenantId/employees/abc/payslip.pdf
     const url = new URL(fileUrl);
-    const key = url.pathname.startsWith('/') ? url.pathname.slice(1) : url.pathname;
+    let key = url.pathname.startsWith('/') ? url.pathname.slice(1) : url.pathname;
+
+    // If the key starts with the bucket name (common in some R2 URL formats), strip it
+    if (key.startsWith(`${BUCKET_NAME}/`)) {
+      console.log(`[R2] Stripping bucket name "${BUCKET_NAME}" from presigned key: ${key}`);
+      key = key.substring(BUCKET_NAME.length + 1);
+    }
+
+    console.log(`[R2] Generating presigned URL for key: "${key}" (expires in ${expiresIn}s)`);
 
     const command = new GetObjectCommand({
       Bucket: BUCKET_NAME,
@@ -668,13 +677,59 @@ export async function generatePresignedUrl(
 }
 
 /**
- * Upload Escalation document to Cloudflare R2
- * @param base64File - Base64 encoded file string
- * @param fileName - Original file name
- * @param tenantId - Tenant ID
- * @param escalationId - Temporary or generated escalation ID
- * @returns Public URL of uploaded document
+ * Fetch a file from R2 and return its content as a Buffer
+ * Uses the internal S3 client with credentials.
+ * @param fileUrl - The public-facing URL of the file
  */
+export async function getFileBufferFromR2(fileUrl: string): Promise<Buffer> {
+  try {
+    const url = new URL(fileUrl);
+    let key = url.pathname.startsWith("/")
+      ? url.pathname.slice(1)
+      : url.pathname;
+
+    // If the key starts with the bucket name (common in some R2 URL formats), strip it
+    if (key.startsWith(`${BUCKET_NAME}/`)) {
+      console.log(`[R2] Stripping bucket name "${BUCKET_NAME}" from key: ${key}`);
+      key = key.substring(BUCKET_NAME.length + 1);
+    }
+
+    console.log(`[R2] Final key for fetch: "${key}" from URL: ${fileUrl}`);
+
+    const command = new GetObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+    });
+
+    const response = await s3Client.send(command);
+
+    if (!response.Body) {
+      throw new Error("Empty body received from R2");
+    }
+
+    // Convert high-level stream to Buffer
+    const streamToBuffer = async (stream: any): Promise<Buffer> => {
+      const chunks: any[] = [];
+      for await (const chunk of stream) {
+        chunks.push(chunk);
+      }
+      return Buffer.concat(chunks);
+    };
+
+    return await streamToBuffer(response.Body);
+  } catch (error: any) {
+    console.error(`Error fetching buffer from R2 for ${fileUrl}:`, error);
+    throw error;
+  }
+}
+
+//  * Upload Escalation document to Cloudflare R2
+//  * @param base64File - Base64 encoded file string
+//  * @param fileName - Original file name
+//  * @param tenantId - Tenant ID
+//  * @param escalationId - Temporary or generated escalation ID
+//  * @returns Public URL of uploaded document
+//  */
 export async function uploadEscalationDocumentToR2(
   base64File: string,
   fileName: string,
@@ -682,7 +737,7 @@ export async function uploadEscalationDocumentToR2(
   escalationId: string,
 ): Promise<string> {
   try {
-    const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+    const matches = base64File.match(/^data:([^;]+);base64,(.*)$/);
     if (!matches) {
       throw new Error("Invalid file format. Expected base64 encoded file.");
     }

@@ -91,6 +91,8 @@ import departmentRoutes from "@/routes/departmentRoutes";
 import subDepartmentRoutes from "@/routes/subDepartmentRoutes";
 import positionRoutes from "@/routes/positionRoutes";
 import calendarRoutes from "@/routes/calendar";
+import mailRoutes from "@/routes/mail";
+import mailConfigurationRoutes from "@/routes/mailConfigurationRoutes";
 import employeeExitRoutes from "@/routes/employeeExit.routes";
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
 import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
@@ -113,6 +115,11 @@ import recruitmentActionRoutes from "@/routes/recruitmentAction.routes";
 import candidateRoutes from "@/routes/candidateRoutes";
 import companyLocationRoutes from "@/routes/companyLocationRoutes";
 import openingManagementRoutes from "@/routes/openingManagementRoutes";
+import { rabbitMQService } from "@/utils/RabbitMQService";
+import { CalendarSyncWorker } from "@/workers/CalendarSyncWorker";
+import { MailSyncWorker } from "@/workers/MailSyncWorker";
+import { MailController } from "@/controllers/MailController";
+
 
 import leadRoutes from "@/routes/lead.routes";
 import leadSettingsRoutes from "@/routes/leadSettings.routes";
@@ -299,6 +306,9 @@ app.use("/api/channels/:channelId/messages", messageRoutes);
 app.use("/api/email-history", emailHistoryRoutes);
 app.use("/api/timesheets", timesheetRoutes);
 app.use("/api/zoho", calendarRoutes);
+app.get("/api/mail/attachments/download", MailController.downloadAttachment);
+app.use("/api/mail", mailRoutes);
+// app.use("/api/mail-configuration", mailConfigurationRoutes);
 app.use("/api/leave-allocation", leaveAllocationRoutes);
 app.use("/api/leave-request", leaveRequestRoutes);
 app.use("/api/leave-balances", leaveBalanceRoutes);
@@ -487,13 +497,17 @@ const startServer = async () => {
     const { BidIQModel } = require("./models/BidIQ.model");
     await BidIQModel.initTable();
 
-    // Connect RabbitMQ
-    // await connectRabbitMQ();
-    // console.log("RabbitMQ connected");
-
-    // Start workers
-    // const { startWorker } = require("@/workers/leaveAllocationWorker");
-    // await startWorker();
+    // Connect RabbitMQ & Start Workers
+    try {
+      await rabbitMQService.connect();
+      await CalendarSyncWorker.start();
+      await MailSyncWorker.start();
+      console.log("🚀 RabbitMQ connected, Calendar & Mail Sync Workers started");
+    } catch (mqError: any) {
+      console.error("❌ RabbitMQ initialization failed:", mqError.message);
+      // In a SaaS environment, we log and continue, 
+      // as the app might still handle HTTP requests while MQ recovers.
+    }
     const PORT = parseInt(process.env.PORT || "5000");
 
     server = app.listen(PORT, () => {
@@ -527,10 +541,10 @@ const gracefulShutdown = async (signal: string) => {
 
     try {
       await disconnectDatabase();
-
-      console.log("Database connections closed");
+      await rabbitMQService.close();
+      console.log("Database and RabbitMQ connections closed");
     } catch (error) {
-      console.error("Error closing database connections:", error);
+      console.error("Error closing connections:", error);
     }
 
     console.log("Process terminated");

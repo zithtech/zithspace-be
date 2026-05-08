@@ -23,6 +23,7 @@ router.get("/providers", tenantContext_1.resolveTenant, auth_1.authenticateToken
 router.get("/:provider/connect", tenantContext_1.resolveTenant, auth_1.authenticateToken, auth_1.requireAuth, calendarcontroller_1.CalendarController.connect);
 router.get("/:provider/callback", calendarcontroller_1.CalendarController.callback);
 router.post("/:provider/disconnect", tenantContext_1.resolveTenant, auth_1.authenticateToken, auth_1.requireAuth, calendarcontroller_1.CalendarController.disconnect);
+router.post("/events/check-overlap", tenantContext_1.resolveTenant, auth_1.authenticateToken, auth_1.requireAuth, calendarcontroller_1.CalendarController.checkOverlap);
 router.get("/events", tenantContext_1.resolveTenant, auth_1.authenticateToken, auth_1.requireAuth, calendarcontroller_1.CalendarController.getEvents);
 router.post("/events", tenantContext_1.resolveTenant, auth_1.authenticateToken, auth_1.requireAuth, calendarcontroller_1.CalendarController.createEvent);
 router.put("/events/:id", tenantContext_1.resolveTenant, auth_1.authenticateToken, auth_1.requireAuth, calendarcontroller_1.CalendarController.updateEvent);
