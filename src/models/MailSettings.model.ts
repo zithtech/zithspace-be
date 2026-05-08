@@ -148,3 +148,6 @@ export class MailSettingsModel {
     return result.rows[0] || null;
   }
 }
+
+
+// comments added in mailsettings for build
