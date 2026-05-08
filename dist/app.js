@@ -112,8 +112,6 @@ const candidateRoutes_1 = __importDefault(require("@/routes/candidateRoutes"));
 const companyLocationRoutes_1 = __importDefault(require("@/routes/companyLocationRoutes"));
 const openingManagementRoutes_1 = __importDefault(require("@/routes/openingManagementRoutes"));
 const RabbitMQService_1 = require("@/utils/RabbitMQService");
-const CalendarSyncWorker_1 = require("@/workers/CalendarSyncWorker");
-const MailSyncWorker_1 = require("@/workers/MailSyncWorker");
 const MailController_1 = require("@/controllers/MailController");
 const lead_routes_1 = __importDefault(require("@/routes/lead.routes"));
 const leadSettings_routes_1 = __importDefault(require("@/routes/leadSettings.routes"));
@@ -438,10 +436,11 @@ const startServer = async () => {
         await BidIQModel.initTable();
         // Connect RabbitMQ & Start Workers
         try {
-            await RabbitMQService_1.rabbitMQService.connect();
-            await CalendarSyncWorker_1.CalendarSyncWorker.start();
-            await MailSyncWorker_1.MailSyncWorker.start();
-            console.log("🚀 RabbitMQ connected, Calendar & Mail Sync Workers started");
+            // await rabbitMQService.connect();
+            // await CalendarSyncWorker.start();
+            // await MailSyncWorker.start();
+            // console.log("🚀 RabbitMQ connected, Calendar & Mail Sync Workers started");
+            console.log("🚀 RabbitMQ sync workers disabled (commented out)");
         }
         catch (mqError) {
             console.error("❌ RabbitMQ initialization failed:", mqError.message);
