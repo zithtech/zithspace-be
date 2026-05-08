@@ -54,6 +54,7 @@ const invoiceTemplate_1 = __importDefault(require("@/routes/invoiceTemplate"));
 const categoryRoutes_1 = __importDefault(require("@/routes/categoryRoutes"));
 const buckets_1 = __importDefault(require("@/routes/buckets"));
 const trash_1 = __importDefault(require("@/routes/trash"));
+const bugList_1 = __importDefault(require("@/routes/bugList"));
 const sprintCompletion_1 = __importDefault(require("@/routes/sprintCompletion"));
 const fixedHolidays_1 = __importDefault(require("@/routes/fixedHolidays"));
 const documenthub_1 = __importDefault(require("@/routes/documenthub"));
@@ -249,6 +250,7 @@ app.use("/api/categories", categoryRoutes_1.default);
 //app.use("/api/invoice",invoicedownload)
 app.use("/api/buckets", buckets_1.default);
 app.use("/api/trash", trash_1.default);
+app.use("/api/bug-list", bugList_1.default);
 app.use("/api/sprint-completion", sprintCompletion_1.default);
 app.use("/api/salary-components", salaryComponentRoutes_1.default);
 app.use("/api/salary-structures", salaryStructureRoutes_1.default);

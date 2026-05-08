@@ -8,6 +8,7 @@ exports.uploadEmployeeDocumentToR2 = uploadEmployeeDocumentToR2;
 exports.uploadClientDocumentToR2 = uploadClientDocumentToR2;
 exports.uploadEmployeeAssetToR2 = uploadEmployeeAssetToR2;
 exports.uploadCandidateDocumentToR2 = uploadCandidateDocumentToR2;
+exports.uploadBugAttachmentToR2 = uploadBugAttachmentToR2;
 exports.deleteFileFromR2 = deleteFileFromR2;
 exports.deleteImageFromR2 = deleteImageFromR2;
 exports.extractImageUrlsFromHtml = extractImageUrlsFromHtml;
@@ -354,6 +355,44 @@ async function uploadCandidateDocumentToR2(base64File, fileName, tenantId, candi
     catch (error) {
         console.error("R2 candidate document upload error:", error);
         throw new Error(`Failed to upload candidate document: ${error.message}`);
+    }
+}
+/**
+ * Upload a bug-list attachment to Cloudflare R2.
+ * Path: {tenantId}/bug-list/{folderId}/{sheetId}/{bugId}/{uniqueId}_{fileName}
+ */
+async function uploadBugAttachmentToR2(base64File, fileName, tenantId, folderId, sheetId, bugId) {
+    try {
+        const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+        if (!matches) {
+            throw new Error("Invalid file format. Expected base64 encoded file.");
+        }
+        const contentType = matches[1];
+        const base64Data = matches[2];
+        const buffer = Buffer.from(base64Data, "base64");
+        const fileSizeInBytes = buffer.length;
+        const fileSizeInMB = fileSizeInBytes / (1024 * 1024);
+        if (fileSizeInMB > 5) {
+            throw new Error("File size exceeds 5MB limit");
+        }
+        const uniqueId = (0, nanoid_1.nanoid)(12);
+        const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+        const key = `${tenantId}/bug-list/${folderId}/${sheetId}/${bugId}/${uniqueId}_${sanitizedFileName}`;
+        await exports.s3Client.send(new client_s3_1.PutObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: key,
+            Body: buffer,
+            ContentType: contentType,
+            CacheControl: "public, max-age=31536000",
+            ContentDisposition: `attachment; filename="${sanitizedFileName}"`,
+        }));
+        const baseUrl = PUBLIC_URL || "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+        const fileUrl = `${baseUrl}/${key}`;
+        return { fileUrl, fileSize: fileSizeInBytes, fileType: contentType };
+    }
+    catch (error) {
+        console.error("R2 bug attachment upload error:", error);
+        throw new Error(`Failed to upload bug attachment: ${error.message}`);
     }
 }
 /**

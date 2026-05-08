@@ -78,6 +78,15 @@ export declare function uploadEmployeeAssetToR2({ base64, fileName, tenantId, em
  */
 export declare function uploadCandidateDocumentToR2(base64File: string, fileName: string, tenantId: string, candidateId: string, documentType: string): Promise<string>;
 /**
+ * Upload a bug-list attachment to Cloudflare R2.
+ * Path: {tenantId}/bug-list/{folderId}/{sheetId}/{bugId}/{uniqueId}_{fileName}
+ */
+export declare function uploadBugAttachmentToR2(base64File: string, fileName: string, tenantId: string, folderId: string, sheetId: string, bugId: string): Promise<{
+    fileUrl: string;
+    fileSize: number;
+    fileType: string;
+}>;
+/**
  * Delete any file from Cloudflare R2
  * @param fileUrl - Full URL of the file to delete
  * @param tenantId - Tenant ID for validation
