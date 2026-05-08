@@ -61,6 +61,7 @@ export const Permissions = {
   INVOICE_READ:           'invoice.read',
   INVOICE_UPDATE:         'invoice.update',
   INVOICE_DELETE:         'invoice.delete',
+  INVOICE_MANAGE:         'invoice.manage',
   INVOICE_TEMPLATE_READ:   'invoice.template.read',
   INVOICE_TEMPLATE_CREATE: 'invoice.template.create',
   INVOICE_TEMPLATE_UPDATE: 'invoice.template.update',
@@ -82,11 +83,11 @@ export const Permissions = {
   INVOICE_STATUS_UPDATE:   'invoice.status.update',
 
   // ─── Accounts ─────────────────────────────────────────────────────
-  ACCOUNT_DASHBOARD_READ: 'account.dashboard.read',
   ACCOUNT_READ:           'account.read',
   ACCOUNT_CREATE:         'account.create',
   ACCOUNT_UPDATE:         'account.update',
   ACCOUNT_DELETE:         'account.delete',
+  ACCOUNT_MANAGE:         'account.manage',
   ACCOUNT_CHART_READ:     'account.chart.read',
   ACCOUNT_CHART_CREATE:   'account.chart.create',
   ACCOUNT_CHART_UPDATE:   'account.chart.update',
@@ -103,6 +104,10 @@ export const Permissions = {
   ACCOUNT_TRASH_CREATE:    'account.trash.create',
   ACCOUNT_TRASH_UPDATE:    'account.trash.update',
   ACCOUNT_TRASH_DELETE:    'account.trash.delete',
+  ACCOUNT_CONFIG_READ:     'account.config.read',
+  ACCOUNT_CONFIG_CREATE:   'account.config.create',
+  ACCOUNT_CONFIG_UPDATE:   'account.config.update',
+  ACCOUNT_CONFIG_DELETE:   'account.config.delete',
 
   // ─── Clients ─────────────────────────────────────────────────────
   CLIENT_CREATE: 'client.create',
@@ -147,6 +152,9 @@ export const Permissions = {
   REIMBURSEMENT_TRASH_CREATE:    'reimbursement.trash.create',
   REIMBURSEMENT_TRASH_UPDATE:    'reimbursement.trash.update',
   REIMBURSEMENT_TRASH_DELETE:    'reimbursement.trash.delete',
+  REIMBURSEMENT_CONFIG_READ:     'reimbursement.config.read',
+  REIMBURSEMENT_CONFIG_UPDATE:   'reimbursement.config.update',
+  REIMBURSEMENT_MANAGE:          'reimbursement.manage',
 
   // ─── Payroll ──────────────────────────────────────────────────────
   PAYROLL_DASHBOARD_READ: 'payroll.dashboard.read',
@@ -172,6 +180,11 @@ export const Permissions = {
   PAYROLL_TRASH_CREATE:    'payroll.trash.create',
   PAYROLL_TRASH_UPDATE:    'payroll.trash.update',
   PAYROLL_TRASH_DELETE:    'payroll.trash.delete',
+  PAYROLL_PROCESS:         'payroll.process',
+  PAYROLL_MANAGE:          'payroll.manage',
+  SALARY_READ:             'salary.read',
+  SALARY_APPROVE:          'salary.approve',
+  SALARY_MANAGE:           'salary.manage',
 
   // ─── Documents ───────────────────────────────────────────────────
   DOCUMENT_CREATE: 'document.create',
@@ -336,9 +349,9 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.INVOICE_HISTORY_READ,
     Permissions.INVOICE_MAIL_SEND,
     Permissions.INVOICE_STATUS_UPDATE,
+    Permissions.INVOICE_MANAGE,
   ],
   account: [
-    Permissions.ACCOUNT_DASHBOARD_READ,
     Permissions.ACCOUNT_READ,
     Permissions.ACCOUNT_CREATE,
     Permissions.ACCOUNT_UPDATE,
@@ -359,6 +372,11 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.ACCOUNT_TRASH_CREATE,
     Permissions.ACCOUNT_TRASH_UPDATE,
     Permissions.ACCOUNT_TRASH_DELETE,
+    Permissions.ACCOUNT_CONFIG_READ,
+    Permissions.ACCOUNT_CONFIG_CREATE,
+    Permissions.ACCOUNT_CONFIG_UPDATE,
+    Permissions.ACCOUNT_CONFIG_DELETE,
+    Permissions.ACCOUNT_MANAGE,
   ],
   reimbursement: [
     Permissions.REIMBURSEMENT_DASHBOARD_READ,
@@ -380,6 +398,9 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.REIMBURSEMENT_TRASH_CREATE,
     Permissions.REIMBURSEMENT_TRASH_UPDATE,
     Permissions.REIMBURSEMENT_TRASH_DELETE,
+    Permissions.REIMBURSEMENT_CONFIG_READ,
+    Permissions.REIMBURSEMENT_CONFIG_UPDATE,
+    Permissions.REIMBURSEMENT_MANAGE,
   ],
   payroll: [
     Permissions.PAYROLL_DASHBOARD_READ,
@@ -405,6 +426,10 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.PAYROLL_TRASH_CREATE,
     Permissions.PAYROLL_TRASH_UPDATE,
     Permissions.PAYROLL_TRASH_DELETE,
+    Permissions.PAYROLL_PROCESS,
+    Permissions.PAYROLL_MANAGE,
+    Permissions.SALARY_READ,
+    Permissions.SALARY_MANAGE,
   ],
   client:       [Permissions.CLIENT_CREATE, Permissions.CLIENT_READ, Permissions.CLIENT_UPDATE, Permissions.CLIENT_DELETE, Permissions.CLIENT_MANAGE],
   settings:     [Permissions.SETTINGS_READ, Permissions.SETTINGS_UPDATE, Permissions.SETTINGS_MANAGE],

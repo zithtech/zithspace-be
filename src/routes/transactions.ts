@@ -20,7 +20,7 @@ router.use(requireAuth);
  * @access  Private (authenticated users within tenant)
  * @query   startDate, endDate
  */
-router.get('/summary', requirePermission(Permissions.ACCOUNT_DASHBOARD_READ), TransactionsController.getTransactionSummary);
+router.get('/summary', requirePermission(Permissions.ACCOUNT_READ), TransactionsController.getTransactionSummary);
 
 /**
  * @route   GET /api/transactions/balance/account

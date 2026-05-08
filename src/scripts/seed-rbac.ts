@@ -75,6 +75,14 @@ const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'invoice.delete': 'Delete invoices',
   'invoice.manage': 'Full invoice management',
 
+  'account.read': 'View chart of accounts and transactions',
+  'account.create': 'Create new accounts or transactions',
+  'account.update': 'Edit existing accounts or transactions',
+  'account.delete': 'Delete accounts or transactions',
+  'account.manage': 'Full account management',
+  'account.config.read': 'View account configurations',
+  'account.config.update': 'Edit account configurations',
+
   'transaction.create': 'Create financial transactions',
   'transaction.read': 'View financial transactions',
   'transaction.update': 'Edit transactions',
@@ -107,7 +115,11 @@ const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'reimbursement.manage': 'Full reimbursement management',
 
   'salary.read': 'View salary information',
+  'salary.approve': 'Approve salary structures or components',
   'salary.manage': 'Manage salary components and payroll',
+
+  'payroll.process': 'Process monthly payroll and generate payslips',
+  'payroll.manage': 'Full payroll management',
 
   'document.create': 'Create documents',
   'document.read': 'View documents',
@@ -246,7 +258,8 @@ async function main() {
   let skippedPerms = 0;
 
   for (const permName of ALL_PERMISSIONS) {
-    const [resource, action] = permName.split('.');
+    const [resource, ...actionParts] = permName.split('.');
+    const action = actionParts.join('.');
     const description = PERMISSION_DESCRIPTIONS[permName];
 
     await prisma.permission.upsert({
@@ -309,35 +322,44 @@ async function main() {
       roleIdBySlug[slug] = role.id;
     }
 
-    // ── 2b. Assign permissions to roles ───────────────────────────────────
-    for (const slug of [SystemRoles.SUPER_ADMIN, SystemRoles.ADMIN, SystemRoles.USER]) {
-      const roleId = roleIdBySlug[slug];
-      const targetPerms = ROLE_PERMISSIONS[slug];
-      let added = 0;
+      // ── 2b. Sync permissions for system roles (Full Replace) ─────────
+      for (const slug of [SystemRoles.SUPER_ADMIN, SystemRoles.ADMIN, SystemRoles.USER]) {
+        const roleId = roleIdBySlug[slug];
+        const targetPermNames = ROLE_PERMISSIONS[slug];
+        
+        // Map names to IDs
+        const targetPermIds = targetPermNames
+          .map(name => permByName.get(name)?.id)
+          .filter((id): id is string => !!id);
 
-      for (const permName of targetPerms) {
-        const perm = permByName.get(permName);
-        if (!perm) {
-          console.warn(`      ⚠️  Permission not found: ${permName}`);
-          continue;
-        }
-
-        const exists = await prisma.rolePermission.findUnique({
-          where: { roleId_permissionId: { roleId, permissionId: perm.id } },
+        // Get current permissions in DB
+        const currentRPs = await prisma.rolePermission.findMany({
+          where: { roleId },
+          select: { permissionId: true }
         });
+        const currentPermIds = currentRPs.map(rp => rp.permissionId);
 
-        if (!exists) {
-          await prisma.rolePermission.create({
-            data: { roleId, permissionId: perm.id },
+        // Add missing
+        const toAdd = targetPermIds.filter(id => !currentPermIds.includes(id));
+        if (toAdd.length > 0) {
+          await prisma.rolePermission.createMany({
+            data: toAdd.map(permissionId => ({ roleId, permissionId })),
+            skipDuplicates: true,
           });
-          added++;
+        }
+
+        // Remove extra
+        const toRemove = currentPermIds.filter(id => !targetPermIds.includes(id));
+        if (toRemove.length > 0) {
+          await prisma.rolePermission.deleteMany({
+            where: { roleId, permissionId: { in: toRemove } }
+          });
+        }
+
+        if (toAdd.length > 0 || toRemove.length > 0) {
+          console.log(`      🔑 Synced ${ROLE_DISPLAY_NAMES[slug]}: +${toAdd.length}, -${toRemove.length} permissions`);
         }
       }
-
-      if (added > 0) {
-        console.log(`      🔑 Assigned ${added} permissions to ${ROLE_DISPLAY_NAMES[slug]}`);
-      }
-    }
 
     // ── 2c. Migrate existing users into UserRole ───────────────────────────
     console.log(`      👥 Migrating users...`);
@@ -350,26 +372,33 @@ async function main() {
     let alreadyMigrated = 0;
 
     for (const user of users) {
-      const legacyRole = user.role || SystemRoles.USER;
+      const legacyRole = user.role;
+      if (!legacyRole) continue;
 
-      // Determine which system role to assign
-      let targetSlug: string;
+      // Only migrate canonical system roles
+      let targetSlug: string | null = null;
       if (legacyRole === 'super_admin') {
         targetSlug = SystemRoles.SUPER_ADMIN;
       } else if (legacyRole === 'admin') {
         targetSlug = SystemRoles.ADMIN;
-      } else {
+      } else if (legacyRole === 'user') {
         targetSlug = SystemRoles.USER;
+      }
+
+      if (!targetSlug) {
+        // Skip users with custom role slugs or no canonical role
+        continue;
       }
 
       const roleId = roleIdBySlug[targetSlug];
       if (!roleId) continue;
 
-      const existing = await prisma.userRole.findUnique({
-        where: { userId_roleId: { userId: user.id, roleId } },
+      // Check if user already has ANY role in the new system
+      const hasAnyRole = await prisma.userRole.findFirst({
+        where: { userId: user.id }
       });
 
-      if (existing) {
+      if (hasAnyRole) {
         alreadyMigrated++;
         continue;
       }
