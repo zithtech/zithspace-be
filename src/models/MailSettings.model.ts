@@ -1,5 +1,6 @@
 import pool from "../config/dbpool";
-import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
+
 
 export interface MailSettings {
   id: string;
@@ -81,7 +82,7 @@ export class MailSettingsModel {
       const result = await pool.query(query, values);
       return result.rows[0];
     } else {
-      const id = uuidv4();
+      const id = crypto.randomUUID();
       const keys = ['id', ...Object.keys(data)];
       const placeholders = keys.map((_, idx) => `$${idx + 1}`);
       const values = [id, ...Object.values(data)];
