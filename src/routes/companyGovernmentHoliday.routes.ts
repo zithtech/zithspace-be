@@ -12,10 +12,10 @@ router.use(resolveTenant);
 router.use(authenticateToken);
 router.use(requireAuth);
 
-router.post('/', requirePermission(Permissions.LEAVE_MANAGE), CompanyGovernmentHolidayController.create);
-router.get('/', requirePermission(Permissions.LEAVE_READ), CompanyGovernmentHolidayController.getAll);
-router.get('/:id', requirePermission(Permissions.LEAVE_READ), CompanyGovernmentHolidayController.getById);
-router.put('/:id', requirePermission(Permissions.LEAVE_MANAGE), CompanyGovernmentHolidayController.update);
-router.delete('/:id', requirePermission(Permissions.LEAVE_MANAGE), CompanyGovernmentHolidayController.delete);
+router.post('/', requirePermission(Permissions.LEAVE_HOLIDAY_CREATE), CompanyGovernmentHolidayController.create);
+router.get('/', requirePermission(Permissions.LEAVE_HOLIDAY_READ), CompanyGovernmentHolidayController.getAll);
+router.get('/:id', requirePermission(Permissions.LEAVE_HOLIDAY_READ), CompanyGovernmentHolidayController.getById);
+router.put('/:id', requirePermission(Permissions.LEAVE_HOLIDAY_UPDATE), CompanyGovernmentHolidayController.update);
+router.delete('/:id', requirePermission(Permissions.LEAVE_HOLIDAY_DELETE), CompanyGovernmentHolidayController.delete);
 
 export default router;
