@@ -67,6 +67,10 @@ export declare class TicketController {
      */
     static bulkArchive(req: AuthRequest, res: Response): Promise<void>;
     /**
+     * Bulk unarchive tickets (tenant-aware)
+     */
+    static bulkUnarchive(req: AuthRequest, res: Response): Promise<void>;
+    /**
      * Bulk delete tickets (tenant-aware)
      */
     static bulkDelete(req: AuthRequest, res: Response): Promise<void>;

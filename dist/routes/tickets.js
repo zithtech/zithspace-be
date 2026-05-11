@@ -172,6 +172,7 @@ router.delete("/:id", (0, permission_1.requirePermission)(permissions_1.Permissi
  */
 router.patch("/bulk/status", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_MANAGE), ticketController_1.TicketController.bulkUpdateStatus);
 router.patch("/bulk/archive", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_MANAGE), ticketController_1.TicketController.bulkArchive);
+router.patch("/bulk/unarchive", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_MANAGE), ticketController_1.TicketController.bulkUnarchive);
 router.patch("/bulk/delete", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_MANAGE), ticketController_1.TicketController.bulkDelete);
 /**
  * @route   GET /api/tickets/projects/:projectId/stats

@@ -867,7 +867,15 @@ class TicketController {
             }
             // Build sort object
             const orderBy = {};
-            orderBy[sortBy] = sortOrder === "desc" ? "desc" : "asc";
+            let finalSortBy = sortBy;
+            let finalSortOrder = sortOrder;
+            // If we are looking at archived tickets and no specific sort was requested (using default),
+            // default to archivedAt desc so latest archived shows first.
+            if (archivedOnly === "true" && !req.query.sortBy) {
+                finalSortBy = "archivedAt";
+                finalSortOrder = "desc";
+            }
+            orderBy[finalSortBy] = finalSortOrder === "desc" ? "desc" : "asc";
             // Execute query with pagination
             const skip = (Number(page) - 1) * Number(limit);
             // OPTIMIZED: Fixed Promise.all syntax + Reduced data fetching
@@ -1246,6 +1254,16 @@ class TicketController {
                     dataToUpdate[field] = val;
                 }
             });
+            // Auto-set archivedAt if isArchived is being set to true
+            if (dataToUpdate.isArchived === true && !existingTicket.isArchived) {
+                dataToUpdate.archivedAt = new Date();
+                dataToUpdate.archivedById = req.user.id;
+            }
+            // Clear archivedAt if isArchived is being set to false (unarchive)
+            else if (dataToUpdate.isArchived === false && existingTicket.isArchived) {
+                dataToUpdate.archivedAt = null;
+                dataToUpdate.archivedById = null;
+            }
             log(`Final data for Update: ${JSON.stringify(dataToUpdate)}`);
             // Actually update the ticket in database
             const ticket = await database_1.prisma.ticket.update({
@@ -1599,6 +1617,52 @@ class TicketController {
             res.status(500).json({
                 success: false,
                 error: "Failed to archive tickets",
+            });
+        }
+    }
+    /**
+     * Bulk unarchive tickets (tenant-aware)
+     */
+    static async bulkUnarchive(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { ticketIds } = req.body;
+            if (!ticketIds || !Array.isArray(ticketIds) || ticketIds.length === 0) {
+                res.status(400).json({
+                    success: false,
+                    error: "Ticket IDs array is required",
+                });
+                return;
+            }
+            const result = await database_1.prisma.ticket.updateMany({
+                where: {
+                    id: { in: ticketIds },
+                    tenantId: req.tenantId,
+                },
+                data: {
+                    isArchived: false,
+                    archivedAt: null,
+                    archivedById: null,
+                    updatedAt: new Date(),
+                },
+            });
+            res.status(200).json({
+                success: true,
+                data: { updatedCount: result.count },
+                message: `${result.count} tickets restored successfully`,
+            });
+        }
+        catch (error) {
+            console.error("Bulk unarchive error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to restore tickets",
             });
         }
     }
