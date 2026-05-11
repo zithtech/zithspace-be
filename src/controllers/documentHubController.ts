@@ -144,7 +144,13 @@ export class DocumentHubController {
         return;
       }
 
-      const { name, projectId, ticketId } = req.body ?? {};
+      const { name, projectId, ticketId, visibility: bodyVisibility } = req.body ?? {};
+      const visibility = bodyVisibility || 'public';
+
+      let hubShareToken = null;
+      if (visibility === 'public') {
+        hubShareToken = crypto.randomBytes(32).toString('hex');
+      }
 
       // Validate required fields
       if (!name || name.trim() === "") {
@@ -176,6 +182,8 @@ export class DocumentHubController {
           projectId: projectId,
           ticketId: ticketId,
           createdById: req.user.id,
+          visibility: visibility as any,
+          shareToken: hubShareToken as any,
         },
         include: {
           createdBy: {
@@ -187,22 +195,27 @@ export class DocumentHubController {
         },
       });
 
-      // Create "Getting Started" document
+      let docShareToken = null;
+      if (visibility === 'public') {
+        docShareToken = crypto.randomBytes(32).toString('hex');
+      }
+
+      // Create "Overview" document
       const doc = await prisma.document.create({
         data: {
           tenantId: req.tenantId,
           documentHubId: documentHub.id,
-          title: "Getting Started",
+          title: "Overview",
           content: [
             {
-              id: "getting-started-heading",
+              id: "overview-heading",
               type: "heading",
               props: { level: 1, textColor: "default", backgroundColor: "default", textAlignment: "left" },
-              content: [{ type: "text", text: "Getting Started", styles: {} }],
+              content: [{ type: "text", text: "Overview", styles: {} }],
               children: [],
             },
             {
-              id: "getting-started-p1",
+              id: "overview-p1",
               type: "paragraph",
               props: { textColor: "default", backgroundColor: "default", textAlignment: "left" },
               content: [
@@ -216,6 +229,8 @@ export class DocumentHubController {
             },
           ],
           createdById: req.user.id,
+          visibility: visibility as any,
+          shareToken: docShareToken as any,
         },
       });
 
@@ -224,7 +239,7 @@ export class DocumentHubController {
           tenantId: req.tenantId,
           documentHubId: documentHub.id,
           createdById: req.user.id,
-          title: "Getting Started",
+          title: "Overview",
           position: 0,
           type: "file",
           documentId: doc.id,
@@ -428,6 +443,8 @@ export class DocumentHubController {
             title,
             content: [], // Default empty content for Blocknote
             createdById: req.user.id,
+            visibility: "public",
+            shareToken: crypto.randomBytes(32).toString("hex"),
           },
         });
         documentId = doc.id;
@@ -1350,6 +1367,15 @@ export class DocumentHubController {
         return;
       }
 
+      // Check ownership
+      if (node.createdById !== req.user.id) {
+        res.status(403).json({
+          success: false,
+          error: "Only authorized users can delete this item",
+        } as ApiResponse);
+        return;
+      }
+
       // Use a transaction for atomic recursive deletion
       await prisma.$transaction(async (tx) => {
         await DocumentHubController.deleteNodeRecursive(
@@ -1479,7 +1505,7 @@ export class DocumentHubController {
       if (document.createdById !== req.user.id) {
         res.status(403).json({
           success: false,
-          error: "You don't have permission to delete this document",
+          error: "Only authorized users can delete this item",
         } as ApiResponse);
         return;
       }

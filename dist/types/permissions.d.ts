@@ -23,6 +23,11 @@ export declare const Permissions: {
     readonly TICKET_ASSIGN: "ticket.assign";
     readonly TICKET_ARCHIVE: "ticket.archive";
     readonly TICKET_MANAGE: "ticket.manage";
+    readonly BUG_CREATE: "bug.create";
+    readonly BUG_READ: "bug.read";
+    readonly BUG_UPDATE: "bug.update";
+    readonly BUG_DELETE: "bug.delete";
+    readonly BUG_MANAGE: "bug.manage";
     readonly ATTENDANCE_CREATE: "attendance.create";
     readonly ATTENDANCE_READ: "attendance.read";
     readonly ATTENDANCE_UPDATE: "attendance.update";

@@ -8,11 +8,13 @@ exports.uploadEmployeeDocumentToR2 = uploadEmployeeDocumentToR2;
 exports.uploadClientDocumentToR2 = uploadClientDocumentToR2;
 exports.uploadEmployeeAssetToR2 = uploadEmployeeAssetToR2;
 exports.uploadCandidateDocumentToR2 = uploadCandidateDocumentToR2;
+exports.uploadBugAttachmentToR2 = uploadBugAttachmentToR2;
 exports.deleteFileFromR2 = deleteFileFromR2;
 exports.deleteImageFromR2 = deleteImageFromR2;
 exports.extractImageUrlsFromHtml = extractImageUrlsFromHtml;
 exports.cleanupOrphanedImages = cleanupOrphanedImages;
 exports.generatePresignedUrl = generatePresignedUrl;
+exports.getFileBufferFromR2 = getFileBufferFromR2;
 exports.uploadEscalationDocumentToR2 = uploadEscalationDocumentToR2;
 const client_s3_1 = require("@aws-sdk/client-s3");
 const s3_request_presigner_1 = require("@aws-sdk/s3-request-presigner");
@@ -36,6 +38,7 @@ exports.s3Client = new client_s3_1.S3Client({
         accessKeyId: ACCESS_KEY_ID,
         secretAccessKey: SECRET_ACCESS_KEY,
     },
+    forcePathStyle: true
 });
 /**
  * Upload image to Cloudflare R2
@@ -47,9 +50,9 @@ exports.s3Client = new client_s3_1.S3Client({
 async function uploadImageToR2(base64Image, tenantId, ticketId) {
     try {
         // Extract content type and base64 data
-        const matches = base64Image.match(/^data:(image\/\w+);base64,(.+)$/);
+        const matches = base64Image.match(/^data:(image\/\w+);base64,(.*)$/);
         if (!matches) {
-            throw new Error("Invalid image format. Expected base64 encoded image.");
+            throw new Error(`Invalid image format. Expected data URI. Received prefix: ${base64Image.substring(0, 30)}...`);
         }
         const contentType = matches[1];
         const base64Data = matches[2];
@@ -114,9 +117,9 @@ async function uploadImageToR2(base64Image, tenantId, ticketId) {
 async function uploadFileToR2(base64File, fileName, tenantId, ticketId) {
     try {
         // Extract content type and base64 data
-        const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+        const matches = base64File.match(/^data:([^;]+);base64,(.*)$/);
         if (!matches) {
-            throw new Error("Invalid file format. Expected base64 encoded file.");
+            throw new Error(`Invalid file format. Expected data URI (data:mime/type;base64,data...). Received prefix: ${base64File.substring(0, 30)}...`);
         }
         const contentType = matches[1];
         const base64Data = matches[2];
@@ -164,7 +167,7 @@ async function uploadFileToR2(base64File, fileName, tenantId, ticketId) {
  */
 async function uploadRequisitionAttachmentToR2(base64File, fileName, tenantId, requisitionId, category) {
     try {
-        const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+        const matches = base64File.match(/^data:([^;]+);base64,(.*)$/);
         if (!matches) {
             throw new Error("Invalid file format. Expected base64 encoded file.");
         }
@@ -214,7 +217,7 @@ async function uploadRequisitionAttachmentToR2(base64File, fileName, tenantId, r
  */
 async function uploadEmployeeDocumentToR2(base64File, fileName, tenantId, employeeId, documentType) {
     try {
-        const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+        const matches = base64File.match(/^data:([^;]+);base64,(.*)$/);
         if (!matches) {
             throw new Error("Invalid file format. Expected base64 encoded file.");
         }
@@ -251,7 +254,7 @@ async function uploadEmployeeDocumentToR2(base64File, fileName, tenantId, employ
  */
 async function uploadClientDocumentToR2(base64File, fileName, tenantId, clientId, category, documentType) {
     try {
-        const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+        const matches = base64File.match(/^data:([^;]+);base64,(.*)$/);
         if (!matches) {
             throw new Error("Invalid file format. Expected base64 encoded file.");
         }
@@ -295,7 +298,7 @@ async function uploadEmployeeAssetToR2({ base64, fileName = "asset.png", tenantI
         if (base64.startsWith("http")) {
             return base64;
         }
-        const matches = base64.match(/^data:([^;]+);base64,(.+)$/);
+        const matches = base64.match(/^data:([^;]+);base64,(.*)$/);
         if (!matches) {
             throw new Error("Invalid file format. Expected base64 encoded file.");
         }
@@ -330,7 +333,7 @@ async function uploadEmployeeAssetToR2({ base64, fileName = "asset.png", tenantI
  */
 async function uploadCandidateDocumentToR2(base64File, fileName, tenantId, candidateId, documentType) {
     try {
-        const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+        const matches = base64File.match(/^data:([^;]+);base64,(.*)$/);
         if (!matches) {
             throw new Error("Invalid file format. Expected base64 encoded file.");
         }
@@ -352,6 +355,44 @@ async function uploadCandidateDocumentToR2(base64File, fileName, tenantId, candi
     catch (error) {
         console.error("R2 candidate document upload error:", error);
         throw new Error(`Failed to upload candidate document: ${error.message}`);
+    }
+}
+/**
+ * Upload a bug-list attachment to Cloudflare R2.
+ * Path: {tenantId}/bug-list/{folderId}/{sheetId}/{bugId}/{uniqueId}_{fileName}
+ */
+async function uploadBugAttachmentToR2(base64File, fileName, tenantId, folderId, sheetId, bugId) {
+    try {
+        const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+        if (!matches) {
+            throw new Error("Invalid file format. Expected base64 encoded file.");
+        }
+        const contentType = matches[1];
+        const base64Data = matches[2];
+        const buffer = Buffer.from(base64Data, "base64");
+        const fileSizeInBytes = buffer.length;
+        const fileSizeInMB = fileSizeInBytes / (1024 * 1024);
+        if (fileSizeInMB > 5) {
+            throw new Error("File size exceeds 5MB limit");
+        }
+        const uniqueId = (0, nanoid_1.nanoid)(12);
+        const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+        const key = `${tenantId}/bug-list/${folderId}/${sheetId}/${bugId}/${uniqueId}_${sanitizedFileName}`;
+        await exports.s3Client.send(new client_s3_1.PutObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: key,
+            Body: buffer,
+            ContentType: contentType,
+            CacheControl: "public, max-age=31536000",
+            ContentDisposition: `attachment; filename="${sanitizedFileName}"`,
+        }));
+        const baseUrl = PUBLIC_URL || "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+        const fileUrl = `${baseUrl}/${key}`;
+        return { fileUrl, fileSize: fileSizeInBytes, fileType: contentType };
+    }
+    catch (error) {
+        console.error("R2 bug attachment upload error:", error);
+        throw new Error(`Failed to upload bug attachment: ${error.message}`);
     }
 }
 /**
@@ -471,7 +512,13 @@ async function generatePresignedUrl(fileUrl, expiresIn = 86400) {
         // Extract key from URL
         // URL format: https://pub-xxx.r2.dev/tenantId/employees/abc/payslip.pdf
         const url = new URL(fileUrl);
-        const key = url.pathname.startsWith('/') ? url.pathname.slice(1) : url.pathname;
+        let key = url.pathname.startsWith('/') ? url.pathname.slice(1) : url.pathname;
+        // If the key starts with the bucket name (common in some R2 URL formats), strip it
+        if (key.startsWith(`${BUCKET_NAME}/`)) {
+            console.log(`[R2] Stripping bucket name "${BUCKET_NAME}" from presigned key: ${key}`);
+            key = key.substring(BUCKET_NAME.length + 1);
+        }
+        console.log(`[R2] Generating presigned URL for key: "${key}" (expires in ${expiresIn}s)`);
         const command = new client_s3_1.GetObjectCommand({
             Bucket: BUCKET_NAME,
             Key: key,
@@ -485,16 +532,55 @@ async function generatePresignedUrl(fileUrl, expiresIn = 86400) {
     }
 }
 /**
- * Upload Escalation document to Cloudflare R2
- * @param base64File - Base64 encoded file string
- * @param fileName - Original file name
- * @param tenantId - Tenant ID
- * @param escalationId - Temporary or generated escalation ID
- * @returns Public URL of uploaded document
+ * Fetch a file from R2 and return its content as a Buffer
+ * Uses the internal S3 client with credentials.
+ * @param fileUrl - The public-facing URL of the file
  */
+async function getFileBufferFromR2(fileUrl) {
+    try {
+        const url = new URL(fileUrl);
+        let key = url.pathname.startsWith("/")
+            ? url.pathname.slice(1)
+            : url.pathname;
+        // If the key starts with the bucket name (common in some R2 URL formats), strip it
+        if (key.startsWith(`${BUCKET_NAME}/`)) {
+            console.log(`[R2] Stripping bucket name "${BUCKET_NAME}" from key: ${key}`);
+            key = key.substring(BUCKET_NAME.length + 1);
+        }
+        console.log(`[R2] Final key for fetch: "${key}" from URL: ${fileUrl}`);
+        const command = new client_s3_1.GetObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: key,
+        });
+        const response = await exports.s3Client.send(command);
+        if (!response.Body) {
+            throw new Error("Empty body received from R2");
+        }
+        // Convert high-level stream to Buffer
+        const streamToBuffer = async (stream) => {
+            const chunks = [];
+            for await (const chunk of stream) {
+                chunks.push(chunk);
+            }
+            return Buffer.concat(chunks);
+        };
+        return await streamToBuffer(response.Body);
+    }
+    catch (error) {
+        console.error(`Error fetching buffer from R2 for ${fileUrl}:`, error);
+        throw error;
+    }
+}
+//  * Upload Escalation document to Cloudflare R2
+//  * @param base64File - Base64 encoded file string
+//  * @param fileName - Original file name
+//  * @param tenantId - Tenant ID
+//  * @param escalationId - Temporary or generated escalation ID
+//  * @returns Public URL of uploaded document
+//  */
 async function uploadEscalationDocumentToR2(base64File, fileName, tenantId, escalationId) {
     try {
-        const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+        const matches = base64File.match(/^data:([^;]+);base64,(.*)$/);
         if (!matches) {
             throw new Error("Invalid file format. Expected base64 encoded file.");
         }

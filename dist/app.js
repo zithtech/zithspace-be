@@ -54,6 +54,7 @@ const invoiceTemplate_1 = __importDefault(require("@/routes/invoiceTemplate"));
 const categoryRoutes_1 = __importDefault(require("@/routes/categoryRoutes"));
 const buckets_1 = __importDefault(require("@/routes/buckets"));
 const trash_1 = __importDefault(require("@/routes/trash"));
+const bugList_1 = __importDefault(require("@/routes/bugList"));
 const sprintCompletion_1 = __importDefault(require("@/routes/sprintCompletion"));
 const fixedHolidays_1 = __importDefault(require("@/routes/fixedHolidays"));
 const documenthub_1 = __importDefault(require("@/routes/documenthub"));
@@ -88,6 +89,7 @@ const departmentRoutes_1 = __importDefault(require("@/routes/departmentRoutes"))
 const subDepartmentRoutes_1 = __importDefault(require("@/routes/subDepartmentRoutes"));
 const positionRoutes_1 = __importDefault(require("@/routes/positionRoutes"));
 const calendar_1 = __importDefault(require("@/routes/calendar"));
+const mail_1 = __importDefault(require("@/routes/mail"));
 const employeeExit_routes_1 = __importDefault(require("@/routes/employeeExit.routes"));
 const leaveOriginRoutes_1 = __importDefault(require("@/routes/leaveOriginRoutes"));
 const emailHistoryRoutes_1 = __importDefault(require("@/routes/emailHistoryRoutes"));
@@ -109,6 +111,8 @@ const recruitmentAction_routes_1 = __importDefault(require("@/routes/recruitment
 const candidateRoutes_1 = __importDefault(require("@/routes/candidateRoutes"));
 const companyLocationRoutes_1 = __importDefault(require("@/routes/companyLocationRoutes"));
 const openingManagementRoutes_1 = __importDefault(require("@/routes/openingManagementRoutes"));
+const RabbitMQService_1 = require("@/utils/RabbitMQService");
+const MailController_1 = require("@/controllers/MailController");
 const lead_routes_1 = __importDefault(require("@/routes/lead.routes"));
 const leadSettings_routes_1 = __importDefault(require("@/routes/leadSettings.routes"));
 const generate_routes_1 = __importDefault(require("@/routes/generate.routes"));
@@ -244,6 +248,7 @@ app.use("/api/categories", categoryRoutes_1.default);
 //app.use("/api/invoice",invoicedownload)
 app.use("/api/buckets", buckets_1.default);
 app.use("/api/trash", trash_1.default);
+app.use("/api/bug-list", bugList_1.default);
 app.use("/api/sprint-completion", sprintCompletion_1.default);
 app.use("/api/salary-components", salaryComponentRoutes_1.default);
 app.use("/api/salary-structures", salaryStructureRoutes_1.default);
@@ -267,6 +272,9 @@ app.use("/api/channels/:channelId/messages", messages_1.default);
 app.use("/api/email-history", emailHistoryRoutes_1.default);
 app.use("/api/timesheets", timesheet_1.default);
 app.use("/api/zoho", calendar_1.default);
+app.get("/api/mail/attachments/download", MailController_1.MailController.downloadAttachment);
+app.use("/api/mail", mail_1.default);
+// app.use("/api/mail-configuration", mailConfigurationRoutes);
 app.use("/api/leave-allocation", leaveAllocationRoutes_1.default);
 app.use("/api/leave-request", leaveRequestRoutes_1.default);
 app.use("/api/leave-balances", leaveBalanceRoutes_1.default);
@@ -426,12 +434,19 @@ const startServer = async () => {
         // Initialize Tables
         const { BidIQModel } = require("./models/BidIQ.model");
         await BidIQModel.initTable();
-        // Connect RabbitMQ
-        // await connectRabbitMQ();
-        // console.log("RabbitMQ connected");
-        // Start workers
-        // const { startWorker } = require("@/workers/leaveAllocationWorker");
-        // await startWorker();
+        // Connect RabbitMQ & Start Workers
+        try {
+            // await rabbitMQService.connect();
+            // await CalendarSyncWorker.start();
+            // await MailSyncWorker.start();
+            // console.log("🚀 RabbitMQ connected, Calendar & Mail Sync Workers started");
+            console.log("🚀 RabbitMQ sync workers disabled (commented out)");
+        }
+        catch (mqError) {
+            console.error("❌ RabbitMQ initialization failed:", mqError.message);
+            // In a SaaS environment, we log and continue, 
+            // as the app might still handle HTTP requests while MQ recovers.
+        }
         const PORT = parseInt(process.env.PORT || "5000");
         server = app.listen(PORT, () => {
             // console.log(`Zithmi Backend running on port ${PORT}`);
@@ -457,10 +472,11 @@ const gracefulShutdown = async (signal) => {
         console.log("HTTP server closed");
         try {
             await (0, database_1.disconnectDatabase)();
-            console.log("Database connections closed");
+            await RabbitMQService_1.rabbitMQService.close();
+            console.log("Database and RabbitMQ connections closed");
         }
         catch (error) {
-            console.error("Error closing database connections:", error);
+            console.error("Error closing connections:", error);
         }
         console.log("Process terminated");
         process.exit(0);

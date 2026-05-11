@@ -1513,6 +1513,19 @@ export class TicketController {
           promises.push(cacheService.invalidateTicket(parentIdToInvalidate, req.tenantId));
         }
 
+        // Sync bug list when ticket assignee changes
+        if (mappedUpdates.assigneeId !== undefined && mappedUpdates.assigneeId !== existingTicket.assigneeId) {
+          // Update bugs linked to this ticket with new assignee
+          promises.push(
+            pool.query(
+              `UPDATE bugs 
+                 SET assignee_id = $1, updated_at = NOW()
+               WHERE ticket_id = $2 AND tenant_id = $3`,
+              [mappedUpdates.assigneeId, id, req.tenantId]
+            )
+          );
+        }
+
         await Promise.allSettled(promises);
       } catch (sideEffectError) {
         console.error("Update ticket side-effect error (non-fatal):", sideEffectError);
