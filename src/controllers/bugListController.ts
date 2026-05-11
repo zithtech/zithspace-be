@@ -791,20 +791,38 @@ export class BugListController {
   static async updateSheet(req: AuthRequest, res: Response): Promise<void> {
     if (!ensureAuth(req, res)) return;
     const { id } = req.params;
-    const { name, description } = req.body;
+    const { name, description, folderId } = req.body;
+    const client = await pool.connect();
     try {
-      const result = await pool.query(
+      await client.query("BEGIN");
+
+      // 1. Update the sheet
+      const result = await client.query(
         `UPDATE bug_sheets
             SET name        = COALESCE($1, name),
-                description = COALESCE($2, description)
-          WHERE id = $3 AND tenant_id = $4
+                description = COALESCE($2, description),
+                folder_id   = COALESCE($3, folder_id)
+          WHERE id = $4 AND tenant_id = $5
           RETURNING *`,
-        [name ?? null, description ?? null, id, req.tenantId],
+        [name ?? null, description ?? null, folderId ?? null, id, req.tenantId],
       );
+
       if (result.rows.length === 0) {
+        await client.query("ROLLBACK");
         bad(res, 404, "Sheet not found");
         return;
       }
+
+      // 2. If folderId changed, update all bugs in this sheet
+      if (folderId) {
+        await client.query(
+          `UPDATE bugs SET folder_id = $1 WHERE sheet_id = $2 AND tenant_id = $3`,
+          [folderId, id, req.tenantId],
+        );
+      }
+
+      await client.query("COMMIT");
+
       const row = result.rows[0];
       res.json({
         success: true,
@@ -820,8 +838,11 @@ export class BugListController {
         },
       });
     } catch (err: any) {
+      await client.query("ROLLBACK").catch(() => {});
       console.error("updateSheet error:", err);
       bad(res, 500, err.message || "Failed to update sheet");
+    } finally {
+      client.release();
     }
   }
 
@@ -1944,9 +1965,9 @@ export class BugListController {
       if (scope === "mine") push("created_by_id = $$", req.user!.id);
 
       if (scope === "trash") {
-        push("status = $$", "trash");
+        conditions.push("(status = 'trash' OR EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = sheet_id AND s.status = 'trash') OR EXISTS (SELECT 1 FROM bug_folders f WHERE f.id = folder_id AND f.status = 'trash'))");
       } else if (scope === "archived") {
-        conditions.push("(status = 'archived' OR EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = sheet_id AND s.status = 'archived'))");
+        conditions.push("(status = 'archived' OR EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = sheet_id AND s.status = 'archived') OR EXISTS (SELECT 1 FROM bug_folders f WHERE f.id = folder_id AND f.status = 'archived'))");
       } else {
         conditions.push("status NOT IN ('trash', 'archived')");
         conditions.push("NOT EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = sheet_id AND s.status = 'archived')");
