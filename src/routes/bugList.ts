@@ -21,6 +21,8 @@ router.patch("/folders/:id/archive", requirePermission(Permissions.BUG_UPDATE), 
 router.post("/folders/:id/restore", requirePermission(Permissions.BUG_UPDATE), BugListController.restoreFolder);
 router.delete("/folders/:id", requirePermission(Permissions.BUG_DELETE), BugListController.deleteFolder);
 router.delete("/folders/:id/permanent", requirePermission(Permissions.BUG_DELETE), BugListController.permanentDeleteFolder);
+router.post("/folders/bulk-restore", requirePermission(Permissions.BUG_UPDATE), BugListController.bulkRestoreFolders);
+router.post("/folders/bulk-permanent-delete", requirePermission(Permissions.BUG_DELETE), BugListController.bulkPermanentDeleteFolders);
 
 // ─── Sheets ────────────────────────────────────────────────────────────────
 router.get("/folders/:folderId/sheets", requirePermission(Permissions.BUG_READ), BugListController.listSheets);
@@ -32,6 +34,8 @@ router.patch("/sheets/:id/status", requirePermission(Permissions.BUG_UPDATE), Bu
 router.delete("/sheets/:id", requirePermission(Permissions.BUG_DELETE), BugListController.deleteSheet);
 router.post("/sheets/:id/restore", requirePermission(Permissions.BUG_UPDATE), BugListController.restoreSheet);
 router.delete("/sheets/:id/permanent", requirePermission(Permissions.BUG_DELETE), BugListController.permanentDeleteSheet);
+router.post("/sheets/bulk-restore", requirePermission(Permissions.BUG_UPDATE), BugListController.bulkRestoreSheets);
+router.post("/sheets/bulk-permanent-delete", requirePermission(Permissions.BUG_DELETE), BugListController.bulkPermanentDeleteSheets);
 
 // ─── Bugs ──────────────────────────────────────────────────────────────────
 router.get("/stats", requirePermission(Permissions.BUG_READ), BugListController.getStats);

@@ -4,7 +4,7 @@ import pool from "@/config/dbpool";
 import { AuthRequest } from "@/types";
 import {
   uploadBugAttachmentToR2,
-  deleteFileFromR2,
+  deleteBugAttachmentFromR2,
 } from "@/utils/r2Client";
 import { BugListAiService } from "@/services/bugListAiService";
 
@@ -165,7 +165,7 @@ async function persistAttachments(
 
   for (const row of toDelete) {
     try {
-      await deleteFileFromR2(row.file_url, tenantId);
+      await deleteBugAttachmentFromR2(row.file_url, tenantId);
     } catch (err) {
       console.error("R2 delete failed (best-effort):", err);
     }
@@ -627,7 +627,7 @@ export class BugListController {
       );
       for (const att of attachments.rows) {
         try {
-          await deleteFileFromR2(att.file_url, req.tenantId!);
+          await deleteBugAttachmentFromR2(att.file_url, req.tenantId!);
         } catch (e) {
           console.error("R2 cleanup failed:", e);
         }
@@ -791,20 +791,38 @@ export class BugListController {
   static async updateSheet(req: AuthRequest, res: Response): Promise<void> {
     if (!ensureAuth(req, res)) return;
     const { id } = req.params;
-    const { name, description } = req.body;
+    const { name, description, folderId } = req.body;
+    const client = await pool.connect();
     try {
-      const result = await pool.query(
+      await client.query("BEGIN");
+
+      // 1. Update the sheet
+      const result = await client.query(
         `UPDATE bug_sheets
             SET name        = COALESCE($1, name),
-                description = COALESCE($2, description)
-          WHERE id = $3 AND tenant_id = $4
+                description = COALESCE($2, description),
+                folder_id   = COALESCE($3, folder_id)
+          WHERE id = $4 AND tenant_id = $5
           RETURNING *`,
-        [name ?? null, description ?? null, id, req.tenantId],
+        [name ?? null, description ?? null, folderId ?? null, id, req.tenantId],
       );
+
       if (result.rows.length === 0) {
+        await client.query("ROLLBACK");
         bad(res, 404, "Sheet not found");
         return;
       }
+
+      // 2. If folderId changed, update all bugs in this sheet
+      if (folderId) {
+        await client.query(
+          `UPDATE bugs SET folder_id = $1 WHERE sheet_id = $2 AND tenant_id = $3`,
+          [folderId, id, req.tenantId],
+        );
+      }
+
+      await client.query("COMMIT");
+
       const row = result.rows[0];
       res.json({
         success: true,
@@ -820,8 +838,11 @@ export class BugListController {
         },
       });
     } catch (err: any) {
+      await client.query("ROLLBACK").catch(() => {});
       console.error("updateSheet error:", err);
       bad(res, 500, err.message || "Failed to update sheet");
+    } finally {
+      client.release();
     }
   }
 
@@ -1078,7 +1099,7 @@ export class BugListController {
       );
       for (const att of attachments.rows) {
         try {
-          await deleteFileFromR2(att.file_url, req.tenantId!);
+          await deleteBugAttachmentFromR2(att.file_url, req.tenantId!);
         } catch (e) {
           console.error("R2 cleanup failed:", e);
         }
@@ -1154,18 +1175,18 @@ export class BugListController {
       // Default scope: exclude trash/archived unless explicitly requested
       if (scope === "trash") {
         if (sheetId) {
-          push("b.sheet_id = $$ AND b.status = 'trash'", sheetId);
+          push("b.sheet_id = $$", sheetId);
         } else if (folderId) {
-          push("b.folder_id = $$ AND b.status = 'trash'", folderId);
+          push("b.folder_id = $$", folderId);
         } else {
           // Show trashed bugs ONLY if their sheet/folder isn't trashed
           push("b.status = $$ AND NOT EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = b.sheet_id AND s.status = 'trash') AND NOT EXISTS (SELECT 1 FROM bug_folders f WHERE f.id = b.folder_id AND f.status = 'trash')", "trash");
         }
       } else if (scope === "archived") {
         if (sheetId) {
-          push("b.sheet_id = $$ AND b.status = 'archived'", sheetId);
+          push("b.sheet_id = $$", sheetId);
         } else if (folderId) {
-          push("b.folder_id = $$ AND b.status = 'archived'", folderId);
+          push("b.folder_id = $$", folderId);
         } else {
           // Standard archived view: exclude if parent is archived/trashed
           conditions.push("(b.status = 'archived' AND NOT EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = b.sheet_id AND s.status IN ('archived', 'trash')) AND NOT EXISTS (SELECT 1 FROM bug_folders f WHERE f.id = b.folder_id AND f.status IN ('archived', 'trash')))");
@@ -1554,7 +1575,7 @@ export class BugListController {
       );
       for (const att of attachments.rows) {
         try {
-          await deleteFileFromR2(att.file_url, req.tenantId!);
+          await deleteBugAttachmentFromR2(att.file_url, req.tenantId!);
         } catch (e) {
           console.error("R2 cleanup failed:", e);
         }
@@ -1678,7 +1699,7 @@ export class BugListController {
       );
       for (const a of att.rows) {
         try {
-          await deleteFileFromR2(a.file_url, req.tenantId!);
+          await deleteBugAttachmentFromR2(a.file_url, req.tenantId!);
         } catch (e) {
           console.error("R2 cleanup failed:", e);
         }
@@ -1715,6 +1736,180 @@ export class BugListController {
     } catch (err: any) {
       console.error("bulkRestore error:", err);
       bad(res, 500, err.message || "Failed to restore bugs");
+    }
+  }
+
+  static async bulkRestoreFolders(req: AuthRequest, res: Response): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    const { folderIds } = req.body;
+    if (!Array.isArray(folderIds) || folderIds.length === 0) {
+      bad(res, 400, "folderIds must be a non-empty array");
+      return;
+    }
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      
+      const folders = await client.query(
+        `SELECT id, original_status FROM bug_folders WHERE id = ANY($1::text[]) AND tenant_id = $2 AND status IN ('trash', 'archived')`,
+        [folderIds, req.tenantId],
+      );
+
+      for (const folder of folders.rows) {
+        const originalStatus = folder.original_status || 'active';
+        await client.query(
+          `UPDATE bug_folders SET status = $1, original_status = NULL, updated_at = NOW()
+            WHERE id = $2 AND tenant_id = $3`,
+          [originalStatus, folder.id, req.tenantId],
+        );
+
+        // Recursively restore sheets and bugs
+        await client.query(
+          `UPDATE bug_sheets SET status = COALESCE(original_status, 'active'), original_status = NULL, updated_at = NOW()
+            WHERE folder_id = $1 AND tenant_id = $2 AND status IN ('trash', 'archived')`,
+          [folder.id, req.tenantId]
+        );
+        await client.query(
+          `UPDATE bugs SET status = COALESCE(original_status, 'new'), original_status = NULL, updated_at = NOW()
+            WHERE folder_id = $1 AND tenant_id = $2 AND status IN ('trash', 'archived')`,
+          [folder.id, req.tenantId]
+        );
+      }
+
+      await client.query("COMMIT");
+      res.json({ success: true, data: { restored: folders.rowCount } });
+    } catch (err: any) {
+      await client.query("ROLLBACK").catch(() => {});
+      console.error("bulkRestoreFolders error:", err);
+      bad(res, 500, err.message || "Failed to restore folders");
+    } finally {
+      client.release();
+    }
+  }
+
+  static async bulkPermanentDeleteFolders(req: AuthRequest, res: Response): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    const { folderIds } = req.body;
+    if (!Array.isArray(folderIds) || folderIds.length === 0) {
+      bad(res, 400, "folderIds must be a non-empty array");
+      return;
+    }
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      
+      const attachments = await client.query(
+        `SELECT a.file_url
+           FROM bug_attachments a
+           JOIN bugs b ON b.id = a.bug_id
+          WHERE b.folder_id = ANY($1::text[]) AND b.tenant_id = $2`,
+        [folderIds, req.tenantId],
+      );
+      for (const att of attachments.rows) {
+        try {
+          await deleteBugAttachmentFromR2(att.file_url, req.tenantId!);
+        } catch (e) {
+          console.error("R2 cleanup failed:", e);
+        }
+      }
+      
+      const r = await client.query(
+        `DELETE FROM bug_folders WHERE id = ANY($1::text[]) AND tenant_id = $2 AND status = 'trash'`,
+        [folderIds, req.tenantId],
+      );
+      
+      await client.query("COMMIT");
+      res.json({ success: true, data: { deleted: r.rowCount } });
+    } catch (err: any) {
+      await client.query("ROLLBACK").catch(() => {});
+      console.error("bulkPermanentDeleteFolders error:", err);
+      bad(res, 500, err.message || "Failed to permanently delete folders");
+    } finally {
+      client.release();
+    }
+  }
+
+  static async bulkRestoreSheets(req: AuthRequest, res: Response): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    const { sheetIds } = req.body;
+    if (!Array.isArray(sheetIds) || sheetIds.length === 0) {
+      bad(res, 400, "sheetIds must be a non-empty array");
+      return;
+    }
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      
+      const sheets = await client.query(
+        `SELECT id, original_status FROM bug_sheets WHERE id = ANY($1::text[]) AND tenant_id = $2 AND status IN ('trash', 'archived')`,
+        [sheetIds, req.tenantId],
+      );
+
+      for (const sheet of sheets.rows) {
+        const originalStatus = sheet.original_status || 'active';
+        await client.query(
+          `UPDATE bug_sheets SET status = $1, original_status = NULL, updated_at = NOW()
+            WHERE id = $2 AND tenant_id = $3`,
+          [originalStatus, sheet.id, req.tenantId],
+        );
+
+        await client.query(
+          `UPDATE bugs SET status = COALESCE(original_status, 'new'), original_status = NULL, updated_at = NOW()
+            WHERE sheet_id = $1 AND tenant_id = $2 AND status IN ('trash', 'archived')`,
+          [sheet.id, req.tenantId]
+        );
+      }
+
+      await client.query("COMMIT");
+      res.json({ success: true, data: { restored: sheets.rowCount } });
+    } catch (err: any) {
+      await client.query("ROLLBACK").catch(() => {});
+      console.error("bulkRestoreSheets error:", err);
+      bad(res, 500, err.message || "Failed to restore sheets");
+    } finally {
+      client.release();
+    }
+  }
+
+  static async bulkPermanentDeleteSheets(req: AuthRequest, res: Response): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    const { sheetIds } = req.body;
+    if (!Array.isArray(sheetIds) || sheetIds.length === 0) {
+      bad(res, 400, "sheetIds must be a non-empty array");
+      return;
+    }
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      
+      const attachments = await client.query(
+        `SELECT a.file_url
+           FROM bug_attachments a
+           JOIN bugs b ON b.id = a.bug_id
+          WHERE b.sheet_id = ANY($1::text[]) AND b.tenant_id = $2`,
+        [sheetIds, req.tenantId],
+      );
+      for (const att of attachments.rows) {
+        try {
+          await deleteBugAttachmentFromR2(att.file_url, req.tenantId!);
+        } catch (e) {
+          console.error("R2 cleanup failed:", e);
+        }
+      }
+      
+      const r = await client.query(
+        `DELETE FROM bug_sheets WHERE id = ANY($1::text[]) AND tenant_id = $2 AND status = 'trash'`,
+        [sheetIds, req.tenantId],
+      );
+      
+      await client.query("COMMIT");
+      res.json({ success: true, data: { deleted: r.rowCount } });
+    } catch (err: any) {
+      await client.query("ROLLBACK").catch(() => {});
+      console.error("bulkPermanentDeleteSheets error:", err);
+      bad(res, 500, err.message || "Failed to permanently delete sheets");
+    } finally {
+      client.release();
     }
   }
 
@@ -1770,9 +1965,9 @@ export class BugListController {
       if (scope === "mine") push("created_by_id = $$", req.user!.id);
 
       if (scope === "trash") {
-        push("status = $$", "trash");
+        conditions.push("(status = 'trash' OR EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = sheet_id AND s.status = 'trash') OR EXISTS (SELECT 1 FROM bug_folders f WHERE f.id = folder_id AND f.status = 'trash'))");
       } else if (scope === "archived") {
-        conditions.push("(status = 'archived' OR EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = sheet_id AND s.status = 'archived'))");
+        conditions.push("(status = 'archived' OR EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = sheet_id AND s.status = 'archived') OR EXISTS (SELECT 1 FROM bug_folders f WHERE f.id = folder_id AND f.status = 'archived'))");
       } else {
         conditions.push("status NOT IN ('trash', 'archived')");
         conditions.push("NOT EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = sheet_id AND s.status = 'archived')");
