@@ -208,6 +208,9 @@ router.delete("/:id", requirePermission(Permissions.TICKET_DELETE), TicketContro
  * @body    { ticketIds: string[], status: string }
  */
 router.patch("/bulk/status", requirePermission(Permissions.TICKET_MANAGE), TicketController.bulkUpdateStatus);
+router.patch("/bulk/archive", requirePermission(Permissions.TICKET_MANAGE), TicketController.bulkArchive);
+router.patch("/bulk/delete", requirePermission(Permissions.TICKET_MANAGE), TicketController.bulkDelete);
+
 
 /**
  * @route   GET /api/tickets/projects/:projectId/stats

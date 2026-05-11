@@ -221,13 +221,22 @@ export class TicketController {
         0
       );
 
-      // General statistics
+      // General statistics (All time within tenant)
       const generalStats = await prisma.ticket.groupBy({
         by: ["status"],
         where: {
           tenantId: req.tenantId,
           isDeleted: false,
-          createdAt: { gte: startOfMonth, lte: endOfMonth },
+        },
+        _count: true,
+      });
+
+      // Project-specific statistics
+      const projectWiseStats = await prisma.ticket.groupBy({
+        by: ["projectId", "status"],
+        where: {
+          tenantId: req.tenantId,
+          isDeleted: false,
         },
         _count: true,
       });
@@ -236,27 +245,39 @@ export class TicketController {
         (sum, stat) => sum + stat._count,
         0
       );
+
       const statusCounts = {
         total: totalTickets,
-        in_progress:
-          generalStats.find((s) => s.status === "in_progress")?._count || 0,
-        dev_complete:
-          generalStats.find((s) => s.status === "dev_complete")?._count || 0,
-        in_testing:
-          generalStats.find((s) => s.status === "in_testing")?._count || 0,
-        in_review:
-          generalStats.find((s) => s.status === "in_review")?._count || 0,
-        not_started:
-          generalStats.find((s) => s.status === "not_started")?._count || 0,
-        completed:
-          generalStats.find((s) => s.status === "completed")?._count || 0,
-        live:
-          generalStats.find((s) => s.status === "live")?._count || 0,
+        in_progress: generalStats.find((s) => s.status === "in_progress")?._count || 0,
+        dev_complete: generalStats.find((s) => s.status === "dev_complete")?._count || 0,
+        in_testing: generalStats.find((s) => s.status === "in_testing")?._count || 0,
+        in_review: generalStats.find((s) => s.status === "in_review")?._count || 0,
+        not_started: generalStats.find((s) => s.status === "not_started")?._count || 0,
+        completed: generalStats.find((s) => s.status === "completed")?._count || 0,
+        live: generalStats.find((s) => s.status === "live")?._count || 0,
         blocked: generalStats.find((s) => s.status === "blocked")?._count || 0,
       };
 
+      // Format projectStats as expected by the frontend: { id: projectId, statuses: [{ status, count }] }
+      const projectStatsMap = new Map();
+      projectWiseStats.forEach((stat) => {
+        if (!projectStatsMap.has(stat.projectId)) {
+          projectStatsMap.set(stat.projectId, []);
+        }
+        projectStatsMap.get(stat.projectId).push({
+          status: stat.status,
+          count: stat._count,
+        });
+      });
+
+      const projectStats = Array.from(projectStatsMap.entries()).map(([id, statuses]) => ({
+        id,
+        statuses,
+      }));
+
       const stats = {
         generalStats: statusCounts,
+        projectStats,
         period: {
           start: startOfMonth,
           end: endOfMonth,
@@ -279,6 +300,7 @@ export class TicketController {
       } as ApiResponse);
     }
   }
+
 
   /**
    * Create a new ticket (tenant-aware)
@@ -1733,6 +1755,107 @@ export class TicketController {
       } as ApiResponse);
     }
   }
+
+  /**
+   * Bulk archive tickets (tenant-aware)
+   */
+  static async bulkArchive(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { ticketIds } = req.body;
+
+      if (!ticketIds || !Array.isArray(ticketIds) || ticketIds.length === 0) {
+        res.status(400).json({
+          success: false,
+          error: "Ticket IDs array is required",
+        } as ApiResponse);
+        return;
+      }
+
+      const result = await prisma.ticket.updateMany({
+        where: {
+          id: { in: ticketIds },
+          tenantId: req.tenantId,
+        },
+        data: {
+          isArchived: true,
+          archivedAt: new Date(),
+          archivedById: req.user.id,
+          updatedAt: new Date(),
+        },
+      });
+
+      res.status(200).json({
+        success: true,
+        data: { updatedCount: result.count },
+        message: `${result.count} tickets archived successfully`,
+      } as ApiResponse);
+    } catch (error) {
+      console.error("Bulk archive error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to archive tickets",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Bulk delete tickets (tenant-aware)
+   */
+  static async bulkDelete(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { ticketIds } = req.body;
+
+      if (!ticketIds || !Array.isArray(ticketIds) || ticketIds.length === 0) {
+        res.status(400).json({
+          success: false,
+          error: "Ticket IDs array is required",
+        } as ApiResponse);
+        return;
+      }
+
+      const result = await prisma.ticket.updateMany({
+        where: {
+          id: { in: ticketIds },
+          tenantId: req.tenantId,
+        },
+        data: {
+          isDeleted: true,
+          deletedAt: new Date(),
+          deletedById: req.user.id,
+          updatedAt: new Date(),
+        },
+      });
+
+      res.status(200).json({
+        success: true,
+        data: { deletedCount: result.count },
+        message: `${result.count} tickets moved to trash`,
+      } as ApiResponse);
+    } catch (error) {
+      console.error("Bulk delete error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to delete tickets",
+      } as ApiResponse);
+    }
+  }
+
 
   /**
    * Get ticket statistics by project (tenant-aware)
