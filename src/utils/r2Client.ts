@@ -496,8 +496,11 @@ export async function uploadBugAttachmentToR2(
       }),
     );
 
-    const baseUrl =
-      PUBLIC_URL || "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+    let baseUrl = (PUBLIC_URL && !PUBLIC_URL.includes('r2.cloudflarestorage.com'))
+      ? PUBLIC_URL
+      : "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+
+    if (baseUrl.endsWith("/")) baseUrl = baseUrl.slice(0, -1);
     const fileUrl = `${baseUrl}/${key}`;
     return { fileUrl, fileSize: fileSizeInBytes, fileType: contentType };
   } catch (error: any) {
@@ -544,6 +547,49 @@ export async function deleteFileFromR2(
   } catch (error: any) {
     console.error("R2 delete error:", error);
     throw new Error(`Failed to delete file: ${error.message}`);
+  }
+}
+
+/**
+ * Delete bug attachment from Cloudflare R2
+ * More robust than deleteFileFromR2 as it doesn't depend on .r2.dev in URL
+ */
+export async function deleteBugAttachmentFromR2(
+  fileUrl: string,
+  tenantId: string,
+): Promise<void> {
+  try {
+    // The key in R2 starts with tenantId/bug-list/
+    const keyMarker = `${tenantId}/bug-list/`;
+    const markerIndex = fileUrl.indexOf(keyMarker);
+
+    if (markerIndex === -1) {
+      // Fallback: try to see if it's just the key already
+      if (fileUrl.startsWith(keyMarker)) {
+        await s3Client.send(
+          new DeleteObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: fileUrl,
+          }),
+        );
+        return;
+      }
+      throw new Error(`Invalid bug attachment URL: Could not find key marker ${keyMarker}`);
+    }
+
+    const key = fileUrl.substring(markerIndex);
+
+    // Delete from R2
+    await s3Client.send(
+      new DeleteObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: key,
+      }),
+    );
+    console.log(`Deleted bug attachment: ${key}`);
+  } catch (error: any) {
+    console.error("R2 bug attachment delete error:", error);
+    throw new Error(`Failed to delete bug attachment: ${error.message}`);
   }
 }
 

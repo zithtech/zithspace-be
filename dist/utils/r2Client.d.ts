@@ -93,6 +93,11 @@ export declare function uploadBugAttachmentToR2(base64File: string, fileName: st
  */
 export declare function deleteFileFromR2(fileUrl: string, tenantId: string): Promise<void>;
 /**
+ * Delete bug attachment from Cloudflare R2
+ * More robust than deleteFileFromR2 as it doesn't depend on .r2.dev in URL
+ */
+export declare function deleteBugAttachmentFromR2(fileUrl: string, tenantId: string): Promise<void>;
+/**
  * Delete image from Cloudflare R2
  * @param imageUrl - Full URL of the image to delete
  * @param tenantId - Tenant ID for validation
