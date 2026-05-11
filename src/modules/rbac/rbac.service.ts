@@ -236,7 +236,7 @@ export const ADMIN_DEFAULT_PERMISSIONS: string[] = [
   'proposal.create', 'proposal.read', 'proposal.update', 'proposal.delete', 'proposal.manage',
   'vendor.create', 'vendor.read', 'vendor.update', 'vendor.delete', 'vendor.manage',
   'escalation.create', 'escalation.read', 'escalation.update', 'escalation.delete', 'escalation.manage',
-  'pipeline.create', 'pipeline.read', 'pipeline.update', 'pipeline.delete', 'pipeline.manage', 'pipeline.board.read', 'pipeline.deals.read', 'pipeline.forecast.read', 'pipeline.setting.read', 'pipeline.setting.update',
+  'pipeline.create', 'pipeline.read', 'pipeline.update', 'pipeline.delete', 'pipeline.manage', 'pipeline.board.read', 'pipeline.board.create', 'pipeline.board.update', 'pipeline.board.delete', 'pipeline.deals.read', 'pipeline.deals.create', 'pipeline.deals.update', 'pipeline.deals.delete', 'pipeline.forecast.read', 'pipeline.setting.read', 'pipeline.setting.update',
   'exit.create', 'exit.read', 'exit.update', 'exit.manage', 'exit.config.read', 'exit.config.update',
   'performance.read', 'performance.manage',
   'opening.create', 'opening.read', 'opening.update', 'opening.delete', 'opening.manage',
