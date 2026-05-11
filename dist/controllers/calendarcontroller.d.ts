@@ -7,10 +7,6 @@ export declare class CalendarController {
      */
     static getStatus(req: AuthRequest, res: Response): Promise<void>;
     /**
-     * GET /api/calendar/:provider/connect
-     * Initiates the OAuth flow for a provider.
-     */
-    /**
  * GET /api/calendar/:provider/connect
  * Initiates the OAuth flow for a provider.
  */
@@ -34,6 +30,11 @@ export declare class CalendarController {
      * Fetches events from local database (which are synced from providers).
      */
     static getEvents(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * POST /api/calendar/events/check-overlap
+     * Returns any events that overlap with the given time range for the current user.
+     */
+    static checkOverlap(req: AuthRequest, res: Response): Promise<void>;
     /**
      * POST /api/calendar/events
      * Creates a new event on a specific provider.

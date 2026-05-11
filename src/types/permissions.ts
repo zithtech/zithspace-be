@@ -29,6 +29,13 @@ export const Permissions = {
   TICKET_ARCHIVE: 'ticket.archive',
   TICKET_MANAGE:  'ticket.manage',   // bulk ops, workflow management
 
+  // ─── Bug List (QA workspace; converts to tickets) ────────────────
+  BUG_CREATE: 'bug.create',
+  BUG_READ:   'bug.read',
+  BUG_UPDATE: 'bug.update',
+  BUG_DELETE: 'bug.delete',
+  BUG_MANAGE: 'bug.manage',
+
   // ─── Attendance ──────────────────────────────────────────────────
   ATTENDANCE_CREATE: 'attendance.create',
   ATTENDANCE_READ:   'attendance.read',
@@ -151,6 +158,7 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
   user:         [Permissions.USER_CREATE, Permissions.USER_READ, Permissions.USER_UPDATE, Permissions.USER_DELETE, Permissions.USER_MANAGE],
   project:      [Permissions.PROJECT_CREATE, Permissions.PROJECT_READ, Permissions.PROJECT_UPDATE, Permissions.PROJECT_DELETE, Permissions.PROJECT_MANAGE],
   ticket:       [Permissions.TICKET_CREATE, Permissions.TICKET_READ, Permissions.TICKET_UPDATE, Permissions.TICKET_DELETE, Permissions.TICKET_ASSIGN, Permissions.TICKET_ARCHIVE, Permissions.TICKET_MANAGE],
+  bug:          [Permissions.BUG_CREATE, Permissions.BUG_READ, Permissions.BUG_UPDATE, Permissions.BUG_DELETE, Permissions.BUG_MANAGE],
   attendance:   [Permissions.ATTENDANCE_CREATE, Permissions.ATTENDANCE_READ, Permissions.ATTENDANCE_UPDATE, Permissions.ATTENDANCE_MANAGE],
   leave:        [Permissions.LEAVE_CREATE, Permissions.LEAVE_READ, Permissions.LEAVE_UPDATE, Permissions.LEAVE_DELETE, Permissions.LEAVE_APPROVE, Permissions.LEAVE_MANAGE],
   shift:        [Permissions.SHIFT_CREATE, Permissions.SHIFT_READ, Permissions.SHIFT_UPDATE, Permissions.SHIFT_DELETE, Permissions.SHIFT_MANAGE],

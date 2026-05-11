@@ -29,6 +29,12 @@ exports.Permissions = {
     TICKET_ASSIGN: 'ticket.assign',
     TICKET_ARCHIVE: 'ticket.archive',
     TICKET_MANAGE: 'ticket.manage', // bulk ops, workflow management
+    // ─── Bug List (QA workspace; converts to tickets) ────────────────
+    BUG_CREATE: 'bug.create',
+    BUG_READ: 'bug.read',
+    BUG_UPDATE: 'bug.update',
+    BUG_DELETE: 'bug.delete',
+    BUG_MANAGE: 'bug.manage',
     // ─── Attendance ──────────────────────────────────────────────────
     ATTENDANCE_CREATE: 'attendance.create',
     ATTENDANCE_READ: 'attendance.read',
@@ -131,6 +137,7 @@ exports.PERMISSIONS_BY_RESOURCE = {
     user: [exports.Permissions.USER_CREATE, exports.Permissions.USER_READ, exports.Permissions.USER_UPDATE, exports.Permissions.USER_DELETE, exports.Permissions.USER_MANAGE],
     project: [exports.Permissions.PROJECT_CREATE, exports.Permissions.PROJECT_READ, exports.Permissions.PROJECT_UPDATE, exports.Permissions.PROJECT_DELETE, exports.Permissions.PROJECT_MANAGE],
     ticket: [exports.Permissions.TICKET_CREATE, exports.Permissions.TICKET_READ, exports.Permissions.TICKET_UPDATE, exports.Permissions.TICKET_DELETE, exports.Permissions.TICKET_ASSIGN, exports.Permissions.TICKET_ARCHIVE, exports.Permissions.TICKET_MANAGE],
+    bug: [exports.Permissions.BUG_CREATE, exports.Permissions.BUG_READ, exports.Permissions.BUG_UPDATE, exports.Permissions.BUG_DELETE, exports.Permissions.BUG_MANAGE],
     attendance: [exports.Permissions.ATTENDANCE_CREATE, exports.Permissions.ATTENDANCE_READ, exports.Permissions.ATTENDANCE_UPDATE, exports.Permissions.ATTENDANCE_MANAGE],
     leave: [exports.Permissions.LEAVE_CREATE, exports.Permissions.LEAVE_READ, exports.Permissions.LEAVE_UPDATE, exports.Permissions.LEAVE_DELETE, exports.Permissions.LEAVE_APPROVE, exports.Permissions.LEAVE_MANAGE],
     shift: [exports.Permissions.SHIFT_CREATE, exports.Permissions.SHIFT_READ, exports.Permissions.SHIFT_UPDATE, exports.Permissions.SHIFT_DELETE, exports.Permissions.SHIFT_MANAGE],

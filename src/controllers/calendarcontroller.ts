@@ -3,6 +3,10 @@ import { prisma } from "@/config/database";
 import { AuthRequest, ApiResponse } from "@/types";
 import { CalendarProvider } from "@prisma/client";
 import { CalendarService } from "@/services/calendar/CalendarService";
+import { MailService } from "@/services/mail/MailService";
+import { UnifiedAuthService } from "@/services/UnifiedAuthService";
+import { CalendarSyncProducer } from '../services/calendar/CalendarSyncProducer';
+import { MailSyncProducer } from '../services/mail/MailSyncProducer';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 
@@ -48,32 +52,7 @@ export class CalendarController {
         }
     }
 
-    /**
-     * GET /api/calendar/:provider/connect
-     * Initiates the OAuth flow for a provider.
-     */
-    // static async connect(req: AuthRequest, res: Response): Promise<void> {
-    //     const { provider } = req.params;
-    //     try {
-    //         if (!req.user) {
-    //             res.status(401).json({ success: false, error: "Authentication required" });
-    //             return;
-    //         }
 
-    //         const authUrl = await CalendarService.getAuthUrl(provider.toUpperCase() as CalendarProvider, req.user.id);
-
-    //         res.status(200).json({
-    //             success: true,
-    //             data: { authUrl },
-    //         } as ApiResponse);
-    //     } catch (error) {
-    //         console.error("Calendar connect error:", error);
-    //         res.status(500).json({
-    //             success: false,
-    //             error: "Failed to initiate calendar connection",
-    //         } as ApiResponse);
-    //     }
-    // }
 
     /**
  * GET /api/calendar/:provider/connect
@@ -97,7 +76,7 @@ export class CalendarController {
                 where: { userId: req.user.id }
             });
 
-            const authUrl = await CalendarService.getAuthUrl(provider.toUpperCase() as CalendarProvider, req.user.id);
+            const authUrl = UnifiedAuthService.getAuthUrl(provider.toUpperCase() as CalendarProvider, req.user.id);
 
             res.status(200).json({
                 success: true,
@@ -137,18 +116,36 @@ export class CalendarController {
             const user = await prisma.user.findUnique({ where: { id: userId } });
             if (!user) throw new Error("User not found");
 
-            await CalendarService.handleCallback(
+            const mailAccount = await UnifiedAuthService.handleCallback(
                 provider.toUpperCase() as CalendarProvider,
-                userId,
-                user.tenantId,
                 code,
-                state
+                state,
+                userId,
+                user.tenantId
             );
 
-            // Sync events immediately after connection
-            await CalendarService.syncEvents(userId, user.tenantId, provider.toUpperCase() as CalendarProvider).catch(err => {
-                console.error(`Initial sync failed for ${provider}:`, err);
+            // Sync BOTH Calendar and Mail immediately after connection (Triggered via RabbitMQ)
+            const integration = await prisma.calendarIntegration.findFirst({
+                where: { userId, provider: provider.toUpperCase() as CalendarProvider }
             });
+
+            if (integration) {
+                await CalendarSyncProducer.enqueueSync({
+                    integrationId: integration.id,
+                    userId: integration.userId,
+                    tenantId: integration.tenantId,
+                    provider: integration.provider,
+                    forceSync: true
+                }).catch(err => console.error("Initial calendar enqueue failed:", err));
+            }
+
+            if (mailAccount && mailAccount.email) {
+                await MailSyncProducer.enqueueSync({
+                    userId,
+                    tenantId: user.tenantId,
+                    email: mailAccount.email
+                }).catch(err => console.error("Initial mail enqueue failed:", err));
+            }
 
             res.redirect(`${FRONTEND_URL}/calendar?connected=true&provider=${provider}`);
         } catch (error) {
@@ -173,6 +170,14 @@ export class CalendarController {
                     userId: req.user.id,
                     provider: provider.toUpperCase() as CalendarProvider,
                 },
+            });
+
+            // WIPE ALL LOCAL EVENTS TO PREVENT CROSS-PROVIDER LEAKAGE OR ORPHANED DATA
+            await prisma.calendarEvent.deleteMany({
+                where: {
+                    userId: req.user.id,
+                    provider: provider.toUpperCase() as CalendarProvider,
+                }
             });
 
             res.status(200).json({
@@ -262,42 +267,58 @@ export class CalendarController {
     }
 
     /**
+     * POST /api/calendar/events/check-overlap
+     * Returns any events that overlap with the given time range for the current user.
+     */
+    static async checkOverlap(req: AuthRequest, res: Response): Promise<void> {
+        try {
+            if (!req.user) {
+                res.status(401).json({ success: false, error: "Authentication required" });
+                return;
+            }
+
+            const { startTime, endTime, excludeEventId } = req.body;
+
+            if (!startTime || !endTime) {
+                res.status(400).json({ success: false, error: "startTime and endTime are required" });
+                return;
+            }
+
+            const overlaps = await CalendarService.checkForOverlap(
+                req.user.id,
+                req.user.tenantId!,
+                new Date(startTime),
+                new Date(endTime),
+                excludeEventId
+            );
+
+            res.status(200).json({
+                success: true,
+                data: {
+                    hasOverlap: overlaps.length > 0,
+                    count: overlaps.length,
+                    overlaps: overlaps.map(o => ({
+                        id: o.id,
+                        title: o.title,
+                        startTime: o.startTime,
+                        endTime: o.endTime
+                    }))
+                }
+            } as ApiResponse);
+        } catch (error: any) {
+            console.error("Check overlap error:", error);
+            res.status(500).json({
+                success: false,
+                error: error.message || "Failed to check for event overlaps",
+            } as ApiResponse);
+        }
+    }
+
+    /**
      * POST /api/calendar/events
      * Creates a new event on a specific provider.
      */
-    // static async createEvent(req: AuthRequest, res: Response): Promise<void> {
-    //     try {
-    //         if (!req.user) {
-    //             res.status(401).json({ success: false, error: "Authentication required" });
-    //             return;
-    //         }
 
-    //         const { provider, ...eventData } = req.body;
-    //         if (!provider) {
-    //             res.status(400).json({ success: false, error: "Provider is required (ZOHO, GOOGLE, MICROSOFT)" });
-    //             return;
-    //         }
-
-    //         const event = await CalendarService.createEvent(
-    //             req.user.id,
-    //             req.user.tenantId!,
-    //             provider.toUpperCase() as CalendarProvider,
-    //             eventData
-    //         );
-
-    //         res.status(201).json({
-    //             success: true,
-    //             data: event,
-    //             message: "Event created successfully",
-    //         } as ApiResponse);
-    //     } catch (error: any) {
-    //         console.error("Create event error:", error);
-    //         res.status(500).json({
-    //             success: false,
-    //             error: error.message || "Failed to create event",
-    //         } as ApiResponse);
-    //     }
-    // }
 
     static async createEvent(req: AuthRequest, res: Response): Promise<void> {
         try {
@@ -512,12 +533,24 @@ export class CalendarController {
                 return;
             }
 
-            // Fire and forget incremental sync for each integration
-            integrations.forEach(integ => {
-                CalendarService.processIncrementalSync(integ.id).catch(err => {
-                    console.error(`[CalendarController] Manual sync failed for ${integ.id}:`, err.message);
-                });
-            });
+            // Dispatch sync jobs to RabbitMQ for background processing
+            for (const integ of integrations) {
+                try {
+                    await CalendarSyncProducer.enqueueSync({
+                        integrationId: integ.id,
+                        userId: integ.userId,
+                        tenantId: integ.tenantId,
+                        provider: integ.provider,
+                        forceSync: true
+                    });
+                } catch (enqueueError: any) {
+                    console.error(`[CalendarController] Failed to enqueue RabbitMQ sync for ${integ.id}:`, enqueueError.message);
+                    // Fallback to direct process if MQ is down (optional, but safer for SaaS uptime)
+                    CalendarService.processIncrementalSync(integ.id).catch(err => {
+                        console.error(`[CalendarController] Emergency fallback sync failed for ${integ.id}:`, err.message);
+                    });
+                }
+            }
 
             res.status(202).json({
                 success: true,

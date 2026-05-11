@@ -1,0 +1,154 @@
+import pool from "../config/dbpool";
+import crypto from 'crypto';
+
+
+export interface MailSettings {
+  id: string;
+  tenant_id: string;
+  provider: string;
+  email: string;
+  is_verified: boolean;
+  verified_at?: Date;
+  verification_token?: string;
+  verification_sent_at?: Date;
+  verification_expires_at?: Date;
+  is_default_invoice_mail: boolean;
+  smtp_host?: string;
+  smtp_port?: number;
+  smtp_username?: string;
+  smtp_password?: string;
+  enable_ssl: boolean;
+  integration_id?: string;
+  metadata?: any;
+  created_by: string;
+  updated_by?: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export class MailSettingsModel {
+  static async getByTenantId(tenantId: string): Promise<MailSettings[]> {
+    const query = `
+      SELECT * FROM mail_settings 
+      WHERE tenant_id = $1 AND deleted_at IS NULL
+      ORDER BY created_at DESC
+    `;
+    const result = await pool.query(query, [tenantId]);
+    return result.rows;
+  }
+
+  static async getById(id: string, tenantId: string): Promise<MailSettings | null> {
+    const query = `
+      SELECT * FROM mail_settings 
+      WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+    `;
+    const result = await pool.query(query, [id, tenantId]);
+    return result.rows[0] || null;
+  }
+
+  static async getByEmail(email: string, tenantId: string): Promise<MailSettings | null> {
+    const query = `
+      SELECT * FROM mail_settings 
+      WHERE email = $1 AND tenant_id = $2 AND deleted_at IS NULL
+    `;
+    const result = await pool.query(query, [email, tenantId]);
+    return result.rows[0] || null;
+  }
+
+  static async upsert(data: Partial<MailSettings> & { tenant_id: string; email: string; created_by: string }): Promise<MailSettings> {
+    const existing = await this.getByEmail(data.email, data.tenant_id);
+
+    if (existing) {
+      const setClause: string[] = [];
+      const values: any[] = [];
+      let i = 1;
+
+      Object.entries(data).forEach(([key, value]) => {
+        if (key !== 'id' && key !== 'tenant_id' && key !== 'email' && value !== undefined) {
+          setClause.push(`${key} = $${i++}`);
+          values.push(value);
+        }
+      });
+
+      setClause.push(`updated_at = CURRENT_TIMESTAMP`);
+      values.push(existing.id);
+
+      const query = `
+        UPDATE mail_settings 
+        SET ${setClause.join(', ')} 
+        WHERE id = $${i} 
+        RETURNING *
+      `;
+      const result = await pool.query(query, values);
+      return result.rows[0];
+    } else {
+      const id = crypto.randomUUID();
+      const keys = ['id', ...Object.keys(data)];
+      const placeholders = keys.map((_, idx) => `$${idx + 1}`);
+      const values = [id, ...Object.values(data)];
+
+      const query = `
+        INSERT INTO mail_settings (${keys.join(', ')}) 
+        VALUES (${placeholders.join(', ')}) 
+        RETURNING *
+      `;
+      const result = await pool.query(query, values);
+      return result.rows[0];
+    }
+  }
+
+  static async markAsVerified(id: string, tenantId: string): Promise<void> {
+    const query = `
+      UPDATE mail_settings 
+      SET is_verified = TRUE, 
+          verified_at = CURRENT_TIMESTAMP, 
+          verification_token = NULL,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1 AND tenant_id = $2
+    `;
+    await pool.query(query, [id, tenantId]);
+  }
+
+  static async setAsDefault(id: string, tenantId: string): Promise<void> {
+    // Transaction to unset others and set this one
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        'UPDATE mail_settings SET is_default_invoice_mail = FALSE WHERE tenant_id = $1',
+        [tenantId]
+      );
+      await client.query(
+        'UPDATE mail_settings SET is_default_invoice_mail = TRUE WHERE id = $1 AND tenant_id = $2',
+        [id, tenantId]
+      );
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+
+  static async getByToken(token: string): Promise<MailSettings | null> {
+    const query = `
+      SELECT * FROM mail_settings 
+      WHERE verification_token = $1 AND verification_expires_at > CURRENT_TIMESTAMP AND deleted_at IS NULL
+    `;
+    const result = await pool.query(query, [token]);
+    return result.rows[0] || null;
+  }
+
+  static async getDefaultVerified(tenantId: string): Promise<MailSettings | null> {
+    const query = `
+      SELECT * FROM mail_settings 
+      WHERE tenant_id = $1 AND is_verified = TRUE AND is_default_invoice_mail = TRUE AND deleted_at IS NULL
+    `;
+    const result = await pool.query(query, [tenantId]);
+    return result.rows[0] || null;
+  }
+}
+
+
+// comments added in mailsettings for build
