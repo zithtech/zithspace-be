@@ -13,15 +13,15 @@ router.use(authenticateToken);
 router.use(requireAuth);
 
 // Status Routes
-router.post('/statuses', requirePermission(Permissions.LEAD_MANAGE), LeadSettingsController.createStatus);
-router.get('/statuses', requirePermission(Permissions.LEAD_READ), LeadSettingsController.getStatuses);
-router.put('/statuses/:id', requirePermission(Permissions.LEAD_MANAGE), LeadSettingsController.updateStatus);
-router.delete('/statuses/:id', requirePermission(Permissions.LEAD_MANAGE), LeadSettingsController.deleteStatus);
+router.post('/statuses', requirePermission(Permissions.LEAD_SETTING_CREATE), LeadSettingsController.createStatus);
+router.get('/statuses', requirePermission(Permissions.LEAD_SETTING_READ), LeadSettingsController.getStatuses);
+router.put('/statuses/:id', requirePermission(Permissions.LEAD_SETTING_UPDATE), LeadSettingsController.updateStatus);
+router.delete('/statuses/:id', requirePermission(Permissions.LEAD_SETTING_DELETE), LeadSettingsController.deleteStatus);
 
 // Action Routes
-router.post('/actions', requirePermission(Permissions.LEAD_MANAGE), LeadSettingsController.createAction);
-router.get('/actions', requirePermission(Permissions.LEAD_READ), LeadSettingsController.getActions);
-router.put('/actions/:id', requirePermission(Permissions.LEAD_MANAGE), LeadSettingsController.updateAction);
-router.delete('/actions/:id', requirePermission(Permissions.LEAD_MANAGE), LeadSettingsController.deleteAction);
+router.post('/actions', requirePermission(Permissions.LEAD_SETTING_CREATE), LeadSettingsController.createAction);
+router.get('/actions', requirePermission(Permissions.LEAD_SETTING_READ), LeadSettingsController.getActions);
+router.put('/actions/:id', requirePermission(Permissions.LEAD_SETTING_UPDATE), LeadSettingsController.updateAction);
+router.delete('/actions/:id', requirePermission(Permissions.LEAD_SETTING_DELETE), LeadSettingsController.deleteAction);
 
 export default router;

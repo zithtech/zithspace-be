@@ -14,7 +14,7 @@ router.use(requireAuth);
 // CREATE work detail
 router.post(
   "/",
-  requirePermission(Permissions.ONBOARDING_MANAGE),
+  requirePermission(Permissions.ONBOARDING_CREATE),
   EmployeeWorkDetailController.createWorkDetail,
 );
 
@@ -35,14 +35,14 @@ router.get(
 // UPDATE work detail
 router.put(
   "/:id",
-  requirePermission(Permissions.ONBOARDING_MANAGE),
+  requirePermission(Permissions.ONBOARDING_UPDATE),
   EmployeeWorkDetailController.updateWorkDetail,
 );
 
 // DELETE work detail
 router.delete(
   "/:id",
-  requirePermission(Permissions.ONBOARDING_MANAGE),
+  requirePermission(Permissions.ONBOARDING_DELETE),
   EmployeeWorkDetailController.deleteWorkDetail,
 );
 

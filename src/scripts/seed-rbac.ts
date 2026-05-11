@@ -41,6 +41,9 @@ const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'project.read': 'View projects and stats',
   'project.update': 'Edit project details',
   'project.delete': 'Delete projects',
+  'project.trash.read': 'View deleted projects in trash',
+  'project.trash.restore': 'Restore projects from trash',
+  'project.trash.delete': 'Permanently delete projects',
   'project.manage': 'Manage project members and see all projects',
 
   'ticket.create': 'Create tickets',
@@ -51,12 +54,12 @@ const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'ticket.archive': 'Archive tickets',
   'ticket.manage': 'Full ticket management including bulk operations',
 
-  'attendance.create': 'Create manual attendance records',
-  'attendance.read': 'View attendance records',
-  'attendance.update': 'Edit attendance records',
-  'attendance.manage': 'Full attendance management',
-  'attendance.dashboard.read': 'View attendance dashboard and stats',
-  'attendance.clock.in_out': 'Clock in and clock out for work',
+  'attendance.create': 'Manual entry creation',
+  'attendance.read': 'View attendance records and lists',
+  'attendance.update': 'Edit existing attendance records',
+  'attendance.delete': 'Remove attendance records from history',
+  'attendance.dashboard.read': 'View attendance dashboard and overview analytics',
+  'attendance.clock.in_out': 'Ability to clock in and clock out daily',
 
   'leave.dashboard.read': 'View leave dashboard and statistics',
   'leave.create': 'Submit new leave requests',
@@ -142,8 +145,7 @@ const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'onboarding.create': 'Create onboarding flows',
   'onboarding.read': 'View onboarding data',
   'onboarding.update': 'Edit onboarding flows',
-  'onboarding.manage': 'Full onboarding management',
-  'onboarding.onboarded.read': 'View onboarded employee details',
+  'onboarding.delete': 'Remove onboarding records',
   'onboarding.setting.read': 'View onboarding configurations',
   'onboarding.setting.update': 'Update onboarding configurations',
 
@@ -175,7 +177,9 @@ const PERMISSION_DESCRIPTIONS: Record<string, string> = {
 
   'daily_update.create': 'Create daily status updates',
   'daily_update.read': 'View daily updates',
-  'daily_update.manage': 'Manage daily update settings',
+  'daily_update.update': 'Edit daily status updates',
+  'daily_update.delete': 'Delete daily status updates',
+  'daily_update.manage_time': 'Manage daily update and time logs',
 
   'dashboard.read': 'View dashboard analytics and metrics',
   'integration.read': 'View third-party integrations',
@@ -185,13 +189,19 @@ const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'lead.read': 'View lead pipeline and details',
   'lead.update': 'Update lead status and information',
   'lead.delete': 'Delete or archive leads',
-  'lead.manage': 'Full lead management including settings',
+  'lead.setting.read': 'View lead management settings',
+  'lead.setting.create': 'Create lead status or actions',
+  'lead.setting.update': 'Update lead configurations',
+  'lead.setting.delete': 'Remove lead configurations',
+  'lead.trash.read': 'View deleted leads in trash',
+  'lead.trash.restore': 'Restore leads from trash',
+  'lead.trash.delete': 'Permanently delete leads',
+  'lead.manage': 'Full lead management including distribution rules',
 
   'proposal.create': 'Generate new business proposals',
   'proposal.read': 'View sent and drafted proposals',
   'proposal.update': 'Edit existing proposals',
   'proposal.delete': 'Delete proposals',
-  'proposal.manage': 'Full proposal management and templates',
 
   'vendor.create': 'Register new vendors',
   'vendor.read': 'View vendor profiles and contracts',
@@ -276,6 +286,12 @@ const PERMISSION_DESCRIPTIONS: Record<string, string> = {
 
   'notification.read': 'Access system notifications',
   'bookmark.read': 'Access personal bookmarks and shortcuts',
+
+  'time_tracking.create': 'Start and log own time',
+  'time_tracking.read': 'View own time tracking records',
+  'time_tracking.delete': 'Delete own time tracking records',
+  'time_tracking.team.read': 'View team time tracking records',
+  'time_tracking.manage_time': 'Manage team time logs and settings',
 };
 
 // ─── Role permission maps ─────────────────────────────────────────────────────

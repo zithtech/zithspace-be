@@ -23,6 +23,9 @@ export const Permissions = {
   PROJECT_READ:   'project.read',
   PROJECT_UPDATE: 'project.update',
   PROJECT_DELETE: 'project.delete',
+  PROJECT_TRASH_READ:    'project.trash.read',
+  PROJECT_TRASH_RESTORE: 'project.trash.restore',
+  PROJECT_TRASH_DELETE:  'project.trash.delete',
   PROJECT_MANAGE: 'project.manage',  // add/remove members, view all projects
 
   // ─── Tickets ─────────────────────────────────────────────────────
@@ -38,7 +41,7 @@ export const Permissions = {
   ATTENDANCE_CREATE: 'attendance.create',
   ATTENDANCE_READ:   'attendance.read',
   ATTENDANCE_UPDATE: 'attendance.update',
-  ATTENDANCE_MANAGE: 'attendance.manage',  // manual entries, admin overrides
+  ATTENDANCE_DELETE: 'attendance.delete',
   ATTENDANCE_DASHBOARD_READ: 'attendance.dashboard.read',
   ATTENDANCE_CLOCK_IN_OUT:   'attendance.clock.in_out',
 
@@ -219,8 +222,7 @@ export const Permissions = {
   ONBOARDING_CREATE: 'onboarding.create',
   ONBOARDING_READ:   'onboarding.read',
   ONBOARDING_UPDATE: 'onboarding.update',
-  ONBOARDING_MANAGE: 'onboarding.manage', // checklist templates, welcome docs, and workflow automation
-  ONBOARDING_ONBOARDED_READ: 'onboarding.onboarded.read',
+  ONBOARDING_DELETE: 'onboarding.delete',
   ONBOARDING_SETTING_READ:   'onboarding.setting.read',
   ONBOARDING_SETTING_UPDATE: 'onboarding.setting.update',
 
@@ -255,7 +257,9 @@ export const Permissions = {
   // ─── Daily Updates ───────────────────────────────────────────────
   DAILY_UPDATE_CREATE: 'daily_update.create',
   DAILY_UPDATE_READ:   'daily_update.read',
-  DAILY_UPDATE_MANAGE: 'daily_update.manage', // update reminders, question templates, and compliance tracking
+  DAILY_UPDATE_UPDATE: 'daily_update.update',
+  DAILY_UPDATE_DELETE: 'daily_update.delete',
+  DAILY_UPDATE_MANAGE_TIME: 'daily_update.manage_time', // update reminders, question templates, and compliance tracking
 
   // ─── Squads ──────────────────────────────────────────────────────
   SQUAD_CREATE: 'squad.create',
@@ -269,6 +273,13 @@ export const Permissions = {
   LEAD_READ:   'lead.read',
   LEAD_UPDATE: 'lead.update',
   LEAD_DELETE: 'lead.delete',
+  LEAD_SETTING_READ:   'lead.setting.read',
+  LEAD_SETTING_CREATE: 'lead.setting.create',
+  LEAD_SETTING_UPDATE: 'lead.setting.update',
+  LEAD_SETTING_DELETE: 'lead.setting.delete',
+  LEAD_TRASH_READ:     'lead.trash.read',
+  LEAD_TRASH_RESTORE:  'lead.trash.restore',
+  LEAD_TRASH_DELETE:   'lead.trash.delete',
   LEAD_MANAGE: 'lead.manage', // lead distribution rules, source tracking, and conversion triggers
 
   // ─── Proposals ───────────────────────────────────────────────────
@@ -276,7 +287,6 @@ export const Permissions = {
   PROPOSAL_READ:   'proposal.read',
   PROPOSAL_UPDATE: 'proposal.update',
   PROPOSAL_DELETE: 'proposal.delete',
-  PROPOSAL_MANAGE: 'proposal.manage', // legal templates, e-signature settings, and contract automation
 
   // ─── Vendors ─────────────────────────────────────────────────────
   VENDOR_CREATE: 'vendor.create',
@@ -367,9 +377,9 @@ export const Permissions = {
   // ─── Time Tracking ───────────────────────────────────────────────
   TIME_TRACKING_CREATE: 'time_tracking.create',
   TIME_TRACKING_READ:   'time_tracking.read',
-  TIME_TRACKING_UPDATE: 'time_tracking.update',
   TIME_TRACKING_DELETE: 'time_tracking.delete',
-  TIME_TRACKING_MANAGE: 'time_tracking.manage',
+  TIME_TRACKING_TEAM_READ: 'time_tracking.team.read',
+  TIME_TRACKING_MANAGE_TIME: 'time_tracking.manage_time',
 } as const;
 
 export type Permission = (typeof Permissions)[keyof typeof Permissions];
@@ -381,13 +391,22 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
   dashboard:    [Permissions.DASHBOARD_READ],
   integration:  [Permissions.INTEGRATION_READ, Permissions.INTEGRATION_MANAGE],
   user:         [Permissions.USER_CREATE, Permissions.USER_READ, Permissions.USER_UPDATE, Permissions.USER_DELETE, Permissions.USER_MANAGE],
-  project:      [Permissions.PROJECT_CREATE, Permissions.PROJECT_READ, Permissions.PROJECT_UPDATE, Permissions.PROJECT_DELETE, Permissions.PROJECT_MANAGE],
+  project: [
+    Permissions.PROJECT_CREATE,
+    Permissions.PROJECT_READ,
+    Permissions.PROJECT_UPDATE,
+    Permissions.PROJECT_DELETE,
+    Permissions.PROJECT_TRASH_READ,
+    Permissions.PROJECT_TRASH_RESTORE,
+    Permissions.PROJECT_TRASH_DELETE,
+    Permissions.PROJECT_MANAGE,
+  ],
   ticket:       [Permissions.TICKET_CREATE, Permissions.TICKET_READ, Permissions.TICKET_UPDATE, Permissions.TICKET_DELETE, Permissions.TICKET_ASSIGN, Permissions.TICKET_ARCHIVE, Permissions.TICKET_MANAGE],
   attendance:   [
     Permissions.ATTENDANCE_CREATE,
     Permissions.ATTENDANCE_READ,
     Permissions.ATTENDANCE_UPDATE,
-    Permissions.ATTENDANCE_MANAGE,
+    Permissions.ATTENDANCE_DELETE,
     Permissions.ATTENDANCE_DASHBOARD_READ,
     Permissions.ATTENDANCE_CLOCK_IN_OUT,
   ],
@@ -533,8 +552,7 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.ONBOARDING_CREATE,
     Permissions.ONBOARDING_READ,
     Permissions.ONBOARDING_UPDATE,
-    Permissions.ONBOARDING_MANAGE,
-    Permissions.ONBOARDING_ONBOARDED_READ,
+    Permissions.ONBOARDING_DELETE,
     Permissions.ONBOARDING_SETTING_READ,
     Permissions.ONBOARDING_SETTING_UPDATE,
   ],
@@ -560,10 +578,31 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.ORG_EMPLOYMENT_TYPE_DELETE,
     Permissions.ORG_MANAGE
   ],
-  daily_update: [Permissions.DAILY_UPDATE_CREATE, Permissions.DAILY_UPDATE_READ, Permissions.DAILY_UPDATE_MANAGE],
+  daily_update: [
+    Permissions.DAILY_UPDATE_CREATE,
+    Permissions.DAILY_UPDATE_READ,
+    Permissions.DAILY_UPDATE_UPDATE,
+    Permissions.DAILY_UPDATE_DELETE,
+    Permissions.DAILY_UPDATE_MANAGE_TIME,
+  ],
   squad:        [Permissions.SQUAD_CREATE, Permissions.SQUAD_READ, Permissions.SQUAD_UPDATE, Permissions.SQUAD_DELETE, Permissions.SQUAD_MANAGE],
-  lead:         [Permissions.LEAD_CREATE, Permissions.LEAD_READ, Permissions.LEAD_UPDATE, Permissions.LEAD_DELETE, Permissions.LEAD_MANAGE],
-  proposal:     [Permissions.PROPOSAL_CREATE, Permissions.PROPOSAL_READ, Permissions.PROPOSAL_UPDATE, Permissions.PROPOSAL_DELETE, Permissions.PROPOSAL_MANAGE],
+  lead: [
+    Permissions.LEAD_CREATE,
+    Permissions.LEAD_READ,
+    Permissions.LEAD_UPDATE,
+    Permissions.LEAD_DELETE,
+    Permissions.LEAD_SETTING_READ,
+    Permissions.LEAD_SETTING_CREATE,
+    Permissions.LEAD_SETTING_UPDATE,
+    Permissions.LEAD_SETTING_DELETE,
+    Permissions.LEAD_TRASH_READ,
+    Permissions.LEAD_TRASH_RESTORE,
+    Permissions.LEAD_TRASH_DELETE,
+    Permissions.PROPOSAL_CREATE,
+    Permissions.PROPOSAL_READ,
+    Permissions.PROPOSAL_UPDATE,
+    Permissions.PROPOSAL_DELETE,
+  ],
   vendor:       [Permissions.VENDOR_CREATE, Permissions.VENDOR_READ, Permissions.VENDOR_UPDATE, Permissions.VENDOR_DELETE, Permissions.VENDOR_MANAGE],
   escalation:   [Permissions.ESCALATION_CREATE, Permissions.ESCALATION_READ, Permissions.ESCALATION_UPDATE, Permissions.ESCALATION_DELETE, Permissions.ESCALATION_MANAGE],
   pipeline:     [
@@ -605,9 +644,9 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
   time_tracking: [
     Permissions.TIME_TRACKING_CREATE,
     Permissions.TIME_TRACKING_READ,
-    Permissions.TIME_TRACKING_UPDATE,
     Permissions.TIME_TRACKING_DELETE,
-    Permissions.TIME_TRACKING_MANAGE,
+    Permissions.TIME_TRACKING_TEAM_READ,
+    Permissions.TIME_TRACKING_MANAGE_TIME,
   ],
 };
 

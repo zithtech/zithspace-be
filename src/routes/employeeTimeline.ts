@@ -16,7 +16,7 @@ router.use(requireAuth);
 // ================= EMPLOYEE TIMELINE ROUTES =================
 
 // Create employee timeline
-router.post("/", requirePermission(Permissions.ONBOARDING_MANAGE), EmployeeTimelineController.createTimeline);
+router.post("/", requirePermission(Permissions.ONBOARDING_CREATE), EmployeeTimelineController.createTimeline);
 
 // Get timeline by employeeId
 router.get(
@@ -29,9 +29,9 @@ router.get(
 router.get("/:id", requirePermission(Permissions.ONBOARDING_READ), EmployeeTimelineController.getTimelineById);
 
 // Update employee timeline
-router.put("/:id", requirePermission(Permissions.ONBOARDING_MANAGE), EmployeeTimelineController.updateTimeline);
+router.put("/:id", requirePermission(Permissions.ONBOARDING_UPDATE), EmployeeTimelineController.updateTimeline);
 
 // Delete employee timeline
-router.delete("/:id", requirePermission(Permissions.ONBOARDING_MANAGE), EmployeeTimelineController.deleteTimeline);
+router.delete("/:id", requirePermission(Permissions.ONBOARDING_DELETE), EmployeeTimelineController.deleteTimeline);
 
 export default router;
