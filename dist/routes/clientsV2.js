@@ -20,6 +20,18 @@ router.use(auth_1.requireAuth);
  */
 router.get('/', clientV2Controller_1.ClientV2Controller.getClients);
 /**
+ * @route   GET /api/clients-v2/projects/check
+ * @desc    Live duplicate check for project name/code (tenant-aware)
+ *          Must be registered before /:id so it isn't captured as a clientId.
+ */
+router.get('/projects/check', clientV2Controller_1.ClientV2Controller.checkProjectAvailability);
+/**
+ * @route   GET /api/clients-v2/projects/stats
+ * @desc    Lightweight project counts (total, active) for dashboard cards.
+ *          Must be registered before /:id.
+ */
+router.get('/projects/stats', clientV2Controller_1.ClientV2Controller.getProjectStats);
+/**
  * @route   GET /api/clients-v2/:id
  * @desc    Get client v2 by ID (tenant-aware)
  * @access  Private (authenticated users within tenant)

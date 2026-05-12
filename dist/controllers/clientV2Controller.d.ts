@@ -10,6 +10,19 @@ export declare class ClientV2Controller {
     static addDocument(req: AuthRequest, res: Response): Promise<void>;
     static deleteDocument(req: AuthRequest, res: Response): Promise<void>;
     static getProjects(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Lightweight project counts for the Client Management dashboard cards.
+     * Raw psql — does not touch Prisma.
+     * Returns { total, active } scoped to the current tenant.
+     */
+    static getProjectStats(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Live duplicate check for project name/code within the current tenant.
+     * Either or both query params may be present; only fields ≥ 3 chars are evaluated.
+     * Returns { codeExists, nameExists } so the FE can surface inline feedback as the user types.
+     * Raw psql — does not touch Prisma.
+     */
+    static checkProjectAvailability(req: AuthRequest, res: Response): Promise<void>;
     static addProject(req: AuthRequest, res: Response): Promise<void>;
     /**
      * @route   PUT /api/clients-v2/projects/:projectId

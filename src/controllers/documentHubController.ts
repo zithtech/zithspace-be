@@ -1086,7 +1086,8 @@ export class DocumentHubController {
                 { documentId: { in: accessibleDocIds } },
               ],
             },
-            select: { id: true, type: true },
+            select: { id: true, type: true, title: true, parentId: true, position: true },
+            orderBy: { position: "asc" },
           },
         },
         orderBy: {
