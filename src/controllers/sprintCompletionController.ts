@@ -87,10 +87,10 @@ export class SprintCompletionController {
       });
 
       // Separate completed and pending tickets
-      const completedTickets = tickets.filter((t) => 
+      const completedTickets = tickets.filter((t) =>
         t.status.toLowerCase() === "completed" || t.status.toLowerCase() === "live"
       );
-      const pendingTickets = tickets.filter((t) => 
+      const pendingTickets = tickets.filter((t) =>
         t.status.toLowerCase() !== "completed" && t.status.toLowerCase() !== "live"
       );
 
@@ -595,8 +595,8 @@ export class SprintCompletionController {
         where: {
           tenantId: req.tenantId,
           OR: [
-            { 
-              sprintPlanId: sprintId, 
+            {
+              sprintPlanId: sprintId,
               status: { in: ['completed', 'live', 'COMPLETED', 'LIVE'] }
             },
             // Include tickets that were moved but marked as completed

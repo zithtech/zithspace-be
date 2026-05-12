@@ -192,13 +192,21 @@ class TicketController {
             const currentDate = new Date();
             const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
             const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
-            // General statistics
+            // General statistics (All time within tenant)
             const generalStats = await database_1.prisma.ticket.groupBy({
                 by: ["status"],
                 where: {
                     tenantId: req.tenantId,
                     isDeleted: false,
-                    createdAt: { gte: startOfMonth, lte: endOfMonth },
+                },
+                _count: true,
+            });
+            // Project-specific statistics
+            const projectWiseStats = await database_1.prisma.ticket.groupBy({
+                by: ["projectId", "status"],
+                where: {
+                    tenantId: req.tenantId,
+                    isDeleted: false,
                 },
                 _count: true,
             });
@@ -214,8 +222,24 @@ class TicketController {
                 live: generalStats.find((s) => s.status === "live")?._count || 0,
                 blocked: generalStats.find((s) => s.status === "blocked")?._count || 0,
             };
+            // Format projectStats as expected by the frontend: { id: projectId, statuses: [{ status, count }] }
+            const projectStatsMap = new Map();
+            projectWiseStats.forEach((stat) => {
+                if (!projectStatsMap.has(stat.projectId)) {
+                    projectStatsMap.set(stat.projectId, []);
+                }
+                projectStatsMap.get(stat.projectId).push({
+                    status: stat.status,
+                    count: stat._count,
+                });
+            });
+            const projectStats = Array.from(projectStatsMap.entries()).map(([id, statuses]) => ({
+                id,
+                statuses,
+            }));
             const stats = {
                 generalStats: statusCounts,
+                projectStats,
                 period: {
                     start: startOfMonth,
                     end: endOfMonth,
@@ -843,7 +867,15 @@ class TicketController {
             }
             // Build sort object
             const orderBy = {};
-            orderBy[sortBy] = sortOrder === "desc" ? "desc" : "asc";
+            let finalSortBy = sortBy;
+            let finalSortOrder = sortOrder;
+            // If we are looking at archived tickets and no specific sort was requested (using default),
+            // default to archivedAt desc so latest archived shows first.
+            if (archivedOnly === "true" && !req.query.sortBy) {
+                finalSortBy = "archivedAt";
+                finalSortOrder = "desc";
+            }
+            orderBy[finalSortBy] = finalSortOrder === "desc" ? "desc" : "asc";
             // Execute query with pagination
             const skip = (Number(page) - 1) * Number(limit);
             // OPTIMIZED: Fixed Promise.all syntax + Reduced data fetching
@@ -1222,6 +1254,16 @@ class TicketController {
                     dataToUpdate[field] = val;
                 }
             });
+            // Auto-set archivedAt if isArchived is being set to true
+            if (dataToUpdate.isArchived === true && !existingTicket.isArchived) {
+                dataToUpdate.archivedAt = new Date();
+                dataToUpdate.archivedById = req.user.id;
+            }
+            // Clear archivedAt if isArchived is being set to false (unarchive)
+            else if (dataToUpdate.isArchived === false && existingTicket.isArchived) {
+                dataToUpdate.archivedAt = null;
+                dataToUpdate.archivedById = null;
+            }
             log(`Final data for Update: ${JSON.stringify(dataToUpdate)}`);
             // Actually update the ticket in database
             const ticket = await database_1.prisma.ticket.update({
@@ -1529,6 +1571,144 @@ class TicketController {
             res.status(500).json({
                 success: false,
                 error: "Failed to update tickets",
+            });
+        }
+    }
+    /**
+     * Bulk archive tickets (tenant-aware)
+     */
+    static async bulkArchive(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { ticketIds } = req.body;
+            if (!ticketIds || !Array.isArray(ticketIds) || ticketIds.length === 0) {
+                res.status(400).json({
+                    success: false,
+                    error: "Ticket IDs array is required",
+                });
+                return;
+            }
+            const result = await database_1.prisma.ticket.updateMany({
+                where: {
+                    id: { in: ticketIds },
+                    tenantId: req.tenantId,
+                },
+                data: {
+                    isArchived: true,
+                    archivedAt: new Date(),
+                    archivedById: req.user.id,
+                    updatedAt: new Date(),
+                },
+            });
+            res.status(200).json({
+                success: true,
+                data: { updatedCount: result.count },
+                message: `${result.count} tickets archived successfully`,
+            });
+        }
+        catch (error) {
+            console.error("Bulk archive error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to archive tickets",
+            });
+        }
+    }
+    /**
+     * Bulk unarchive tickets (tenant-aware)
+     */
+    static async bulkUnarchive(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { ticketIds } = req.body;
+            if (!ticketIds || !Array.isArray(ticketIds) || ticketIds.length === 0) {
+                res.status(400).json({
+                    success: false,
+                    error: "Ticket IDs array is required",
+                });
+                return;
+            }
+            const result = await database_1.prisma.ticket.updateMany({
+                where: {
+                    id: { in: ticketIds },
+                    tenantId: req.tenantId,
+                },
+                data: {
+                    isArchived: false,
+                    archivedAt: null,
+                    archivedById: null,
+                    updatedAt: new Date(),
+                },
+            });
+            res.status(200).json({
+                success: true,
+                data: { updatedCount: result.count },
+                message: `${result.count} tickets restored successfully`,
+            });
+        }
+        catch (error) {
+            console.error("Bulk unarchive error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to restore tickets",
+            });
+        }
+    }
+    /**
+     * Bulk delete tickets (tenant-aware)
+     */
+    static async bulkDelete(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { ticketIds } = req.body;
+            if (!ticketIds || !Array.isArray(ticketIds) || ticketIds.length === 0) {
+                res.status(400).json({
+                    success: false,
+                    error: "Ticket IDs array is required",
+                });
+                return;
+            }
+            const result = await database_1.prisma.ticket.updateMany({
+                where: {
+                    id: { in: ticketIds },
+                    tenantId: req.tenantId,
+                },
+                data: {
+                    isDeleted: true,
+                    deletedAt: new Date(),
+                    deletedById: req.user.id,
+                    updatedAt: new Date(),
+                },
+            });
+            res.status(200).json({
+                success: true,
+                data: { deletedCount: result.count },
+                message: `${result.count} tickets moved to trash`,
+            });
+        }
+        catch (error) {
+            console.error("Bulk delete error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to delete tickets",
             });
         }
     }
