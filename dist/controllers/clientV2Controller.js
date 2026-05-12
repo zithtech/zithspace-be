@@ -1,7 +1,11 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ClientV2Controller = void 0;
 const database_1 = require("@/config/database");
+const dbpool_1 = __importDefault(require("@/config/dbpool"));
 const r2Client_1 = require("@/utils/r2Client");
 // Utility for auto-generating Client Code
 async function generateClientCode(tenantId, idPrefix = 'CL-') {
@@ -81,6 +85,7 @@ class ClientV2Controller {
                         where,
                         include: {
                             accountManager: { select: { id: true, first_name: true, last_name: true } },
+                            _count: { select: { ClientProject: true } },
                         },
                         orderBy: { createdAt: 'desc' },
                         skip,
@@ -140,6 +145,20 @@ class ClientV2Controller {
             // Filter out allocations where employee is missing if prisma generate hasn't updated yet
             if (client.allocations) {
                 client.allocations = client.allocations.filter((a) => a.employee !== null);
+            }
+            // Enrich documents with the uploader's name (raw psql, no Prisma relation needed)
+            const documents = client.documents;
+            if (documents && documents.length > 0) {
+                const uploaderIds = Array.from(new Set(documents.map((d) => d.uploadedById).filter((id) => !!id)));
+                if (uploaderIds.length > 0) {
+                    const placeholders = uploaderIds.map((_, i) => `$${i + 1}`).join(',');
+                    const result = await dbpool_1.default.query(`SELECT id, name FROM users WHERE id IN (${placeholders})`, uploaderIds);
+                    const idToName = new Map(result.rows.map((r) => [r.id, r.name]));
+                    client.documents = documents.map((d) => ({
+                        ...d,
+                        uploadedByName: idToName.get(d.uploadedById) || null,
+                    }));
+                }
             }
             res.status(200).json({ success: true, data: client });
         }
@@ -284,13 +303,52 @@ class ClientV2Controller {
                 return;
             }
             const { clientId } = req.params;
-            const { base64, fileName, category, documentType } = req.body;
-            if (!base64 || !fileName || !category || !documentType) {
-                res.status(400).json({ success: false, error: 'Missing required document fields' });
+            const { base64, externalUrl, fileName, category, documentType } = req.body;
+            if (!category || !documentType) {
+                res.status(400).json({ success: false, error: 'Category and document type are required' });
                 return;
             }
-            // Upload to Cloudflare R2
-            const fileUrl = await (0, r2Client_1.uploadClientDocumentToR2)(base64, fileName, req.tenantId, clientId, category, documentType);
+            if (!base64 && !externalUrl) {
+                res.status(400).json({ success: false, error: 'Either a file upload or an external URL is required' });
+                return;
+            }
+            if (base64 && !fileName) {
+                res.status(400).json({ success: false, error: 'fileName is required when uploading a file' });
+                return;
+            }
+            let fileUrl;
+            let resolvedFileName;
+            if (externalUrl) {
+                // External link path — no R2 upload
+                try {
+                    // Basic URL validation
+                    // eslint-disable-next-line no-new
+                    new URL(externalUrl);
+                }
+                catch {
+                    res.status(400).json({ success: false, error: 'externalUrl is not a valid URL' });
+                    return;
+                }
+                fileUrl = externalUrl;
+                // Prefer caller-supplied display name; else derive from URL path
+                if (fileName && fileName.trim().length > 0) {
+                    resolvedFileName = fileName.trim();
+                }
+                else {
+                    try {
+                        const u = new URL(externalUrl);
+                        const last = u.pathname.split('/').filter(Boolean).pop();
+                        resolvedFileName = last ? decodeURIComponent(last) : u.hostname;
+                    }
+                    catch {
+                        resolvedFileName = externalUrl;
+                    }
+                }
+            }
+            else {
+                resolvedFileName = fileName;
+                fileUrl = await (0, r2Client_1.uploadClientDocumentToR2)(base64, fileName, req.tenantId, clientId, category, documentType);
+            }
             // Save record in database
             await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
                 const document = await prisma.clientDocumentV2.create({
@@ -299,7 +357,7 @@ class ClientV2Controller {
                         clientId,
                         category,
                         documentType,
-                        fileName,
+                        fileName: resolvedFileName,
                         fileUrl,
                         uploadedById: req.user.id
                     }
@@ -383,6 +441,75 @@ class ClientV2Controller {
         catch (error) {
             console.error('getProjects error:', error);
             res.status(500).json({ success: false, error: 'Failed to fetch client projects' });
+        }
+    }
+    /**
+     * Lightweight project counts for the Client Management dashboard cards.
+     * Raw psql — does not touch Prisma.
+     * Returns { total, active } scoped to the current tenant.
+     */
+    static async getProjectStats(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({ success: false, error: 'Tenant context required' });
+                return;
+            }
+            // Count DISTINCT projects that have at least one client mapping.
+            // This matches what the user sees in the Client > Projects tab and
+            // ignores orphan project rows (legacy / test data with no client link).
+            const totalRes = await dbpool_1.default.query(`SELECT COUNT(DISTINCT cp.project_id)::int AS count
+                 FROM client_projects cp
+                 INNER JOIN projects p ON p.id = cp.project_id
+                 WHERE cp.tenant_id = $1 AND lower(p.status) != 'deleted'`, [req.tenantId]);
+            const activeRes = await dbpool_1.default.query(`SELECT COUNT(DISTINCT cp.project_id)::int AS count
+                 FROM client_projects cp
+                 INNER JOIN projects p ON p.id = cp.project_id
+                 WHERE cp.tenant_id = $1 AND lower(p.status) = 'active'`, [req.tenantId]);
+            res.status(200).json({
+                success: true,
+                data: {
+                    total: totalRes.rows[0]?.count ?? 0,
+                    active: activeRes.rows[0]?.count ?? 0,
+                },
+            });
+        }
+        catch (error) {
+            console.error('getProjectStats error:', error);
+            res.status(500).json({ success: false, error: 'Failed to fetch project stats' });
+        }
+    }
+    /**
+     * Live duplicate check for project name/code within the current tenant.
+     * Either or both query params may be present; only fields ≥ 3 chars are evaluated.
+     * Returns { codeExists, nameExists } so the FE can surface inline feedback as the user types.
+     * Raw psql — does not touch Prisma.
+     */
+    static async checkProjectAvailability(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({ success: false, error: 'Tenant context required' });
+                return;
+            }
+            const rawName = typeof req.query.name === 'string' ? req.query.name.trim() : '';
+            const rawCode = typeof req.query.code === 'string' ? req.query.code.trim() : '';
+            let codeExists = false;
+            let nameExists = false;
+            if (rawCode.length >= 3) {
+                const r = await dbpool_1.default.query('SELECT 1 FROM projects WHERE tenant_id = $1 AND lower(trim(code)) = lower(trim($2)) LIMIT 1', [req.tenantId, rawCode]);
+                codeExists = (r.rowCount ?? 0) > 0;
+            }
+            if (rawName.length >= 3) {
+                const r = await dbpool_1.default.query('SELECT 1 FROM projects WHERE tenant_id = $1 AND lower(trim(name)) = lower(trim($2)) LIMIT 1', [req.tenantId, rawName]);
+                nameExists = (r.rowCount ?? 0) > 0;
+            }
+            res.status(200).json({
+                success: true,
+                data: { codeExists, nameExists },
+            });
+        }
+        catch (error) {
+            console.error('checkProjectAvailability error:', error);
+            res.status(500).json({ success: false, error: 'Failed to check project availability' });
         }
     }
     static async addProject(req, res) {
