@@ -11,6 +11,9 @@ import {
 
 const router = Router();
 
+import { requirePermission } from '../middleware/permission';
+import { Permissions } from '../types/permissions';
+
 // All routes require authentication
 router.use(authenticateToken);
 
@@ -18,19 +21,20 @@ router.use(authenticateToken);
  * GET /api/mail-configuration
  * Get mail configuration for the current tenant
  */
-router.get('/', MailConfigurationController.getMailConfiguration);
+router.get('/', requirePermission(Permissions.MAIL_READ), MailConfigurationController.getMailConfiguration);
 
 /**
  * POST /api/mail-configuration
  * Create or update mail configuration for the current tenant
  */
-router.post('/', validateMailConfiguration, MailConfigurationController.upsertMailConfiguration);
+router.post('/', requirePermission(Permissions.MAIL_UPDATE), validateMailConfiguration, MailConfigurationController.upsertMailConfiguration);
 
 /**
  * PUT /api/mail-configuration/:id
  * Update specific mail configuration by ID
  */
 router.put('/:id', 
+  requirePermission(Permissions.MAIL_UPDATE),
   validateMailConfigurationId, 
   validateAtLeastOneField,
   validateMailConfigurationUpdate, 
@@ -41,30 +45,30 @@ router.put('/:id',
  * DELETE /api/mail-configuration/:id
  * Delete specific mail configuration by ID
  */
-router.delete('/:id', validateMailConfigurationId, MailConfigurationController.deleteMailConfiguration);
+router.delete('/:id', requirePermission(Permissions.MAIL_DELETE), validateMailConfigurationId, MailConfigurationController.deleteMailConfiguration);
 
 /**
  * DELETE /api/mail-configuration
  * Delete mail configuration for the current tenant
  */
-router.delete('/', MailConfigurationController.deleteMailConfiguration);
+router.delete('/', requirePermission(Permissions.MAIL_DELETE), MailConfigurationController.deleteMailConfiguration);
 
 /**
  * POST /api/mail-configuration/test
  * Test mail configuration by sending a test email
  */
-router.post('/test', MailConfigurationController.testMailConfiguration);
+router.post('/test', requirePermission(Permissions.MAIL_UPDATE), MailConfigurationController.testMailConfiguration);
 
 /**
  * GET /api/mail-configuration/status
  * Get mail status (configured, active, etc.)
  */
-router.get('/status', MailConfigurationController.getMailStatus);
+router.get('/status', requirePermission(Permissions.MAIL_READ), MailConfigurationController.getMailStatus);
 
 /**
  * GET /api/mail-configuration/all
  * Get all mail configurations (admin only)
  */
-router.get('/all', validateMailConfigurationQuery, MailConfigurationController.getAllMailConfigurations);
+router.get('/all', requirePermission(Permissions.MAIL_READ), validateMailConfigurationQuery, MailConfigurationController.getAllMailConfigurations);
 
 export default router;

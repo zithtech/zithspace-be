@@ -38,6 +38,8 @@ import express from "express";
 import ShortcutController from "@/controllers/shortcut.controller";
 import { resolveTenant } from "@/middleware/tenantContext";
 import { authenticateToken, requireAuth } from "@/middleware/auth";
+import { requirePermission } from "@/middleware/permission";
+import { Permissions } from "@/types/permissions";
 
 const router = express.Router();
 
@@ -45,10 +47,10 @@ router.use(resolveTenant);
 router.use(authenticateToken);
 router.use(requireAuth);
 
-router.post("/", ShortcutController.createShortcut);
+router.post("/", requirePermission(Permissions.BOOKMARK_CREATE), ShortcutController.createShortcut);
 
-router.get("/", ShortcutController.getShortcuts);
+router.get("/", requirePermission(Permissions.BOOKMARK_READ), ShortcutController.getShortcuts);
 
-router.delete("/:id", ShortcutController.deleteShortcut);
+router.delete("/:id", requirePermission(Permissions.BOOKMARK_DELETE), ShortcutController.deleteShortcut);
 
 export default router;

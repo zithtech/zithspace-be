@@ -2,11 +2,10 @@ import { Router, Request, Response, NextFunction } from "express";
 import { CalendarController } from "@/controllers/calendarcontroller";
 import { authenticateToken, requireAuth } from "@/middleware/auth";
 import { resolveTenant } from "@/middleware/tenantContext";
+import { requirePermission } from "@/middleware/permission";
 
 const router = Router();
 console.log("📅 Calendar router initialized");
-
-
 
 // Helper: optional auth — tries to authenticate but never blocks the request
 function optionalAuth(req: Request, res: Response, next: NextFunction) {
@@ -16,17 +15,19 @@ function optionalAuth(req: Request, res: Response, next: NextFunction) {
         authenticateToken(req as any, res, () => next());
     });
 }
+
 router.get("/test", (req, res) => {
     res.json({ success: true, message: "Calendar router reached" });
 });
 
-router.get("/:provider/status", optionalAuth, CalendarController.getStatus);
-router.get("/providers", resolveTenant, authenticateToken, requireAuth, CalendarController.getProviders);
+router.get("/:provider/status", optionalAuth, requirePermission('calendar.read'), CalendarController.getStatus);
+router.get("/providers", resolveTenant, authenticateToken, requireAuth, requirePermission('calendar.read'), CalendarController.getProviders);
 router.get(
     "/:provider/connect",
     resolveTenant,
     authenticateToken,
     requireAuth,
+    requirePermission('calendar.manage'),
     CalendarController.connect
 );
 router.get("/:provider/callback", CalendarController.callback);
@@ -35,6 +36,7 @@ router.post(
     resolveTenant,
     authenticateToken,
     requireAuth,
+    requirePermission('calendar.manage'),
     CalendarController.disconnect
 );
 router.post(
@@ -42,6 +44,7 @@ router.post(
     resolveTenant,
     authenticateToken,
     requireAuth,
+    requirePermission('calendar.create'),
     CalendarController.checkOverlap
 );
 router.get(
@@ -49,6 +52,7 @@ router.get(
     resolveTenant,
     authenticateToken,
     requireAuth,
+    requirePermission('calendar.read'),
     CalendarController.getEvents
 );
 router.post(
@@ -56,6 +60,7 @@ router.post(
     resolveTenant,
     authenticateToken,
     requireAuth,
+    requirePermission('calendar.create'),
     CalendarController.createEvent
 );
 router.put(
@@ -63,6 +68,7 @@ router.put(
     resolveTenant,
     authenticateToken,
     requireAuth,
+    requirePermission('calendar.update'),
     CalendarController.updateEvent
 );
 router.delete(
@@ -70,6 +76,7 @@ router.delete(
     resolveTenant,
     authenticateToken,
     requireAuth,
+    requirePermission('calendar.delete'),
     CalendarController.deleteEvent
 );
 router.post(
@@ -77,6 +84,7 @@ router.post(
     resolveTenant,
     authenticateToken,
     requireAuth,
+    requirePermission('calendar.read'),
     CalendarController.syncEvents
 );
 

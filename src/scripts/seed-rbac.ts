@@ -305,8 +305,15 @@ const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'skills.delete': 'Remove skills',
   'skills.manage': 'Full skills portal management',
 
+  'notification.create': 'Send system notifications',
   'notification.read': 'Access system notifications',
+  'notification.update': 'Mark notifications as read or dismiss',
+  'notification.delete': 'Delete notifications',
+
+  'bookmark.create': 'Create new personal bookmarks and shortcuts',
   'bookmark.read': 'Access personal bookmarks and shortcuts',
+  'bookmark.update': 'Edit personal bookmarks',
+  'bookmark.delete': 'Remove personal bookmarks',
 
   'time_tracking.create': 'Start and log own time',
   'time_tracking.read': 'View own time tracking records',

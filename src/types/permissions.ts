@@ -166,6 +166,7 @@ export const Permissions = {
   // ─── Settings ────────────────────────────────────────────────────
   SETTINGS_READ:   'settings.read',
   SETTINGS_UPDATE: 'settings.update',
+  SETTINGS_DELETE: 'settings.delete',
   SETTINGS_MANAGE: 'settings.manage',  // global system preferences and core branding
 
   // ─── Roles / RBAC management ─────────────────────────────────────
@@ -393,8 +394,15 @@ export const Permissions = {
   SKILLS_DELETE:     'skills.delete',
   SKILLS_MANAGE:     'skills.manage', // competency matrix, training catalog, and certification tracking
 
-  NOTIFICATION_READ: 'notification.read',
-  BOOKMARK_READ:     'bookmark.read',
+  NOTIFICATION_CREATE: 'notification.create',
+  NOTIFICATION_READ:   'notification.read',
+  NOTIFICATION_UPDATE: 'notification.update',
+  NOTIFICATION_DELETE: 'notification.delete',
+
+  BOOKMARK_CREATE:     'bookmark.create',
+  BOOKMARK_READ:       'bookmark.read',
+  BOOKMARK_UPDATE:     'bookmark.update',
+  BOOKMARK_DELETE:     'bookmark.delete',
 
   // ─── Time Tracking ───────────────────────────────────────────────
   TIME_TRACKING_CREATE: 'time_tracking.create',
@@ -594,7 +602,7 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.SALARY_MANAGE,
   ],
   client:       [Permissions.CLIENT_CREATE, Permissions.CLIENT_READ, Permissions.CLIENT_UPDATE, Permissions.CLIENT_DELETE, Permissions.CLIENT_MANAGE],
-  settings:     [Permissions.SETTINGS_READ, Permissions.SETTINGS_UPDATE, Permissions.SETTINGS_MANAGE],
+  settings:     [Permissions.SETTINGS_READ, Permissions.SETTINGS_UPDATE, Permissions.SETTINGS_DELETE, Permissions.SETTINGS_MANAGE],
   role:         [Permissions.ROLE_CREATE, Permissions.ROLE_READ, Permissions.ROLE_UPDATE, Permissions.ROLE_DELETE, Permissions.ROLE_ASSIGN],
   report:       [Permissions.REPORT_READ, Permissions.REPORT_MANAGE],
   document:     [Permissions.DOCUMENT_CREATE, Permissions.DOCUMENT_READ, Permissions.DOCUMENT_UPDATE, Permissions.DOCUMENT_DELETE, Permissions.DOCUMENT_MANAGE],
@@ -689,7 +697,8 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.CALENDAR_CREATE, Permissions.CALENDAR_READ, Permissions.CALENDAR_UPDATE, Permissions.CALENDAR_DELETE, Permissions.CALENDAR_MANAGE,
     Permissions.CHAT_CREATE, Permissions.CHAT_READ, Permissions.CHAT_UPDATE, Permissions.CHAT_DELETE, Permissions.CHAT_MANAGE,
     Permissions.SKILLS_CREATE, Permissions.SKILLS_READ, Permissions.SKILLS_UPDATE, Permissions.SKILLS_DELETE, Permissions.SKILLS_MANAGE,
-    Permissions.NOTIFICATION_READ, Permissions.BOOKMARK_READ
+    Permissions.NOTIFICATION_CREATE, Permissions.NOTIFICATION_READ, Permissions.NOTIFICATION_UPDATE, Permissions.NOTIFICATION_DELETE,
+    Permissions.BOOKMARK_CREATE, Permissions.BOOKMARK_READ, Permissions.BOOKMARK_UPDATE, Permissions.BOOKMARK_DELETE
   ],
   time_tracking: [
     Permissions.TIME_TRACKING_CREATE,

@@ -246,7 +246,8 @@ export const ADMIN_DEFAULT_PERMISSIONS: string[] = [
   'calendar.create', 'calendar.read', 'calendar.update', 'calendar.delete', 'calendar.manage',
   'chat.create', 'chat.read', 'chat.update', 'chat.delete', 'chat.manage',
   'skills.create', 'skills.read', 'skills.update', 'skills.delete', 'skills.manage',
-  'notification.read', 'bookmark.read',
+  'notification.create', 'notification.read', 'notification.update', 'notification.delete',
+  'bookmark.create', 'bookmark.read', 'bookmark.update', 'bookmark.delete',
   'time_tracking.create', 'time_tracking.read', 'time_tracking.delete', 'time_tracking.team.read', 'time_tracking.manage_time',
 ];
 
@@ -281,6 +282,7 @@ export const USER_DEFAULT_PERMISSIONS: string[] = [
   'calendar.create', 'calendar.read', 'calendar.update', 'calendar.delete',
   'chat.create', 'chat.read', 'chat.update', 'chat.delete',
   'skills.create', 'skills.read', 'skills.update', 'skills.delete',
-  'notification.read', 'bookmark.read',
+  'notification.create', 'notification.read', 'notification.update', 'notification.delete',
+  'bookmark.create', 'bookmark.read', 'bookmark.update', 'bookmark.delete',
   'time_tracking.create', 'time_tracking.read', 'time_tracking.delete',
 ];
