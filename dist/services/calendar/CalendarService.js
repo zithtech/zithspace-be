@@ -98,12 +98,12 @@ class CalendarService {
             tenantId,
         };
         if (startDate || endDate) {
-            // If date range is specified, filter by date range OR include recurring events
+            // If date range is specified, filter by intersection OR include recurring events
             whereCondition.OR = [
                 {
                     AND: [
-                        startDate ? { startTime: { gte: startDate } } : {},
-                        endDate ? { startTime: { lte: endDate } } : {},
+                        startDate ? { endTime: { gt: startDate } } : {},
+                        endDate ? { startTime: { lt: endDate } } : {},
                     ]
                 },
                 { isRecurring: true }
@@ -517,8 +517,38 @@ class CalendarService {
     //         update: mapped,
     //     });
     // }
+    /**
+     * Check for any overlapping events for a specific user and time range.
+     */
+    static async checkForOverlap(userId, tenantId, startTime, endTime, excludeEventId) {
+        const start = typeof startTime === 'string' ? new Date(startTime) : startTime;
+        const end = typeof endTime === 'string' ? new Date(endTime) : endTime;
+        // Expand window slightly to catch boundary overlaps
+        const bufferStart = new Date(start.getTime() - 1000);
+        const bufferEnd = new Date(end.getTime() + 1000);
+        // 1. Get all events for the user in this window (includes expanded recurring events)
+        const events = await this.getEvents(userId, tenantId, bufferStart, bufferEnd);
+        // 2. Filter for actual overlaps, excluding the event itself (if editing)
+        const overlaps = events.filter(event => {
+            // Skip the event being edited
+            if (excludeEventId && (event.id === excludeEventId || event.externalId === excludeEventId)) {
+                return false;
+            }
+            const estart = new Date(event.startTime);
+            const eend = new Date(event.endTime);
+            // Timestamp intersection check: (S1 < E2) && (E1 > S2)
+            const isOverlapping = (estart < endTime) && (eend > startTime);
+            return isOverlapping;
+        });
+        return overlaps;
+    }
     static async createEvent(userId, tenantId, provider, eventData) {
         console.log("🟡🟡🟡 BACKEND SERVICE - CREATE EVENT START 🟡🟡🟡");
+        // --- STRICT OVERLAP ENFORCEMENT ---
+        const overlaps = await this.checkForOverlap(userId, tenantId, new Date(eventData.startTime), new Date(eventData.endTime));
+        if (overlaps.length > 0) {
+            throw new Error(`STRICT_OVERLAP_CONFLICT: ${overlaps.length} existing event(s) overlap with this time slot. Double-booking is not allowed.`);
+        }
         console.log("🟡 userId:", userId);
         console.log("🟡 provider:", provider);
         console.log("🟡 eventData:", JSON.stringify(eventData, null, 2));
@@ -674,6 +704,11 @@ class CalendarService {
      * Update an event on the external provider and save locally.
      */
     static async updateEvent(userId, tenantId, provider, externalId, eventData, action, occurrenceDate, userEmail) {
+        // --- STRICT OVERLAP ENFORCEMENT ---
+        const overlaps = await this.checkForOverlap(userId, tenantId, new Date(eventData.startTime), new Date(eventData.endTime), externalId);
+        if (overlaps.length > 0) {
+            throw new Error(`STRICT_OVERLAP_CONFLICT: ${overlaps.length} existing event(s) overlap with this time slot. Double-booking is not allowed.`);
+        }
         const { accessToken, calendarId } = await this.getValidAccessToken(userId, provider);
         if (!calendarId)
             throw new Error(`Primary calendar ID not found for ${provider}`);

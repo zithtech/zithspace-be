@@ -221,13 +221,22 @@ export class TicketController {
         0
       );
 
-      // General statistics
+      // General statistics (All time within tenant)
       const generalStats = await prisma.ticket.groupBy({
         by: ["status"],
         where: {
           tenantId: req.tenantId,
           isDeleted: false,
-          createdAt: { gte: startOfMonth, lte: endOfMonth },
+        },
+        _count: true,
+      });
+
+      // Project-specific statistics
+      const projectWiseStats = await prisma.ticket.groupBy({
+        by: ["projectId", "status"],
+        where: {
+          tenantId: req.tenantId,
+          isDeleted: false,
         },
         _count: true,
       });
@@ -236,27 +245,39 @@ export class TicketController {
         (sum, stat) => sum + stat._count,
         0
       );
+
       const statusCounts = {
         total: totalTickets,
-        in_progress:
-          generalStats.find((s) => s.status === "in_progress")?._count || 0,
-        dev_complete:
-          generalStats.find((s) => s.status === "dev_complete")?._count || 0,
-        in_testing:
-          generalStats.find((s) => s.status === "in_testing")?._count || 0,
-        in_review:
-          generalStats.find((s) => s.status === "in_review")?._count || 0,
-        not_started:
-          generalStats.find((s) => s.status === "not_started")?._count || 0,
-        completed:
-          generalStats.find((s) => s.status === "completed")?._count || 0,
-        live:
-          generalStats.find((s) => s.status === "live")?._count || 0,
+        in_progress: generalStats.find((s) => s.status === "in_progress")?._count || 0,
+        dev_complete: generalStats.find((s) => s.status === "dev_complete")?._count || 0,
+        in_testing: generalStats.find((s) => s.status === "in_testing")?._count || 0,
+        in_review: generalStats.find((s) => s.status === "in_review")?._count || 0,
+        not_started: generalStats.find((s) => s.status === "not_started")?._count || 0,
+        completed: generalStats.find((s) => s.status === "completed")?._count || 0,
+        live: generalStats.find((s) => s.status === "live")?._count || 0,
         blocked: generalStats.find((s) => s.status === "blocked")?._count || 0,
       };
 
+      // Format projectStats as expected by the frontend: { id: projectId, statuses: [{ status, count }] }
+      const projectStatsMap = new Map();
+      projectWiseStats.forEach((stat) => {
+        if (!projectStatsMap.has(stat.projectId)) {
+          projectStatsMap.set(stat.projectId, []);
+        }
+        projectStatsMap.get(stat.projectId).push({
+          status: stat.status,
+          count: stat._count,
+        });
+      });
+
+      const projectStats = Array.from(projectStatsMap.entries()).map(([id, statuses]) => ({
+        id,
+        statuses,
+      }));
+
       const stats = {
         generalStats: statusCounts,
+        projectStats,
         period: {
           start: startOfMonth,
           end: endOfMonth,
@@ -279,6 +300,7 @@ export class TicketController {
       } as ApiResponse);
     }
   }
+
 
   /**
    * Create a new ticket (tenant-aware)
@@ -973,7 +995,18 @@ export class TicketController {
 
       // Build sort object
       const orderBy: any = {};
-      orderBy[sortBy as string] = sortOrder === "desc" ? "desc" : "asc";
+      
+      let finalSortBy = sortBy as string;
+      let finalSortOrder = sortOrder as string;
+
+      // If we are looking at archived tickets and no specific sort was requested (using default),
+      // default to archivedAt desc so latest archived shows first.
+      if (archivedOnly === "true" && !req.query.sortBy) {
+        finalSortBy = "archivedAt";
+        finalSortOrder = "desc";
+      }
+
+      orderBy[finalSortBy] = finalSortOrder === "desc" ? "desc" : "asc";
 
       // Execute query with pagination
       const skip = (Number(page) - 1) * Number(limit);
@@ -1394,6 +1427,17 @@ export class TicketController {
         }
       });
 
+      // Auto-set archivedAt if isArchived is being set to true
+      if (dataToUpdate.isArchived === true && !existingTicket.isArchived) {
+        dataToUpdate.archivedAt = new Date();
+        dataToUpdate.archivedById = req.user!.id;
+      }
+      // Clear archivedAt if isArchived is being set to false (unarchive)
+      else if (dataToUpdate.isArchived === false && existingTicket.isArchived) {
+        dataToUpdate.archivedAt = null;
+        dataToUpdate.archivedById = null;
+      }
+
       log(`Final data for Update: ${JSON.stringify(dataToUpdate)}`);
 
       // Actually update the ticket in database
@@ -1489,6 +1533,19 @@ export class TicketController {
         const parentIdToInvalidate = ticket.parentId || existingTicket.parentId;
         if (parentIdToInvalidate) {
           promises.push(cacheService.invalidateTicket(parentIdToInvalidate, req.tenantId));
+        }
+
+        // Sync bug list when ticket assignee changes
+        if (mappedUpdates.assigneeId !== undefined && mappedUpdates.assigneeId !== existingTicket.assigneeId) {
+          // Update bugs linked to this ticket with new assignee
+          promises.push(
+            pool.query(
+              `UPDATE bugs 
+                 SET assignee_id = $1, updated_at = NOW()
+               WHERE ticket_id = $2 AND tenant_id = $3`,
+              [mappedUpdates.assigneeId, id, req.tenantId]
+            )
+          );
         }
 
         await Promise.allSettled(promises);
@@ -1733,6 +1790,157 @@ export class TicketController {
       } as ApiResponse);
     }
   }
+
+  /**
+   * Bulk archive tickets (tenant-aware)
+   */
+  static async bulkArchive(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { ticketIds } = req.body;
+
+      if (!ticketIds || !Array.isArray(ticketIds) || ticketIds.length === 0) {
+        res.status(400).json({
+          success: false,
+          error: "Ticket IDs array is required",
+        } as ApiResponse);
+        return;
+      }
+
+      const result = await prisma.ticket.updateMany({
+        where: {
+          id: { in: ticketIds },
+          tenantId: req.tenantId,
+        },
+        data: {
+          isArchived: true,
+          archivedAt: new Date(),
+          archivedById: req.user.id,
+          updatedAt: new Date(),
+        },
+      });
+
+      res.status(200).json({
+        success: true,
+        data: { updatedCount: result.count },
+        message: `${result.count} tickets archived successfully`,
+      } as ApiResponse);
+    } catch (error) {
+      console.error("Bulk archive error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to archive tickets",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Bulk unarchive tickets (tenant-aware)
+   */
+  static async bulkUnarchive(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { ticketIds } = req.body;
+
+      if (!ticketIds || !Array.isArray(ticketIds) || ticketIds.length === 0) {
+        res.status(400).json({
+          success: false,
+          error: "Ticket IDs array is required",
+        } as ApiResponse);
+        return;
+      }
+
+      const result = await prisma.ticket.updateMany({
+        where: {
+          id: { in: ticketIds },
+          tenantId: req.tenantId,
+        },
+        data: {
+          isArchived: false,
+          archivedAt: null,
+          archivedById: null,
+          updatedAt: new Date(),
+        },
+      });
+
+      res.status(200).json({
+        success: true,
+        data: { updatedCount: result.count },
+        message: `${result.count} tickets restored successfully`,
+      } as ApiResponse);
+    } catch (error) {
+      console.error("Bulk unarchive error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to restore tickets",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Bulk delete tickets (tenant-aware)
+   */
+  static async bulkDelete(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { ticketIds } = req.body;
+
+      if (!ticketIds || !Array.isArray(ticketIds) || ticketIds.length === 0) {
+        res.status(400).json({
+          success: false,
+          error: "Ticket IDs array is required",
+        } as ApiResponse);
+        return;
+      }
+
+      const result = await prisma.ticket.updateMany({
+        where: {
+          id: { in: ticketIds },
+          tenantId: req.tenantId,
+        },
+        data: {
+          isDeleted: true,
+          deletedAt: new Date(),
+          deletedById: req.user.id,
+          updatedAt: new Date(),
+        },
+      });
+
+      res.status(200).json({
+        success: true,
+        data: { deletedCount: result.count },
+        message: `${result.count} tickets moved to trash`,
+      } as ApiResponse);
+    } catch (error) {
+      console.error("Bulk delete error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to delete tickets",
+      } as ApiResponse);
+    }
+  }
+
 
   /**
    * Get ticket statistics by project (tenant-aware)

@@ -1,0 +1,36 @@
+
+export const CALENDAR_SYNC_EXCHANGE = 'calendar.sync.exchange';
+export const CALENDAR_SYNC_QUEUE = 'calendar.sync.queue';
+export const CALENDAR_SYNC_ROUTING_KEY = 'calendar.sync.process';
+
+export const CALENDAR_SYNC_DLX = 'calendar.sync.dlx';
+export const CALENDAR_SYNC_DLQ = 'calendar.sync.dead_letter';
+export const CALENDAR_SYNC_DL_ROUTING_KEY = 'calendar.sync.failed';
+
+// Retry Topology (Exponential Backoff)
+export const CALENDAR_SYNC_RETRY_EXCHANGE = 'calendar.sync.retry.exchange';
+export const CALENDAR_SYNC_RETRY_QUEUE_1M = 'calendar.sync.retry.1m';
+export const CALENDAR_SYNC_RETRY_QUEUE_5M = 'calendar.sync.retry.5m';
+export const CALENDAR_SYNC_RETRY_QUEUE_15M = 'calendar.sync.retry.15m';
+
+export const CALENDAR_SYNC_RETRY_RK_1M = 'calendar.sync.retry.1m';
+export const CALENDAR_SYNC_RETRY_RK_5M = 'calendar.sync.retry.5m';
+export const CALENDAR_SYNC_RETRY_RK_15M = 'calendar.sync.retry.15m';
+
+export const MAIL_SYNC_EXCHANGE = 'mail.sync.exchange';
+export const MAIL_SYNC_QUEUE = 'mail.sync.queue';
+export const MAIL_SYNC_ROUTING_KEY = 'mail.sync.process';
+
+export const MAIL_SYNC_DLX = 'mail.sync.dlx';
+export const MAIL_SYNC_DLQ = 'mail.sync.dead_letter';
+export const MAIL_SYNC_DL_ROUTING_KEY = 'mail.sync.failed';
+
+// Retry Topology (Exponential Backoff)
+export const MAIL_SYNC_RETRY_EXCHANGE = 'mail.sync.retry.exchange';
+export const MAIL_SYNC_RETRY_QUEUE_1M = 'mail.sync.retry.1m';
+export const MAIL_SYNC_RETRY_QUEUE_5M = 'mail.sync.retry.5m';
+export const MAIL_SYNC_RETRY_QUEUE_15M = 'mail.sync.retry.15m';
+
+export const MAIL_SYNC_RETRY_RK_1M = 'mail.sync.retry.1m';
+export const MAIL_SYNC_RETRY_RK_5M = 'mail.sync.retry.5m';
+export const MAIL_SYNC_RETRY_RK_15M = 'mail.sync.retry.15m';

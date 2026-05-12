@@ -37,6 +37,13 @@ export const Permissions = {
   TICKET_ARCHIVE: 'ticket.archive',
   TICKET_MANAGE:  'ticket.manage',   // bulk ops, workflow management
 
+  // ─── Bug List (QA workspace; converts to tickets) ────────────────
+  BUG_CREATE: 'bug.create',
+  BUG_READ:   'bug.read',
+  BUG_UPDATE: 'bug.update',
+  BUG_DELETE: 'bug.delete',
+  BUG_MANAGE: 'bug.manage',
+
   // ─── Attendance ──────────────────────────────────────────────────
   ATTENDANCE_CREATE: 'attendance.create',
   ATTENDANCE_READ:   'attendance.read',

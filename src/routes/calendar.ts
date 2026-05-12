@@ -37,6 +37,13 @@ router.post(
     requireAuth,
     CalendarController.disconnect
 );
+router.post(
+    "/events/check-overlap",
+    resolveTenant,
+    authenticateToken,
+    requireAuth,
+    CalendarController.checkOverlap
+);
 router.get(
     "/events",
     resolveTenant,

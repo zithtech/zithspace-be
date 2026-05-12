@@ -78,11 +78,25 @@ export declare function uploadEmployeeAssetToR2({ base64, fileName, tenantId, em
  */
 export declare function uploadCandidateDocumentToR2(base64File: string, fileName: string, tenantId: string, candidateId: string, documentType: string): Promise<string>;
 /**
+ * Upload a bug-list attachment to Cloudflare R2.
+ * Path: {tenantId}/bug-list/{folderId}/{sheetId}/{bugId}/{uniqueId}_{fileName}
+ */
+export declare function uploadBugAttachmentToR2(base64File: string, fileName: string, tenantId: string, folderId: string, sheetId: string, bugId: string): Promise<{
+    fileUrl: string;
+    fileSize: number;
+    fileType: string;
+}>;
+/**
  * Delete any file from Cloudflare R2
  * @param fileUrl - Full URL of the file to delete
  * @param tenantId - Tenant ID for validation
  */
 export declare function deleteFileFromR2(fileUrl: string, tenantId: string): Promise<void>;
+/**
+ * Delete bug attachment from Cloudflare R2
+ * More robust than deleteFileFromR2 as it doesn't depend on .r2.dev in URL
+ */
+export declare function deleteBugAttachmentFromR2(fileUrl: string, tenantId: string): Promise<void>;
 /**
  * Delete image from Cloudflare R2
  * @param imageUrl - Full URL of the image to delete
@@ -109,11 +123,9 @@ export declare function cleanupOrphanedImages(oldHtml: string, newHtml: string, 
  */
 export declare function generatePresignedUrl(fileUrl: string, expiresIn?: number): Promise<string>;
 /**
- * Upload Escalation document to Cloudflare R2
- * @param base64File - Base64 encoded file string
- * @param fileName - Original file name
- * @param tenantId - Tenant ID
- * @param escalationId - Temporary or generated escalation ID
- * @returns Public URL of uploaded document
+ * Fetch a file from R2 and return its content as a Buffer
+ * Uses the internal S3 client with credentials.
+ * @param fileUrl - The public-facing URL of the file
  */
+export declare function getFileBufferFromR2(fileUrl: string): Promise<Buffer>;
 export declare function uploadEscalationDocumentToR2(base64File: string, fileName: string, tenantId: string, escalationId: string): Promise<string>;
