@@ -51,7 +51,17 @@ const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'ticket.update': 'Edit ticket details',
   'ticket.delete': 'Delete tickets',
   'ticket.assign': 'Assign tickets to users',
-  'ticket.archive': 'Archive tickets',
+  'ticket.bucket.read': 'View ticket buckets/collections',
+  'ticket.bucket.create': 'Create new ticket buckets',
+  'ticket.bucket.update': 'Update bucket configurations',
+  'ticket.bucket.delete': 'Delete ticket buckets',
+  'ticket.setting.read': 'View ticket settings',
+  'ticket.setting.update': 'Update ticket workflows and settings',
+  'ticket.trash.read': 'View deleted tickets in trash',
+  'ticket.trash.restore': 'Restore tickets from trash',
+  'ticket.trash.delete': 'Permanently delete tickets',
+  'ticket.archive.read': 'View archived tickets',
+  'ticket.archive.restore': 'Restore tickets from archive',
   'ticket.manage': 'Full ticket management including bulk operations',
 
   'attendance.create': 'Manual entry creation',
@@ -239,6 +249,17 @@ const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'exit.config.read': 'View exit process configurations',
   'exit.config.update': 'Update exit process configurations',
 
+  'bug.create': 'Log new bugs in bug list',
+  'bug.read': 'View bug list entries',
+  'bug.update': 'Update bug status and details',
+  'bug.delete': 'Remove bugs from list',
+  'bug.trash.read': 'View deleted bugs in trash',
+  'bug.trash.restore': 'Restore bugs from trash',
+  'bug.trash.delete': 'Permanently delete bugs',
+  'bug.archive.read': 'View archived bugs',
+  'bug.archive.restore': 'Restore bugs from archive',
+  'bug.manage': 'Manage bug list folders and sheets',
+
   'squad.create': 'Create new team squads',
   'squad.read': 'View squads and their members',
   'squad.update': 'Edit squad details',
@@ -325,7 +346,13 @@ async function main() {
   let skippedPerms = 0;
 
   for (const permName of ALL_PERMISSIONS) {
-    const [resource, ...actionParts] = permName.split('.');
+    let [resource, ...actionParts] = permName.split('.');
+    
+    // Treat 'bug' as a sub-resource of 'ticket' for grouping
+    if (resource === 'bug') {
+      resource = 'ticket';
+    }
+
     const action = actionParts.join('.');
     const description = PERMISSION_DESCRIPTIONS[permName];
 
