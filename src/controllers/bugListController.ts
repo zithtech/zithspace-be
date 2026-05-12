@@ -263,6 +263,7 @@ function shapeBug(row: any, attachments: any[], externalLinks: any[]) {
     status: row.status,
     bugStatus: row.bug_status,
     tags: row.tags || [],
+    comments: row.comments,
     ticketId: row.ticket_id,
     ticketNumber: row.ticket_number,
     assigneeId: row.assignee_id,
@@ -1383,6 +1384,7 @@ export class BugListController {
       bugStatus,
       attachments,
       externalLinks,
+      comments,
     } = req.body;
 
     if (!description || typeof description !== "string") {
@@ -1442,8 +1444,8 @@ export class BugListController {
       const insertRes = await pool.query(
         `INSERT INTO bugs
            (tenant_id, folder_id, sheet_id, bug_number, title, description, module,
-            bug_type, severity, status, bug_status, tags, assignee_id, created_by_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13)
+            bug_type, severity, status, bug_status, tags, assignee_id, created_by_id, comments)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14)
          RETURNING id`,
         [
           req.tenantId,
@@ -1459,6 +1461,7 @@ export class BugListController {
           Array.isArray(tags) ? tags : [],
           assigneeId || null,
           req.user!.id,
+          comments || null,
         ],
       );
       const bugId = insertRes.rows[0].id;
@@ -1496,6 +1499,7 @@ export class BugListController {
       assigneeId,
       attachments,
       externalLinks,
+      comments,
     } = req.body;
 
     if (severity !== undefined && severity !== null) {
@@ -1548,6 +1552,7 @@ export class BugListController {
       if (bugStatus !== undefined) set("bug_status", bugStatus);
       if (tags !== undefined) set("tags", Array.isArray(tags) ? tags : []);
       if (assigneeId !== undefined) set("assignee_id", assigneeId);
+      if (comments !== undefined) set("comments", comments);
 
       if (sets.length > 0) {
         values.push(id, req.tenantId);
