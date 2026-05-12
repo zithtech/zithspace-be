@@ -27,6 +27,7 @@ router.post("/folders/bulk-permanent-delete", requirePermission(Permissions.BUG_
 // ─── Sheets ────────────────────────────────────────────────────────────────
 router.get("/folders/:folderId/sheets", requirePermission(Permissions.BUG_READ), BugListController.listSheets);
 router.get("/sheets/archived", requirePermission(Permissions.BUG_READ), BugListController.listArchivedSheets);
+router.get("/sheets/project", requirePermission(Permissions.BUG_READ), BugListController.listProjectSheets);
 router.get("/sheets/trashed", requirePermission(Permissions.BUG_READ), BugListController.listTrashedSheets);
 router.post("/folders/:folderId/sheets", requirePermission(Permissions.BUG_CREATE), BugListController.createSheet);
 router.put("/sheets/:id", requirePermission(Permissions.BUG_UPDATE), BugListController.updateSheet);

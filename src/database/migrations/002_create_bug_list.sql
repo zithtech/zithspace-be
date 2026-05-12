@@ -109,3 +109,7 @@ DROP TRIGGER IF EXISTS bugs_updated_at ON bugs;
 CREATE TRIGGER bugs_updated_at
   BEFORE UPDATE ON bugs
   FOR EACH ROW EXECUTE FUNCTION bug_list_set_updated_at();
+
+
+
+ALTER TABLE bugs ADD COLUMN comments TEXT;
