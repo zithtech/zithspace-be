@@ -244,6 +244,7 @@ export const Permissions = {
   TIMESHEET_CREATE: 'timesheet.create',
   TIMESHEET_READ: 'timesheet.read',
   TIMESHEET_UPDATE: 'timesheet.update',
+  TIMESHEET_DELETE: 'timesheet.delete',
   TIMESHEET_APPROVE: 'timesheet.approve',
   TIMESHEET_MANAGE: 'timesheet.manage', // overriding timesheets, setting billing rates, and reporting
 
@@ -595,7 +596,7 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.ONBOARDING_SETTING_READ,
     Permissions.ONBOARDING_SETTING_UPDATE,
   ],
-  timesheet: [Permissions.TIMESHEET_CREATE, Permissions.TIMESHEET_READ, Permissions.TIMESHEET_UPDATE, Permissions.TIMESHEET_APPROVE, Permissions.TIMESHEET_MANAGE],
+  timesheet: [Permissions.TIMESHEET_CREATE, Permissions.TIMESHEET_READ, Permissions.TIMESHEET_UPDATE, Permissions.TIMESHEET_DELETE, Permissions.TIMESHEET_APPROVE, Permissions.TIMESHEET_MANAGE],
   org: [
     Permissions.ORG_DASHBOARD_READ,
     Permissions.ORG_READ,
