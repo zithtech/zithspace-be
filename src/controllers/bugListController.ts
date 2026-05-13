@@ -263,6 +263,7 @@ function shapeBug(row: any, attachments: any[], externalLinks: any[]) {
     status: row.status,
     bugStatus: row.bug_status,
     tags: row.tags || [],
+    comments: row.comments,
     ticketId: row.ticket_id,
     ticketNumber: row.ticket_number,
     assigneeId: row.assignee_id,
@@ -307,17 +308,24 @@ function shapeBug(row: any, attachments: any[], externalLinks: any[]) {
 export class BugListController {
   static async listFolders(req: AuthRequest, res: Response): Promise<void> {
     if (!ensureAuth(req, res)) return;
+    const { projectId } = req.query;
     try {
-      const result = await pool.query(
-        `SELECT f.*,
+      let query = `SELECT f.*, 
                 (SELECT COUNT(*)::int FROM bug_sheets s WHERE s.folder_id = f.id) AS sheet_count,
                 (SELECT COUNT(*)::int FROM bug_sheets s WHERE s.folder_id = f.id AND s.status = 'completed') AS completed_sheet_count,
                 (SELECT COUNT(*)::int FROM bugs b WHERE b.folder_id = f.id) AS bug_count
            FROM bug_folders f
-          WHERE f.tenant_id = $1 AND f.status NOT IN ('archived', 'trash')
-          ORDER BY f.created_at DESC`,
-        [req.tenantId],
-      );
+          WHERE f.tenant_id = $1 AND f.status NOT IN ('archived', 'trash')`;
+      const values: any[] = [req.tenantId];
+
+      if (projectId && projectId !== 'all') {
+        query += ` AND f.project_id = $2`;
+        values.push(projectId);
+      }
+
+      query += ` ORDER BY f.created_at DESC`;
+
+      const result = await pool.query(query, values);
       const data = result.rows.map((row: any) => ({
         id: row.id,
         tenantId: row.tenant_id,
@@ -694,6 +702,44 @@ export class BugListController {
     } catch (err: any) {
       console.error("listSheets error:", err);
       bad(res, 500, err.message || "Failed to list sheets");
+    }
+  }
+
+  static async listProjectSheets(req: AuthRequest, res: Response): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    const { projectId } = req.query as { projectId: string };
+    if (!projectId) {
+      bad(res, 400, "projectId is required");
+      return;
+    }
+    try {
+      const r = await pool.query(
+        `SELECT s.*, f.name as folder_name 
+         FROM bug_sheets s
+         INNER JOIN bug_folders f ON s.folder_id = f.id
+         WHERE f.project_id = $1 AND f.tenant_id = $2 
+           AND s.status NOT IN ('archived', 'trash')
+           AND f.status NOT IN ('archived', 'trash')
+         ORDER BY f.name ASC, s.name ASC`,
+        [projectId, req.tenantId]
+      );
+      res.json({ 
+        success: true, 
+        data: r.rows.map(row => ({
+          id: row.id,
+          folderId: row.folder_id,
+          folderName: row.folder_name,
+          name: row.name,
+          description: row.description,
+          status: row.status,
+          createdById: row.created_by_id,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at
+        })) 
+      });
+    } catch (err: any) {
+      console.error("listProjectSheets error:", err);
+      bad(res, 500, err.message || "Failed to load project sheets");
     }
   }
 
@@ -1144,6 +1190,7 @@ export class BugListController {
       createdById,
       assigneeId,
       scope,
+      projectId,
       createdFrom,
       createdTo,
       updatedFrom,
@@ -1171,6 +1218,10 @@ export class BugListController {
       if (bugType) push("b.bug_type = $$", bugType);
       if (createdById) push("b.created_by_id = $$", createdById);
       if (assigneeId) push("b.assignee_id = $$", assigneeId);
+      if (projectId && projectId !== 'all') {
+        conditions.push(`b.folder_id IN (SELECT id FROM bug_folders WHERE project_id = $${values.length + 1})`);
+        values.push(projectId);
+      }
       
       // Default scope: exclude trash/archived unless explicitly requested
       if (scope === "trash") {
@@ -1333,6 +1384,7 @@ export class BugListController {
       bugStatus,
       attachments,
       externalLinks,
+      comments,
     } = req.body;
 
     if (!description || typeof description !== "string") {
@@ -1392,8 +1444,8 @@ export class BugListController {
       const insertRes = await pool.query(
         `INSERT INTO bugs
            (tenant_id, folder_id, sheet_id, bug_number, title, description, module,
-            bug_type, severity, status, bug_status, tags, assignee_id, created_by_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13)
+            bug_type, severity, status, bug_status, tags, assignee_id, created_by_id, comments)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14)
          RETURNING id`,
         [
           req.tenantId,
@@ -1409,6 +1461,7 @@ export class BugListController {
           Array.isArray(tags) ? tags : [],
           assigneeId || null,
           req.user!.id,
+          comments || null,
         ],
       );
       const bugId = insertRes.rows[0].id;
@@ -1446,6 +1499,7 @@ export class BugListController {
       assigneeId,
       attachments,
       externalLinks,
+      comments,
     } = req.body;
 
     if (severity !== undefined && severity !== null) {
@@ -1498,6 +1552,7 @@ export class BugListController {
       if (bugStatus !== undefined) set("bug_status", bugStatus);
       if (tags !== undefined) set("tags", Array.isArray(tags) ? tags : []);
       if (assigneeId !== undefined) set("assignee_id", assigneeId);
+      if (comments !== undefined) set("comments", comments);
 
       if (sets.length > 0) {
         values.push(id, req.tenantId);
@@ -1952,7 +2007,7 @@ export class BugListController {
 
   static async getStats(req: AuthRequest, res: Response): Promise<void> {
     if (!ensureAuth(req, res)) return;
-    const { folderId, sheetId, scope } = req.query as Record<string, string>;
+    const { folderId, sheetId, scope, projectId } = req.query as Record<string, string>;
     try {
       const conditions: string[] = ["tenant_id = $1"];
       const values: any[] = [req.tenantId];
@@ -1963,6 +2018,11 @@ export class BugListController {
       if (folderId) push("folder_id = $$", folderId);
       if (sheetId) push("sheet_id = $$", sheetId);
       if (scope === "mine") push("created_by_id = $$", req.user!.id);
+      if (projectId && projectId !== 'all') {
+        // Since bugs don't have project_id, we filter by folder's project_id
+        conditions.push(`folder_id IN (SELECT id FROM bug_folders WHERE project_id = $${values.length + 1})`);
+        values.push(projectId);
+      }
 
       if (scope === "trash") {
         conditions.push("(status = 'trash' OR EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = sheet_id AND s.status = 'trash') OR EXISTS (SELECT 1 FROM bug_folders f WHERE f.id = folder_id AND f.status = 'trash'))");
@@ -1970,11 +2030,21 @@ export class BugListController {
         conditions.push("(status = 'archived' OR EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = sheet_id AND s.status = 'archived') OR EXISTS (SELECT 1 FROM bug_folders f WHERE f.id = folder_id AND f.status = 'archived'))");
       } else {
         conditions.push("status NOT IN ('trash', 'archived')");
-        conditions.push("NOT EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = sheet_id AND s.status = 'archived')");
+        conditions.push("NOT EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = sheet_id AND s.status IN ('archived', 'trash'))");
+        conditions.push("NOT EXISTS (SELECT 1 FROM bug_folders f WHERE f.id = folder_id AND f.status IN ('archived', 'trash'))");
       }
 
       const where = conditions.join(" AND ");
-      const [r, foldersRes, sheetsRes] = await Promise.all([
+      
+      // For summary metrics, we also need to respect projectId if provided
+      let summaryWhere = "b.tenant_id = $2";
+      const summaryValues: any[] = [req.user!.id, req.tenantId];
+      if (projectId && projectId !== 'all') {
+        summaryWhere += ` AND EXISTS (SELECT 1 FROM bug_folders f_inner WHERE f_inner.id = b.folder_id AND f_inner.project_id = $3)`;
+        summaryValues.push(projectId);
+      }
+
+      const [r, foldersRes, sheetsRes, summaryRes] = await Promise.all([
         pool.query(
           `SELECT
               COUNT(*)::int AS total,
@@ -1987,15 +2057,30 @@ export class BugListController {
           values,
         ),
         pool.query(
-          `SELECT COUNT(*)::int AS c FROM bug_folders WHERE tenant_id = $1`,
-          [req.tenantId],
+          `SELECT COUNT(*)::int AS c FROM bug_folders WHERE tenant_id = $1 ${projectId && projectId !== 'all' ? 'AND project_id = $2' : ''}`,
+          projectId && projectId !== 'all' ? [req.tenantId, projectId] : [req.tenantId],
         ),
         pool.query(
-          `SELECT COUNT(*)::int AS c FROM bug_sheets WHERE tenant_id = $1`,
-          [req.tenantId],
+          `SELECT COUNT(*)::int AS c FROM bug_sheets WHERE tenant_id = $1 ${projectId && projectId !== 'all' ? 'AND folder_id IN (SELECT id FROM bug_folders WHERE project_id = $2)' : ''}`,
+          projectId && projectId !== 'all' ? [req.tenantId, projectId] : [req.tenantId],
+        ),
+        pool.query(
+          `SELECT
+              COUNT(*) FILTER (WHERE created_by_id = $1 AND status NOT IN ('trash', 'archived') 
+                AND NOT EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = b.sheet_id AND s.status IN ('archived', 'trash'))
+                AND NOT EXISTS (SELECT 1 FROM bug_folders f WHERE f.id = b.folder_id AND f.status IN ('archived', 'trash')))::int AS mine,
+              COUNT(*) FILTER (WHERE status = 'trash' 
+                OR EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = b.sheet_id AND s.status = 'trash') 
+                OR EXISTS (SELECT 1 FROM bug_folders f WHERE f.id = b.folder_id AND f.status = 'trash'))::int AS trash,
+              COUNT(*) FILTER (WHERE status = 'archived' 
+                OR EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = b.sheet_id AND s.status = 'archived') 
+                OR EXISTS (SELECT 1 FROM bug_folders f WHERE f.id = b.folder_id AND f.status = 'archived'))::int AS archived
+             FROM bugs b WHERE ${summaryWhere}`,
+          summaryValues,
         ),
       ]);
       const stats = r.rows[0];
+      const summary = summaryRes.rows[0];
       res.json({
         success: true,
         data: {
@@ -2007,6 +2092,9 @@ export class BugListController {
           linked: stats.linked,
           totalFolders: foldersRes.rows[0].c,
           totalSheets: sheetsRes.rows[0].c,
+          mineTotal: summary.mine,
+          trashTotal: summary.trash,
+          archivedTotal: summary.archived,
         },
       });
     } catch (err: any) {
