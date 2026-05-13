@@ -79,8 +79,29 @@ router.post('/', requirePermission(Permissions.ACCOUNT_CREATE), TransactionsCont
 router.put('/:id', requirePermission(Permissions.ACCOUNT_UPDATE), TransactionsController.updateTransaction);
 
 /**
+ * @route   GET /api/transactions/trash
+ * @desc    Get all trashed transactions (tenant-aware)
+ * @access  Private (admin only)
+ */
+router.get('/trash/all', requirePermission(Permissions.ACCOUNT_DELETE), TransactionsController.getTrashTransactions);
+
+/**
+ * @route   POST /api/transactions/:id/restore
+ * @desc    Restore a trashed transaction (tenant-aware)
+ * @access  Private (admin only)
+ */
+router.post('/:id/restore', requirePermission(Permissions.ACCOUNT_UPDATE), TransactionsController.restoreTransaction);
+
+/**
+ * @route   DELETE /api/transactions/:id/permanent
+ * @desc    Permanently delete a trashed transaction (tenant-aware)
+ * @access  Private (admin only)
+ */
+router.delete('/:id/permanent', requirePermission(Permissions.ACCOUNT_DELETE), TransactionsController.permanentlyDeleteTransaction);
+
+/**
  * @route   DELETE /api/transactions/:id
- * @desc    Delete transaction (tenant-aware)
+ * @desc    Move transaction to trash (tenant-aware)
  * @access  Private (admin only)
  * @param   id - Transaction ID
  */

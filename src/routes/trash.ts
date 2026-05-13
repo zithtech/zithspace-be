@@ -21,7 +21,7 @@ router.use(requireAuth);
  * @query   page, limit, projectId, search, sortBy, sortOrder
  * @note    Only returns tickets deleted within the last 7 days
  */
-router.get('/', requirePermission(Permissions.TICKET_READ), TrashController.getTrashTickets);
+router.get('/', requirePermission(Permissions.TICKET_TRASH_READ), TrashController.getTrashTickets);
 
 /**
  * @route   POST /api/trash/move
@@ -29,7 +29,7 @@ router.get('/', requirePermission(Permissions.TICKET_READ), TrashController.getT
  * @access  Private (authenticated users within tenant)
  * @body    { ticketIds: string[] }
  */
-router.post('/move', requirePermission(Permissions.TICKET_UPDATE), TrashController.moveToTrash);
+router.post('/move', requirePermission(Permissions.TICKET_DELETE), TrashController.moveToTrash);
 
 /**
  * @route   POST /api/trash/restore
@@ -37,7 +37,7 @@ router.post('/move', requirePermission(Permissions.TICKET_UPDATE), TrashControll
  * @access  Private (authenticated users within tenant)
  * @body    { ticketIds: string[] }
  */
-router.post('/restore', requirePermission(Permissions.TICKET_UPDATE), TrashController.restoreFromTrash);
+router.post('/restore', requirePermission(Permissions.TICKET_TRASH_RESTORE), TrashController.restoreFromTrash);
 
 /**
  * @route   DELETE /api/trash/permanent
@@ -46,7 +46,7 @@ router.post('/restore', requirePermission(Permissions.TICKET_UPDATE), TrashContr
  * @body    { ticketIds: string[] }
  * @warning This action cannot be undone
  */
-router.delete('/permanent', requirePermission(Permissions.TICKET_MANAGE), TrashController.permanentlyDelete);
+router.delete('/permanent', requirePermission(Permissions.TICKET_TRASH_DELETE), TrashController.permanentlyDelete);
 
 /**
  * @route   POST /api/trash/empty
@@ -55,7 +55,7 @@ router.delete('/permanent', requirePermission(Permissions.TICKET_MANAGE), TrashC
  * @body    { force?: boolean, projectId?: string }
  * @note    If not forced, only deletes tickets older than 7 days
  */
-router.post('/empty', requirePermission(Permissions.TICKET_MANAGE), TrashController.emptyTrash);
+router.post('/empty', requirePermission(Permissions.TICKET_TRASH_DELETE), TrashController.emptyTrash);
 
 /**
  * @route   POST /api/trash/auto-purge

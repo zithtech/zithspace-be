@@ -17,7 +17,7 @@ router.use(requireTenant);
  * Lead Routes
  */
 // Allow lead creation with optional auth (to support extensions)
-router.post('/', optionalAuth, LeadController.createLead);
+router.post('/', optionalAuth, requirePermission(Permissions.LEAD_CREATE),LeadController.createLead);
 
 // Strictly protected routes
 router.use(authenticateToken);

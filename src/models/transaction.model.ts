@@ -45,7 +45,7 @@ export async function getTransactions(
     sortOrder = 'desc'
   } = options;
 
-  const whereConditions: string[] = ['t.tenant_id = $1'];
+  const whereConditions: string[] = ['t.tenant_id = $1', 't.deleted_at IS NULL'];
   const values: any[] = [tenantId];
   let paramIndex = 2;
 
@@ -256,7 +256,72 @@ export async function updateTransaction(id: string, tenantId: string, updates: a
 }
 
 export async function deleteTransactionQuery(id: string, tenantId: string): Promise<boolean> {
-  const query = `DELETE FROM transactions WHERE id = $1 AND tenant_id = $2`;
+  const query = `UPDATE transactions SET deleted_at = CURRENT_TIMESTAMP WHERE id = $1 AND tenant_id = $2`;
+  const result = await pool.query(query, [id, tenantId]);
+  return result.rowCount > 0;
+}
+
+export async function getTrashTransactions(
+  tenantId: string,
+  options: { page?: number; limit?: number; search?: string } = {}
+): Promise<{ transactions: Transaction[]; total: number }> {
+  const { page = 1, limit = 20, search } = options;
+  const offset = (page - 1) * limit;
+  const values: any[] = [tenantId];
+  let paramIndex = 2;
+
+  let searchCondition = "";
+  if (search) {
+    searchCondition = `AND (t.description ILIKE $${paramIndex} OR t.category ILIKE $${paramIndex})`;
+    values.push(`%${search}%`);
+    paramIndex++;
+  }
+
+  const query = `
+    SELECT 
+      t.id, t.tenant_id, t.user_id, t.type, t.amount, t.description, t.category, t.date, t.metadata, t.created_at, t.updated_at,
+      json_build_object(
+        'id', u.id,
+        'name', u.name,
+        'workEmail', u.work_email,
+        'avatarUrl', u.avatar_url
+      ) as user
+    FROM transactions t
+    LEFT JOIN users u ON t.user_id = u.id
+    WHERE t.tenant_id = $1 AND t.deleted_at IS NOT NULL ${searchCondition}
+    ORDER BY t.updated_at DESC
+    LIMIT $${paramIndex++} OFFSET $${paramIndex}
+  `;
+  values.push(limit, offset);
+
+  const countQuery = `
+    SELECT COUNT(*) as total
+    FROM transactions t
+    WHERE t.tenant_id = $1 AND t.deleted_at IS NOT NULL ${searchCondition}
+  `;
+
+  const [result, countRes] = await Promise.all([
+    pool.query(query, values),
+    pool.query(countQuery, values.slice(0, -2))
+  ]);
+
+  return {
+    transactions: result.rows.map(row => ({
+      ...row,
+      amount: parseFloat(row.amount)
+    })),
+    total: parseInt(countRes.rows[0].total)
+  };
+}
+
+export async function restoreTransactionQuery(id: string, tenantId: string): Promise<boolean> {
+  const query = `UPDATE transactions SET deleted_at = NULL WHERE id = $1 AND tenant_id = $2`;
+  const result = await pool.query(query, [id, tenantId]);
+  return result.rowCount > 0;
+}
+
+export async function permanentlyDeleteTransactionQuery(id: string, tenantId: string): Promise<boolean> {
+  const query = `DELETE FROM transactions WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NOT NULL`;
   const result = await pool.query(query, [id, tenantId]);
   return result.rowCount > 0;
 }

@@ -19,7 +19,7 @@ router.use(requireAuth);
  * @desc    Get active release plans (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/active', requirePermission(Permissions.PROJECT_READ), ReleasePlansController.getActiveReleasePlans);
+router.get('/active', requirePermission(Permissions.TICKET_PLAN_READ), ReleasePlansController.getActiveReleasePlans);
 
 /**
  * @route   GET /api/release-plans/available
@@ -27,14 +27,14 @@ router.get('/active', requirePermission(Permissions.PROJECT_READ), ReleasePlansC
  * @access  Private (authenticated users within tenant)
  * @query   projectId (required)
  */
-router.get('/available', requirePermission(Permissions.PROJECT_READ), ReleasePlansController.getAvailableSprints);
+router.get('/available', requirePermission(Permissions.TICKET_PLAN_READ), ReleasePlansController.getAvailableSprints);
 
 /**
  * @route   GET /api/release-plans/stats
  * @desc    Get release plan statistics (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/stats', requirePermission(Permissions.PROJECT_READ), ReleasePlansController.getReleasePlanStats);
+router.get('/stats', requirePermission(Permissions.TICKET_PLAN_READ), ReleasePlansController.getReleasePlanStats);
 
 /**
  * @route   GET /api/release-plans/projects/:projectId
@@ -42,7 +42,7 @@ router.get('/stats', requirePermission(Permissions.PROJECT_READ), ReleasePlansCo
  * @access  Private (authenticated users within tenant)
  * @param   projectId - Project ID
  */
-router.get('/projects/:projectId', requirePermission(Permissions.PROJECT_READ), ReleasePlansController.getReleasePlansByProject);
+router.get('/projects/:projectId', requirePermission(Permissions.TICKET_PLAN_READ), ReleasePlansController.getReleasePlansByProject);
 
 /**
  * @route   GET /api/release-plans/tickets/:projectId
@@ -69,7 +69,7 @@ router.get('/:id/available-tickets/:projectId', requirePermission(Permissions.TI
  * @access  Private (authenticated users within tenant)
  * @query   page, limit, projectId, status, search, sortBy, sortOrder
  */
-router.get('/', requirePermission(Permissions.PROJECT_READ), ReleasePlansController.getReleasePlans);
+router.get('/', requirePermission(Permissions.TICKET_PLAN_READ), ReleasePlansController.getReleasePlans);
 
 /**
  * @route   GET /api/release-plans/:id
@@ -77,7 +77,7 @@ router.get('/', requirePermission(Permissions.PROJECT_READ), ReleasePlansControl
  * @access  Private (authenticated users within tenant)
  * @param   id - Release plan ID
  */
-router.get('/:id', requirePermission(Permissions.PROJECT_READ), ReleasePlansController.getReleasePlanById);
+router.get('/:id', requirePermission(Permissions.TICKET_PLAN_READ), ReleasePlansController.getReleasePlanById);
 
 /**
  * @route   POST /api/release-plans
@@ -85,7 +85,7 @@ router.get('/:id', requirePermission(Permissions.PROJECT_READ), ReleasePlansCont
  * @access  Private (authenticated users within tenant)
  * @body    { version, description, projectId, releaseDate?, status? }
  */
-router.post('/', requirePermission(Permissions.PROJECT_CREATE), ReleasePlansController.createReleasePlan);
+router.post('/', requirePermission(Permissions.TICKET_PLAN_CREATE), ReleasePlansController.createReleasePlan);
 
 /**
  * @route   PUT /api/release-plans/:id
@@ -94,7 +94,7 @@ router.post('/', requirePermission(Permissions.PROJECT_CREATE), ReleasePlansCont
  * @param   id - Release plan ID
  * @body    Partial release plan data
  */
-router.put('/:id', requirePermission(Permissions.PROJECT_UPDATE), ReleasePlansController.updateReleasePlan);
+router.put('/:id', requirePermission(Permissions.TICKET_PLAN_UPDATE), ReleasePlansController.updateReleasePlan);
 
 /**
  * @route   DELETE /api/release-plans/:id
@@ -102,7 +102,7 @@ router.put('/:id', requirePermission(Permissions.PROJECT_UPDATE), ReleasePlansCo
  * @access  Private (admin only)
  * @param   id - Release plan ID
  */
-router.delete('/:id', requirePermission(Permissions.PROJECT_MANAGE), ReleasePlansController.deleteReleasePlan);
+router.delete('/:id', requirePermission(Permissions.TICKET_PLAN_DELETE), ReleasePlansController.deleteReleasePlan);
 
 /**
  * @route   POST /api/release-plans/:id/start
@@ -110,7 +110,7 @@ router.delete('/:id', requirePermission(Permissions.PROJECT_MANAGE), ReleasePlan
  * @access  Private (authenticated users within tenant)
  * @param   id - Release plan ID
  */
-router.post('/:id/start', requirePermission(Permissions.PROJECT_MANAGE), ReleasePlansController.startSprint);
+router.post('/:id/start', requirePermission(Permissions.TICKET_PLAN_UPDATE), ReleasePlansController.startSprint);
 
 /**
  * @route   POST /api/release-plans/:id/complete
@@ -118,7 +118,7 @@ router.post('/:id/start', requirePermission(Permissions.PROJECT_MANAGE), Release
  * @access  Private (authenticated users within tenant)
  * @param   id - Release plan ID
  */
-router.post('/:id/complete', requirePermission(Permissions.PROJECT_MANAGE), ReleasePlansController.completeSprint);
+router.post('/:id/complete', requirePermission(Permissions.TICKET_PLAN_UPDATE), ReleasePlansController.completeSprint);
 
 /**
  * @route   POST /api/release-plans/:id/tickets/assign
@@ -136,6 +136,6 @@ router.post('/:id/tickets/assign', requirePermission(Permissions.TICKET_ASSIGN),
  * @param   id - Release plan ID
  * @body    { ticketIds: string[] }
  */
-router.post('/:id/tickets/remove', requirePermission(Permissions.TICKET_MANAGE), ReleasePlansController.removeTicketsFromReleasePlan);
+router.post('/:id/tickets/remove', requirePermission(Permissions.TICKET_ASSIGN), ReleasePlansController.removeTicketsFromReleasePlan);
 
 export default router;
