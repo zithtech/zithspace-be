@@ -7,6 +7,8 @@ const express_1 = require("express");
 const reimbursementcreateController_1 = require("@/controllers/reimbursementcreateController");
 const auth_1 = require("@/middleware/auth");
 const tenantContext_1 = require("@/middleware/tenantContext");
+const permission_1 = require("@/middleware/permission");
+const permissions_1 = require("@/types/permissions");
 const multer_1 = __importDefault(require("multer"));
 // Setup multer for file uploads (temp storage)
 const upload = (0, multer_1.default)({ dest: "uploads/" });
@@ -22,21 +24,20 @@ router.use(auth_1.requireAuth);
  * @access  Private
  */
 router.post("/", upload.array("files"), // Expect multiple files with field name "files"
-// requireAdmin, // Enable if only admin can create
-reimbursementcreateController_1.ReimbursementController.create);
+(0, permission_1.requirePermission)(permissions_1.Permissions.REIMBURSEMENT_CREATE), reimbursementcreateController_1.ReimbursementController.create);
 // Add this temporarily to your router
 /**
  * @route   GET /api/reimbursements
  * @desc    Get all reimbursements
  * @access  Private
  */
-router.get("/", reimbursementcreateController_1.ReimbursementController.getAll);
+router.get("/", (0, permission_1.requirePermission)(permissions_1.Permissions.REIMBURSEMENT_READ), reimbursementcreateController_1.ReimbursementController.getAll);
 /**
  * @route   GET /api/reimbursements/:id
  * @desc    Get reimbursement by ID
  * @access  Private
  */
-router.get("/:id", reimbursementcreateController_1.ReimbursementController.getById);
+router.get("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.REIMBURSEMENT_READ), reimbursementcreateController_1.ReimbursementController.getById);
 /**
  * @route   PUT /api/reimbursements/:id
  * @desc    Update reimbursement status
@@ -47,23 +48,23 @@ router.put('/:id', // ✅ CORRECT - just the ID parameter
 upload.fields([
     { name: 'items', maxCount: 1 },
     { name: 'files' }
-]), reimbursementcreateController_1.ReimbursementController.update);
+]), (0, permission_1.requirePermission)(permissions_1.Permissions.REIMBURSEMENT_UPDATE), reimbursementcreateController_1.ReimbursementController.update);
 /**
  * @route   DELETE /api/reimbursements/:id
  * @desc    Delete reimbursement
  * @access  Private
  */
-router.delete("/:id", reimbursementcreateController_1.ReimbursementController.delete);
-router.get('/user/limits', reimbursementcreateController_1.ReimbursementController.getUserReimbursementLimits);
-router.get('/manager/approvals', reimbursementcreateController_1.ReimbursementController.getApprovalList);
+router.delete("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.REIMBURSEMENT_DELETE), reimbursementcreateController_1.ReimbursementController.delete);
+router.get('/user/limits', (0, permission_1.requirePermission)(permissions_1.Permissions.REIMBURSEMENT_READ), reimbursementcreateController_1.ReimbursementController.getUserReimbursementLimits);
+router.get('/manager/approvals', (0, permission_1.requirePermission)(permissions_1.Permissions.REIMBURSEMENT_APPROVE), reimbursementcreateController_1.ReimbursementController.getApprovalList);
 // In your routes file
-router.post("/approve", reimbursementcreateController_1.ReimbursementController.approve);
-router.post("/reject", reimbursementcreateController_1.ReimbursementController.reject);
+router.post("/approve", (0, permission_1.requirePermission)(permissions_1.Permissions.REIMBURSEMENT_APPROVE), reimbursementcreateController_1.ReimbursementController.approve);
+router.post("/reject", (0, permission_1.requirePermission)(permissions_1.Permissions.REIMBURSEMENT_APPROVE), reimbursementcreateController_1.ReimbursementController.reject);
 // router.put(
 //   "/:id/mark-paid",
 //   ReimbursementController.markAsPaid
 // );
-router.get("/finance/items", reimbursementcreateController_1.ReimbursementController.getFinanceItems);
-router.put("/:id/mark-paid", reimbursementcreateController_1.ReimbursementController.markAsPaid);
+router.get("/finance/items", (0, permission_1.requirePermission)(permissions_1.Permissions.REIMBURSEMENT_READ), reimbursementcreateController_1.ReimbursementController.getFinanceItems);
+router.put("/:id/mark-paid", (0, permission_1.requirePermission)(permissions_1.Permissions.REIMBURSEMENT_PAY), reimbursementcreateController_1.ReimbursementController.markAsPaid);
 exports.default = router;
 //# sourceMappingURL=reimbursementcreateRoutes.js.map

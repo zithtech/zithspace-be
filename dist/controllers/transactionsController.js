@@ -437,6 +437,119 @@ class TransactionsController {
             });
         }
     }
+    /**
+     * Get trashed transactions (tenant-aware)
+     */
+    static async getTrashTransactions(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: 'Tenant context and authentication required',
+                });
+                return;
+            }
+            const { page = 1, limit = 20, search } = req.query;
+            const { transactions, total } = await (0, transaction_model_1.getTrashTransactions)(req.tenantId, {
+                page: Number(page),
+                limit: Number(limit),
+                search: search
+            });
+            const transformedTransactions = transactions.map((t) => ({
+                ...t,
+                member: t.user,
+                type: (t.type === 'income' || t.type === 'bonus' || t.type === 'credit') ? 'credit' : 'debit'
+            }));
+            const totalPages = Math.ceil(total / Number(limit));
+            res.status(200).json({
+                success: true,
+                data: transformedTransactions,
+                pagination: {
+                    page: Number(page),
+                    limit: Number(limit),
+                    total,
+                    pages: totalPages,
+                    hasNext: Number(page) < totalPages,
+                    hasPrev: Number(page) > 1
+                }
+            });
+        }
+        catch (error) {
+            console.error('Get trash transactions error:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to fetch trash transactions'
+            });
+        }
+    }
+    /**
+     * Restore a trashed transaction (tenant-aware)
+     */
+    static async restoreTransaction(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: 'Tenant context and authentication required',
+                });
+                return;
+            }
+            const { id } = req.params;
+            const restored = await (0, transaction_model_1.restoreTransactionQuery)(id, req.tenantId);
+            if (!restored) {
+                res.status(404).json({
+                    success: false,
+                    error: 'Transaction not found in trash'
+                });
+                return;
+            }
+            res.status(200).json({
+                success: true,
+                message: 'Transaction restored successfully'
+            });
+        }
+        catch (error) {
+            console.error('Restore transaction error:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to restore transaction'
+            });
+        }
+    }
+    /**
+     * Permanently delete a trashed transaction (tenant-aware)
+     */
+    static async permanentlyDeleteTransaction(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: 'Tenant context and authentication required',
+                });
+                return;
+            }
+            const { id } = req.params;
+            const deleted = await (0, transaction_model_1.permanentlyDeleteTransactionQuery)(id, req.tenantId);
+            if (!deleted) {
+                res.status(404).json({
+                    success: false,
+                    error: 'Transaction not found in trash'
+                });
+                return;
+            }
+            res.status(200).json({
+                success: true,
+                message: 'Transaction permanently deleted'
+            });
+        }
+        catch (error) {
+            console.error('Permanent delete transaction error:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to permanently delete transaction'
+            });
+        }
+    }
 }
 exports.TransactionsController = TransactionsController;
 exports.default = TransactionsController;

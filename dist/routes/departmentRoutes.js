@@ -10,10 +10,10 @@ const router = (0, express_1.Router)();
 router.use(tenantContext_1.resolveTenant);
 router.use(auth_1.authenticateToken);
 router.use(auth_1.requireAuth);
-router.post("/", (0, permission_1.requirePermission)(permissions_1.Permissions.ORG_MANAGE), departmentController_1.DepartmentController.createDepartment);
-router.get("/", (0, permission_1.requirePermission)(permissions_1.Permissions.ORG_READ), departmentController_1.DepartmentController.getAllDepartments);
-router.get("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.ORG_READ), departmentController_1.DepartmentController.getDepartmentById);
-router.put("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.ORG_MANAGE), departmentController_1.DepartmentController.updateDepartment);
-router.delete("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.ORG_MANAGE), departmentController_1.DepartmentController.deleteDepartment);
+router.post("/", (0, permission_1.requirePermission)(permissions_1.Permissions.ORG_DEPARTMENT_CREATE), departmentController_1.DepartmentController.createDepartment);
+router.get("/", (0, permission_1.requirePermission)(permissions_1.Permissions.ORG_DEPARTMENT_READ), departmentController_1.DepartmentController.getAllDepartments);
+router.get("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.ORG_DEPARTMENT_READ), departmentController_1.DepartmentController.getDepartmentById);
+router.put("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.ORG_DEPARTMENT_UPDATE), departmentController_1.DepartmentController.updateDepartment);
+router.delete("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.ORG_DEPARTMENT_DELETE), departmentController_1.DepartmentController.deleteDepartment);
 exports.default = router;
 //# sourceMappingURL=departmentRoutes.js.map

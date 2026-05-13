@@ -254,6 +254,7 @@ export interface LoginResponse {
         tenantLogo: string | null;
         avatarUrl: any | null;
         isActive: boolean;
+        permissions: string[];
     };
     message: string;
 }
