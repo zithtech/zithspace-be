@@ -206,6 +206,7 @@ export declare const Permissions: {
     readonly TIMESHEET_CREATE: "timesheet.create";
     readonly TIMESHEET_READ: "timesheet.read";
     readonly TIMESHEET_UPDATE: "timesheet.update";
+    readonly TIMESHEET_DELETE: "timesheet.delete";
     readonly TIMESHEET_APPROVE: "timesheet.approve";
     readonly TIMESHEET_MANAGE: "timesheet.manage";
     readonly ORG_DASHBOARD_READ: "org.dashboard.read";

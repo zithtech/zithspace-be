@@ -228,6 +228,7 @@ exports.Permissions = {
     TIMESHEET_CREATE: 'timesheet.create',
     TIMESHEET_READ: 'timesheet.read',
     TIMESHEET_UPDATE: 'timesheet.update',
+    TIMESHEET_DELETE: 'timesheet.delete',
     TIMESHEET_APPROVE: 'timesheet.approve',
     TIMESHEET_MANAGE: 'timesheet.manage', // overriding timesheets, setting billing rates, and reporting
     // ─── Org Structure ───────────────────────────────────────────────
@@ -557,7 +558,7 @@ exports.PERMISSIONS_BY_RESOURCE = {
         exports.Permissions.ONBOARDING_SETTING_READ,
         exports.Permissions.ONBOARDING_SETTING_UPDATE,
     ],
-    timesheet: [exports.Permissions.TIMESHEET_CREATE, exports.Permissions.TIMESHEET_READ, exports.Permissions.TIMESHEET_UPDATE, exports.Permissions.TIMESHEET_APPROVE, exports.Permissions.TIMESHEET_MANAGE],
+    timesheet: [exports.Permissions.TIMESHEET_CREATE, exports.Permissions.TIMESHEET_READ, exports.Permissions.TIMESHEET_UPDATE, exports.Permissions.TIMESHEET_DELETE, exports.Permissions.TIMESHEET_APPROVE, exports.Permissions.TIMESHEET_MANAGE],
     org: [
         exports.Permissions.ORG_DASHBOARD_READ,
         exports.Permissions.ORG_READ,
