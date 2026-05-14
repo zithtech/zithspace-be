@@ -8,6 +8,8 @@ const express_1 = __importDefault(require("express"));
 const leaverequestcontroller_1 = require("@/controllers/leaverequestcontroller");
 const auth_1 = require("@/middleware/auth");
 const tenantContext_1 = require("@/middleware/tenantContext");
+const permission_1 = require("@/middleware/permission");
+const permissions_1 = require("@/types/permissions");
 const router = express_1.default.Router();
 // Apply middleware to all routes in this file
 router.use(tenantContext_1.resolveTenant);
@@ -16,8 +18,8 @@ router.use(auth_1.requireAuth);
 router.use(tenantContext_1.requireTenant);
 router.post("/", leaverequestcontroller_1.applyLeave);
 router.get("/", leaverequestcontroller_1.getLeaveRequests);
-router.put("/:id/status", leaverequestcontroller_1.updateLeaveStatus);
+router.put("/:id/status", (0, permission_1.requirePermission)(permissions_1.Permissions.LEAVE_APPROVE), leaverequestcontroller_1.updateLeaveStatus);
 router.put("/:id/cancel", leaverequestcontroller_1.cancelLeaveRequest);
-router.get("/approvals", leaverequestcontroller_1.getPendingApprovals);
+router.get("/approvals", (0, permission_1.requirePermission)(permissions_1.Permissions.LEAVE_APPROVE), leaverequestcontroller_1.getPendingApprovals);
 exports.default = router;
 //# sourceMappingURL=leaveRequestRoutes.js.map

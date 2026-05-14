@@ -13,10 +13,10 @@ router.use(tenantContext_1.resolveTenant);
 router.use(auth_1.authenticateToken);
 router.use(auth_1.requireAuth);
 // Routes
-router.post("/", (0, permission_1.requirePermission)(permissions_1.Permissions.LEAVE_MANAGE), leaveTypeController_1.LeaveTypeController.createLeaveType);
-router.get("/", (0, permission_1.requirePermission)(permissions_1.Permissions.LEAVE_READ), leaveTypeController_1.LeaveTypeController.getAllLeaveTypes);
-router.get("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.LEAVE_READ), leaveTypeController_1.LeaveTypeController.getLeaveTypeById);
-router.put("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.LEAVE_MANAGE), leaveTypeController_1.LeaveTypeController.updateLeaveType);
-router.delete("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.LEAVE_MANAGE), leaveTypeController_1.LeaveTypeController.deleteLeaveType);
+router.post("/", (0, permission_1.requirePermission)(permissions_1.Permissions.LEAVE_TYPE_CREATE), leaveTypeController_1.LeaveTypeController.createLeaveType);
+router.get("/", (0, permission_1.requirePermission)(permissions_1.Permissions.LEAVE_TYPE_READ), leaveTypeController_1.LeaveTypeController.getAllLeaveTypes);
+router.get("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.LEAVE_TYPE_READ), leaveTypeController_1.LeaveTypeController.getLeaveTypeById);
+router.put("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.LEAVE_TYPE_UPDATE), leaveTypeController_1.LeaveTypeController.updateLeaveType);
+router.delete("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.LEAVE_TYPE_DELETE), leaveTypeController_1.LeaveTypeController.deleteLeaveType);
 exports.default = router;
 //# sourceMappingURL=leaveTypeRoutes.js.map

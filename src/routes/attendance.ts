@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { AttendanceController } from "@/controllers/attendanceController";
 import { authenticateToken, requireAuth } from "@/middleware/auth";
-import { requirePermission } from "@/middleware/permission";
+import { requirePermission, requireAnyPermission } from "@/middleware/permission";
 import { Permissions } from "@/types/permissions";
 import { resolveTenant } from "@/middleware/tenantContext";
 
@@ -21,7 +21,7 @@ router.use(requireAuth);
  */
 router.get(
   "/dashboard/summary",
-  requirePermission(Permissions.ATTENDANCE_READ),
+  requirePermission(Permissions.ATTENDANCE_DASHBOARD_READ),
   AttendanceController.getDashboardSummary,
 );
 
@@ -32,7 +32,7 @@ router.get(
  */
 router.get(
   "/dashboard/present",
-  requirePermission(Permissions.ATTENDANCE_READ),
+  requirePermission(Permissions.ATTENDANCE_DASHBOARD_READ),
   AttendanceController.getPresentMembers,
 );
 
@@ -43,7 +43,7 @@ router.get(
  */
 router.get(
   "/today",
-  requirePermission(Permissions.ATTENDANCE_READ),
+  requireAnyPermission(Permissions.ATTENDANCE_READ, Permissions.ATTENDANCE_CLOCK_IN_OUT),
   AttendanceController.getTodayAttendance,
 );
 
@@ -55,7 +55,7 @@ router.get(
  */
 router.get(
   "/my-summary",
-  requirePermission(Permissions.ATTENDANCE_READ),
+  requireAnyPermission(Permissions.ATTENDANCE_READ, Permissions.ATTENDANCE_CLOCK_IN_OUT),
   AttendanceController.getMyAttendanceSummary,
 );
 
@@ -67,13 +67,23 @@ router.get(
  */
 router.get(
   "/",
-  requirePermission(Permissions.ATTENDANCE_READ),
+  requireAnyPermission(
+    Permissions.ATTENDANCE_READ,
+    Permissions.ATTENDANCE_CREATE,
+    Permissions.ATTENDANCE_UPDATE,
+    Permissions.ATTENDANCE_DELETE,
+    Permissions.ATTENDANCE_CLOCK_IN_OUT
+  ),
   AttendanceController.getAttendance,
 );
 
 // last 5 days  average working hors routes
 
-router.get("/last-5-average", AttendanceController.getLast5DaysAverage);
+router.get(
+  "/last-5-average",
+  requireAnyPermission(Permissions.ATTENDANCE_READ, Permissions.ATTENDANCE_CLOCK_IN_OUT),
+  AttendanceController.getLast5DaysAverage
+);
 
 /**
  * @route   GET /api/attendance/:id
@@ -83,7 +93,12 @@ router.get("/last-5-average", AttendanceController.getLast5DaysAverage);
  */
 router.get(
   "/:id",
-  requirePermission(Permissions.ATTENDANCE_READ),
+  requireAnyPermission(
+    Permissions.ATTENDANCE_READ,
+    Permissions.ATTENDANCE_CREATE,
+    Permissions.ATTENDANCE_UPDATE,
+    Permissions.ATTENDANCE_DELETE
+  ),
   AttendanceController.getAttendanceById,
 );
 
@@ -95,7 +110,7 @@ router.get(
  */
 router.post(
   "/clock-in",
-  requirePermission(Permissions.ATTENDANCE_CREATE),
+  requirePermission(Permissions.ATTENDANCE_CLOCK_IN_OUT),
   AttendanceController.clockIn,
 );
 
@@ -107,7 +122,7 @@ router.post(
  */
 router.post(
   "/clock-out",
-  requirePermission(Permissions.ATTENDANCE_CREATE),
+  requirePermission(Permissions.ATTENDANCE_CLOCK_IN_OUT),
   AttendanceController.clockOut,
 );
 
@@ -119,7 +134,7 @@ router.post(
  */
 router.post(
   "/",
-  requirePermission(Permissions.ATTENDANCE_MANAGE),
+  requirePermission(Permissions.ATTENDANCE_CREATE),
   AttendanceController.createAttendance,
 );
 
@@ -132,7 +147,7 @@ router.post(
  */
 router.put(
   "/:id",
-  requirePermission(Permissions.ATTENDANCE_MANAGE),
+  requirePermission(Permissions.ATTENDANCE_UPDATE),
   AttendanceController.updateAttendance,
 );
 
@@ -144,7 +159,7 @@ router.put(
  */
 router.delete(
   "/:id",
-  requirePermission(Permissions.ATTENDANCE_MANAGE),
+  requirePermission(Permissions.ATTENDANCE_DELETE),
   AttendanceController.deleteAttendance,
 );
 

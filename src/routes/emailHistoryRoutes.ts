@@ -21,6 +21,6 @@ router.get('/stats', requirePermission(Permissions.SETTINGS_READ), EmailHistoryC
 router.get('/:id', requirePermission(Permissions.SETTINGS_READ), EmailHistoryController.getEmailLogById);
 
 // Module-specific routes
-router.get('/invoice/:invoiceId', requirePermission(Permissions.INVOICE_READ), EmailHistoryController.getInvoiceEmailHistory);
+router.get('/invoice/:invoiceId', requirePermission(Permissions.INVOICE_HISTORY_READ), EmailHistoryController.getInvoiceEmailHistory);
 
 export default router;

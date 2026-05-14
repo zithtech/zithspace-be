@@ -10,6 +10,8 @@ import {
 } from "@/controllers/leaverequestcontroller";
 import { authenticateToken, requireAuth } from "@/middleware/auth";
 import { resolveTenant, requireTenant } from "@/middleware/tenantContext";
+import { requirePermission } from "@/middleware/permission";
+import { Permissions } from "@/types/permissions";
 
 const router = express.Router();
 
@@ -21,8 +23,8 @@ router.use(requireTenant);
 
 router.post("/", applyLeave);
 router.get("/", getLeaveRequests);
-router.put("/:id/status", updateLeaveStatus);
+router.put("/:id/status", requirePermission(Permissions.LEAVE_APPROVE), updateLeaveStatus);
 router.put("/:id/cancel", cancelLeaveRequest);
-router.get("/approvals", getPendingApprovals);
+router.get("/approvals", requirePermission(Permissions.LEAVE_APPROVE), getPendingApprovals);
 
 export default router;

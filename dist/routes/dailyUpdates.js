@@ -32,7 +32,7 @@ router.get('/my', (0, permission_1.requirePermission)(permissions_1.Permissions.
  * @access  Private (Project Manager or Super Admin)
  * @query   date?, projectId?, userId?
  */
-router.get('/team', (0, permission_1.requirePermission)(permissions_1.Permissions.DAILY_UPDATE_MANAGE), dailyUpdateController_1.DailyUpdateController.getTeamUpdates);
+router.get('/team', (0, permission_1.requirePermission)(permissions_1.Permissions.DAILY_UPDATE_MANAGE_TIME), dailyUpdateController_1.DailyUpdateController.getTeamUpdates);
 /**
  * @route   GET /api/daily-updates/today
  * @desc    Get today's updates (role-based)
@@ -51,7 +51,7 @@ router.get('/check-today', (0, permission_1.requirePermission)(permissions_1.Per
  * @access  Private (Project Manager or Super Admin)
  * @query   startDate?, endDate?, projectId?
  */
-router.get('/stats/submission-rate', (0, permission_1.requirePermission)(permissions_1.Permissions.DAILY_UPDATE_MANAGE), dailyUpdateController_1.DailyUpdateController.getSubmissionStats);
+router.get('/stats/submission-rate', (0, permission_1.requirePermission)(permissions_1.Permissions.DAILY_UPDATE_MANAGE_TIME), dailyUpdateController_1.DailyUpdateController.getSubmissionStats);
 /**
  * @route   GET /api/daily-updates/:id
  * @desc    Get specific daily update by ID
@@ -64,12 +64,12 @@ router.get('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions
  * @access  Private (owner only)
  * @body    { mood?, totalHoursWorked?, projectUpdates: [], generalNotes? }
  */
-router.put('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.DAILY_UPDATE_CREATE), dailyUpdateController_1.DailyUpdateController.updateUpdate);
+router.put('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.DAILY_UPDATE_UPDATE), dailyUpdateController_1.DailyUpdateController.updateUpdate);
 /**
  * @route   DELETE /api/daily-updates/:id
  * @desc    Delete daily status update
  * @access  Private (owner only)
  */
-router.delete('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.DAILY_UPDATE_MANAGE), dailyUpdateController_1.DailyUpdateController.deleteUpdate);
+router.delete('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.DAILY_UPDATE_DELETE), dailyUpdateController_1.DailyUpdateController.deleteUpdate);
 exports.default = router;
 //# sourceMappingURL=dailyUpdates.js.map

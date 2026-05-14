@@ -10,19 +10,22 @@ router.use(resolveTenant);
 router.use(authenticateToken);
 router.use(requireAuth);
 
+import { requirePermission } from "@/middleware/permission";
+import { Permissions } from "@/types/permissions";
+
 // Create a new location
-router.post("/", CompanyLocationController.createLocation);
+router.post("/", requirePermission(Permissions.SETTINGS_UPDATE), CompanyLocationController.createLocation);
 
 // Get all locations
-router.get("/", CompanyLocationController.getAllLocations);
+router.get("/", requirePermission(Permissions.SETTINGS_READ), CompanyLocationController.getAllLocations);
 
 // Get a location by ID
-router.get("/:id", CompanyLocationController.getLocationById);
+router.get("/:id", requirePermission(Permissions.SETTINGS_READ), CompanyLocationController.getLocationById);
 
 // Update a location
-router.put("/:id", CompanyLocationController.updateLocation);
+router.put("/:id", requirePermission(Permissions.SETTINGS_UPDATE), CompanyLocationController.updateLocation);
 
 // Delete a location
-router.delete("/:id", CompanyLocationController.deleteLocation);
+router.delete("/:id", requirePermission(Permissions.SETTINGS_DELETE), CompanyLocationController.deleteLocation);
 
 export default router;

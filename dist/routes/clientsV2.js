@@ -4,6 +4,8 @@ const express_1 = require("express");
 const clientV2Controller_1 = require("@/controllers/clientV2Controller");
 const auth_1 = require("@/middleware/auth");
 const tenantContext_1 = require("@/middleware/tenantContext");
+const permission_1 = require("@/middleware/permission");
+const permissions_1 = require("@/types/permissions");
 const router = (0, express_1.Router)();
 // Apply tenant context resolution to all routes
 router.use(tenantContext_1.resolveTenant);
@@ -18,7 +20,7 @@ router.use(auth_1.requireAuth);
  * @desc    Get all clients with filtering, pagination, and search (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/', clientV2Controller_1.ClientV2Controller.getClients);
+router.get('/', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_READ), clientV2Controller_1.ClientV2Controller.getClients);
 /**
  * @route   GET /api/clients-v2/projects/check
  * @desc    Live duplicate check for project name/code (tenant-aware)
@@ -36,24 +38,24 @@ router.get('/projects/stats', clientV2Controller_1.ClientV2Controller.getProject
  * @desc    Get client v2 by ID (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/:id', clientV2Controller_1.ClientV2Controller.getClientById);
+router.get('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_READ), clientV2Controller_1.ClientV2Controller.getClientById);
 /**
  * @route   POST /api/clients-v2
  * @desc    Create new client v2 (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.post('/', clientV2Controller_1.ClientV2Controller.createClient);
+router.post('/', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_CREATE), clientV2Controller_1.ClientV2Controller.createClient);
 /**
  * @route   PUT /api/clients-v2/projects/:projectId
  * @desc    Update an existing project and its client mapping
  */
-router.put('/projects/:projectId', clientV2Controller_1.ClientV2Controller.updateProject);
+router.put('/projects/:projectId', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_UPDATE), clientV2Controller_1.ClientV2Controller.updateProject);
 /**
  * @route   PUT /api/clients-v2/:id
  * @desc    Update client v2 (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.put('/:id', clientV2Controller_1.ClientV2Controller.updateClient);
+router.put('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_UPDATE), clientV2Controller_1.ClientV2Controller.updateClient);
 // ==============================================
 // CONTACT ROUTES
 // ==============================================
@@ -61,12 +63,12 @@ router.put('/:id', clientV2Controller_1.ClientV2Controller.updateClient);
  * @route   POST /api/clients-v2/:clientId/contacts
  * @desc    Add a contact to a client
  */
-router.post('/:clientId/contacts', clientV2Controller_1.ClientV2Controller.addContact);
+router.post('/:clientId/contacts', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_UPDATE), clientV2Controller_1.ClientV2Controller.addContact);
 /**
  * @route   PUT /api/clients-v2/contacts/:contactId
  * @desc    Update a contact
  */
-router.put('/contacts/:contactId', clientV2Controller_1.ClientV2Controller.updateContact);
+router.put('/contacts/:contactId', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_UPDATE), clientV2Controller_1.ClientV2Controller.updateContact);
 // ==============================================
 // DOCUMENTS
 // ==============================================
@@ -74,12 +76,12 @@ router.put('/contacts/:contactId', clientV2Controller_1.ClientV2Controller.updat
  * @route   POST /api/clients-v2/:clientId/documents
  * @desc    Upload and add a document to a client
  */
-router.post('/:clientId/documents', clientV2Controller_1.ClientV2Controller.addDocument);
+router.post('/:clientId/documents', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_UPDATE), clientV2Controller_1.ClientV2Controller.addDocument);
 /**
  * @route   DELETE /api/clients-v2/:clientId/documents/:documentId
  * @desc    Delete a client document
  */
-router.delete('/:clientId/documents/:documentId', clientV2Controller_1.ClientV2Controller.deleteDocument);
+router.delete('/:clientId/documents/:documentId', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_DELETE), clientV2Controller_1.ClientV2Controller.deleteDocument);
 // ==============================================
 // ALLOCATION ROUTES
 // ==============================================
@@ -87,17 +89,17 @@ router.delete('/:clientId/documents/:documentId', clientV2Controller_1.ClientV2C
  * @route   GET /api/clients-v2/employees/select
  * @desc    Get all employees for selection dropdowns
  */
-router.get('/employees/select', clientV2Controller_1.ClientV2Controller.getEmployeesForSelect);
+router.get('/employees/select', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_READ), clientV2Controller_1.ClientV2Controller.getEmployeesForSelect);
 /**
  * @route   POST /api/clients-v2/:clientId/allocations
  * @desc    Add an employee allocation to a client
  */
-router.post('/:clientId/allocations', clientV2Controller_1.ClientV2Controller.addAllocation);
+router.post('/:clientId/allocations', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_UPDATE), clientV2Controller_1.ClientV2Controller.addAllocation);
 /**
  * @route   PUT /api/clients-v2/allocations/:allocationId
  * @desc    Update an employee allocation
  */
-router.put('/allocations/:allocationId', clientV2Controller_1.ClientV2Controller.updateAllocation);
+router.put('/allocations/:allocationId', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_UPDATE), clientV2Controller_1.ClientV2Controller.updateAllocation);
 // ==============================================
 // CLIENT PROJECTS
 // ==============================================
@@ -105,11 +107,11 @@ router.put('/allocations/:allocationId', clientV2Controller_1.ClientV2Controller
  * @route   GET /api/clients-v2/:clientId/projects
  * @desc    Get all projects mapped to a client
  */
-router.get('/:clientId/projects', clientV2Controller_1.ClientV2Controller.getProjects);
+router.get('/:clientId/projects', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_READ), clientV2Controller_1.ClientV2Controller.getProjects);
 /**
  * @route   POST /api/clients-v2/:clientId/projects
  * @desc    Create a new project and map it to a client
  */
-router.post('/:clientId/projects', clientV2Controller_1.ClientV2Controller.addProject);
+router.post('/:clientId/projects', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_UPDATE), clientV2Controller_1.ClientV2Controller.addProject);
 exports.default = router;
 //# sourceMappingURL=clientsV2.js.map

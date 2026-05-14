@@ -18,6 +18,6 @@ router.get('/modules', (0, permission_1.requirePermission)(permissions_1.Permiss
 router.get('/stats', (0, permission_1.requirePermission)(permissions_1.Permissions.SETTINGS_READ), emailHistoryController_1.EmailHistoryController.getStats);
 router.get('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.SETTINGS_READ), emailHistoryController_1.EmailHistoryController.getEmailLogById);
 // Module-specific routes
-router.get('/invoice/:invoiceId', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_READ), emailHistoryController_1.EmailHistoryController.getInvoiceEmailHistory);
+router.get('/invoice/:invoiceId', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_HISTORY_READ), emailHistoryController_1.EmailHistoryController.getInvoiceEmailHistory);
 exports.default = router;
 //# sourceMappingURL=emailHistoryRoutes.js.map

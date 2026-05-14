@@ -209,8 +209,8 @@ router.delete("/:id", requirePermission(Permissions.TICKET_DELETE), TicketContro
  */
 router.patch("/bulk/status", requirePermission(Permissions.TICKET_MANAGE), TicketController.bulkUpdateStatus);
 router.patch("/bulk/archive", requirePermission(Permissions.TICKET_MANAGE), TicketController.bulkArchive);
-router.patch("/bulk/unarchive", requirePermission(Permissions.TICKET_MANAGE), TicketController.bulkUnarchive);
-router.patch("/bulk/delete", requirePermission(Permissions.TICKET_MANAGE), TicketController.bulkDelete);
+router.patch("/bulk/unarchive", requirePermission(Permissions.TICKET_ARCHIVE_RESTORE), TicketController.bulkUnarchive);
+router.patch("/bulk/delete", requirePermission(Permissions.TICKET_DELETE), TicketController.bulkDelete);
 
 
 /**

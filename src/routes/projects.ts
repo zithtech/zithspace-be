@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { ProjectController } from '@/controllers/projectController';
 import { authenticateToken, requireAuth } from '@/middleware/auth';
-import { requirePermission } from '@/middleware/permission';
+import { requirePermission, requireAnyPermission } from '@/middleware/permission';
 import { Permissions } from '@/types/permissions';
 import { resolveTenant } from '@/middleware/tenantContext';
 
@@ -34,7 +34,7 @@ router.get('/selection', requirePermission(Permissions.PROJECT_READ), ProjectCon
  * @desc    Get projects for dropdown/select (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/select', requirePermission(Permissions.PROJECT_READ), ProjectController.getProjectsForSelect);
+router.get('/select', requireAnyPermission(Permissions.PROJECT_READ, Permissions.ATTENDANCE_READ, Permissions.ATTENDANCE_CREATE, Permissions.ATTENDANCE_UPDATE, Permissions.ATTENDANCE_DELETE), ProjectController.getProjectsForSelect);
 
 /**
  * @route   GET /api/projects/user
@@ -58,12 +58,12 @@ router.get('/user-projects', requirePermission(Permissions.PROJECT_READ), Projec
 router.get('/user-projects-for-tickets', requirePermission(Permissions.PROJECT_READ), ProjectController.getUserProjectsForTickets);
 
 // Trash routes
-router.get('/trash', requirePermission(Permissions.PROJECT_READ), ProjectController.getTrashProjects);
-router.delete('/trash/empty', requirePermission(Permissions.PROJECT_DELETE), ProjectController.emptyTrash);
-router.post('/trash/bulk-restore', requirePermission(Permissions.PROJECT_UPDATE), ProjectController.bulkRestoreProjects);
-router.post('/trash/bulk-permanent-delete', requirePermission(Permissions.PROJECT_DELETE), ProjectController.bulkPermanentDeleteProjects);
-router.post('/:id/restore', requirePermission(Permissions.PROJECT_UPDATE), ProjectController.restoreProject);
-router.delete('/:id/permanent', requirePermission(Permissions.PROJECT_DELETE), ProjectController.permanentDeleteProject);
+router.get('/trash', requirePermission(Permissions.PROJECT_TRASH_READ), ProjectController.getTrashProjects);
+router.delete('/trash/empty', requirePermission(Permissions.PROJECT_TRASH_DELETE), ProjectController.emptyTrash);
+router.post('/trash/bulk-restore', requirePermission(Permissions.PROJECT_TRASH_RESTORE), ProjectController.bulkRestoreProjects);
+router.post('/trash/bulk-permanent-delete', requirePermission(Permissions.PROJECT_TRASH_DELETE), ProjectController.bulkPermanentDeleteProjects);
+router.post('/:id/restore', requirePermission(Permissions.PROJECT_TRASH_RESTORE), ProjectController.restoreProject);
+router.delete('/:id/permanent', requirePermission(Permissions.PROJECT_TRASH_DELETE), ProjectController.permanentDeleteProject);
 
 /**
  * @route   GET /api/projects/:id/tickets/my

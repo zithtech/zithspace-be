@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { LeadSettingsController } from '@/controllers/LeadSettings.controller';
 import { authenticateToken, requireAuth } from '@/middleware/auth';
+import { requirePermission } from '@/middleware/permission';
+import { Permissions } from '@/types/permissions';
 import { resolveTenant } from '@/middleware/tenantContext';
 
 const router = Router();
@@ -11,15 +13,15 @@ router.use(authenticateToken);
 router.use(requireAuth);
 
 // Status Routes
-router.post('/statuses', LeadSettingsController.createStatus);
-router.get('/statuses', LeadSettingsController.getStatuses);
-router.put('/statuses/:id', LeadSettingsController.updateStatus);
-router.delete('/statuses/:id', LeadSettingsController.deleteStatus);
+router.post('/statuses', requirePermission(Permissions.LEAD_SETTING_CREATE), LeadSettingsController.createStatus);
+router.get('/statuses', requirePermission(Permissions.LEAD_SETTING_READ), LeadSettingsController.getStatuses);
+router.put('/statuses/:id', requirePermission(Permissions.LEAD_SETTING_UPDATE), LeadSettingsController.updateStatus);
+router.delete('/statuses/:id', requirePermission(Permissions.LEAD_SETTING_DELETE), LeadSettingsController.deleteStatus);
 
 // Action Routes
-router.post('/actions', LeadSettingsController.createAction);
-router.get('/actions', LeadSettingsController.getActions);
-router.put('/actions/:id', LeadSettingsController.updateAction);
-router.delete('/actions/:id', LeadSettingsController.deleteAction);
+router.post('/actions', requirePermission(Permissions.LEAD_SETTING_CREATE), LeadSettingsController.createAction);
+router.get('/actions', requirePermission(Permissions.LEAD_SETTING_READ), LeadSettingsController.getActions);
+router.put('/actions/:id', requirePermission(Permissions.LEAD_SETTING_UPDATE), LeadSettingsController.updateAction);
+router.delete('/actions/:id', requirePermission(Permissions.LEAD_SETTING_DELETE), LeadSettingsController.deleteAction);
 
 export default router;

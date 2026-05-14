@@ -11,10 +11,10 @@ router.use(resolveTenant);
 router.use(authenticateToken);
 router.use(requireAuth);
 
-router.post("/", requirePermission(Permissions.ORG_MANAGE), DepartmentController.createDepartment);
-router.get("/", requirePermission(Permissions.ORG_READ), DepartmentController.getAllDepartments);
-router.get("/:id", requirePermission(Permissions.ORG_READ), DepartmentController.getDepartmentById);
-router.put("/:id", requirePermission(Permissions.ORG_MANAGE), DepartmentController.updateDepartment);
-router.delete("/:id", requirePermission(Permissions.ORG_MANAGE), DepartmentController.deleteDepartment);
+router.post("/", requirePermission(Permissions.ORG_DEPARTMENT_CREATE), DepartmentController.createDepartment);
+router.get("/", requirePermission(Permissions.ORG_DEPARTMENT_READ), DepartmentController.getAllDepartments);
+router.get("/:id", requirePermission(Permissions.ORG_DEPARTMENT_READ), DepartmentController.getDepartmentById);
+router.put("/:id", requirePermission(Permissions.ORG_DEPARTMENT_UPDATE), DepartmentController.updateDepartment);
+router.delete("/:id", requirePermission(Permissions.ORG_DEPARTMENT_DELETE), DepartmentController.deleteDepartment);
 
 export default router;

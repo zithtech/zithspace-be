@@ -20,44 +20,44 @@ router.use(requireAuth);
  * @desc    Get all profiles (paginated, filtered, tenant-aware)
  * @access  Private
  */
-router.get('/', requirePermission(Permissions.SETTINGS_READ), InvoiceSettingsController.getProfiles);
+router.get('/', requirePermission(Permissions.INVOICE_SETTING_READ), InvoiceSettingsController.getProfiles);
 
 /**
  * @route   POST /api/settings/profiles
  * @desc    Create a new profile with nested settings
  * @access  Private (Admin only)
  */
-router.post('/', requirePermission(Permissions.SETTINGS_UPDATE), InvoiceSettingsController.createProfile);
+router.post('/', requirePermission(Permissions.INVOICE_SETTING_CREATE), InvoiceSettingsController.createProfile);
 
-router.get('/active', requirePermission(Permissions.SETTINGS_READ), InvoiceSettingsController.getActiveProfiles);
+router.get('/active', requirePermission(Permissions.INVOICE_SETTING_READ), InvoiceSettingsController.getActiveProfiles);
 
 /**
  * @route   GET /api/settings/profiles/:id
  * @desc    Get profile details including related settings
  * @access  Private
  */
-router.get('/:id', requirePermission(Permissions.SETTINGS_READ), InvoiceSettingsController.getProfileById);
+router.get('/:id', requirePermission(Permissions.INVOICE_SETTING_READ), InvoiceSettingsController.getProfileById);
 
 /**
  * @route   PATCH /api/settings/profiles/:id
  * @desc    Update profile and nested settings
  * @access  Private (Admin only)
  */
-router.patch('/:id', requirePermission(Permissions.SETTINGS_UPDATE), InvoiceSettingsController.updateProfile);
+router.patch('/:id', requirePermission(Permissions.INVOICE_SETTING_UPDATE), InvoiceSettingsController.updateProfile);
 
 /**
  * @route   DELETE /api/settings/profiles/:id
  * @desc    Deactivate (soft delete) a profile
  * @access  Private (Admin only)
  */
-router.delete('/:id', requirePermission(Permissions.SETTINGS_MANAGE), InvoiceSettingsController.hardDeleteProfile);
+router.delete('/:id', requirePermission(Permissions.INVOICE_SETTING_DELETE), InvoiceSettingsController.hardDeleteProfile);
 
 /**
  * @route   POST /api/settings/profiles/:id/activate
  * @desc    Set profile as active and deactivate others
  * @access  Private (Admin only)
  */
-router.patch('/:id/activate', requirePermission(Permissions.SETTINGS_UPDATE), InvoiceSettingsController.activateProfile);
+router.patch('/:id/activate', requirePermission(Permissions.INVOICE_SETTING_UPDATE), InvoiceSettingsController.activateProfile);
 
 
 export default router;

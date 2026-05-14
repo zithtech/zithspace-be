@@ -18,48 +18,48 @@ router.use(auth_1.requireAuth);
  * @access  Private (authenticated users within tenant)
  * @query   startDate, endDate
  */
-router.get('/summary', (0, permission_1.requirePermission)(permissions_1.Permissions.TRANSACTION_READ), transactionsController_1.TransactionsController.getTransactionSummary);
+router.get('/summary', (0, permission_1.requirePermission)(permissions_1.Permissions.ACCOUNT_READ), transactionsController_1.TransactionsController.getTransactionSummary);
 /**
  * @route   GET /api/transactions/balance/account
  * @desc    Get overall account balance (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/balance/account', (0, permission_1.requirePermission)(permissions_1.Permissions.TRANSACTION_READ), transactionsController_1.TransactionsController.getAccountBalance);
+router.get('/balance/account', (0, permission_1.requirePermission)(permissions_1.Permissions.ACCOUNT_READ), transactionsController_1.TransactionsController.getAccountBalance);
 /**
  * @route   GET /api/transactions/balance/user/:userId
  * @desc    Get user balance by user ID (tenant-aware)
  * @access  Private (authenticated users within tenant)
  * @param   userId - User ID
  */
-router.get('/balance/user/:userId', (0, permission_1.requirePermission)(permissions_1.Permissions.TRANSACTION_READ), transactionsController_1.TransactionsController.getUserBalance);
+router.get('/balance/user/:userId', (0, permission_1.requirePermission)(permissions_1.Permissions.ACCOUNT_READ), transactionsController_1.TransactionsController.getUserBalance);
 /**
  * @route   GET /api/transactions/monthly
  * @desc    Get monthly summary (tenant-aware)
  * @access  Private (authenticated users within tenant)
  * @query   year, month
  */
-router.get('/monthly', (0, permission_1.requirePermission)(permissions_1.Permissions.TRANSACTION_READ), transactionsController_1.TransactionsController.getMonthlySummary);
+router.get('/monthly', (0, permission_1.requirePermission)(permissions_1.Permissions.ACCOUNT_READ), transactionsController_1.TransactionsController.getMonthlySummary);
 /**
  * @route   GET /api/transactions
  * @desc    Get all transactions with filtering and pagination (tenant-aware)
  * @access  Private (authenticated users within tenant)
  * @query   page, limit, type, category, userId, startDate, endDate, search, sortBy, sortOrder
  */
-router.get('/', (0, permission_1.requirePermission)(permissions_1.Permissions.TRANSACTION_READ), transactionsController_1.TransactionsController.getTransactions);
+router.get('/', (0, permission_1.requirePermission)(permissions_1.Permissions.ACCOUNT_READ), transactionsController_1.TransactionsController.getTransactions);
 /**
  * @route   GET /api/transactions/:id
  * @desc    Get transaction by ID (tenant-aware)
  * @access  Private (authenticated users within tenant)
  * @param   id - Transaction ID
  */
-router.get('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.TRANSACTION_READ), transactionsController_1.TransactionsController.getTransactionById);
+router.get('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.ACCOUNT_READ), transactionsController_1.TransactionsController.getTransactionById);
 /**
  * @route   POST /api/transactions
  * @desc    Create new transaction (tenant-aware)
  * @access  Private (admin only)
  * @body    CreateTransactionData
  */
-router.post('/', (0, permission_1.requirePermission)(permissions_1.Permissions.TRANSACTION_CREATE), transactionsController_1.TransactionsController.createTransaction);
+router.post('/', (0, permission_1.requirePermission)(permissions_1.Permissions.ACCOUNT_CREATE), transactionsController_1.TransactionsController.createTransaction);
 /**
  * @route   PUT /api/transactions/:id
  * @desc    Update transaction (tenant-aware)
@@ -67,13 +67,31 @@ router.post('/', (0, permission_1.requirePermission)(permissions_1.Permissions.T
  * @param   id - Transaction ID
  * @body    Partial transaction data
  */
-router.put('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.TRANSACTION_UPDATE), transactionsController_1.TransactionsController.updateTransaction);
+router.put('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.ACCOUNT_UPDATE), transactionsController_1.TransactionsController.updateTransaction);
+/**
+ * @route   GET /api/transactions/trash
+ * @desc    Get all trashed transactions (tenant-aware)
+ * @access  Private (admin only)
+ */
+router.get('/trash/all', (0, permission_1.requirePermission)(permissions_1.Permissions.ACCOUNT_DELETE), transactionsController_1.TransactionsController.getTrashTransactions);
+/**
+ * @route   POST /api/transactions/:id/restore
+ * @desc    Restore a trashed transaction (tenant-aware)
+ * @access  Private (admin only)
+ */
+router.post('/:id/restore', (0, permission_1.requirePermission)(permissions_1.Permissions.ACCOUNT_UPDATE), transactionsController_1.TransactionsController.restoreTransaction);
+/**
+ * @route   DELETE /api/transactions/:id/permanent
+ * @desc    Permanently delete a trashed transaction (tenant-aware)
+ * @access  Private (admin only)
+ */
+router.delete('/:id/permanent', (0, permission_1.requirePermission)(permissions_1.Permissions.ACCOUNT_DELETE), transactionsController_1.TransactionsController.permanentlyDeleteTransaction);
 /**
  * @route   DELETE /api/transactions/:id
- * @desc    Delete transaction (tenant-aware)
+ * @desc    Move transaction to trash (tenant-aware)
  * @access  Private (admin only)
  * @param   id - Transaction ID
  */
-router.delete('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.TRANSACTION_DELETE), transactionsController_1.TransactionsController.deleteTransaction);
+router.delete('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.ACCOUNT_DELETE), transactionsController_1.TransactionsController.deleteTransaction);
 exports.default = router;
 //# sourceMappingURL=transactions.js.map
