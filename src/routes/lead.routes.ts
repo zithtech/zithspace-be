@@ -19,6 +19,7 @@ router.post('/', optionalAuth, LeadController.createLead);
 
 // Strictly protected routes
 router.use(authenticateToken);
+router.get('/attachments/download', LeadController.downloadAttachment);
 router.get('/', LeadController.getLeads);
 router.get('/trash', LeadController.getTrashLeads);
 router.delete('/trash/empty', LeadController.emptyTrash);
@@ -31,5 +32,8 @@ router.delete('/:id/permanent', LeadController.permanentlyDeleteLead);
 router.delete('/:id', LeadController.deleteLead);
 router.post('/:id/analyze', BidIQController.analyzeLead);
 router.post('/:id/onboard', LeadController.onboardLead);
+router.post('/send-mail', LeadController.sendLeadMail);
+router.get('/:id/timeline', LeadController.getLeadTimeline);
+router.get('/:id/mails', LeadController.getLeadMails);
 
 export default router;

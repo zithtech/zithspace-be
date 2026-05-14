@@ -8,6 +8,7 @@ import { ProposalExportService } from '@/services/proposalExportService';
 import { AIService } from '@/services/aiService';
 import { LeadModel } from '@/models/Lead.model';
 import { ProposalModel } from '@/models/Proposal.model';
+import { LeadActivityLogModel } from '@/models/LeadActivityLog.model';
 
 export class ProposalController {
 
@@ -100,6 +101,17 @@ export class ProposalController {
         status,
         created_by: userId
       });
+
+      // Log proposal creation if associated with a lead
+      if (lead_id && userId) {
+        LeadActivityLogModel.create({
+          tenantId: tenantId!,
+          leadId: lead_id,
+          action: 'CREATED_PROPOSAL',
+          performedBy: userId,
+          metadata: { proposalId: proposal.id, title }
+        }).catch(() => {});
+      }
 
       res.status(201).json({
         success: true,
@@ -233,6 +245,17 @@ export class ProposalController {
         status: 'draft',
         created_by: userId
       });
+
+      // Log AI proposal generation
+      if (userId) {
+        LeadActivityLogModel.create({
+          tenantId: tenantId!,
+          leadId,
+          action: 'CREATED_PROPOSAL',
+          performedBy: userId,
+          metadata: { proposalId: proposal.id, title: proposal.title, ai_generated: true }
+        }).catch(() => {});
+      }
 
       res.status(201).json({
         success: true,
