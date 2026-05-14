@@ -24,7 +24,7 @@ router.get("/:employeeId", requirePermission(Permissions.ONBOARDING_READ), async
 router.put("/:employeeId", requirePermission(Permissions.ONBOARDING_UPDATE), asyncHandler(EmployeeOnboardingController.update));
 router.delete(
   "/:employeeId",
-  requirePermission(Permissions.ONBOARDING_MANAGE),
+  requirePermission(Permissions.ONBOARDING_DELETE),
   asyncHandler(EmployeeOnboardingController.delete),
 );
 

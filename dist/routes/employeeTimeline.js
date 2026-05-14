@@ -17,14 +17,14 @@ router.use(auth_1.authenticateToken);
 router.use(auth_1.requireAuth);
 // ================= EMPLOYEE TIMELINE ROUTES =================
 // Create employee timeline
-router.post("/", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_MANAGE), employeeTimelineController_1.EmployeeTimelineController.createTimeline);
+router.post("/", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_CREATE), employeeTimelineController_1.EmployeeTimelineController.createTimeline);
 // Get timeline by employeeId
 router.get("/employee/:employeeId", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_READ), employeeTimelineController_1.EmployeeTimelineController.getTimelineByEmployee);
 // Get timeline by timeline ID
 router.get("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_READ), employeeTimelineController_1.EmployeeTimelineController.getTimelineById);
 // Update employee timeline
-router.put("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_MANAGE), employeeTimelineController_1.EmployeeTimelineController.updateTimeline);
+router.put("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_UPDATE), employeeTimelineController_1.EmployeeTimelineController.updateTimeline);
 // Delete employee timeline
-router.delete("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_MANAGE), employeeTimelineController_1.EmployeeTimelineController.deleteTimeline);
+router.delete("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_DELETE), employeeTimelineController_1.EmployeeTimelineController.deleteTimeline);
 exports.default = router;
 //# sourceMappingURL=employeeTimeline.js.map

@@ -7,11 +7,13 @@ const express_1 = __importDefault(require("express"));
 const messageController_1 = require("@/controllers/messageController");
 const auth_1 = require("@/middleware/auth");
 const tenantContext_1 = require("@/middleware/tenantContext");
+const permission_1 = require("@/middleware/permission");
+const permissions_1 = require("@/types/permissions");
 const router = express_1.default.Router({ mergeParams: true }); // Enable access to parent params (channelId)
 router.use(tenantContext_1.optionalTenantContext);
 router.use(auth_1.authenticateToken);
 router.use(tenantContext_1.requireTenant);
-router.post("/", messageController_1.createMessage);
-router.get("/", messageController_1.getMessages);
+router.post("/", (0, permission_1.requirePermission)(permissions_1.Permissions.CHAT_CREATE), messageController_1.createMessage);
+router.get("/", (0, permission_1.requirePermission)(permissions_1.Permissions.CHAT_READ), messageController_1.getMessages);
 exports.default = router;
 //# sourceMappingURL=messages.js.map

@@ -11,9 +11,9 @@ const router = (0, express_1.Router)();
 router.use(tenantContext_1.resolveTenant);
 router.use(auth_1.authenticateToken);
 router.use(auth_1.requireAuth);
-router.post("/", (0, permission_1.requirePermission)(permissions_1.Permissions.LEAVE_MANAGE), leaveAdjustmentController_1.createLeaveAdjustment);
-router.get("/", (0, permission_1.requirePermission)(permissions_1.Permissions.LEAVE_MANAGE), leaveAdjustmentController_1.getLeaveAdjustments);
-router.put("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.LEAVE_MANAGE), leaveAdjustmentController_1.updateLeaveAdjustment);
-router.delete("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.LEAVE_MANAGE), leaveAdjustmentController_1.deleteLeaveAdjustment);
+router.post("/", (0, permission_1.requirePermission)(permissions_1.Permissions.LEAVE_ADJUSTMENT_CREATE), leaveAdjustmentController_1.createLeaveAdjustment);
+router.get("/", (0, permission_1.requirePermission)(permissions_1.Permissions.LEAVE_ADJUSTMENT_READ), leaveAdjustmentController_1.getLeaveAdjustments);
+router.put("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.LEAVE_ADJUSTMENT_UPDATE), leaveAdjustmentController_1.updateLeaveAdjustment);
+router.delete("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.LEAVE_ADJUSTMENT_DELETE), leaveAdjustmentController_1.deleteLeaveAdjustment);
 exports.default = router;
 //# sourceMappingURL=leaveAdjustmentRoutes.js.map

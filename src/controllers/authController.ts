@@ -129,6 +129,13 @@ export class AuthController {
         path: "/", // Ensure cookie is available for all paths
       });
 
+      // Load permissions
+      const permSet = await RBACService.getUserPermissions(
+        user.id,
+        user.tenantId,
+        user.role
+      );
+
       // Return user data and access token
       const loginResponse: LoginResponse = {
         success: true,
@@ -146,6 +153,7 @@ export class AuthController {
           tenantLogo: (user.tenant.settings as any)?.logoUrl || null,
           avatarUrl: user.avatarUrl,
           isActive: user.isActive,
+          permissions: Array.from(permSet),
         },
         message: "Login successful",
       };
@@ -380,6 +388,13 @@ export class AuthController {
         return;
       }
 
+      // Load permissions
+      const permSet = await RBACService.getUserPermissions(
+        user.id,
+        user.tenantId,
+        user.role
+      );
+
       res.status(200).json({
         success: true,
         data: {
@@ -406,6 +421,7 @@ export class AuthController {
           },
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
+          permissions: Array.from(permSet),
         },
       } as ApiResponse);
     } catch (error) {

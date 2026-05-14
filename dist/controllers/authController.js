@@ -109,6 +109,8 @@ class AuthController {
                 maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
                 path: "/", // Ensure cookie is available for all paths
             });
+            // Load permissions
+            const permSet = await rbac_service_1.RBACService.getUserPermissions(user.id, user.tenantId, user.role);
             // Return user data and access token
             const loginResponse = {
                 success: true,
@@ -126,6 +128,7 @@ class AuthController {
                     tenantLogo: user.tenant.settings?.logoUrl || null,
                     avatarUrl: user.avatarUrl,
                     isActive: user.isActive,
+                    permissions: Array.from(permSet),
                 },
                 message: "Login successful",
             };
@@ -330,6 +333,8 @@ class AuthController {
                 });
                 return;
             }
+            // Load permissions
+            const permSet = await rbac_service_1.RBACService.getUserPermissions(user.id, user.tenantId, user.role);
             res.status(200).json({
                 success: true,
                 data: {
@@ -356,6 +361,7 @@ class AuthController {
                     },
                     createdAt: user.createdAt,
                     updatedAt: user.updatedAt,
+                    permissions: Array.from(permSet),
                 },
             });
         }

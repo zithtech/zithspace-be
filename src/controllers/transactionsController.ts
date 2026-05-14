@@ -17,7 +17,10 @@ import {
   getAccountBalanceQuery, 
   getMonthlySummaryQuery, 
   getTransactionSummaryQuery,
-  checkUserInTenant
+  checkUserInTenant,
+  getTrashTransactions,
+  restoreTransactionQuery,
+  permanentlyDeleteTransactionQuery
 } from '../models/transaction.model';
 
 export class TransactionsController {
@@ -531,6 +534,131 @@ export class TransactionsController {
       res.status(500).json({
         success: false,
         error: 'Failed to fetch transaction summary'
+      } as ApiResponse);
+    }
+  }
+  /**
+   * Get trashed transactions (tenant-aware)
+   */
+  static async getTrashTransactions(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: 'Tenant context and authentication required',
+        } as ApiResponse);
+        return;
+      }
+
+      const { page = 1, limit = 20, search } = req.query;
+
+      const { transactions, total } = await getTrashTransactions(req.tenantId, {
+        page: Number(page),
+        limit: Number(limit),
+        search: search as string
+      });
+
+      const transformedTransactions = transactions.map((t: any) => ({
+        ...t,
+        member: t.user,
+        type: (t.type === 'income' || t.type === 'bonus' || t.type === 'credit') ? 'credit' : 'debit'
+      }));
+
+      const totalPages = Math.ceil(total / Number(limit));
+
+      res.status(200).json({
+        success: true,
+        data: transformedTransactions,
+        pagination: {
+          page: Number(page),
+          limit: Number(limit),
+          total,
+          pages: totalPages,
+          hasNext: Number(page) < totalPages,
+          hasPrev: Number(page) > 1
+        }
+      } as ApiResponse);
+    } catch (error) {
+      console.error('Get trash transactions error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch trash transactions'
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Restore a trashed transaction (tenant-aware)
+   */
+  static async restoreTransaction(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: 'Tenant context and authentication required',
+        } as ApiResponse);
+        return;
+      }
+
+      const { id } = req.params;
+
+      const restored = await restoreTransactionQuery(id, req.tenantId);
+
+      if (!restored) {
+        res.status(404).json({
+          success: false,
+          error: 'Transaction not found in trash'
+        } as ApiResponse);
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'Transaction restored successfully'
+      } as ApiResponse);
+    } catch (error) {
+      console.error('Restore transaction error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to restore transaction'
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Permanently delete a trashed transaction (tenant-aware)
+   */
+  static async permanentlyDeleteTransaction(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: 'Tenant context and authentication required',
+        } as ApiResponse);
+        return;
+      }
+
+      const { id } = req.params;
+
+      const deleted = await permanentlyDeleteTransactionQuery(id, req.tenantId);
+
+      if (!deleted) {
+        res.status(404).json({
+          success: false,
+          error: 'Transaction not found in trash'
+        } as ApiResponse);
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'Transaction permanently deleted'
+      } as ApiResponse);
+    } catch (error) {
+      console.error('Permanent delete transaction error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to permanently delete transaction'
       } as ApiResponse);
     }
   }

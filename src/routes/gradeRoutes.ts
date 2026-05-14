@@ -13,14 +13,14 @@ router.use(authenticateToken);
 router.use(requireAuth);
 
 // Create a new grade
-router.post("/", requirePermission(Permissions.ORG_MANAGE), GradeController.createGrade);
+router.post("/", requirePermission(Permissions.ORG_GRADE_CREATE), GradeController.createGrade);
 
 // Get all grades for the current tenant
-router.get("/", requirePermission(Permissions.ORG_READ), GradeController.getAllGrades);
+router.get("/", requirePermission(Permissions.ORG_GRADE_READ), GradeController.getAllGrades);
 
 // Get, Update, and Delete a specific grade by ID
-router.get("/:id", requirePermission(Permissions.ORG_READ), GradeController.getGradeById);
-router.put("/:id", requirePermission(Permissions.ORG_MANAGE), GradeController.updateGrade);
-router.delete("/:id", requirePermission(Permissions.ORG_MANAGE), GradeController.deleteGrade);
+router.get("/:id", requirePermission(Permissions.ORG_GRADE_READ), GradeController.getGradeById);
+router.put("/:id", requirePermission(Permissions.ORG_GRADE_UPDATE), GradeController.updateGrade);
+router.delete("/:id", requirePermission(Permissions.ORG_GRADE_DELETE), GradeController.deleteGrade);
 
 export default router;

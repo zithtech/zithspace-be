@@ -13,16 +13,16 @@ router.use(tenantContext_1.resolveTenant);
 router.use(auth_1.authenticateToken);
 router.use(auth_1.requireAuth);
 // Get customers for dropdown/select
-router.get("/select", (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_READ), customerController_1.CustomerController.getCustomersForSelect);
+router.get("/select", (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_CUSTOMER_READ), customerController_1.CustomerController.getCustomersForSelect);
 // Get all customers with pagination/filter
-router.get("/", (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_READ), customerController_1.CustomerController.getCustomers);
+router.get("/", (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_CUSTOMER_READ), customerController_1.CustomerController.getCustomers);
 // Get customer by ID
-router.get("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_READ), customerController_1.CustomerController.getCustomerById);
+router.get("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_CUSTOMER_READ), customerController_1.CustomerController.getCustomerById);
 // Create customer
-router.post("/", (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_CREATE), customerController_1.CustomerController.createCustomer);
+router.post("/", (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_CUSTOMER_CREATE), customerController_1.CustomerController.createCustomer);
 // Update customer (admin only)
-router.put("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_UPDATE), customerController_1.CustomerController.updateCustomer);
+router.put("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_CUSTOMER_UPDATE), customerController_1.CustomerController.updateCustomer);
 // Delete customer (admin only)
-router.delete("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_DELETE), customerController_1.CustomerController.deleteCustomer);
+router.delete("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_CUSTOMER_DELETE), customerController_1.CustomerController.deleteCustomer);
 exports.default = router;
 //# sourceMappingURL=customerRoutes.js.map

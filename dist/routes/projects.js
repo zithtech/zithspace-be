@@ -29,7 +29,7 @@ router.get('/selection', (0, permission_1.requirePermission)(permissions_1.Permi
  * @desc    Get projects for dropdown/select (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/select', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_READ), projectController_1.ProjectController.getProjectsForSelect);
+router.get('/select', (0, permission_1.requireAnyPermission)(permissions_1.Permissions.PROJECT_READ, permissions_1.Permissions.ATTENDANCE_READ, permissions_1.Permissions.ATTENDANCE_CREATE, permissions_1.Permissions.ATTENDANCE_UPDATE, permissions_1.Permissions.ATTENDANCE_DELETE), projectController_1.ProjectController.getProjectsForSelect);
 /**
  * @route   GET /api/projects/user
  * @desc    Get projects where user is a member (tenant-aware)
@@ -49,12 +49,12 @@ router.get('/user-projects', (0, permission_1.requirePermission)(permissions_1.P
  */
 router.get('/user-projects-for-tickets', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_READ), projectController_1.ProjectController.getUserProjectsForTickets);
 // Trash routes
-router.get('/trash', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_READ), projectController_1.ProjectController.getTrashProjects);
-router.delete('/trash/empty', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_DELETE), projectController_1.ProjectController.emptyTrash);
-router.post('/trash/bulk-restore', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_UPDATE), projectController_1.ProjectController.bulkRestoreProjects);
-router.post('/trash/bulk-permanent-delete', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_DELETE), projectController_1.ProjectController.bulkPermanentDeleteProjects);
-router.post('/:id/restore', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_UPDATE), projectController_1.ProjectController.restoreProject);
-router.delete('/:id/permanent', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_DELETE), projectController_1.ProjectController.permanentDeleteProject);
+router.get('/trash', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_TRASH_READ), projectController_1.ProjectController.getTrashProjects);
+router.delete('/trash/empty', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_TRASH_DELETE), projectController_1.ProjectController.emptyTrash);
+router.post('/trash/bulk-restore', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_TRASH_RESTORE), projectController_1.ProjectController.bulkRestoreProjects);
+router.post('/trash/bulk-permanent-delete', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_TRASH_DELETE), projectController_1.ProjectController.bulkPermanentDeleteProjects);
+router.post('/:id/restore', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_TRASH_RESTORE), projectController_1.ProjectController.restoreProject);
+router.delete('/:id/permanent', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_TRASH_DELETE), projectController_1.ProjectController.permanentDeleteProject);
 /**
  * @route   GET /api/projects/:id/tickets/my
  * @desc    Get tickets assigned to current user in a project (for daily updates)

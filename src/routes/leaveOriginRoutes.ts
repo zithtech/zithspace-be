@@ -21,12 +21,12 @@ router.use(authenticateToken);
 router.use(requireAuth);
 router.use(requireTenant);
 
-router.get("/", requirePermission(Permissions.LEAVE_READ), getAllLeaveOrigins);
-router.post("/structure", requirePermission(Permissions.LEAVE_MANAGE), createLeaveOriginStructure);
-router.put("/structure/:id", requirePermission(Permissions.LEAVE_MANAGE), updateLeaveOriginStructure);
-router.post("/type", requirePermission(Permissions.LEAVE_MANAGE), createOriginLeaveType);
-router.put("/type/:id", requirePermission(Permissions.LEAVE_MANAGE), updateOriginLeaveType);
-router.delete("/structure/:id", requirePermission(Permissions.LEAVE_MANAGE), deleteLeaveOriginStructure);
-router.delete("/type/:id", requirePermission(Permissions.LEAVE_MANAGE), deleteOriginLeaveType);
+router.get("/", requirePermission(Permissions.LEAVE_POLICY_READ), getAllLeaveOrigins);
+router.post("/structure", requirePermission(Permissions.LEAVE_POLICY_CREATE), createLeaveOriginStructure);
+router.put("/structure/:id", requirePermission(Permissions.LEAVE_POLICY_UPDATE), updateLeaveOriginStructure);
+router.post("/type", requirePermission(Permissions.LEAVE_POLICY_CREATE), createOriginLeaveType);
+router.put("/type/:id", requirePermission(Permissions.LEAVE_POLICY_UPDATE), updateOriginLeaveType);
+router.delete("/structure/:id", requirePermission(Permissions.LEAVE_POLICY_DELETE), deleteLeaveOriginStructure);
+router.delete("/type/:id", requirePermission(Permissions.LEAVE_POLICY_DELETE), deleteOriginLeaveType);
 
 export default router;

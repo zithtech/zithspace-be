@@ -356,20 +356,27 @@ class RBACController {
                 res.status(404).json({ success: false, error: 'User not found' });
                 return;
             }
-            await database_1.prisma.userRole.upsert({
-                where: { userId_roleId: { userId, roleId } },
-                create: {
-                    userId,
-                    roleId,
-                    tenantId,
-                    assignedById: req.user.id,
-                    expiresAt: expiresAt ? new Date(expiresAt) : null,
-                },
-                update: {
-                    assignedById: req.user.id,
-                    expiresAt: expiresAt ? new Date(expiresAt) : null,
-                },
-            });
+            await database_1.prisma.$transaction([
+                database_1.prisma.userRole.upsert({
+                    where: { userId_roleId: { userId, roleId } },
+                    create: {
+                        userId,
+                        roleId,
+                        tenantId,
+                        assignedById: req.user.id,
+                        expiresAt: expiresAt ? new Date(expiresAt) : null,
+                    },
+                    update: {
+                        assignedById: req.user.id,
+                        expiresAt: expiresAt ? new Date(expiresAt) : null,
+                    },
+                }),
+                // Sync legacy role string
+                database_1.prisma.user.update({
+                    where: { id: userId },
+                    data: { role: role.slug }
+                })
+            ]);
             rbac_service_1.RBACService.invalidateUser(userId, tenantId);
             res.status(200).json({ success: true, message: `Role "${role.name}" assigned to user` });
         }
@@ -393,6 +400,16 @@ class RBACController {
             }
             await database_1.prisma.userRole.delete({
                 where: { userId_roleId: { userId, roleId } },
+            });
+            // Sync legacy role: set to the most recently assigned remaining role, or fallback to 'user'
+            const latestRole = await database_1.prisma.userRole.findFirst({
+                where: { userId, tenantId },
+                orderBy: { assignedAt: 'desc' },
+                include: { role: true }
+            });
+            await database_1.prisma.user.update({
+                where: { id: userId },
+                data: { role: latestRole?.role.slug || 'user' }
             });
             rbac_service_1.RBACService.invalidateUser(userId, tenantId);
             res.status(200).json({ success: true, message: 'Role removed from user' });

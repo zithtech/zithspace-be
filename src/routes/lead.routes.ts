@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { LeadController } from '@/controllers/Lead.controller';
 import { BidIQController } from '@/controllers/BidIQ.controller';
 import { authenticateToken, optionalAuth } from '@/middleware/auth';
+import { requirePermission } from '@/middleware/permission';
+import { Permissions } from '@/types/permissions';
 import { resolveTenant, requireTenant } from '@/middleware/tenantContext';
 
 const router = Router();
@@ -15,25 +17,27 @@ router.use(requireTenant);
  * Lead Routes
  */
 // Allow lead creation with optional auth (to support extensions)
-router.post('/', optionalAuth, LeadController.createLead);
+router.post('/', optionalAuth, requirePermission(Permissions.LEAD_CREATE),LeadController.createLead);
 
 // Strictly protected routes
 router.use(authenticateToken);
+router.get('/', requirePermission(Permissions.LEAD_READ), LeadController.getLeads);
+router.get('/:id', requirePermission(Permissions.LEAD_READ), LeadController.getLead);
+router.put('/:id', requirePermission(Permissions.LEAD_UPDATE), LeadController.updateLead);
+router.delete('/:id', requirePermission(Permissions.LEAD_DELETE), LeadController.deleteLead);
+router.post('/:id/analyze', requirePermission(Permissions.LEAD_MANAGE), BidIQController.analyzeLead);
+router.post('/:id/onboard', requirePermission(Permissions.LEAD_MANAGE), LeadController.onboardLead);
+router.get('/trash', requirePermission(Permissions.LEAD_TRASH_READ), LeadController.getTrashLeads);
+router.delete('/trash/empty', requirePermission(Permissions.LEAD_TRASH_DELETE), LeadController.emptyTrash);
+router.post('/trash/bulk-restore', requirePermission(Permissions.LEAD_TRASH_RESTORE), LeadController.bulkRestoreLeads);
+router.post('/trash/bulk-permanent-delete', requirePermission(Permissions.LEAD_TRASH_DELETE), LeadController.bulkPermanentlyDeleteLeads);
+router.post('/:id/restore', requirePermission(Permissions.LEAD_TRASH_RESTORE), LeadController.restoreLead);
+router.delete('/:id/permanent', requirePermission(Permissions.LEAD_TRASH_DELETE), LeadController.permanentlyDeleteLead);
 router.get('/attachments/download', LeadController.downloadAttachment);
-router.get('/', LeadController.getLeads);
-router.get('/trash', LeadController.getTrashLeads);
-router.delete('/trash/empty', LeadController.emptyTrash);
-router.post('/trash/bulk-restore', LeadController.bulkRestoreLeads);
-router.post('/trash/bulk-permanent-delete', LeadController.bulkPermanentlyDeleteLeads);
-router.get('/:id', LeadController.getLead);
-router.put('/:id', LeadController.updateLead);
-router.post('/:id/restore', LeadController.restoreLead);
-router.delete('/:id/permanent', LeadController.permanentlyDeleteLead);
-router.delete('/:id', LeadController.deleteLead);
-router.post('/:id/analyze', BidIQController.analyzeLead);
-router.post('/:id/onboard', LeadController.onboardLead);
 router.post('/send-mail', LeadController.sendLeadMail);
 router.get('/:id/timeline', LeadController.getLeadTimeline);
 router.get('/:id/mails', LeadController.getLeadMails);
 
+
 export default router;
+

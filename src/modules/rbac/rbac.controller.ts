@@ -406,20 +406,27 @@ export class RBACController {
         return;
       }
 
-      await prisma.userRole.upsert({
-        where: { userId_roleId: { userId, roleId } },
-        create: {
-          userId,
-          roleId,
-          tenantId,
-          assignedById: req.user!.id,
-          expiresAt: expiresAt ? new Date(expiresAt) : null,
-        },
-        update: {
-          assignedById: req.user!.id,
-          expiresAt: expiresAt ? new Date(expiresAt) : null,
-        },
-      });
+      await prisma.$transaction([
+        prisma.userRole.upsert({
+          where: { userId_roleId: { userId, roleId } },
+          create: {
+            userId,
+            roleId,
+            tenantId,
+            assignedById: req.user!.id,
+            expiresAt: expiresAt ? new Date(expiresAt) : null,
+          },
+          update: {
+            assignedById: req.user!.id,
+            expiresAt: expiresAt ? new Date(expiresAt) : null,
+          },
+        }),
+        // Sync legacy role string
+        prisma.user.update({
+          where: { id: userId },
+          data: { role: role.slug }
+        })
+      ]);
 
       RBACService.invalidateUser(userId, tenantId);
 
@@ -447,6 +454,18 @@ export class RBACController {
 
       await prisma.userRole.delete({
         where: { userId_roleId: { userId, roleId } },
+      });
+
+      // Sync legacy role: set to the most recently assigned remaining role, or fallback to 'user'
+      const latestRole = await prisma.userRole.findFirst({
+        where: { userId, tenantId },
+        orderBy: { assignedAt: 'desc' },
+        include: { role: true }
+      });
+
+      await prisma.user.update({
+        where: { id: userId },
+        data: { role: latestRole?.role.slug || 'user' }
       });
 
       RBACService.invalidateUser(userId, tenantId);

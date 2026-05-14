@@ -1,6 +1,8 @@
 import { Response } from "express";
 import { prisma } from "@/config/database";
 import { AuthRequest, ApiResponse } from "@/types";
+import { RBACService } from "@/modules/rbac/rbac.service";
+import { Permissions } from "@/types/permissions";
 
 export class TimeTrackingController {
 
@@ -15,13 +17,15 @@ export class TimeTrackingController {
 
       const whereClause: any = { tenantId: req.tenantId };
 
-      if (allUsers === 'true') {
-        // No user filter (get all)
-      } else if (userId) {
-        whereClause.userId = String(userId);
-      } else if (ticketId) {
-        // Keep ticket-based view open to all members for that specific ticket
-        whereClause.ticketId = String(ticketId);
+      if (allUsers === 'true' || (userId && userId !== req.user.id)) {
+        const canReadTeam = await RBACService.hasPermission(req.user.id, req.tenantId, Permissions.TIME_TRACKING_TEAM_READ);
+        if (canReadTeam) {
+          if (userId) whereClause.userId = String(userId);
+          // if allUsers is true and no userId, whereClause stays empty for userId -> get all
+        } else {
+          // Not allowed to see others, force own ID
+          whereClause.userId = req.user.id;
+        }
       } else {
         // Default to current user
         whereClause.userId = req.user.id;

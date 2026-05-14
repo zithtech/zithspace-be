@@ -7,10 +7,12 @@ const express_1 = __importDefault(require("express"));
 const leaveAllocationController_1 = require("@/controllers/leaveAllocationController");
 const auth_1 = require("@/middleware/auth");
 const tenantContext_1 = require("@/middleware/tenantContext");
+const permission_1 = require("@/middleware/permission");
+const permissions_1 = require("@/types/permissions");
 const router = express_1.default.Router();
 router.use(tenantContext_1.resolveTenant);
 router.use(auth_1.authenticateToken);
 router.use(auth_1.requireAuth);
-router.get("/", leaveAllocationController_1.getLeaveAllocationWithEmployees);
+router.get("/", (0, permission_1.requirePermission)(permissions_1.Permissions.LEAVE_READ), leaveAllocationController_1.getLeaveAllocationWithEmployees);
 exports.default = router;
 //# sourceMappingURL=leaveAllocationRoutes.js.map

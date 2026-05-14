@@ -36,7 +36,7 @@ router.get('/my', requirePermission(Permissions.DAILY_UPDATE_READ), DailyUpdateC
  * @access  Private (Project Manager or Super Admin)
  * @query   date?, projectId?, userId?
  */
-router.get('/team', requirePermission(Permissions.DAILY_UPDATE_MANAGE), DailyUpdateController.getTeamUpdates);
+router.get('/team', requirePermission(Permissions.DAILY_UPDATE_MANAGE_TIME), DailyUpdateController.getTeamUpdates);
 
 /**
  * @route   GET /api/daily-updates/today
@@ -58,7 +58,7 @@ router.get('/check-today', requirePermission(Permissions.DAILY_UPDATE_READ), Dai
  * @access  Private (Project Manager or Super Admin)
  * @query   startDate?, endDate?, projectId?
  */
-router.get('/stats/submission-rate', requirePermission(Permissions.DAILY_UPDATE_MANAGE), DailyUpdateController.getSubmissionStats);
+router.get('/stats/submission-rate', requirePermission(Permissions.DAILY_UPDATE_MANAGE_TIME), DailyUpdateController.getSubmissionStats);
 
 /**
  * @route   GET /api/daily-updates/:id
@@ -73,13 +73,13 @@ router.get('/:id', requirePermission(Permissions.DAILY_UPDATE_READ), DailyUpdate
  * @access  Private (owner only)
  * @body    { mood?, totalHoursWorked?, projectUpdates: [], generalNotes? }
  */
-router.put('/:id', requirePermission(Permissions.DAILY_UPDATE_CREATE), DailyUpdateController.updateUpdate);
+router.put('/:id', requirePermission(Permissions.DAILY_UPDATE_UPDATE), DailyUpdateController.updateUpdate);
 
 /**
  * @route   DELETE /api/daily-updates/:id
  * @desc    Delete daily status update
  * @access  Private (owner only)
  */
-router.delete('/:id', requirePermission(Permissions.DAILY_UPDATE_MANAGE), DailyUpdateController.deleteUpdate);
+router.delete('/:id', requirePermission(Permissions.DAILY_UPDATE_DELETE), DailyUpdateController.deleteUpdate);
 
 export default router;
