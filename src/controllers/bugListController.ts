@@ -226,7 +226,7 @@ async function loadBugWithChildren(
        FROM bugs b
        LEFT JOIN tickets t ON t.id = b.ticket_id
        LEFT JOIN users u ON u.id = b.created_by_id
-       LEFT JOIN users a ON a.id = b.assignee_id
+       LEFT JOIN users a ON a.id = COALESCE(b.assignee_id, t.assignee_id)
       WHERE b.id = $1 AND b.tenant_id = $2`,
     [bugId, tenantId],
   );
@@ -1217,7 +1217,7 @@ export class BugListController {
       if (status && ALLOWED_STATUS.has(status)) push("b.status = $$", status);
       if (bugType) push("b.bug_type = $$", bugType);
       if (createdById) push("b.created_by_id = $$", createdById);
-      if (assigneeId) push("b.assignee_id = $$", assigneeId);
+      if (assigneeId) push("(b.assignee_id = $$ OR (b.assignee_id IS NULL AND t.assignee_id = $$))", assigneeId);
       if (projectId && projectId !== 'all') {
         conditions.push(`b.folder_id IN (SELECT id FROM bug_folders WHERE project_id = $${values.length + 1})`);
         values.push(projectId);
@@ -1285,7 +1285,7 @@ export class BugListController {
       const offset = (pageNum - 1) * limitNum;
 
       const totalRes = await pool.query(
-        `SELECT COUNT(*)::int AS total FROM bugs b WHERE ${whereSql}`,
+        `SELECT COUNT(*)::int AS total FROM bugs b LEFT JOIN tickets t ON t.id = b.ticket_id WHERE ${whereSql}`,
         values,
       );
       const total = totalRes.rows[0].total as number;
@@ -1297,7 +1297,7 @@ export class BugListController {
           FROM bugs b
           LEFT JOIN tickets t ON t.id = b.ticket_id
           LEFT JOIN users u ON u.id = b.created_by_id
-          LEFT JOIN users a ON a.id = b.assignee_id
+          LEFT JOIN users a ON a.id = COALESCE(b.assignee_id, t.assignee_id)
          WHERE ${whereSql}
          ORDER BY ${safeSortBy} ${safeSortOrder}
          LIMIT $${values.length + 1} OFFSET $${values.length + 2}
@@ -2293,9 +2293,9 @@ export class BugListController {
         const ticketId = ticketInsert.rows[0].id;
 
         await client.query(
-          `UPDATE bugs SET ticket_id = $1, status = 'converted'
+          `UPDATE bugs SET ticket_id = $1, status = 'converted', assignee_id = COALESCE($4, assignee_id)
              WHERE id = ANY($2::text[]) AND tenant_id = $3`,
-          [ticketId, bugIds, req.tenantId],
+          [ticketId, bugIds, req.tenantId, assigneeId || null],
         );
 
         // Process ticket attachments if provided

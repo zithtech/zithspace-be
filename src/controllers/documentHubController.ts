@@ -463,6 +463,12 @@ export class DocumentHubController {
         },
       });
 
+      // Update parent hub's updatedAt
+      await prisma.documentHub.update({
+        where: { id: documentHubId },
+        data: { updatedAt: new Date() },
+      });
+
       // Emit socket event
       socketService.emitToTenant(
         req.tenantId,
@@ -612,6 +618,12 @@ export class DocumentHubController {
           data: { title },
         });
       }
+
+      // Update parent hub's updatedAt
+      await prisma.documentHub.update({
+        where: { id: node.documentHubId },
+        data: { updatedAt: new Date() },
+      });
 
       // Emit socket event
       socketService.emitToTenant(
@@ -797,6 +809,12 @@ export class DocumentHubController {
           },
         });
       }
+
+      // Update parent hub's updatedAt
+      await prisma.documentHub.update({
+        where: { id: document.documentHubId },
+        data: { updatedAt: new Date() },
+      });
 
       // Emit socket event
       socketService.emitToTenant(
@@ -1389,6 +1407,12 @@ export class DocumentHubController {
         );
       });
 
+      // Update parent hub's updatedAt
+      await prisma.documentHub.update({
+        where: { id: node.documentHubId },
+        data: { updatedAt: new Date() },
+      });
+
       // Emit socket event
       socketService.emitToTenant(
         req.tenantId,
@@ -1533,6 +1557,12 @@ export class DocumentHubController {
           deletedAt: new Date(),
           deletedById: req.user.id,
         },
+      });
+
+      // Update parent hub's updatedAt
+      await prisma.documentHub.update({
+        where: { id: document.documentHubId },
+        data: { updatedAt: new Date() },
       });
 
       // Emit socket event
