@@ -39,26 +39,48 @@ export class ProposalModel {
   }
 
   /**
-   * Find all proposals for a tenant
+   * Find all proposals for a tenant. Embeds the creator user as a nested
+   * `createdBy` object so the table can render an avatar + name without a
+   * second round-trip.
    */
   static async findAll(tenantId: string): Promise<any[]> {
     const query = `
-      SELECT id, title, client_name, status, created_at 
-      FROM proposals 
-      WHERE tenant_id = $1 
-      ORDER BY created_at DESC;
+      SELECT
+        p.id,
+        p.title,
+        p.client_name,
+        p.status,
+        p.created_at,
+        p.updated_at,
+        p.created_by,
+        (
+          SELECT json_build_object('id', u.id, 'name', u.name, 'avatarUrl', u.avatar_url)
+          FROM users u
+          WHERE u.id = p.created_by
+        ) AS "createdBy"
+      FROM proposals p
+      WHERE p.tenant_id = $1
+      ORDER BY p.created_at DESC;
     `;
     const result = await pool.query(query, [tenantId]);
     return result.rows;
   }
 
   /**
-   * Find a specific proposal by ID and tenant ID
+   * Find a specific proposal by ID and tenant ID. Embeds the creator as a
+   * nested `createdBy` object so detail pages can render an avatar + name.
    */
   static async findById(id: string, tenantId: string): Promise<any> {
     const query = `
-      SELECT * FROM proposals 
-      WHERE id = $1 AND tenant_id = $2;
+      SELECT
+        p.*,
+        (
+          SELECT json_build_object('id', u.id, 'name', u.name, 'avatarUrl', u.avatar_url)
+          FROM users u
+          WHERE u.id = p.created_by
+        ) AS "createdBy"
+      FROM proposals p
+      WHERE p.id = $1 AND p.tenant_id = $2;
     `;
     const result = await pool.query(query, [id, tenantId]);
     return result.rows[0];
