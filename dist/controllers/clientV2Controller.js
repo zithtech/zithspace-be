@@ -404,6 +404,52 @@ class ClientV2Controller {
             res.status(500).json({ success: false, error: 'Failed to delete document' });
         }
     }
+    /**
+     * Delete a client and all its associated data
+     */
+    static async deleteClient(req, res) {
+        try {
+            if (!req.tenantId) {
+                res.status(400).json({ success: false, error: 'Tenant context required' });
+                return;
+            }
+            const { id } = req.params;
+            await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                // 1. Fetch documents to cleanup R2 files
+                const documents = await prisma.clientDocumentV2.findMany({
+                    where: { clientId: id }
+                });
+                return await prisma.$transaction(async (tx) => {
+                    // 2. Cleanup R2 files
+                    for (const doc of documents) {
+                        if (doc.fileUrl) {
+                            try {
+                                await (0, r2Client_1.deleteFileFromR2)(doc.fileUrl, req.tenantId);
+                            }
+                            catch (err) {
+                                console.error(`Failed to delete R2 file for doc ${doc.id}:`, err);
+                            }
+                        }
+                    }
+                    // 3. Delete related records
+                    await tx.clientContactV2.deleteMany({ where: { clientId: id } });
+                    await tx.clientDocumentV2.deleteMany({ where: { clientId: id } });
+                    await tx.employeeClientAllocationV2.deleteMany({ where: { clientId: id } });
+                    // ClientProject has onDelete: Cascade in schema, but we'll be explicit if needed.
+                    // Actually, let's just delete the client and let cascade handle ClientProject
+                    // 4. Delete the client itself
+                    await tx.clientV2.delete({
+                        where: { id }
+                    });
+                });
+            });
+            res.status(200).json({ success: true, message: 'Client deleted successfully' });
+        }
+        catch (error) {
+            console.error('Delete client error:', error);
+            res.status(500).json({ success: false, error: error.message || 'Failed to delete client' });
+        }
+    }
     // ==============================================
     // CLIENT PROJECTS
     // ==============================================

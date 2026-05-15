@@ -50,8 +50,14 @@ export async function getTransactions(
   let paramIndex = 2;
 
   if (type) {
-    whereConditions.push(`t.type = $${paramIndex++}`);
-    values.push(type);
+    if (type === 'credit') {
+      whereConditions.push(`t.type IN ('income', 'bonus', 'credit')`);
+    } else if (type === 'debit') {
+      whereConditions.push(`t.type IN ('expense', 'deduction', 'debit')`);
+    } else {
+      whereConditions.push(`t.type = $${paramIndex++}`);
+      values.push(type);
+    }
   }
 
   if (category) {
