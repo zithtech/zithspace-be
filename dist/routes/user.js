@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const userController_1 = require("@/controllers/userController");
 const userPreferenceController_1 = require("@/controllers/userPreferenceController");
+const UserTablePreference_controller_1 = require("@/controllers/UserTablePreference.controller");
 const auth_1 = require("@/middleware/auth");
 const permission_1 = require("@/middleware/permission");
 const permissions_1 = require("@/types/permissions");
@@ -45,6 +46,24 @@ router.get('/preferences', userPreferenceController_1.UserPreferenceController.g
  * @access  Private (authenticated users)
  */
 router.patch('/preferences', userPreferenceController_1.UserPreferenceController.updatePreferences);
+/**
+ * @route   GET /api/user/table-preferences/:tableKey
+ * @desc    Get per-user, per-table UI preferences (e.g. column visibility, density)
+ * @access  Private (authenticated users)
+ */
+router.get('/table-preferences/:tableKey', UserTablePreference_controller_1.UserTablePreferenceController.get);
+/**
+ * @route   PUT /api/user/table-preferences/:tableKey
+ * @desc    Upsert per-user, per-table UI preferences
+ * @access  Private (authenticated users)
+ */
+router.put('/table-preferences/:tableKey', UserTablePreference_controller_1.UserTablePreferenceController.upsert);
+/**
+ * @route   DELETE /api/user/table-preferences/:tableKey
+ * @desc    Reset per-user, per-table UI preferences to defaults
+ * @access  Private (authenticated users)
+ */
+router.delete('/table-preferences/:tableKey', UserTablePreference_controller_1.UserTablePreferenceController.remove);
 /**
  * @route   POST /api/user/reset-password/:userId
  * @desc    Reset user password (admin only - tenant-aware)

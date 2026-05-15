@@ -95,7 +95,7 @@ export class ProposalModel {
     let placeholderIndex = 1;
 
     Object.entries(data).forEach(([key, value]) => {
-      if (key !== 'id' && key !== 'tenant_id' && key !== 'created_at') {
+      if (key !== 'id' && key !== 'tenant_id' && key !== 'created_at' && value !== undefined) {
         fields.push(`${key} = $${placeholderIndex}`);
         
         if (value === null) {

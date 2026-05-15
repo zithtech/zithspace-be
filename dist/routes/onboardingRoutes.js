@@ -22,6 +22,6 @@ router.get("/", (0, permission_1.requirePermission)(permissions_1.Permissions.ON
 router.get("/birthdays", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_READ), asyncHandler(employeeOnboardingController_1.EmployeeOnboardingController.getUpcomingBirthdays));
 router.get("/:employeeId", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_READ), asyncHandler(employeeOnboardingController_1.EmployeeOnboardingController.getById));
 router.put("/:employeeId", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_UPDATE), asyncHandler(employeeOnboardingController_1.EmployeeOnboardingController.update));
-router.delete("/:employeeId", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_MANAGE), asyncHandler(employeeOnboardingController_1.EmployeeOnboardingController.delete));
+router.delete("/:employeeId", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_DELETE), asyncHandler(employeeOnboardingController_1.EmployeeOnboardingController.delete));
 exports.default = router;
 //# sourceMappingURL=onboardingRoutes.js.map

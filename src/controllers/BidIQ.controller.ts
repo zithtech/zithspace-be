@@ -3,6 +3,7 @@ import { AuthRequest } from "@/types";
 import { LeadModel } from "@/models/Lead.model";
 import { BidIQModel } from "../models/BidIQ.model";
 import { AIService } from "../services/aiService";
+import { LeadActivityLogModel } from "../models/LeadActivityLog.model";
 
 export class BidIQController {
   static async analyzeLead(req: AuthRequest, res: Response) {
@@ -49,6 +50,17 @@ export class BidIQController {
         risks: intelligence.risks,
         missing_skills: intelligence.missingSkills
       });
+
+      // Log BidIQ creation in timeline
+      if (req.user?.id) {
+        LeadActivityLogModel.create({
+          tenantId,
+          leadId: id,
+          action: 'CREATED_BIDIQ',
+          performedBy: req.user.id,
+          metadata: { score: intelligence.strategicScore }
+        }).catch(() => {});
+      }
 
       return res.status(200).json(bidiqResult);
     } catch (error) {

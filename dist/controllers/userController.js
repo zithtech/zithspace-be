@@ -69,6 +69,11 @@ class UserController {
                                 position: { select: { title: true } },
                             },
                         },
+                        userRoles: {
+                            select: {
+                                role: { select: { name: true, slug: true } }
+                            }
+                        }
                     },
                     orderBy,
                     skip,
@@ -264,8 +269,29 @@ class UserController {
                             position: { select: { title: true } },
                         },
                     },
+                    userRoles: {
+                        select: {
+                            role: { select: { name: true, slug: true } }
+                        }
+                    }
                 },
             });
+            // RBAC Sync: Assign the role in UserRole table if it's an RBAC role
+            if (userData.role) {
+                const rbacRole = await database_1.prisma.role.findFirst({
+                    where: { tenantId: req.tenantId, slug: userData.role }
+                });
+                if (rbacRole) {
+                    await database_1.prisma.userRole.create({
+                        data: {
+                            userId: newUser.id,
+                            roleId: rbacRole.id,
+                            tenantId: req.tenantId,
+                            assignedById: req.user.id
+                        }
+                    });
+                }
+            }
             res.status(201).json({
                 success: true,
                 data: newUser,
@@ -399,8 +425,32 @@ class UserController {
                             position: { select: { title: true } },
                         },
                     },
+                    userRoles: {
+                        select: {
+                            role: { select: { name: true, slug: true } }
+                        }
+                    }
                 },
             });
+            // RBAC Sync: If role is updated, sync UserRole table
+            if (updates.role) {
+                const rbacRole = await database_1.prisma.role.findFirst({
+                    where: { tenantId: req.tenantId, slug: updates.role }
+                });
+                if (rbacRole) {
+                    await database_1.prisma.userRole.deleteMany({
+                        where: { userId: id, tenantId: req.tenantId }
+                    });
+                    await database_1.prisma.userRole.create({
+                        data: {
+                            userId: id,
+                            roleId: rbacRole.id,
+                            tenantId: req.tenantId,
+                            assignedById: req.user.id
+                        }
+                    });
+                }
+            }
             res.status(200).json({
                 success: true,
                 data: updatedUser,

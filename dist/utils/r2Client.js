@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.s3Client = void 0;
+exports.s3Client = exports.BUCKET_NAME = void 0;
 exports.uploadImageToR2 = uploadImageToR2;
 exports.uploadFileToR2 = uploadFileToR2;
 exports.uploadRequisitionAttachmentToR2 = uploadRequisitionAttachmentToR2;
@@ -22,7 +22,7 @@ const s3_request_presigner_1 = require("@aws-sdk/s3-request-presigner");
 const nanoid_1 = require("nanoid");
 // Cloudflare R2 Configuration
 const REGION = "auto";
-const BUCKET_NAME = process.env.CF_R2_BUCKET_NAME || "zithspace";
+exports.BUCKET_NAME = process.env.CF_R2_BUCKET_NAME || "zithspace";
 const ACCOUNT_ID = process.env.CF_R2_ACCOUNT_ID;
 const ACCESS_KEY_ID = process.env.CF_R2_ACCESS_KEY_ID;
 const SECRET_ACCESS_KEY = process.env.CF_R2_SECRET_ACCESS_KEY;
@@ -84,7 +84,7 @@ async function uploadImageToR2(base64Image, tenantId, ticketId) {
         const fileName = `${folderPath}/${uniqueId}.${fileExt}`;
         // Upload to R2
         const params = {
-            Bucket: "zithspace",
+            Bucket: exports.BUCKET_NAME,
             Key: fileName,
             Body: buffer,
             ContentType: contentType,
@@ -140,7 +140,7 @@ async function uploadFileToR2(base64File, fileName, tenantId, ticketId) {
         const storedFileName = `${folderPath}/${uniqueId}_${sanitizedFileName}`;
         // Upload to R2
         const params = {
-            Bucket: "zithspace",
+            Bucket: exports.BUCKET_NAME,
             Key: storedFileName,
             Body: buffer,
             ContentType: contentType,
@@ -186,7 +186,7 @@ async function uploadRequisitionAttachmentToR2(base64File, fileName, tenantId, r
         const folderPath = `${tenantId}/requisition_attachments/${requisitionId}/${category}`;
         const storedFileName = `${folderPath}/${uniqueId}_${sanitizedFileName}`;
         const params = {
-            Bucket: BUCKET_NAME,
+            Bucket: exports.BUCKET_NAME,
             Key: storedFileName,
             Body: buffer,
             ContentType: contentType,
@@ -229,7 +229,7 @@ async function uploadEmployeeDocumentToR2(base64File, fileName, tenantId, employ
         const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
         const key = `${tenantId}/employees/${employeeId}/documents/${documentType}/${uniqueId}_${sanitizedFileName}`;
         const params = {
-            Bucket: BUCKET_NAME,
+            Bucket: exports.BUCKET_NAME,
             Key: key,
             Body: buffer,
             ContentType: contentType,
@@ -267,7 +267,7 @@ async function uploadClientDocumentToR2(base64File, fileName, tenantId, clientId
         // Organize by tenant -> clients-v2 -> client ID -> category -> document type
         const key = `${tenantId}/clients-v2/${clientId}/documents/${category}/${documentType}/${uniqueId}_${sanitizedFileName}`;
         const params = {
-            Bucket: BUCKET_NAME,
+            Bucket: exports.BUCKET_NAME,
             Key: key,
             Body: buffer,
             ContentType: contentType,
@@ -310,7 +310,7 @@ async function uploadEmployeeAssetToR2({ base64, fileName = "asset.png", tenantI
         const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
         const key = `${tenantId}/employees/${employeeId}/${folder}/${uniqueId}_${sanitizedFileName}`;
         await exports.s3Client.send(new client_s3_1.PutObjectCommand({
-            Bucket: BUCKET_NAME,
+            Bucket: exports.BUCKET_NAME,
             Key: key,
             Body: buffer,
             ContentType: contentType,
@@ -345,7 +345,7 @@ async function uploadCandidateDocumentToR2(base64File, fileName, tenantId, candi
         const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
         const key = `${tenantId}/candidates/${candidateId}/documents/${documentType}/${uniqueId}_${sanitizedFileName}`;
         await exports.s3Client.send(new client_s3_1.PutObjectCommand({
-            Bucket: BUCKET_NAME,
+            Bucket: exports.BUCKET_NAME,
             Key: key,
             Body: buffer,
             ContentType: contentType,
@@ -380,7 +380,7 @@ async function uploadBugAttachmentToR2(base64File, fileName, tenantId, folderId,
         const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
         const key = `${tenantId}/bug-list/${folderId}/${sheetId}/${bugId}/${uniqueId}_${sanitizedFileName}`;
         await exports.s3Client.send(new client_s3_1.PutObjectCommand({
-            Bucket: BUCKET_NAME,
+            Bucket: exports.BUCKET_NAME,
             Key: key,
             Body: buffer,
             ContentType: contentType,
@@ -420,7 +420,7 @@ async function deleteFileFromR2(fileUrl, tenantId) {
         }
         // Delete from R2
         const params = {
-            Bucket: BUCKET_NAME,
+            Bucket: exports.BUCKET_NAME,
             Key: fileName,
         };
         await exports.s3Client.send(new client_s3_1.DeleteObjectCommand(params));
@@ -444,7 +444,7 @@ async function deleteBugAttachmentFromR2(fileUrl, tenantId) {
             // Fallback: try to see if it's just the key already
             if (fileUrl.startsWith(keyMarker)) {
                 await exports.s3Client.send(new client_s3_1.DeleteObjectCommand({
-                    Bucket: BUCKET_NAME,
+                    Bucket: exports.BUCKET_NAME,
                     Key: fileUrl,
                 }));
                 return;
@@ -454,7 +454,7 @@ async function deleteBugAttachmentFromR2(fileUrl, tenantId) {
         const key = fileUrl.substring(markerIndex);
         // Delete from R2
         await exports.s3Client.send(new client_s3_1.DeleteObjectCommand({
-            Bucket: BUCKET_NAME,
+            Bucket: exports.BUCKET_NAME,
             Key: key,
         }));
         console.log(`Deleted bug attachment: ${key}`);
@@ -473,7 +473,7 @@ async function deleteImageFromR2(imageUrl, tenantId) {
     try {
         // Extract file key from URL
         const urlParts = imageUrl.split("/");
-        const bucketIndex = urlParts.indexOf(BUCKET_NAME);
+        const bucketIndex = urlParts.indexOf(exports.BUCKET_NAME);
         if (bucketIndex === -1) {
             throw new Error("Invalid image URL");
         }
@@ -484,7 +484,7 @@ async function deleteImageFromR2(imageUrl, tenantId) {
         }
         // Delete from R2
         const params = {
-            Bucket: BUCKET_NAME,
+            Bucket: exports.BUCKET_NAME,
             Key: fileName,
         };
         await exports.s3Client.send(new client_s3_1.DeleteObjectCommand(params));
@@ -552,13 +552,13 @@ async function generatePresignedUrl(fileUrl, expiresIn = 86400) {
         const url = new URL(fileUrl);
         let key = url.pathname.startsWith('/') ? url.pathname.slice(1) : url.pathname;
         // If the key starts with the bucket name (common in some R2 URL formats), strip it
-        if (key.startsWith(`${BUCKET_NAME}/`)) {
-            console.log(`[R2] Stripping bucket name "${BUCKET_NAME}" from presigned key: ${key}`);
-            key = key.substring(BUCKET_NAME.length + 1);
+        if (key.startsWith(`${exports.BUCKET_NAME}/`)) {
+            console.log(`[R2] Stripping bucket name "${exports.BUCKET_NAME}" from presigned key: ${key}`);
+            key = key.substring(exports.BUCKET_NAME.length + 1);
         }
         console.log(`[R2] Generating presigned URL for key: "${key}" (expires in ${expiresIn}s)`);
         const command = new client_s3_1.GetObjectCommand({
-            Bucket: BUCKET_NAME,
+            Bucket: exports.BUCKET_NAME,
             Key: key,
         });
         const signedUrl = await (0, s3_request_presigner_1.getSignedUrl)(exports.s3Client, command, { expiresIn });
@@ -581,13 +581,13 @@ async function getFileBufferFromR2(fileUrl) {
             ? url.pathname.slice(1)
             : url.pathname;
         // If the key starts with the bucket name (common in some R2 URL formats), strip it
-        if (key.startsWith(`${BUCKET_NAME}/`)) {
-            console.log(`[R2] Stripping bucket name "${BUCKET_NAME}" from key: ${key}`);
-            key = key.substring(BUCKET_NAME.length + 1);
+        if (key.startsWith(`${exports.BUCKET_NAME}/`)) {
+            console.log(`[R2] Stripping bucket name "${exports.BUCKET_NAME}" from key: ${key}`);
+            key = key.substring(exports.BUCKET_NAME.length + 1);
         }
         console.log(`[R2] Final key for fetch: "${key}" from URL: ${fileUrl}`);
         const command = new client_s3_1.GetObjectCommand({
-            Bucket: BUCKET_NAME,
+            Bucket: exports.BUCKET_NAME,
             Key: key,
         });
         const response = await exports.s3Client.send(command);
@@ -629,7 +629,7 @@ async function uploadEscalationDocumentToR2(base64File, fileName, tenantId, esca
         const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
         const key = `${tenantId}/escalations/${escalationId}/documents/${uniqueId}_${sanitizedFileName}`;
         const params = {
-            Bucket: BUCKET_NAME,
+            Bucket: exports.BUCKET_NAME,
             Key: key,
             Body: buffer,
             ContentType: contentType,

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { SettingsController } from '@/controllers/settingsController';
 import { authenticateToken, requireAuth } from '@/middleware/auth';
-import { requirePermission } from '@/middleware/permission';
+import { requirePermission, requireAnyPermission } from '@/middleware/permission';
 import { Permissions } from '@/types/permissions';
 import { resolveTenant } from '@/middleware/tenantContext';
 
@@ -19,7 +19,7 @@ router.use(requireAuth);
  * @desc    Get all configuration options for ticket creation (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/ticket-configurations', requirePermission(Permissions.SETTINGS_READ), SettingsController.getTicketConfigurations);
+router.get('/ticket-configurations', requireAnyPermission(Permissions.SETTINGS_READ, Permissions.TICKET_READ, Permissions.TICKET_SETTING_READ), SettingsController.getTicketConfigurations);
 
 /**
  * @route   GET /api/settings/team-members
@@ -27,7 +27,7 @@ router.get('/ticket-configurations', requirePermission(Permissions.SETTINGS_READ
  * @access  Private (authenticated users within tenant)
  * @query   projectId, role, position
  */
-router.get('/team-members', requirePermission(Permissions.SETTINGS_READ), SettingsController.getTeamMembers);
+router.get('/team-members', requireAnyPermission(Permissions.SETTINGS_READ, Permissions.PROJECT_READ, Permissions.TICKET_READ, Permissions.USER_READ), SettingsController.getTeamMembers);
 
 /**
  * @route   GET /api/settings/release-plans/:projectId
@@ -35,7 +35,7 @@ router.get('/team-members', requirePermission(Permissions.SETTINGS_READ), Settin
  * @access  Private (authenticated users within tenant)
  * @param   projectId - Project ID
  */
-router.get('/release-plans/:projectId', requirePermission(Permissions.SETTINGS_READ), SettingsController.getReleasePlansByProject);
+router.get('/release-plans/:projectId', requireAnyPermission(Permissions.SETTINGS_READ, Permissions.PROJECT_READ), SettingsController.getReleasePlansByProject);
 
 /**
  * @route   GET /api/settings/workflow-templates
@@ -43,7 +43,7 @@ router.get('/release-plans/:projectId', requirePermission(Permissions.SETTINGS_R
  * @access  Private (authenticated users within tenant)
  * @query   projectId
  */
-router.get('/workflow-templates', requirePermission(Permissions.SETTINGS_READ), SettingsController.getWorkflowTemplates);
+router.get('/workflow-templates', requireAnyPermission(Permissions.SETTINGS_READ, Permissions.TICKET_READ, Permissions.TICKET_SETTING_READ), SettingsController.getWorkflowTemplates);
 
 /**
  * @route   PUT /api/settings/workflow-templates/:projectId
@@ -52,7 +52,7 @@ router.get('/workflow-templates', requirePermission(Permissions.SETTINGS_READ), 
  * @param   projectId - Project ID
  * @body    { workflowSteps: string[] }
  */
-router.put('/workflow-templates/:projectId', requirePermission(Permissions.SETTINGS_UPDATE), SettingsController.updateWorkflowTemplate);
+router.put('/workflow-templates/:projectId', requireAnyPermission(Permissions.SETTINGS_UPDATE, Permissions.TICKET_SETTING_UPDATE), SettingsController.updateWorkflowTemplate);
 
 /**
  * @route   GET /api/settings/parent-tickets
@@ -60,7 +60,7 @@ router.put('/workflow-templates/:projectId', requirePermission(Permissions.SETTI
  * @access  Private (authenticated users within tenant)
  * @query   projectId, exclude, search
  */
-router.get('/parent-tickets', requirePermission(Permissions.SETTINGS_READ), SettingsController.getParentTickets);
+router.get('/parent-tickets', requireAnyPermission(Permissions.SETTINGS_READ, Permissions.TICKET_READ), SettingsController.getParentTickets);
 
 /**
  * @route   GET /api/settings/system-stats

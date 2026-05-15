@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { UserController } from '@/controllers/userController';
 import { UserPreferenceController } from '@/controllers/userPreferenceController';
+import { UserTablePreferenceController } from '@/controllers/UserTablePreference.controller';
 import { authenticateToken, requireAuth } from '@/middleware/auth';
 import { requirePermission } from '@/middleware/permission';
 import { Permissions } from '@/types/permissions';
@@ -51,6 +52,27 @@ router.get('/preferences', UserPreferenceController.getPreferences);
  * @access  Private (authenticated users)
  */
 router.patch('/preferences', UserPreferenceController.updatePreferences);
+
+/**
+ * @route   GET /api/user/table-preferences/:tableKey
+ * @desc    Get per-user, per-table UI preferences (e.g. column visibility, density)
+ * @access  Private (authenticated users)
+ */
+router.get('/table-preferences/:tableKey', UserTablePreferenceController.get);
+
+/**
+ * @route   PUT /api/user/table-preferences/:tableKey
+ * @desc    Upsert per-user, per-table UI preferences
+ * @access  Private (authenticated users)
+ */
+router.put('/table-preferences/:tableKey', UserTablePreferenceController.upsert);
+
+/**
+ * @route   DELETE /api/user/table-preferences/:tableKey
+ * @desc    Reset per-user, per-table UI preferences to defaults
+ * @access  Private (authenticated users)
+ */
+router.delete('/table-preferences/:tableKey', UserTablePreferenceController.remove);
 
 /**
  * @route   POST /api/user/reset-password/:userId

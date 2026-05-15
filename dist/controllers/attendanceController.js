@@ -3,6 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AttendanceController = void 0;
 const database_1 = require("@/config/database");
 const types_1 = require("@/types");
+const rbac_service_1 = require("@/modules/rbac/rbac.service");
+const permissions_1 = require("@/types/permissions");
 class AttendanceController {
     /**
      * Get all attendance records with filtering and pagination (tenant-aware)
@@ -24,7 +26,19 @@ class AttendanceController {
                 tenantId: req.tenantId,
             };
             // Handle userId or member parameter (member is alias for userId)
-            const targetUserId = userId || member;
+            let targetUserId = userId || member;
+            // RBAC: If user only has CLOCK_IN_OUT permission, they can only see their own records
+            const userPerms = await rbac_service_1.RBACService.getUserPermissions(req.user.id, req.tenantId, req.user.role);
+            const hasManagementPerm = [
+                permissions_1.Permissions.ATTENDANCE_READ,
+                permissions_1.Permissions.ATTENDANCE_CREATE,
+                permissions_1.Permissions.ATTENDANCE_UPDATE,
+                permissions_1.Permissions.ATTENDANCE_DELETE,
+            ].some((p) => userPerms.has(p));
+            // Super admin and managers can see anyone. Regular users only see themselves.
+            if (req.user.role !== "super_admin" && !hasManagementPerm) {
+                targetUserId = req.user.id;
+            }
             if (targetUserId)
                 where.userId = targetUserId;
             if (status)
@@ -151,6 +165,23 @@ class AttendanceController {
                     },
                 });
             });
+            // RBAC: Check ownership if user only has CLOCK_IN_OUT permission
+            const userPerms = await rbac_service_1.RBACService.getUserPermissions(req.user.id, req.tenantId, req.user.role);
+            const hasManagementPerm = [
+                permissions_1.Permissions.ATTENDANCE_READ,
+                permissions_1.Permissions.ATTENDANCE_CREATE,
+                permissions_1.Permissions.ATTENDANCE_UPDATE,
+                permissions_1.Permissions.ATTENDANCE_DELETE,
+            ].some((p) => userPerms.has(p));
+            if (req.user.role !== "super_admin" && !hasManagementPerm) {
+                if (attendanceRecord?.userId !== req.user.id) {
+                    res.status(403).json({
+                        success: false,
+                        error: "Access denied. You can only view your own records.",
+                    });
+                    return;
+                }
+            }
             if (!attendanceRecord) {
                 res.status(404).json({
                     success: false,

@@ -231,9 +231,6 @@ export const generateProposalHtml = (proposal: any) => {
           <div class="grid grid-cols-2 gap-4">
             ${(data.phases || []).filter((p: any) => p.title?.trim()).map((phase: any) => `
               <div class="avoid-break border border-slate-200 rounded-xl p-5 bg-white shadow-sm relative overflow-hidden">
-                <div class="absolute top-0 right-0 p-3">
-                   <div class="bg-blue-50 text-blue-600 text-[7px] font-black px-2 py-0.5 rounded-full uppercase">Target Milestone</div>
-                </div>
                 <h4 class="text-[13px] font-black text-slate-900 mb-1">${phase.title}</h4>
                 ${phase.deadline ? `<div class="text-[10px] font-extrabold text-blue-600 mb-3">${dayjs(phase.deadline).format('MMMM DD, YYYY')}</div>` : ''}
                 ${phase.reviewPeriod ? `<p class="text-[10px] text-slate-500 font-medium leading-relaxed">${phase.reviewPeriod} dedicated feedback window.</p>` : ''}

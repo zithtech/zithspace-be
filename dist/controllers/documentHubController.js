@@ -408,6 +408,11 @@ class DocumentHubController {
                     documentId,
                 },
             });
+            // Update parent hub's updatedAt
+            await database_1.prisma.documentHub.update({
+                where: { id: documentHubId },
+                data: { updatedAt: new Date() },
+            });
             // Emit socket event
             socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:node_created", newNode);
             res.status(201).json({
@@ -535,6 +540,11 @@ class DocumentHubController {
                     data: { title },
                 });
             }
+            // Update parent hub's updatedAt
+            await database_1.prisma.documentHub.update({
+                where: { id: node.documentHubId },
+                data: { updatedAt: new Date() },
+            });
             // Emit socket event
             socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:node_updated", updatedNode);
             res.status(200).json({
@@ -693,6 +703,11 @@ class DocumentHubController {
                     },
                 });
             }
+            // Update parent hub's updatedAt
+            await database_1.prisma.documentHub.update({
+                where: { id: document.documentHubId },
+                data: { updatedAt: new Date() },
+            });
             // Emit socket event
             socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:document_updated", updatedDocument);
             res.status(200).json({
@@ -1203,6 +1218,11 @@ class DocumentHubController {
             await database_1.prisma.$transaction(async (tx) => {
                 await DocumentHubController.deleteNodeRecursive(tx, id, req.tenantId, req.user.id, node.type, node.documentId);
             });
+            // Update parent hub's updatedAt
+            await database_1.prisma.documentHub.update({
+                where: { id: node.documentHubId },
+                data: { updatedAt: new Date() },
+            });
             // Emit socket event
             socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:node_deleted", { id });
             res.status(200).json({
@@ -1317,6 +1337,11 @@ class DocumentHubController {
                     deletedAt: new Date(),
                     deletedById: req.user.id,
                 },
+            });
+            // Update parent hub's updatedAt
+            await database_1.prisma.documentHub.update({
+                where: { id: document.documentHubId },
+                data: { updatedAt: new Date() },
             });
             // Emit socket event
             socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:document_deleted", { id });
