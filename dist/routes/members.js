@@ -18,14 +18,14 @@ router.use(auth_1.requireAuth);
  * @access  Private (authenticated users within tenant)
  * @query   role, position
  */
-router.get('/select', (0, permission_1.requirePermission)(permissions_1.Permissions.USER_READ), userController_1.UserController.getMembersForSelect);
+router.get('/select', (0, permission_1.requireAnyPermission)(permissions_1.Permissions.USER_READ, permissions_1.Permissions.PROJECT_READ, permissions_1.Permissions.TICKET_READ, permissions_1.Permissions.ATTENDANCE_READ, permissions_1.Permissions.ATTENDANCE_CREATE, permissions_1.Permissions.ATTENDANCE_UPDATE, permissions_1.Permissions.ATTENDANCE_DELETE, permissions_1.Permissions.SQUAD_READ, permissions_1.Permissions.SQUAD_CREATE), userController_1.UserController.getMembersForSelect);
 /**
  * @route   GET /api/members
  * @desc    Get all members/users with filtering and pagination (tenant-aware)
  * @access  Private (authenticated users within tenant)
  * @query   page, limit, role, position, isActive, search, sortBy, sortOrder
  */
-router.get('/', (0, permission_1.requirePermission)(permissions_1.Permissions.USER_READ), userController_1.UserController.getMembers);
+router.get('/', (0, permission_1.requireAnyPermission)(permissions_1.Permissions.USER_READ, permissions_1.Permissions.PROJECT_READ, permissions_1.Permissions.TICKET_READ, permissions_1.Permissions.ATTENDANCE_READ, permissions_1.Permissions.ATTENDANCE_CREATE, permissions_1.Permissions.ATTENDANCE_UPDATE, permissions_1.Permissions.ATTENDANCE_DELETE, permissions_1.Permissions.SQUAD_READ, permissions_1.Permissions.SQUAD_CREATE), userController_1.UserController.getMembers);
 /**
  * @route   GET /api/members/:id
  * @desc    Get member/user by ID (tenant-aware)

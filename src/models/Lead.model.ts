@@ -119,7 +119,10 @@ export class LeadModel {
    */
   static async findAll(tenantId: string): Promise<any[]> {
     const query = `
-      SELECT l.*, p.id as proposal_id
+      SELECT 
+        l.*, 
+        p.id as proposal_id,
+        lm.last_mail_at
       FROM leads l
       LEFT JOIN (
         SELECT DISTINCT ON (lead_id) id, lead_id 
@@ -127,6 +130,12 @@ export class LeadModel {
         WHERE tenant_id = $1 
         ORDER BY lead_id, created_at DESC
       ) p ON l.id = p.lead_id
+      LEFT JOIN (
+        SELECT lead_id, MAX(sent_at) as last_mail_at
+        FROM lead_mails
+        WHERE tenant_id = $1
+        GROUP BY lead_id
+      ) lm ON l.id = lm.lead_id
       WHERE l.tenant_id = $1 AND l.is_deleted = false
       ORDER BY l.created_at DESC;
     `;
@@ -139,8 +148,24 @@ export class LeadModel {
    */
   static async findById(id: string, tenantId: string): Promise<any> {
     const query = `
-      SELECT * FROM leads 
-      WHERE id = $1 AND tenant_id = $2 AND is_deleted = false;
+      SELECT 
+        l.*, 
+        p.id as proposal_id,
+        lm.last_mail_at
+      FROM leads l
+      LEFT JOIN (
+        SELECT DISTINCT ON (lead_id) id, lead_id 
+        FROM proposals 
+        WHERE lead_id = $1 AND tenant_id = $2
+        ORDER BY lead_id, created_at DESC
+      ) p ON l.id = p.lead_id
+      LEFT JOIN (
+        SELECT lead_id, MAX(sent_at) as last_mail_at
+        FROM lead_mails
+        WHERE lead_id = $1 AND tenant_id = $2
+        GROUP BY lead_id
+      ) lm ON l.id = lm.lead_id
+      WHERE l.id = $1 AND l.tenant_id = $2 AND l.is_deleted = false;
     `;
     const result = await pool.query(query, [id, tenantId]);
     return result.rows[0];
@@ -156,7 +181,7 @@ export class LeadModel {
 
     // Build dynamic UPDATE query
     Object.entries(data).forEach(([key, value]) => {
-      if (key !== 'id' && key !== 'tenant_id') {
+      if (key !== 'id' && key !== 'tenant_id' && value !== undefined) {
         fields.push(`${key} = $${placeholderIndex}`);
 
         // Fix: Avoid stringifying null values which leads to "null" string in DB

@@ -37,5 +37,17 @@ export declare class TransactionsController {
      * Get transaction summary with analytics (tenant-aware)
      */
     static getTransactionSummary(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get trashed transactions (tenant-aware)
+     */
+    static getTrashTransactions(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Restore a trashed transaction (tenant-aware)
+     */
+    static restoreTransaction(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Permanently delete a trashed transaction (tenant-aware)
+     */
+    static permanentlyDeleteTransaction(req: AuthRequest, res: Response): Promise<void>;
 }
 export default TransactionsController;

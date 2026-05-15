@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { UserController } from '@/controllers/userController';
 import { authenticateToken, requireAuth } from '@/middleware/auth';
-import { requirePermission } from '@/middleware/permission';
+import { requirePermission, requireAnyPermission } from '@/middleware/permission';
 import { Permissions } from '@/types/permissions';
 import { resolveTenant } from '@/middleware/tenantContext';
 
@@ -20,7 +20,7 @@ router.use(requireAuth);
  * @access  Private (authenticated users within tenant)
  * @query   role, position
  */
-router.get('/select', requirePermission(Permissions.USER_READ), UserController.getMembersForSelect);
+router.get('/select', requireAnyPermission(Permissions.USER_READ, Permissions.PROJECT_READ, Permissions.TICKET_READ, Permissions.ATTENDANCE_READ, Permissions.ATTENDANCE_CREATE, Permissions.ATTENDANCE_UPDATE, Permissions.ATTENDANCE_DELETE, Permissions.SQUAD_READ, Permissions.SQUAD_CREATE), UserController.getMembersForSelect);
 
 /**
  * @route   GET /api/members
@@ -28,7 +28,7 @@ router.get('/select', requirePermission(Permissions.USER_READ), UserController.g
  * @access  Private (authenticated users within tenant)
  * @query   page, limit, role, position, isActive, search, sortBy, sortOrder
  */
-router.get('/', requirePermission(Permissions.USER_READ), UserController.getMembers);
+router.get('/', requireAnyPermission(Permissions.USER_READ, Permissions.PROJECT_READ, Permissions.TICKET_READ, Permissions.ATTENDANCE_READ, Permissions.ATTENDANCE_CREATE, Permissions.ATTENDANCE_UPDATE, Permissions.ATTENDANCE_DELETE, Permissions.SQUAD_READ, Permissions.SQUAD_CREATE), UserController.getMembers);
 
 /**
  * @route   GET /api/members/:id

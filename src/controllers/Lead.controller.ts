@@ -5,6 +5,12 @@ import { LeadStatusModel } from '@/models/LeadStatus.model';
 import { BidIQModel } from "../models/BidIQ.model";
 import { AIService } from "../services/aiService";
 import pool from '@/config/dbpool';
+import { MailService } from '@/services/mail/MailService';
+import { GetObjectCommand } from '@aws-sdk/client-s3';
+import { s3Client, BUCKET_NAME } from '../utils/r2Client';
+import { Readable } from 'stream';
+import { LeadActivityLogModel } from '../models/LeadActivityLog.model';
+import { LeadMailModel } from '../models/LeadMail.model';
 
 export class LeadController {
 
@@ -88,7 +94,22 @@ export class LeadController {
 
       console.log('Mapped LeadData:', JSON.stringify(leadData, null, 2));
 
+      // Process and upload documents if they are Base64
+      if (leadData.documents && Array.isArray(leadData.documents)) {
+        leadData.documents = await LeadController.processLeadDocuments(tenantId, leadData.documents);
+      }
+
       const lead = await LeadModel.create(leadData);
+
+      // Log creation (fire-and-forget - optionalAuth so user may be missing)
+      if (req.user?.id) {
+        LeadActivityLogModel.create({
+          tenantId,
+          leadId: lead.id,
+          action: 'CREATED_LEAD',
+          performedBy: req.user.id,
+        }).catch(() => {});
+      }
 
       return res.status(201).json({
         success: true,
@@ -193,7 +214,7 @@ export class LeadController {
       }
 
       const updateData: any = {};
-      const mapping: any = {
+      const mapping: { [key: string]: string } = {
         clientName: 'client_name',
         clientMail: 'client_mail',
         clientPhone: 'client_phone',
@@ -255,15 +276,27 @@ export class LeadController {
         }
       });
 
+      // Process and upload documents if they are Base64
+      if (updateData.documents && Array.isArray(updateData.documents)) {
+        updateData.documents = await LeadController.processLeadDocuments(tenantId, updateData.documents);
+      }
+
       console.log('--- UPDATE LEAD REQUEST ---');
       console.log('ID:', id);
-      console.log('UpdateData:', JSON.stringify(updateData, null, 2));
 
       const lead = await LeadModel.update(id, tenantId, updateData);
 
       if (!lead) {
         return res.status(404).json({ success: false, error: 'Lead not found or no changes made' });
       }
+
+      // Log update activity (fire-and-forget to not block response)
+      LeadActivityLogModel.create({
+        tenantId,
+        leadId: id,
+        action: 'UPDATED_LEAD',
+        performedBy: req.user!.id,
+      }).catch(() => {});
 
       return res.status(200).json({
         success: true,
@@ -485,6 +518,23 @@ export class LeadController {
       // 5. Update lead status to 'Onboarded'
       await LeadModel.update(id, tenantId, { status: 'Onboarded' });
 
+      // 6. Log timeline activities
+      await LeadActivityLogModel.create({
+        tenantId,
+        leadId: id,
+        action: 'CLIENT_CREATED',
+        performedBy: req.user.id,
+        metadata: { clientId, clientName }
+      });
+
+      await LeadActivityLogModel.create({
+        tenantId,
+        leadId: id,
+        action: 'PROJECT_CREATED',
+        performedBy: req.user.id,
+        metadata: { projectId: project.id, projectName: projectTitle }
+      });
+
       return res.status(200).json({
         success: true,
         message: 'Lead successfully onboarded: Client and Project created.',
@@ -579,6 +629,227 @@ export class LeadController {
       return res.status(500).json({
         success: false,
         error: error.message || 'Internal server error'
+      });
+    }
+  }
+
+  /**
+   * Send mail to lead using integrated invoice mail
+   */
+  static async sendLeadMail(req: AuthRequest, res: Response) {
+    try {
+      const tenantId = req.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ success: false, error: 'Tenant context required' });
+      }
+
+      const { to, subject, body, htmlBody, attachments, leadId } = req.body;
+
+      const mailResponse = await MailService.sendInvoiceViaIntegratedMail(tenantId, {
+        to: Array.isArray(to) ? to : [to],
+        subject,
+        body,
+        htmlBody: htmlBody || body,
+        attachments: attachments || []
+      });
+
+      // Log mail sent activity
+      if (leadId && req.user?.id) {
+        // 1. Create activity log
+        try {
+          await LeadActivityLogModel.create({
+            tenantId,
+            leadId,
+            action: 'MAIL_SENT',
+            performedBy: req.user.id,
+            metadata: { to: Array.isArray(to) ? to : [to], subject }
+          });
+        } catch (err) {
+          console.error("[LeadController] Failed to create mail activity log:", err);
+        }
+
+        // 2. Store full mail details in lead_mails table
+        try {
+          await LeadMailModel.create({
+            tenantId,
+            leadId,
+            sentBy: req.user.id,
+            recipientEmail: Array.isArray(to) ? to.join(', ') : to,
+            subject,
+            body: htmlBody || body,
+            attachments: attachments || []
+          });
+        } catch (err) {
+          console.error("[LeadController] Failed to store mail in lead_mails:", err);
+        }
+      }
+
+      return res.json({
+        success: true,
+        message: "Email sent successfully via integrated mail",
+        data: mailResponse
+      });
+    } catch (error: any) {
+      console.error("[LeadController] sendLeadMail error:", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || "Failed to send lead mail"
+      });
+    }
+  }
+
+  /**
+   * Helper to process documents and upload Base64 strings to R2
+   */
+  private static async processLeadDocuments(tenantId: string, documents: any[]): Promise<any[]> {
+    const processedDocs = [];
+    for (const doc of documents) {
+      // Check if it's a new Base64 upload
+      if (doc.url && doc.url.startsWith('data:')) {
+        try {
+          console.log(`[LeadController] Uploading Base64 document to R2: ${doc.name}`);
+          // Re-using MailService's upload logic
+          const uploadResult = await MailService.uploadAttachment(tenantId, doc.url, doc.name);
+          processedDocs.push({
+            name: doc.name,
+            url: uploadResult.url,
+            type: 'file'
+          });
+        } catch (uploadError) {
+          console.error(`[LeadController] Failed to upload document ${doc.name}:`, uploadError);
+          processedDocs.push(doc); // Fallback to original
+        }
+      } else {
+        processedDocs.push(doc);
+      }
+    }
+    return processedDocs;
+  }
+
+  /**
+   * Proxy download for lead attachments to resolve R2 authorization and CORS issues.
+   * This uses the configured S3 client to handle authentication with R2.
+   */
+  static async downloadAttachment(req: AuthRequest, res: Response) {
+    try {
+      const { url: finalUrl, filename, mode = 'inline' } = req.query;
+
+      if (!finalUrl || typeof finalUrl !== 'string') {
+        return res.status(400).json({ success: false, error: "URL is required" });
+      }
+
+      const urlObj = new URL(finalUrl);
+      let key = urlObj.pathname.startsWith("/") ? urlObj.pathname.slice(1) : urlObj.pathname;
+
+      // If the key starts with the bucket name, strip it
+      if (key.startsWith(BUCKET_NAME + '/')) {
+        key = key.substring(BUCKET_NAME.length + 1);
+      }
+      
+      key = decodeURIComponent(key);
+
+      const filenameStr = typeof filename === 'string' ? filename : 'file';
+      const ext = filenameStr.split('.').pop()?.toLowerCase() || '';
+      const MIME_MAP: Record<string, string> = {
+        pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+        gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', mp4: 'video/mp4',
+        mp3: 'audio/mpeg', txt: 'text/plain', csv: 'text/csv', html: 'text/html',
+        zip: 'application/zip', ics: 'text/calendar',
+        docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      };
+      const resolvedContentType = MIME_MAP[ext] || 'application/octet-stream';
+
+      const command = new GetObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: key
+      });
+
+      const s3Response = await s3Client.send(command);
+
+      if (!s3Response.Body) {
+        throw new Error("Empty response body from R2");
+      }
+
+      // Set proper headers
+      res.setHeader('Content-Type', resolvedContentType);
+      res.setHeader('Content-Disposition', mode === 'inline' 
+        ? `inline; filename="${filenameStr}"` 
+        : `attachment; filename="${filenameStr}"`);
+
+      // Pipe the response
+      if (s3Response.Body) {
+        const body = s3Response.Body as any;
+        
+        if (typeof body.pipe === 'function') {
+          return body.pipe(res);
+        } else {
+          const bytes = await s3Response.Body.transformToByteArray();
+          return res.send(Buffer.from(bytes));
+        }
+      } else {
+        return res.status(404).json({ success: false, error: "File content empty" });
+      }
+
+    } catch (error: any) {
+      console.error("[LeadController] downloadAttachment error:", error);
+      return res.status(500).json({ 
+        success: false, 
+        error: "Failed to download attachment",
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Get the activity timeline for a lead
+   */
+  static async getLeadTimeline(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+      const tenantId = req.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ success: false, error: 'Tenant context required' });
+      }
+
+      const timeline = await LeadActivityLogModel.getLogsWithUserInfo(id, tenantId);
+
+      return res.status(200).json({
+        success: true,
+        data: timeline
+      });
+    } catch (error: any) {
+      console.error('Get Lead Timeline Error:', error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || 'Internal server error'
+      });
+    }
+  }
+
+  /**
+   * Get all mails for a lead
+   */
+  static async getLeadMails(req: AuthRequest, res: Response) {
+    try {
+      const tenantId = req.tenantId;
+      const { id: leadId } = req.params;
+      
+      if (!tenantId) {
+        return res.status(400).json({ success: false, error: 'Tenant context required' });
+      }
+
+      const mails = await LeadMailModel.findByLeadId(leadId, tenantId);
+
+      return res.json({
+        success: true,
+        data: mails
+      });
+    } catch (error: any) {
+      console.error("[LeadController] getLeadMails error:", error);
+      return res.status(500).json({
+        success: false,
+        error: error.message || "Failed to fetch lead mails"
       });
     }
   }

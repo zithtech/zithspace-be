@@ -17,9 +17,9 @@ router.use(resolveTenant);
 router.use(authenticateToken);
 router.use(requireAuth);
 
-router.post("/", requirePermission(Permissions.LEAVE_MANAGE), createLeaveAdjustment);
-router.get("/", requirePermission(Permissions.LEAVE_MANAGE), getLeaveAdjustments);
-router.put("/:id", requirePermission(Permissions.LEAVE_MANAGE), updateLeaveAdjustment);
-router.delete("/:id", requirePermission(Permissions.LEAVE_MANAGE), deleteLeaveAdjustment);
+router.post("/", requirePermission(Permissions.LEAVE_ADJUSTMENT_CREATE), createLeaveAdjustment);
+router.get("/", requirePermission(Permissions.LEAVE_ADJUSTMENT_READ), getLeaveAdjustments);
+router.put("/:id", requirePermission(Permissions.LEAVE_ADJUSTMENT_UPDATE), updateLeaveAdjustment);
+router.delete("/:id", requirePermission(Permissions.LEAVE_ADJUSTMENT_DELETE), deleteLeaveAdjustment);
 
 export default router;

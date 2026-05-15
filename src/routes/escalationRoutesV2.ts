@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { authenticateToken, requireAuth } from "@/middleware/auth";
+import { requirePermission } from "@/middleware/permission";
+import { Permissions } from "@/types/permissions";
 import { resolveTenant } from "@/middleware/tenantContext";
 import {
     createEscalation,
@@ -15,10 +17,10 @@ router.use(authenticateToken);
 router.use(requireAuth);
 
 
-router.post("/", createEscalation);
-router.get("/", getAllEscalations);
-router.get("/:id", getEscalationById);
-router.put("/:id", updateEscalation);
-router.delete("/:id", deleteEscalation);
+router.post("/", requirePermission(Permissions.ESCALATION_CREATE), createEscalation);
+router.get("/", requirePermission(Permissions.ESCALATION_READ), getAllEscalations);
+router.get("/:id", requirePermission(Permissions.ESCALATION_READ), getEscalationById);
+router.put("/:id", requirePermission(Permissions.ESCALATION_UPDATE), updateEscalation);
+router.delete("/:id", requirePermission(Permissions.ESCALATION_DELETE), deleteEscalation);
 
 export default router;

@@ -17,28 +17,28 @@ router.use(auth_1.requireAuth);
  * @desc    Get all configuration options for ticket creation (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/ticket-configurations', (0, permission_1.requirePermission)(permissions_1.Permissions.SETTINGS_READ), settingsController_1.SettingsController.getTicketConfigurations);
+router.get('/ticket-configurations', (0, permission_1.requireAnyPermission)(permissions_1.Permissions.SETTINGS_READ, permissions_1.Permissions.TICKET_READ, permissions_1.Permissions.TICKET_SETTING_READ), settingsController_1.SettingsController.getTicketConfigurations);
 /**
  * @route   GET /api/settings/team-members
  * @desc    Get team members by project or role (tenant-aware)
  * @access  Private (authenticated users within tenant)
  * @query   projectId, role, position
  */
-router.get('/team-members', (0, permission_1.requirePermission)(permissions_1.Permissions.SETTINGS_READ), settingsController_1.SettingsController.getTeamMembers);
+router.get('/team-members', (0, permission_1.requireAnyPermission)(permissions_1.Permissions.SETTINGS_READ, permissions_1.Permissions.PROJECT_READ, permissions_1.Permissions.TICKET_READ, permissions_1.Permissions.USER_READ), settingsController_1.SettingsController.getTeamMembers);
 /**
  * @route   GET /api/settings/release-plans/:projectId
  * @desc    Get release plans by project (tenant-aware)
  * @access  Private (authenticated users within tenant)
  * @param   projectId - Project ID
  */
-router.get('/release-plans/:projectId', (0, permission_1.requirePermission)(permissions_1.Permissions.SETTINGS_READ), settingsController_1.SettingsController.getReleasePlansByProject);
+router.get('/release-plans/:projectId', (0, permission_1.requireAnyPermission)(permissions_1.Permissions.SETTINGS_READ, permissions_1.Permissions.PROJECT_READ), settingsController_1.SettingsController.getReleasePlansByProject);
 /**
  * @route   GET /api/settings/workflow-templates
  * @desc    Get workflow templates by project (tenant-aware)
  * @access  Private (authenticated users within tenant)
  * @query   projectId
  */
-router.get('/workflow-templates', (0, permission_1.requirePermission)(permissions_1.Permissions.SETTINGS_READ), settingsController_1.SettingsController.getWorkflowTemplates);
+router.get('/workflow-templates', (0, permission_1.requireAnyPermission)(permissions_1.Permissions.SETTINGS_READ, permissions_1.Permissions.TICKET_READ, permissions_1.Permissions.TICKET_SETTING_READ), settingsController_1.SettingsController.getWorkflowTemplates);
 /**
  * @route   PUT /api/settings/workflow-templates/:projectId
  * @desc    Update project workflow template (tenant-aware)
@@ -46,14 +46,14 @@ router.get('/workflow-templates', (0, permission_1.requirePermission)(permission
  * @param   projectId - Project ID
  * @body    { workflowSteps: string[] }
  */
-router.put('/workflow-templates/:projectId', (0, permission_1.requirePermission)(permissions_1.Permissions.SETTINGS_UPDATE), settingsController_1.SettingsController.updateWorkflowTemplate);
+router.put('/workflow-templates/:projectId', (0, permission_1.requireAnyPermission)(permissions_1.Permissions.SETTINGS_UPDATE, permissions_1.Permissions.TICKET_SETTING_UPDATE), settingsController_1.SettingsController.updateWorkflowTemplate);
 /**
  * @route   GET /api/settings/parent-tickets
  * @desc    Get parent tickets for linking (tenant-aware)
  * @access  Private (authenticated users within tenant)
  * @query   projectId, exclude, search
  */
-router.get('/parent-tickets', (0, permission_1.requirePermission)(permissions_1.Permissions.SETTINGS_READ), settingsController_1.SettingsController.getParentTickets);
+router.get('/parent-tickets', (0, permission_1.requireAnyPermission)(permissions_1.Permissions.SETTINGS_READ, permissions_1.Permissions.TICKET_READ), settingsController_1.SettingsController.getParentTickets);
 /**
  * @route   GET /api/settings/system-stats
  * @desc    Get system statistics for dashboard (tenant-aware)
