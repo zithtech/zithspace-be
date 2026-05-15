@@ -9,7 +9,7 @@ import { nanoid } from "nanoid";
 
 // Cloudflare R2 Configuration
 const REGION = "auto";
-const BUCKET_NAME = process.env.CF_R2_BUCKET_NAME || "zithspace";
+export const BUCKET_NAME = process.env.CF_R2_BUCKET_NAME || "zithspace";
 const ACCOUNT_ID = process.env.CF_R2_ACCOUNT_ID;
 const ACCESS_KEY_ID = process.env.CF_R2_ACCESS_KEY_ID;
 const SECRET_ACCESS_KEY = process.env.CF_R2_SECRET_ACCESS_KEY;
@@ -85,7 +85,7 @@ export async function uploadImageToR2(
 
     // Upload to R2
     const params = {
-      Bucket: "zithspace",
+      Bucket: BUCKET_NAME,
       Key: fileName,
       Body: buffer,
       ContentType: contentType,
@@ -156,7 +156,7 @@ export async function uploadFileToR2(
 
     // Upload to R2
     const params = {
-      Bucket: "zithspace",
+      Bucket: BUCKET_NAME,
       Key: storedFileName,
       Body: buffer,
       ContentType: contentType,

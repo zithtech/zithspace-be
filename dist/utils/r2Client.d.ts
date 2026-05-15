@@ -1,4 +1,5 @@
 import { S3Client } from "@aws-sdk/client-s3";
+export declare const BUCKET_NAME: string;
 export declare const s3Client: S3Client;
 /**
  * Upload image to Cloudflare R2
