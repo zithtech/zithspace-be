@@ -459,6 +459,57 @@ export class ClientV2Controller {
         }
     }
 
+    /**
+     * Delete a client and all its associated data
+     */
+    static async deleteClient(req: AuthRequest, res: Response): Promise<void> {
+        try {
+            if (!req.tenantId) {
+                res.status(400).json({ success: false, error: 'Tenant context required' } as ApiResponse);
+                return;
+            }
+
+            const { id } = req.params;
+
+            await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                // 1. Fetch documents to cleanup R2 files
+                const documents = await prisma.clientDocumentV2.findMany({
+                    where: { clientId: id }
+                });
+
+                return await prisma.$transaction(async (tx) => {
+                    // 2. Cleanup R2 files
+                    for (const doc of documents) {
+                        if (doc.fileUrl) {
+                            try {
+                                await deleteFileFromR2(doc.fileUrl, req.tenantId!);
+                            } catch (err) {
+                                console.error(`Failed to delete R2 file for doc ${doc.id}:`, err);
+                            }
+                        }
+                    }
+
+                    // 3. Delete related records
+                    await tx.clientContactV2.deleteMany({ where: { clientId: id } });
+                    await tx.clientDocumentV2.deleteMany({ where: { clientId: id } });
+                    await tx.employeeClientAllocationV2.deleteMany({ where: { clientId: id } });
+                    // ClientProject has onDelete: Cascade in schema, but we'll be explicit if needed.
+                    // Actually, let's just delete the client and let cascade handle ClientProject
+                    
+                    // 4. Delete the client itself
+                    await tx.clientV2.delete({
+                        where: { id }
+                    });
+                });
+            });
+
+            res.status(200).json({ success: true, message: 'Client deleted successfully' } as ApiResponse);
+        } catch (error: any) {
+            console.error('Delete client error:', error);
+            res.status(500).json({ success: false, error: error.message || 'Failed to delete client' } as ApiResponse);
+        }
+    }
+
 
     // ==============================================
     // CLIENT PROJECTS
