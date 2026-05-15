@@ -524,6 +524,10 @@ const startServer = async () => {
     const { startTrashAutoPurgeJob } = require("@/jobs/trashAutoPurge");
     startTrashAutoPurgeJob();
 
+    // Start timer auto-pause cron job
+    const { startTimerAutoPauseJob } = require("@/jobs/timerAutoPause");
+    startTimerAutoPauseJob();
+
   } catch (error) {
     console.error("Server startup failed:", error);
     process.exit(1);

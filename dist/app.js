@@ -458,6 +458,9 @@ const startServer = async () => {
         // Start trash auto-purge cron job
         const { startTrashAutoPurgeJob } = require("@/jobs/trashAutoPurge");
         startTrashAutoPurgeJob();
+        // Start timer auto-pause cron job
+        const { startTimerAutoPauseJob } = require("@/jobs/timerAutoPause");
+        startTimerAutoPauseJob();
     }
     catch (error) {
         console.error("Server startup failed:", error);
