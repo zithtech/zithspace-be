@@ -1207,7 +1207,7 @@ export class BugListController {
 
       const push = (cond: string, value: any) => {
         values.push(value);
-        conditions.push(cond.replace("$$", `$${values.length}`));
+        conditions.push(cond.split("$$").join(`$${values.length}`));
       };
 
       if (folderId) push("b.folder_id = $$", folderId);
@@ -2013,7 +2013,7 @@ export class BugListController {
       const values: any[] = [req.tenantId];
       const push = (cond: string, value: any) => {
         values.push(value);
-        conditions.push(cond.replace("$$", `$${values.length}`));
+        conditions.push(cond.split("$$").join(`$${values.length}`));
       };
       if (folderId) push("folder_id = $$", folderId);
       if (sheetId) push("sheet_id = $$", sheetId);

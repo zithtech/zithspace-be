@@ -66,6 +66,13 @@ router.put('/projects/:projectId', requirePermission(Permissions.CLIENT_UPDATE),
  */
 router.put('/:id', requirePermission(Permissions.CLIENT_UPDATE), ClientV2Controller.updateClient);
 
+/**
+ * @route   DELETE /api/clients-v2/:id
+ * @desc    Delete client v2 (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ */
+router.delete('/:id', requirePermission(Permissions.CLIENT_DELETE), ClientV2Controller.deleteClient);
+
 // ==============================================
 // CONTACT ROUTES
 // ==============================================

@@ -559,11 +559,21 @@ export class AttendanceController {
         return;
       }
 
-      const today = new Date();
-      const startOfToday = new Date(today);
-      startOfToday.setHours(0, 0, 0, 0);
-      const endOfToday = new Date(today);
-      endOfToday.setHours(23, 59, 59, 999);
+      const { startDate, endDate } = req.query;
+      
+      let startOfPeriod = new Date();
+      startOfPeriod.setHours(0, 0, 0, 0);
+      let endOfPeriod = new Date();
+      endOfPeriod.setHours(23, 59, 59, 999);
+
+      if (startDate) {
+        startOfPeriod = new Date(startDate as string);
+        startOfPeriod.setHours(0, 0, 0, 0);
+      }
+      if (endDate) {
+        endOfPeriod = new Date(endDate as string);
+        endOfPeriod.setHours(23, 59, 59, 999);
+      }
 
       const summary = await tenantAwarePrisma.withTenant(
         req.tenantId,
@@ -581,7 +591,7 @@ export class AttendanceController {
             by: ["status"],
             where: {
               tenantId: req.tenantId,
-              date: { gte: startOfToday, lte: endOfToday },
+              date: { gte: startOfPeriod, lte: endOfPeriod },
             },
             _count: true,
           });
@@ -616,19 +626,23 @@ export class AttendanceController {
             }
           });
 
+          // Calculate number of days in period
+          const diffTime = Math.abs(endOfPeriod.getTime() - startOfPeriod.getTime());
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
+
           // Calculate metrics
           const presentToday =
             statusCounts.present + statusCounts.late + statusCounts.wfh;
           const absentToday = statusCounts.absent;
-          const expectedToday = totalMembers; // Could be refined based on work days
+          const expectedTotal = totalMembers * diffDays;
           const attendanceRate =
-            expectedToday > 0
-              ? Number(((presentToday / expectedToday) * 100).toFixed(2))
+            expectedTotal > 0
+              ? Number(((presentToday / expectedTotal) * 100).toFixed(2))
               : 0;
 
           return {
             totalMembers,
-            expectedToday,
+            expectedToday: expectedTotal,
             presentToday,
             absentToday,
             lateToday: statusCounts.late,
@@ -667,11 +681,21 @@ export class AttendanceController {
         return;
       }
 
-      const today = new Date();
-      const startOfToday = new Date(today);
-      startOfToday.setHours(0, 0, 0, 0);
-      const endOfToday = new Date(today);
-      endOfToday.setHours(23, 59, 59, 999);
+      const { startDate, endDate } = req.query;
+      
+      let startOfPeriod = new Date();
+      startOfPeriod.setHours(0, 0, 0, 0);
+      let endOfPeriod = new Date();
+      endOfPeriod.setHours(23, 59, 59, 999);
+
+      if (startDate) {
+        startOfPeriod = new Date(startDate as string);
+        startOfPeriod.setHours(0, 0, 0, 0);
+      }
+      if (endDate) {
+        endOfPeriod = new Date(endDate as string);
+        endOfPeriod.setHours(23, 59, 59, 999);
+      }
 
       const presentMembers = await tenantAwarePrisma.withTenant(
         req.tenantId,
@@ -679,7 +703,7 @@ export class AttendanceController {
           const records = await client.attendance.findMany({
             where: {
               tenantId: req.tenantId,
-              date: { gte: startOfToday, lte: endOfToday },
+              date: { gte: startOfPeriod, lte: endOfPeriod },
               status: { in: ["present", "late", "wfh"] },
               clockIn: { not: null },
             },
