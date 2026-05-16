@@ -77,6 +77,18 @@ router.get("/attachments/download", requirePermission('mail.read'), MailControll
 router.post("/upload-attachment", requirePermission('mail.create'), MailController.uploadAttachment);
 
 /**
+ * @route POST /api/mail/ai/enhance
+ * @desc AI-enhance email body (expand detail, polish tone)
+ */
+router.post("/ai/enhance", requirePermission('mail.create'), MailController.aiEnhanceContent);
+
+/**
+ * @route POST /api/mail/ai/grammar
+ * @desc AI-correct grammar in email body (light-touch)
+ */
+router.post("/ai/grammar", requirePermission('mail.create'), MailController.aiCorrectGrammar);
+
+/**
  * @route POST /api/mail/:provider/disconnect
  * @desc Disconnect mail provider and clear data
  */
