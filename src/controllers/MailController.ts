@@ -3,6 +3,7 @@ import axios from "axios";
 import { prisma } from "../config/database";
 import { AuthRequest, ApiResponse } from "../types";
 import { MailService } from "../services/mail/MailService";
+import { MailAiService } from "../services/mailAiService";
 import { MailSyncProducer } from "../services/mail/MailSyncProducer";
 import { syncLogger } from "../utils/logger";
 import { s3Client } from "../utils/r2Client";
@@ -1101,6 +1102,58 @@ export class MailController {
             return res.status(500).json({
                 success: false,
                 error: error.message || "Failed to disconnect mail"
+            });
+        }
+    }
+
+    /**
+     * AI: enhance email body — expand detail and polish tone, preserve HTML.
+     */
+    static async aiEnhanceContent(req: AuthRequest, res: Response) {
+        try {
+            const { subject, body, context } = req.body || {};
+            if (!body || typeof body !== "string") {
+                return res.status(400).json({
+                    success: false,
+                    error: "body is required"
+                });
+            }
+            const enhanced = await MailAiService.enhanceContent({ subject, body, context });
+            return res.json({
+                success: true,
+                data: { body: enhanced }
+            });
+        } catch (error: any) {
+            console.error("[MailController] aiEnhanceContent error:", error);
+            return res.status(500).json({
+                success: false,
+                error: error.message || "Failed to enhance content"
+            });
+        }
+    }
+
+    /**
+     * AI: light-touch grammar correction — preserve HTML and voice.
+     */
+    static async aiCorrectGrammar(req: AuthRequest, res: Response) {
+        try {
+            const { body } = req.body || {};
+            if (!body || typeof body !== "string") {
+                return res.status(400).json({
+                    success: false,
+                    error: "body is required"
+                });
+            }
+            const corrected = await MailAiService.correctGrammar(body);
+            return res.json({
+                success: true,
+                data: { body: corrected }
+            });
+        } catch (error: any) {
+            console.error("[MailController] aiCorrectGrammar error:", error);
+            return res.status(500).json({
+                success: false,
+                error: error.message || "Failed to correct grammar"
             });
         }
     }
