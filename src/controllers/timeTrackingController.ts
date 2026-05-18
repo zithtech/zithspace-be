@@ -31,6 +31,10 @@ export class TimeTrackingController {
         whereClause.userId = req.user.id;
       }
 
+      if (ticketId) {
+        whereClause.ticketId = String(ticketId);
+      }
+
       if (projectId) {
         whereClause.projectId = String(projectId);
       }
