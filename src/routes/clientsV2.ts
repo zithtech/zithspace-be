@@ -1,5 +1,12 @@
 import { Router } from 'express';
 import { ClientV2Controller } from '@/controllers/clientV2Controller';
+import ClientPortalCredentialController from '@/controllers/clientPortalCredentialController';
+import ClientCustomerLinkController from '@/controllers/clientCustomerLinkController';
+import MomStaffController from '@/controllers/momStaffController';
+import CrStaffController from '@/controllers/crStaffController';
+import ApprovalsStaffController from '@/controllers/approvalsStaffController';
+import EnvironmentsStaffController from '@/controllers/environmentsStaffController';
+import TeamStaffController from '@/controllers/teamStaffController';
 import { authenticateToken, requireAuth } from '@/middleware/auth';
 import { resolveTenant } from '@/middleware/tenantContext';
 import { requirePermission } from '@/middleware/permission';
@@ -140,9 +147,185 @@ router.put('/allocations/:allocationId', requirePermission(Permissions.CLIENT_UP
 router.get('/:clientId/projects', requirePermission(Permissions.CLIENT_READ), ClientV2Controller.getProjects);
 
 /**
+ * @route   GET /api/clients-v2/:clientId/projects/importable
+ * @desc    List existing projects in the tenant that are NOT yet linked to
+ *          this client. Powers the "Import projects" picker.
+ */
+router.get(
+  '/:clientId/projects/importable',
+  requirePermission(Permissions.CLIENT_READ),
+  ClientV2Controller.getImportableProjects,
+);
+
+/**
+ * @route   POST /api/clients-v2/:clientId/projects/import
+ * @desc    Bulk-link existing projects to this client. body: { projectIds[] }
+ */
+router.post(
+  '/:clientId/projects/import',
+  requirePermission(Permissions.CLIENT_UPDATE),
+  ClientV2Controller.importProjects,
+);
+
+/**
  * @route   POST /api/clients-v2/:clientId/projects
  * @desc    Create a new project and map it to a client
  */
 router.post('/:clientId/projects', requirePermission(Permissions.CLIENT_UPDATE), ClientV2Controller.addProject);
+
+// ==============================================
+// CLIENT PORTAL CREDENTIALS
+// Staff-side management of per-contact portal login accounts.
+// ==============================================
+
+router.get(
+  '/:clientId/portal-users',
+  requirePermission(Permissions.CLIENT_READ),
+  ClientPortalCredentialController.list,
+);
+
+router.post(
+  '/:clientId/portal-users',
+  requirePermission(Permissions.CLIENT_MANAGE),
+  ClientPortalCredentialController.create,
+);
+
+router.post(
+  '/portal-users/:portalUserId/reset-password',
+  requirePermission(Permissions.CLIENT_MANAGE),
+  ClientPortalCredentialController.resetPassword,
+);
+
+router.patch(
+  '/portal-users/:portalUserId/status',
+  requirePermission(Permissions.CLIENT_MANAGE),
+  ClientPortalCredentialController.updateStatus,
+);
+
+router.delete(
+  '/portal-users/:portalUserId',
+  requirePermission(Permissions.CLIENT_MANAGE),
+  ClientPortalCredentialController.remove,
+);
+
+// ==============================================
+// BILLING CUSTOMER LINKAGE (drives portal invoice visibility)
+// ==============================================
+
+router.get(
+  '/:clientId/billing-customers',
+  requirePermission(Permissions.CLIENT_READ),
+  ClientCustomerLinkController.listLinked,
+);
+
+router.get(
+  '/:clientId/billing-customers/available',
+  requirePermission(Permissions.CLIENT_READ),
+  ClientCustomerLinkController.listAvailable,
+);
+
+router.post(
+  '/:clientId/billing-customers',
+  requirePermission(Permissions.CLIENT_MANAGE),
+  ClientCustomerLinkController.link,
+);
+
+router.delete(
+  '/:clientId/billing-customers/:customerId',
+  requirePermission(Permissions.CLIENT_MANAGE),
+  ClientCustomerLinkController.unlink,
+);
+
+// ==============================================
+// MINUTES OF MEETING (per-client)
+// ==============================================
+
+router.get(
+  '/:clientId/moms',
+  requirePermission(Permissions.CLIENT_READ),
+  MomStaffController.listForClient,
+);
+
+router.post(
+  '/:clientId/moms',
+  requirePermission(Permissions.CLIENT_UPDATE),
+  MomStaffController.create,
+);
+
+// ==============================================
+// CHANGE REQUESTS (per-client)
+// ==============================================
+
+router.get(
+  '/:clientId/change-requests',
+  requirePermission(Permissions.CLIENT_READ),
+  CrStaffController.listForClient,
+);
+
+router.post(
+  '/:clientId/change-requests',
+  requirePermission(Permissions.CLIENT_UPDATE),
+  CrStaffController.create,
+);
+
+// ==============================================
+// APPROVALS (per-client)
+// ==============================================
+
+router.get(
+  '/:clientId/approvals',
+  requirePermission(Permissions.CLIENT_READ),
+  ApprovalsStaffController.listForClient,
+);
+
+router.post(
+  '/:clientId/approvals',
+  requirePermission(Permissions.CLIENT_UPDATE),
+  ApprovalsStaffController.create,
+);
+
+// ==============================================
+// ENVIRONMENTS (per-client)
+// ==============================================
+
+router.get(
+  '/:clientId/environments',
+  requirePermission(Permissions.CLIENT_READ),
+  EnvironmentsStaffController.listForClient,
+);
+
+router.post(
+  '/:clientId/environments',
+  requirePermission(Permissions.CLIENT_UPDATE),
+  EnvironmentsStaffController.create,
+);
+
+// ==============================================
+// TEAM / RESOURCE VISIBILITY (per-client)
+// ==============================================
+
+router.get(
+  '/:clientId/team',
+  requirePermission(Permissions.CLIENT_READ),
+  TeamStaffController.listForClient,
+);
+
+router.get(
+  '/:clientId/team/staff-options',
+  requirePermission(Permissions.CLIENT_READ),
+  TeamStaffController.staffOptions,
+);
+
+router.post(
+  '/:clientId/team',
+  requirePermission(Permissions.CLIENT_UPDATE),
+  TeamStaffController.create,
+);
+
+router.post(
+  '/:clientId/team/reorder',
+  requirePermission(Permissions.CLIENT_UPDATE),
+  TeamStaffController.reorder,
+);
 
 export default router;

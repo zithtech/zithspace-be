@@ -642,6 +642,173 @@ export class ClientV2Controller {
         }
     }
 
+    /**
+     * GET /api/clients-v2/:clientId/projects/importable
+     * Lists projects in this tenant that are NOT yet linked to this client,
+     * plus a flag indicating how many other clients they're already linked to
+     * (so staff can see "this project is shared with 2 other clients" when
+     * importing). Excludes soft-deleted projects.
+     * Raw psql — does not touch Prisma.
+     */
+    static async getImportableProjects(
+        req: AuthRequest,
+        res: Response,
+    ): Promise<void> {
+        try {
+            if (!req.tenantId) {
+                res.status(400).json({
+                    success: false,
+                    error: 'Tenant context required',
+                } as ApiResponse);
+                return;
+            }
+            const { clientId } = req.params;
+            const search = ((req.query.search as string) || '').trim();
+
+            const params: any[] = [req.tenantId, clientId];
+            let where = `WHERE p.tenant_id = $1
+                           AND lower(p.status) <> 'deleted'
+                           AND NOT EXISTS (
+                             SELECT 1 FROM client_projects cp2
+                              WHERE cp2.project_id = p.id
+                                AND cp2.tenant_id = $1
+                                AND cp2.client_id = $2
+                           )`;
+            if (search) {
+                params.push(`%${search}%`);
+                where += ` AND (p.name ILIKE $${params.length}
+                             OR p.code ILIKE $${params.length})`;
+            }
+
+            const r = await pool.query(
+                `SELECT p.id, p.name, p.code, p.status, p.start_date,
+                        p.end_date, p.project_manager_id, p.created_at,
+                        u.name AS project_manager_name,
+                        (SELECT COUNT(*)::int FROM client_projects cp
+                          WHERE cp.project_id = p.id AND cp.tenant_id = $1)
+                          AS other_client_count
+                   FROM projects p
+                   LEFT JOIN users u ON u.id = p.project_manager_id
+                   ${where}
+                   ORDER BY p.created_at DESC
+                   LIMIT 200`,
+                params,
+            );
+
+            res.status(200).json({
+                success: true,
+                data: r.rows.map((row) => ({
+                    id: row.id,
+                    name: row.name,
+                    code: row.code,
+                    status: row.status,
+                    startDate: row.start_date,
+                    endDate: row.end_date,
+                    projectManagerId: row.project_manager_id,
+                    projectManagerName: row.project_manager_name,
+                    createdAt: row.created_at,
+                    otherClientCount: row.other_client_count || 0,
+                })),
+            } as ApiResponse);
+        } catch (error) {
+            console.error('getImportableProjects error:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to load importable projects',
+            } as ApiResponse);
+        }
+    }
+
+    /**
+     * POST /api/clients-v2/:clientId/projects/import
+     * body: { projectIds: string[], billingType?, budget? }
+     *
+     * Bulk-creates `client_projects` rows linking the listed existing
+     * projects to this client. Skips projects already linked (idempotent —
+     * useful if the picker drifted). Returns the count of new mappings.
+     * Raw psql.
+     */
+    static async importProjects(
+        req: AuthRequest,
+        res: Response,
+    ): Promise<void> {
+        try {
+            if (!req.tenantId) {
+                res.status(400).json({
+                    success: false,
+                    error: 'Tenant context required',
+                } as ApiResponse);
+                return;
+            }
+            const { clientId } = req.params;
+            const { projectIds, billingType, budget } = req.body || {};
+            if (!Array.isArray(projectIds) || projectIds.length === 0) {
+                res.status(400).json({
+                    success: false,
+                    error: 'projectIds is required',
+                } as ApiResponse);
+                return;
+            }
+
+            // Verify client belongs to tenant
+            const cl = await pool.query(
+                `SELECT 1 FROM clients_v2 WHERE id = $1 AND tenant_id = $2`,
+                [clientId, req.tenantId],
+            );
+            if (cl.rowCount === 0) {
+                res.status(404).json({
+                    success: false,
+                    error: 'Client not found',
+                } as ApiResponse);
+                return;
+            }
+
+            // Filter to projects that exist in this tenant and aren't already
+            // linked. Use a single SELECT to avoid N round-trips.
+            const valid = await pool.query(
+                `SELECT p.id
+                   FROM projects p
+                  WHERE p.tenant_id = $1
+                    AND p.id = ANY($2::text[])
+                    AND lower(p.status) <> 'deleted'
+                    AND NOT EXISTS (
+                      SELECT 1 FROM client_projects cp
+                       WHERE cp.project_id = p.id
+                         AND cp.tenant_id = $1
+                         AND cp.client_id = $3
+                    )`,
+                [req.tenantId, projectIds, clientId],
+            );
+            const toLink = valid.rows.map((r) => r.id as string);
+            const skipped = projectIds.length - toLink.length;
+
+            // Insert mappings. `id` and `updated_at` are NOT NULL with no
+            // defaults — Prisma normally generates them, so we mirror that
+            // here. UNIQUE(client_id, project_id) makes this idempotent.
+            for (const pid of toLink) {
+                await pool.query(
+                    `INSERT INTO client_projects
+                       (id, tenant_id, client_id, project_id,
+                        billing_type, budget, updated_at)
+                     VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, NOW())
+                     ON CONFLICT DO NOTHING`,
+                    [req.tenantId, clientId, pid, billingType || null, budget ?? null],
+                );
+            }
+
+            res.status(201).json({
+                success: true,
+                data: { linked: toLink.length, skipped, projectIds: toLink },
+            } as ApiResponse);
+        } catch (error) {
+            console.error('importProjects error:', error);
+            res.status(500).json({
+                success: false,
+                error: 'Failed to import projects',
+            } as ApiResponse);
+        }
+    }
+
     static async addProject(req: AuthRequest, res: Response): Promise<void> {
         try {
             if (!req.tenantId || !req.user) {

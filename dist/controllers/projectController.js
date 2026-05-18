@@ -1,7 +1,11 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ProjectController = void 0;
 const database_1 = require("@/config/database");
+const dbpool_1 = __importDefault(require("@/config/dbpool"));
 const types_1 = require("@/types");
 const rbac_service_1 = require("@/modules/rbac/rbac.service");
 const permissions_1 = require("@/types/permissions");
@@ -10,6 +14,7 @@ class ProjectController {
      * Get all projects with filtering and pagination (tenant-aware)
      */
     static async getProjects(req, res) {
+        var _a;
         try {
             if (!req.tenantId || !req.user) {
                 res.status(400).json({
@@ -90,9 +95,34 @@ class ProjectController {
                 await database_1.prisma.project.count({ where }),
             ]);
             const totalPages = Math.ceil(total / Number(limit));
+            // Batch-fetch linked clients for all projects on this page via raw
+            // psql (avoids adding a Prisma include — per project rule new code
+            // should stay raw-SQL on the client_projects table). A project can be
+            // linked to multiple clients, so we return an array per project.
+            const projectIds = projects.map((p) => p.id);
+            let clientsByProject = {};
+            if (projectIds.length > 0) {
+                const clientRows = await dbpool_1.default.query(`SELECT cp.project_id, c.id, c.company_name, c.client_code
+             FROM client_projects cp
+             JOIN clients_v2 c ON c.id = cp.client_id
+            WHERE cp.tenant_id = $1
+              AND cp.project_id = ANY($2::text[])
+            ORDER BY c.company_name ASC`, [req.tenantId, projectIds]);
+                for (const row of clientRows.rows) {
+                    (clientsByProject[_a = row.project_id] || (clientsByProject[_a] = [])).push({
+                        id: row.id,
+                        companyName: row.company_name,
+                        clientCode: row.client_code,
+                    });
+                }
+            }
+            const enriched = projects.map((p) => ({
+                ...p,
+                clients: clientsByProject[p.id] || [],
+            }));
             res.status(200).json({
                 success: true,
-                data: projects,
+                data: enriched,
                 pagination: {
                     page: Number(page),
                     limit: Number(limit),

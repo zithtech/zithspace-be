@@ -1,7 +1,17 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const clientV2Controller_1 = require("@/controllers/clientV2Controller");
+const clientPortalCredentialController_1 = __importDefault(require("@/controllers/clientPortalCredentialController"));
+const clientCustomerLinkController_1 = __importDefault(require("@/controllers/clientCustomerLinkController"));
+const momStaffController_1 = __importDefault(require("@/controllers/momStaffController"));
+const crStaffController_1 = __importDefault(require("@/controllers/crStaffController"));
+const approvalsStaffController_1 = __importDefault(require("@/controllers/approvalsStaffController"));
+const environmentsStaffController_1 = __importDefault(require("@/controllers/environmentsStaffController"));
+const teamStaffController_1 = __importDefault(require("@/controllers/teamStaffController"));
 const auth_1 = require("@/middleware/auth");
 const tenantContext_1 = require("@/middleware/tenantContext");
 const permission_1 = require("@/middleware/permission");
@@ -115,9 +125,63 @@ router.put('/allocations/:allocationId', (0, permission_1.requirePermission)(per
  */
 router.get('/:clientId/projects', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_READ), clientV2Controller_1.ClientV2Controller.getProjects);
 /**
+ * @route   GET /api/clients-v2/:clientId/projects/importable
+ * @desc    List existing projects in the tenant that are NOT yet linked to
+ *          this client. Powers the "Import projects" picker.
+ */
+router.get('/:clientId/projects/importable', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_READ), clientV2Controller_1.ClientV2Controller.getImportableProjects);
+/**
+ * @route   POST /api/clients-v2/:clientId/projects/import
+ * @desc    Bulk-link existing projects to this client. body: { projectIds[] }
+ */
+router.post('/:clientId/projects/import', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_UPDATE), clientV2Controller_1.ClientV2Controller.importProjects);
+/**
  * @route   POST /api/clients-v2/:clientId/projects
  * @desc    Create a new project and map it to a client
  */
 router.post('/:clientId/projects', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_UPDATE), clientV2Controller_1.ClientV2Controller.addProject);
+// ==============================================
+// CLIENT PORTAL CREDENTIALS
+// Staff-side management of per-contact portal login accounts.
+// ==============================================
+router.get('/:clientId/portal-users', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_READ), clientPortalCredentialController_1.default.list);
+router.post('/:clientId/portal-users', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_MANAGE), clientPortalCredentialController_1.default.create);
+router.post('/portal-users/:portalUserId/reset-password', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_MANAGE), clientPortalCredentialController_1.default.resetPassword);
+router.patch('/portal-users/:portalUserId/status', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_MANAGE), clientPortalCredentialController_1.default.updateStatus);
+router.delete('/portal-users/:portalUserId', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_MANAGE), clientPortalCredentialController_1.default.remove);
+// ==============================================
+// BILLING CUSTOMER LINKAGE (drives portal invoice visibility)
+// ==============================================
+router.get('/:clientId/billing-customers', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_READ), clientCustomerLinkController_1.default.listLinked);
+router.get('/:clientId/billing-customers/available', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_READ), clientCustomerLinkController_1.default.listAvailable);
+router.post('/:clientId/billing-customers', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_MANAGE), clientCustomerLinkController_1.default.link);
+router.delete('/:clientId/billing-customers/:customerId', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_MANAGE), clientCustomerLinkController_1.default.unlink);
+// ==============================================
+// MINUTES OF MEETING (per-client)
+// ==============================================
+router.get('/:clientId/moms', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_READ), momStaffController_1.default.listForClient);
+router.post('/:clientId/moms', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_UPDATE), momStaffController_1.default.create);
+// ==============================================
+// CHANGE REQUESTS (per-client)
+// ==============================================
+router.get('/:clientId/change-requests', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_READ), crStaffController_1.default.listForClient);
+router.post('/:clientId/change-requests', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_UPDATE), crStaffController_1.default.create);
+// ==============================================
+// APPROVALS (per-client)
+// ==============================================
+router.get('/:clientId/approvals', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_READ), approvalsStaffController_1.default.listForClient);
+router.post('/:clientId/approvals', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_UPDATE), approvalsStaffController_1.default.create);
+// ==============================================
+// ENVIRONMENTS (per-client)
+// ==============================================
+router.get('/:clientId/environments', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_READ), environmentsStaffController_1.default.listForClient);
+router.post('/:clientId/environments', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_UPDATE), environmentsStaffController_1.default.create);
+// ==============================================
+// TEAM / RESOURCE VISIBILITY (per-client)
+// ==============================================
+router.get('/:clientId/team', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_READ), teamStaffController_1.default.listForClient);
+router.get('/:clientId/team/staff-options', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_READ), teamStaffController_1.default.staffOptions);
+router.post('/:clientId/team', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_UPDATE), teamStaffController_1.default.create);
+router.post('/:clientId/team/reorder', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_UPDATE), teamStaffController_1.default.reorder);
 exports.default = router;
 //# sourceMappingURL=clientsV2.js.map
