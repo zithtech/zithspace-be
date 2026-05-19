@@ -2312,19 +2312,20 @@ model Shortcut {
   }
 
   model ClientDocumentV2 {
-    id           String   @id @default(uuid())
-    tenantId     String   @map("tenant_id")
-    clientId     String   @map("client_id")
-    category     String
-    documentType String   @map("document_type")
-    fileName     String   @map("file_name")
-    fileUrl      String   @map("file_url")
-    version      Int      @default(1)
-    tags         String[] @default([])
-    client       ClientV2 @relation(fields: [clientId], references: [id])
-    uploadedById String   @map("uploaded_by_id")
-    createdAt    DateTime @default(now()) @map("created_at")
-    updatedAt    DateTime @updatedAt @map("updated_at")
+    id                      String   @id @default(uuid())
+    tenantId                String   @map("tenant_id")
+    clientId                String   @map("client_id")
+    category                String
+    documentType            String   @map("document_type")
+    fileName                String   @map("file_name")
+    fileUrl                 String   @map("file_url")
+    version                 Int      @default(1)
+    tags                    String[] @default([])
+    client                  ClientV2 @relation(fields: [clientId], references: [id])
+    uploadedById            String?  @map("uploaded_by_id")
+    uploadedByPortalUserId  String?  @map("uploaded_by_portal_user_id")
+    createdAt               DateTime @default(now()) @map("created_at")
+    updatedAt               DateTime @updatedAt @map("updated_at")
     @@map("client_documents_v2")
   }
 

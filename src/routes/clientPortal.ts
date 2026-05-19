@@ -13,6 +13,7 @@ import ClientPortalCrController from "@/controllers/clientPortalCrController";
 import ClientPortalApprovalsController from "@/controllers/clientPortalApprovalsController";
 import ClientPortalEnvironmentsController from "@/controllers/clientPortalEnvironmentsController";
 import ClientPortalTeamController from "@/controllers/clientPortalTeamController";
+import ClientPortalMilestoneController from "@/controllers/clientPortalMilestoneController";
 
 const router = Router();
 
@@ -90,6 +91,13 @@ router.get(
   resolveTenant,
   authenticateClientPortal,
   ClientPortalDocumentController.list,
+);
+
+router.post(
+  "/documents",
+  resolveTenant,
+  authenticateClientPortal,
+  ClientPortalDocumentController.create,
 );
 
 router.post(
@@ -290,6 +298,17 @@ router.get(
   resolveTenant,
   authenticateClientPortal,
   ClientPortalTeamController.list,
+);
+
+/* ----------------------------------------------------------------------
+ * Phase 3 — Milestones / Delivery Tracker (read-only)
+ * -------------------------------------------------------------------- */
+
+router.get(
+  "/milestones",
+  resolveTenant,
+  authenticateClientPortal,
+  ClientPortalMilestoneController.list,
 );
 
 export default router;

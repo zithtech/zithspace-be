@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import pool from "@/config/dbpool";
+import { uploadClientDocumentToR2 } from "@/utils/r2Client";
 
 /**
  * Preferred display order for known canonical categories. Anything not in this
@@ -70,11 +71,13 @@ export class ClientPortalDocumentController {
               d.version, d.tags, d.created_at, d.updated_at,
               v.first_viewed_at, v.last_viewed_at, v.view_count,
               v.download_count, v.last_event,
-              u.name AS uploaded_by_name
+              COALESCE(u.name, pu.display_name, pu.username) AS uploaded_by_name,
+              (d.uploaded_by_portal_user_id IS NOT NULL) AS uploaded_by_portal
          FROM client_documents_v2 d
          LEFT JOIN client_document_portal_views v
                 ON v.document_id = d.id AND v.portal_user_id = $3
          LEFT JOIN users u ON u.id = d.uploaded_by_id
+         LEFT JOIN client_portal_users pu ON pu.id = d.uploaded_by_portal_user_id
          ${where}
          ORDER BY d.created_at DESC`,
       params,
@@ -91,6 +94,7 @@ export class ClientPortalDocumentController {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       uploadedByName: row.uploaded_by_name,
+      uploadedByPortal: row.uploaded_by_portal === true,
       firstViewedAt: row.first_viewed_at,
       lastViewedAt: row.last_viewed_at,
       viewCount: row.view_count || 0,
@@ -125,6 +129,132 @@ export class ClientPortalDocumentController {
         total: docs.length,
         groups,
         categories: Array.from(new Set(docs.map((d) => d.category).filter(Boolean))),
+      },
+    });
+  }
+
+  /**
+   * POST /api/client-portal/documents
+   * body: { base64?, externalUrl?, fileName?, category?, documentType? }
+   * Lets the client portal user upload a file or attach an external URL.
+   * One of base64 / externalUrl is required.
+   */
+  static async create(req: Request, res: Response): Promise<void> {
+    const ctx = req.portalUser;
+    if (!ctx) {
+      res.status(401).json({ success: false, error: "Not authenticated" });
+      return;
+    }
+    const b = req.body || {};
+    const base64 = typeof b.base64 === "string" ? b.base64 : null;
+    const externalUrl =
+      typeof b.externalUrl === "string" ? b.externalUrl.trim() : null;
+    const reqFileName =
+      typeof b.fileName === "string" ? b.fileName.trim() : null;
+    const category =
+      (typeof b.category === "string" && b.category.trim()) ||
+      "Client Uploads";
+    const documentType =
+      (typeof b.documentType === "string" && b.documentType.trim()) ||
+      "Attachment";
+
+    if (!base64 && !externalUrl) {
+      res
+        .status(400)
+        .json({ success: false, error: "Provide a file or a link" });
+      return;
+    }
+    if (base64 && !reqFileName) {
+      res
+        .status(400)
+        .json({ success: false, error: "fileName is required for uploads" });
+      return;
+    }
+
+    let fileUrl: string;
+    let resolvedFileName: string;
+
+    if (externalUrl) {
+      try {
+        new URL(externalUrl);
+      } catch {
+        res
+          .status(400)
+          .json({ success: false, error: "Link is not a valid URL" });
+        return;
+      }
+      fileUrl = externalUrl;
+      if (reqFileName) {
+        resolvedFileName = reqFileName;
+      } else {
+        try {
+          const u = new URL(externalUrl);
+          const last = u.pathname.split("/").filter(Boolean).pop();
+          resolvedFileName = last ? decodeURIComponent(last) : u.hostname;
+        } catch {
+          resolvedFileName = externalUrl;
+        }
+      }
+    } else {
+      resolvedFileName = reqFileName!;
+      try {
+        fileUrl = await uploadClientDocumentToR2(
+          base64!,
+          resolvedFileName,
+          ctx.tenantId,
+          ctx.clientId,
+          category,
+          documentType,
+        );
+      } catch (err: any) {
+        console.error("[portal] document upload to R2 failed:", err);
+        res
+          .status(500)
+          .json({ success: false, error: "Failed to upload file" });
+        return;
+      }
+    }
+
+    const ins = await pool.query(
+      `INSERT INTO client_documents_v2
+         (id, tenant_id, client_id, category, document_type,
+          file_name, file_url, uploaded_by_portal_user_id,
+          created_at, updated_at)
+       VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7,
+               NOW(), NOW())
+       RETURNING id, category, document_type, file_name, file_url,
+                 version, tags, created_at, updated_at`,
+      [
+        ctx.tenantId,
+        ctx.clientId,
+        category,
+        documentType,
+        resolvedFileName,
+        fileUrl,
+        ctx.portalUserId,
+      ],
+    );
+
+    const row = ins.rows[0];
+    res.status(201).json({
+      success: true,
+      data: {
+        id: row.id,
+        category: row.category,
+        documentType: row.document_type,
+        fileName: row.file_name,
+        fileUrl: row.file_url,
+        version: row.version,
+        tags: row.tags || [],
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        uploadedByName: null,
+        uploadedByPortal: true,
+        firstViewedAt: null,
+        lastViewedAt: null,
+        viewCount: 0,
+        downloadCount: 0,
+        lastEvent: null,
       },
     });
   }

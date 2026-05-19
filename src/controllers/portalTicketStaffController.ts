@@ -11,6 +11,36 @@ const VALID_STATUSES = new Set([
   "closed",
 ]);
 
+const VALID_CATEGORIES = new Set([
+  "bug",
+  "enhancement",
+  "support",
+  "infra",
+  "access",
+  "other",
+]);
+const VALID_PRIORITIES = new Set(["low", "medium", "high", "critical"]);
+
+const SLA_DEFAULTS: Record<string, { response: number; resolution: number }> = {
+  critical: { response: 60, resolution: 8 * 60 },
+  high: { response: 4 * 60, resolution: 24 * 60 },
+  medium: { response: 8 * 60, resolution: 3 * 24 * 60 },
+  low: { response: 24 * 60, resolution: 7 * 24 * 60 },
+};
+
+async function allocateTicketNumber(tenantId: string): Promise<string> {
+  const r = await pool.query(
+    `INSERT INTO portal_ticket_counters (tenant_id, last_seq)
+     VALUES ($1, 1)
+     ON CONFLICT (tenant_id) DO UPDATE
+       SET last_seq = portal_ticket_counters.last_seq + 1
+     RETURNING last_seq`,
+    [tenantId],
+  );
+  const seq = r.rows[0].last_seq as number;
+  return `PT-${String(seq).padStart(6, "0")}`;
+}
+
 /**
  * Staff-side endpoints for `portal_tickets`. Lives under
  * `/api/portal-tickets/*` (note: distinct prefix from `/api/client-portal/*`
@@ -269,6 +299,120 @@ export class PortalTicketStaffController {
     );
 
     res.json({ success: true, data: { id, status } });
+  }
+
+  /**
+   * POST /api/portal-tickets
+   * Staff-created ticket on behalf of a client.
+   * body: { clientId, subject, body, category?, priority?, projectId?,
+   *         assignedStaffUserId? }
+   */
+  static async create(req: AuthRequest, res: Response): Promise<void> {
+    const tenantId = req.tenantId!;
+    const userId = req.user!.id;
+    const {
+      clientId,
+      subject,
+      body,
+      category,
+      priority,
+      projectId,
+      assignedStaffUserId,
+    } = req.body || {};
+
+    if (!clientId || typeof clientId !== "string") {
+      res.status(400).json({ success: false, error: "clientId is required" });
+      return;
+    }
+    if (!subject || typeof subject !== "string" || !subject.trim()) {
+      res.status(400).json({ success: false, error: "subject is required" });
+      return;
+    }
+    if (!body || typeof body !== "string" || !body.trim()) {
+      res.status(400).json({ success: false, error: "body is required" });
+      return;
+    }
+    const cat = (category || "support").toLowerCase();
+    const pri = (priority || "medium").toLowerCase();
+    if (!VALID_CATEGORIES.has(cat)) {
+      res.status(400).json({ success: false, error: "Invalid category" });
+      return;
+    }
+    if (!VALID_PRIORITIES.has(pri)) {
+      res.status(400).json({ success: false, error: "Invalid priority" });
+      return;
+    }
+
+    const cl = await pool.query(
+      `SELECT 1 FROM clients_v2 WHERE id = $1 AND tenant_id = $2`,
+      [clientId, tenantId],
+    );
+    if (cl.rowCount === 0) {
+      res.status(404).json({ success: false, error: "Client not found" });
+      return;
+    }
+    if (projectId) {
+      const ok = await pool.query(
+        `SELECT 1 FROM client_projects
+          WHERE tenant_id = $1 AND client_id = $2 AND project_id = $3`,
+        [tenantId, clientId, projectId],
+      );
+      if (ok.rowCount === 0) {
+        res.status(400).json({
+          success: false,
+          error: "projectId is not linked to this client",
+        });
+        return;
+      }
+    }
+
+    const sla = SLA_DEFAULTS[pri] || SLA_DEFAULTS.medium;
+    const ticketNumber = await allocateTicketNumber(tenantId);
+    const assignedTo = assignedStaffUserId || userId;
+
+    const insertRes = await pool.query(
+      `INSERT INTO portal_tickets
+         (tenant_id, client_id, ticket_number, subject, category, priority,
+          status, project_id, assigned_staff_user_id,
+          sla_response_target_minutes, sla_resolution_target_minutes,
+          last_activity_at)
+       VALUES ($1, $2, $3, $4, $5, $6, 'new', $7, $8, $9, $10, NOW())
+       RETURNING id, ticket_number, subject, category, priority, status,
+                 created_at`,
+      [
+        tenantId,
+        clientId,
+        ticketNumber,
+        subject.trim(),
+        cat,
+        pri,
+        projectId || null,
+        assignedTo,
+        sla.response,
+        sla.resolution,
+      ],
+    );
+    const ticket = insertRes.rows[0];
+
+    await pool.query(
+      `INSERT INTO portal_ticket_messages
+         (tenant_id, ticket_id, author_type, staff_user_id, body)
+       VALUES ($1, $2, 'staff', $3, $4)`,
+      [tenantId, ticket.id, userId, body.trim()],
+    );
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: ticket.id,
+        ticketNumber: ticket.ticket_number,
+        subject: ticket.subject,
+        category: ticket.category,
+        priority: ticket.priority,
+        status: ticket.status,
+        createdAt: ticket.created_at,
+      },
+    });
   }
 
   /** PATCH /api/portal-tickets/:id/assign  body: { userId } */

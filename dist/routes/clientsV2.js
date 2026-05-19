@@ -12,6 +12,7 @@ const crStaffController_1 = __importDefault(require("@/controllers/crStaffContro
 const approvalsStaffController_1 = __importDefault(require("@/controllers/approvalsStaffController"));
 const environmentsStaffController_1 = __importDefault(require("@/controllers/environmentsStaffController"));
 const teamStaffController_1 = __importDefault(require("@/controllers/teamStaffController"));
+const clientMilestoneController_1 = __importDefault(require("@/controllers/clientMilestoneController"));
 const auth_1 = require("@/middleware/auth");
 const tenantContext_1 = require("@/middleware/tenantContext");
 const permission_1 = require("@/middleware/permission");
@@ -183,5 +184,10 @@ router.get('/:clientId/team', (0, permission_1.requirePermission)(permissions_1.
 router.get('/:clientId/team/staff-options', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_READ), teamStaffController_1.default.staffOptions);
 router.post('/:clientId/team', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_UPDATE), teamStaffController_1.default.create);
 router.post('/:clientId/team/reorder', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_UPDATE), teamStaffController_1.default.reorder);
+// ==============================================
+// MILESTONES / DELIVERY TRACKER (per-client)
+// ==============================================
+router.get('/:clientId/milestones', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_READ), clientMilestoneController_1.default.list);
+router.post('/:clientId/milestones', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_UPDATE), clientMilestoneController_1.default.create);
 exports.default = router;
 //# sourceMappingURL=clientsV2.js.map

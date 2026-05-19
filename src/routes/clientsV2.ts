@@ -7,6 +7,7 @@ import CrStaffController from '@/controllers/crStaffController';
 import ApprovalsStaffController from '@/controllers/approvalsStaffController';
 import EnvironmentsStaffController from '@/controllers/environmentsStaffController';
 import TeamStaffController from '@/controllers/teamStaffController';
+import ClientMilestoneController from '@/controllers/clientMilestoneController';
 import { authenticateToken, requireAuth } from '@/middleware/auth';
 import { resolveTenant } from '@/middleware/tenantContext';
 import { requirePermission } from '@/middleware/permission';
@@ -326,6 +327,22 @@ router.post(
   '/:clientId/team/reorder',
   requirePermission(Permissions.CLIENT_UPDATE),
   TeamStaffController.reorder,
+);
+
+// ==============================================
+// MILESTONES / DELIVERY TRACKER (per-client)
+// ==============================================
+
+router.get(
+  '/:clientId/milestones',
+  requirePermission(Permissions.CLIENT_READ),
+  ClientMilestoneController.list,
+);
+
+router.post(
+  '/:clientId/milestones',
+  requirePermission(Permissions.CLIENT_UPDATE),
+  ClientMilestoneController.create,
 );
 
 export default router;

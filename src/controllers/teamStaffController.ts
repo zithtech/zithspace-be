@@ -62,8 +62,9 @@ export class TeamStaffController {
       where += ` AND (u.name ILIKE $${params.length} OR u.work_email ILIKE $${params.length})`;
     }
     const r = await pool.query(
-      `SELECT u.id, u.name, u.work_email, u.avatar_url
+      `SELECT u.id, u.name, u.work_email, u.avatar_url, p.title AS title
          FROM users u
+         LEFT JOIN positions p ON u.position_id = p.id
          ${where}
         ORDER BY u.name ASC
         LIMIT 50`,
