@@ -17,18 +17,23 @@ export class TimeTrackingController {
 
       const whereClause: any = { tenantId: req.tenantId };
 
-      if (allUsers === 'true' || (userId && userId !== req.user.id)) {
-        const canReadTeam = await RBACService.hasPermission(req.user.id, req.tenantId, Permissions.TIME_TRACKING_TEAM_READ);
-        if (canReadTeam) {
-          if (userId) whereClause.userId = String(userId);
-          // if allUsers is true and no userId, whereClause stays empty for userId -> get all
-        } else {
-          // Not allowed to see others, force own ID
-          whereClause.userId = req.user.id;
+      if (ticketId) {
+        // Viewing specific ticket details: anyone who views a ticket should see all time entries for that ticket
+        if (userId) {
+          whereClause.userId = String(userId);
         }
       } else {
-        // Default to current user
-        whereClause.userId = req.user.id;
+        // Global time tracking listing: enforce standard security permissions
+        if (allUsers === 'true' || (userId && userId !== req.user.id)) {
+          const canReadTeam = await RBACService.hasPermission(req.user.id, req.tenantId, Permissions.TIME_TRACKING_TEAM_READ);
+          if (canReadTeam) {
+            if (userId) whereClause.userId = String(userId);
+          } else {
+            whereClause.userId = req.user.id;
+          }
+        } else {
+          whereClause.userId = req.user.id;
+        }
       }
 
       if (ticketId) {
