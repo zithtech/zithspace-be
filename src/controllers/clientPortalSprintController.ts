@@ -4,7 +4,7 @@ import pool from "@/config/dbpool";
 /**
  * Phase 2 — Sprints (read-only).
  *
- * "Sprints" in this codebase are rows in `release_plans` with `type = 'sprint'`.
+ * "Sprints" in this codebase are rows in `release_plans` with `type IN ('sprint', 'sprint_plan')`.
  * Tickets connect via `tickets.sprint_plan_id`. We scope to the portal user's
  * client through `client_projects` (the CRM client ↔ project join table).
  *
@@ -80,7 +80,7 @@ export class ClientPortalSprintController {
     const params: any[] = [ctx.tenantId, projectIds];
     let where = `WHERE rp.tenant_id = $1
                    AND rp.project_id = ANY($2::text[])
-                   AND rp.type = 'sprint'`;
+                   AND rp.type IN ('sprint', 'sprint_plan')`;
 
     if (projectFilter) {
       params.push(projectFilter);
@@ -169,14 +169,24 @@ export class ClientPortalSprintController {
     });
 
     // Sprint-status counts and project list for the FE filter pills
+    let countsWhere = `WHERE rp.tenant_id = $1
+          AND rp.type IN ('sprint', 'sprint_plan')`;
+    const countsParams: any[] = [ctx.tenantId];
+
+    if (projectFilter) {
+      countsParams.push(projectFilter);
+      countsWhere += ` AND rp.project_id = $${countsParams.length}`;
+    } else {
+      countsParams.push(projectIds);
+      countsWhere += ` AND rp.project_id = ANY($${countsParams.length}::text[])`;
+    }
+
     const counts = await pool.query(
       `SELECT LOWER(rp.status) AS status, COUNT(*)::int AS n
          FROM release_plans rp
-        WHERE rp.tenant_id = $1
-          AND rp.project_id = ANY($2::text[])
-          AND rp.type = 'sprint'
+        ${countsWhere}
         GROUP BY LOWER(rp.status)`,
-      [ctx.tenantId, projectIds],
+      countsParams,
     );
     const countMap: Record<string, number> = {};
     for (const r of counts.rows) countMap[r.status || "unknown"] = r.n;
@@ -232,7 +242,7 @@ export class ClientPortalSprintController {
          JOIN projects p ON p.id = rp.project_id
         WHERE rp.id = $1 AND rp.tenant_id = $2
           AND rp.project_id = ANY($3::text[])
-          AND rp.type = 'sprint'`,
+          AND rp.type IN ('sprint', 'sprint_plan')`,
       [id, ctx.tenantId, projectIds],
     );
     const plan = planRes.rows[0];

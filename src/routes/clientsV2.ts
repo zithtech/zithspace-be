@@ -68,6 +68,12 @@ router.post('/', requirePermission(Permissions.CLIENT_CREATE), ClientV2Controlle
 router.put('/projects/:projectId', requirePermission(Permissions.CLIENT_UPDATE), ClientV2Controller.updateProject);
 
 /**
+ * @route   DELETE /api/clients-v2/projects/:projectId
+ * @desc    Delete a project and its client mapping
+ */
+router.delete('/projects/:projectId', requirePermission(Permissions.CLIENT_DELETE), ClientV2Controller.deleteProject);
+
+/**
  * @route   PUT /api/clients-v2/:id
  * @desc    Update client v2 (tenant-aware)
  * @access  Private (authenticated users within tenant)
@@ -112,6 +118,12 @@ router.post('/:clientId/documents', requirePermission(Permissions.CLIENT_UPDATE)
  * @desc    Delete a client document
  */
 router.delete('/:clientId/documents/:documentId', requirePermission(Permissions.CLIENT_DELETE), ClientV2Controller.deleteDocument);
+
+/**
+ * @route   GET /api/clients-v2/:clientId/documents/:documentId/download
+ * @desc    Download a client document
+ */
+router.get('/:clientId/documents/:documentId/download', requirePermission(Permissions.CLIENT_READ), ClientV2Controller.downloadDocument);
 
 
 // ==============================================

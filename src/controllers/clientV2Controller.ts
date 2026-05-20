@@ -459,6 +459,63 @@ export class ClientV2Controller {
         }
     }
 
+    static async downloadDocument(req: AuthRequest, res: Response): Promise<void> {
+        try {
+            if (!req.tenantId) {
+                res.status(400).json({ success: false, error: 'Tenant context required' } as ApiResponse);
+                return;
+            }
+
+            const { documentId } = req.params;
+
+            const document = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                return await prisma.clientDocumentV2.findUnique({
+                    where: { id: documentId }
+                });
+            });
+
+            if (!document || document.tenantId !== req.tenantId) {
+                res.status(404).json({ success: false, error: 'Document not found' } as ApiResponse);
+                return;
+            }
+
+            if (!document.fileUrl) {
+                res.status(400).json({ success: false, error: 'Document has no file URL' } as ApiResponse);
+                return;
+            }
+
+            const isR2Url = document.fileUrl.includes('r2.cloudflarestorage.com') || 
+                            document.fileUrl.includes('r2.dev') ||
+                            (process.env.CF_R2_PUBLIC_URL && document.fileUrl.includes(process.env.CF_R2_PUBLIC_URL));
+
+            if (!isR2Url) {
+                res.redirect(document.fileUrl);
+                return;
+            }
+
+            const axios = require('axios');
+            const responseStream = await axios({
+                method: 'get',
+                url: document.fileUrl,
+                responseType: 'stream'
+            });
+
+            const fileExtension = document.fileName.split('.').pop()?.toLowerCase();
+            let contentType = 'application/octet-stream';
+            if (fileExtension === 'pdf') contentType = 'application/pdf';
+            else if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(fileExtension || '')) contentType = `image/${fileExtension}`;
+
+            res.setHeader('Content-Type', contentType);
+            res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(document.fileName)}"`);
+            
+            responseStream.data.pipe(res);
+
+        } catch (error: any) {
+            console.error('Download document error:', error);
+            res.status(500).json({ success: false, error: 'Failed to download document' } as ApiResponse);
+        }
+    }
+
     /**
      * Delete a client and all its associated data
      */
@@ -939,6 +996,38 @@ export class ClientV2Controller {
                 return;
             }
             res.status(500).json({ success: false, error: 'Failed to update project' } as ApiResponse);
+        }
+    }
+
+    /**
+     * @route   DELETE /api/clients-v2/projects/:projectId
+     * @desc    Delete a project and its client mapping
+     */
+    static async deleteProject(req: AuthRequest, res: Response): Promise<void> {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({ success: false, error: 'Tenant context required' } as ApiResponse);
+                return;
+            }
+
+            const { projectId } = req.params;
+
+            await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                // Delete the mapping first
+                await prisma.clientProject.deleteMany({
+                    where: { projectId: projectId, tenantId: req.tenantId! }
+                });
+
+                // Delete the project
+                await prisma.project.delete({
+                    where: { id: projectId }
+                });
+            });
+
+            res.status(200).json({ success: true, message: 'Project deleted successfully' } as ApiResponse);
+        } catch (error: any) {
+            console.error('deleteProject error:', error);
+            res.status(500).json({ success: false, error: 'Failed to delete project' } as ApiResponse);
         }
     }
 
