@@ -9,6 +9,10 @@ export declare class ClientV2Controller {
     static updateContact(req: AuthRequest, res: Response): Promise<void>;
     static addDocument(req: AuthRequest, res: Response): Promise<void>;
     static deleteDocument(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Delete a client and all its associated data
+     */
+    static deleteClient(req: AuthRequest, res: Response): Promise<void>;
     static getProjects(req: AuthRequest, res: Response): Promise<void>;
     /**
      * Lightweight project counts for the Client Management dashboard cards.

@@ -55,6 +55,7 @@ import bucketRoutes from "@/routes/buckets";
 import trashRoutes from "@/routes/trash";
 import bugListRoutes from "@/routes/bugList";
 import sprintCompletionRoutes from "@/routes/sprintCompletion";
+import sprintReportRoutes from "@/routes/sprintReport";
 import fixedHolidayRoutes from "@/routes/fixedHolidays";
 import documentHubRoutes from "@/routes/documenthub";
 import channelRoutes from "@/routes/channels";
@@ -283,6 +284,7 @@ app.use("/api/buckets", bucketRoutes);
 app.use("/api/trash", trashRoutes);
 app.use("/api/bug-list", bugListRoutes);
 app.use("/api/sprint-completion", sprintCompletionRoutes);
+app.use("/api/sprint-report", sprintReportRoutes);
 app.use("/api/salary-components", salaryComponentRoutes);
 app.use("/api/salary-structures", salaryStructureRoutes);
 app.use("/api/salary-approvals", salaryApprovalRoutes);
@@ -523,6 +525,10 @@ const startServer = async () => {
     // Start trash auto-purge cron job
     const { startTrashAutoPurgeJob } = require("@/jobs/trashAutoPurge");
     startTrashAutoPurgeJob();
+
+    // Start timer auto-pause cron job
+    const { startTimerAutoPauseJob } = require("@/jobs/timerAutoPause");
+    startTimerAutoPauseJob();
 
   } catch (error) {
     console.error("Server startup failed:", error);

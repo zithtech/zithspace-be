@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '@/types';
 export declare class ShiftsController {
+    private static ensureDefaultShifts;
     /**
      * Get all shifts with filtering and pagination (tenant-aware)
      */
