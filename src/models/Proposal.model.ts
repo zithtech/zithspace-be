@@ -53,12 +53,23 @@ export class ProposalModel {
         p.created_at,
         p.updated_at,
         p.created_by,
+        p.lead_id,
+        l.client_mail,
+        lm.last_mail_at,
+        (COALESCE(l.is_mail_sent, false) OR lm.last_mail_at IS NOT NULL) as is_mail_sent,
         (
           SELECT json_build_object('id', u.id, 'name', u.name, 'avatarUrl', u.avatar_url)
           FROM users u
           WHERE u.id = p.created_by
         ) AS "createdBy"
       FROM proposals p
+      LEFT JOIN leads l ON l.id = p.lead_id
+      LEFT JOIN (
+        SELECT lead_id, MAX(sent_at) as last_mail_at
+        FROM lead_mails
+        WHERE tenant_id = $1
+        GROUP BY lead_id
+      ) lm ON p.lead_id = lm.lead_id
       WHERE p.tenant_id = $1
       ORDER BY p.created_at DESC;
     `;
@@ -74,12 +85,22 @@ export class ProposalModel {
     const query = `
       SELECT
         p.*,
+        l.client_mail,
+        lm.last_mail_at,
+        (COALESCE(l.is_mail_sent, false) OR lm.last_mail_at IS NOT NULL) as is_mail_sent,
         (
           SELECT json_build_object('id', u.id, 'name', u.name, 'avatarUrl', u.avatar_url)
           FROM users u
           WHERE u.id = p.created_by
         ) AS "createdBy"
       FROM proposals p
+      LEFT JOIN leads l ON l.id = p.lead_id
+      LEFT JOIN (
+        SELECT lead_id, MAX(sent_at) as last_mail_at
+        FROM lead_mails
+        WHERE tenant_id = $2
+        GROUP BY lead_id
+      ) lm ON p.lead_id = lm.lead_id
       WHERE p.id = $1 AND p.tenant_id = $2;
     `;
     const result = await pool.query(query, [id, tenantId]);
