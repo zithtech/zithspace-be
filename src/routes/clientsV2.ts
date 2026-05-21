@@ -8,6 +8,7 @@ import ApprovalsStaffController from '@/controllers/approvalsStaffController';
 import EnvironmentsStaffController from '@/controllers/environmentsStaffController';
 import TeamStaffController from '@/controllers/teamStaffController';
 import ClientMilestoneController from '@/controllers/clientMilestoneController';
+import ClientProjectReleaseController from '@/controllers/clientProjectReleaseController';
 import { authenticateToken, requireAuth } from '@/middleware/auth';
 import { resolveTenant } from '@/middleware/tenantContext';
 import { requirePermission } from '@/middleware/permission';
@@ -355,6 +356,28 @@ router.post(
   '/:clientId/milestones',
   requirePermission(Permissions.CLIENT_UPDATE),
   ClientMilestoneController.create,
+);
+
+// ==============================================
+// RELEASES (per-client)
+// ==============================================
+
+router.get(
+  '/:clientId/releases',
+  requirePermission(Permissions.CLIENT_READ),
+  ClientProjectReleaseController.list,
+);
+
+router.get(
+  '/:clientId/releases/milestone-options',
+  requirePermission(Permissions.CLIENT_READ),
+  ClientProjectReleaseController.milestoneOptions,
+);
+
+router.post(
+  '/:clientId/releases',
+  requirePermission(Permissions.CLIENT_UPDATE),
+  ClientProjectReleaseController.create,
 );
 
 export default router;

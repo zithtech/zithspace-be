@@ -130,7 +130,9 @@ function decorateSla(row: any) {
 
 export class ClientPortalTicketController {
   /**
-   * GET /api/client-portal/tickets?status=&category=&priority=&search=&page=&limit=
+   * GET /api/client-portal/tickets?status=&category=&priority=&search=&projectId=&from=&to=&page=&limit=
+   * `from`/`to` are ISO dates (YYYY-MM-DD) and filter on the ticket's due date,
+   * falling back to created_at when no due date is set.
    */
   static async list(req: Request, res: Response): Promise<void> {
     const ctx = req.portalUser;
@@ -143,6 +145,12 @@ export class ClientPortalTicketController {
     const category = ((req.query.category as string) || "").toLowerCase();
     const priority = ((req.query.priority as string) || "").toLowerCase();
     const search = ((req.query.search as string) || "").trim();
+    const projectFilter = ((req.query.projectId as string) || "").trim();
+    const fromRaw = ((req.query.from as string) || "").trim();
+    const toRaw = ((req.query.to as string) || "").trim();
+    const isoDate = /^\d{4}-\d{2}-\d{2}$/;
+    const from = isoDate.test(fromRaw) ? fromRaw : "";
+    const to = isoDate.test(toRaw) ? toRaw : "";
     const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
     const limit = Math.min(
       100,
@@ -165,10 +173,24 @@ export class ClientPortalTicketController {
       params.push(priority);
       where += ` AND t.priority = $${params.length}`;
     }
+    if (projectFilter) {
+      params.push(projectFilter);
+      where += ` AND t.project_id = $${params.length}`;
+    }
     if (search) {
       params.push(`%${search}%`);
       where += ` AND (t.subject ILIKE $${params.length}
                   OR t.ticket_number ILIKE $${params.length})`;
+    }
+    if (from) {
+      params.push(from);
+      where += ` AND COALESCE(t.due_date, t.created_at::date)
+                   >= $${params.length}::date`;
+    }
+    if (to) {
+      params.push(to);
+      where += ` AND COALESCE(t.due_date, t.created_at::date)
+                   <= $${params.length}::date`;
     }
 
     const countRes = await pool.query(
@@ -208,6 +230,18 @@ export class ClientPortalTicketController {
     const countMap: Record<string, number> = {};
     for (const row of counts.rows) countMap[row.status] = row.n;
 
+    // Distinct projects across this client's tickets for the FE filter dropdown
+    const projectsRes = await pool.query(
+      `SELECT DISTINCT p.id, p.name, p.code
+         FROM portal_tickets t
+         JOIN projects p ON p.id = t.project_id
+        WHERE t.tenant_id = $1
+          AND t.client_id = $2
+          AND p.name IS NOT NULL
+        ORDER BY p.name ASC`,
+      [ctx.tenantId, ctx.clientId],
+    );
+
     res.json({
       success: true,
       data: list.rows.map((row) => {
@@ -236,6 +270,7 @@ export class ClientPortalTicketController {
         page,
         limit,
         counts: countMap,
+        projects: projectsRes.rows,
       },
     });
   }

@@ -13,6 +13,7 @@ const approvalsStaffController_1 = __importDefault(require("@/controllers/approv
 const environmentsStaffController_1 = __importDefault(require("@/controllers/environmentsStaffController"));
 const teamStaffController_1 = __importDefault(require("@/controllers/teamStaffController"));
 const clientMilestoneController_1 = __importDefault(require("@/controllers/clientMilestoneController"));
+const clientProjectReleaseController_1 = __importDefault(require("@/controllers/clientProjectReleaseController"));
 const auth_1 = require("@/middleware/auth");
 const tenantContext_1 = require("@/middleware/tenantContext");
 const permission_1 = require("@/middleware/permission");
@@ -62,6 +63,11 @@ router.post('/', (0, permission_1.requirePermission)(permissions_1.Permissions.C
  */
 router.put('/projects/:projectId', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_UPDATE), clientV2Controller_1.ClientV2Controller.updateProject);
 /**
+ * @route   DELETE /api/clients-v2/projects/:projectId
+ * @desc    Delete a project and its client mapping
+ */
+router.delete('/projects/:projectId', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_DELETE), clientV2Controller_1.ClientV2Controller.deleteProject);
+/**
  * @route   PUT /api/clients-v2/:id
  * @desc    Update client v2 (tenant-aware)
  * @access  Private (authenticated users within tenant)
@@ -99,6 +105,11 @@ router.post('/:clientId/documents', (0, permission_1.requirePermission)(permissi
  * @desc    Delete a client document
  */
 router.delete('/:clientId/documents/:documentId', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_DELETE), clientV2Controller_1.ClientV2Controller.deleteDocument);
+/**
+ * @route   GET /api/clients-v2/:clientId/documents/:documentId/download
+ * @desc    Download a client document
+ */
+router.get('/:clientId/documents/:documentId/download', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_READ), clientV2Controller_1.ClientV2Controller.downloadDocument);
 // ==============================================
 // ALLOCATION ROUTES
 // ==============================================
@@ -189,5 +200,11 @@ router.post('/:clientId/team/reorder', (0, permission_1.requirePermission)(permi
 // ==============================================
 router.get('/:clientId/milestones', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_READ), clientMilestoneController_1.default.list);
 router.post('/:clientId/milestones', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_UPDATE), clientMilestoneController_1.default.create);
+// ==============================================
+// RELEASES (per-client)
+// ==============================================
+router.get('/:clientId/releases', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_READ), clientProjectReleaseController_1.default.list);
+router.get('/:clientId/releases/milestone-options', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_READ), clientProjectReleaseController_1.default.milestoneOptions);
+router.post('/:clientId/releases', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_UPDATE), clientProjectReleaseController_1.default.create);
 exports.default = router;
 //# sourceMappingURL=clientsV2.js.map

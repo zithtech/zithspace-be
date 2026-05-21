@@ -77,7 +77,9 @@ export async function allocateCrNumber(tenantId: string): Promise<string> {
 
 export class ClientPortalCrController {
   /**
-   * GET /api/client-portal/change-requests?status=&search=&page=&limit=
+   * GET /api/client-portal/change-requests?status=&search=&projectId=&from=&to=&page=&limit=
+   * `from`/`to` are ISO dates (YYYY-MM-DD); they filter on the target delivery
+   * date when present, falling back to the CR creation date.
    */
   static async list(req: Request, res: Response): Promise<void> {
     const ctx = req.portalUser;
@@ -87,6 +89,12 @@ export class ClientPortalCrController {
     }
     const status = ((req.query.status as string) || "").toLowerCase();
     const search = ((req.query.search as string) || "").trim();
+    const projectFilter = ((req.query.projectId as string) || "").trim();
+    const fromRaw = ((req.query.from as string) || "").trim();
+    const toRaw = ((req.query.to as string) || "").trim();
+    const isoDate = /^\d{4}-\d{2}-\d{2}$/;
+    const from = isoDate.test(fromRaw) ? fromRaw : "";
+    const to = isoDate.test(toRaw) ? toRaw : "";
     const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
     const limit = Math.min(
       100,
@@ -101,10 +109,24 @@ export class ClientPortalCrController {
       params.push(status);
       where += ` AND cr.status = $${params.length}`;
     }
+    if (projectFilter) {
+      params.push(projectFilter);
+      where += ` AND cr.project_id = $${params.length}`;
+    }
     if (search) {
       params.push(`%${search}%`);
       where += ` AND (cr.subject ILIKE $${params.length}
                   OR cr.cr_number ILIKE $${params.length})`;
+    }
+    if (from) {
+      params.push(from);
+      where += ` AND COALESCE(cr.target_delivery_date, cr.created_at::date)
+                   >= $${params.length}::date`;
+    }
+    if (to) {
+      params.push(to);
+      where += ` AND COALESCE(cr.target_delivery_date, cr.created_at::date)
+                   <= $${params.length}::date`;
     }
 
     const countRes = await pool.query(
@@ -146,6 +168,19 @@ export class ClientPortalCrController {
     const countMap: Record<string, number> = {};
     for (const row of counts.rows) countMap[row.status] = row.n;
 
+    // Distinct projects across this client's CRs for the FE filter dropdown
+    const projectsRes = await pool.query(
+      `SELECT DISTINCT p.id, p.name, p.code
+         FROM portal_change_requests cr
+         JOIN projects p ON p.id = cr.project_id
+        WHERE cr.tenant_id = $1
+          AND cr.client_id = $2
+          AND cr.status <> 'draft'
+          AND p.name IS NOT NULL
+        ORDER BY p.name ASC`,
+      [ctx.tenantId, ctx.clientId],
+    );
+
     res.json({
       success: true,
       data: list.rows.map((row) => ({
@@ -168,7 +203,13 @@ export class ClientPortalCrController {
         linkedInvoiceNumber: row.linked_invoice_number,
         messageCount: row.message_count || 0,
       })),
-      meta: { total, page, limit, counts: countMap },
+      meta: {
+        total,
+        page,
+        limit,
+        counts: countMap,
+        projects: projectsRes.rows,
+      },
     });
   }
 

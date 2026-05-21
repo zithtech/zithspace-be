@@ -35,9 +35,12 @@ function categoryRank(category: string | null): number {
 
 export class ClientPortalDocumentController {
   /**
-   * GET /api/client-portal/documents?category=&search=
-   * Returns every document attached to the portal user's CRM client, with
-   * optional category/search narrowing and a view-row joined in.
+   * GET /api/client-portal/documents?category=&search=&projectId=&source=
+   *
+   * source: 'all' | 'client' | 'internal'
+   *   - 'client'   → only docs uploaded via the portal (uploaded_by_portal_user_id IS NOT NULL)
+   *   - 'internal' → only docs uploaded by staff (uploaded_by_portal_user_id IS NULL)
+   *   - 'all' / unset → no source filter
    */
   static async list(req: Request, res: Response): Promise<void> {
     const ctx = req.portalUser;
@@ -48,6 +51,8 @@ export class ClientPortalDocumentController {
 
     const category = ((req.query.category as string) || "").trim();
     const search = ((req.query.search as string) || "").trim();
+    const projectId = ((req.query.projectId as string) || "").trim();
+    const source = ((req.query.source as string) || "").trim().toLowerCase();
 
     const params: any[] = [ctx.tenantId, ctx.clientId, ctx.portalUserId];
     let where = `WHERE d.tenant_id = $1 AND d.client_id = $2`;
@@ -55,6 +60,15 @@ export class ClientPortalDocumentController {
     if (category) {
       params.push(category);
       where += ` AND LOWER(d.category) = LOWER($${params.length})`;
+    }
+    if (projectId) {
+      params.push(projectId);
+      where += ` AND d.project_id = $${params.length}`;
+    }
+    if (source === "client") {
+      where += ` AND d.uploaded_by_portal_user_id IS NOT NULL`;
+    } else if (source === "internal") {
+      where += ` AND d.uploaded_by_portal_user_id IS NULL`;
     }
     if (search) {
       params.push(`%${search}%`);
@@ -69,6 +83,8 @@ export class ClientPortalDocumentController {
     const r = await pool.query(
       `SELECT d.id, d.category, d.document_type, d.file_name, d.file_url,
               d.version, d.tags, d.created_at, d.updated_at,
+              d.project_id,
+              p.name AS project_name, p.code AS project_code,
               v.first_viewed_at, v.last_viewed_at, v.view_count,
               v.download_count, v.last_event,
               COALESCE(u.name, pu.display_name, pu.username) AS uploaded_by_name,
@@ -78,6 +94,7 @@ export class ClientPortalDocumentController {
                 ON v.document_id = d.id AND v.portal_user_id = $3
          LEFT JOIN users u ON u.id = d.uploaded_by_id
          LEFT JOIN client_portal_users pu ON pu.id = d.uploaded_by_portal_user_id
+         LEFT JOIN projects p ON p.id = d.project_id
          ${where}
          ORDER BY d.created_at DESC`,
       params,
@@ -93,6 +110,9 @@ export class ClientPortalDocumentController {
       tags: row.tags || [],
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+      projectId: row.project_id,
+      projectName: row.project_name,
+      projectCode: row.project_code,
       uploadedByName: row.uploaded_by_name,
       uploadedByPortal: row.uploaded_by_portal === true,
       firstViewedAt: row.first_viewed_at,
@@ -122,6 +142,31 @@ export class ClientPortalDocumentController {
         return a.category.localeCompare(b.category);
       });
 
+    // Distinct projects across this client's docs — used to populate the FE
+    // project filter dropdown. Built off the unfiltered client/tenant scope so
+    // the dropdown stays stable when a project filter is already applied.
+    const projectsRes = await pool.query(
+      `SELECT DISTINCT p.id, p.name, p.code
+         FROM client_documents_v2 d
+         JOIN projects p ON p.id = d.project_id
+        WHERE d.tenant_id = $1 AND d.client_id = $2
+        ORDER BY p.name ASC`,
+      [ctx.tenantId, ctx.clientId],
+    );
+
+    // Source counts (always over client scope, ignoring active filters) so the
+    // segmented filter can show counts like "All 42 · Client 7 · Internal 35".
+    const countsRes = await pool.query(
+      `SELECT
+         COUNT(*)::int AS total,
+         SUM(CASE WHEN uploaded_by_portal_user_id IS NOT NULL THEN 1 ELSE 0 END)::int AS client_count,
+         SUM(CASE WHEN uploaded_by_portal_user_id IS NULL THEN 1 ELSE 0 END)::int AS internal_count
+         FROM client_documents_v2
+        WHERE tenant_id = $1 AND client_id = $2`,
+      [ctx.tenantId, ctx.clientId],
+    );
+    const counts = countsRes.rows[0] || { total: 0, client_count: 0, internal_count: 0 };
+
     res.json({
       success: true,
       data: docs,
@@ -129,15 +174,22 @@ export class ClientPortalDocumentController {
         total: docs.length,
         groups,
         categories: Array.from(new Set(docs.map((d) => d.category).filter(Boolean))),
+        projects: projectsRes.rows,
+        sourceCounts: {
+          all: counts.total || 0,
+          client: counts.client_count || 0,
+          internal: counts.internal_count || 0,
+        },
       },
     });
   }
 
   /**
    * POST /api/client-portal/documents
-   * body: { base64?, externalUrl?, fileName?, category?, documentType? }
+   * body: { base64?, externalUrl?, fileName?, category?, documentType?, projectId? }
    * Lets the client portal user upload a file or attach an external URL.
-   * One of base64 / externalUrl is required.
+   * One of base64 / externalUrl is required. projectId is optional — when
+   * provided, the doc is associated to a specific project for filtering.
    */
   static async create(req: Request, res: Response): Promise<void> {
     const ctx = req.portalUser;
@@ -157,6 +209,10 @@ export class ClientPortalDocumentController {
     const documentType =
       (typeof b.documentType === "string" && b.documentType.trim()) ||
       "Attachment";
+    const projectId =
+      typeof b.projectId === "string" && b.projectId.trim()
+        ? b.projectId.trim()
+        : null;
 
     if (!base64 && !externalUrl) {
       res
@@ -218,12 +274,12 @@ export class ClientPortalDocumentController {
     const ins = await pool.query(
       `INSERT INTO client_documents_v2
          (id, tenant_id, client_id, category, document_type,
-          file_name, file_url, uploaded_by_portal_user_id,
+          file_name, file_url, uploaded_by_portal_user_id, project_id,
           created_at, updated_at)
-       VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7,
+       VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, $6, $7, $8,
                NOW(), NOW())
        RETURNING id, category, document_type, file_name, file_url,
-                 version, tags, created_at, updated_at`,
+                 version, tags, project_id, created_at, updated_at`,
       [
         ctx.tenantId,
         ctx.clientId,
@@ -232,10 +288,25 @@ export class ClientPortalDocumentController {
         resolvedFileName,
         fileUrl,
         ctx.portalUserId,
+        projectId,
       ],
     );
 
     const row = ins.rows[0];
+    // Resolve project name/code if we got a projectId, so the FE can render
+    // without a follow-up fetch.
+    let projectName: string | null = null;
+    let projectCode: string | null = null;
+    if (row.project_id) {
+      const p = await pool.query(
+        `SELECT name, code FROM projects WHERE id = $1`,
+        [row.project_id],
+      );
+      if (p.rows[0]) {
+        projectName = p.rows[0].name;
+        projectCode = p.rows[0].code;
+      }
+    }
     res.status(201).json({
       success: true,
       data: {
@@ -248,6 +319,9 @@ export class ClientPortalDocumentController {
         tags: row.tags || [],
         createdAt: row.created_at,
         updatedAt: row.updated_at,
+        projectId: row.project_id,
+        projectName,
+        projectCode,
         uploadedByName: null,
         uploadedByPortal: true,
         firstViewedAt: null,

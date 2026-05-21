@@ -9,6 +9,7 @@ export declare class ClientV2Controller {
     static updateContact(req: AuthRequest, res: Response): Promise<void>;
     static addDocument(req: AuthRequest, res: Response): Promise<void>;
     static deleteDocument(req: AuthRequest, res: Response): Promise<void>;
+    static downloadDocument(req: AuthRequest, res: Response): Promise<void>;
     /**
      * Delete a client and all its associated data
      */
@@ -52,6 +53,11 @@ export declare class ClientV2Controller {
      * @desc    Update an existing project and its client mapping
      */
     static updateProject(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * @route   DELETE /api/clients-v2/projects/:projectId
+     * @desc    Delete a project and its client mapping
+     */
+    static deleteProject(req: AuthRequest, res: Response): Promise<void>;
     static addAllocation(req: AuthRequest, res: Response): Promise<void>;
     static updateAllocation(req: AuthRequest, res: Response): Promise<void>;
     static getEmployeesForSelect(req: AuthRequest, res: Response): Promise<void>;

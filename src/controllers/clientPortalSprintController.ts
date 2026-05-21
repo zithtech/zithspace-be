@@ -42,7 +42,10 @@ async function projectsForPortalUser(
 
 export class ClientPortalSprintController {
   /**
-   * GET /api/client-portal/sprints?status=&projectId=&search=&page=&limit=
+   * GET /api/client-portal/sprints?status=&projectId=&search=&from=&to=&page=&limit=
+   * `from`/`to` are ISO dates (YYYY-MM-DD) and apply an overlap filter on the
+   * sprint's [start_date, end_date] window using COALESCE to keep one-sided
+   * sprints in scope. Sprints with no dates fall out of any date-filtered view.
    */
   static async list(req: Request, res: Response): Promise<void> {
     const ctx = req.portalUser;
@@ -70,6 +73,11 @@ export class ClientPortalSprintController {
     const statusFilter = ((req.query.status as string) || "").toLowerCase();
     const projectFilter = (req.query.projectId as string) || "";
     const search = ((req.query.search as string) || "").trim();
+    const fromRaw = ((req.query.from as string) || "").trim();
+    const toRaw = ((req.query.to as string) || "").trim();
+    const isoDate = /^\d{4}-\d{2}-\d{2}$/;
+    const from = isoDate.test(fromRaw) ? fromRaw : "";
+    const to = isoDate.test(toRaw) ? toRaw : "";
     const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
     const limit = Math.min(
       100,
@@ -95,6 +103,14 @@ export class ClientPortalSprintController {
       where += ` AND (rp.version ILIKE $${params.length}
                   OR COALESCE(rp.goal,'') ILIKE $${params.length}
                   OR COALESCE(rp.description,'') ILIKE $${params.length})`;
+    }
+    if (from) {
+      params.push(from);
+      where += ` AND COALESCE(rp.end_date, rp.start_date) >= $${params.length}::date`;
+    }
+    if (to) {
+      params.push(to);
+      where += ` AND COALESCE(rp.start_date, rp.end_date) <= $${params.length}::date`;
     }
 
     const countRes = await pool.query(
