@@ -1291,7 +1291,14 @@ export class TicketController {
         delete mappedUpdates.project;
       }
 
-      // Assignee logic has been moved down after existingTicket is fetched to access metadata
+      if (updates.assignee !== undefined) {
+        const val = updates.assignee;
+        mappedUpdates.assigneeId = (val === '' || val === null)
+          ? null
+          : (typeof val === 'object' ? val.id : val);
+        delete mappedUpdates.assignee;
+      }
+
       if (updates.reportTo !== undefined) {
         const val = updates.reportTo;
         mappedUpdates.reportToId = (val === '' || val === null)
@@ -1365,37 +1372,6 @@ export class TicketController {
 
       if (!existingTicket) {
         throw new NotFoundError("Ticket not found in this tenant");
-      }
-
-      // Process assignee and store additional assignees in metadata to avoid DB schema changes
-      if (updates.assignee !== undefined) {
-        const val = updates.assignee;
-        let primaryAssigneeId: string | null = null;
-        let assigneeIds: string[] = [];
-
-        if (Array.isArray(val)) {
-          assigneeIds = val.map((v: any) => typeof v === 'object' ? v.id : v);
-          primaryAssigneeId = assigneeIds.length > 0 ? assigneeIds[0] : null;
-        } else {
-          primaryAssigneeId = (val === '' || val === null)
-            ? null
-            : (typeof val === 'object' ? val.id : val);
-          if (primaryAssigneeId) assigneeIds = [primaryAssigneeId];
-        }
-
-        mappedUpdates.assigneeId = primaryAssigneeId;
-        
-        // Merge into metadata safely
-        const currentMetadata = existingTicket.metadata 
-          ? (typeof existingTicket.metadata === 'string' ? JSON.parse(existingTicket.metadata) : existingTicket.metadata) 
-          : {};
-          
-        mappedUpdates.metadata = { 
-          ...currentMetadata, 
-          assigneeIds 
-        };
-        
-        delete mappedUpdates.assignee;
       }
 
       // Validate parentId if being updated - prevent nested subtasks
