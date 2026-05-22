@@ -630,6 +630,74 @@ If you have any questions or concerns, please contact your manager or HR departm
     return this.sendEmail(options, tenantId);
   }
 
+  async sendPortalPasswordResetEmail(
+    data: {
+      to: string;
+      displayName: string | null;
+      username: string;
+      temporaryPassword: string;
+      portalUrl: string;
+    },
+    tenantId?: string,
+  ): Promise<boolean> {
+    const greetingName = data.displayName || data.username;
+    const subject = "Your Zukvo portal password has been reset";
+
+    const html = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden;">
+        <div style="background-color: #2563eb; color: white; padding: 28px 32px;">
+          <h1 style="margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em;">Password reset</h1>
+          <p style="margin: 6px 0 0; opacity: 0.9; font-size: 13.5px;">Your portal credentials have been updated.</p>
+        </div>
+        <div style="padding: 28px 32px; color: #0f172a; background-color: white;">
+          <p style="margin: 0 0 16px; font-size: 15px;">Hi <strong>${greetingName}</strong>,</p>
+          <p style="margin: 0 0 20px; line-height: 1.55; color: #475569; font-size: 14px;">
+            An administrator has reset the password for your portal account. Use the temporary password below to sign in. You'll be asked to choose a new password on first sign-in.
+          </p>
+
+          <div style="background-color: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 18px; margin: 18px 0;">
+            <div style="font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;">Username</div>
+            <div style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; color: #0f172a; margin-bottom: 14px;">${data.username}</div>
+            <div style="font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;">Temporary password</div>
+            <div style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 16px; font-weight: 600; color: #1d4ed8;">${data.temporaryPassword}</div>
+          </div>
+
+          <div style="margin: 24px 0; text-align: center;">
+            <a href="${data.portalUrl}"
+               style="display: inline-block; background-color: #2563eb; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">
+               Sign in to portal
+            </a>
+          </div>
+
+          <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 14px; margin-top: 20px;">
+            <p style="margin: 0; font-size: 12.5px; color: #92400e; line-height: 1.5;">
+              <strong>Security note:</strong> If you did not request this reset, contact your account administrator immediately. Any previous active sessions have been signed out.
+            </p>
+          </div>
+
+          <p style="margin: 24px 0 0; font-size: 12px; color: #94a3b8; text-align: center;">
+            This is an automated notification — please do not reply to this email.
+          </p>
+        </div>
+      </div>
+    `;
+
+    const text = `
+Hi ${greetingName},
+
+An administrator has reset the password for your portal account.
+
+Username: ${data.username}
+Temporary password: ${data.temporaryPassword}
+
+Sign in here: ${data.portalUrl}
+
+You'll be asked to choose a new password on first sign-in. Any previous active sessions have been signed out. If you did not request this reset, contact your account administrator immediately.
+    `;
+
+    return this.sendEmail({ to: data.to, subject, html, text }, tenantId);
+  }
+
   async sendPayslipEmail(data: {
     to: string;
     from?: string;
