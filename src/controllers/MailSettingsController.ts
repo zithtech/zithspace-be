@@ -24,7 +24,7 @@ export class MailSettingsController {
       });
 
       // 2. Fetch existing mail settings
-      const settings = await MailSettingsModel.getByTenantId(tenantId);
+      const settings = await MailSettingsModel.getByTenantId(tenantId, req.user!.id);
 
       return res.json({
         success: true,
@@ -89,7 +89,7 @@ export class MailSettingsController {
       });
 
       // Set as default
-      await MailSettingsModel.setAsDefault(settings.id, tenantId);
+      await MailSettingsModel.setAsDefault(settings.id, tenantId, userId);
 
       // Send verification email
       await MailService.sendVerificationEmail(tenantId, email, token);
@@ -152,7 +152,7 @@ export class MailSettingsController {
         return res.status(400).json({ success: false, error: "Email is required" });
       }
 
-      const settings = await MailSettingsModel.getByEmail(email, tenantId);
+      const settings = await MailSettingsModel.getByEmail(email, tenantId, req.user!.id);
 
       if (!settings) {
         return res.status(404).json({ success: false, error: "Mail settings not found" });

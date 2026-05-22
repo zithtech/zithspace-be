@@ -20,7 +20,7 @@ router.use(requireAuth);
  * @access  Private (authenticated users within tenant)
  * @query   projectId, includeShared
  */
-router.get('/', requirePermission(Permissions.PROJECT_READ), BucketController.getBuckets);
+router.get('/', requirePermission(Permissions.TICKET_BUCKET_READ), BucketController.getBuckets);
 
 /**
  * @route   GET /api/buckets/:id/tickets
@@ -29,7 +29,7 @@ router.get('/', requirePermission(Permissions.PROJECT_READ), BucketController.ge
  * @param   id - Bucket ID
  * @query   page, limit
  */
-router.get('/:id/tickets', requirePermission(Permissions.PROJECT_READ), BucketController.getBucketTickets);
+router.get('/:id/tickets', requirePermission(Permissions.TICKET_BUCKET_READ), BucketController.getBucketTickets);
 
 /**
  * @route   GET /api/buckets/:id
@@ -37,7 +37,7 @@ router.get('/:id/tickets', requirePermission(Permissions.PROJECT_READ), BucketCo
  * @access  Private (bucket owner or members)
  * @param   id - Bucket ID
  */
-router.get('/:id', requirePermission(Permissions.PROJECT_READ), BucketController.getBucketById);
+router.get('/:id', requirePermission(Permissions.TICKET_BUCKET_READ), BucketController.getBucketById);
 
 /**
  * @route   POST /api/buckets
@@ -45,7 +45,7 @@ router.get('/:id', requirePermission(Permissions.PROJECT_READ), BucketController
  * @access  Private (authenticated users within tenant)
  * @body    { name: string, description?: string, color?: string, projectId?: string, isShared?: boolean }
  */
-router.post('/', requirePermission(Permissions.PROJECT_CREATE), BucketController.createBucket);
+router.post('/', requirePermission(Permissions.TICKET_BUCKET_CREATE), BucketController.createBucket);
 
 /**
  * @route   PUT /api/buckets/:id
@@ -54,7 +54,7 @@ router.post('/', requirePermission(Permissions.PROJECT_CREATE), BucketController
  * @param   id - Bucket ID
  * @body    { name?: string, description?: string, color?: string, isShared?: boolean }
  */
-router.put('/:id', requirePermission(Permissions.PROJECT_UPDATE), BucketController.updateBucket);
+router.put('/:id', requirePermission(Permissions.TICKET_BUCKET_UPDATE), BucketController.updateBucket);
 
 /**
  * @route   DELETE /api/buckets/:id
@@ -62,7 +62,7 @@ router.put('/:id', requirePermission(Permissions.PROJECT_UPDATE), BucketControll
  * @access  Private (bucket owner only)
  * @param   id - Bucket ID
  */
-router.delete('/:id', requirePermission(Permissions.PROJECT_DELETE), BucketController.deleteBucket);
+router.delete('/:id', requirePermission(Permissions.TICKET_BUCKET_DELETE), BucketController.deleteBucket);
 
 /**
  * @route   POST /api/buckets/:id/members
@@ -71,7 +71,7 @@ router.delete('/:id', requirePermission(Permissions.PROJECT_DELETE), BucketContr
  * @param   id - Bucket ID
  * @body    { userId: string, role?: string }
  */
-router.post('/:id/members', requirePermission(Permissions.PROJECT_MANAGE), BucketController.addBucketMember);
+router.post('/:id/members', requirePermission(Permissions.TICKET_BUCKET_UPDATE), BucketController.addBucketMember);
 
 /**
  * @route   DELETE /api/buckets/:id/members/:memberId
@@ -80,7 +80,7 @@ router.post('/:id/members', requirePermission(Permissions.PROJECT_MANAGE), Bucke
  * @param   id - Bucket ID
  * @param   memberId - Member ID
  */
-router.delete('/:id/members/:memberId', requirePermission(Permissions.PROJECT_MANAGE), BucketController.removeBucketMember);
+router.delete('/:id/members/:memberId', requirePermission(Permissions.TICKET_BUCKET_UPDATE), BucketController.removeBucketMember);
 
 /**
  * @route   POST /api/buckets/:id/assign

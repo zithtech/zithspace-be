@@ -651,7 +651,7 @@ export class LeadController {
         body,
         htmlBody: htmlBody || body,
         attachments: attachments || []
-      });
+      }, req.user?.id);
 
       // Log mail sent activity
       if (leadId && req.user?.id) {
