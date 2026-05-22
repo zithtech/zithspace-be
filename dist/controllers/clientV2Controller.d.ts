@@ -9,6 +9,12 @@ export declare class ClientV2Controller {
     static updateContact(req: AuthRequest, res: Response): Promise<void>;
     static addDocument(req: AuthRequest, res: Response): Promise<void>;
     static deleteDocument(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * PATCH /api/clients-v2/:clientId/documents/:documentId
+     * Updates editable metadata: fileName, category, documentType. The file
+     * itself is not replaced — that would be a re-upload.
+     */
+    static updateDocument(req: AuthRequest, res: Response): Promise<void>;
     static downloadDocument(req: AuthRequest, res: Response): Promise<void>;
     /**
      * Delete a client and all its associated data

@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.socketService = exports.SocketService = void 0;
 const socket_io_1 = require("socket.io");
 const jsonwebtoken_1 = __importDefault(require("jsonwebtoken"));
+const clientPortalJwt_1 = __importDefault(require("@/utils/clientPortalJwt"));
 class SocketService {
     constructor() {
         this.io = null;
@@ -32,27 +33,63 @@ class SocketService {
             if (!token) {
                 return next(new Error("Authentication error: No token provided"));
             }
+            // Try staff JWT first. If that fails, try the portal JWT. Either side
+            // signs with its own secret + audience, so a token will only verify
+            // against one of the two paths.
             try {
                 const decoded = jsonwebtoken_1.default.verify(token, process.env.JWT_ACCESS_SECRET || "your-secret-key");
-                // Attach user info to socket
-                socket.user = decoded;
-                next();
+                const auth = {
+                    scope: "staff",
+                    userId: decoded.userId,
+                    tenantId: decoded.tenantId,
+                    email: decoded.email,
+                };
+                socket.auth = auth;
+                return next();
             }
-            catch (err) {
-                next(new Error("Authentication error: Invalid token"));
+            catch {
+                // fall through to portal JWT
+            }
+            try {
+                const decoded = clientPortalJwt_1.default.verifyAccessToken(token);
+                const auth = {
+                    scope: "portal",
+                    portalUserId: decoded.portalUserId,
+                    tenantId: decoded.tenantId,
+                    clientId: decoded.clientId,
+                    email: decoded.email,
+                };
+                socket.auth = auth;
+                return next();
+            }
+            catch {
+                return next(new Error("Authentication error: Invalid token"));
             }
         });
         this.io.on("connection", (socket) => {
-            const user = socket.user;
-            if (!user)
+            const auth = socket.auth;
+            if (!auth)
                 return;
-            console.log(`User connected: ${user.userId} (Tenant: ${user.tenantId})`);
-            // Join tenant room automatically
-            const tenantRoom = `tenant:${user.tenantId}`;
-            socket.join(tenantRoom);
-            console.log(`User ${user.userId} joined room: ${tenantRoom}`);
+            if (auth.scope === "staff") {
+                const tenantRoom = `tenant:${auth.tenantId}`;
+                socket.join(tenantRoom);
+                console.log(`Staff connected: ${auth.userId} (Tenant: ${auth.tenantId})`);
+            }
+            else {
+                // Portal users get their own per-client room so events for client A
+                // never leak to client B. Staff stay on the tenant room and we
+                // dual-emit to both when an event is client-scoped.
+                const clientRoom = `tenant:${auth.tenantId}:client:${auth.clientId}`;
+                socket.join(clientRoom);
+                console.log(`Portal user connected: ${auth.portalUserId} (Client: ${auth.clientId}, Tenant: ${auth.tenantId})`);
+            }
             socket.on("disconnect", () => {
-                console.log("User disconnected:", user.userId);
+                if (auth.scope === "staff") {
+                    console.log("Staff disconnected:", auth.userId);
+                }
+                else {
+                    console.log("Portal user disconnected:", auth.portalUserId);
+                }
             });
         });
         console.log("Socket.io initialized");
@@ -67,6 +104,19 @@ class SocketService {
         if (!this.io)
             return;
         this.io.to(`tenant:${tenantId}`).emit(event, data);
+    }
+    /**
+     * Fans out a client-scoped event to BOTH the tenant room (so all staff in
+     * the tenant pick it up) and the specific client's portal room (so that
+     * client's portal users pick it up). Other clients in the same tenant
+     * receive nothing, which keeps portal traffic correctly partitioned.
+     */
+    emitToClient(tenantId, clientId, event, data) {
+        if (!this.io)
+            return;
+        this.io
+            .to([`tenant:${tenantId}`, `tenant:${tenantId}:client:${clientId}`])
+            .emit(event, data);
     }
 }
 exports.SocketService = SocketService;

@@ -7,6 +7,7 @@ exports.ClientV2Controller = void 0;
 const database_1 = require("@/config/database");
 const dbpool_1 = __importDefault(require("@/config/dbpool"));
 const r2Client_1 = require("@/utils/r2Client");
+const socketService_1 = require("@/services/socketService");
 // Utility for auto-generating Client Code
 async function generateClientCode(tenantId, idPrefix = 'CL-') {
     return await database_1.tenantAwarePrisma.withTenant(tenantId, async (client) => {
@@ -362,6 +363,10 @@ class ClientV2Controller {
                         uploadedById: req.user.id
                     }
                 });
+                socketService_1.socketService.emitToClient(req.tenantId, clientId, "client_document:created", {
+                    clientId,
+                    document: { id: document.id },
+                });
                 res.status(201).json({ success: true, data: document });
             });
         }
@@ -396,12 +401,95 @@ class ClientV2Controller {
                 await prisma.clientDocumentV2.delete({
                     where: { id: documentId }
                 });
+                socketService_1.socketService.emitToClient(req.tenantId, document.clientId, "client_document:deleted", {
+                    clientId: document.clientId,
+                    id: documentId,
+                });
                 res.status(200).json({ success: true, message: 'Document deleted successfully' });
             });
         }
         catch (error) {
             console.error('Delete document error:', error);
             res.status(500).json({ success: false, error: 'Failed to delete document' });
+        }
+    }
+    /**
+     * PATCH /api/clients-v2/:clientId/documents/:documentId
+     * Updates editable metadata: fileName, category, documentType. The file
+     * itself is not replaced — that would be a re-upload.
+     */
+    static async updateDocument(req, res) {
+        try {
+            if (!req.tenantId) {
+                res.status(400).json({ success: false, error: 'Tenant context required' });
+                return;
+            }
+            const { clientId, documentId } = req.params;
+            const b = req.body || {};
+            const fileName = typeof b.fileName === 'string' ? b.fileName.trim() : undefined;
+            const category = typeof b.category === 'string' ? b.category.trim() : undefined;
+            const documentType = typeof b.documentType === 'string' ? b.documentType.trim() : undefined;
+            if (fileName === undefined && category === undefined && documentType === undefined) {
+                res.status(400).json({ success: false, error: 'Nothing to update' });
+                return;
+            }
+            if (fileName === '' || category === '' || documentType === '') {
+                res.status(400).json({ success: false, error: 'fileName, category and documentType cannot be empty' });
+                return;
+            }
+            const sets = [];
+            const params = [];
+            if (fileName !== undefined) {
+                params.push(fileName);
+                sets.push(`file_name = $${params.length}`);
+            }
+            if (category !== undefined) {
+                params.push(category);
+                sets.push(`category = $${params.length}`);
+            }
+            if (documentType !== undefined) {
+                params.push(documentType);
+                sets.push(`document_type = $${params.length}`);
+            }
+            sets.push(`updated_at = NOW()`);
+            params.push(documentId);
+            params.push(req.tenantId);
+            params.push(clientId);
+            const r = await dbpool_1.default.query(`UPDATE client_documents_v2
+                    SET ${sets.join(', ')}
+                  WHERE id = $${params.length - 2}
+                    AND tenant_id = $${params.length - 1}
+                    AND client_id = $${params.length}
+                  RETURNING id, category, document_type, file_name, file_url,
+                            version, tags, project_id, created_at, updated_at`, params);
+            if (r.rowCount === 0) {
+                res.status(404).json({ success: false, error: 'Document not found' });
+                return;
+            }
+            const row = r.rows[0];
+            socketService_1.socketService.emitToClient(req.tenantId, clientId, "client_document:updated", {
+                clientId,
+                id: row.id,
+            });
+            res.json({
+                success: true,
+                data: {
+                    id: row.id,
+                    category: row.category,
+                    documentType: row.document_type,
+                    fileName: row.file_name,
+                    fileUrl: row.file_url,
+                    version: row.version,
+                    tags: row.tags || [],
+                    projectId: row.project_id,
+                    createdAt: row.created_at,
+                    updatedAt: row.updated_at,
+                },
+            });
+        }
+        catch (error) {
+            console.error('Update document error:', error);
+            res.status(500).json({ success: false, error: 'Failed to update document' });
         }
     }
     static async downloadDocument(req, res) {

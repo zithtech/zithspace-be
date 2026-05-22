@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import pool from "@/config/dbpool";
-import { uploadClientDocumentToR2 } from "@/utils/r2Client";
+import { uploadClientDocumentToR2, deleteFileFromR2 } from "@/utils/r2Client";
+import { socketService } from "@/services/socketService";
 
 /**
  * Preferred display order for known canonical categories. Anything not in this
@@ -307,6 +308,13 @@ export class ClientPortalDocumentController {
         projectCode = p.rows[0].code;
       }
     }
+    socketService.emitToClient(
+      ctx.tenantId,
+      ctx.clientId,
+      "client_document:created",
+      { clientId: ctx.clientId, document: { id: row.id } },
+    );
+
     res.status(201).json({
       success: true,
       data: {
@@ -331,6 +339,178 @@ export class ClientPortalDocumentController {
         lastEvent: null,
       },
     });
+  }
+
+  /**
+   * PATCH /api/client-portal/documents/:id
+   * body: { fileName?, category?, documentType?, projectId? }
+   * Portal users may only edit metadata on documents they uploaded themselves.
+   */
+  static async update(req: Request, res: Response): Promise<void> {
+    const ctx = req.portalUser;
+    if (!ctx) {
+      res.status(401).json({ success: false, error: "Not authenticated" });
+      return;
+    }
+    const { id } = req.params;
+    const b = req.body || {};
+    const fileName = typeof b.fileName === "string" ? b.fileName.trim() : undefined;
+    const category = typeof b.category === "string" ? b.category.trim() : undefined;
+    const documentType =
+      typeof b.documentType === "string" ? b.documentType.trim() : undefined;
+    const projectId =
+      b.projectId === null
+        ? null
+        : typeof b.projectId === "string" && b.projectId.trim()
+          ? b.projectId.trim()
+          : undefined;
+
+    if (
+      fileName === undefined &&
+      category === undefined &&
+      documentType === undefined &&
+      projectId === undefined
+    ) {
+      res.status(400).json({ success: false, error: "Nothing to update" });
+      return;
+    }
+    if (fileName === "" || category === "" || documentType === "") {
+      res.status(400).json({
+        success: false,
+        error: "fileName, category and documentType cannot be empty",
+      });
+      return;
+    }
+
+    const owns = await pool.query(
+      `SELECT id FROM client_documents_v2
+        WHERE id = $1 AND tenant_id = $2 AND client_id = $3
+          AND uploaded_by_portal_user_id = $4`,
+      [id, ctx.tenantId, ctx.clientId, ctx.portalUserId],
+    );
+    if (owns.rowCount === 0) {
+      res.status(404).json({
+        success: false,
+        error: "Document not found or not editable",
+      });
+      return;
+    }
+
+    const sets: string[] = [];
+    const params: any[] = [];
+    if (fileName !== undefined) {
+      params.push(fileName);
+      sets.push(`file_name = $${params.length}`);
+    }
+    if (category !== undefined) {
+      params.push(category);
+      sets.push(`category = $${params.length}`);
+    }
+    if (documentType !== undefined) {
+      params.push(documentType);
+      sets.push(`document_type = $${params.length}`);
+    }
+    if (projectId !== undefined) {
+      params.push(projectId);
+      sets.push(`project_id = $${params.length}`);
+    }
+    sets.push(`updated_at = NOW()`);
+
+    params.push(id);
+    const r = await pool.query(
+      `UPDATE client_documents_v2
+          SET ${sets.join(", ")}
+        WHERE id = $${params.length}
+        RETURNING id, category, document_type, file_name, file_url,
+                  version, tags, project_id, created_at, updated_at`,
+      params,
+    );
+
+    const row = r.rows[0];
+    let projectName: string | null = null;
+    let projectCode: string | null = null;
+    if (row.project_id) {
+      const p = await pool.query(
+        `SELECT name, code FROM projects WHERE id = $1`,
+        [row.project_id],
+      );
+      if (p.rows[0]) {
+        projectName = p.rows[0].name;
+        projectCode = p.rows[0].code;
+      }
+    }
+
+    socketService.emitToClient(
+      ctx.tenantId,
+      ctx.clientId,
+      "client_document:updated",
+      { clientId: ctx.clientId, id: row.id },
+    );
+
+    res.json({
+      success: true,
+      data: {
+        id: row.id,
+        category: row.category,
+        documentType: row.document_type,
+        fileName: row.file_name,
+        fileUrl: row.file_url,
+        version: row.version,
+        tags: row.tags || [],
+        projectId: row.project_id,
+        projectName,
+        projectCode,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+      },
+    });
+  }
+
+  /**
+   * DELETE /api/client-portal/documents/:id
+   * Portal users may only delete their own uploads.
+   */
+  static async remove(req: Request, res: Response): Promise<void> {
+    const ctx = req.portalUser;
+    if (!ctx) {
+      res.status(401).json({ success: false, error: "Not authenticated" });
+      return;
+    }
+    const { id } = req.params;
+
+    const doc = await pool.query(
+      `SELECT file_url FROM client_documents_v2
+        WHERE id = $1 AND tenant_id = $2 AND client_id = $3
+          AND uploaded_by_portal_user_id = $4`,
+      [id, ctx.tenantId, ctx.clientId, ctx.portalUserId],
+    );
+    if (doc.rowCount === 0) {
+      res.status(404).json({
+        success: false,
+        error: "Document not found or not deletable",
+      });
+      return;
+    }
+
+    const fileUrl: string | null = doc.rows[0].file_url;
+    if (fileUrl) {
+      try {
+        await deleteFileFromR2(fileUrl, ctx.tenantId);
+      } catch (err) {
+        // Non-R2 (external link) URLs will safely no-op or throw — either way,
+        // proceed with the DB delete so the user isn't blocked.
+        console.warn("[portal] R2 delete skipped/failed:", err);
+      }
+    }
+
+    await pool.query(`DELETE FROM client_documents_v2 WHERE id = $1`, [id]);
+    socketService.emitToClient(
+      ctx.tenantId,
+      ctx.clientId,
+      "client_document:deleted",
+      { clientId: ctx.clientId, id },
+    );
+    res.json({ success: true });
   }
 
   /**

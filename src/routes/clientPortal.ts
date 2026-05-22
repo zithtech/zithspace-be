@@ -107,6 +107,20 @@ router.post(
   ClientPortalDocumentController.track,
 );
 
+router.patch(
+  "/documents/:id",
+  resolveTenant,
+  authenticateClientPortal,
+  ClientPortalDocumentController.update,
+);
+
+router.delete(
+  "/documents/:id",
+  resolveTenant,
+  authenticateClientPortal,
+  ClientPortalDocumentController.remove,
+);
+
 /* ----------------------------------------------------------------------
  * Phase 2 — Sprints (read-only)
  * -------------------------------------------------------------------- */
