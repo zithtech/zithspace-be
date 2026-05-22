@@ -402,7 +402,7 @@ class TicketController {
                             title,
                             description: sanitizedDescription,
                             projectId,
-                            status,
+                            status: status ? status.toLowerCase() : "not_started",
                             priority,
                             type: ticketType,
                             platform: platform || "Development",
@@ -890,9 +890,13 @@ class TicketController {
                         priority: true,
                         type: true,
                         platform: true,
+                        stack: true,
+                        tags: true,
                         taskLevel: true,
                         storyPoint: true,
                         estimateHours: true,
+                        startDate: true,
+                        endDate: true,
                         dueDate: true,
                         createdAt: true,
                         updatedAt: true,
@@ -903,10 +907,12 @@ class TicketController {
                         assignee: {
                             select: { id: true, name: true, workEmail: true, avatarUrl: true },
                         },
+                        reportTo: {
+                            select: { id: true, name: true, workEmail: true, avatarUrl: true },
+                        },
                         project: {
                             select: { id: true, name: true, code: true },
                         },
-                        // Removed reportTo to reduce joins (add back if needed)
                     },
                     orderBy,
                     skip,
@@ -1109,6 +1115,9 @@ class TicketController {
             log(`Updating ticket ${id}. Payload: ${JSON.stringify(updates)}`);
             // Map frontend field names to backend field names (like in createTicket)
             const mappedUpdates = { ...updates };
+            if (mappedUpdates.status) {
+                mappedUpdates.status = mappedUpdates.status.toLowerCase();
+            }
             // 1. Map relational/special fields
             if (updates.project) {
                 mappedUpdates.projectId = typeof updates.project === 'object' ? updates.project.id : updates.project;

@@ -1235,7 +1235,7 @@ export class ProjectController {
       const projects = await prisma.project.findMany({
         where: {
           tenantId: req.tenantId,
-          status: "active",
+          status: { notIn: ["ARCHIVED", "DELETED", "archived", "deleted"] },
           OR: [
             { projectManagerId: userId },
             { members: { some: { userId: userId } } },
@@ -1291,7 +1291,7 @@ export class ProjectController {
       const projects = await prisma.project.findMany({
         where: {
           tenantId: req.tenantId,
-          status: "active",
+          status: { notIn: ["ARCHIVED", "DELETED", "archived", "deleted"] },
           OR: [
             { projectManagerId: userId },
             { members: { some: { userId: userId } } },
