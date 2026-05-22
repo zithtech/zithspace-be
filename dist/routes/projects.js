@@ -19,6 +19,12 @@ router.use(auth_1.requireAuth);
  */
 router.get('/', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_READ), projectController_1.ProjectController.getProjects);
 /**
+ * @route   GET /api/projects/next-code
+ * @desc    Get next auto-generated project code (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ */
+router.get('/next-code', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_READ), projectController_1.ProjectController.getNextCode);
+/**
  * @route   GET /api/projects/selection
  * @desc    Get rich project data for selection screen (tenant-aware + role-based)
  * @access  Private (authenticated users within tenant)

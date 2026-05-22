@@ -70,12 +70,9 @@ export class BucketController {
         // Non-shared buckets only visible to owner
         if (!bucket.isShared) return false;
 
-        // Shared buckets visible to members
+        // Shared buckets visible to everyone in the tenant
         if (includeShared === "true" || includeShared === true) {
-          const isMember = bucket.members.some(
-            (member) => member.userId === req.user!.id,
-          );
-          return isMember || bucket.createdById === req.user!.id;
+          return true;
         }
 
         return false;
@@ -136,17 +133,6 @@ export class BucketController {
 
       // Check access permissions
       const isOwner = bucket.createdById === req.user.id;
-      const isMember = bucket.members.some(
-        (member) => member.userId === req.user.id,
-      );
-
-      if (!isOwner && !isMember && bucket.isShared) {
-        res.status(403).json({
-          success: false,
-          error: "You do not have access to this bucket",
-        } as ApiResponse);
-        return;
-      }
 
       if (!isOwner && !bucket.isShared) {
         res.status(403).json({
@@ -292,17 +278,6 @@ export class BucketController {
 
       // Check access permissions
       const isOwner = bucket.createdById === req.user.id;
-      const isMember = bucket.members.some(
-        (member) => member.userId === req.user.id,
-      );
-
-      if (!isOwner && !isMember && bucket.isShared) {
-        res.status(403).json({
-          success: false,
-          error: "You do not have access to this bucket",
-        } as ApiResponse);
-        return;
-      }
 
       if (!isOwner && !bucket.isShared) {
         res.status(403).json({

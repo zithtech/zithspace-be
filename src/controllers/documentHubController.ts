@@ -1185,12 +1185,13 @@ export class DocumentHubController {
       }
 
       const { id } = req.params;
+      const isPermanent = req.query.permanent === 'true';
 
       const documentHub = await prisma.documentHub.findFirst({
         where: {
           id,
           tenantId: req.tenantId,
-          isDeleted: false,
+          ...(isPermanent ? {} : { isDeleted: false }),
         },
       });
 
@@ -1198,6 +1199,28 @@ export class DocumentHubController {
         res.status(404).json({
           success: false,
           error: "Document Hub not found",
+        } as ApiResponse);
+        return;
+      }
+
+      if (isPermanent) {
+        await prisma.$transaction(async (tx) => {
+          await tx.$executeRaw`DELETE FROM document_hub_stars WHERE hub_id = ${id}::uuid`;
+          await tx.documentTree.deleteMany({ where: { documentHubId: id } });
+          await tx.$executeRaw`DELETE FROM document_history WHERE "documentId" IN (SELECT id FROM documents WHERE "documentHubId" = ${id})`;
+          await tx.document.deleteMany({ where: { documentHubId: id } });
+          await tx.documentHub.delete({ where: { id } });
+        });
+
+        socketService.emitToTenant(
+          req.tenantId,
+          "documenthub:deleted",
+          { id, permanent: true },
+        );
+
+        res.status(200).json({
+          success: true,
+          message: "Document Hub permanently deleted",
         } as ApiResponse);
         return;
       }
@@ -1369,12 +1392,13 @@ export class DocumentHubController {
       }
 
       const { id } = req.params;
+      const isPermanent = req.query.permanent === 'true';
 
       const node = await prisma.documentTree.findFirst({
         where: {
           id,
           tenantId: req.tenantId,
-          isDeleted: false,
+          ...(isPermanent ? {} : { isDeleted: false }),
         },
       });
 
@@ -1404,6 +1428,7 @@ export class DocumentHubController {
           req.user!.id,
           node.type,
           node.documentId,
+          isPermanent
         );
       });
 
@@ -1440,6 +1465,7 @@ export class DocumentHubController {
     deletedById: string,
     nodeType?: string,
     documentId?: string | null,
+    isPermanent: boolean = false,
   ): Promise<void> {
     // 1. Get all children of this node
     const children = await tx.documentTree.findMany({
@@ -1458,36 +1484,49 @@ export class DocumentHubController {
         deletedById,
         child.type,
         child.documentId,
+        isPermanent
       );
     }
 
-    // 3. Mark current node as deleted using updateMany for robustness
-    await tx.documentTree.updateMany({
-      where: { id: nodeId, tenantId },
-      data: {
-        isDeleted: true,
-        deletedAt: new Date(),
-        deletedById,
-      },
-    });
+    if (isPermanent) {
+      await tx.documentTree.delete({ where: { id: nodeId } });
+      if (nodeType === "file" && documentId) {
+        try {
+          await tx.$executeRaw`DELETE FROM document_history WHERE "documentId" = ${documentId}`;
+          await tx.document.delete({ where: { id: documentId } });
+        } catch (error) {
+          console.error(`Failed to permanently delete document ${documentId}:`, error);
+        }
+      }
+    } else {
+      // 3. Mark current node as deleted using updateMany for robustness
+      await tx.documentTree.updateMany({
+        where: { id: nodeId, tenantId },
+        data: {
+          isDeleted: true,
+          deletedAt: new Date(),
+          deletedById,
+        },
+      });
 
-    // 4. If it's a file with an associated document, mark the document as deleted too
-    if (nodeType === "file" && documentId) {
-      try {
-        await tx.document.updateMany({
-          where: {
-            id: documentId,
-            tenantId,
-          },
-          data: {
-            isDeleted: true,
-            deletedAt: new Date(),
-            deletedById,
-          },
-        });
-      } catch (error) {
-        console.error(`Failed to soft-delete document ${documentId}:`, error);
-        // We don't throw here to allow the tree node deletion to commit
+      // 4. If it's a file with an associated document, mark the document as deleted too
+      if (nodeType === "file" && documentId) {
+        try {
+          await tx.document.updateMany({
+            where: {
+              id: documentId,
+              tenantId,
+            },
+            data: {
+              isDeleted: true,
+              deletedAt: new Date(),
+              deletedById,
+            },
+          });
+        } catch (error) {
+          console.error(`Failed to soft-delete document ${documentId}:`, error);
+          // We don't throw here to allow the tree node deletion to commit
+        }
       }
     }
   }
@@ -1509,12 +1548,13 @@ export class DocumentHubController {
       }
 
       const { id } = req.params;
+      const isPermanent = req.query.permanent === 'true';
 
       const document = await prisma.document.findFirst({
         where: {
           id,
           tenantId: req.tenantId,
-          isDeleted: false,
+          ...(isPermanent ? {} : { isDeleted: false }),
         },
       });
 
@@ -1531,6 +1571,31 @@ export class DocumentHubController {
         res.status(403).json({
           success: false,
           error: "Only authorized users can delete this item",
+        } as ApiResponse);
+        return;
+      }
+
+      if (isPermanent) {
+        await prisma.$transaction(async (tx) => {
+          await tx.documentTree.deleteMany({ where: { documentId: id } });
+          await tx.$executeRaw`DELETE FROM document_history WHERE "documentId" = ${id}`;
+          await tx.document.delete({ where: { id } });
+        });
+
+        await prisma.documentHub.update({
+          where: { id: document.documentHubId },
+          data: { updatedAt: new Date() },
+        });
+
+        socketService.emitToTenant(
+          req.tenantId,
+          "documenthub:document_deleted",
+          { id, permanent: true },
+        );
+
+        res.status(200).json({
+          success: true,
+          message: "Document permanently deleted",
         } as ApiResponse);
         return;
       }
