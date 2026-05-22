@@ -133,6 +133,21 @@ class TicketController {
                 });
                 return;
             }
+            // Generate presigned URLs for secure access
+            const attachmentsWithSignedUrls = await Promise.all(ticket.attachments.map(async (attachment) => {
+                try {
+                    const { generatePresignedUrl } = require("@/utils/r2Client");
+                    const signedUrl = await generatePresignedUrl(attachment.fileUrl, 86400);
+                    return {
+                        ...attachment,
+                        fileUrl: signedUrl,
+                    };
+                }
+                catch (e) {
+                    console.error(`Failed to generate signed URL for public attachment ${attachment.id}:`, e);
+                    return attachment;
+                }
+            }));
             // Return only necessary fields for public view
             const publicData = {
                 id: ticket.id,
@@ -154,7 +169,7 @@ class TicketController {
                     user: c.user,
                 })),
                 relatedLinks: ticket.relatedLinks,
-                attachments: ticket.attachments,
+                attachments: attachmentsWithSignedUrls,
                 subTasks: ticket.subTasks,
                 activityLogs: ticket.activityLog.map(log => ({
                     id: log.id,
@@ -2677,6 +2692,15 @@ class TicketController {
                     },
                 },
             });
+            // Generate secure presigned URL for the uploaded file in response
+            let signedUrl = fileUrl;
+            try {
+                const { generatePresignedUrl } = require("@/utils/r2Client");
+                signedUrl = await generatePresignedUrl(fileUrl, 86400);
+            }
+            catch (e) {
+                console.error("Failed to generate signed URL for uploaded attachment:", e);
+            }
             // Log activity
             await database_1.prisma.ticketActivityLog.create({
                 data: {
@@ -2689,7 +2713,10 @@ class TicketController {
             });
             res.status(201).json({
                 success: true,
-                data: attachment,
+                data: {
+                    ...attachment,
+                    fileUrl: signedUrl,
+                },
                 message: "Attachment uploaded successfully",
             });
         }
@@ -2842,9 +2869,24 @@ class TicketController {
                 },
                 orderBy: { uploadedAt: "desc" },
             });
+            // Generate presigned URLs for secure access
+            const attachmentsWithSignedUrls = await Promise.all(attachments.map(async (attachment) => {
+                try {
+                    const { generatePresignedUrl } = require("@/utils/r2Client");
+                    const signedUrl = await generatePresignedUrl(attachment.fileUrl, 86400); // 24 hours expiry
+                    return {
+                        ...attachment,
+                        fileUrl: signedUrl,
+                    };
+                }
+                catch (e) {
+                    console.error(`Failed to generate signed URL for attachment ${attachment.id}:`, e);
+                    return attachment;
+                }
+            }));
             res.status(200).json({
                 success: true,
-                data: attachments,
+                data: attachmentsWithSignedUrls,
             });
         }
         catch (error) {
