@@ -14,13 +14,7 @@ router.use(resolveTenant);
 router.use(authenticateToken);
 router.use(requireAuth);
 
-/**
- * @route   GET /api/members/select
- * @desc    Get members for dropdown/select (tenant-aware)
- * @access  Private (authenticated users within tenant)
- * @query   role, position
- */
-router.get('/select', requireAnyPermission(Permissions.USER_READ, Permissions.PROJECT_READ, Permissions.TICKET_READ, Permissions.ATTENDANCE_READ, Permissions.ATTENDANCE_CREATE, Permissions.ATTENDANCE_UPDATE, Permissions.ATTENDANCE_DELETE, Permissions.SQUAD_READ, Permissions.SQUAD_CREATE), UserController.getMembersForSelect);
+router.get('/select', requireAnyPermission(Permissions.USER_READ, Permissions.PROJECT_READ, Permissions.TICKET_READ, Permissions.ATTENDANCE_READ, Permissions.ATTENDANCE_CREATE, Permissions.ATTENDANCE_UPDATE, Permissions.ATTENDANCE_DELETE, Permissions.SQUAD_READ, Permissions.SQUAD_CREATE, Permissions.LEAVE_POLICY_READ, Permissions.LEAVE_POLICY_CREATE, Permissions.LEAVE_MANAGE), UserController.getMembersForSelect);
 
 /**
  * @route   GET /api/members
@@ -28,7 +22,7 @@ router.get('/select', requireAnyPermission(Permissions.USER_READ, Permissions.PR
  * @access  Private (authenticated users within tenant)
  * @query   page, limit, role, position, isActive, search, sortBy, sortOrder
  */
-router.get('/', requireAnyPermission(Permissions.USER_READ, Permissions.PROJECT_READ, Permissions.TICKET_READ, Permissions.ATTENDANCE_READ, Permissions.ATTENDANCE_CREATE, Permissions.ATTENDANCE_UPDATE, Permissions.ATTENDANCE_DELETE, Permissions.SQUAD_READ, Permissions.SQUAD_CREATE), UserController.getMembers);
+router.get('/', requireAnyPermission(Permissions.USER_READ, Permissions.PROJECT_READ, Permissions.TICKET_READ, Permissions.ATTENDANCE_READ, Permissions.ATTENDANCE_CREATE, Permissions.ATTENDANCE_UPDATE, Permissions.ATTENDANCE_DELETE, Permissions.SQUAD_READ, Permissions.SQUAD_CREATE, Permissions.LEAVE_POLICY_READ, Permissions.LEAVE_POLICY_CREATE, Permissions.LEAVE_MANAGE), UserController.getMembers);
 
 /**
  * @route   GET /api/members/:id
