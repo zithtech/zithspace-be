@@ -1139,7 +1139,6 @@ class TicketController {
                 delete mappedUpdates.project;
             }
             if (updates.assignee !== undefined) {
-                // Handle explicit null, empty string, or object ID
                 const val = updates.assignee;
                 mappedUpdates.assigneeId = (val === '' || val === null)
                     ? null
@@ -1315,6 +1314,7 @@ class TicketController {
                     releasePlanId: true,
                     demoPlanId: true,
                     tags: true,
+                    metadata: true,
                     createdAt: true,
                     updatedAt: true,
                     // Relations
