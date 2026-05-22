@@ -45,7 +45,9 @@ export class InvoiceTemplateController {
 
     } catch (error: any) {
       console.error('Create template error:', error);
-      res.status(error instanceof ValidationError ? 400 : 500).json({
+      const isValidationError = error instanceof ValidationError || 
+                                error.message?.includes('already exists');
+      res.status(isValidationError ? 400 : 500).json({
         success: false,
         error: error.message || 'Failed to create invoice template'
       } as ApiResponse);
@@ -147,8 +149,10 @@ export class InvoiceTemplateController {
 
     } catch (error: any) {
       console.error('Update template error:', error);
+      const isValidationError = error instanceof ValidationError || 
+                                error.message?.includes('already exists');
       res.status(error instanceof NotFoundError ? 404 : 
-                 error instanceof ValidationError ? 400 : 500).json({
+                 isValidationError ? 400 : 500).json({
         success: false,
         error: error.message || 'Failed to update invoice template'
       } as ApiResponse);

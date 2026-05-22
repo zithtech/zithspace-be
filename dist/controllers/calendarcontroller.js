@@ -5,7 +5,6 @@ const database_1 = require("@/config/database");
 const CalendarService_1 = require("@/services/calendar/CalendarService");
 const UnifiedAuthService_1 = require("@/services/UnifiedAuthService");
 const CalendarSyncProducer_1 = require("../services/calendar/CalendarSyncProducer");
-const MailSyncProducer_1 = require("../services/mail/MailSyncProducer");
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 class CalendarController {
     /**
@@ -102,12 +101,14 @@ class CalendarController {
             if (!user)
                 throw new Error("User not found");
             const mailAccount = await UnifiedAuthService_1.UnifiedAuthService.handleCallback(provider.toUpperCase(), code, state, userId, user.tenantId);
+            /*
             // Sync BOTH Calendar and Mail immediately after connection (Triggered via RabbitMQ)
-            const integration = await database_1.prisma.calendarIntegration.findFirst({
-                where: { userId, provider: provider.toUpperCase() }
+            const integration = await prisma.calendarIntegration.findFirst({
+                where: { userId, provider: provider.toUpperCase() as CalendarProvider }
             });
+
             if (integration) {
-                await CalendarSyncProducer_1.CalendarSyncProducer.enqueueSync({
+                await CalendarSyncProducer.enqueueSync({
                     integrationId: integration.id,
                     userId: integration.userId,
                     tenantId: integration.tenantId,
@@ -115,13 +116,15 @@ class CalendarController {
                     forceSync: true
                 }).catch(err => console.error("Initial calendar enqueue failed:", err));
             }
+
             if (mailAccount && mailAccount.email) {
-                await MailSyncProducer_1.MailSyncProducer.enqueueSync({
+                await MailSyncProducer.enqueueSync({
                     userId,
                     tenantId: user.tenantId,
                     email: mailAccount.email
                 }).catch(err => console.error("Initial mail enqueue failed:", err));
             }
+            */
             res.redirect(`${FRONTEND_URL}/calendar?connected=true&provider=${provider}`);
         }
         catch (error) {

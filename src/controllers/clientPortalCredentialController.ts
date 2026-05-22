@@ -3,6 +3,8 @@ import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
 import pool from "@/config/dbpool";
 import { AuthRequest } from "@/types";
+import { emailService } from "@/utils/emailService";
+import { socketService } from "@/services/socketService";
 
 // Generate a human-friendly temporary password: 4 lowercase blocks of 4 chars
 // separated by hyphens, plus a digit. Examples: `quiet-river-flute-page-7`.
@@ -140,6 +142,10 @@ export class ClientPortalCredentialController {
     );
 
     const row = insertRes.rows[0];
+    socketService.emitToClient(tenantId, clientId, "portal_user:created", {
+      clientId,
+      id: row.id,
+    });
     res.status(201).json({
       success: true,
       data: {
@@ -163,14 +169,17 @@ export class ClientPortalCredentialController {
     const tenantId = req.tenantId!;
     const { portalUserId } = req.params;
 
-    const exists = await pool.query(
-      `SELECT id FROM client_portal_users WHERE id = $1 AND tenant_id = $2`,
+    const existing = await pool.query(
+      `SELECT id, email, username, display_name, client_id
+         FROM client_portal_users
+        WHERE id = $1 AND tenant_id = $2`,
       [portalUserId, tenantId],
     );
-    if (exists.rowCount === 0) {
+    if (existing.rowCount === 0) {
       res.status(404).json({ success: false, error: "Portal user not found" });
       return;
     }
+    const user = existing.rows[0];
 
     const tempPassword = generateTempPassword();
     const passwordHash = await bcrypt.hash(tempPassword, 12);
@@ -194,9 +203,33 @@ export class ClientPortalCredentialController {
       [portalUserId],
     );
 
+    const portalUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/portal/login`;
+    let emailSent = false;
+    try {
+      emailSent = await emailService.sendPortalPasswordResetEmail(
+        {
+          to: user.email,
+          displayName: user.display_name,
+          username: user.username,
+          temporaryPassword: tempPassword,
+          portalUrl,
+        },
+        tenantId,
+      );
+    } catch (err) {
+      console.error("❌ Failed to send portal password reset email:", err);
+    }
+
+    socketService.emitToClient(
+      tenantId,
+      user.client_id,
+      "portal_user:updated",
+      { clientId: user.client_id, id: portalUserId, kind: "password_reset" },
+    );
+
     res.json({
       success: true,
-      data: { temporaryPassword: tempPassword },
+      data: { temporaryPassword: tempPassword, emailSent },
     });
   }
 
@@ -221,7 +254,7 @@ export class ClientPortalCredentialController {
       `UPDATE client_portal_users
           SET status = $1, updated_at = NOW()
         WHERE id = $2 AND tenant_id = $3
-        RETURNING id, status`,
+        RETURNING id, status, client_id`,
       [status, portalUserId, tenantId],
     );
     if (r.rowCount === 0) {
@@ -238,7 +271,18 @@ export class ClientPortalCredentialController {
       );
     }
 
-    res.json({ success: true, data: r.rows[0] });
+    const updated = r.rows[0];
+    socketService.emitToClient(
+      tenantId,
+      updated.client_id,
+      "portal_user:updated",
+      { clientId: updated.client_id, id: updated.id, kind: "status" },
+    );
+
+    res.json({
+      success: true,
+      data: { id: updated.id, status: updated.status },
+    });
   }
 
   /**
@@ -249,13 +293,19 @@ export class ClientPortalCredentialController {
     const { portalUserId } = req.params;
 
     const r = await pool.query(
-      `DELETE FROM client_portal_users WHERE id = $1 AND tenant_id = $2`,
+      `DELETE FROM client_portal_users WHERE id = $1 AND tenant_id = $2
+       RETURNING client_id`,
       [portalUserId, tenantId],
     );
     if (r.rowCount === 0) {
       res.status(404).json({ success: false, error: "Portal user not found" });
       return;
     }
+    const clientId = (r.rows[0] as any).client_id as string;
+    socketService.emitToClient(tenantId, clientId, "portal_user:deleted", {
+      clientId,
+      id: portalUserId,
+    });
     res.json({ success: true });
   }
 }
