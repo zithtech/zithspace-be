@@ -553,14 +553,7 @@ export class BucketController {
         throw new NotFoundError("Bucket not found");
       }
 
-      // Only owner can delete bucket
-      if (bucket.createdById !== req.user.id) {
-        res.status(403).json({
-          success: false,
-          error: "Only the bucket owner can delete it",
-        } as ApiResponse);
-        return;
-      }
+      // Anyone can delete the bucket (owner restriction removed)
 
       // Use transaction to ensure data consistency
       await prisma.$transaction(async (tx) => {
