@@ -8,6 +8,62 @@ import {
 } from '@/types';
 
 export class ShiftsController {
+  private static async ensureDefaultShifts(tenantId: string): Promise<void> {
+    const total = await tenantAwarePrisma.withTenant(tenantId, async (client) => {
+      return await client.shift.count({
+        where: { tenantId }
+      });
+    });
+
+    if (total === 0) {
+      await tenantAwarePrisma.withTenant(tenantId, async (client) => {
+        await client.shift.createMany({
+          data: [
+            {
+              tenantId,
+              name: "General Shift",
+              startTime: "09:00",
+              endTime: "18:00",
+              description: "Standard organization day shift (9:00 AM - 6:00 PM)",
+              color: "#6366f1",
+              workingMinutes: 480,
+              graceMinutes: 15,
+              overtimeThreshold: 60,
+              breakMinutes: 60,
+              isActive: true
+            },
+            {
+              tenantId,
+              name: "Night Shift",
+              startTime: "22:00",
+              endTime: "06:00",
+              description: "Standard overnight shift (10:00 PM - 6:00 AM)",
+              color: "#3b82f6",
+              workingMinutes: 480,
+              graceMinutes: 15,
+              overtimeThreshold: 60,
+              breakMinutes: 60,
+              isActive: true
+            },
+            {
+              tenantId,
+              name: "Evening Shift",
+              startTime: "14:00",
+              endTime: "22:00",
+              description: "Standard afternoon/evening shift (2:00 PM - 10:00 PM)",
+              color: "#10b981",
+              workingMinutes: 480,
+              graceMinutes: 15,
+              overtimeThreshold: 60,
+              breakMinutes: 60,
+              isActive: true
+            }
+          ]
+        });
+      });
+    }
+  }
+
   /**
    * Get all shifts with filtering and pagination (tenant-aware)
    */
@@ -20,6 +76,8 @@ export class ShiftsController {
         } as ApiResponse);
         return;
       }
+
+      await ShiftsController.ensureDefaultShifts(req.tenantId);
 
       const {
         page = 1,
@@ -644,6 +702,8 @@ export class ShiftsController {
         } as ApiResponse);
         return;
       }
+
+      await ShiftsController.ensureDefaultShifts(req.tenantId);
 
       const shifts = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
         return await client.shift.findMany({

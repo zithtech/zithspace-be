@@ -3,9 +3,9 @@ import { JWTUtils } from '@/utils/jwt';
 import { prisma } from '@/config/database';
 import TenantLogger from '@/utils/tenantLogger';
 import cacheService from '@/utils/cacheService';
-import { 
-  AuthRequest, 
-  AuthenticationError, 
+import {
+  AuthRequest,
+  AuthenticationError,
   AuthorizationError
 } from '@/types';
 
@@ -20,7 +20,7 @@ export const authenticateToken = async (
 
 
   try {
-    
+
     const authHeader = req.headers.authorization;
     const token = JWTUtils.extractTokenFromHeader(authHeader);
 
@@ -39,7 +39,7 @@ export const authenticateToken = async (
 
 
     let user = await cacheService.getUser(decoded.userId, decoded.tenantId);
-    
+
     if (!user) {
       user = await prisma.user.findFirst({
         where: {
@@ -57,7 +57,7 @@ export const authenticateToken = async (
           },
         },
       });
-      
+
       // Cache for 5 minutes
       if (user) {
         await cacheService.cacheUser(decoded.userId, decoded.tenantId, user);
@@ -131,7 +131,7 @@ export const optionalAuth = async (
 
     // Try to verify the token
     const decoded = JWTUtils.verifyAccessToken(token, req.tenantId);
-    
+
     // OPTIMIZED: Use direct prisma client (context already set)
     const user = await prisma.user.findFirst({
       where: {
@@ -159,7 +159,7 @@ export const optionalAuth = async (
         position: user.position?.title || null,
         name: user.name,
         sessionId: decoded.sessionId,
-        
+
       };
     }
 
