@@ -214,6 +214,44 @@ class ProjectController {
         }
     }
     /**
+     * Get next project code (tenant-aware)
+     */
+    static async getNextCode(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const projects = await database_1.prisma.project.findMany({
+                where: { tenantId: req.tenantId },
+                select: { code: true }
+            });
+            let maxNum = 0;
+            for (const p of projects) {
+                if (p.code && /^\d{3}$/.test(p.code)) {
+                    const num = parseInt(p.code, 10);
+                    if (num > maxNum)
+                        maxNum = num;
+                }
+            }
+            const nextCode = String(maxNum + 1).padStart(3, '0');
+            res.status(200).json({
+                success: true,
+                data: nextCode,
+            });
+        }
+        catch (error) {
+            console.error("Get next code error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to fetch next project code",
+            });
+        }
+    }
+    /**
      * Create a new project (tenant-aware)
      */
     static async createProject(req, res) {
@@ -237,12 +275,19 @@ class ProjectController {
             // Auto-generate code if not provided
             let projectCode = code;
             if (!projectCode) {
-                const namePrefix = name
-                    .replace(/[^a-zA-Z]/g, "")
-                    .substring(0, 3)
-                    .toUpperCase();
-                const timestamp = Date.now().toString().slice(-4);
-                projectCode = `${namePrefix}${timestamp}`;
+                const existingProjects = await database_1.prisma.project.findMany({
+                    where: { tenantId: req.tenantId },
+                    select: { code: true }
+                });
+                let maxNum = 0;
+                for (const p of existingProjects) {
+                    if (p.code && /^\d{3}$/.test(p.code)) {
+                        const num = parseInt(p.code, 10);
+                        if (num > maxNum)
+                            maxNum = num;
+                    }
+                }
+                projectCode = String(maxNum + 1).padStart(3, '0');
             }
             // Validate project manager exists and belongs to tenant
             const manager = await database_1.prisma.user.findFirst({
@@ -1067,7 +1112,7 @@ class ProjectController {
             const projects = await database_1.prisma.project.findMany({
                 where: {
                     tenantId: req.tenantId,
-                    status: "active",
+                    status: { notIn: ["ARCHIVED", "DELETED", "archived", "deleted"] },
                     OR: [
                         { projectManagerId: userId },
                         { members: { some: { userId: userId } } },
@@ -1116,7 +1161,7 @@ class ProjectController {
             const projects = await database_1.prisma.project.findMany({
                 where: {
                     tenantId: req.tenantId,
-                    status: "active",
+                    status: { notIn: ["ARCHIVED", "DELETED", "archived", "deleted"] },
                     OR: [
                         { projectManagerId: userId },
                         { members: { some: { userId: userId } } },

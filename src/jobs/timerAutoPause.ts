@@ -42,7 +42,7 @@ async function runTimerAutoPauseJob() {
           where: { id: entry.id },
           data: {
             status: 'PAUSED',
-            duration: totalDuration,
+            duration: SIX_HOURS_IN_SECONDS,
             logs: {
               create: {
                 action: 'PAUSED',
@@ -76,10 +76,10 @@ async function runTimerAutoPauseJob() {
  * Start the cron job
  */
 export function startTimerAutoPauseJob(): void {
-  console.log('[Timer Auto-Pause] Service started. Frequency: Every 30 minutes');
+  console.log('[Timer Auto-Pause] Service started. Frequency: Every 7 minutes');
 
-  // Schedule to run every 30 minutes
-  cron.schedule('*/30 * * * *', async () => {
+  // Schedule to run every 7 minutes
+  cron.schedule('*/7 * * * *', async () => {
     try {
       await runTimerAutoPauseJob();
     } catch (error) {

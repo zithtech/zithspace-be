@@ -10,6 +10,10 @@ export declare class ProjectController {
      */
     static getProjectById(req: AuthRequest, res: Response): Promise<void>;
     /**
+     * Get next project code (tenant-aware)
+     */
+    static getNextCode(req: AuthRequest, res: Response): Promise<void>;
+    /**
      * Create a new project (tenant-aware)
      */
     static createProject(req: AuthRequest, res: Response): Promise<void>;

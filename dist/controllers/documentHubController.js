@@ -1043,17 +1043,33 @@ class DocumentHubController {
                 return;
             }
             const { id } = req.params;
+            const isPermanent = req.query.permanent === 'true';
             const documentHub = await database_1.prisma.documentHub.findFirst({
                 where: {
                     id,
                     tenantId: req.tenantId,
-                    isDeleted: false,
+                    ...(isPermanent ? {} : { isDeleted: false }),
                 },
             });
             if (!documentHub) {
                 res.status(404).json({
                     success: false,
                     error: "Document Hub not found",
+                });
+                return;
+            }
+            if (isPermanent) {
+                await database_1.prisma.$transaction(async (tx) => {
+                    await tx.$executeRaw `DELETE FROM document_hub_stars WHERE hub_id = ${id}::uuid`;
+                    await tx.documentTree.deleteMany({ where: { documentHubId: id } });
+                    await tx.$executeRaw `DELETE FROM document_history WHERE "documentId" IN (SELECT id FROM documents WHERE "documentHubId" = ${id})`;
+                    await tx.document.deleteMany({ where: { documentHubId: id } });
+                    await tx.documentHub.delete({ where: { id } });
+                });
+                socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:deleted", { id, permanent: true });
+                res.status(200).json({
+                    success: true,
+                    message: "Document Hub permanently deleted",
                 });
                 return;
             }
@@ -1192,11 +1208,12 @@ class DocumentHubController {
                 return;
             }
             const { id } = req.params;
+            const isPermanent = req.query.permanent === 'true';
             const node = await database_1.prisma.documentTree.findFirst({
                 where: {
                     id,
                     tenantId: req.tenantId,
-                    isDeleted: false,
+                    ...(isPermanent ? {} : { isDeleted: false }),
                 },
             });
             if (!node) {
@@ -1216,7 +1233,7 @@ class DocumentHubController {
             }
             // Use a transaction for atomic recursive deletion
             await database_1.prisma.$transaction(async (tx) => {
-                await DocumentHubController.deleteNodeRecursive(tx, id, req.tenantId, req.user.id, node.type, node.documentId);
+                await DocumentHubController.deleteNodeRecursive(tx, id, req.tenantId, req.user.id, node.type, node.documentId, isPermanent);
             });
             // Update parent hub's updatedAt
             await database_1.prisma.documentHub.update({
@@ -1239,7 +1256,7 @@ class DocumentHubController {
         }
     }
     static async deleteNodeRecursive(tx, // Prisma transaction client
-    nodeId, tenantId, deletedById, nodeType, documentId) {
+    nodeId, tenantId, deletedById, nodeType, documentId, isPermanent = false) {
         // 1. Get all children of this node
         const children = await tx.documentTree.findMany({
             where: {
@@ -1249,35 +1266,49 @@ class DocumentHubController {
         });
         // 2. Recursively delete each child
         for (const child of children) {
-            await DocumentHubController.deleteNodeRecursive(tx, child.id, tenantId, deletedById, child.type, child.documentId);
+            await DocumentHubController.deleteNodeRecursive(tx, child.id, tenantId, deletedById, child.type, child.documentId, isPermanent);
         }
-        // 3. Mark current node as deleted using updateMany for robustness
-        await tx.documentTree.updateMany({
-            where: { id: nodeId, tenantId },
-            data: {
-                isDeleted: true,
-                deletedAt: new Date(),
-                deletedById,
-            },
-        });
-        // 4. If it's a file with an associated document, mark the document as deleted too
-        if (nodeType === "file" && documentId) {
-            try {
-                await tx.document.updateMany({
-                    where: {
-                        id: documentId,
-                        tenantId,
-                    },
-                    data: {
-                        isDeleted: true,
-                        deletedAt: new Date(),
-                        deletedById,
-                    },
-                });
+        if (isPermanent) {
+            await tx.documentTree.delete({ where: { id: nodeId } });
+            if (nodeType === "file" && documentId) {
+                try {
+                    await tx.$executeRaw `DELETE FROM document_history WHERE "documentId" = ${documentId}`;
+                    await tx.document.delete({ where: { id: documentId } });
+                }
+                catch (error) {
+                    console.error(`Failed to permanently delete document ${documentId}:`, error);
+                }
             }
-            catch (error) {
-                console.error(`Failed to soft-delete document ${documentId}:`, error);
-                // We don't throw here to allow the tree node deletion to commit
+        }
+        else {
+            // 3. Mark current node as deleted using updateMany for robustness
+            await tx.documentTree.updateMany({
+                where: { id: nodeId, tenantId },
+                data: {
+                    isDeleted: true,
+                    deletedAt: new Date(),
+                    deletedById,
+                },
+            });
+            // 4. If it's a file with an associated document, mark the document as deleted too
+            if (nodeType === "file" && documentId) {
+                try {
+                    await tx.document.updateMany({
+                        where: {
+                            id: documentId,
+                            tenantId,
+                        },
+                        data: {
+                            isDeleted: true,
+                            deletedAt: new Date(),
+                            deletedById,
+                        },
+                    });
+                }
+                catch (error) {
+                    console.error(`Failed to soft-delete document ${documentId}:`, error);
+                    // We don't throw here to allow the tree node deletion to commit
+                }
             }
         }
     }
@@ -1294,11 +1325,12 @@ class DocumentHubController {
                 return;
             }
             const { id } = req.params;
+            const isPermanent = req.query.permanent === 'true';
             const document = await database_1.prisma.document.findFirst({
                 where: {
                     id,
                     tenantId: req.tenantId,
-                    isDeleted: false,
+                    ...(isPermanent ? {} : { isDeleted: false }),
                 },
             });
             if (!document) {
@@ -1313,6 +1345,23 @@ class DocumentHubController {
                 res.status(403).json({
                     success: false,
                     error: "Only authorized users can delete this item",
+                });
+                return;
+            }
+            if (isPermanent) {
+                await database_1.prisma.$transaction(async (tx) => {
+                    await tx.documentTree.deleteMany({ where: { documentId: id } });
+                    await tx.$executeRaw `DELETE FROM document_history WHERE "documentId" = ${id}`;
+                    await tx.document.delete({ where: { id } });
+                });
+                await database_1.prisma.documentHub.update({
+                    where: { id: document.documentHubId },
+                    data: { updatedAt: new Date() },
+                });
+                socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:document_deleted", { id, permanent: true });
+                res.status(200).json({
+                    success: true,
+                    message: "Document permanently deleted",
                 });
                 return;
             }
