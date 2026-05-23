@@ -1292,7 +1292,6 @@ export class TicketController {
       }
 
       if (updates.assignee !== undefined) {
-        // Handle explicit null, empty string, or object ID
         const val = updates.assignee;
         mappedUpdates.assigneeId = (val === '' || val === null)
           ? null
@@ -1493,6 +1492,7 @@ export class TicketController {
           releasePlanId: true,
           demoPlanId: true,
           tags: true,
+          metadata: true,
           createdAt: true,
           updatedAt: true,
           // Relations
