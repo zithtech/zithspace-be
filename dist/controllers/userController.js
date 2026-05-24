@@ -21,7 +21,7 @@ class UserController {
                 });
                 return;
             }
-            const { page = 1, limit = 20, role, position, isActive = "true", search, sortBy = "createdAt", sortOrder = "desc", } = req.query;
+            const { page = 1, limit = 20, role, position, reportsToId, isActive = "true", search, sortBy = "createdAt", sortOrder = "desc", } = req.query;
             // Build filter query
             const where = {
                 tenantId: req.tenantId,
@@ -30,6 +30,8 @@ class UserController {
                 where.role = role;
             if (position)
                 where.position = { title: position }; // Filter by position title if string passed
+            if (reportsToId)
+                where.reportsToId = reportsToId;
             if (isActive !== "all")
                 where.isActive = isActive === "true";
             if (search) {
