@@ -174,6 +174,10 @@ router.get('/:clientId/billing-customers/available', (0, permission_1.requirePer
 router.post('/:clientId/billing-customers', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_MANAGE), clientCustomerLinkController_1.default.link);
 router.delete('/:clientId/billing-customers/:customerId', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_MANAGE), clientCustomerLinkController_1.default.unlink);
 // ==============================================
+// INVOICES (per-client portal view)
+// ==============================================
+router.get('/:clientId/invoices', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_READ), clientV2Controller_1.ClientV2Controller.getClientInvoices);
+// ==============================================
 // MINUTES OF MEETING (per-client)
 // ==============================================
 router.get('/:clientId/moms', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_READ), momStaffController_1.default.listForClient);
