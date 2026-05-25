@@ -251,6 +251,16 @@ router.delete(
 );
 
 // ==============================================
+// INVOICES (per-client portal view)
+// ==============================================
+
+router.get(
+  '/:clientId/invoices',
+  requirePermission(Permissions.CLIENT_READ),
+  ClientV2Controller.getClientInvoices,
+);
+
+// ==============================================
 // MINUTES OF MEETING (per-client)
 // ==============================================
 

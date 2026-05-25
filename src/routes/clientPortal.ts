@@ -82,6 +82,13 @@ router.post(
   ClientPortalInvoiceController.uploadPaymentProof,
 );
 
+router.post(
+  "/invoices/:id/client-status",
+  resolveTenant,
+  authenticateClientPortal,
+  ClientPortalInvoiceController.updateClientStatus,
+);
+
 /* ----------------------------------------------------------------------
  * Phase 2 — Documents (read-only + view/download tracking)
  * -------------------------------------------------------------------- */

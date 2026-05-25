@@ -1024,11 +1024,33 @@ export class ProjectController {
         return;
       }
 
+      const { customerId } = req.query;
+
+      const where: any = {
+        tenantId: req.tenantId,
+        status: { not: "DELETED" },
+      };
+
+      if (customerId) {
+        const customerRes = await pool.query(
+          `SELECT client_id FROM customers WHERE tenant_id = $1 AND id = $2`,
+          [req.tenantId, customerId as string]
+        );
+        const clientId = customerRes.rows[0]?.client_id;
+        if (clientId) {
+          const projectRes = await pool.query(
+            `SELECT project_id FROM client_projects WHERE tenant_id = $1 AND client_id = $2`,
+            [req.tenantId, clientId]
+          );
+          const projectIds = projectRes.rows.map((row) => row.project_id);
+          where.id = { in: projectIds };
+        } else {
+          where.id = { in: [] };
+        }
+      }
+
       const projects = await prisma.project.findMany({
-        where: {
-          tenantId: req.tenantId,
-          status: { not: "DELETED" },
-        },
+        where,
         select: {
           id: true,
           name: true,
@@ -1037,7 +1059,7 @@ export class ProjectController {
         orderBy: { name: "asc" },
       });
 
-      console.log(`[ProjectSelect] Found ${projects.length} projects for tenant ${req.tenantId}`);
+      console.log(`[ProjectSelect] Found ${projects.length} projects for tenant ${req.tenantId} (customerId: ${customerId || 'none'})`);
 
       const formattedProjects = projects.map(p => ({
         value: p.id,
