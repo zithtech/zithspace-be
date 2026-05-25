@@ -1461,7 +1461,7 @@ class InvoiceController {
                             url: finalPdfUrl,
                             contentType: 'application/pdf'
                         }] : []
-                });
+                }, req.user.id);
                 emailResult = { success: true, data: mailResponse };
             }
             catch (err) {

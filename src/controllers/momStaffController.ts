@@ -5,6 +5,7 @@ import { AuthRequest } from "@/types";
 import { allocateCrNumber } from "./clientPortalCrController";
 import { s3Client, BUCKET_NAME } from "@/utils/r2Client";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { socketService } from "@/services/socketService";
 
 /**
  * Staff-side CRUD for Minutes of Meeting. MOMs are nested objects with
@@ -451,6 +452,10 @@ export class MomStaffController {
     }
 
     const full = await loadMomFull(tenantId, id);
+    socketService.emitToClient(tenantId, clientId, "mom:created", {
+      clientId,
+      id,
+    });
     res.status(201).json({ success: true, data: full ? shape(full) : { id } });
   }
 
@@ -563,20 +568,35 @@ export class MomStaffController {
     }
 
     const full = await loadMomFull(tenantId, id);
+    const clientIdForEmit = (cur.rows[0] as any).client_id as string;
+    socketService.emitToClient(tenantId, clientIdForEmit, "mom:updated", {
+      clientId: clientIdForEmit,
+      id,
+    });
     res.json({ success: true, data: full ? shape(full) : null });
   }
 
   /** DELETE /api/moms/:id */
   static async remove(req: AuthRequest, res: Response): Promise<void> {
     const tenantId = req.tenantId!;
-    const r = await pool.query(
-      `DELETE FROM portal_moms WHERE id = $1 AND tenant_id = $2`,
-      [req.params.id, tenantId],
+    const { id } = req.params;
+    const before = await pool.query(
+      `SELECT client_id FROM portal_moms WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId],
     );
-    if (r.rowCount === 0) {
+    if (before.rowCount === 0) {
       res.status(404).json({ success: false, error: "MOM not found" });
       return;
     }
+    const clientIdForEmit = (before.rows[0] as any).client_id as string;
+    await pool.query(
+      `DELETE FROM portal_moms WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId],
+    );
+    socketService.emitToClient(tenantId, clientIdForEmit, "mom:deleted", {
+      clientId: clientIdForEmit,
+      id,
+    });
     res.json({ success: true });
   }
 

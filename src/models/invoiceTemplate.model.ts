@@ -88,15 +88,15 @@ export class InvoiceTemplateModel {
     try {
       await client.query('BEGIN');
 
-      // Check for duplicate template
+      // Check for duplicate template name
       const duplicateQuery = `
         SELECT id FROM invoice_templates 
-        WHERE tenant_id = $1 AND name = $2 AND (description = $3 OR (description IS NULL AND $3 IS NULL))
+        WHERE tenant_id = $1 AND name = $2
       `;
-      const duplicateResult = await client.query(duplicateQuery, [tenantId, data.name, data.description || null]);
+      const duplicateResult = await client.query(duplicateQuery, [tenantId, data.name]);
       
       if (duplicateResult.rows.length > 0) {
-        throw new Error('A template with this exact same name and description already exists');
+        throw new Error('A template with this name already exists');
       }
 
       // If this is set as default, unset other defaults for this billing type
@@ -243,6 +243,18 @@ export class InvoiceTemplateModel {
       }
 
       const existingTemplate = existingResult.rows[0];
+
+      // If updating name, check for duplicate name
+      if (data.name !== undefined) {
+        const duplicateQuery = `
+          SELECT id FROM invoice_templates 
+          WHERE tenant_id = $1 AND name = $2 AND id != $3
+        `;
+        const duplicateResult = await client.query(duplicateQuery, [tenantId, data.name, templateId]);
+        if (duplicateResult.rows.length > 0) {
+          throw new Error('A template with this name already exists');
+        }
+      }
 
       // If updating to default, unset other defaults for this billing type
       if (data.isDefault && !existingTemplate.is_default) {

@@ -27,13 +27,22 @@ export interface MailSettings {
 }
 
 export class MailSettingsModel {
-  static async getByTenantId(tenantId: string): Promise<MailSettings[]> {
-    const query = `
+  static async getByTenantId(tenantId: string, userId?: string): Promise<MailSettings[]> {
+    let query = `
       SELECT * FROM mail_settings 
       WHERE tenant_id = $1 AND deleted_at IS NULL
       ORDER BY created_at DESC
     `;
-    const result = await pool.query(query, [tenantId]);
+    let values = [tenantId];
+    if (userId) {
+      query = `
+        SELECT * FROM mail_settings 
+        WHERE tenant_id = $1 AND created_by = $2 AND deleted_at IS NULL
+        ORDER BY created_at DESC
+      `;
+      values.push(userId);
+    }
+    const result = await pool.query(query, values);
     return result.rows;
   }
 
@@ -46,17 +55,25 @@ export class MailSettingsModel {
     return result.rows[0] || null;
   }
 
-  static async getByEmail(email: string, tenantId: string): Promise<MailSettings | null> {
-    const query = `
+  static async getByEmail(email: string, tenantId: string, userId?: string): Promise<MailSettings | null> {
+    let query = `
       SELECT * FROM mail_settings 
       WHERE email = $1 AND tenant_id = $2 AND deleted_at IS NULL
     `;
-    const result = await pool.query(query, [email, tenantId]);
+    let values = [email, tenantId];
+    if (userId) {
+      query = `
+        SELECT * FROM mail_settings 
+        WHERE email = $1 AND tenant_id = $2 AND created_by = $3 AND deleted_at IS NULL
+      `;
+      values.push(userId);
+    }
+    const result = await pool.query(query, values);
     return result.rows[0] || null;
   }
 
   static async upsert(data: Partial<MailSettings> & { tenant_id: string; email: string; created_by: string }): Promise<MailSettings> {
-    const existing = await this.getByEmail(data.email, data.tenant_id);
+    const existing = await this.getByEmail(data.email, data.tenant_id, data.created_by);
 
     if (existing) {
       const setClause: string[] = [];
@@ -109,19 +126,30 @@ export class MailSettingsModel {
     await pool.query(query, [id, tenantId]);
   }
 
-  static async setAsDefault(id: string, tenantId: string): Promise<void> {
+  static async setAsDefault(id: string, tenantId: string, userId?: string): Promise<void> {
     // Transaction to unset others and set this one
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query(
-        'UPDATE mail_settings SET is_default_invoice_mail = FALSE WHERE tenant_id = $1',
-        [tenantId]
-      );
-      await client.query(
-        'UPDATE mail_settings SET is_default_invoice_mail = TRUE WHERE id = $1 AND tenant_id = $2',
-        [id, tenantId]
-      );
+      if (userId) {
+        await client.query(
+          'UPDATE mail_settings SET is_default_invoice_mail = FALSE WHERE tenant_id = $1 AND created_by = $2',
+          [tenantId, userId]
+        );
+        await client.query(
+          'UPDATE mail_settings SET is_default_invoice_mail = TRUE WHERE id = $1 AND tenant_id = $2 AND created_by = $3',
+          [id, tenantId, userId]
+        );
+      } else {
+        await client.query(
+          'UPDATE mail_settings SET is_default_invoice_mail = FALSE WHERE tenant_id = $1',
+          [tenantId]
+        );
+        await client.query(
+          'UPDATE mail_settings SET is_default_invoice_mail = TRUE WHERE id = $1 AND tenant_id = $2',
+          [id, tenantId]
+        );
+      }
       await client.query('COMMIT');
     } catch (e) {
       await client.query('ROLLBACK');
@@ -140,12 +168,20 @@ export class MailSettingsModel {
     return result.rows[0] || null;
   }
 
-  static async getDefaultVerified(tenantId: string): Promise<MailSettings | null> {
-    const query = `
+  static async getDefaultVerified(tenantId: string, userId?: string): Promise<MailSettings | null> {
+    let query = `
       SELECT * FROM mail_settings 
       WHERE tenant_id = $1 AND is_verified = TRUE AND is_default_invoice_mail = TRUE AND deleted_at IS NULL
     `;
-    const result = await pool.query(query, [tenantId]);
+    let values = [tenantId];
+    if (userId) {
+      query = `
+        SELECT * FROM mail_settings 
+        WHERE tenant_id = $1 AND created_by = $2 AND is_verified = TRUE AND is_default_invoice_mail = TRUE AND deleted_at IS NULL
+      `;
+      values.push(userId);
+    }
+    const result = await pool.query(query, values);
     return result.rows[0] || null;
   }
 }

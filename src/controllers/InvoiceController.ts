@@ -1827,7 +1827,7 @@ export class InvoiceController {
             url: finalPdfUrl,
             contentType: 'application/pdf'
           }] : []
-        });
+        }, req.user.id);
         emailResult = { success: true, data: mailResponse }; 
       } catch (err: any) {
         console.warn(`[InvoiceController] Integrated mail sending failed or not configured: ${err.message}. Falling back to SMTP.`);

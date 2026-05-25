@@ -31,6 +31,7 @@ export class UserController {
         limit = 20,
         role,
         position,
+        reportsToId,
         isActive = "true",
         search,
         sortBy = "createdAt",
@@ -44,6 +45,7 @@ export class UserController {
 
       if (role) where.role = role;
       if (position) where.position = { title: position }; // Filter by position title if string passed
+      if (reportsToId) where.reportsToId = reportsToId;
       if (isActive !== "all") where.isActive = isActive === "true";
 
       if (search) {

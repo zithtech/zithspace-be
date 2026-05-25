@@ -18,7 +18,7 @@ router.use(auth_1.requireAuth);
  * @access  Private (authenticated users within tenant)
  * @query   projectId, includeShared
  */
-router.get('/', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_READ), bucketController_1.BucketController.getBuckets);
+router.get('/', (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_BUCKET_READ), bucketController_1.BucketController.getBuckets);
 /**
  * @route   GET /api/buckets/:id/tickets
  * @desc    Get paginated tickets in bucket (tenant-aware)
@@ -26,21 +26,21 @@ router.get('/', (0, permission_1.requirePermission)(permissions_1.Permissions.PR
  * @param   id - Bucket ID
  * @query   page, limit
  */
-router.get('/:id/tickets', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_READ), bucketController_1.BucketController.getBucketTickets);
+router.get('/:id/tickets', (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_BUCKET_READ), bucketController_1.BucketController.getBucketTickets);
 /**
  * @route   GET /api/buckets/:id
  * @desc    Get bucket by ID with detailed ticket information (tenant-aware)
  * @access  Private (bucket owner or members)
  * @param   id - Bucket ID
  */
-router.get('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_READ), bucketController_1.BucketController.getBucketById);
+router.get('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_BUCKET_READ), bucketController_1.BucketController.getBucketById);
 /**
  * @route   POST /api/buckets
  * @desc    Create a new bucket (tenant-aware)
  * @access  Private (authenticated users within tenant)
  * @body    { name: string, description?: string, color?: string, projectId?: string, isShared?: boolean }
  */
-router.post('/', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_CREATE), bucketController_1.BucketController.createBucket);
+router.post('/', (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_BUCKET_CREATE), bucketController_1.BucketController.createBucket);
 /**
  * @route   PUT /api/buckets/:id
  * @desc    Update bucket (tenant-aware)
@@ -48,14 +48,14 @@ router.post('/', (0, permission_1.requirePermission)(permissions_1.Permissions.P
  * @param   id - Bucket ID
  * @body    { name?: string, description?: string, color?: string, isShared?: boolean }
  */
-router.put('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_UPDATE), bucketController_1.BucketController.updateBucket);
+router.put('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_BUCKET_UPDATE), bucketController_1.BucketController.updateBucket);
 /**
  * @route   DELETE /api/buckets/:id
  * @desc    Delete bucket and unassign all tickets (tenant-aware)
  * @access  Private (bucket owner only)
  * @param   id - Bucket ID
  */
-router.delete('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_DELETE), bucketController_1.BucketController.deleteBucket);
+router.delete('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_BUCKET_DELETE), bucketController_1.BucketController.deleteBucket);
 /**
  * @route   POST /api/buckets/:id/members
  * @desc    Add member to shared bucket (tenant-aware)
@@ -63,7 +63,7 @@ router.delete('/:id', (0, permission_1.requirePermission)(permissions_1.Permissi
  * @param   id - Bucket ID
  * @body    { userId: string, role?: string }
  */
-router.post('/:id/members', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_MANAGE), bucketController_1.BucketController.addBucketMember);
+router.post('/:id/members', (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_BUCKET_UPDATE), bucketController_1.BucketController.addBucketMember);
 /**
  * @route   DELETE /api/buckets/:id/members/:memberId
  * @desc    Remove member from shared bucket (tenant-aware)
@@ -71,7 +71,7 @@ router.post('/:id/members', (0, permission_1.requirePermission)(permissions_1.Pe
  * @param   id - Bucket ID
  * @param   memberId - Member ID
  */
-router.delete('/:id/members/:memberId', (0, permission_1.requirePermission)(permissions_1.Permissions.PROJECT_MANAGE), bucketController_1.BucketController.removeBucketMember);
+router.delete('/:id/members/:memberId', (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_BUCKET_UPDATE), bucketController_1.BucketController.removeBucketMember);
 /**
  * @route   POST /api/buckets/:id/assign
  * @desc    Assign tickets to bucket (tenant-aware)

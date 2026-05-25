@@ -694,16 +694,24 @@ export class MailService {
         body: string;
         htmlBody?: string;
         attachments?: any[];
-    }) {
-        const query = `
+    }, userId?: string) {
+        let query = `
             SELECT * FROM mail_settings 
             WHERE tenant_id = $1 AND is_verified = TRUE AND is_default_invoice_mail = TRUE AND deleted_at IS NULL
         `;
-        const result = await pool.query(query, [tenantId]);
+        let values = [tenantId];
+        if (userId) {
+            query = `
+                SELECT * FROM mail_settings 
+                WHERE tenant_id = $1 AND created_by = $2 AND is_verified = TRUE AND is_default_invoice_mail = TRUE AND deleted_at IS NULL
+            `;
+            values.push(userId);
+        }
+        const result = await pool.query(query, values);
         const settings = result.rows[0];
 
         if (!settings) {
-            throw new Error("No verified default invoice mail found for this tenant");
+            throw new Error("No verified default invoice mail found");
         }
 
         // Find the mail_account for this settings

@@ -73,6 +73,13 @@ export declare class EmailService {
         excelBuffer: Buffer;
         fileName: string;
     }, tenantId?: string): Promise<boolean>;
+    sendPortalPasswordResetEmail(data: {
+        to: string;
+        displayName: string | null;
+        username: string;
+        temporaryPassword: string;
+        portalUrl: string;
+    }, tenantId?: string): Promise<boolean>;
     sendPayslipEmail(data: {
         to: string;
         from?: string;

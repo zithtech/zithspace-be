@@ -101,6 +101,11 @@ router.put('/contacts/:contactId', (0, permission_1.requirePermission)(permissio
  */
 router.post('/:clientId/documents', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_UPDATE), clientV2Controller_1.ClientV2Controller.addDocument);
 /**
+ * @route   PATCH /api/clients-v2/:clientId/documents/:documentId
+ * @desc    Update editable metadata (fileName, category, documentType)
+ */
+router.patch('/:clientId/documents/:documentId', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_UPDATE), clientV2Controller_1.ClientV2Controller.updateDocument);
+/**
  * @route   DELETE /api/clients-v2/:clientId/documents/:documentId
  * @desc    Delete a client document
  */

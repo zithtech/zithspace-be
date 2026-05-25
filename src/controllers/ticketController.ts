@@ -496,7 +496,7 @@ export class TicketController {
               title,
               description: sanitizedDescription,
               projectId,
-              status,
+              status: status ? status.toLowerCase() : "not_started",
               priority,
               type: ticketType,
               platform: platform || "Development",
@@ -1040,9 +1040,13 @@ export class TicketController {
             priority: true,
             type: true,
             platform: true,
+            stack: true,
+            tags: true,
             taskLevel: true,
             storyPoint: true,
             estimateHours: true,
+            startDate: true,
+            endDate: true,
             dueDate: true,
             createdAt: true,
             updatedAt: true,
@@ -1053,10 +1057,12 @@ export class TicketController {
             assignee: {
               select: { id: true, name: true, workEmail: true, avatarUrl: true },
             },
+            reportTo: {
+              select: { id: true, name: true, workEmail: true, avatarUrl: true },
+            },
             project: {
               select: { id: true, name: true, code: true },
             },
-            // Removed reportTo to reduce joins (add back if needed)
           },
           orderBy,
           skip,
@@ -1274,6 +1280,10 @@ export class TicketController {
 
       // Map frontend field names to backend field names (like in createTicket)
       const mappedUpdates: any = { ...updates };
+      
+      if (mappedUpdates.status) {
+        mappedUpdates.status = mappedUpdates.status.toLowerCase();
+      }
 
       // 1. Map relational/special fields
       if (updates.project) {
@@ -1282,7 +1292,6 @@ export class TicketController {
       }
 
       if (updates.assignee !== undefined) {
-        // Handle explicit null, empty string, or object ID
         const val = updates.assignee;
         mappedUpdates.assigneeId = (val === '' || val === null)
           ? null
@@ -1483,6 +1492,7 @@ export class TicketController {
           releasePlanId: true,
           demoPlanId: true,
           tags: true,
+          metadata: true,
           createdAt: true,
           updatedAt: true,
           // Relations
