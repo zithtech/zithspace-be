@@ -6,6 +6,7 @@ import {
   BUCKET_NAME,
 } from "@/utils/r2Client";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
+import { getSettingsProfileById } from "@/models/settingsProfile.model";
 
 /* ----------------------------------------------------------------------
  * Helpers
@@ -132,7 +133,8 @@ export class ClientPortalInvoiceController {
     let listWhere = `WHERE i.tenant_id = $1
                        AND i.customer_id = ANY($2::text[])
                        AND i.deleted_at IS NULL
-                       AND i.status::text NOT IN ('DRAFT','PENDING','APPROVAL','SUBMITTED')`;
+                       AND ($3::text IS NOT NULL OR 1=1)
+                       AND i.status::text IN ('SENT', 'PARTIALLY_PAID', 'PAID', 'OVERDUE', 'CANCELLED', 'REFUNDED')`;
     if (statusFilter === "OVERDUE") {
       listWhere += ` AND i.due_date < NOW() AND i.status::text IN ('SENT','PARTIALLY_PAID')`;
     } else if (statusFilter === "VIEWED") {
@@ -164,6 +166,7 @@ export class ClientPortalInvoiceController {
               i.subtotal, i.tax_total, i.discount_total, i.grand_total,
               i.balance_due, i.paid_amount, i.status::text AS status,
               i.sent_at, i.paid_at, i.cancelled_at, i.description,
+              i.client_status,
               v.first_viewed_at AS viewed_at,
               c.company_name AS customer_name
          FROM invoices i
@@ -186,7 +189,7 @@ export class ClientPortalInvoiceController {
         WHERE i.tenant_id = $1
           AND i.customer_id = ANY($2::text[])
           AND i.deleted_at IS NULL
-          AND i.status::text NOT IN ('DRAFT','PENDING','APPROVAL','SUBMITTED')
+          AND i.status::text IN ('SENT', 'PARTIALLY_PAID', 'PAID', 'OVERDUE', 'CANCELLED', 'REFUNDED')
         GROUP BY i.status::text`,
       [ctx.tenantId, customerIds],
     );
@@ -227,6 +230,7 @@ export class ClientPortalInvoiceController {
           cancelledAt: row.cancelled_at,
           description: row.description,
           customerName: row.customer_name,
+          clientStatus: row.client_status,
         };
       }),
       meta: {
@@ -265,16 +269,16 @@ export class ClientPortalInvoiceController {
               i.balance_due, i.paid_amount, i.status::text AS status,
               i.sent_at, i.paid_at, i.cancelled_at, i.description,
               i.notes, i.terms, i.pdf_url, i.invoice_type::text AS invoice_type,
-              i.customer_snapshot,
+              i.customer_snapshot, i.settings_profile_id, i.client_status,
               c.company_name AS customer_name, c.email AS customer_email,
               c.address AS customer_address, c.city AS customer_city,
               c.country AS customer_country, c.tax_id AS customer_tax_id
          FROM invoices i
          LEFT JOIN customers c ON c.id = i.customer_id
         WHERE i.id = $1 AND i.tenant_id = $2
-          AND i.customer_id = ANY($3::text[])
-          AND i.deleted_at IS NULL
-          AND i.status::text NOT IN ('DRAFT','PENDING','APPROVAL','SUBMITTED')`,
+           AND i.customer_id = ANY($3::text[])
+           AND i.deleted_at IS NULL
+           AND i.status::text IN ('SENT', 'PARTIALLY_PAID', 'PAID', 'OVERDUE', 'CANCELLED', 'REFUNDED')`,
       [id, ctx.tenantId, customerIds],
     );
 
@@ -295,7 +299,7 @@ export class ClientPortalInvoiceController {
       [ctx.tenantId, id, ctx.portalUserId],
     );
 
-    const [lineItems, taxes, payments, attachments, proofs] = await Promise.all([
+    const [lineItems, taxes, payments, attachments, proofs, settingsProfile] = await Promise.all([
       pool.query(
         `SELECT id, item_name, description, quantity, rate, tax_rate,
                 row_number, hours, subtotal, tax_amount, total
@@ -317,7 +321,8 @@ export class ClientPortalInvoiceController {
                 status::text AS status, reference_id, created_at
            FROM invoice_payments
           WHERE invoice_id = $1 AND tenant_id = $2
-          ORDER BY payment_date DESC, created_at DESC`,
+            AND status::text = 'COMPLETED'
+          ORDER BY payment_date DESC`,
         [id, ctx.tenantId],
       ),
       pool.query(
@@ -336,6 +341,7 @@ export class ClientPortalInvoiceController {
           ORDER BY created_at DESC`,
         [id, ctx.tenantId],
       ),
+      invoice.settings_profile_id ? getSettingsProfileById(invoice.settings_profile_id, ctx.tenantId) : Promise.resolve(null)
     ]);
 
     const decorated = decorateStatus(
@@ -366,6 +372,7 @@ export class ClientPortalInvoiceController {
         paidAt: invoice.paid_at,
         cancelledAt: invoice.cancelled_at,
         description: invoice.description,
+        clientStatus: invoice.client_status,
         notes: invoice.notes,
         terms: invoice.terms,
         pdfUrl: invoice.pdf_url,
@@ -383,8 +390,41 @@ export class ClientPortalInvoiceController {
         payments: payments.rows,
         attachments: attachments.rows,
         paymentProofs: proofs.rows,
+        settingsProfile,
       },
     });
+  }
+
+  /**
+   * PATCH /api/client-portal/invoices/:id/client-status
+   * body: { clientStatus: string }
+   */
+  static async updateClientStatus(req: Request, res: Response): Promise<void> {
+    const ctx = await ensurePortalContext(req, res);
+    if (!ctx) return;
+    const { id } = req.params;
+    const { clientStatus } = req.body;
+
+    const customerIds = await customersForPortalUser(ctx.tenantId, ctx.clientId);
+    if (customerIds.length === 0) {
+      res.status(404).json({ success: false, error: "Invoice not found" });
+      return;
+    }
+
+    const result = await pool.query(
+      `UPDATE invoices 
+       SET client_status = $1, updated_at = NOW() 
+       WHERE id = $2 AND tenant_id = $3 AND customer_id = ANY($4::text[])
+       RETURNING *`,
+      [clientStatus, id, ctx.tenantId, customerIds]
+    );
+
+    if (result.rowCount === 0) {
+      res.status(404).json({ success: false, error: "Invoice not found or unauthorized" });
+      return;
+    }
+
+    res.json({ success: true, message: "Client status updated successfully" });
   }
 
   /**

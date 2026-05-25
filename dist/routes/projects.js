@@ -35,7 +35,7 @@ router.get('/selection', (0, permission_1.requirePermission)(permissions_1.Permi
  * @desc    Get projects for dropdown/select (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/select', (0, permission_1.requireAnyPermission)(permissions_1.Permissions.PROJECT_READ, permissions_1.Permissions.ATTENDANCE_READ, permissions_1.Permissions.ATTENDANCE_CREATE, permissions_1.Permissions.ATTENDANCE_UPDATE, permissions_1.Permissions.ATTENDANCE_DELETE), projectController_1.ProjectController.getProjectsForSelect);
+router.get('/select', (0, permission_1.requireAnyPermission)(permissions_1.Permissions.PROJECT_READ, permissions_1.Permissions.ATTENDANCE_READ, permissions_1.Permissions.ATTENDANCE_CREATE, permissions_1.Permissions.ATTENDANCE_UPDATE, permissions_1.Permissions.ATTENDANCE_DELETE, permissions_1.Permissions.INVOICE_CREATE, permissions_1.Permissions.INVOICE_UPDATE, permissions_1.Permissions.INVOICE_READ), projectController_1.ProjectController.getProjectsForSelect);
 /**
  * @route   GET /api/projects/user
  * @desc    Get projects where user is a member (tenant-aware)

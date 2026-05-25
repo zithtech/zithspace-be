@@ -1204,6 +1204,86 @@ export class ClientV2Controller {
             res.status(500).json({ success: false, error: 'Failed to fetch employees' } as ApiResponse);
         }
     }
+
+    // ==============================================
+    // CLIENT INVOICES (PORTAL VIEW)
+    // ==============================================
+
+    static async getClientInvoices(req: AuthRequest, res: Response): Promise<void> {
+        try {
+            if (!req.tenantId) {
+                res.status(400).json({ success: false, error: 'Tenant context required' } as ApiResponse);
+                return;
+            }
+
+            const { clientId } = req.params;
+
+            // 1. Get all customer IDs linked to this client
+            // The relationship is stored as client_id directly on the customers table
+            const linkRows = await pool.query(
+                `SELECT id as customer_id FROM customers WHERE tenant_id = $1 AND client_id = $2`,
+                [req.tenantId, clientId]
+            );
+
+            const customerIds = linkRows.rows.map((r: any) => r.customer_id);
+
+            if (customerIds.length === 0) {
+                res.status(200).json({ success: true, data: [] } as ApiResponse);
+                return;
+            }
+
+            // 2. Fetch invoices matching portal visibility statuses
+            const validStatuses = ['SENT', 'PARTIALLY_PAID', 'PAID', 'OVERDUE', 'CANCELLED', 'REFUNDED'];
+
+            const r = await pool.query(
+                `SELECT 
+                    i.id, 
+                    i.invoice_number as "invoiceNumber", 
+                    i.invoice_date as "invoiceDate", 
+                    i.due_date as "dueDate", 
+                    i.currency, 
+                    i.subtotal, 
+                    i.tax_total as "taxTotal", 
+                    i.discount_total as "discountTotal", 
+                    i.grand_total as "grandTotal", 
+                    i.balance_due as "balanceDue", 
+                    i.paid_amount as "paidAmount", 
+                    i.status,
+                    i.client_status as "clientStatus",
+                    c.company_name as "customerName"
+                 FROM invoices i
+                 LEFT JOIN customers c ON i.customer_id = c.id
+                 WHERE i.tenant_id = $1
+                   AND i.customer_id = ANY($2::text[])
+                   AND i.deleted_at IS NULL
+                   AND i.status::text = ANY($3::text[])
+                 ORDER BY i.created_at DESC`,
+                [req.tenantId, customerIds, validStatuses]
+            );
+
+            // Add isOverdue calculation similar to clientPortal
+            const data = r.rows.map(row => {
+                let isOverdue = false;
+                if (
+                    ['SENT', 'PARTIALLY_PAID', 'VIEWED'].includes(row.status) &&
+                    row.dueDate &&
+                    new Date(row.dueDate) < new Date()
+                ) {
+                    isOverdue = true;
+                }
+                
+                return {
+                    ...row,
+                    isOverdue
+                };
+            });
+
+            res.status(200).json({ success: true, data } as ApiResponse);
+        } catch (error) {
+            console.error('getClientInvoices error:', error);
+            res.status(500).json({ success: false, error: 'Failed to fetch client invoices' } as ApiResponse);
+        }
+    }
 }
 
 export default ClientV2Controller;

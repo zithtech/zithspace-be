@@ -41,7 +41,7 @@ router.get('/selection', requirePermission(Permissions.PROJECT_READ), ProjectCon
  * @desc    Get projects for dropdown/select (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/select', requireAnyPermission(Permissions.PROJECT_READ, Permissions.ATTENDANCE_READ, Permissions.ATTENDANCE_CREATE, Permissions.ATTENDANCE_UPDATE, Permissions.ATTENDANCE_DELETE), ProjectController.getProjectsForSelect);
+router.get('/select', requireAnyPermission(Permissions.PROJECT_READ, Permissions.ATTENDANCE_READ, Permissions.ATTENDANCE_CREATE, Permissions.ATTENDANCE_UPDATE, Permissions.ATTENDANCE_DELETE, Permissions.INVOICE_CREATE, Permissions.INVOICE_UPDATE, Permissions.INVOICE_READ), ProjectController.getProjectsForSelect);
 
 /**
  * @route   GET /api/projects/user

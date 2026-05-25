@@ -17,6 +17,8 @@ export enum RecurringFrequency {
 
 export enum InvoiceStatus {
   DRAFT = "DRAFT",
+  PENDING = "PENDING",
+  APPROVAL = "APPROVAL",
   SENT = "SENT",
   VIEWED = "VIEWED",
   PAID = "PAID",
@@ -65,6 +67,7 @@ export interface Invoice {
   projectId?: string;
   templateId?: string;
   metadata?: any;
+  clientStatus?: string;
 }
 
 export interface CreateInvoiceData {
@@ -167,6 +170,7 @@ function mapRowToInvoice(row: any): Invoice {
     projectId: row.project_id,
     templateId: row.template_id,
     metadata: row.metadata,
+    clientStatus: row.client_status,
   };
 }
 
