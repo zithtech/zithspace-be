@@ -34,3 +34,22 @@ export const MAIL_SYNC_RETRY_QUEUE_15M = 'mail.sync.retry.15m';
 export const MAIL_SYNC_RETRY_RK_1M = 'mail.sync.retry.1m';
 export const MAIL_SYNC_RETRY_RK_5M = 'mail.sync.retry.5m';
 export const MAIL_SYNC_RETRY_RK_15M = 'mail.sync.retry.15m';
+
+// // --- CENTRAL OUTBOUND MAIL QUEUE CONFIG ---
+// export const CENTRAL_MAIL_EXCHANGE = 'central.mail.exchange';
+// export const CENTRAL_MAIL_QUEUE = 'central.mail.queue';
+// export const CENTRAL_MAIL_ROUTING_KEY = 'central.mail.send';
+// 
+// export const CENTRAL_MAIL_DLX = 'central.mail.dlx';
+// export const CENTRAL_MAIL_DLQ = 'central.mail.dead_letter';
+// export const CENTRAL_MAIL_DL_ROUTING_KEY = 'central.mail.failed';
+// 
+// export const CENTRAL_MAIL_RETRY_EXCHANGE = 'central.mail.retry.exchange';
+// export const CENTRAL_MAIL_RETRY_QUEUE_1M = 'central.mail.retry.1m';
+// export const CENTRAL_MAIL_RETRY_QUEUE_5M = 'central.mail.retry.5m';
+// export const CENTRAL_MAIL_RETRY_QUEUE_15M = 'central.mail.retry.15m';
+// 
+// export const CENTRAL_MAIL_RETRY_RK_1M = 'central.mail.retry.1m';
+// export const CENTRAL_MAIL_RETRY_RK_5M = 'central.mail.retry.5m';
+// export const CENTRAL_MAIL_RETRY_RK_15M = 'central.mail.retry.15m';
+

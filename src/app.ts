@@ -130,6 +130,7 @@ import openingManagementRoutes from "@/routes/openingManagementRoutes";
 import { rabbitMQService } from "@/utils/RabbitMQService";
 import { CalendarSyncWorker } from "@/workers/CalendarSyncWorker";
 import { MailSyncWorker } from "@/workers/MailSyncWorker";
+//import { CentralMailWorker } from "@/workers/CentralMailWorker";
 import { MailController } from "@/controllers/MailController";
 
 
@@ -516,7 +517,7 @@ const startServer = async () => {
   try {
     // Connect PostgreSQL
     await connectDatabase();
-    
+
     // Initialize Tables
     const { BidIQModel } = require("./models/BidIQ.model");
     await BidIQModel.initTable();
@@ -526,6 +527,7 @@ const startServer = async () => {
       // await rabbitMQService.connect();
       // await CalendarSyncWorker.start();
       // await MailSyncWorker.start();
+      // await CentralMailWorker.start();
       // console.log("🚀 RabbitMQ connected, Calendar & Mail Sync Workers started");
       console.log("🚀 RabbitMQ sync workers disabled (commented out)");
     } catch (mqError: any) {

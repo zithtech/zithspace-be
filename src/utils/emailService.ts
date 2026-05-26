@@ -2,6 +2,9 @@ import nodemailer from "nodemailer";
 import { Transporter } from "nodemailer";
 import { getActiveMailConfiguration } from "../models/mailConfiguration.model";
 import { decrypt } from "../utils/encryption";
+import { prisma } from "../config/database";
+// import { rabbitMQService } from "./RabbitMQService";
+// import { CENTRAL_MAIL_EXCHANGE, CENTRAL_MAIL_ROUTING_KEY } from "../config/rabbitmq";
 
 interface EmailOptions {
   to: string;
@@ -51,6 +54,7 @@ interface LeaveRejectionEmailData {
 
 export class EmailService {
   private transporter: Transporter | null = null;
+  private systemTransporter: Transporter | null = null;
 
   constructor() {
     // Don't initialize transporter in constructor - we'll create it dynamically per tenant
@@ -124,6 +128,251 @@ export class EmailService {
       );
       this.transporter = null;
     }
+  }
+
+  private async initializeSystemTransporter() {
+    if (this.systemTransporter) return;
+
+    const email = process.env.SYSTEM_EMAIL || process.env.SMTP_USER;
+    const pass = process.env.SYSTEM_APP_PASSWORD || process.env.SMTP_PASS;
+
+    if (email && pass) {
+      try {
+        const host = process.env.SYSTEM_HOST || process.env.SMTP_HOST || "smtp.gmail.com";
+        const port = parseInt(process.env.SYSTEM_PORT || process.env.SMTP_PORT || "587");
+        const secure = process.env.SYSTEM_SECURE !== undefined 
+          ? (process.env.SYSTEM_SECURE === "true") 
+          : (process.env.SMTP_SECURE === "true");
+
+        this.systemTransporter = nodemailer.createTransport({
+          host,
+          port,
+          secure,
+          auth: { user: email, pass: pass },
+        });
+        console.log(`✅ Centralized System Email transporter initialized successfully: Host=${host}, Port=${port}, Secure=${secure}`);
+      } catch (error) {
+        console.error("❌ Failed to initialize system transporter:", error);
+      }
+    } else {
+      console.warn("⚠️ SYSTEM_EMAIL and SYSTEM_APP_PASSWORD environment variables not defined. Falling back to default transporter.");
+    }
+  }
+
+  public async resolveTenantMailBranding(tenantId?: string) {
+    let companyName = "ZithSpace";
+    let companyLogo = "";
+    let replyToEmail = process.env.SYSTEM_EMAIL || "support@zithspace.com";
+
+    if (tenantId) {
+      try {
+        const tenant = await prisma.tenant.findFirst({
+          where: { id: tenantId },
+        });
+
+        if (tenant) {
+          companyName = tenant.name || companyName;
+          const settings = tenant.settings as any;
+          if (settings && settings.logoUrl) {
+            companyLogo = settings.logoUrl;
+          }
+        }
+      } catch (error) {
+        console.error("❌ Error resolving tenant branding:", error);
+      }
+    }
+
+    return { companyName, companyLogo, replyToEmail };
+  }
+
+  public async sendCentralizedMail(options: {
+    tenantId?: string;
+    to: string;
+    subject: string;
+    html: string;
+    text?: string;
+    attachments?: any[];
+  }): Promise<boolean> {
+    try {
+      await this.initializeSystemTransporter();
+      const branding = await this.resolveTenantMailBranding(options.tenantId);
+
+      const transporter = this.systemTransporter || this.transporter;
+      if (!transporter) {
+        console.log("\n📧 CENTRAL EMAIL NOTIFICATION (Not Sent - Transporter Offline):");
+        console.log("To:", options.to);
+        console.log("Subject:", options.subject);
+        console.log("Body:", options.text || options.html);
+        console.log("---\n");
+        return true;
+      }
+
+      const fromEmail = process.env.SYSTEM_EMAIL || process.env.SMTP_USER || "system@zithspace.com";
+      const fromName = branding.companyName;
+
+      const mailOptions = {
+        from: `"${fromName}" <${fromEmail}>`,
+        replyTo: branding.replyToEmail,
+        to: options.to,
+        subject: options.subject,
+        html: options.html,
+        text: options.text,
+        attachments: options.attachments,
+      };
+
+      const info = await transporter.sendMail(mailOptions);
+      console.log("✅ Centralized email sent successfully:", info.messageId);
+      return true;
+    } catch (error) {
+      console.error("❌ Failed to send centralized email:", error);
+      throw error;
+    }
+  }
+
+  public async enqueueCentralizedMail(payload: {
+    tenantId: string;
+    to: string;
+    subject: string;
+    templateType: 'welcome' | 'custom';
+    templateData: any;
+  }): Promise<boolean> {
+    // Commented out RabbitMQ functionality as requested
+    // try {
+    //   const channel = await rabbitMQService.getChannel();
+    //   if (channel) {
+    //     await channel.publish(
+    //       CENTRAL_MAIL_EXCHANGE,
+    //       CENTRAL_MAIL_ROUTING_KEY,
+    //       Buffer.from(JSON.stringify(payload)),
+    //       { persistent: true }
+    //     );
+    //     console.log("✅ Centralized mail enqueued successfully to RabbitMQ.");
+    //     return true;
+    //   }
+    // } catch (error) {
+    //   console.warn("⚠️ RabbitMQ offline or failed to enqueue. Falling back to direct email delivery:", error);
+    // }
+
+    // Direct synchronous send
+    try {
+      if (payload.templateType === 'welcome') {
+        return await this.sendNewMemberWelcomeEmail({
+          to: payload.to,
+          name: payload.templateData.name,
+          email: payload.templateData.email,
+          password: payload.templateData.password,
+        }, payload.tenantId);
+      } else {
+        return await this.sendCentralizedMail({
+          tenantId: payload.tenantId,
+          to: payload.to,
+          subject: payload.subject,
+          html: payload.templateData.html || '',
+          text: payload.templateData.text || '',
+        });
+      }
+    } catch (directError) {
+      console.error("❌ Direct email delivery failed:", directError);
+      return false;
+    }
+  }
+
+  public async sendNewMemberWelcomeEmail(
+    data: { to: string; name: string; email: string; password?: string },
+    tenantId?: string
+  ): Promise<boolean> {
+    const branding = await this.resolveTenantMailBranding(tenantId);
+    const loginUrl = "https://zithmi.zithspace.com/login";
+
+    const logoHtml = branding.companyLogo
+      ? `<img class="logo" src="${branding.companyLogo}" alt="${branding.companyName}" />`
+      : "";
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 0; }
+          .wrapper { width: 100%; background-color: #f8fafc; padding: 40px 0; }
+          .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+          .header { padding: 40px 40px 30px; text-align: center; border-bottom: 1px solid #f1f5f9; }
+          .logo { max-height: 50px; margin-bottom: 16px; border-radius: 8px; }
+          .company-name { font-size: 20px; font-weight: 700; color: #0f172a; margin: 0; }
+          .content { padding: 40px; }
+          .title { font-size: 24px; font-weight: 700; color: #0f172a; margin-top: 0; margin-bottom: 24px; text-align: center; }
+          .welcome-text { font-size: 16px; line-height: 1.6; color: #475569; margin-bottom: 32px; }
+          .credentials-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin-bottom: 32px; }
+          .cred-row { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 15px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 12px; }
+          .cred-row:last-child { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
+          .cred-label { font-weight: 600; color: #64748b; }
+          .cred-value { font-family: monospace; font-size: 15px; color: #0f172a; font-weight: 600; }
+          .cta-wrapper { text-align: center; margin: 32px 0; }
+          .cta-btn { display: inline-block; padding: 14px 32px; background: #2563eb; color: #ffffff !important; text-decoration: none; border-radius: 8px; font-weight: 600; text-align: center; font-size: 15px; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2); }
+          .footer { padding: 32px; background: #f8fafc; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #f1f5f9; }
+          .footer-text { margin: 0 0 8px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="wrapper">
+          <div class="container">
+            <div class="header">
+              ${logoHtml}
+              <h2 class="company-name">${branding.companyName}</h2>
+            </div>
+            <div class="content">
+              <h1 class="title">Welcome aboard!</h1>
+              <p class="welcome-text">Hi <strong>${data.name}</strong>,<br><br>You have been added as a member to <strong>${branding.companyName}</strong>. Below are your credentials to log in to the portal:</p>
+              
+              <div class="credentials-box">
+                <div class="cred-row">
+                  <span class="cred-label">Login Email:</span>
+                  <span class="cred-value">${data.email}</span>
+                </div>
+                ${data.password ? `
+                <div class="cred-row">
+                  <span class="cred-label">Password:</span>
+                  <span class="cred-value">${data.password}</span>
+                </div>
+                ` : ''}
+              </div>
+
+              <div class="cta-wrapper">
+                 <a href="${loginUrl}" class="cta-btn">Access Your Workspace</a>
+               </div>
+             </div>
+             <div class="footer">
+               <p class="footer-text">This is an automated mail, please do not reply.</p>
+             </div>
+           </div>
+         </div>
+       </body>
+       </html>
+     `;
+ 
+     const text = `
+       Welcome to ${branding.companyName}!
+       
+       Hi ${data.name},
+       
+       You have been added as a member to ${branding.companyName}.
+       
+       Login Email: ${data.email}
+       ${data.password ? `Password: ${data.password}` : ''}
+       
+       Access your workspace here: ${loginUrl}
+       
+       This is an automated mail, please do not reply.
+     `;
+ 
+     return this.sendCentralizedMail({
+       tenantId,
+       to: data.to,
+       subject: `Welcome to ${branding.companyName}`,
+       html,
+       text,
+     });
   }
 
   private async sendEmail(options: EmailOptions, tenantId?: string): Promise<boolean> {
@@ -628,6 +877,199 @@ If you have any questions or concerns, please contact your manager or HR departm
     };
 
     return this.sendEmail(options, tenantId);
+  }
+
+  async sendEscalationEmail(
+    data: {
+      to: string;
+      userName: string;
+      escalationSubject: string;
+      description: string;
+      creatorName: string;
+      tickets?: { ticketNumber: string; title: string }[];
+      attachments?: { filename: string; content: Buffer }[];
+    },
+    tenantId?: string
+  ): Promise<boolean> {
+    const branding = await this.resolveTenantMailBranding(tenantId);
+    const subject = `[Escalation Raised] ${data.escalationSubject}`;
+
+    const logoHtml = branding.companyLogo
+      ? `<img class="logo" src="${branding.companyLogo}" alt="${branding.companyName}" style="max-height: 50px; margin-bottom: 16px;" />`
+      : "";
+
+    let ticketsHtml = "";
+    let ticketsText = "";
+    if (data.tickets && data.tickets.length > 0) {
+      ticketsHtml = `
+        <div style="margin-top: 16px;">
+          <span style="font-size: 11px; font-weight: 700; color: #ef4444; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 6px;">Linked Tickets</span>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            ${data.tickets.map(t => `
+              <div style="font-size: 13.5px; color: #334155; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px; display: inline-block;">
+                <strong style="color: #ef4444; margin-right: 6px;">${t.ticketNumber}</strong> ${t.title}
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      `;
+      ticketsText = `\nLinked Tickets:\n` + data.tickets.map(t => `- [${t.ticketNumber}] ${t.title}`).join("\n");
+    }
+
+    const html = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #0f172a; line-height: 1.6;">
+        <div style="margin-bottom: 24px;">
+          ${logoHtml}
+        </div>
+        
+        <h2 style="font-size: 20px; font-weight: 700; color: #0f172a; margin-top: 0; margin-bottom: 8px; letter-spacing: -0.01em;">
+          Escalation Raised
+        </h2>
+        <p style="color: #64748b; font-size: 14px; margin-top: 0; margin-bottom: 24px;">
+          An escalation has been raised in the system for your attention.
+        </p>
+
+        <div style="border-left: 4px solid #ef4444; padding-left: 16px; margin: 20px 0;">
+          <p style="margin: 0 0 16px; font-size: 15px;">Hi <strong>${data.userName}</strong>,</p>
+          <p style="margin: 0 0 20px; color: #475569; font-size: 14px;">
+            An escalation has been raised by <strong>${data.creatorName}</strong>. Details are below:
+          </p>
+
+          <div style="margin-bottom: 16px;">
+            <span style="font-size: 11px; font-weight: 700; color: #ef4444; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 4px;">Subject</span>
+            <span style="font-size: 15px; font-weight: 600; color: #0f172a;">${data.escalationSubject}</span>
+          </div>
+
+          <div style="margin-bottom: 16px;">
+            <span style="font-size: 11px; font-weight: 700; color: #ef4444; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 4px;">Description</span>
+            <div style="font-size: 14px; color: #334155; white-space: pre-line; line-height: 1.5;">${data.description}</div>
+          </div>
+
+          ${ticketsHtml}
+        </div>
+
+        <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 32px 0 20px;" />
+        
+        <p style="font-size: 11px; color: #94a3b8; text-align: center; margin: 0;">
+          This is an automated notification from ${branding.companyName} — please do not reply directly to this email.
+        </p>
+      </div>
+    `;
+
+    const text = `
+Escalation Raised: ${data.escalationSubject}
+
+Hi ${data.userName},
+
+An escalation has been raised by ${data.creatorName}.
+
+Subject: ${data.escalationSubject}
+Description: ${data.description}
+${ticketsText}
+    `;
+
+    return this.sendCentralizedMail({ to: data.to, tenantId, subject, html, text, attachments: data.attachments });
+  }
+
+  async sendPortalWelcomeEmail(
+    data: {
+      to: string;
+      displayName: string | null;
+      username: string;
+      temporaryPassword: string;
+      portalUrl: string;
+    },
+    tenantId?: string,
+  ): Promise<boolean> {
+    const greetingName = data.displayName || data.username;
+    const branding = await this.resolveTenantMailBranding(tenantId);
+    const subject = `Welcome to the ${branding.companyName} portal`;
+
+    const logoHtml = branding.companyLogo
+      ? `<img class="logo" src="${branding.companyLogo}" alt="${branding.companyName}" />`
+      : "";
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 0; }
+          .wrapper { width: 100%; background-color: #f8fafc; padding: 40px 0; }
+          .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+          .header { padding: 40px 40px 30px; text-align: center; border-bottom: 1px solid #f1f5f9; }
+          .logo { max-height: 50px; margin-bottom: 16px; border-radius: 8px; }
+          .company-name { font-size: 20px; font-weight: 700; color: #0f172a; margin: 0; }
+          .content { padding: 40px; }
+          .title { font-size: 24px; font-weight: 700; color: #0f172a; margin-top: 0; margin-bottom: 24px; text-align: center; }
+          .welcome-text { font-size: 16px; line-height: 1.6; color: #475569; margin-bottom: 32px; }
+          .credentials-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin-bottom: 32px; }
+          .cred-row { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 15px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 12px; }
+          .cred-row:last-child { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
+          .cred-label { font-weight: 600; color: #64748b; }
+          .cred-value { font-family: monospace; font-size: 15px; color: #0f172a; font-weight: 600; }
+          .cta-wrapper { text-align: center; margin: 32px 0; }
+          .cta-btn { display: inline-block; padding: 14px 32px; background: #2563eb; color: #ffffff !important; text-decoration: none; border-radius: 8px; font-weight: 600; text-align: center; font-size: 15px; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2); }
+          .footer { padding: 32px; background: #f8fafc; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #f1f5f9; }
+          .footer-text { margin: 0 0 8px 0; }
+        </style>
+      </head>
+      <body>
+        <div class="wrapper">
+          <div class="container">
+            <div class="header">
+              ${logoHtml}
+              <h2 class="company-name">${branding.companyName}</h2>
+            </div>
+            <div class="content">
+              <h1 class="title">Portal Access Created</h1>
+              <p class="welcome-text">Hi <strong>${greetingName}</strong>,<br><br>An account has been created for you to access the client portal of <strong>${branding.companyName}</strong>. Use the details below to sign in:</p>
+              
+              <div class="credentials-box">
+                <div class="cred-row">
+                  <span class="cred-label">Portal URL:</span>
+                  <span class="cred-value" style="font-family: inherit;"><a href="${data.portalUrl}">${data.portalUrl}</a></span>
+                </div>
+                <div class="cred-row">
+                  <span class="cred-label">Username:</span>
+                  <span class="cred-value">${data.username}</span>
+                </div>
+                <div class="cred-row">
+                  <span class="cred-label">Email:</span>
+                  <span class="cred-value">${data.to}</span>
+                </div>
+                <div class="cred-row">
+                  <span class="cred-label">Password:</span>
+                  <span class="cred-value">${data.temporaryPassword}</span>
+                </div>
+              </div>
+
+              <div class="cta-wrapper">
+                <a href="${data.portalUrl}" class="cta-btn">Access Your Workspace</a>
+              </div>
+            </div>
+            <div class="footer">
+              <p class="footer-text">This is an automated mail, please do not reply.</p>
+            </div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const text = `
+Hi ${greetingName},
+
+An account has been created for you to access the client portal of ${branding.companyName}.
+
+Portal Login URL: ${data.portalUrl}
+Username: ${data.username}
+Email: ${data.to}
+Password: ${data.temporaryPassword}
+    `;
+
+    return this.sendCentralizedMail({ to: data.to, tenantId, subject, html, text });
   }
 
   async sendPortalPasswordResetEmail(
