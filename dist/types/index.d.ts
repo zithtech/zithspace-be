@@ -523,6 +523,7 @@ export interface CreateCustomerData {
     gstin?: string;
     pan?: string;
     isActive?: boolean;
+    clientId?: string;
 }
 export interface UpdateCustomerData {
     companyName?: string;
@@ -535,6 +536,7 @@ export interface UpdateCustomerData {
     gstin?: string;
     pan?: string;
     isActive?: boolean;
+    clientId?: string;
 }
 export declare class ValidationError extends Error {
     readonly field?: string;

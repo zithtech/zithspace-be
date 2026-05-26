@@ -626,6 +626,7 @@ export interface CreateCustomerData {
   gstin?: string;
   pan?: string;
   isActive?: boolean;
+  clientId?: string;
 }
 
 // Data allowed to update a customer
@@ -640,6 +641,7 @@ export interface UpdateCustomerData {
   gstin?: string;
   pan?: string;
   isActive?: boolean;
+  clientId?: string;
 }
 
 // ==========================================

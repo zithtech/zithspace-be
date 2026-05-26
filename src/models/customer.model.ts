@@ -14,6 +14,7 @@ export interface Customer {
   gstin?: string;
   pan?: string;
   isActive: boolean;
+  clientId?: string | null;
   createdAt: Date;
   updatedAt: Date;
   createdBy: string;
@@ -43,6 +44,7 @@ function mapRowToCustomer(row: any): Customer {
     gstin: row.gstin,
     pan: row.pan,
     isActive: row.is_active,
+    clientId: row.client_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     createdBy: row.created_by,
@@ -160,8 +162,8 @@ export class CustomerModel {
       const insertQuery = `
         INSERT INTO customers (
           id, tenant_id, company_name, email, phone, address, city, country,
-          tax_id, gstin, pan, is_active, created_by, updated_by, created_at, updated_at
-        ) VALUES (uuid_generate_v4(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())
+          tax_id, gstin, pan, is_active, client_id, created_by, updated_by, created_at, updated_at
+        ) VALUES (uuid_generate_v4(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())
         RETURNING *
       `;
 
@@ -177,6 +179,7 @@ export class CustomerModel {
         data.gstin || null,
         data.pan || null,
         data.isActive !== undefined ? data.isActive : true,
+        data.clientId || null,
         userId,
         userId
       ];
@@ -269,7 +272,8 @@ export class CustomerModel {
         taxId: 'tax_id',
         gstin: 'gstin',
         pan: 'pan',
-        isActive: 'is_active'
+        isActive: 'is_active',
+        clientId: 'client_id'
       };
 
       Object.entries(normalizedData).forEach(([key, value]) => {

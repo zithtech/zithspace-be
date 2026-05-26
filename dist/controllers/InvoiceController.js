@@ -1,4 +1,7 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.InvoiceController = void 0;
 const invoice_model_1 = require("../models/invoice.model");
@@ -8,6 +11,7 @@ const invoicePayment_model_1 = require("../models/invoicePayment.model");
 const transaction_model_1 = require("../models/transaction.model");
 const types_1 = require("../types");
 const pdfService_1 = require("../services/pdfService");
+const dbpool_1 = __importDefault(require("../config/dbpool"));
 const settingsProfile_model_1 = require("../models/settingsProfile.model");
 const invoiceLineItem_model_1 = require("../models/invoiceLineItem.model");
 const invoiceTax_model_1 = require("../models/invoiceTax.model");
@@ -885,10 +889,14 @@ class InvoiceController {
                 templateId: invoice.templateId
             });
             // Get related data
-            const [lineItems, taxes, attachments] = await Promise.all([
+            const [lineItems, taxes, attachments, proofsResult] = await Promise.all([
                 (0, invoiceLineItem_model_2.getInvoiceLineItems)(invoice.id, req.tenantId),
                 (0, invoiceTax_model_2.getInvoiceTaxes)(invoice.id, req.tenantId),
-                (0, invoiceAttachment_model_1.getInvoiceAttachments)(invoice.id)
+                (0, invoiceAttachment_model_1.getInvoiceAttachments)(invoice.id),
+                dbpool_1.default.query(`SELECT id, file_url as file, file_name as "fileName", amount, payment_date as "paymentDate", reference, note, status, created_at as "createdAt"
+           FROM invoice_payment_proofs 
+           WHERE tenant_id = $1 AND invoice_id = $2
+           ORDER BY created_at DESC`, [req.tenantId, invoice.id])
             ]);
             // Debug line items data
             console.log("RETRIEVED LINE ITEMS FOR EDIT:", {
@@ -914,6 +922,7 @@ class InvoiceController {
                 lineItems,
                 taxes,
                 attachments,
+                paymentProofs: proofsResult.rows,
                 // TODO: Add customer data when customer model is available
                 customer: invoice.customerSnapshot || null
             };
@@ -962,6 +971,23 @@ class InvoiceController {
                 sortOrder: sortOrder
             };
             const { invoices, total } = await (0, invoice_model_1.getInvoices)(req.tenantId, options);
+            if (invoices.length > 0) {
+                const invoiceIds = invoices.map(i => i.id);
+                const proofsResult = await dbpool_1.default.query(`SELECT invoice_id, id, file_url as file, file_name as "fileName", amount, payment_date as "paymentDate", reference, note, status, created_at as "createdAt"
+           FROM invoice_payment_proofs 
+           WHERE tenant_id = $1 AND invoice_id = ANY($2::text[])`, [req.tenantId, invoiceIds]);
+                const proofsByInvoice = new Map();
+                for (const row of proofsResult.rows) {
+                    if (!proofsByInvoice.has(row.invoice_id)) {
+                        proofsByInvoice.set(row.invoice_id, []);
+                    }
+                    const { invoice_id, ...proof } = row;
+                    proofsByInvoice.get(invoice_id).push(proof);
+                }
+                for (const invoice of invoices) {
+                    invoice.paymentProofs = proofsByInvoice.get(invoice.id) || [];
+                }
+            }
             const totalPages = Math.ceil(total / Number(limit));
             console.log(`Retrieved ${invoices.length} invoices out of ${total} total`);
             res.status(200).json({
@@ -1480,6 +1506,10 @@ class InvoiceController {
             }
             if (emailResult.success) {
                 console.log(`✅ Email sent successfully to ${recipientEmail}`);
+                // Update status to SENT if it was DRAFT, PENDING, or APPROVAL
+                if (['DRAFT', 'PENDING', 'APPROVAL'].includes(invoice.status)) {
+                    await (0, invoice_model_1.updateInvoiceStatus)(invoice.id, req.tenantId, invoice_model_1.InvoiceStatus.SENT, req.user.id);
+                }
                 res.status(200).json({
                     success: true,
                     message: 'Email sent successfully',
