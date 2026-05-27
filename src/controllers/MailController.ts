@@ -390,7 +390,8 @@ export class MailController {
                 attachments: mappedAttachments
             });
 
-            // Trigger background sync
+            // Trigger background sync (Commented out as requested)
+            /*
             try {
                 await MailSyncProducer.enqueueSync({
                     userId,
@@ -400,6 +401,7 @@ export class MailController {
             } catch (err) {
                 console.error("[MailController] Failed to queue sync after send:", err);
             }
+            */
 
             return res.json({
                 success: true,
@@ -897,10 +899,15 @@ export class MailController {
 
             // Convert internal R2 URLs to public URLs
             let finalUrl = url;
+            let extractedAccountId = process.env.CF_R2_ACCOUNT_ID || "a7b954c93286b9aecbd1cd369b491aa0";
+            
             if (url.includes('r2.cloudflarestorage.com')) {
-                // Convert internal R2 URL to public URL
-                const accountId = process.env.CF_R2_ACCOUNT_ID || "a7b954c93286b9aecbd1cd369b491aa0";
-                const internalEndpoint = `https://${accountId}.r2.cloudflarestorage.com`;
+                // Extract account ID dynamically from URL if available
+                const accountIdMatch = url.match(/https:\/\/([a-zA-Z0-9\-]+)\.r2\.cloudflarestorage\.com/);
+                if (accountIdMatch) {
+                    extractedAccountId = accountIdMatch[1];
+                }
+                const internalEndpoint = `https://${extractedAccountId}.r2.cloudflarestorage.com`;
                 const publicDomain = 'https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev';
                 
                 finalUrl = url.replace(internalEndpoint, publicDomain);
@@ -910,9 +917,23 @@ export class MailController {
             // Comprehensive URL analysis
             const r2Domain = 'pub-7f315f14b4bb4930bd64cae157207c92.r2.dev';
             const bucketName = process.env.CF_R2_BUCKET_NAME || 'zithspace';
-            const isProviderHosted = !finalUrl.includes(r2Domain) && 
-                                   !finalUrl.includes('r2.cloudflarestorage.com') &&
-                                   !finalUrl.includes(bucketName);
+            
+            // Extract public domain from CF_R2_PUBLIC_URL if present
+            let envPublicDomain = '';
+            if (process.env.CF_R2_PUBLIC_URL) {
+                try {
+                    envPublicDomain = new URL(process.env.CF_R2_PUBLIC_URL).hostname;
+                } catch (e) {
+                    // Ignore invalid URL
+                }
+            }
+
+            const isR2Url = finalUrl.includes(r2Domain) || 
+                            finalUrl.includes('r2.cloudflarestorage.com') ||
+                            finalUrl.includes(bucketName) ||
+                            (envPublicDomain && finalUrl.includes(envPublicDomain));
+                            
+            const isProviderHosted = !isR2Url;
             
             syncLogger.info(`[MailController] URL Analysis`, {
                 originalUrl: url,
@@ -920,7 +941,8 @@ export class MailController {
                 isProviderHosted,
                 containsR2Domain: finalUrl.includes(r2Domain),
                 containsBucketName: finalUrl.includes(bucketName),
-                containsR2Storage: finalUrl.includes('r2.cloudflarestorage.com')
+                containsR2Storage: finalUrl.includes('r2.cloudflarestorage.com'),
+                envPublicDomain
             });
             
             if (isProviderHosted) {
@@ -944,10 +966,9 @@ export class MailController {
             }
 
             // Use a local client with forcePathStyle: true for R2 security compatibility
-            const accountId = process.env.CF_R2_ACCOUNT_ID || "a7b954c93286b9aecbd1cd369b491aa0";
             const r2Client = new S3Client({
                 region: "us-east-1", 
-                endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+                endpoint: `https://${extractedAccountId}.r2.cloudflarestorage.com`,
                 credentials: {
                     accessKeyId: process.env.CF_R2_ACCESS_KEY_ID!,
                     secretAccessKey: process.env.CF_R2_SECRET_ACCESS_KEY!

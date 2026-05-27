@@ -485,6 +485,9 @@ const startServer = async () => {
         // Start timer auto-pause cron job
         const { startTimerAutoPauseJob } = require("@/jobs/timerAutoPause");
         startTimerAutoPauseJob();
+        // Start scheduled email sender cron job
+        const { startMailScheduledSendJob } = require("@/jobs/mailScheduledSend");
+        startMailScheduledSendJob();
     }
     catch (error) {
         console.error("Server startup failed:", error);

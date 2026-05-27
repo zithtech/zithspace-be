@@ -790,6 +790,36 @@ export class MailService {
                 const accessToken = await UnifiedAuthService.getValidAccessToken(account.user_id, account.provider as any);
                 const provider = MailProviderFactory.getProvider(account.provider);
 
+                // Process attachments for the scheduled mail (download buffers from R2)
+                const processedAttachments = [];
+                if (msg.mail_attachments && msg.mail_attachments.length > 0) {
+                    for (const att of msg.mail_attachments) {
+                        try {
+                            syncLogger.info(`[MailService] Downloading scheduled attachment: ${att.file_name}`);
+                            let buffer: Buffer;
+                            if (att.download_url.includes('r2.cloudflarestorage.com') || att.download_url.includes('pub-7f315f14b4bb4930bd64cae157207c92.r2.dev')) {
+                                buffer = await getFileBufferFromR2(att.download_url);
+                            } else {
+                                const response = await axios.get(att.download_url, { responseType: 'arraybuffer' });
+                                buffer = Buffer.from(response.data);
+                            }
+                            processedAttachments.push({
+                                filename: att.file_name,
+                                content: buffer,
+                                contentType: att.mime_type,
+                                size: att.size
+                            });
+                        } catch (err: any) {
+                            syncLogger.error(`[MailService] Failed to download scheduled attachment ${att.file_name}: ${err.message}`);
+                            processedAttachments.push({
+                                filename: att.file_name,
+                                contentType: att.mime_type,
+                                size: att.size
+                            });
+                        }
+                    }
+                }
+
                 await provider.sendMessage(accessToken, {
                     to: msg.to_emails as string[],
                     cc: msg.cc_emails as string[],
@@ -797,12 +827,7 @@ export class MailService {
                     subject: msg.subject,
                     body: msg.body_html || msg.body_text,
                     from: account.email,
-                    attachments: msg.mail_attachments.map((att: any) => ({
-                        filename: att.file_name,
-                        url: att.download_url,
-                        contentType: att.mime_type,
-                        size: att.size
-                    }))
+                    attachments: processedAttachments
                 });
 
                 // Update message as sent

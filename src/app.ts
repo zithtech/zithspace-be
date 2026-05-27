@@ -552,6 +552,10 @@ const startServer = async () => {
     const { startTimerAutoPauseJob } = require("@/jobs/timerAutoPause");
     startTimerAutoPauseJob();
 
+    // Start scheduled email sender cron job
+    const { startMailScheduledSendJob } = require("@/jobs/mailScheduledSend");
+    startMailScheduledSendJob();
+
   } catch (error) {
     console.error("Server startup failed:", error);
     process.exit(1);
