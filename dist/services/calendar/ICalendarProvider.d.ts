@@ -7,6 +7,8 @@ export interface CalendarEventData {
     isAllDay?: boolean;
     isRecurring?: boolean;
     rrule?: string;
+    calendar?: string;
+    sourceType?: string;
     attendees?: string[];
     generateMeeting?: boolean;
     recurringDays?: string[];

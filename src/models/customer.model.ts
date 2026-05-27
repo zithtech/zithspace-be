@@ -163,7 +163,7 @@ export class CustomerModel {
         INSERT INTO customers (
           id, tenant_id, company_name, email, phone, address, city, country,
           tax_id, gstin, pan, is_active, client_id, created_by, updated_by, created_at, updated_at
-        ) VALUES (uuid_generate_v4(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NOW(), NOW())
+        ) VALUES (uuid_generate_v4(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())
         RETURNING *
       `;
 
