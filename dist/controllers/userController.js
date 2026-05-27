@@ -8,6 +8,7 @@ const database_1 = require("@/config/database");
 const types_1 = require("@/types");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const r2Client_1 = require("@/utils/r2Client");
+const emailService_1 = require("@/utils/emailService");
 class UserController {
     /**
      * Get all members/users with filtering and pagination (tenant-aware)
@@ -293,6 +294,26 @@ class UserController {
                         }
                     });
                 }
+            }
+            // Enqueue welcome email to the newly created member via central queue-ready system
+            try {
+                const targetEmail = (userData.sendEmailTo === "personal" && newUser.personalEmail)
+                    ? newUser.personalEmail
+                    : newUser.workEmail;
+                await emailService_1.emailService.enqueueCentralizedMail({
+                    tenantId: req.tenantId,
+                    to: targetEmail,
+                    subject: "Welcome to our portal",
+                    templateType: "welcome",
+                    templateData: {
+                        name: newUser.name,
+                        email: newUser.workEmail, // Login email is always the work email
+                        password: userData.password, // send raw password to the user in welcome email
+                    },
+                });
+            }
+            catch (mailError) {
+                console.error("⚠️ Failed to enqueue welcome email for new member:", mailError);
             }
             res.status(201).json({
                 success: true,
