@@ -146,6 +146,23 @@ export class ClientPortalCredentialController {
       clientId,
       id: row.id,
     });
+
+    const portalUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/portal/login`;
+    try {
+      await emailService.sendPortalWelcomeEmail(
+        {
+          to: row.email,
+          displayName: row.display_name,
+          username: row.username,
+          temporaryPassword: tempPassword,
+          portalUrl,
+        },
+        tenantId,
+      );
+    } catch (err) {
+      console.error("❌ Failed to send client portal welcome email:", err);
+    }
+
     res.status(201).json({
       success: true,
       data: {

@@ -11,6 +11,7 @@ import {
 } from "@/types";
 import bcrypt from "bcryptjs";
 import { uploadImageToR2 } from "@/utils/r2Client";
+import { emailService } from "@/utils/emailService";
 
 export class UserController {
   /**
@@ -334,6 +335,27 @@ export class UserController {
             }
           });
         }
+      }
+
+      // Enqueue welcome email to the newly created member via central queue-ready system
+      try {
+        const targetEmail = (userData.sendEmailTo === "personal" && newUser.personalEmail)
+          ? newUser.personalEmail
+          : newUser.workEmail;
+
+        await emailService.enqueueCentralizedMail({
+          tenantId: req.tenantId,
+          to: targetEmail,
+          subject: "Welcome to our portal",
+          templateType: "welcome",
+          templateData: {
+            name: newUser.name,
+            email: newUser.workEmail, // Login email is always the work email
+            password: userData.password, // send raw password to the user in welcome email
+          },
+        });
+      } catch (mailError) {
+        console.error("⚠️ Failed to enqueue welcome email for new member:", mailError);
       }
 
       res.status(201).json({
