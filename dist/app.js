@@ -124,6 +124,7 @@ const candidateRoutes_1 = __importDefault(require("@/routes/candidateRoutes"));
 const companyLocationRoutes_1 = __importDefault(require("@/routes/companyLocationRoutes"));
 const openingManagementRoutes_1 = __importDefault(require("@/routes/openingManagementRoutes"));
 const RabbitMQService_1 = require("@/utils/RabbitMQService");
+//import { CentralMailWorker } from "@/workers/CentralMailWorker";
 const MailController_1 = require("@/controllers/MailController");
 const lead_routes_1 = __importDefault(require("@/routes/lead.routes"));
 const leadSettings_routes_1 = __importDefault(require("@/routes/leadSettings.routes"));
@@ -463,6 +464,7 @@ const startServer = async () => {
             // await rabbitMQService.connect();
             // await CalendarSyncWorker.start();
             // await MailSyncWorker.start();
+            // await CentralMailWorker.start();
             // console.log("🚀 RabbitMQ connected, Calendar & Mail Sync Workers started");
             console.log("🚀 RabbitMQ sync workers disabled (commented out)");
         }

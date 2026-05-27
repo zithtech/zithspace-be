@@ -34,8 +34,36 @@ interface LeaveRejectionEmailData {
 }
 export declare class EmailService {
     private transporter;
+    private systemTransporter;
     constructor();
     private initializeTransporter;
+    private initializeSystemTransporter;
+    resolveTenantMailBranding(tenantId?: string): Promise<{
+        companyName: string;
+        companyLogo: string;
+        replyToEmail: string;
+    }>;
+    sendCentralizedMail(options: {
+        tenantId?: string;
+        to: string;
+        subject: string;
+        html: string;
+        text?: string;
+        attachments?: any[];
+    }): Promise<boolean>;
+    enqueueCentralizedMail(payload: {
+        tenantId: string;
+        to: string;
+        subject: string;
+        templateType: 'welcome' | 'custom';
+        templateData: any;
+    }): Promise<boolean>;
+    sendNewMemberWelcomeEmail(data: {
+        to: string;
+        name: string;
+        email: string;
+        password?: string;
+    }, tenantId?: string): Promise<boolean>;
     private sendEmail;
     private formatLeaveType;
     private formatDate;
@@ -72,6 +100,28 @@ export declare class EmailService {
         year: number;
         excelBuffer: Buffer;
         fileName: string;
+    }, tenantId?: string): Promise<boolean>;
+    sendEscalationEmail(data: {
+        to: string;
+        userName: string;
+        escalationSubject: string;
+        description: string;
+        creatorName: string;
+        tickets?: {
+            ticketNumber: string;
+            title: string;
+        }[];
+        attachments?: {
+            filename: string;
+            content: Buffer;
+        }[];
+    }, tenantId?: string): Promise<boolean>;
+    sendPortalWelcomeEmail(data: {
+        to: string;
+        displayName: string | null;
+        username: string;
+        temporaryPassword: string;
+        portalUrl: string;
     }, tenantId?: string): Promise<boolean>;
     sendPortalPasswordResetEmail(data: {
         to: string;

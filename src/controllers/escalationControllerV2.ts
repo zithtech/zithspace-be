@@ -4,6 +4,8 @@ import { EscalationModel, CreateEscalationPayload, UpdateEscalationPayload } fro
 import { AuthRequest, ApiResponse } from "@/types";
 import { uploadEscalationDocumentToR2 } from "../utils/r2Client";
 import { nanoid } from "nanoid";
+import { emailService } from "@/utils/emailService";
+import { prisma } from "@/config/database";
 
 
 /**
@@ -85,6 +87,57 @@ export const createEscalation = async (req: AuthRequest, res: Response): Promise
         };
 
         const escalation = await EscalationModel.create(payload);
+
+        // Notify target users about the escalation asynchronously
+        if (targetMemberIds && targetMemberIds.length > 0) {
+            const creatorName = req.user?.name || req.user?.email || "An administrator";
+            
+            // Format base64 attachments to Buffers for nodemailer
+            const mailAttachments = (attachments && Array.isArray(attachments))
+                ? attachments.filter(att => att.fileBase64 && att.fileName).map(att => ({
+                    filename: att.fileName,
+                    content: Buffer.from(att.fileBase64, 'base64')
+                }))
+                : [];
+
+            // Query linked tickets and target users in parallel
+            Promise.all([
+                prisma.user.findMany({
+                    where: {
+                        id: { in: targetMemberIds },
+                        tenantId: tenantId
+                    },
+                    select: {
+                        name: true,
+                        workEmail: true
+                    }
+                }),
+                (ticketIds && ticketIds.length > 0)
+                    ? prisma.ticket.findMany({
+                        where: { id: { in: ticketIds } },
+                        select: { ticketNumber: true, title: true }
+                    })
+                    : Promise.resolve([])
+            ]).then(([targetUsers, linkedTickets]) => {
+                targetUsers.forEach(user => {
+                    if (user.workEmail) {
+                        emailService.sendEscalationEmail({
+                            to: user.workEmail,
+                            userName: user.name,
+                            escalationSubject: subject,
+                            description: description,
+                            creatorName: creatorName,
+                            tickets: linkedTickets,
+                            attachments: mailAttachments
+                        }, tenantId).catch(err => {
+                            console.error(`❌ Failed to send escalation email to ${user.workEmail}:`, err.message);
+                        });
+                    }
+                });
+            }).catch(err => {
+                console.error("❌ Failed to resolve escalation details for emails:", err.message);
+            });
+        }
 
         const response: ApiResponse = {
             success: true,

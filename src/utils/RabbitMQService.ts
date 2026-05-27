@@ -26,7 +26,21 @@ import {
     MAIL_SYNC_RETRY_QUEUE_15M,
     MAIL_SYNC_RETRY_RK_1M,
     MAIL_SYNC_RETRY_RK_5M,
-    MAIL_SYNC_RETRY_RK_15M
+    MAIL_SYNC_RETRY_RK_15M,
+    // CENTRAL_MAIL_EXCHANGE,
+    // CENTRAL_MAIL_QUEUE,
+    // CENTRAL_MAIL_ROUTING_KEY,
+    // CENTRAL_MAIL_DLX,
+    // CENTRAL_MAIL_DLQ,
+    // CENTRAL_MAIL_DL_ROUTING_KEY,
+    // CENTRAL_MAIL_RETRY_EXCHANGE,
+    // CENTRAL_MAIL_RETRY_QUEUE_1M,
+    // CENTRAL_MAIL_RETRY_QUEUE_5M,
+    // CENTRAL_MAIL_RETRY_QUEUE_15M,
+    // CENTRAL_MAIL_RETRY_RK_1M,
+    // CENTRAL_MAIL_RETRY_RK_5M,
+    // CENTRAL_MAIL_RETRY_RK_15M
+    
 } from '@/config/rabbitmq';
 
 class RabbitMQService {
@@ -183,6 +197,65 @@ class RabbitMQService {
 
         // 5. Finalize Main Queue Binding for Mail
         await this.channel.bindQueue(MAIL_SYNC_QUEUE, MAIL_SYNC_EXCHANGE, MAIL_SYNC_ROUTING_KEY);
+
+        // --- CENTRAL MAIL TOPOLOGY ---
+
+        // // 1. Establish Dead Letter Exchange and Queue for Central Mail
+        // await this.channel.assertExchange(CENTRAL_MAIL_DLX, 'direct', { durable: true });
+        // await this.channel.assertQueue(CENTRAL_MAIL_DLQ, { durable: true });
+        // await this.channel.bindQueue(CENTRAL_MAIL_DLQ, CENTRAL_MAIL_DLX, CENTRAL_MAIL_DL_ROUTING_KEY);
+
+        // // 2. Establish Primary Exchange for Central Mail
+        // await this.channel.assertExchange(CENTRAL_MAIL_EXCHANGE, 'topic', { durable: true });
+
+        // // 3. Establish Primary Queue for Central Mail including DLX fallback
+        // await this.channel.assertQueue(CENTRAL_MAIL_QUEUE, { 
+        //     durable: true,
+        //     arguments: {
+        //         'x-dead-letter-exchange': CENTRAL_MAIL_DLX,
+        //         'x-dead-letter-routing-key': CENTRAL_MAIL_DL_ROUTING_KEY
+        //     }
+        // });
+
+        // // 4. Establish Retry Topology for Central Mail (Dead Letter TTL Pattern)
+        // await this.channel.assertExchange(CENTRAL_MAIL_RETRY_EXCHANGE, 'direct', { durable: true });
+        // 
+        // // Central Mail Retry Queue 1 (1 minute)
+        // await this.channel.assertQueue(CENTRAL_MAIL_RETRY_QUEUE_1M, {
+        //     durable: true,
+        //     arguments: {
+        //         'x-message-ttl': 60000,
+        //         'x-dead-letter-exchange': CENTRAL_MAIL_EXCHANGE,
+        //         'x-dead-letter-routing-key': CENTRAL_MAIL_ROUTING_KEY
+        //     }
+        // });
+        // await this.channel.bindQueue(CENTRAL_MAIL_RETRY_QUEUE_1M, CENTRAL_MAIL_RETRY_EXCHANGE, CENTRAL_MAIL_RETRY_RK_1M);
+
+        // // Central Mail Retry Queue 2 (5 minutes)
+        // await this.channel.assertQueue(CENTRAL_MAIL_RETRY_QUEUE_5M, {
+        //     durable: true,
+        //     arguments: {
+        //         'x-message-ttl': 300000,
+        //         'x-dead-letter-exchange': CENTRAL_MAIL_EXCHANGE,
+        //         'x-dead-letter-routing-key': CENTRAL_MAIL_ROUTING_KEY
+        //     }
+        // });
+        // await this.channel.bindQueue(CENTRAL_MAIL_RETRY_QUEUE_5M, CENTRAL_MAIL_RETRY_EXCHANGE, CENTRAL_MAIL_RETRY_RK_5M);
+
+        // // Central Mail Retry Queue 3 (15 minutes)
+        // await this.channel.assertQueue(CENTRAL_MAIL_RETRY_QUEUE_15M, {
+        //     durable: true,
+        //     arguments: {
+        //         'x-message-ttl': 900000,
+        //         'x-dead-letter-exchange': CENTRAL_MAIL_EXCHANGE,
+        //         'x-dead-letter-routing-key': CENTRAL_MAIL_ROUTING_KEY
+        //     }
+        // });
+        // await this.channel.bindQueue(CENTRAL_MAIL_RETRY_QUEUE_15M, CENTRAL_MAIL_RETRY_EXCHANGE, CENTRAL_MAIL_RETRY_RK_15M);
+
+        // // 5. Finalize Main Queue Binding for Central Mail
+        // await this.channel.bindQueue(CENTRAL_MAIL_QUEUE, CENTRAL_MAIL_EXCHANGE, CENTRAL_MAIL_ROUTING_KEY);
+        //replyToEmail  String?  @map("reply_to_email")
     }
 
     private async handleDisconnect() {
