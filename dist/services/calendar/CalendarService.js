@@ -437,10 +437,16 @@ class CalendarService {
                         else {
                             // Master not found yet — fall back to a normal upsert
                             const mapped = this.mapToCalendarEvent(event, provider, userId, tenantId);
+                            const existingEvent = await database_1.prisma.calendarEvent.findFirst({
+                                where: { provider, externalId: mapped.externalId, tenantId }
+                            });
+                            const finalCalendar = existingEvent ? (existingEvent.calendar || mapped.calendar) : (mapped.calendar || "Personal Calendar");
+                            const finalSourceType = existingEvent ? (existingEvent.sourceType || mapped.sourceType) : (mapped.sourceType || "Manual");
+                            const upsertData = { ...mapped, calendar: finalCalendar, sourceType: finalSourceType };
                             await database_1.prisma.calendarEvent.upsert({
                                 where: { provider_externalId_tenantId: { provider, externalId: mapped.externalId, tenantId } },
-                                create: mapped,
-                                update: mapped,
+                                create: upsertData,
+                                update: upsertData,
                             });
                         }
                     }
@@ -449,10 +455,16 @@ class CalendarService {
             else {
                 // NORMAL EVENT OR MASTER SERIES — standard upsert
                 const mapped = this.mapToCalendarEvent(event, provider, userId, tenantId);
+                const existingEvent = await database_1.prisma.calendarEvent.findFirst({
+                    where: { provider, externalId: mapped.externalId, tenantId }
+                });
+                const finalCalendar = existingEvent ? (existingEvent.calendar || mapped.calendar) : (mapped.calendar || "Personal Calendar");
+                const finalSourceType = existingEvent ? (existingEvent.sourceType || mapped.sourceType) : (mapped.sourceType || "Manual");
+                const upsertData = { ...mapped, calendar: finalCalendar, sourceType: finalSourceType };
                 await database_1.prisma.calendarEvent.upsert({
                     where: { provider_externalId_tenantId: { provider, externalId: mapped.externalId, tenantId } },
-                    create: mapped,
-                    update: mapped,
+                    create: upsertData,
+                    update: upsertData,
                 });
                 // ZOHO EXCEPTION POPULATION: If Zoho has exdate, create dedicated exception records
                 if (provider === client_1.CalendarProvider.ZOHO && event.exdate && typeof event.exdate === 'string') {
@@ -594,6 +606,8 @@ class CalendarService {
         const meetingLink = externalEvent.onlineMeeting?.joinUrl || externalEvent.onlineMeetingUrl || externalEvent.hangoutLink;
         console.log("🟡 External event meeting link (direct property):", meetingLink);
         const mapped = this.mapToCalendarEvent(externalEvent, provider, userId, tenantId);
+        mapped.calendar = eventData.calendar || "Personal Calendar";
+        mapped.sourceType = eventData.sourceType || "Manual";
         console.log("🟡 Mapped event:", JSON.stringify(mapped, null, 2));
         console.log("🟡🟡🟡 BACKEND SERVICE - CREATE EVENT END 🟡🟡🟡");
         const result = await database_1.prisma.calendarEvent.upsert({
@@ -748,6 +762,8 @@ class CalendarService {
         const externalEvent = await providerImpl.updateEvent(accessToken, calendarId, targetExternalId, { ...eventData, existingMeetingLink: localEvent.meetingLink }, action, occurrenceDate);
         const masterRrule = this.extractTrueRrule(localEvent?.rrule || null);
         const mapped = this.mapToCalendarEvent(externalEvent, provider, userId, tenantId, masterRrule);
+        mapped.calendar = eventData.calendar || localEvent.calendar || "Personal Calendar";
+        mapped.sourceType = eventData.sourceType || localEvent.sourceType || "Manual";
         // EXTRA SECURITY: If the provider response is missing the meeting link,
         // but the record we sent was supposed to be a meeting, preserve the existing link.
         if (provider === client_1.CalendarProvider.MICROSOFT && !mapped.meetingLink) {
@@ -1536,8 +1552,10 @@ class CalendarService {
                             finalIsRecurring = true;
                         }
                     }
-                    const createData = { ...mapped, title: finalTitle, description: finalDescription, meetingLink: finalMeetingLink, startTime: finalStartTime, endTime: finalEndTime, rrule: finalRrule, isRecurring: finalIsRecurring };
-                    const updateData = { ...mapped, title: finalTitle, description: finalDescription, meetingLink: finalMeetingLink, startTime: finalStartTime, endTime: finalEndTime, rrule: finalRrule, isRecurring: finalIsRecurring };
+                    const finalCalendar = existingEvent ? (existingEvent.calendar || mapped.calendar) : (mapped.calendar || "Personal Calendar");
+                    const finalSourceType = existingEvent ? (existingEvent.sourceType || mapped.sourceType) : (mapped.sourceType || "Manual");
+                    const createData = { ...mapped, title: finalTitle, description: finalDescription, meetingLink: finalMeetingLink, startTime: finalStartTime, endTime: finalEndTime, rrule: finalRrule, isRecurring: finalIsRecurring, calendar: finalCalendar, sourceType: finalSourceType };
+                    const updateData = { ...mapped, title: finalTitle, description: finalDescription, meetingLink: finalMeetingLink, startTime: finalStartTime, endTime: finalEndTime, rrule: finalRrule, isRecurring: finalIsRecurring, calendar: finalCalendar, sourceType: finalSourceType };
                     await database_1.prisma.calendarEvent.upsert({
                         where: { provider_externalId_tenantId: { provider, externalId: mapped.externalId, tenantId } },
                         create: createData,
@@ -1615,10 +1633,16 @@ class CalendarService {
             }
         }
         // Fallback: master not found or couldn't resolve original date, upsert as standalone
+        const existingEvent = await database_1.prisma.calendarEvent.findUnique({
+            where: { provider_externalId_tenantId: { provider, externalId: mapped.externalId, tenantId } }
+        });
+        const finalCalendar = existingEvent ? (existingEvent.calendar || mapped.calendar) : (mapped.calendar || "Personal Calendar");
+        const finalSourceType = existingEvent ? (existingEvent.sourceType || mapped.sourceType) : (mapped.sourceType || "Manual");
+        const dataWithFields = { ...mapped, calendar: finalCalendar, sourceType: finalSourceType };
         await database_1.prisma.calendarEvent.upsert({
             where: { provider_externalId_tenantId: { provider, externalId: mapped.externalId, tenantId } },
-            create: mapped,
-            update: mapped
+            create: dataWithFields,
+            update: dataWithFields
         });
     }
     static async findMaster(provider, externalId, tenantId) {
