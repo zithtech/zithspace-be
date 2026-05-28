@@ -19,7 +19,7 @@ async function runTimerAutoPauseJob() {
     const runningEntries = await prisma.timeTrackingEntry.findMany({
       where: { status: 'RUNNING' },
       include: {
-        logs: { orderBy: { createdAt: 'desc' }, take: 1 },
+        logs: { orderBy: { createdAt: 'desc' } },
         user: { select: { name: true } }
       }
     });
@@ -29,20 +29,22 @@ async function runTimerAutoPauseJob() {
     let pausedCount = 0;
 
     for (const entry of runningEntries) {
-      const lastLog = entry.logs[0];
-      const lastActiveTime = lastLog ? lastLog.createdAt : entry.startTime;
+      // Find the latest log that started or resumed the timer to measure continuous runtime
+      const lastStartLog = entry.logs.find(log => log.action === 'STARTED' || log.action === 'RESUMED');
+      const lastActiveTime = lastStartLog ? lastStartLog.createdAt : entry.startTime;
       
       const currentSessionDuration = Math.floor((now.getTime() - lastActiveTime.getTime()) / 1000);
-      const totalDuration = (entry.duration || 0) + currentSessionDuration;
 
-      if (totalDuration > SIX_HOURS_IN_SECONDS) {
-        console.log(`[Timer Auto-Pause] !!! THRESHOLD EXCEEDED (${totalDuration}s > ${SIX_HOURS_IN_SECONDS}s). Pausing entry ${entry.id.slice(0, 8)} for ${entry.user?.name}...`);
-        
+      if (currentSessionDuration > SIX_HOURS_IN_SECONDS) {
+        console.log(`[Timer Auto-Pause] !!! THRESHOLD EXCEEDED (${currentSessionDuration}s > ${SIX_HOURS_IN_SECONDS}s). Pausing entry ${entry.id.slice(0, 8)} for ${entry.user?.name}...`);
+
+        const totalDuration = (entry.duration || 0) + currentSessionDuration;
+
         const updatedEntry = await prisma.timeTrackingEntry.update({
           where: { id: entry.id },
           data: {
             status: 'PAUSED',
-            duration: SIX_HOURS_IN_SECONDS,
+            duration: totalDuration,
             logs: {
               create: {
                 action: 'PAUSED',
@@ -50,6 +52,12 @@ async function runTimerAutoPauseJob() {
                 createdAt: now
               }
             }
+          },
+          include: {
+            project: { select: { id: true, name: true, code: true } },
+            ticket: { select: { id: true, title: true, ticketNumber: true, estimateHours: true } },
+            user: { select: { id: true, name: true, workEmail: true, avatarUrl: true } },
+            logs: { orderBy: { createdAt: 'desc' } }
           }
         });
 
