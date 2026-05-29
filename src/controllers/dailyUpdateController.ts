@@ -837,7 +837,7 @@ export class DailyUpdateController {
       }
 
       const { id } = req.params;
-      const { mood, totalHoursWorked, projectUpdates, generalNotes } = req.body;
+      const { mood, totalHoursWorked, projectUpdates, generalNotes, updateType } = req.body;
 
       const result = await tenantAwarePrisma.withTenant(
         req.tenantId,
@@ -922,6 +922,10 @@ export class DailyUpdateController {
                 generalNotes !== undefined
                   ? generalNotes
                   : existing.generalNotes,
+              updateType:
+                updateType !== undefined
+                  ? updateType
+                  : existing.updateType,
               updatedAt: new Date(),
             },
             include: {

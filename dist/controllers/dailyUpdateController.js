@@ -680,7 +680,7 @@ class DailyUpdateController {
                 return;
             }
             const { id } = req.params;
-            const { mood, totalHoursWorked, projectUpdates, generalNotes } = req.body;
+            const { mood, totalHoursWorked, projectUpdates, generalNotes, updateType } = req.body;
             const result = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
                 const existing = await client.statusUpdate.findFirst({
                     where: {
@@ -741,6 +741,9 @@ class DailyUpdateController {
                         generalNotes: generalNotes !== undefined
                             ? generalNotes
                             : existing.generalNotes,
+                        updateType: updateType !== undefined
+                            ? updateType
+                            : existing.updateType,
                         updatedAt: new Date(),
                     },
                     include: {
