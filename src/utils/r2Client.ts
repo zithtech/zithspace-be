@@ -714,6 +714,9 @@ export async function generatePresignedUrl(
       key = key.substring(BUCKET_NAME.length + 1);
     }
 
+    // Decode URI component to handle spaces and other special characters in key
+    key = decodeURIComponent(key);
+
     console.log(`[R2] Generating presigned URL for key: "${key}" (expires in ${expiresIn}s)`);
 
     const command = new GetObjectCommand({
@@ -746,6 +749,9 @@ export async function getFileBufferFromR2(fileUrl: string): Promise<Buffer> {
       console.log(`[R2] Stripping bucket name "${BUCKET_NAME}" from key: ${key}`);
       key = key.substring(BUCKET_NAME.length + 1);
     }
+
+    // Decode URI component to handle spaces and other special characters in key
+    key = decodeURIComponent(key);
 
     console.log(`[R2] Final key for fetch: "${key}" from URL: ${fileUrl}`);
 

@@ -524,6 +524,113 @@ export class CrStaffController {
     );
     res.status(201).json({ success: true, data: ins.rows[0] });
   }
+
+  /** PUT /api/change-requests/:id */
+  static async update(req: AuthRequest, res: Response): Promise<void> {
+    const tenantId = req.tenantId!;
+    const userId = req.user?.id || null;
+    const { id } = req.params;
+    const b = req.body || {};
+
+    const cur = await pool.query(
+      `SELECT client_id, status FROM portal_change_requests
+        WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId],
+    );
+    if (cur.rowCount === 0) {
+      res.status(404).json({ success: false, error: "Change request not found" });
+      return;
+    }
+    const currentStatus = cur.rows[0].status;
+    const clientId = cur.rows[0].client_id;
+
+    if (b.projectId) {
+      const ok = await pool.query(
+        `SELECT 1 FROM client_projects
+          WHERE tenant_id = $1 AND client_id = $2 AND project_id = $3`,
+        [tenantId, clientId, b.projectId],
+      );
+      if (ok.rowCount === 0) {
+        res.status(400).json({
+          success: false,
+          error: "projectId is not linked to this client",
+        });
+        return;
+      }
+    }
+
+    const sets: string[] = [];
+    const params: any[] = [];
+    const push = (col: string, val: any) => {
+      params.push(val);
+      sets.push(`${col} = $${params.length}`);
+    };
+
+    if (b.subject !== undefined) push("subject", b.subject.trim());
+    if (b.description !== undefined) push("description", b.description.trim());
+    if (b.priority !== undefined) push("priority", b.priority.toLowerCase());
+    if (b.projectId !== undefined) push("project_id", b.projectId || null);
+    if (b.status !== undefined) {
+      if (!VALID_STATUSES.has(b.status)) {
+        res.status(400).json({ success: false, error: "Invalid status" });
+        return;
+      }
+      push("status", b.status);
+    }
+    if (b.impactAnalysis !== undefined) push("impact_analysis", b.impactAnalysis || null);
+    if (b.estimatedHoursMin !== undefined) push("estimated_hours_min", b.estimatedHoursMin ?? null);
+    if (b.estimatedHoursMax !== undefined) push("estimated_hours_max", b.estimatedHoursMax ?? null);
+    if (b.estimatedCost !== undefined) push("estimated_cost", b.estimatedCost ?? null);
+    if (b.estimatedCurrency !== undefined) push("estimated_currency", b.estimatedCurrency || null);
+    if (b.targetDeliveryDate !== undefined) push("target_delivery_date", b.targetDeliveryDate || null);
+
+    if (sets.length === 0) {
+      res.status(400).json({ success: false, error: "Nothing to update" });
+      return;
+    }
+
+    params.push(id);
+    params.push(tenantId);
+    await pool.query(
+      `UPDATE portal_change_requests
+          SET ${sets.join(", ")}, last_activity_at = NOW(), updated_at = NOW()
+        WHERE id = $${params.length - 1} AND tenant_id = $${params.length}`,
+      params,
+    );
+
+    // Log a system event
+    await pool.query(
+      `INSERT INTO portal_cr_messages
+         (tenant_id, cr_id, author_type, staff_user_id, body, is_system_event, event_type)
+       VALUES ($1, $2, 'system', $3, 'Change request updated', TRUE, 'cr_updated')`,
+      [tenantId, id, userId],
+    );
+
+    res.json({ success: true });
+  }
+
+  /** DELETE /api/change-requests/:id */
+  static async delete(req: AuthRequest, res: Response): Promise<void> {
+    const tenantId = req.tenantId!;
+    const { id } = req.params;
+
+    const cur = await pool.query(
+      `SELECT 1 FROM portal_change_requests
+        WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId],
+    );
+    if (cur.rowCount === 0) {
+      res.status(404).json({ success: false, error: "Change request not found" });
+      return;
+    }
+
+    await pool.query(
+      `DELETE FROM portal_change_requests WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId],
+    );
+
+    res.json({ success: true });
+  }
 }
 
 export default CrStaffController;
