@@ -161,6 +161,23 @@ export class DocumentHubController {
         return;
       }
 
+      // Check if a document hub with the same name already exists
+      const existingHub = await prisma.documentHub.findFirst({
+        where: {
+          tenantId: req.tenantId,
+          name: name.trim(),
+          isDeleted: false,
+        },
+      });
+
+      if (existingHub) {
+        res.status(400).json({
+          success: false,
+          error: "This hub name already exists.",
+        } as ApiResponse);
+        return;
+      }
+
       // Validate project if provided
       if (projectId) {
         const project = await prisma.project.findFirst({
@@ -335,6 +352,9 @@ export class DocumentHubController {
           },
           project: {
             select: { id: true, name: true, code: true },
+          },
+          ticket: {
+            select: { id: true, title: true, status: true, ticketNumber: true },
           },
           createdBy: {
             select: { id: true, name: true, workEmail: true, avatarUrl: true },
