@@ -100,6 +100,13 @@ router.get(
   ClientPortalDocumentController.list,
 );
 
+router.get(
+  "/documents/:id/download",
+  resolveTenant,
+  authenticateClientPortal,
+  ClientPortalDocumentController.download,
+);
+
 router.post(
   "/documents",
   resolveTenant,

@@ -13,7 +13,7 @@ import {
     CreateEmployeeClientAllocationV2Data,
     UpdateEmployeeClientAllocationV2Data
 } from '@/types';
-import { uploadClientDocumentToR2, deleteFileFromR2 } from '@/utils/r2Client';
+import { uploadClientDocumentToR2, deleteFileFromR2, generatePresignedUrl, getFileBufferFromR2 } from '@/utils/r2Client';
 import { socketService } from '@/services/socketService';
 
 // Utility for auto-generating Client Code
@@ -165,9 +165,27 @@ export class ClientV2Controller {
                 (client as any).allocations = (client as any).allocations.filter((a: any) => a.employee !== null);
             }
 
-            // Enrich documents with the uploader's name (raw psql, no Prisma relation needed)
-            const documents = (client as any).documents as any[] | undefined;
+            // Enrich documents with the uploader's name (raw psql, no Prisma relation needed) and presigned URLs
+            let documents = (client as any).documents as any[] | undefined;
             if (documents && documents.length > 0) {
+                documents = await Promise.all(
+                    documents.map(async (d) => {
+                        let signedUrl = d.fileUrl;
+                        if (d.fileUrl && (d.fileUrl.includes('r2.cloudflarestorage.com') || d.fileUrl.includes('r2.dev') || (process.env.CF_R2_PUBLIC_URL && d.fileUrl.includes(process.env.CF_R2_PUBLIC_URL)))) {
+                            try {
+                                signedUrl = await generatePresignedUrl(d.fileUrl, 86400);
+                            } catch (err) {
+                                console.error(`Failed to generate presigned URL for document ${d.id}:`, err);
+                            }
+                        }
+                        return {
+                            ...d,
+                            fileUrl: signedUrl
+                        };
+                    })
+                );
+                (client as any).documents = documents;
+
                 const uploaderIds = Array.from(
                     new Set(documents.map((d) => d.uploadedById).filter((id): id is string => !!id))
                 );
@@ -417,7 +435,16 @@ export class ClientV2Controller {
                     clientId,
                     document: { id: document.id },
                 });
-                res.status(201).json({ success: true, data: document } as ApiResponse);
+                
+                const responseData = { ...document };
+                if (document.fileUrl && (document.fileUrl.includes('r2.cloudflarestorage.com') || document.fileUrl.includes('r2.dev') || (process.env.CF_R2_PUBLIC_URL && document.fileUrl.includes(process.env.CF_R2_PUBLIC_URL)))) {
+                    try {
+                        responseData.fileUrl = await generatePresignedUrl(document.fileUrl, 86400);
+                    } catch (err) {
+                        console.error(`Failed to generate presigned URL for document ${document.id}:`, err);
+                    }
+                }
+                res.status(201).json({ success: true, data: responseData } as ApiResponse);
             });
         } catch (error: any) {
             console.error('Add document error:', error);
@@ -537,6 +564,16 @@ export class ClientV2Controller {
                 clientId,
                 id: row.id,
             });
+
+            let responseFileUrl = row.file_url;
+            if (row.file_url && (row.file_url.includes('r2.cloudflarestorage.com') || row.file_url.includes('r2.dev') || (process.env.CF_R2_PUBLIC_URL && row.file_url.includes(process.env.CF_R2_PUBLIC_URL)))) {
+                try {
+                    responseFileUrl = await generatePresignedUrl(row.file_url, 86400);
+                } catch (err) {
+                    console.error(`Failed to generate presigned URL for document ${row.id}:`, err);
+                }
+            }
+
             res.json({
                 success: true,
                 data: {
@@ -544,7 +581,7 @@ export class ClientV2Controller {
                     category: row.category,
                     documentType: row.document_type,
                     fileName: row.file_name,
-                    fileUrl: row.file_url,
+                    fileUrl: responseFileUrl,
                     version: row.version,
                     tags: row.tags || [],
                     projectId: row.project_id,
@@ -592,12 +629,7 @@ export class ClientV2Controller {
                 return;
             }
 
-            const axios = require('axios');
-            const responseStream = await axios({
-                method: 'get',
-                url: document.fileUrl,
-                responseType: 'stream'
-            });
+            const fileBuffer = await getFileBufferFromR2(document.fileUrl);
 
             const fileExtension = document.fileName.split('.').pop()?.toLowerCase();
             let contentType = 'application/octet-stream';
@@ -607,7 +639,7 @@ export class ClientV2Controller {
             res.setHeader('Content-Type', contentType);
             res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(document.fileName)}"`);
             
-            responseStream.data.pipe(res);
+            res.send(fileBuffer);
 
         } catch (error: any) {
             console.error('Download document error:', error);

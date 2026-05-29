@@ -562,6 +562,8 @@ async function generatePresignedUrl(fileUrl, expiresIn = 86400) {
             console.log(`[R2] Stripping bucket name "${exports.BUCKET_NAME}" from presigned key: ${key}`);
             key = key.substring(exports.BUCKET_NAME.length + 1);
         }
+        // Decode URI component to handle spaces and other special characters in key
+        key = decodeURIComponent(key);
         console.log(`[R2] Generating presigned URL for key: "${key}" (expires in ${expiresIn}s)`);
         const command = new client_s3_1.GetObjectCommand({
             Bucket: exports.BUCKET_NAME,
@@ -591,6 +593,8 @@ async function getFileBufferFromR2(fileUrl) {
             console.log(`[R2] Stripping bucket name "${exports.BUCKET_NAME}" from key: ${key}`);
             key = key.substring(exports.BUCKET_NAME.length + 1);
         }
+        // Decode URI component to handle spaces and other special characters in key
+        key = decodeURIComponent(key);
         console.log(`[R2] Final key for fetch: "${key}" from URL: ${fileUrl}`);
         const command = new client_s3_1.GetObjectCommand({
             Bucket: exports.BUCKET_NAME,

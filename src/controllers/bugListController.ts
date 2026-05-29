@@ -1226,18 +1226,18 @@ export class BugListController {
       // Default scope: exclude trash/archived unless explicitly requested
       if (scope === "trash") {
         if (sheetId) {
-          push("b.sheet_id = $$", sheetId);
+          push("b.sheet_id = $$ AND b.status = 'trash'", sheetId);
         } else if (folderId) {
-          push("b.folder_id = $$", folderId);
+          push("b.folder_id = $$ AND b.status = 'trash'", folderId);
         } else {
           // Show trashed bugs ONLY if their sheet/folder isn't trashed
           push("b.status = $$ AND NOT EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = b.sheet_id AND s.status = 'trash') AND NOT EXISTS (SELECT 1 FROM bug_folders f WHERE f.id = b.folder_id AND f.status = 'trash')", "trash");
         }
       } else if (scope === "archived") {
         if (sheetId) {
-          push("b.sheet_id = $$", sheetId);
+          push("b.sheet_id = $$ AND b.status = 'archived'", sheetId);
         } else if (folderId) {
-          push("b.folder_id = $$", folderId);
+          push("b.folder_id = $$ AND b.status = 'archived'", folderId);
         } else {
           // Standard archived view: exclude if parent is archived/trashed
           conditions.push("(b.status = 'archived' AND NOT EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = b.sheet_id AND s.status IN ('archived', 'trash')) AND NOT EXISTS (SELECT 1 FROM bug_folders f WHERE f.id = b.folder_id AND f.status IN ('archived', 'trash')))");
