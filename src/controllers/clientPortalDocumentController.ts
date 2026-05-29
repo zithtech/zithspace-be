@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import pool from "@/config/dbpool";
-import { uploadClientDocumentToR2, deleteFileFromR2 } from "@/utils/r2Client";
+import { uploadClientDocumentToR2, deleteFileFromR2, generatePresignedUrl, getFileBufferFromR2 } from "@/utils/r2Client";
 import { socketService } from "@/services/socketService";
 
 /**
@@ -101,27 +101,39 @@ export class ClientPortalDocumentController {
       params,
     );
 
-    const docs = r.rows.map((row) => ({
-      id: row.id,
-      category: row.category,
-      documentType: row.document_type,
-      fileName: row.file_name,
-      fileUrl: row.file_url,
-      version: row.version,
-      tags: row.tags || [],
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-      projectId: row.project_id,
-      projectName: row.project_name,
-      projectCode: row.project_code,
-      uploadedByName: row.uploaded_by_name,
-      uploadedByPortal: row.uploaded_by_portal === true,
-      firstViewedAt: row.first_viewed_at,
-      lastViewedAt: row.last_viewed_at,
-      viewCount: row.view_count || 0,
-      downloadCount: row.download_count || 0,
-      lastEvent: row.last_event || null,
-    }));
+    const docs = await Promise.all(
+      r.rows.map(async (row) => {
+        let signedUrl = row.file_url;
+        if (row.file_url && (row.file_url.includes('r2.cloudflarestorage.com') || row.file_url.includes('r2.dev') || (process.env.CF_R2_PUBLIC_URL && row.file_url.includes(process.env.CF_R2_PUBLIC_URL)))) {
+          try {
+            signedUrl = await generatePresignedUrl(row.file_url, 86400);
+          } catch (err) {
+            console.error(`Failed to generate presigned URL for document ${row.id}:`, err);
+          }
+        }
+        return {
+          id: row.id,
+          category: row.category,
+          documentType: row.document_type,
+          fileName: row.file_name,
+          fileUrl: signedUrl,
+          version: row.version,
+          tags: row.tags || [],
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          projectId: row.project_id,
+          projectName: row.project_name,
+          projectCode: row.project_code,
+          uploadedByName: row.uploaded_by_name,
+          uploadedByPortal: row.uploaded_by_portal === true,
+          firstViewedAt: row.first_viewed_at,
+          lastViewedAt: row.last_viewed_at,
+          viewCount: row.view_count || 0,
+          downloadCount: row.download_count || 0,
+          lastEvent: row.last_event || null,
+        };
+      })
+    );
 
     // Build category groups for the FE (preserves canonical ordering)
     const groupsMap = new Map<string, typeof docs>();
@@ -315,6 +327,15 @@ export class ClientPortalDocumentController {
       { clientId: ctx.clientId, document: { id: row.id } },
     );
 
+    let responseFileUrl = row.file_url;
+    if (row.file_url && (row.file_url.includes('r2.cloudflarestorage.com') || row.file_url.includes('r2.dev') || (process.env.CF_R2_PUBLIC_URL && row.file_url.includes(process.env.CF_R2_PUBLIC_URL)))) {
+      try {
+        responseFileUrl = await generatePresignedUrl(row.file_url, 86400);
+      } catch (err) {
+        console.error(`Failed to generate presigned URL for document ${row.id}:`, err);
+      }
+    }
+
     res.status(201).json({
       success: true,
       data: {
@@ -322,7 +343,7 @@ export class ClientPortalDocumentController {
         category: row.category,
         documentType: row.document_type,
         fileName: row.file_name,
-        fileUrl: row.file_url,
+        fileUrl: responseFileUrl,
         version: row.version,
         tags: row.tags || [],
         createdAt: row.created_at,
@@ -447,6 +468,15 @@ export class ClientPortalDocumentController {
       { clientId: ctx.clientId, id: row.id },
     );
 
+    let responseFileUrl = row.file_url;
+    if (row.file_url && (row.file_url.includes('r2.cloudflarestorage.com') || row.file_url.includes('r2.dev') || (process.env.CF_R2_PUBLIC_URL && row.file_url.includes(process.env.CF_R2_PUBLIC_URL)))) {
+      try {
+        responseFileUrl = await generatePresignedUrl(row.file_url, 86400);
+      } catch (err) {
+        console.error(`Failed to generate presigned URL for document ${row.id}:`, err);
+      }
+    }
+
     res.json({
       success: true,
       data: {
@@ -454,7 +484,7 @@ export class ClientPortalDocumentController {
         category: row.category,
         documentType: row.document_type,
         fileName: row.file_name,
-        fileUrl: row.file_url,
+        fileUrl: responseFileUrl,
         version: row.version,
         tags: row.tags || [],
         projectId: row.project_id,
@@ -559,6 +589,63 @@ export class ClientPortalDocumentController {
     );
 
     res.status(204).end();
+  }
+
+  /**
+   * GET /api/client-portal/documents/:id/download
+   * Securely download document using R2 buffer fetch.
+   */
+  static async download(req: Request, res: Response): Promise<void> {
+    try {
+      const ctx = req.portalUser;
+      if (!ctx) {
+        res.status(401).json({ success: false, error: "Not authenticated" });
+        return;
+      }
+
+      const { id } = req.params;
+
+      const r = await pool.query(
+        `SELECT file_name, file_url FROM client_documents_v2
+          WHERE id = $1 AND tenant_id = $2 AND client_id = $3`,
+        [id, ctx.tenantId, ctx.clientId],
+      );
+
+      if (r.rowCount === 0) {
+        res.status(404).json({ success: false, error: "Document not found" });
+        return;
+      }
+
+      const row = r.rows[0];
+      if (!row.file_url) {
+        res.status(400).json({ success: false, error: "Document has no file URL" });
+        return;
+      }
+
+      const isR2Url = row.file_url.includes('r2.cloudflarestorage.com') || 
+                      row.file_url.includes('r2.dev') ||
+                      (process.env.CF_R2_PUBLIC_URL && row.file_url.includes(process.env.CF_R2_PUBLIC_URL));
+
+      if (!isR2Url) {
+        res.redirect(row.file_url);
+        return;
+      }
+
+      const fileBuffer = await getFileBufferFromR2(row.file_url);
+
+      const fileExtension = row.file_name.split('.').pop()?.toLowerCase();
+      let contentType = 'application/octet-stream';
+      if (fileExtension === 'pdf') contentType = 'application/pdf';
+      else if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(fileExtension || '')) contentType = `image/${fileExtension}`;
+
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(row.file_name)}"`);
+      
+      res.send(fileBuffer);
+    } catch (error: any) {
+      console.error('Portal download document error:', error);
+      res.status(500).json({ success: false, error: 'Failed to download document' });
+    }
   }
 }
 
