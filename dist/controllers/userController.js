@@ -186,7 +186,7 @@ class UserController {
             if (!userData.name ||
                 !userData.workEmail ||
                 !userData.password ||
-                !userData.positionId) {
+                (!userData.positionId && !userData.positionTitle)) {
                 res.status(400).json({
                     success: false,
                     error: "Name, work email, password, and position are required",
@@ -220,6 +220,11 @@ class UserController {
                     throw new types_1.ValidationError("Reports to user not found in this tenant");
                 }
             }
+            // Resolve position
+            let positionId = userData.positionId;
+            if (!positionId && userData.positionTitle) {
+                positionId = await UserController.getOrCreateCustomPosition(req.tenantId, req.user.id, userData.positionTitle);
+            }
             // Hash password
             const passwordHash = await bcryptjs_1.default.hash(userData.password, 12);
             // Validate assigned shift if provided
@@ -245,7 +250,7 @@ class UserController {
                     phone: userData.phone,
                     passwordHash,
                     role: userData.role || "user",
-                    positionId: userData.positionId,
+                    positionId: positionId,
                     reportsToId: userData.reportsToId,
                     dateOfBirth: userData.dateOfBirth
                         ? new Date(userData.dateOfBirth)
@@ -411,8 +416,17 @@ class UserController {
                 updates.workEmail = updates.workEmail.toLowerCase();
             if (updates.personalEmail)
                 updates.personalEmail = updates.personalEmail.toLowerCase();
+            // Resolve position for update
+            let positionId = updates.positionId;
+            if (!positionId && updates.positionTitle) {
+                positionId = await UserController.getOrCreateCustomPosition(req.tenantId, req.user.id, updates.positionTitle);
+            }
             // Update shift assignment tracking if shift is being changed
             const updateData = { ...updates, updatedAt: new Date() };
+            if (positionId) {
+                updateData.positionId = positionId;
+            }
+            delete updateData.positionTitle;
             if (updates.assignedShiftId &&
                 updates.assignedShiftId !== existingUser.assignedShiftId) {
                 updateData.shiftAssignedById = req.user.id;
@@ -1081,6 +1095,103 @@ class UserController {
                 error: "Failed to assign shift",
             });
         }
+    }
+    /**
+     * Helper to resolve or create a custom position title using dedicated fallback default department, sub-department, and grade.
+     */
+    static async getOrCreateCustomPosition(tenantId, userId, positionTitle) {
+        const title = positionTitle.trim();
+        // Check if position already exists in tenant (case-insensitive title match)
+        const existingPos = await database_1.prisma.position.findFirst({
+            where: {
+                tenantId,
+                title: { equals: title, mode: "insensitive" }
+            }
+        });
+        if (existingPos) {
+            return existingPos.id;
+        }
+        // Find or create default "Uncategorized" department
+        let defaultDept = await database_1.prisma.department.findFirst({
+            where: {
+                tenantId,
+                code: "DEPT-UNCATEGORIZED"
+            }
+        });
+        if (!defaultDept) {
+            defaultDept = await database_1.prisma.department.create({
+                data: {
+                    tenantId,
+                    code: "DEPT-UNCATEGORIZED",
+                    name: "Uncategorized",
+                    createdById: userId,
+                    isActive: true
+                }
+            });
+        }
+        // Find or create default "General" sub-department under "Uncategorized" department
+        let defaultSubDept = await database_1.prisma.subDepartment.findFirst({
+            where: {
+                tenantId,
+                code: "SUB-GENERAL"
+            }
+        });
+        if (!defaultSubDept) {
+            defaultSubDept = await database_1.prisma.subDepartment.create({
+                data: {
+                    tenantId,
+                    parentDepartmentId: defaultDept.id,
+                    code: "SUB-GENERAL",
+                    name: "General",
+                    createdById: userId,
+                    isActive: true
+                }
+            });
+        }
+        // Find or create default "General" grade
+        let defaultGrade = await database_1.prisma.grade.findFirst({
+            where: {
+                tenantId,
+                OR: [
+                    { code: "G" },
+                    { code: "GRADE-GENERAL" }
+                ]
+            }
+        });
+        if (!defaultGrade) {
+            defaultGrade = await database_1.prisma.grade.create({
+                data: {
+                    tenantId,
+                    code: "G",
+                    name: "General",
+                    levelOrder: 999, // default lowest or general level
+                    createdById: userId,
+                    isActive: true
+                }
+            });
+        }
+        else if (defaultGrade.code === "GRADE-GENERAL") {
+            defaultGrade = await database_1.prisma.grade.update({
+                where: { id: defaultGrade.id },
+                data: { code: "G" }
+            });
+        }
+        // Generate unique code for custom position
+        const code = `POS-${title.replace(/[^a-zA-Z0-9]/g, "").substring(0, 10).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
+        const newPos = await database_1.prisma.position.create({
+            data: {
+                tenantId,
+                code,
+                title,
+                departmentId: defaultDept.id,
+                subDepartmentId: defaultSubDept.id,
+                gradeId: defaultGrade.id,
+                createdById: userId,
+                updatedById: userId,
+                isActive: true
+            }
+        });
+        return newPos.id;
     }
 }
 exports.UserController = UserController;

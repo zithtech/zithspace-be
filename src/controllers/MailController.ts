@@ -996,13 +996,17 @@ export class MailController {
                 mode
             });
 
+            const asciiFilename = filenameStr.replace(/[^\x20-\x7E]/g, '_');
+            const encodedFilename = encodeURIComponent(filenameStr);
+            const contentDispositionVal = mode === 'inline'
+                ? `inline; filename="${asciiFilename}"; filename*=UTF-8''${encodedFilename}`
+                : `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodedFilename}`;
+
             // Fetch from R2 using S3 Client directly with extra response headers requested from R2
             const command = new GetObjectCommand({
                 Bucket: bucketName,
                 Key: key,
-                ResponseContentDisposition: mode === 'inline' 
-                    ? `inline; filename="${filenameStr}"` 
-                    : `attachment; filename="${filenameStr}"`,
+                ResponseContentDisposition: contentDispositionVal,
                 ResponseContentType: resolvedContentType
             });
 
@@ -1016,9 +1020,7 @@ export class MailController {
 
             // Set final headers for the browser
             res.setHeader('Content-Type', resolvedContentType);
-            res.setHeader('Content-Disposition', mode === 'inline' 
-                ? `inline; filename="${filenameStr}"` 
-                : `attachment; filename="${filenameStr}"`);
+            res.setHeader('Content-Disposition', contentDispositionVal);
 
             // Pipe the body stream to the response
             if (s3Response.Body instanceof Readable) {
