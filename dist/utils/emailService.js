@@ -206,7 +206,7 @@ class EmailService {
     }
     async sendNewMemberWelcomeEmail(data, tenantId) {
         const branding = await this.resolveTenantMailBranding(tenantId);
-        const loginUrl = "https://zithmi.zithspace.com/login";
+        const loginUrl = `https://zithmi.zithspace.com/login?email=${encodeURIComponent(data.email)}&password=${encodeURIComponent(data.password || '')}`;
         const logoHtml = branding.companyLogo
             ? `<img class="logo" src="${branding.companyLogo}" alt="${branding.companyName}" />`
             : "";
@@ -244,9 +244,28 @@ class EmailService {
               <h2 class="company-name">${branding.companyName}</h2>
             </div>
             <div class="content">
-              <h1 class="title">Welcome aboard!</h1>
-              <p class="welcome-text">Hi <strong>${data.name}</strong>,<br><br>You have been added as a member to <strong>${branding.companyName}</strong>. Below are your credentials to log in to the portal:</p>
+              <h1 class="title">Welcome To Our ${branding.companyName}</h1>
+              <p class="welcome-text">We are delighted to welcome <strong>${data.name}</strong> to our <strong>${branding.companyName}</strong> family. We look forward to the valuable contributions, fresh ideas, and positive impact <strong>${data.name}</strong> will bring to the organization. Wishing them a successful and exciting journey with us!</p>
               
+              <div style="text-align: center; margin: 24px 0 32px;">
+                <table cellpadding="0" cellspacing="0" style="border: none; border-collapse: collapse; margin: 0 auto; background-color: #e6f4ea; border-radius: 100px;">
+                  <tr>
+                    <td style="padding: 6px 0 6px 14px; vertical-align: middle;">
+                      <table cellpadding="0" cellspacing="0" style="border: none; border-collapse: collapse; margin: 0; background-color: #137333; border-radius: 50%;">
+                        <tr>
+                          <td style="padding: 0; width: 16px; height: 16px; text-align: center; vertical-align: middle; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 11px; font-weight: bold; color: #ffffff; line-height: 16px;">
+                            ✓
+                          </td>
+                        </tr>
+                      </table>
+                    </td>
+                    <td style="padding: 6px 16px 6px 6px; vertical-align: middle; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 13.5px; font-weight: 500; color: #137333; line-height: 1; white-space: nowrap;">
+                      Verified Member
+                    </td>
+                  </tr>
+                </table>
+              </div>
+
               <div class="credentials-box">
                 <div class="cred-row">
                   <span class="cred-label">Login Email:</span>
@@ -272,20 +291,16 @@ class EmailService {
        </body>
        </html>
      `;
-        const text = `
-       Welcome to ${branding.companyName}!
-       
-       Hi ${data.name},
-       
-       You have been added as a member to ${branding.companyName}.
-       
-       Login Email: ${data.email}
-       ${data.password ? `Password: ${data.password}` : ''}
-       
-       Access your workspace here: ${loginUrl}
-       
-       This is an automated mail, please do not reply.
-     `;
+        const text = `Welcome to Our ${branding.companyName}!
+
+We are delighted to welcome ${data.name} to our ${branding.companyName} family. We look forward to the valuable contributions, fresh ideas, and positive impact ${data.name} will bring to the organization. Wishing them a successful and exciting journey with us!
+
+Login Email: ${data.email}
+${data.password ? `Password: ${data.password}` : ''}
+
+Access your workspace here: ${loginUrl}
+
+This is an automated mail, please do not reply.`;
         return this.sendCentralizedMail({
             tenantId,
             to: data.to,
@@ -716,84 +731,360 @@ If you have any questions or concerns, please contact your manager or HR departm
     async sendEscalationEmail(data, tenantId) {
         const branding = await this.resolveTenantMailBranding(tenantId);
         const subject = `[Escalation Raised] ${data.escalationSubject}`;
+        const escalation = data.escalation || {};
+        const escalationId = escalation.id ? escalation.id.slice(0, 8).toUpperCase() : "N/A";
+        const formatRaisedDate = (dateVal) => {
+            if (!dateVal)
+                return "N/A";
+            let dateObj;
+            try {
+                if (dateVal instanceof Date) {
+                    // Since PostgreSQL timestamp columns are WITHOUT TIME ZONE,
+                    // the pg client parses them as local time (e.g. 10:35 local).
+                    // But they are actually stored in UTC. E.g. 10:35 UTC.
+                    // We construct a new Date object treating the local components of the date as UTC.
+                    const y = dateVal.getFullYear();
+                    const m = String(dateVal.getMonth() + 1).padStart(2, '0');
+                    const d = String(dateVal.getDate()).padStart(2, '0');
+                    const h = String(dateVal.getHours()).padStart(2, '0');
+                    const min = String(dateVal.getMinutes()).padStart(2, '0');
+                    const s = String(dateVal.getSeconds()).padStart(2, '0');
+                    dateObj = new Date(`${y}-${m}-${d}T${h}:${min}:${s}Z`);
+                }
+                else {
+                    // If it is a string, append 'Z' if it doesn't have a timezone indicator to treat it as UTC
+                    let dateStr = String(dateVal);
+                    if (!dateStr.endsWith('Z') && !dateStr.includes('+') && !dateStr.includes('GMT')) {
+                        dateStr = dateStr.includes('T') ? `${dateStr}Z` : `${dateStr.replace(' ', 'T')}Z`;
+                    }
+                    dateObj = new Date(dateStr);
+                }
+                const options = {
+                    timeZone: 'Asia/Kolkata',
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false
+                };
+                const formatter = new Intl.DateTimeFormat('en-US', options);
+                const parts = formatter.formatToParts(dateObj);
+                const findVal = (type) => parts.find(p => p.type === type)?.value || '';
+                const month = findVal('month');
+                const day = findVal('day');
+                const year = findVal('year');
+                const hour = findVal('hour').padStart(2, '0');
+                const minute = findVal('minute').padStart(2, '0');
+                return `${month} ${day}, ${year} at ${hour}:${minute}`;
+            }
+            catch (e) {
+                console.error("❌ Error formatting date in formatRaisedDate:", e);
+                const dObj = new Date(dateVal);
+                const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                const hour = String(dObj.getHours()).padStart(2, "0");
+                const minute = String(dObj.getMinutes()).padStart(2, "0");
+                return `${monthNames[dObj.getMonth()]} ${dObj.getDate()}, ${dObj.getFullYear()} at ${hour}:${minute}`;
+            }
+        };
+        const raisedOnStr = formatRaisedDate(escalation.created_at || new Date());
+        const resolveCssVariableColor = (colorStr) => {
+            if (!colorStr)
+                return "#dc2626";
+            const cleanColor = colorStr.trim().toLowerCase();
+            if (cleanColor.includes('var(')) {
+                const match = cleanColor.match(/var\(([^)]+)\)/);
+                if (match && match[1]) {
+                    const varName = match[1].trim();
+                    const variableMap = {
+                        '--premium-blue': '#3b82f6',
+                        '--premium-purple': '#8b5cf6',
+                        '--premium-red': '#ef4444',
+                        '--premium-orange': '#f97316',
+                        '--premium-green': '#10b981',
+                        '--premium-bg-light': '#ffffff',
+                        '--premium-bg-dark': '#0b0f1a'
+                    };
+                    return variableMap[varName] || '#dc2626';
+                }
+            }
+            return colorStr;
+        };
+        const isLightColor = (hex) => {
+            if (!hex || hex === 'transparent' || hex === 'white')
+                return true;
+            const cleanHex = hex.replace('#', '');
+            if (cleanHex.length !== 3 && cleanHex.length !== 6)
+                return false;
+            const r = parseInt(cleanHex.length === 3 ? cleanHex[0] + cleanHex[0] : cleanHex.substring(0, 2), 16);
+            const g = parseInt(cleanHex.length === 3 ? cleanHex[1] + cleanHex[1] : cleanHex.substring(2, 4), 16);
+            const b = parseInt(cleanHex.length === 3 ? cleanHex[2] + cleanHex[2] : cleanHex.substring(4, 6), 16);
+            const hsp = Math.sqrt(0.299 * (r * r) +
+                0.587 * (g * g) +
+                0.114 * (b * b));
+            return hsp > 200;
+        };
+        const priorityName = escalation.priority_name || "Medium";
+        let priorityColor = resolveCssVariableColor(escalation.priority_color || "#dc2626");
+        // Force red color (#dc2626) for high/critical priority levels or if name is skyfall/high/p0/p1
+        const lowerPriorityName = priorityName.toLowerCase();
+        if (lowerPriorityName.includes('high') ||
+            lowerPriorityName.includes('skyfall') ||
+            lowerPriorityName.includes('critical') ||
+            lowerPriorityName.includes('p0') ||
+            lowerPriorityName.includes('p1') ||
+            isLightColor(priorityColor)) {
+            priorityColor = "#dc2626";
+        }
+        const targetMembersStr = escalation.targetMembers && escalation.targetMembers.length > 0
+            ? escalation.targetMembers.map((m) => m.user?.name || m.name || "").filter(Boolean).join(", ")
+            : "N/A";
+        const creatorName = escalation.createdBy?.name || data.creatorName || "N/A";
+        const tickets = escalation.tickets || data.tickets || [];
+        const attachments = data.attachments || [];
         const logoHtml = branding.companyLogo
-            ? `<img class="logo" src="${branding.companyLogo}" alt="${branding.companyName}" style="max-height: 50px; margin-bottom: 16px;" />`
+            ? `<img class="logo" src="${branding.companyLogo}" alt="${branding.companyName}" style="max-height: 40px; border-radius: 6px; vertical-align: middle;" />`
             : "";
         let ticketsHtml = "";
         let ticketsText = "";
-        if (data.tickets && data.tickets.length > 0) {
+        if (tickets && tickets.length > 0) {
             ticketsHtml = `
-        <div style="margin-top: 16px;">
-          <span style="font-size: 11px; font-weight: 700; color: #ef4444; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 6px;">Linked Tickets</span>
-          <div style="display: flex; flex-direction: column; gap: 8px;">
-            ${data.tickets.map(t => `
-              <div style="font-size: 13.5px; color: #334155; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px; display: inline-block;">
-                <strong style="color: #ef4444; margin-right: 6px;">${t.ticketNumber}</strong> ${t.title}
+        <div class="divider"></div>
+        <div style="margin-bottom: 6px; font-size: 13px; font-weight: 600; color: #64748b; line-height: 1.2;">
+          <span style="display: inline-block; vertical-align: middle; font-size: 14px; width: 21px; text-align: left;">🎟️</span><span style="display: inline-block; vertical-align: middle;">Linked Tickets</span>
+        </div>
+        <div style="margin-top: 8px; padding-left: 21px;">
+          ${tickets.map(t => {
+                const ticketNum = t.ticket?.ticketNumber || t.ticketNumber || "";
+                const ticketTitle = t.ticket?.title || t.title || "";
+                return `
+              <div class="ticket-row">
+                <strong class="ticket-num">${ticketNum}</strong> ${ticketTitle}
               </div>
-            `).join("")}
-          </div>
+            `;
+            }).join("")}
         </div>
       `;
-            ticketsText = `\nLinked Tickets:\n` + data.tickets.map(t => `- [${t.ticketNumber}] ${t.title}`).join("\n");
+            ticketsText = `\nLinked Tickets:\n` + tickets.map(t => `- [${t.ticket?.ticketNumber || t.ticketNumber}] ${t.ticket?.title || t.title}`).join("\n");
+        }
+        let attachmentsHtml = "";
+        if (attachments && attachments.length > 0) {
+            attachmentsHtml = `
+        <div class="divider"></div>
+        <div style="margin-bottom: 6px; font-size: 13px; font-weight: 600; color: #64748b; line-height: 1.2;">
+          <span style="display: inline-block; vertical-align: middle; font-size: 14px; width: 21px; text-align: left;">📎</span><span style="display: inline-block; vertical-align: middle;">Attachments</span>
+        </div>
+        <div style="margin-top: 8px; padding-left: 21px;">
+          ${attachments.map(att => `
+            <div style="font-size: 13.5px; color: #334155; padding: 6px 12px; background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; display: inline-block; margin-right: 8px; margin-bottom: 8px;">
+              <span style="margin-right: 6px; font-size: 14px;">📄</span><strong>${att.filename}</strong>
+            </div>
+          `).join("")}
+        </div>
+      `;
         }
         const html = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #0f172a; line-height: 1.6;">
-        <div style="margin-bottom: 24px;">
-          ${logoHtml}
-        </div>
-        
-        <h2 style="font-size: 20px; font-weight: 700; color: #0f172a; margin-top: 0; margin-bottom: 8px; letter-spacing: -0.01em;">
-          Escalation Raised
-        </h2>
-        <p style="color: #64748b; font-size: 14px; margin-top: 0; margin-bottom: 24px;">
-          An escalation has been raised in the system for your attention.
-        </p>
-
-        <div style="border-left: 4px solid #ef4444; padding-left: 16px; margin: 20px 0;">
-          <p style="margin: 0 0 16px; font-size: 15px;">Hi <strong>${data.userName}</strong>,</p>
-          <p style="margin: 0 0 20px; color: #475569; font-size: 14px;">
-            An escalation has been raised by <strong>${data.creatorName}</strong>. Details are below:
-          </p>
-
-          <div style="margin-bottom: 16px;">
-            <span style="font-size: 11px; font-weight: 700; color: #ef4444; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 4px;">Subject</span>
-            <span style="font-size: 15px; font-weight: 600; color: #0f172a;">${data.escalationSubject}</span>
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 0; }
+          .wrapper { width: 100%; background-color: #f8fafc; padding: 40px 0; }
+          .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+          .header { padding: 24px 32px; border-bottom: 1px solid #f1f5f9; background-color: #ffffff; }
+          .company-name { font-size: 18px; font-weight: 700; color: #0f172a; margin: 0; }
+          .content { padding: 32px; }
+          
+          .divider { border-bottom: 1px solid #f1f5f9; margin: 20px 0; }
+          .label { font-size: 13px; font-weight: 600; color: #64748b; display: block; margin-bottom: 6px; }
+          .subject-value { font-size: 16px; font-weight: 600; color: #0f172a; }
+          
+          .status-pill { display: inline-block; border: 1px solid #e2e8f0; border-radius: 6px; padding: 3px 8px; background-color: #ffffff; color: #475569; font-weight: 500; font-size: 12px; }
+          
+          .description-box { background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-top: 8px; color: #334155; font-size: 14px; white-space: pre-line; line-height: 1.6; }
+          
+          .ticket-row { font-size: 13.5px; color: #334155; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px; margin-bottom: 8px; }
+          .ticket-num { color: #dc2626; font-weight: 700; margin-right: 6px; }
+          
+          .footer-section { padding: 24px 32px; background-color: #fafafa; border-top: 1px solid #f1f5f9; }
+          .last-updated { font-size: 12px; color: #94a3b8; margin-bottom: 12px; }
+          .auto-disclaimer { font-size: 11px; color: #94a3b8; margin: 0; }
+          @media (prefers-color-scheme: dark) {
+            .priority-badge {
+              color: #ffffff !important;
+              background-color: ${priorityColor} !important;
+            }
+          }
+          [data-ogsc] .priority-badge {
+            color: #ffffff !important;
+            background-color: ${priorityColor} !important;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="wrapper">
+          <div class="container">
+            <div class="header">
+              <table cellpadding="0" cellspacing="0" style="width: 100%; border: none; border-collapse: collapse;">
+                <tr>
+                  <td style="vertical-align: middle;">
+                    ${logoHtml}
+                    <span style="font-size: 18px; font-weight: 700; color: #0f172a; vertical-align: middle; display: inline-block; margin-left: ${branding.companyLogo ? '8px' : '0px'};">${branding.companyName}</span>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            
+            <div class="content">
+              <table cellpadding="0" cellspacing="0" style="width: 100%; border: none; border-collapse: collapse; margin-bottom: 6px;">
+                <tr>
+                  <td style="vertical-align: middle;">
+                    <table cellpadding="0" cellspacing="0" style="display: inline-block; vertical-align: middle; margin-right: 8px; border-collapse: collapse; border: none;">
+                      <tr>
+                        <td style="width: 22px; height: 22px; background-color: #dc2626; border-radius: 50%; text-align: center; vertical-align: middle; color: #ffffff; font-size: 14px; font-weight: bold; line-height: 22px;">!</td>
+                      </tr>
+                    </table>
+                    <span style="font-size: 20px; font-weight: 700; color: #0f172a; line-height: 1.2; vertical-align: middle;">
+                      Escalation Notification
+                    </span>
+                  </td>
+                  <td style="text-align: right; vertical-align: middle;">
+                    <span class="priority-badge" style="display: inline-block; background-color: ${priorityColor}; color: #ffffff; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 6px; text-transform: uppercase; letter-spacing: 0.05em; line-height: 1;">
+                      ${priorityName}
+                    </span>
+                  </td>
+                </tr>
+              </table>
+              <div style="font-size: 12.5px; color: #64748b; margin-top: 8px;">
+                ID: ${escalationId} &nbsp;&bull;&nbsp; Raised on ${raisedOnStr}
+              </div>
+              
+              <div class="divider"></div>
+              
+              <span class="label">Subject</span>
+              <div class="subject-value">${data.escalationSubject}</div>
+              
+              <div class="divider"></div>
+              
+              <table cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; border: none;">
+                <tr>
+                  <td style="width: 50%; padding: 12px 10px 12px 0; vertical-align: top;">
+                    <div style="margin-bottom: 6px; font-size: 13px; font-weight: 600; color: #64748b; line-height: 1.2;">
+                      <span style="display: inline-block; vertical-align: middle; font-size: 14px; width: 21px; text-align: left;">🏷️</span><span style="display: inline-block; vertical-align: middle;">Current Status</span>
+                    </div>
+                    <div style="padding-left: 21px;">
+                      <span class="status-pill">${escalation.status_name || "Open"}</span>
+                    </div>
+                  </td>
+                  <td style="width: 50%; padding: 12px 0 12px 10px; vertical-align: top;">
+                    <div style="margin-bottom: 6px; font-size: 13px; font-weight: 600; color: #64748b; line-height: 1.2;">
+                      <span style="display: inline-block; vertical-align: middle; font-size: 14px; width: 21px; text-align: left;">⏱️</span><span style="display: inline-block; vertical-align: middle;">Priority</span>
+                    </div>
+                    <div style="padding-left: 21px;">
+                      <span class="priority-badge" style="display: inline-block; background-color: ${priorityColor}; color: #ffffff; border-radius: 6px; padding: 3px 8px; font-weight: 700; font-size: 11px; text-transform: uppercase; line-height: 1.2;">
+                        ${priorityName}
+                      </span>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="width: 50%; padding: 12px 10px 12px 0; vertical-align: top;">
+                    <div style="margin-bottom: 6px; font-size: 13px; font-weight: 600; color: #64748b; line-height: 1.2;">
+                      <span style="display: inline-block; vertical-align: middle; font-size: 14px; width: 21px; text-align: left;">🏷️</span><span style="display: inline-block; vertical-align: middle;">Category</span>
+                    </div>
+                    <div style="padding-left: 21px;">
+                      <span style="font-size: 14px; font-weight: 600; color: #0f172a; line-height: 1.4; display: block;">${escalation.category_name || "General"}</span>
+                    </div>
+                  </td>
+                  <td style="width: 50%; padding: 12px 0 12px 10px; vertical-align: top;">
+                    <div style="margin-bottom: 6px; font-size: 13px; font-weight: 600; color: #64748b; line-height: 1.2;">
+                      <span style="display: inline-block; vertical-align: middle; font-size: 14px; width: 21px; text-align: left;">📁</span><span style="display: inline-block; vertical-align: middle;">Project</span>
+                    </div>
+                    <div style="padding-left: 21px;">
+                      <span style="font-size: 14px; font-weight: 600; color: #0f172a; line-height: 1.4; display: block;">${escalation.project?.name || "N/A"}</span>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+              
+              <div class="divider"></div>
+              
+              <span class="label">Detailed Description</span>
+              <div class="description-box">${data.description}</div>
+              
+              ${ticketsHtml}
+              ${attachmentsHtml}
+              
+              <div class="divider"></div>
+              
+              <table cellpadding="0" cellspacing="0" style="width: 100%; border-collapse: collapse; border: none;">
+                <tr>
+                  <td style="width: 50%; padding: 12px 10px 0 0; vertical-align: top;">
+                    <div style="margin-bottom: 6px; font-size: 13px; font-weight: 600; color: #64748b; line-height: 1.2;">
+                      <span style="display: inline-block; vertical-align: middle; font-size: 14px; width: 21px; text-align: left;">👥</span><span style="display: inline-block; vertical-align: middle;">Target Team Members</span>
+                    </div>
+                    <div style="padding-left: 21px;">
+                      <span style="font-size: 14px; font-weight: 600; color: #0f172a; line-height: 1.4; display: block;">${targetMembersStr}</span>
+                    </div>
+                  </td>
+                  <td style="width: 50%; padding: 12px 0 0 10px; vertical-align: top;">
+                    <div style="margin-bottom: 6px; font-size: 13px; font-weight: 600; color: #64748b; line-height: 1.2;">
+                      <span style="display: inline-block; vertical-align: middle; font-size: 14px; width: 21px; text-align: left;">👤</span><span style="display: inline-block; vertical-align: middle;">Raised By</span>
+                    </div>
+                    <div style="padding-left: 21px;">
+                      <span style="font-size: 14px; font-weight: 600; color: #0f172a; line-height: 1.4; display: block;">${creatorName}</span>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+            </div>
+            
+            <div class="footer-section">
+              <div class="last-updated">
+                🕒 Last Updated: Just now
+              </div>
+              <p class="auto-disclaimer">
+                This is an automated notification from ${branding.companyName} — please do not reply directly to this email.
+              </p>
+            </div>
           </div>
-
-          <div style="margin-bottom: 16px;">
-            <span style="font-size: 11px; font-weight: 700; color: #ef4444; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 4px;">Description</span>
-            <div style="font-size: 14px; color: #334155; white-space: pre-line; line-height: 1.5;">${data.description}</div>
-          </div>
-
-          ${ticketsHtml}
         </div>
-
-        <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 32px 0 20px;" />
-        
-        <p style="font-size: 11px; color: #94a3b8; text-align: center; margin: 0;">
-          This is an automated notification from ${branding.companyName} — please do not reply directly to this email.
-        </p>
-      </div>
+      </body>
+      </html>
     `;
-        const text = `
-Escalation Raised: ${data.escalationSubject}
+        const text = `Escalation Notification
+
+Raised on ${raisedOnStr}
+Escalation ID: ${escalationId}
+Priority: ${priorityName}
 
 Hi ${data.userName},
 
-An escalation has been raised by ${data.creatorName}.
+An escalation has been raised by ${creatorName}.
 
 Subject: ${data.escalationSubject}
-Description: ${data.description}
+Category: ${escalation.category_name || "General"}
+Project: ${escalation.project?.name || "N/A"}
+Status: ${escalation.status_name || "Open"}
+
+Description:
+${data.description}
 ${ticketsText}
-    `;
+
+Target Team Members: ${targetMembersStr}
+Raised By: ${creatorName}
+
+This is an automated notification from ${branding.companyName}.`;
         return this.sendCentralizedMail({ to: data.to, tenantId, subject, html, text, attachments: data.attachments });
     }
     async sendPortalWelcomeEmail(data, tenantId) {
         const greetingName = data.displayName || data.username;
         const branding = await this.resolveTenantMailBranding(tenantId);
         const subject = `Welcome to the ${branding.companyName} portal`;
+        const portalUrlWithParams = `${data.portalUrl}?username=${encodeURIComponent(data.username)}&password=${encodeURIComponent(data.temporaryPassword)}`;
         const logoHtml = branding.companyLogo
-            ? `<img class="logo" src="${branding.companyLogo}" alt="${branding.companyName}" />`
+            ? `<img class="logo" src="${branding.companyLogo}" alt="${branding.companyName}" style="max-height: 50px; border-radius: 8px; margin-bottom: 8px;" />`
             : "";
         const html = `
       <!DOCTYPE html>
@@ -804,21 +1095,35 @@ ${ticketsText}
           body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 0; }
           .wrapper { width: 100%; background-color: #f8fafc; padding: 40px 0; }
           .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
-          .header { padding: 40px 40px 30px; text-align: center; border-bottom: 1px solid #f1f5f9; }
-          .logo { max-height: 50px; margin-bottom: 16px; border-radius: 8px; }
+          .header { padding: 32px 40px; text-align: center; border-bottom: 1px solid #f1f5f9; background-color: #ffffff; }
           .company-name { font-size: 20px; font-weight: 700; color: #0f172a; margin: 0; }
-          .content { padding: 40px; }
-          .title { font-size: 24px; font-weight: 700; color: #0f172a; margin-top: 0; margin-bottom: 24px; text-align: center; }
-          .welcome-text { font-size: 16px; line-height: 1.6; color: #475569; margin-bottom: 32px; }
-          .credentials-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin-bottom: 32px; }
-          .cred-row { display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 15px; border-bottom: 1px dashed #e2e8f0; padding-bottom: 12px; }
-          .cred-row:last-child { margin-bottom: 0; border-bottom: none; padding-bottom: 0; }
-          .cred-label { font-weight: 600; color: #64748b; }
-          .cred-value { font-family: monospace; font-size: 15px; color: #0f172a; font-weight: 600; }
-          .cta-wrapper { text-align: center; margin: 32px 0; }
-          .cta-btn { display: inline-block; padding: 14px 32px; background: #2563eb; color: #ffffff !important; text-decoration: none; border-radius: 8px; font-weight: 600; text-align: center; font-size: 15px; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2); }
-          .footer { padding: 32px; background: #f8fafc; text-align: center; font-size: 13px; color: #64748b; border-top: 1px solid #f1f5f9; }
-          .footer-text { margin: 0 0 8px 0; }
+          .content { padding: 40px 48px; }
+          .title { font-size: 26px; font-weight: 700; color: #0f172a; margin-top: 0; margin-bottom: 8px; text-align: center; }
+          .accent-bar { width: 32px; height: 3px; background-color: #0b57d0; margin: 8px auto 24px; border-radius: 2px; }
+          .welcome-greeting { text-align: center; font-size: 15px; color: #64748b; margin: 0 0 12px 0; }
+          .welcome-text { text-align: center; font-size: 14.5px; line-height: 1.6; color: #64748b; margin: 0 auto 32px; max-width: 480px; }
+          
+          .credentials-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 8px 24px; margin-bottom: 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.01); }
+          .cred-table { width: 100%; border-collapse: collapse; border: none; }
+          .cred-row { border-bottom: 1px dashed #e2e8f0; }
+          .cred-row-last { border-bottom: none; }
+          .cred-label { padding: 16px 0; font-size: 11px; font-weight: 700; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase; width: 30%; }
+          .cred-value { padding: 16px 0; text-align: right; font-size: 13.5px; font-weight: 500; color: #475569; }
+          .cred-link { color: #0b57d0; text-decoration: none; word-break: break-all; }
+          .code-pill { display: inline-block; padding: 4px 8px; background-color: #f1f3f5; border-radius: 4px; font-family: monospace; font-size: 13px; color: #475569; font-weight: 600; line-height: 1; }
+          
+          .cta-wrapper { text-align: center; margin: 36px 0 16px; }
+          .cta-btn { display: inline-block; padding: 14px 32px; background-color: #0b57d0; color: #ffffff !important; text-decoration: none; border-radius: 8px; font-weight: 600; text-align: center; font-size: 15px; box-shadow: 0 4px 12px rgba(11, 87, 208, 0.25); }
+          .trouble-text { text-align: center; font-size: 13px; color: #94a3b8; margin: 0 0 32px 0; }
+          .trouble-link { color: #0b57d0; text-decoration: none; font-weight: 500; }
+          
+          .footer-section { padding: 32px; background-color: #fafafa; text-align: center; border-top: 1px solid #f1f5f9; }
+          .auto-mail-table { border: none; border-collapse: collapse; margin: 0 auto 16px; }
+          .info-icon { padding: 0; vertical-align: middle; font-size: 14px; color: #94a3b8; line-height: 1; }
+          .info-text { padding: 0 0 0 6px; vertical-align: middle; font-family: monospace; font-size: 12px; color: #94a3b8; line-height: 1; }
+          .footer-links { margin-bottom: 16px; font-size: 12px; font-weight: 500; }
+          .footer-link { color: #64748b; text-decoration: none; margin: 0 10px; }
+          .copyright { margin: 0; font-size: 12px; color: #94a3b8; }
         </style>
       </head>
       <body>
@@ -826,97 +1131,190 @@ ${ticketsText}
           <div class="container">
             <div class="header">
               ${logoHtml}
-              <h2 class="company-name">${branding.companyName}</h2>
+              ${!branding.companyLogo ? `<h2 class="company-name">${branding.companyName}</h2>` : ""}
             </div>
             <div class="content">
-              <h1 class="title">Portal Access Created</h1>
-              <p class="welcome-text">Hi <strong>${greetingName}</strong>,<br><br>An account has been created for you to access the client portal of <strong>${branding.companyName}</strong>. Use the details below to sign in:</p>
+              <h1 class="title">Client Portal Access</h1>
+              <div class="accent-bar"></div>
               
-              <div class="credentials-box">
-                <div class="cred-row">
-                  <span class="cred-label">Portal URL:</span>
-                  <span class="cred-value" style="font-family: inherit;"><a href="${data.portalUrl}">${data.portalUrl}</a></span>
-                </div>
-                <div class="cred-row">
-                  <span class="cred-label">Username:</span>
-                  <span class="cred-value">${data.username}</span>
-                </div>
-                <div class="cred-row">
-                  <span class="cred-label">Email:</span>
-                  <span class="cred-value">${data.to}</span>
-                </div>
-                <div class="cred-row">
-                  <span class="cred-label">Password:</span>
-                  <span class="cred-value">${data.temporaryPassword}</span>
-                </div>
+              <p class="welcome-greeting">Hi <strong>${greetingName}</strong>,</p>
+              <p class="welcome-text">An account has been created for you to access the client portal of <strong>${branding.companyName}</strong>.<br>Use the details below to sign in:</p>
+              
+              <div class="credentials-card">
+                <table class="cred-table">
+                  <tr class="cred-row">
+                    <td class="cred-label">PORTAL URL</td>
+                    <td class="cred-value"><a href="${portalUrlWithParams}" class="cred-link">${data.portalUrl}</a></td>
+                  </tr>
+                  <tr class="cred-row">
+                    <td class="cred-label">USERNAME</td>
+                    <td class="cred-value"><span class="code-pill">${data.username}</span></td>
+                  </tr>
+                  <tr class="cred-row">
+                    <td class="cred-label">EMAIL</td>
+                    <td class="cred-value">${data.to}</td>
+                  </tr>
+                  <tr class="cred-row-last">
+                    <td class="cred-label">PASSWORD</td>
+                    <td class="cred-value"><span class="code-pill">${data.temporaryPassword}</span></td>
+                  </tr>
+                </table>
               </div>
 
               <div class="cta-wrapper">
-                <a href="${data.portalUrl}" class="cta-btn">Access Your Workspace</a>
+                <a href="${portalUrlWithParams}" class="cta-btn">Access Your Workspace &nbsp;&nbsp;➔</a>
               </div>
+              
+              <p class="trouble-text">Having trouble? <a href="mailto:${branding.replyToEmail}" class="trouble-link">Contact Support</a></p>
             </div>
-            <div class="footer">
-              <p class="footer-text">This is an automated mail, please do not reply.</p>
+            
+            <div class="footer-section">
+              <table class="auto-mail-table">
+                <tr>
+                  <td class="info-icon">ⓘ</td>
+                  <td class="info-text">This is an automated mail.</td>
+                </tr>
+              </table>
+              <div class="footer-links">
+                <a href="#" class="footer-link">Privacy Policy</a>
+                <a href="mailto:${branding.replyToEmail}" class="footer-link">Support</a>
+                <a href="#" class="footer-link">Terms of Service</a>
+              </div>
+              <p class="copyright">&copy; ${new Date().getFullYear()} ${branding.companyName}. All rights reserved.</p>
             </div>
           </div>
         </div>
       </body>
       </html>
     `;
-        const text = `
+        const text = `Client Portal Access
+
 Hi ${greetingName},
 
 An account has been created for you to access the client portal of ${branding.companyName}.
 
-Portal Login URL: ${data.portalUrl}
+Portal URL: ${data.portalUrl}
 Username: ${data.username}
 Email: ${data.to}
 Password: ${data.temporaryPassword}
-    `;
+
+Access your workspace here: ${portalUrlWithParams}
+
+This is an automated mail, please do not reply.`;
         return this.sendCentralizedMail({ to: data.to, tenantId, subject, html, text });
     }
     async sendPortalPasswordResetEmail(data, tenantId) {
         const greetingName = data.displayName || data.username;
-        const subject = "Your Zukvo portal password has been reset";
+        const branding = await this.resolveTenantMailBranding(tenantId);
+        const subject = `Your ${branding.companyName} portal password has been reset`;
+        const portalUrlWithParams = `${data.portalUrl}?username=${encodeURIComponent(data.username)}&password=${encodeURIComponent(data.temporaryPassword)}`;
+        const logoHtml = branding.companyLogo
+            ? `<img class="logo" src="${branding.companyLogo}" alt="${branding.companyName}" style="max-height: 50px; border-radius: 8px; margin-bottom: 8px;" />`
+            : "";
         const html = `
-      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden;">
-        <div style="background-color: #2563eb; color: white; padding: 28px 32px;">
-          <h1 style="margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -0.01em;">Password reset</h1>
-          <p style="margin: 6px 0 0; opacity: 0.9; font-size: 13.5px;">Your portal credentials have been updated.</p>
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 0; }
+          .wrapper { width: 100%; background-color: #f8fafc; padding: 40px 0; }
+          .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+          .header { padding: 32px 40px; text-align: center; border-bottom: 1px solid #f1f5f9; background-color: #ffffff; }
+          .company-name { font-size: 20px; font-weight: 700; color: #0f172a; margin: 0; }
+          .content { padding: 40px 48px; }
+          .title { font-size: 26px; font-weight: 700; color: #0f172a; margin-top: 0; margin-bottom: 8px; text-align: center; }
+          .accent-bar { width: 32px; height: 3px; background-color: #0b57d0; margin: 8px auto 24px; border-radius: 2px; }
+          .welcome-greeting { text-align: center; font-size: 15px; color: #64748b; margin: 0 0 12px 0; }
+          .welcome-text { text-align: center; font-size: 14.5px; line-height: 1.6; color: #64748b; margin: 0 auto 32px; max-width: 480px; }
+          
+          .credentials-card { background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 8px 24px; margin-bottom: 32px; box-shadow: 0 1px 3px rgba(0,0,0,0.01); }
+          .cred-table { width: 100%; border-collapse: collapse; border: none; }
+          .cred-row { border-bottom: 1px dashed #e2e8f0; }
+          .cred-row-last { border-bottom: none; }
+          .cred-label { padding: 16px 0; font-size: 11px; font-weight: 700; color: #94a3b8; letter-spacing: 0.05em; text-transform: uppercase; width: 30%; }
+          .cred-value { padding: 16px 0; text-align: right; font-size: 13.5px; font-weight: 500; color: #475569; }
+          .cred-link { color: #0b57d0; text-decoration: none; word-break: break-all; }
+          .code-pill { display: inline-block; padding: 4px 8px; background-color: #f1f3f5; border-radius: 4px; font-family: monospace; font-size: 13px; color: #475569; font-weight: 600; line-height: 1; }
+          
+          .cta-wrapper { text-align: center; margin: 36px 0 16px; }
+          .cta-btn { display: inline-block; padding: 14px 32px; background-color: #0b57d0; color: #ffffff !important; text-decoration: none; border-radius: 8px; font-weight: 600; text-align: center; font-size: 15px; box-shadow: 0 4px 12px rgba(11, 87, 208, 0.25); }
+          
+          .note-card { background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 16px; margin-top: 24px; text-align: left; }
+          .note-text { margin: 0; font-size: 12.5px; color: #92400e; line-height: 1.5; }
+          
+          .footer-section { padding: 32px; background-color: #fafafa; text-align: center; border-top: 1px solid #f1f5f9; }
+          .auto-mail-table { border: none; border-collapse: collapse; margin: 0 auto 16px; }
+          .info-icon { padding: 0; vertical-align: middle; font-size: 14px; color: #94a3b8; line-height: 1; }
+          .info-text { padding: 0 0 0 6px; vertical-align: middle; font-family: monospace; font-size: 12px; color: #94a3b8; line-height: 1; }
+          .footer-links { margin-bottom: 16px; font-size: 12px; font-weight: 500; }
+          .footer-link { color: #64748b; text-decoration: none; margin: 0 10px; }
+          .copyright { margin: 0; font-size: 12px; color: #94a3b8; }
+        </style>
+      </head>
+      <body>
+        <div class="wrapper">
+          <div class="container">
+            <div class="header">
+              ${logoHtml}
+              ${!branding.companyLogo ? `<h2 class="company-name">${branding.companyName}</h2>` : ""}
+            </div>
+            <div class="content">
+              <h1 class="title">Password Reset</h1>
+              <div class="accent-bar"></div>
+              
+              <p class="welcome-greeting">Hi <strong>${greetingName}</strong>,</p>
+              <p class="welcome-text">An administrator has reset the password for your portal account.<br>Use the details below to sign in:</p>
+              
+              <div class="credentials-card">
+                <table class="cred-table">
+                  <tr class="cred-row">
+                    <td class="cred-label">PORTAL URL</td>
+                    <td class="cred-value"><a href="${portalUrlWithParams}" class="cred-link">${data.portalUrl}</a></td>
+                  </tr>
+                  <tr class="cred-row">
+                    <td class="cred-label">USERNAME</td>
+                    <td class="cred-value"><span class="code-pill">${data.username}</span></td>
+                  </tr>
+                  <tr class="cred-row-last">
+                    <td class="cred-label">PASSWORD</td>
+                    <td class="cred-value"><span class="code-pill">${data.temporaryPassword}</span></td>
+                  </tr>
+                </table>
+              </div>
+
+              <div class="cta-wrapper">
+                <a href="${portalUrlWithParams}" class="cta-btn">Sign in to Portal &nbsp;&nbsp;➔</a>
+              </div>
+              
+              <div class="note-card">
+                <p class="note-text">
+                  <strong>Security note:</strong> If you did not request this reset, contact your account administrator immediately. Any previous active sessions have been signed out. You'll be asked to choose a new password on your first sign-in.
+                </p>
+              </div>
+            </div>
+            
+            <div class="footer-section">
+              <table class="auto-mail-table">
+                <tr>
+                  <td class="info-icon">ⓘ</td>
+                  <td class="info-text">This is an automated mail.</td>
+                </tr>
+              </table>
+              <div class="footer-links">
+                <a href="#" class="footer-link">Privacy Policy</a>
+                <a href="mailto:${branding.replyToEmail}" class="footer-link">Support</a>
+                <a href="#" class="footer-link">Terms of Service</a>
+              </div>
+              <p class="copyright">&copy; ${new Date().getFullYear()} ${branding.companyName}. All rights reserved.</p>
+            </div>
+          </div>
         </div>
-        <div style="padding: 28px 32px; color: #0f172a; background-color: white;">
-          <p style="margin: 0 0 16px; font-size: 15px;">Hi <strong>${greetingName}</strong>,</p>
-          <p style="margin: 0 0 20px; line-height: 1.55; color: #475569; font-size: 14px;">
-            An administrator has reset the password for your portal account. Use the temporary password below to sign in. You'll be asked to choose a new password on first sign-in.
-          </p>
-
-          <div style="background-color: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 10px; padding: 16px 18px; margin: 18px 0;">
-            <div style="font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;">Username</div>
-            <div style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; color: #0f172a; margin-bottom: 14px;">${data.username}</div>
-            <div style="font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px;">Temporary password</div>
-            <div style="font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 16px; font-weight: 600; color: #1d4ed8;">${data.temporaryPassword}</div>
-          </div>
-
-          <div style="margin: 24px 0; text-align: center;">
-            <a href="${data.portalUrl}"
-               style="display: inline-block; background-color: #2563eb; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px;">
-               Sign in to portal
-            </a>
-          </div>
-
-          <div style="background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 14px; margin-top: 20px;">
-            <p style="margin: 0; font-size: 12.5px; color: #92400e; line-height: 1.5;">
-              <strong>Security note:</strong> If you did not request this reset, contact your account administrator immediately. Any previous active sessions have been signed out.
-            </p>
-          </div>
-
-          <p style="margin: 24px 0 0; font-size: 12px; color: #94a3b8; text-align: center;">
-            This is an automated notification — please do not reply to this email.
-          </p>
-        </div>
-      </div>
+      </body>
+      </html>
     `;
-        const text = `
+        const text = `Password Reset
+
 Hi ${greetingName},
 
 An administrator has reset the password for your portal account.
@@ -924,10 +1322,9 @@ An administrator has reset the password for your portal account.
 Username: ${data.username}
 Temporary password: ${data.temporaryPassword}
 
-Sign in here: ${data.portalUrl}
+Sign in here: ${portalUrlWithParams}
 
-You'll be asked to choose a new password on first sign-in. Any previous active sessions have been signed out. If you did not request this reset, contact your account administrator immediately.
-    `;
+You'll be asked to choose a new password on first sign-in. Any previous active sessions have been signed out. If you did not request this reset, contact your account administrator immediately.`;
         return this.sendEmail({ to: data.to, subject, html, text }, tenantId);
     }
     async sendPayslipEmail(data, tenantId) {

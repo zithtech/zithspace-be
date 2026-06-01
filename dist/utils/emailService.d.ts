@@ -107,6 +107,7 @@ export declare class EmailService {
         escalationSubject: string;
         description: string;
         creatorName: string;
+        escalation?: any;
         tickets?: {
             ticketNumber: string;
             title: string;
