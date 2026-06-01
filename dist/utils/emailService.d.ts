@@ -107,6 +107,27 @@ export declare class EmailService {
         escalationSubject: string;
         description: string;
         creatorName: string;
+        escalation?: {
+            id?: string;
+            created_at?: any;
+            status_name?: string | null;
+            priority_name?: string | null;
+            priority_color?: string | null;
+            category_name?: string | null;
+            project?: {
+                name: string;
+            } | null;
+            createdBy?: {
+                name: string;
+            } | null;
+            targetMembers?: {
+                name?: string;
+                user?: {
+                    name: string;
+                };
+            }[] | null;
+            tickets?: any[];
+        };
         tickets?: {
             ticketNumber: string;
             title: string;

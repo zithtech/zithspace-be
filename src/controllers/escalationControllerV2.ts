@@ -100,7 +100,7 @@ export const createEscalation = async (req: AuthRequest, res: Response): Promise
                 }))
                 : [];
 
-            // Query linked tickets and target users in parallel
+            // Query target users and full escalation details in parallel
             Promise.all([
                 prisma.user.findMany({
                     where: {
@@ -112,13 +112,8 @@ export const createEscalation = async (req: AuthRequest, res: Response): Promise
                         workEmail: true
                     }
                 }),
-                (ticketIds && ticketIds.length > 0)
-                    ? prisma.ticket.findMany({
-                        where: { id: { in: ticketIds } },
-                        select: { ticketNumber: true, title: true }
-                    })
-                    : Promise.resolve([])
-            ]).then(([targetUsers, linkedTickets]) => {
+                EscalationModel.findById(escalation.id, tenantId)
+            ]).then(([targetUsers, fullEscalation]) => {
                 targetUsers.forEach(user => {
                     if (user.workEmail) {
                         emailService.sendEscalationEmail({
@@ -127,7 +122,7 @@ export const createEscalation = async (req: AuthRequest, res: Response): Promise
                             escalationSubject: subject,
                             description: description,
                             creatorName: creatorName,
-                            tickets: linkedTickets,
+                            escalation: fullEscalation,
                             attachments: mailAttachments
                         }, tenantId).catch(err => {
                             console.error(`❌ Failed to send escalation email to ${user.workEmail}:`, err.message);
