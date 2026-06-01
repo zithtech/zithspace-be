@@ -213,7 +213,7 @@ export class UserController {
         !userData.name ||
         !userData.workEmail ||
         !userData.password ||
-        !userData.positionId
+        (!userData.positionId && !userData.positionTitle)
       ) {
         res.status(400).json({
           success: false,
@@ -255,6 +255,16 @@ export class UserController {
         }
       }
 
+      // Resolve position
+      let positionId = userData.positionId;
+      if (!positionId && userData.positionTitle) {
+        positionId = await UserController.getOrCreateCustomPosition(
+          req.tenantId,
+          req.user.id,
+          userData.positionTitle
+        );
+      }
+
       // Hash password
       const passwordHash = await bcrypt.hash(userData.password, 12);
 
@@ -285,7 +295,7 @@ export class UserController {
           phone: userData.phone,
           passwordHash,
           role: userData.role || "user",
-          positionId: userData.positionId,
+          positionId: positionId,
           reportsToId: userData.reportsToId,
           dateOfBirth: userData.dateOfBirth
             ? new Date(userData.dateOfBirth)
@@ -472,8 +482,23 @@ export class UserController {
       if (updates.personalEmail)
         updates.personalEmail = updates.personalEmail.toLowerCase();
 
+      // Resolve position for update
+      let positionId = updates.positionId;
+      if (!positionId && updates.positionTitle) {
+        positionId = await UserController.getOrCreateCustomPosition(
+          req.tenantId,
+          req.user!.id,
+          updates.positionTitle
+        );
+      }
+
       // Update shift assignment tracking if shift is being changed
       const updateData: any = { ...updates, updatedAt: new Date() };
+      if (positionId) {
+        updateData.positionId = positionId;
+      }
+      delete updateData.positionTitle;
+
       if (
         updates.assignedShiftId &&
         updates.assignedShiftId !== existingUser.assignedShiftId
@@ -1226,6 +1251,115 @@ export class UserController {
         error: "Failed to assign shift",
       } as ApiResponse);
     }
+  }
+
+  /**
+   * Helper to resolve or create a custom position title using dedicated fallback default department, sub-department, and grade.
+   */
+  private static async getOrCreateCustomPosition(
+    tenantId: string,
+    userId: string,
+    positionTitle: string
+  ): Promise<string> {
+    const title = positionTitle.trim();
+
+    // Check if position already exists in tenant (case-insensitive title match)
+    const existingPos = await prisma.position.findFirst({
+      where: {
+        tenantId,
+        title: { equals: title, mode: "insensitive" }
+      }
+    });
+
+    if (existingPos) {
+      return existingPos.id;
+    }
+
+    // Find or create default "Uncategorized" department
+    let defaultDept = await prisma.department.findFirst({
+      where: {
+        tenantId,
+        code: "DEPT-UNCATEGORIZED"
+      }
+    });
+    if (!defaultDept) {
+      defaultDept = await prisma.department.create({
+        data: {
+          tenantId,
+          code: "DEPT-UNCATEGORIZED",
+          name: "Uncategorized",
+          createdById: userId,
+          isActive: true
+        }
+      });
+    }
+
+    // Find or create default "General" sub-department under "Uncategorized" department
+    let defaultSubDept = await prisma.subDepartment.findFirst({
+      where: {
+        tenantId,
+        code: "SUB-GENERAL"
+      }
+    });
+    if (!defaultSubDept) {
+      defaultSubDept = await prisma.subDepartment.create({
+        data: {
+          tenantId,
+          parentDepartmentId: defaultDept.id,
+          code: "SUB-GENERAL",
+          name: "General",
+          createdById: userId,
+          isActive: true
+        }
+      });
+    }
+
+    // Find or create default "General" grade
+    let defaultGrade = await prisma.grade.findFirst({
+      where: {
+        tenantId,
+        OR: [
+          { code: "G" },
+          { code: "GRADE-GENERAL" }
+        ]
+      }
+    });
+    if (!defaultGrade) {
+      defaultGrade = await prisma.grade.create({
+        data: {
+          tenantId,
+          code: "G",
+          name: "General",
+          levelOrder: 999, // default lowest or general level
+          createdById: userId,
+          isActive: true
+        }
+      });
+    } else if (defaultGrade.code === "GRADE-GENERAL") {
+      defaultGrade = await prisma.grade.update({
+        where: { id: defaultGrade.id },
+        data: { code: "G" }
+      });
+    }
+
+    // Generate unique code for custom position
+    const code = `POS-${title.replace(/[^a-zA-Z0-9]/g, "").substring(0, 10).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const newPos = await prisma.position.create({
+      data: {
+        tenantId,
+        code,
+        title,
+        departmentId: defaultDept.id,
+        subDepartmentId: defaultSubDept.id,
+        gradeId: defaultGrade.id,
+        createdById: userId,
+        updatedById: userId,
+        isActive: true
+      }
+    });
+
+    return newPos.id;
   }
 }
 
