@@ -66,6 +66,90 @@ async function getUserIdFromEmployeeId(prisma: any, employeeId: string, tenantId
     throw new Error('UserAccountNotFound');
 }
 
+function validateGstVatTaxId(gstVatTaxId?: string, country?: string): string | null {
+    if (!gstVatTaxId) return null;
+    const val = gstVatTaxId.trim();
+    if (val === '') return null;
+
+    const normCountry = country ? country.trim().toLowerCase() : '';
+    const isIndia = normCountry === 'india' || normCountry === 'in';
+    const isUS = normCountry === 'us' || normCountry === 'usa' || normCountry === 'united states' || normCountry === 'united states of america';
+
+    // GSTIN format: 2 numbers, 5 letters, 4 numbers, 1 letter, 1 alphanumeric, 'Z' or 'z', 1 alphanumeric
+    const indiaRegex = /^[0-9]{2}[A-Za-z]{5}[0-9]{4}[A-Za-z]{1}[1-9A-Za-z]{1}[Zz][0-9A-Za-z]{1}$/;
+    
+    // US Tax ID formats: EIN (XX-XXXXXXX) or SSN (XXX-XX-XXXX) or plain 9 digits
+    const usEinRegex = /^\d{2}-\d{7}$/;
+    const usSsnRegex = /^\d{3}-\d{2}-\d{4}$/;
+    const usPlainRegex = /^\d{9}$/;
+
+    if (isIndia) {
+        if (!indiaRegex.test(val)) {
+            return 'Invalid Indian GSTIN format. It must be a 15-character alphanumeric code matching the pattern: 22AAAAA0000A1Z1.';
+        }
+    } else if (isUS) {
+        if (!usEinRegex.test(val) && !usSsnRegex.test(val) && !usPlainRegex.test(val)) {
+            return 'Invalid US Tax ID format. It must match EIN (XX-XXXXXXX) or SSN (XXX-XX-XXXX) or a 9-digit numeric code.';
+        }
+    } else {
+        const matchesIndia = indiaRegex.test(val);
+        const matchesUS = usEinRegex.test(val) || usSsnRegex.test(val) || usPlainRegex.test(val);
+    }
+    return null;
+}
+
+function validatePan(pan?: string, country?: string): string | null {
+    if (!pan) return null;
+    const val = pan.trim();
+    if (val === '') return null;
+
+    const normCountry = country ? country.trim().toLowerCase() : '';
+    const isIndia = normCountry === 'india' || normCountry === 'in';
+    const isUS = normCountry === 'us' || normCountry === 'usa' || normCountry === 'united states' || normCountry === 'united states of america';
+
+    // India PAN format: 5 letters, 4 numbers, 1 letter
+    const indiaPanRegex = /^[A-Za-z]{5}[0-9]{4}[A-Za-z]{1}$/;
+    
+    // US Tax ID formats: EIN (XX-XXXXXXX) or SSN (XXX-XX-XXXX) or plain 9 digits
+    const usEinRegex = /^\d{2}-\d{7}$/;
+    const usSsnRegex = /^\d{3}-\d{2}-\d{4}$/;
+    const usPlainRegex = /^\d{9}$/;
+
+    if (isIndia) {
+        if (!indiaPanRegex.test(val)) {
+            return 'Invalid Indian PAN format. It must be a 10-character alphanumeric code matching the pattern: ABCDE1234F.';
+        }
+    } else if (isUS) {
+        if (!usEinRegex.test(val) && !usSsnRegex.test(val) && !usPlainRegex.test(val)) {
+            return 'Invalid US Tax ID format for PAN. It must match EIN (XX-XXXXXXX) or SSN (XXX-XX-XXXX) or a 9-digit numeric code.';
+        }
+    } else {
+        const matchesIndia = indiaPanRegex.test(val);
+        const matchesUS = usEinRegex.test(val) || usSsnRegex.test(val) || usPlainRegex.test(val);
+        if (!matchesIndia && !matchesUS) {
+            return 'PAN/Tax ID must match either the Indian PAN format (e.g. ABCDE1234F) or US Tax ID format (EIN: XX-XXXXXXX, SSN: XXX-XX-XXXX).';
+        }
+    }
+    return null;
+}
+
+function validateYearOfIncorporation(year?: string | number): string | null {
+    if (year === undefined || year === null || year === '') return null;
+    const yearStr = String(year).trim();
+    if (yearStr === '') return null;
+
+    const yearNum = Number(yearStr);
+    if (isNaN(yearNum) || !/^\d{4}$/.test(yearStr)) {
+        return 'Year of Incorporation must be a valid 4-digit number (e.g. 2026).';
+    }
+
+    const currentYear = new Date().getFullYear();
+    if (yearNum < 1800 || yearNum > currentYear) {
+        return `Year of Incorporation must be between 1800 and ${currentYear}.`;
+    }
+    return null;
+}
+
 export class ClientV2Controller {
     // ==============================================
     // CLIENT CORE DETAILS
@@ -225,6 +309,24 @@ export class ClientV2Controller {
                 return;
             }
 
+            const validationError = validateGstVatTaxId(clientData.gstVatTaxId, clientData.country);
+            if (validationError) {
+                res.status(400).json({ success: false, error: validationError } as ApiResponse);
+                return;
+            }
+
+            const panValidationError = validatePan(clientData.pan, clientData.country);
+            if (panValidationError) {
+                res.status(400).json({ success: false, error: panValidationError } as ApiResponse);
+                return;
+            }
+
+            const yearValidationError = validateYearOfIncorporation(clientData.yearOfIncorporation);
+            if (yearValidationError) {
+                res.status(400).json({ success: false, error: yearValidationError } as ApiResponse);
+                return;
+            }
+
             const clientCode = await generateClientCode(req.tenantId);
 
             await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
@@ -296,6 +398,37 @@ export class ClientV2Controller {
             }
 
             await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                const existingClient = await prisma.clientV2.findUnique({
+                    where: { id }
+                });
+                if (!existingClient) {
+                    res.status(404).json({ success: false, error: 'Client not found' } as ApiResponse);
+                    return;
+                }
+
+                const gstVatTaxId = 'gstVatTaxId' in updates ? updates.gstVatTaxId : existingClient.gstVatTaxId;
+                const country = 'country' in updates ? updates.country : existingClient.country;
+                const pan = 'pan' in updates ? updates.pan : existingClient.pan;
+                const yearOfIncorporation = 'yearOfIncorporation' in updates ? updates.yearOfIncorporation : existingClient.yearOfIncorporation;
+
+                const validationError = validateGstVatTaxId(gstVatTaxId, country);
+                if (validationError) {
+                    res.status(400).json({ success: false, error: validationError } as ApiResponse);
+                    return;
+                }
+
+                const panValidationError = validatePan(pan, country);
+                if (panValidationError) {
+                    res.status(400).json({ success: false, error: panValidationError } as ApiResponse);
+                    return;
+                }
+
+                const yearValidationError = validateYearOfIncorporation(yearOfIncorporation);
+                if (yearValidationError) {
+                    res.status(400).json({ success: false, error: yearValidationError } as ApiResponse);
+                    return;
+                }
+
                 const updatedClient = await prisma.clientV2.update({
                     where: { id },
                     data: updates

@@ -49,5 +49,9 @@ export declare class UserController {
      * Assign shift to member (tenant-aware) - MISSING FUNCTIONALITY RESTORED
      */
     static assignShift(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Helper to resolve or create a custom position title using dedicated fallback default department, sub-department, and grade.
+     */
+    private static getOrCreateCustomPosition;
 }
 export default UserController;
