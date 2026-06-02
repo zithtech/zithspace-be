@@ -367,6 +367,9 @@ exports.Permissions = {
     TIME_TRACKING_DELETE: 'time_tracking.delete',
     TIME_TRACKING_TEAM_READ: 'time_tracking.team.read',
     TIME_TRACKING_MANAGE_TIME: 'time_tracking.manage_time',
+    // ─── Transaction History (audit log) ─────────────────────────────
+    ACTIVITY_LOG_READ: 'activity_log.read', // view history of a specific entity (drawer)
+    ACTIVITY_LOG_READ_ALL: 'activity_log.read_all', // view global audit log (admin page)
 };
 /**
  * All permissions grouped by resource for UI rendering (permission picker).
@@ -650,6 +653,10 @@ exports.PERMISSIONS_BY_RESOURCE = {
         exports.Permissions.TIME_TRACKING_DELETE,
         exports.Permissions.TIME_TRACKING_TEAM_READ,
         exports.Permissions.TIME_TRACKING_MANAGE_TIME,
+    ],
+    activity_log: [
+        exports.Permissions.ACTIVITY_LOG_READ,
+        exports.Permissions.ACTIVITY_LOG_READ_ALL,
     ],
 };
 /** Flat list of all permissions — used for seeding. */

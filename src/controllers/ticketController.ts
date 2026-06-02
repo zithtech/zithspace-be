@@ -21,6 +21,16 @@ import { sanitizeHtmlContent, validateHtmlLength } from "@/utils/htmlSanitizer";
 import { socketService } from "@/services/socketService";
 import cacheService from "@/utils/cacheService";
 import { generateTicketDraft, generateSubtasks } from "@/services/aiTicketService";
+import {
+  recordTransaction,
+  diffShallow,
+  Section,
+  Module,
+  Page,
+  Action,
+  EntityType,
+} from "@/utils/transactionHistory";
+import { randomUUID } from "crypto";
 
 export class TicketController {
   /**
@@ -564,6 +574,31 @@ export class TicketController {
             status,
           },
         },
+      });
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.TICKETS,
+        page: Page.TICKET_LIST,
+        action: Action.CREATE,
+        actionLabel: "Ticket created",
+        entityType: EntityType.TICKET,
+        entityId: ticket.id,
+        entityLabel: `${ticketNumber} — ${title}`,
+        parentEntityType: projectId ? "project" : null,
+        parentEntityId: projectId ?? null,
+        afterData: {
+          ticketNumber,
+          title,
+          status,
+          priority,
+          type: ticketType,
+          projectId,
+          assigneeId,
+          dueDate,
+        },
+        statusCode: 201,
       });
 
       if (parentId) {
@@ -1548,6 +1583,45 @@ export class TicketController {
         console.error("Failed to log ticket update activity:", logError);
       }
 
+      {
+        const beforeSnap: Record<string, any> = {
+          status: existingTicket.status,
+          priority: existingTicket.priority,
+          assigneeId: existingTicket.assigneeId,
+          reportToId: existingTicket.reportToId,
+          title: existingTicket.title,
+          dueDate: existingTicket.dueDate,
+          storyPoint: existingTicket.storyPoint,
+          isArchived: existingTicket.isArchived,
+          sprintPlanId: existingTicket.sprintPlanId,
+          releasePlanId: existingTicket.releasePlanId,
+        };
+        const afterSnap: Record<string, any> = {};
+        for (const k of Object.keys(beforeSnap)) {
+          if (k in mappedUpdates) afterSnap[k] = (mappedUpdates as any)[k];
+        }
+        const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+        if (changedFields.length > 0) {
+          recordTransaction({
+            req,
+            section: Section.WORK,
+            module: Module.TICKETS,
+            page: Page.TICKET_DETAIL,
+            action: Action.UPDATE,
+            actionLabel: `Ticket updated (${changedFields.join(", ")})`,
+            entityType: EntityType.TICKET,
+            entityId: id,
+            entityLabel: `${existingTicket.ticketNumber} — ${existingTicket.title}`,
+            parentEntityType: existingTicket.projectId ? "project" : null,
+            parentEntityId: existingTicket.projectId ?? null,
+            beforeData: before,
+            afterData: after,
+            changedFields,
+            statusCode: 200,
+          });
+        }
+      }
+
       // Side effects (Cache & Socket)
       try {
         socketService.emitToTenant(req.tenantId, "ticket:updated", ticket);
@@ -1659,6 +1733,32 @@ export class TicketController {
       } catch (logError) {
         console.error("Failed to log ticket deletion activity:", logError);
       }
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.TICKETS,
+        page: Page.TICKET_DETAIL,
+        action: Action.DELETE,
+        actionLabel: "Ticket moved to trash",
+        entityType: EntityType.TICKET,
+        entityId: id,
+        entityLabel: `${ticket.ticketNumber} — ${ticket.title}`,
+        parentEntityType: ticket.projectId ? "project" : null,
+        parentEntityId: ticket.projectId ?? null,
+        beforeData: {
+          status: ticket.status,
+          isDeleted: ticket.isDeleted,
+        },
+        afterData: {
+          status: ticket.status,
+          isDeleted: true,
+          deletedAt: new Date().toISOString(),
+        },
+        changedFields: ["isDeleted", "deletedAt"],
+        statusCode: 200,
+        metadata: { softDelete: true },
+      });
 
       socketService.emitToTenant(req.tenantId, "ticket:deleted", { id, isSoftDelete: true });
 
@@ -1804,6 +1904,21 @@ export class TicketController {
         },
       });
 
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.TICKETS,
+        page: Page.TICKET_LIST,
+        action: Action.BULK_UPDATE_STATUS,
+        actionLabel: `Bulk status -> ${status} (${result.count})`,
+        entityType: EntityType.TICKET,
+        afterData: { status },
+        changedFields: ["status"],
+        correlationId: randomUUID(),
+        metadata: { targetIds: ticketIds, requested: ticketIds.length, updated: result.count },
+        statusCode: 200,
+      });
+
       res.status(200).json({
         success: true,
         data: { updatedCount: result.count },
@@ -1852,6 +1967,21 @@ export class TicketController {
           archivedById: req.user.id,
           updatedAt: new Date(),
         },
+      });
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.TICKETS,
+        page: Page.TICKET_LIST,
+        action: Action.BULK_ARCHIVE,
+        actionLabel: `Bulk archive (${result.count})`,
+        entityType: EntityType.TICKET,
+        afterData: { isArchived: true },
+        changedFields: ["isArchived"],
+        correlationId: randomUUID(),
+        metadata: { targetIds: ticketIds, requested: ticketIds.length, updated: result.count },
+        statusCode: 200,
       });
 
       res.status(200).json({
@@ -1904,6 +2034,21 @@ export class TicketController {
         },
       });
 
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.ARCHIVED,
+        page: Page.ARCHIVED_VIEW,
+        action: Action.BULK_UNARCHIVE,
+        actionLabel: `Tickets restored from archive (${result.count})`,
+        entityType: EntityType.TICKET,
+        afterData: { isArchived: false },
+        changedFields: ["isArchived"],
+        correlationId: randomUUID(),
+        metadata: { targetIds: ticketIds, requested: ticketIds.length, updated: result.count },
+        statusCode: 200,
+      });
+
       res.status(200).json({
         success: true,
         data: { updatedCount: result.count },
@@ -1952,6 +2097,21 @@ export class TicketController {
           deletedById: req.user.id,
           updatedAt: new Date(),
         },
+      });
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.TICKETS,
+        page: Page.TICKET_LIST,
+        action: Action.BULK_DELETE,
+        actionLabel: `Bulk move to trash (${result.count})`,
+        entityType: EntityType.TICKET,
+        afterData: { isDeleted: true },
+        changedFields: ["isDeleted", "deletedAt"],
+        correlationId: randomUUID(),
+        metadata: { targetIds: ticketIds, requested: ticketIds.length, updated: result.count, softDelete: true },
+        statusCode: 200,
       });
 
       res.status(200).json({

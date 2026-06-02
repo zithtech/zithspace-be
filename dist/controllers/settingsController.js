@@ -4,6 +4,8 @@ exports.SettingsController = void 0;
 const database_1 = require("@/config/database");
 const types_1 = require("@/types");
 const socketService_1 = require("@/services/socketService");
+const transactionHistory_1 = require("@/utils/transactionHistory");
+const crypto_1 = require("crypto");
 // Simple in-memory cache for ticket configurations
 const configCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -510,6 +512,23 @@ class SettingsController {
                     workflowTemplate: true,
                     updatedAt: true
                 }
+            });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.TICKET_SETTINGS,
+                page: transactionHistory_1.Page.WORKFLOW_TEMPLATE,
+                action: transactionHistory_1.Action.UPDATE,
+                actionLabel: `Workflow template updated (${workflowSteps.length} steps)`,
+                entityType: transactionHistory_1.EntityType.WORKFLOW_TEMPLATE,
+                entityId: projectId,
+                entityLabel: `${updatedProject.code ? `${updatedProject.code} — ` : ""}${updatedProject.name}`,
+                parentEntityType: transactionHistory_1.EntityType.PROJECT,
+                parentEntityId: projectId,
+                beforeData: { stepCount: Array.isArray(project.workflowTemplate) ? project.workflowTemplate.length : 0 },
+                afterData: { stepCount: workflowSteps.length, steps: workflowSteps },
+                changedFields: ["workflowTemplate"],
+                statusCode: 200,
             });
             res.status(200).json({
                 success: true,
@@ -1104,6 +1123,24 @@ class SettingsController {
                     isActive: true
                 }
             });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.TICKET_SETTINGS,
+                page: transactionHistory_1.Page.DROPDOWN_OPTIONS,
+                action: transactionHistory_1.Action.CREATE,
+                actionLabel: `Dropdown option created (${type})`,
+                entityType: transactionHistory_1.EntityType.DROPDOWN_OPTION,
+                entityId: newOption.id,
+                entityLabel: `${type} — ${newOption.label}`,
+                afterData: {
+                    type,
+                    value: newOption.value,
+                    label: newOption.label,
+                    order: newOption.order,
+                },
+                statusCode: 201,
+            });
             res.status(201).json({
                 success: true,
                 data: {
@@ -1189,6 +1226,32 @@ class SettingsController {
                 where: { id },
                 data: updateData
             });
+            {
+                const beforeSnap = {};
+                const afterSnap = {};
+                for (const k of Object.keys(updateData)) {
+                    beforeSnap[k] = existingOption[k];
+                    afterSnap[k] = updatedOption[k];
+                }
+                const { changedFields, before, after } = (0, transactionHistory_1.diffShallow)(beforeSnap, afterSnap);
+                if (changedFields.length > 0) {
+                    (0, transactionHistory_1.recordTransaction)({
+                        req,
+                        section: transactionHistory_1.Section.WORK,
+                        module: transactionHistory_1.Module.TICKET_SETTINGS,
+                        page: transactionHistory_1.Page.DROPDOWN_OPTIONS,
+                        action: transactionHistory_1.Action.UPDATE,
+                        actionLabel: `Dropdown option updated (${changedFields.join(", ")})`,
+                        entityType: transactionHistory_1.EntityType.DROPDOWN_OPTION,
+                        entityId: id,
+                        entityLabel: `${updatedOption.category} — ${updatedOption.label}`,
+                        beforeData: before,
+                        afterData: after,
+                        changedFields,
+                        statusCode: 200,
+                    });
+                }
+            }
             res.status(200).json({
                 success: true,
                 data: {
@@ -1243,6 +1306,24 @@ class SettingsController {
             await database_1.prisma.dropdownOption.delete({
                 where: { id }
             });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.TICKET_SETTINGS,
+                page: transactionHistory_1.Page.DROPDOWN_OPTIONS,
+                action: transactionHistory_1.Action.DELETE,
+                actionLabel: `Dropdown option deleted (${existingOption.category})`,
+                entityType: transactionHistory_1.EntityType.DROPDOWN_OPTION,
+                entityId: id,
+                entityLabel: `${existingOption.category} — ${existingOption.label}`,
+                beforeData: {
+                    type: existingOption.category,
+                    value: existingOption.value,
+                    label: existingOption.label,
+                    order: existingOption.order,
+                },
+                statusCode: 200,
+            });
             res.status(200).json({
                 success: true,
                 message: 'Dropdown option deleted successfully'
@@ -1293,6 +1374,18 @@ class SettingsController {
                 data: { order: item.order }
             }));
             await Promise.all(updatePromises);
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.TICKET_SETTINGS,
+                page: transactionHistory_1.Page.DROPDOWN_OPTIONS,
+                action: transactionHistory_1.Action.REORDER,
+                actionLabel: `Dropdown options reordered (${items.length})`,
+                entityType: transactionHistory_1.EntityType.DROPDOWN_OPTION,
+                correlationId: (0, crypto_1.randomUUID)(),
+                metadata: { items: items.map((i) => ({ id: i.id, order: i.order })) },
+                statusCode: 200,
+            });
             res.status(200).json({
                 success: true,
                 message: 'Dropdown options reordered successfully'

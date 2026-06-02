@@ -9,6 +9,8 @@ const dbpool_1 = __importDefault(require("@/config/dbpool"));
 const types_1 = require("@/types");
 const rbac_service_1 = require("@/modules/rbac/rbac.service");
 const permissions_1 = require("@/types/permissions");
+const transactionHistory_1 = require("@/utils/transactionHistory");
+const crypto_1 = require("crypto");
 class ProjectController {
     /**
      * Get all projects with filtering and pagination (tenant-aware)
@@ -368,6 +370,28 @@ class ProjectController {
                     },
                 },
             });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.PROJECTS,
+                page: transactionHistory_1.Page.PROJECT_LIST,
+                action: transactionHistory_1.Action.CREATE,
+                actionLabel: "Project created",
+                entityType: transactionHistory_1.EntityType.PROJECT,
+                entityId: project.id,
+                entityLabel: `${project.code ?? ""}${project.code ? " — " : ""}${project.name}`,
+                afterData: {
+                    name: project.name,
+                    code: project.code,
+                    status: project.status,
+                    startDate: project.startDate,
+                    endDate: project.endDate,
+                    projectManagerId: project.projectManagerId,
+                    defaultPriority: project.defaultPriority,
+                    teamMemberCount: teamMemberIds.length,
+                },
+                statusCode: 201,
+            });
             res.status(201).json({
                 success: true,
                 data: project,
@@ -414,11 +438,20 @@ class ProjectController {
             delete updates.createdById;
             delete updates.createdAt;
             delete updates.tenantId;
-            // Check if project exists and belongs to tenant
+            // Check if project exists and belongs to tenant.
+            // Include members so the audit log can show team-change details below.
             const existingProject = await database_1.prisma.project.findFirst({
                 where: {
                     id,
                     tenantId: req.tenantId,
+                },
+                include: {
+                    members: {
+                        select: {
+                            userId: true,
+                            user: { select: { id: true, name: true, workEmail: true } },
+                        },
+                    },
                 },
             });
             if (!existingProject) {
@@ -515,6 +548,83 @@ class ProjectController {
                     },
                 },
             });
+            {
+                const trackedKeys = [
+                    "name",
+                    "code",
+                    "description",
+                    "status",
+                    "startDate",
+                    "endDate",
+                    "projectManagerId",
+                    "defaultPriority",
+                ];
+                const beforeSnap = {};
+                const afterSnap = {};
+                for (const k of trackedKeys) {
+                    if (updates[k] !== undefined) {
+                        beforeSnap[k] = existingProject[k];
+                        afterSnap[k] = project[k];
+                    }
+                }
+                // Team-member changes — compute who was added / removed but DO NOT
+                // include the full list as a tracked field. The added/removed names go
+                // into the action label + metadata; the row reads "Members +Charlie"
+                // rather than echoing the entire roster before and after.
+                let addedNames = [];
+                let removedNames = [];
+                if (updates.teamMemberIds !== undefined) {
+                    const oldMembers = existingProject.members ?? [];
+                    const oldIds = new Set(oldMembers.map((m) => m.userId));
+                    const oldNameById = new Map(oldMembers.map((m) => [
+                        m.userId,
+                        m.user?.name ?? m.user?.workEmail ?? m.userId,
+                    ]));
+                    const newMembers = project.members ?? [];
+                    const newIds = new Set(newMembers.map((m) => m.user.id));
+                    const newNameById = new Map(newMembers.map((m) => [
+                        m.user.id,
+                        m.user.name ?? m.user.workEmail ?? m.user.id,
+                    ]));
+                    for (const uid of newIds)
+                        if (!oldIds.has(uid))
+                            addedNames.push(newNameById.get(uid));
+                    for (const uid of oldIds)
+                        if (!newIds.has(uid))
+                            removedNames.push(oldNameById.get(uid));
+                }
+                const { changedFields, before, after } = (0, transactionHistory_1.diffShallow)(beforeSnap, afterSnap);
+                const membersChanged = addedNames.length > 0 || removedNames.length > 0;
+                if (changedFields.length > 0 || membersChanged) {
+                    const labelParts = ["Project updated"];
+                    if (changedFields.length > 0)
+                        labelParts.push(`(${changedFields.join(", ")})`);
+                    if (membersChanged) {
+                        const memberParts = [];
+                        if (addedNames.length > 0)
+                            memberParts.push(`+${addedNames.join(", ")}`);
+                        if (removedNames.length > 0)
+                            memberParts.push(`-${removedNames.join(", ")}`);
+                        labelParts.push(`· Members ${memberParts.join(" ")}`);
+                    }
+                    (0, transactionHistory_1.recordTransaction)({
+                        req,
+                        section: transactionHistory_1.Section.WORK,
+                        module: transactionHistory_1.Module.PROJECTS,
+                        page: transactionHistory_1.Page.PROJECT_DETAIL,
+                        action: transactionHistory_1.Action.UPDATE,
+                        actionLabel: labelParts.join(" "),
+                        entityType: transactionHistory_1.EntityType.PROJECT,
+                        entityId: id,
+                        entityLabel: `${existingProject.code ?? ""}${existingProject.code ? " — " : ""}${existingProject.name}`,
+                        beforeData: before,
+                        afterData: after,
+                        changedFields,
+                        statusCode: 200,
+                        metadata: membersChanged ? { added: addedNames, removed: removedNames } : null,
+                    });
+                }
+            }
             res.status(200).json({
                 success: true,
                 data: project,
@@ -573,6 +683,22 @@ class ProjectController {
                     updatedAt: new Date()
                 },
             });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.PROJECTS,
+                page: transactionHistory_1.Page.PROJECT_LIST,
+                action: transactionHistory_1.Action.DELETE,
+                actionLabel: "Project moved to trash",
+                entityType: transactionHistory_1.EntityType.PROJECT,
+                entityId: id,
+                entityLabel: `${project.code ?? ""}${project.code ? " — " : ""}${project.name}`,
+                beforeData: { status: project.status },
+                afterData: { status: "DELETED" },
+                changedFields: ["status"],
+                statusCode: 200,
+                metadata: { softDelete: true },
+            });
             res.status(200).json({
                 success: true,
                 message: "Project moved to trash",
@@ -623,6 +749,21 @@ class ProjectController {
                     updatedAt: new Date()
                 },
             });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.PROJECTS,
+                page: transactionHistory_1.Page.PROJECT_TRASH,
+                action: transactionHistory_1.Action.RESTORE,
+                actionLabel: "Project restored",
+                entityType: transactionHistory_1.EntityType.PROJECT,
+                entityId: id,
+                entityLabel: `${project.code ?? ""}${project.code ? " — " : ""}${project.name}`,
+                beforeData: { status: "DELETED" },
+                afterData: { status: "ACTIVE" },
+                changedFields: ["status"],
+                statusCode: 200,
+            });
             res.status(200).json({
                 success: true,
                 message: "Project restored successfully",
@@ -663,6 +804,18 @@ class ProjectController {
             await database_1.prisma.project.delete({
                 where: { id },
             });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.PROJECTS,
+                page: transactionHistory_1.Page.PROJECT_TRASH,
+                action: transactionHistory_1.Action.PERMANENT_DELETE,
+                actionLabel: "Project permanently deleted",
+                entityType: transactionHistory_1.EntityType.PROJECT,
+                entityId: id,
+                entityLabel: `${project.code ?? ""}${project.code ? " — " : ""}${project.name}`,
+                statusCode: 200,
+            });
             res.status(200).json({
                 success: true,
                 message: "Project permanently deleted",
@@ -693,6 +846,18 @@ class ProjectController {
                     tenantId: req.tenantId,
                     status: "DELETED"
                 },
+            });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.PROJECTS,
+                page: transactionHistory_1.Page.PROJECT_TRASH,
+                action: transactionHistory_1.Action.BULK_PERMANENT_DELETE,
+                actionLabel: `Trash emptied (${count} projects)`,
+                entityType: transactionHistory_1.EntityType.PROJECT,
+                correlationId: (0, crypto_1.randomUUID)(),
+                metadata: { deleted: count, source: "empty_trash" },
+                statusCode: 200,
             });
             res.status(200).json({
                 success: true,
@@ -739,6 +904,20 @@ class ProjectController {
                     updatedAt: new Date()
                 },
             });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.PROJECTS,
+                page: transactionHistory_1.Page.PROJECT_TRASH,
+                action: transactionHistory_1.Action.BULK_RESTORE,
+                actionLabel: `Projects restored (${count})`,
+                entityType: transactionHistory_1.EntityType.PROJECT,
+                afterData: { status: "ACTIVE" },
+                changedFields: ["status"],
+                correlationId: (0, crypto_1.randomUUID)(),
+                metadata: { targetIds: ids, requested: ids.length, restored: count },
+                statusCode: 200,
+            });
             res.status(200).json({
                 success: true,
                 message: `${count} projects restored successfully`,
@@ -779,6 +958,18 @@ class ProjectController {
                     tenantId: req.tenantId,
                     status: "DELETED"
                 },
+            });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.PROJECTS,
+                page: transactionHistory_1.Page.PROJECT_TRASH,
+                action: transactionHistory_1.Action.BULK_PERMANENT_DELETE,
+                actionLabel: `Projects permanently deleted (${count})`,
+                entityType: transactionHistory_1.EntityType.PROJECT,
+                correlationId: (0, crypto_1.randomUUID)(),
+                metadata: { targetIds: ids, requested: ids.length, deleted: count },
+                statusCode: 200,
             });
             res.status(200).json({
                 success: true,
@@ -1275,6 +1466,21 @@ class ProjectController {
                     },
                 },
             });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.PROJECTS,
+                page: transactionHistory_1.Page.PROJECT_DETAIL,
+                action: transactionHistory_1.Action.CREATE,
+                actionLabel: "Team member added",
+                entityType: transactionHistory_1.EntityType.PROJECT_MEMBER,
+                entityId: userId,
+                entityLabel: user.name ?? user.workEmail ?? userId,
+                parentEntityType: transactionHistory_1.EntityType.PROJECT,
+                parentEntityId: id,
+                afterData: { userId, role: "member" },
+                statusCode: 200,
+            });
             res.status(200).json({
                 success: true,
                 data: updatedProject,
@@ -1564,6 +1770,20 @@ class ProjectController {
                         },
                     },
                 },
+            });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.PROJECTS,
+                page: transactionHistory_1.Page.PROJECT_DETAIL,
+                action: transactionHistory_1.Action.DELETE,
+                actionLabel: "Team member removed",
+                entityType: transactionHistory_1.EntityType.PROJECT_MEMBER,
+                entityId: userId,
+                parentEntityType: transactionHistory_1.EntityType.PROJECT,
+                parentEntityId: id,
+                beforeData: { userId, role: "member" },
+                statusCode: 200,
             });
             res.status(200).json({
                 success: true,

@@ -9,6 +9,7 @@ const types_1 = require("@/types");
 const socketService_1 = require("@/services/socketService");
 const aiDocumentService_1 = require("@/services/aiDocumentService");
 const crypto_1 = __importDefault(require("crypto"));
+const transactionHistory_1 = require("@/utils/transactionHistory");
 class DocumentHubController {
     /**
      * Generate a documentation draft from a free-form prompt.
@@ -127,8 +128,11 @@ class DocumentHubController {
                 });
                 return;
             }
-            const { name, projectId, ticketId, visibility: bodyVisibility } = req.body ?? {};
+            const { name, projectId, ticketId, visibility: bodyVisibility, source: bodySource } = req.body ?? {};
             const visibility = bodyVisibility || 'public';
+            // FE passes `source: "ai"` when the hub was generated through Zai.
+            // Anything else (including omitted) is treated as a manual creation.
+            const creationSource = bodySource === "ai" ? "ai" : "manual";
             let hubShareToken = null;
             if (visibility === 'public') {
                 hubShareToken = crypto_1.default.randomBytes(32).toString('hex');
@@ -243,6 +247,27 @@ class DocumentHubController {
             });
             // Emit socket event
             socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:created", documentHub);
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.DOCUMENT_HUB,
+                page: transactionHistory_1.Page.DOCUMENT_HUB_LIST,
+                action: transactionHistory_1.Action.CREATE,
+                actionLabel: `Document hub created${creationSource === "ai" ? " via Zai" : ""}`,
+                entityType: transactionHistory_1.EntityType.DOCUMENT_HUB,
+                entityId: documentHub.id,
+                entityLabel: documentHub.name,
+                parentEntityType: projectId ? transactionHistory_1.EntityType.PROJECT : null,
+                parentEntityId: projectId ?? null,
+                afterData: {
+                    name: documentHub.name,
+                    visibility,
+                    projectId,
+                    ticketId,
+                },
+                metadata: { source: creationSource },
+                statusCode: 201,
+            });
             res.status(201).json({
                 success: true,
                 data: documentHub,
@@ -377,7 +402,8 @@ class DocumentHubController {
                 });
                 return;
             }
-            const { documentHubId, parentId, type, title } = req.body;
+            const { documentHubId, parentId, type, title, source: bodySource } = req.body;
+            const creationSource = bodySource === "ai" ? "ai" : "manual";
             if (!documentHubId || !title || !type) {
                 res.status(400).json({
                     success: false,
@@ -433,6 +459,27 @@ class DocumentHubController {
             });
             // Emit socket event
             socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:node_created", newNode);
+            // Look up the hub name so the activity row reads "<thing> in <Hub Name>"
+            const hubForLog = await database_1.prisma.documentHub.findUnique({
+                where: { id: documentHubId },
+                select: { name: true },
+            });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.DOCUMENT_HUB,
+                page: transactionHistory_1.Page.DOCUMENT_HUB_LIST,
+                action: transactionHistory_1.Action.CREATE,
+                actionLabel: `Document ${type} created${creationSource === "ai" ? " via Zai" : ""}${hubForLog?.name ? ` in ${hubForLog.name}` : ""}`,
+                entityType: type === "file" ? transactionHistory_1.EntityType.DOCUMENT : transactionHistory_1.EntityType.DOCUMENT_TREE_NODE,
+                entityId: type === "file" ? documentId : newNode.id,
+                entityLabel: title,
+                parentEntityType: transactionHistory_1.EntityType.DOCUMENT_HUB,
+                parentEntityId: documentHubId,
+                afterData: { title, type, parentId: parentId || null },
+                metadata: { source: creationSource, hubName: hubForLog?.name ?? null },
+                statusCode: 201,
+            });
             res.status(201).json({
                 success: true,
                 data: newNode,
@@ -471,6 +518,7 @@ class DocumentHubController {
                     tenantId: req.tenantId,
                     isDeleted: false,
                 },
+                include: { documentHub: { select: { name: true } } },
             });
             if (!node) {
                 res.status(404).json({
@@ -565,6 +613,41 @@ class DocumentHubController {
             });
             // Emit socket event
             socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:node_updated", updatedNode);
+            {
+                const before = {};
+                const after = {};
+                if (title !== undefined) {
+                    before.title = node.title;
+                    after.title = updatedNode.title;
+                }
+                if (parentId !== undefined) {
+                    before.parentId = node.parentId;
+                    after.parentId = updatedNode.parentId;
+                }
+                const diff = (0, transactionHistory_1.diffShallow)(before, after);
+                if (diff.changedFields.length > 0) {
+                    const hubName = node.documentHub?.name;
+                    const inHub = hubName ? ` in ${hubName}` : "";
+                    (0, transactionHistory_1.recordTransaction)({
+                        req,
+                        section: transactionHistory_1.Section.WORK,
+                        module: transactionHistory_1.Module.DOCUMENT_HUB,
+                        page: transactionHistory_1.Page.DOCUMENT_HUB_LIST,
+                        action: parentId !== undefined ? transactionHistory_1.Action.MOVE : transactionHistory_1.Action.UPDATE,
+                        actionLabel: `Document ${node.type} ${parentId !== undefined ? "moved" : "updated"}${inHub}${diff.changedFields.length ? ` (${diff.changedFields.join(", ")})` : ""}`,
+                        entityType: node.type === "file" ? transactionHistory_1.EntityType.DOCUMENT : transactionHistory_1.EntityType.DOCUMENT_TREE_NODE,
+                        entityId: node.type === "file" && node.documentId ? node.documentId : node.id,
+                        entityLabel: updatedNode.title,
+                        parentEntityType: transactionHistory_1.EntityType.DOCUMENT_HUB,
+                        parentEntityId: node.documentHubId,
+                        beforeData: diff.before,
+                        afterData: diff.after,
+                        changedFields: diff.changedFields,
+                        metadata: hubName ? { hubName } : null,
+                        statusCode: 200,
+                    });
+                }
+            }
             res.status(200).json({
                 success: true,
                 data: updatedNode,
@@ -640,6 +723,7 @@ class DocumentHubController {
                     tenantId: req.tenantId,
                     isDeleted: false,
                 },
+                include: { documentHub: { select: { name: true } } },
             });
             if (!document) {
                 res.status(404).json({
@@ -728,6 +812,30 @@ class DocumentHubController {
             });
             // Emit socket event
             socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:document_updated", updatedDocument);
+            // Audit log: only log structural changes. Content-only edits already
+            // generate a `document_history` row per save and would flood the
+            // activity feed otherwise. We log when the title changes.
+            if (title !== undefined && title !== document.title) {
+                const hubName = document.documentHub?.name;
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.WORK,
+                    module: transactionHistory_1.Module.DOCUMENT_HUB,
+                    page: transactionHistory_1.Page.DOCUMENT_DETAIL,
+                    action: transactionHistory_1.Action.UPDATE,
+                    actionLabel: `Document renamed${hubName ? ` in ${hubName}` : ""}`,
+                    entityType: transactionHistory_1.EntityType.DOCUMENT,
+                    entityId: id,
+                    entityLabel: title,
+                    parentEntityType: transactionHistory_1.EntityType.DOCUMENT_HUB,
+                    parentEntityId: document.documentHubId,
+                    beforeData: { title: document.title },
+                    afterData: { title },
+                    changedFields: ["title"],
+                    metadata: hubName ? { hubName } : null,
+                    statusCode: 200,
+                });
+            }
             res.status(200).json({
                 success: true,
                 data: updatedDocument,
@@ -889,6 +997,20 @@ class DocumentHubController {
           AND "documentId" = ${documentId}
           AND "tenantId" = ${req.tenantId}
       `;
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.DOCUMENT_HUB,
+                page: transactionHistory_1.Page.DOCUMENT_DETAIL,
+                action: transactionHistory_1.Action.DELETE,
+                actionLabel: "Document version deleted",
+                entityType: transactionHistory_1.EntityType.DOCUMENT_HISTORY_ENTRY,
+                entityId: historyId,
+                parentEntityType: transactionHistory_1.EntityType.DOCUMENT,
+                parentEntityId: documentId,
+                metadata: { versionCreatedAt: rows[0]?.created_at },
+                statusCode: 200,
+            });
             res.status(200).json({
                 success: true,
                 message: "Version deleted",
@@ -1085,6 +1207,18 @@ class DocumentHubController {
                     await tx.documentHub.delete({ where: { id } });
                 });
                 socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:deleted", { id, permanent: true });
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.WORK,
+                    module: transactionHistory_1.Module.DOCUMENT_HUB,
+                    page: transactionHistory_1.Page.DOCUMENT_HUB_LIST,
+                    action: transactionHistory_1.Action.PERMANENT_DELETE,
+                    actionLabel: "Document hub permanently deleted",
+                    entityType: transactionHistory_1.EntityType.DOCUMENT_HUB,
+                    entityId: id,
+                    entityLabel: documentHub.name,
+                    statusCode: 200,
+                });
                 res.status(200).json({
                     success: true,
                     message: "Document Hub permanently deleted",
@@ -1101,6 +1235,22 @@ class DocumentHubController {
             });
             // Emit socket event
             socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:deleted", { id });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.DOCUMENT_HUB,
+                page: transactionHistory_1.Page.DOCUMENT_HUB_LIST,
+                action: transactionHistory_1.Action.DELETE,
+                actionLabel: "Document hub moved to trash",
+                entityType: transactionHistory_1.EntityType.DOCUMENT_HUB,
+                entityId: id,
+                entityLabel: documentHub.name,
+                beforeData: { isDeleted: false },
+                afterData: { isDeleted: true },
+                changedFields: ["isDeleted"],
+                metadata: { softDelete: true },
+                statusCode: 200,
+            });
             res.status(200).json({
                 success: true,
                 message: "Document Hub moved to trash",
@@ -1191,6 +1341,40 @@ class DocumentHubController {
             });
             // Emit socket event
             socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:updated", updatedDocumentHub);
+            {
+                const before = {};
+                const after = {};
+                if (name !== undefined) {
+                    before.name = documentHub.name;
+                    after.name = updatedDocumentHub.name;
+                }
+                if (projectId !== undefined) {
+                    before.projectId = documentHub.projectId;
+                    after.projectId = updatedDocumentHub.projectId;
+                }
+                if (ticketId !== undefined) {
+                    before.ticketId = documentHub.ticketId;
+                    after.ticketId = updatedDocumentHub.ticketId;
+                }
+                const diff = (0, transactionHistory_1.diffShallow)(before, after);
+                if (diff.changedFields.length > 0) {
+                    (0, transactionHistory_1.recordTransaction)({
+                        req,
+                        section: transactionHistory_1.Section.WORK,
+                        module: transactionHistory_1.Module.DOCUMENT_HUB,
+                        page: transactionHistory_1.Page.DOCUMENT_HUB_LIST,
+                        action: transactionHistory_1.Action.UPDATE,
+                        actionLabel: `Document hub updated (${diff.changedFields.join(", ")})`,
+                        entityType: transactionHistory_1.EntityType.DOCUMENT_HUB,
+                        entityId: id,
+                        entityLabel: updatedDocumentHub.name,
+                        beforeData: diff.before,
+                        afterData: diff.after,
+                        changedFields: diff.changedFields,
+                        statusCode: 200,
+                    });
+                }
+            }
             res.status(200).json({
                 success: true,
                 data: updatedDocumentHub,
@@ -1233,6 +1417,7 @@ class DocumentHubController {
                     tenantId: req.tenantId,
                     ...(isPermanent ? {} : { isDeleted: false }),
                 },
+                include: { documentHub: { select: { name: true } } },
             });
             if (!node) {
                 res.status(404).json({
@@ -1260,6 +1445,28 @@ class DocumentHubController {
             });
             // Emit socket event
             socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:node_deleted", { id });
+            {
+                const hubName = node.documentHub?.name;
+                const inHub = hubName ? ` from ${hubName}` : "";
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.WORK,
+                    module: transactionHistory_1.Module.DOCUMENT_HUB,
+                    page: transactionHistory_1.Page.DOCUMENT_HUB_LIST,
+                    action: isPermanent ? transactionHistory_1.Action.PERMANENT_DELETE : transactionHistory_1.Action.DELETE,
+                    actionLabel: `Document ${node.type} ${isPermanent ? "permanently deleted" : "moved to trash"}${inHub}`,
+                    entityType: node.type === "file" ? transactionHistory_1.EntityType.DOCUMENT : transactionHistory_1.EntityType.DOCUMENT_TREE_NODE,
+                    entityId: node.type === "file" && node.documentId ? node.documentId : node.id,
+                    entityLabel: node.title,
+                    parentEntityType: transactionHistory_1.EntityType.DOCUMENT_HUB,
+                    parentEntityId: node.documentHubId,
+                    beforeData: isPermanent ? null : { isDeleted: false },
+                    afterData: isPermanent ? null : { isDeleted: true },
+                    changedFields: isPermanent ? undefined : ["isDeleted"],
+                    metadata: { softDelete: !isPermanent, nodeType: node.type, hubName: hubName ?? null },
+                    statusCode: 200,
+                });
+            }
             res.status(200).json({
                 success: true,
                 message: "Node and its contents moved to trash",
@@ -1350,6 +1557,7 @@ class DocumentHubController {
                     tenantId: req.tenantId,
                     ...(isPermanent ? {} : { isDeleted: false }),
                 },
+                include: { documentHub: { select: { name: true } } },
             });
             if (!document) {
                 res.status(404).json({
@@ -1377,6 +1585,24 @@ class DocumentHubController {
                     data: { updatedAt: new Date() },
                 });
                 socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:document_deleted", { id, permanent: true });
+                {
+                    const hubName = document.documentHub?.name;
+                    (0, transactionHistory_1.recordTransaction)({
+                        req,
+                        section: transactionHistory_1.Section.WORK,
+                        module: transactionHistory_1.Module.DOCUMENT_HUB,
+                        page: transactionHistory_1.Page.DOCUMENT_DETAIL,
+                        action: transactionHistory_1.Action.PERMANENT_DELETE,
+                        actionLabel: `Document permanently deleted${hubName ? ` from ${hubName}` : ""}`,
+                        entityType: transactionHistory_1.EntityType.DOCUMENT,
+                        entityId: id,
+                        entityLabel: document.title,
+                        parentEntityType: transactionHistory_1.EntityType.DOCUMENT_HUB,
+                        parentEntityId: document.documentHubId,
+                        metadata: hubName ? { hubName } : null,
+                        statusCode: 200,
+                    });
+                }
                 res.status(200).json({
                     success: true,
                     message: "Document permanently deleted",
@@ -1412,6 +1638,27 @@ class DocumentHubController {
             });
             // Emit socket event
             socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:document_deleted", { id });
+            {
+                const hubName = document.documentHub?.name;
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.WORK,
+                    module: transactionHistory_1.Module.DOCUMENT_HUB,
+                    page: transactionHistory_1.Page.DOCUMENT_DETAIL,
+                    action: transactionHistory_1.Action.DELETE,
+                    actionLabel: `Document moved to trash${hubName ? ` from ${hubName}` : ""}`,
+                    entityType: transactionHistory_1.EntityType.DOCUMENT,
+                    entityId: id,
+                    entityLabel: document.title,
+                    parentEntityType: transactionHistory_1.EntityType.DOCUMENT_HUB,
+                    parentEntityId: document.documentHubId,
+                    beforeData: { isDeleted: false },
+                    afterData: { isDeleted: true },
+                    changedFields: ["isDeleted"],
+                    metadata: { softDelete: true, hubName: hubName ?? null },
+                    statusCode: 200,
+                });
+            }
             res.status(200).json({
                 success: true,
                 message: "Document moved to trash",
@@ -1551,6 +1798,21 @@ class DocumentHubController {
             });
             // Emit socket event
             socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:restored", documentHub);
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.DOCUMENT_HUB,
+                page: transactionHistory_1.Page.DOCUMENT_HUB_LIST,
+                action: transactionHistory_1.Action.RESTORE,
+                actionLabel: "Document hub restored from trash",
+                entityType: transactionHistory_1.EntityType.DOCUMENT_HUB,
+                entityId: id,
+                entityLabel: documentHub.name,
+                beforeData: { isDeleted: true },
+                afterData: { isDeleted: false },
+                changedFields: ["isDeleted"],
+                statusCode: 200,
+            });
             res.status(200).json({
                 success: true,
                 message: "Document Hub restored successfully",
@@ -1583,6 +1845,7 @@ class DocumentHubController {
                     tenantId: req.tenantId,
                     isDeleted: true,
                 },
+                include: { documentHub: { select: { name: true } } },
             });
             if (!document) {
                 res.status(404).json({
@@ -1614,6 +1877,27 @@ class DocumentHubController {
             });
             // Emit socket event
             socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:document_restored", { id });
+            {
+                const hubName = document.documentHub?.name;
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.WORK,
+                    module: transactionHistory_1.Module.DOCUMENT_HUB,
+                    page: transactionHistory_1.Page.DOCUMENT_HUB_LIST,
+                    action: transactionHistory_1.Action.RESTORE,
+                    actionLabel: `Document restored from trash${hubName ? ` to ${hubName}` : ""}`,
+                    entityType: transactionHistory_1.EntityType.DOCUMENT,
+                    entityId: id,
+                    entityLabel: document.title,
+                    parentEntityType: transactionHistory_1.EntityType.DOCUMENT_HUB,
+                    parentEntityId: document.documentHubId,
+                    beforeData: { isDeleted: true },
+                    afterData: { isDeleted: false },
+                    changedFields: ["isDeleted"],
+                    metadata: hubName ? { hubName } : null,
+                    statusCode: 200,
+                });
+            }
             res.status(200).json({
                 success: true,
                 message: "Document restored successfully",
@@ -1670,6 +1954,31 @@ class DocumentHubController {
             });
             // Emit socket event
             socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:node_restored", { id, documentHubId });
+            {
+                const hubForLog = await database_1.prisma.documentHub.findUnique({
+                    where: { id: documentHubId },
+                    select: { name: true },
+                });
+                const hubName = hubForLog?.name;
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.WORK,
+                    module: transactionHistory_1.Module.DOCUMENT_HUB,
+                    page: transactionHistory_1.Page.DOCUMENT_HUB_LIST,
+                    action: transactionHistory_1.Action.RESTORE,
+                    actionLabel: `Document ${node.type} restored from trash${hubName ? ` to ${hubName}` : ""}`,
+                    entityType: node.type === "file" ? transactionHistory_1.EntityType.DOCUMENT : transactionHistory_1.EntityType.DOCUMENT_TREE_NODE,
+                    entityId: node.type === "file" && node.documentId ? node.documentId : node.id,
+                    entityLabel: node.title,
+                    parentEntityType: transactionHistory_1.EntityType.DOCUMENT_HUB,
+                    parentEntityId: documentHubId,
+                    beforeData: { isDeleted: true },
+                    afterData: { isDeleted: false },
+                    changedFields: ["isDeleted"],
+                    metadata: { nodeType: node.type, restoredToHubId: documentHubId, parentId: parentId || null, hubName: hubName ?? null },
+                    statusCode: 200,
+                });
+            }
             res.status(200).json({
                 success: true,
                 message: "Folder and its contents restored successfully",
@@ -1754,6 +2063,7 @@ class DocumentHubController {
                     tenantId: req.tenantId,
                     isDeleted: false,
                 },
+                include: { documentHub: { select: { name: true } } },
             });
             if (!document) {
                 res.status(404).json({
@@ -1789,6 +2099,27 @@ class DocumentHubController {
             });
             // Emit socket event
             socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:document_updated", updatedDocument);
+            if (visibility !== document.visibility) {
+                const hubName = document.documentHub?.name;
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.WORK,
+                    module: transactionHistory_1.Module.DOCUMENT_HUB,
+                    page: transactionHistory_1.Page.DOCUMENT_DETAIL,
+                    action: visibility === "public" ? transactionHistory_1.Action.SHARE : transactionHistory_1.Action.UNSHARE,
+                    actionLabel: `Document ${visibility === "public" ? "shared" : "made private"}${hubName ? ` in ${hubName}` : ""}`,
+                    entityType: transactionHistory_1.EntityType.DOCUMENT,
+                    entityId: id,
+                    entityLabel: document.title,
+                    parentEntityType: transactionHistory_1.EntityType.DOCUMENT_HUB,
+                    parentEntityId: document.documentHubId,
+                    beforeData: { visibility: document.visibility },
+                    afterData: { visibility },
+                    changedFields: ["visibility"],
+                    metadata: hubName ? { hubName } : null,
+                    statusCode: 200,
+                });
+            }
             res.status(200).json({
                 success: true,
                 data: updatedDocument,
@@ -1967,6 +2298,23 @@ class DocumentHubController {
             });
             // Emit socket event
             socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:updated", updatedHub);
+            if (visibility !== hub.visibility) {
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.WORK,
+                    module: transactionHistory_1.Module.DOCUMENT_HUB,
+                    page: transactionHistory_1.Page.DOCUMENT_HUB_LIST,
+                    action: visibility === "public" ? transactionHistory_1.Action.SHARE : transactionHistory_1.Action.UNSHARE,
+                    actionLabel: `Document hub ${visibility === "public" ? "shared" : "made private"}`,
+                    entityType: transactionHistory_1.EntityType.DOCUMENT_HUB,
+                    entityId: id,
+                    entityLabel: hub.name,
+                    beforeData: { visibility: hub.visibility },
+                    afterData: { visibility },
+                    changedFields: ["visibility"],
+                    statusCode: 200,
+                });
+            }
             res.status(200).json({
                 success: true,
                 data: updatedHub,
@@ -2024,6 +2372,23 @@ class DocumentHubController {
             });
             // Emit socket event
             socketService_1.socketService.emitToTenant(req.tenantId, "documenthub:updated", { id, visibility: 'private' });
+            if (hub.visibility !== "private") {
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.WORK,
+                    module: transactionHistory_1.Module.DOCUMENT_HUB,
+                    page: transactionHistory_1.Page.DOCUMENT_HUB_LIST,
+                    action: transactionHistory_1.Action.UNSHARE,
+                    actionLabel: "Document hub sharing revoked",
+                    entityType: transactionHistory_1.EntityType.DOCUMENT_HUB,
+                    entityId: id,
+                    entityLabel: hub.name,
+                    beforeData: { visibility: hub.visibility },
+                    afterData: { visibility: "private" },
+                    changedFields: ["visibility"],
+                    statusCode: 200,
+                });
+            }
             res.status(200).json({
                 success: true,
                 message: "Hub sharing revoked",

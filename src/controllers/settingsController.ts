@@ -7,6 +7,16 @@ import {
   ValidationError
 } from '@/types';
 import { socketService } from '@/services/socketService';
+import {
+  recordTransaction,
+  diffShallow,
+  Section,
+  Module,
+  Page,
+  Action,
+  EntityType,
+} from "@/utils/transactionHistory";
+import { randomUUID } from "crypto";
 
 // Simple in-memory cache for ticket configurations
 const configCache = new Map<string, { data: any; timestamp: number }>();
@@ -563,6 +573,23 @@ export class SettingsController {
         }
       });
 
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.TICKET_SETTINGS,
+        page: Page.WORKFLOW_TEMPLATE,
+        action: Action.UPDATE,
+        actionLabel: `Workflow template updated (${(workflowSteps as any[]).length} steps)`,
+        entityType: EntityType.WORKFLOW_TEMPLATE,
+        entityId: projectId,
+        entityLabel: `${updatedProject.code ? `${updatedProject.code} — ` : ""}${updatedProject.name}`,
+        parentEntityType: EntityType.PROJECT,
+        parentEntityId: projectId,
+        beforeData: { stepCount: Array.isArray(project.workflowTemplate) ? (project.workflowTemplate as any[]).length : 0 },
+        afterData: { stepCount: (workflowSteps as any[]).length, steps: workflowSteps },
+        changedFields: ["workflowTemplate"],
+        statusCode: 200,
+      });
 
       res.status(200).json({
         success: true,
@@ -1221,6 +1248,25 @@ export class SettingsController {
       });
 
 
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.TICKET_SETTINGS,
+        page: Page.DROPDOWN_OPTIONS,
+        action: Action.CREATE,
+        actionLabel: `Dropdown option created (${type})`,
+        entityType: EntityType.DROPDOWN_OPTION,
+        entityId: newOption.id,
+        entityLabel: `${type} — ${newOption.label}`,
+        afterData: {
+          type,
+          value: newOption.value,
+          label: newOption.label,
+          order: newOption.order,
+        },
+        statusCode: 201,
+      });
+
       res.status(201).json({
         success: true,
         data: {
@@ -1311,6 +1357,33 @@ export class SettingsController {
       data: updateData
     });
 
+    {
+      const beforeSnap: Record<string, any> = {};
+      const afterSnap: Record<string, any> = {};
+      for (const k of Object.keys(updateData)) {
+        beforeSnap[k] = (existingOption as any)[k];
+        afterSnap[k] = (updatedOption as any)[k];
+      }
+      const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+      if (changedFields.length > 0) {
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.TICKET_SETTINGS,
+          page: Page.DROPDOWN_OPTIONS,
+          action: Action.UPDATE,
+          actionLabel: `Dropdown option updated (${changedFields.join(", ")})`,
+          entityType: EntityType.DROPDOWN_OPTION,
+          entityId: id,
+          entityLabel: `${updatedOption.category} — ${updatedOption.label}`,
+          beforeData: before,
+          afterData: after,
+          changedFields,
+          statusCode: 200,
+        });
+      }
+    }
+
     res.status(200).json({
       success: true,
       data: {
@@ -1378,6 +1451,24 @@ export class SettingsController {
         where: { id }
       });
 
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.TICKET_SETTINGS,
+        page: Page.DROPDOWN_OPTIONS,
+        action: Action.DELETE,
+        actionLabel: `Dropdown option deleted (${existingOption.category})`,
+        entityType: EntityType.DROPDOWN_OPTION,
+        entityId: id,
+        entityLabel: `${existingOption.category} — ${existingOption.label}`,
+        beforeData: {
+          type: existingOption.category,
+          value: existingOption.value,
+          label: existingOption.label,
+          order: existingOption.order,
+        },
+        statusCode: 200,
+      });
 
       res.status(200).json({
         success: true,
@@ -1440,6 +1531,18 @@ export class SettingsController {
 
       await Promise.all(updatePromises);
 
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.TICKET_SETTINGS,
+        page: Page.DROPDOWN_OPTIONS,
+        action: Action.REORDER,
+        actionLabel: `Dropdown options reordered (${items.length})`,
+        entityType: EntityType.DROPDOWN_OPTION,
+        correlationId: randomUUID(),
+        metadata: { items: items.map((i: any) => ({ id: i.id, order: i.order })) },
+        statusCode: 200,
+      });
 
       res.status(200).json({
         success: true,

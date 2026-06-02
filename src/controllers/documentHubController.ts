@@ -9,6 +9,15 @@ import {
 import { socketService } from "@/services/socketService";
 import { generateDocumentDraft, rewriteSelection } from "@/services/aiDocumentService";
 import crypto from "crypto";
+import {
+  recordTransaction,
+  diffShallow,
+  Section,
+  Module,
+  Page,
+  Action,
+  EntityType,
+} from "@/utils/transactionHistory";
 
 export class DocumentHubController {
   /**
@@ -144,8 +153,11 @@ export class DocumentHubController {
         return;
       }
 
-      const { name, projectId, ticketId, visibility: bodyVisibility } = req.body ?? {};
+      const { name, projectId, ticketId, visibility: bodyVisibility, source: bodySource } = req.body ?? {};
       const visibility = bodyVisibility || 'public';
+      // FE passes `source: "ai"` when the hub was generated through Zai.
+      // Anything else (including omitted) is treated as a manual creation.
+      const creationSource: "manual" | "ai" = bodySource === "ai" ? "ai" : "manual";
 
       let hubShareToken = null;
       if (visibility === 'public') {
@@ -274,6 +286,28 @@ export class DocumentHubController {
         "documenthub:created",
         documentHub,
       );
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.DOCUMENT_HUB,
+        page: Page.DOCUMENT_HUB_LIST,
+        action: Action.CREATE,
+        actionLabel: `Document hub created${creationSource === "ai" ? " via Zai" : ""}`,
+        entityType: EntityType.DOCUMENT_HUB,
+        entityId: documentHub.id,
+        entityLabel: documentHub.name,
+        parentEntityType: projectId ? EntityType.PROJECT : null,
+        parentEntityId: projectId ?? null,
+        afterData: {
+          name: documentHub.name,
+          visibility,
+          projectId,
+          ticketId,
+        },
+        metadata: { source: creationSource },
+        statusCode: 201,
+      });
 
       res.status(201).json({
         success: true,
@@ -428,7 +462,8 @@ export class DocumentHubController {
         return;
       }
 
-      const { documentHubId, parentId, type, title } = req.body;
+      const { documentHubId, parentId, type, title, source: bodySource } = req.body;
+      const creationSource: "manual" | "ai" = bodySource === "ai" ? "ai" : "manual";
 
       if (!documentHubId || !title || !type) {
         res.status(400).json({
@@ -496,6 +531,29 @@ export class DocumentHubController {
         newNode,
       );
 
+      // Look up the hub name so the activity row reads "<thing> in <Hub Name>"
+      const hubForLog = await prisma.documentHub.findUnique({
+        where: { id: documentHubId },
+        select: { name: true },
+      });
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.DOCUMENT_HUB,
+        page: Page.DOCUMENT_HUB_LIST,
+        action: Action.CREATE,
+        actionLabel: `Document ${type} created${creationSource === "ai" ? " via Zai" : ""}${hubForLog?.name ? ` in ${hubForLog.name}` : ""}`,
+        entityType: type === "file" ? EntityType.DOCUMENT : EntityType.DOCUMENT_TREE_NODE,
+        entityId: type === "file" ? documentId! : newNode.id,
+        entityLabel: title,
+        parentEntityType: EntityType.DOCUMENT_HUB,
+        parentEntityId: documentHubId,
+        afterData: { title, type, parentId: parentId || null },
+        metadata: { source: creationSource, hubName: hubForLog?.name ?? null },
+        statusCode: 201,
+      });
+
       res.status(201).json({
         success: true,
         data: newNode,
@@ -542,6 +600,7 @@ export class DocumentHubController {
           tenantId: req.tenantId,
           isDeleted: false,
         },
+        include: { documentHub: { select: { name: true } } },
       });
 
       if (!node) {
@@ -652,6 +711,36 @@ export class DocumentHubController {
         updatedNode,
       );
 
+      {
+        const before: Record<string, any> = {};
+        const after: Record<string, any> = {};
+        if (title !== undefined) { before.title = node.title; after.title = updatedNode.title; }
+        if (parentId !== undefined) { before.parentId = node.parentId; after.parentId = updatedNode.parentId; }
+        const diff = diffShallow(before, after);
+        if (diff.changedFields.length > 0) {
+          const hubName = (node as any).documentHub?.name as string | undefined;
+          const inHub = hubName ? ` in ${hubName}` : "";
+          recordTransaction({
+            req,
+            section: Section.WORK,
+            module: Module.DOCUMENT_HUB,
+            page: Page.DOCUMENT_HUB_LIST,
+            action: parentId !== undefined ? Action.MOVE : Action.UPDATE,
+            actionLabel: `Document ${node.type} ${parentId !== undefined ? "moved" : "updated"}${inHub}${diff.changedFields.length ? ` (${diff.changedFields.join(", ")})` : ""}`,
+            entityType: node.type === "file" ? EntityType.DOCUMENT : EntityType.DOCUMENT_TREE_NODE,
+            entityId: node.type === "file" && node.documentId ? node.documentId : node.id,
+            entityLabel: updatedNode.title,
+            parentEntityType: EntityType.DOCUMENT_HUB,
+            parentEntityId: node.documentHubId,
+            beforeData: diff.before,
+            afterData: diff.after,
+            changedFields: diff.changedFields,
+            metadata: hubName ? { hubName } : null,
+            statusCode: 200,
+          });
+        }
+      }
+
       res.status(200).json({
         success: true,
         data: updatedNode,
@@ -737,6 +826,7 @@ export class DocumentHubController {
           tenantId: req.tenantId,
           isDeleted: false,
         },
+        include: { documentHub: { select: { name: true } } },
       });
 
       if (!document) {
@@ -842,6 +932,31 @@ export class DocumentHubController {
         "documenthub:document_updated",
         updatedDocument,
       );
+
+      // Audit log: only log structural changes. Content-only edits already
+      // generate a `document_history` row per save and would flood the
+      // activity feed otherwise. We log when the title changes.
+      if (title !== undefined && title !== document.title) {
+        const hubName = (document as any).documentHub?.name as string | undefined;
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.DOCUMENT_HUB,
+          page: Page.DOCUMENT_DETAIL,
+          action: Action.UPDATE,
+          actionLabel: `Document renamed${hubName ? ` in ${hubName}` : ""}`,
+          entityType: EntityType.DOCUMENT,
+          entityId: id,
+          entityLabel: title,
+          parentEntityType: EntityType.DOCUMENT_HUB,
+          parentEntityId: document.documentHubId,
+          beforeData: { title: document.title },
+          afterData: { title },
+          changedFields: ["title"],
+          metadata: hubName ? { hubName } : null,
+          statusCode: 200,
+        });
+      }
 
       res.status(200).json({
         success: true,
@@ -1018,6 +1133,21 @@ export class DocumentHubController {
           AND "documentId" = ${documentId}
           AND "tenantId" = ${req.tenantId}
       `;
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.DOCUMENT_HUB,
+        page: Page.DOCUMENT_DETAIL,
+        action: Action.DELETE,
+        actionLabel: "Document version deleted",
+        entityType: EntityType.DOCUMENT_HISTORY_ENTRY,
+        entityId: historyId,
+        parentEntityType: EntityType.DOCUMENT,
+        parentEntityId: documentId,
+        metadata: { versionCreatedAt: rows[0]?.created_at },
+        statusCode: 200,
+      });
 
       res.status(200).json({
         success: true,
@@ -1238,6 +1368,19 @@ export class DocumentHubController {
           { id, permanent: true },
         );
 
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.DOCUMENT_HUB,
+          page: Page.DOCUMENT_HUB_LIST,
+          action: Action.PERMANENT_DELETE,
+          actionLabel: "Document hub permanently deleted",
+          entityType: EntityType.DOCUMENT_HUB,
+          entityId: id,
+          entityLabel: documentHub.name,
+          statusCode: 200,
+        });
+
         res.status(200).json({
           success: true,
           message: "Document Hub permanently deleted",
@@ -1260,6 +1403,23 @@ export class DocumentHubController {
         "documenthub:deleted",
         { id },
       );
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.DOCUMENT_HUB,
+        page: Page.DOCUMENT_HUB_LIST,
+        action: Action.DELETE,
+        actionLabel: "Document hub moved to trash",
+        entityType: EntityType.DOCUMENT_HUB,
+        entityId: id,
+        entityLabel: documentHub.name,
+        beforeData: { isDeleted: false },
+        afterData: { isDeleted: true },
+        changedFields: ["isDeleted"],
+        metadata: { softDelete: true },
+        statusCode: 200,
+      });
 
       res.status(200).json({
         success: true,
@@ -1371,6 +1531,32 @@ export class DocumentHubController {
         updatedDocumentHub,
       );
 
+      {
+        const before: Record<string, any> = {};
+        const after: Record<string, any> = {};
+        if (name !== undefined) { before.name = documentHub.name; after.name = updatedDocumentHub.name; }
+        if (projectId !== undefined) { before.projectId = documentHub.projectId; after.projectId = updatedDocumentHub.projectId; }
+        if (ticketId !== undefined) { before.ticketId = documentHub.ticketId; after.ticketId = updatedDocumentHub.ticketId; }
+        const diff = diffShallow(before, after);
+        if (diff.changedFields.length > 0) {
+          recordTransaction({
+            req,
+            section: Section.WORK,
+            module: Module.DOCUMENT_HUB,
+            page: Page.DOCUMENT_HUB_LIST,
+            action: Action.UPDATE,
+            actionLabel: `Document hub updated (${diff.changedFields.join(", ")})`,
+            entityType: EntityType.DOCUMENT_HUB,
+            entityId: id,
+            entityLabel: updatedDocumentHub.name,
+            beforeData: diff.before,
+            afterData: diff.after,
+            changedFields: diff.changedFields,
+            statusCode: 200,
+          });
+        }
+      }
+
       res.status(200).json({
         success: true,
         data: updatedDocumentHub,
@@ -1420,6 +1606,7 @@ export class DocumentHubController {
           tenantId: req.tenantId,
           ...(isPermanent ? {} : { isDeleted: false }),
         },
+        include: { documentHub: { select: { name: true } } },
       });
 
       if (!node) {
@@ -1464,6 +1651,29 @@ export class DocumentHubController {
         "documenthub:node_deleted",
         { id },
       );
+
+      {
+        const hubName = (node as any).documentHub?.name as string | undefined;
+        const inHub = hubName ? ` from ${hubName}` : "";
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.DOCUMENT_HUB,
+          page: Page.DOCUMENT_HUB_LIST,
+          action: isPermanent ? Action.PERMANENT_DELETE : Action.DELETE,
+          actionLabel: `Document ${node.type} ${isPermanent ? "permanently deleted" : "moved to trash"}${inHub}`,
+          entityType: node.type === "file" ? EntityType.DOCUMENT : EntityType.DOCUMENT_TREE_NODE,
+          entityId: node.type === "file" && node.documentId ? node.documentId : node.id,
+          entityLabel: node.title,
+          parentEntityType: EntityType.DOCUMENT_HUB,
+          parentEntityId: node.documentHubId,
+          beforeData: isPermanent ? null : { isDeleted: false },
+          afterData: isPermanent ? null : { isDeleted: true },
+          changedFields: isPermanent ? undefined : ["isDeleted"],
+          metadata: { softDelete: !isPermanent, nodeType: node.type, hubName: hubName ?? null },
+          statusCode: 200,
+        });
+      }
 
       res.status(200).json({
         success: true,
@@ -1576,6 +1786,7 @@ export class DocumentHubController {
           tenantId: req.tenantId,
           ...(isPermanent ? {} : { isDeleted: false }),
         },
+        include: { documentHub: { select: { name: true } } },
       });
 
       if (!document) {
@@ -1612,6 +1823,25 @@ export class DocumentHubController {
           "documenthub:document_deleted",
           { id, permanent: true },
         );
+
+        {
+          const hubName = (document as any).documentHub?.name as string | undefined;
+          recordTransaction({
+            req,
+            section: Section.WORK,
+            module: Module.DOCUMENT_HUB,
+            page: Page.DOCUMENT_DETAIL,
+            action: Action.PERMANENT_DELETE,
+            actionLabel: `Document permanently deleted${hubName ? ` from ${hubName}` : ""}`,
+            entityType: EntityType.DOCUMENT,
+            entityId: id,
+            entityLabel: document.title,
+            parentEntityType: EntityType.DOCUMENT_HUB,
+            parentEntityId: document.documentHubId,
+            metadata: hubName ? { hubName } : null,
+            statusCode: 200,
+          });
+        }
 
         res.status(200).json({
           success: true,
@@ -1656,6 +1886,28 @@ export class DocumentHubController {
         "documenthub:document_deleted",
         { id },
       );
+
+      {
+        const hubName = (document as any).documentHub?.name as string | undefined;
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.DOCUMENT_HUB,
+          page: Page.DOCUMENT_DETAIL,
+          action: Action.DELETE,
+          actionLabel: `Document moved to trash${hubName ? ` from ${hubName}` : ""}`,
+          entityType: EntityType.DOCUMENT,
+          entityId: id,
+          entityLabel: document.title,
+          parentEntityType: EntityType.DOCUMENT_HUB,
+          parentEntityId: document.documentHubId,
+          beforeData: { isDeleted: false },
+          afterData: { isDeleted: true },
+          changedFields: ["isDeleted"],
+          metadata: { softDelete: true, hubName: hubName ?? null },
+          statusCode: 200,
+        });
+      }
 
       res.status(200).json({
         success: true,
@@ -1813,6 +2065,22 @@ export class DocumentHubController {
         documentHub,
       );
 
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.DOCUMENT_HUB,
+        page: Page.DOCUMENT_HUB_LIST,
+        action: Action.RESTORE,
+        actionLabel: "Document hub restored from trash",
+        entityType: EntityType.DOCUMENT_HUB,
+        entityId: id,
+        entityLabel: documentHub.name,
+        beforeData: { isDeleted: true },
+        afterData: { isDeleted: false },
+        changedFields: ["isDeleted"],
+        statusCode: 200,
+      });
+
       res.status(200).json({
         success: true,
         message: "Document Hub restored successfully",
@@ -1850,6 +2118,7 @@ export class DocumentHubController {
           tenantId: req.tenantId,
           isDeleted: true,
         },
+        include: { documentHub: { select: { name: true } } },
       });
 
       if (!document) {
@@ -1889,6 +2158,28 @@ export class DocumentHubController {
         "documenthub:document_restored",
         { id },
       );
+
+      {
+        const hubName = (document as any).documentHub?.name as string | undefined;
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.DOCUMENT_HUB,
+          page: Page.DOCUMENT_HUB_LIST,
+          action: Action.RESTORE,
+          actionLabel: `Document restored from trash${hubName ? ` to ${hubName}` : ""}`,
+          entityType: EntityType.DOCUMENT,
+          entityId: id,
+          entityLabel: document.title,
+          parentEntityType: EntityType.DOCUMENT_HUB,
+          parentEntityId: document.documentHubId,
+          beforeData: { isDeleted: true },
+          afterData: { isDeleted: false },
+          changedFields: ["isDeleted"],
+          metadata: hubName ? { hubName } : null,
+          statusCode: 200,
+        });
+      }
 
       res.status(200).json({
         success: true,
@@ -1964,6 +2255,32 @@ export class DocumentHubController {
         "documenthub:node_restored",
         { id, documentHubId },
       );
+
+      {
+        const hubForLog = await prisma.documentHub.findUnique({
+          where: { id: documentHubId },
+          select: { name: true },
+        });
+        const hubName = hubForLog?.name;
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.DOCUMENT_HUB,
+          page: Page.DOCUMENT_HUB_LIST,
+          action: Action.RESTORE,
+          actionLabel: `Document ${node.type} restored from trash${hubName ? ` to ${hubName}` : ""}`,
+          entityType: node.type === "file" ? EntityType.DOCUMENT : EntityType.DOCUMENT_TREE_NODE,
+          entityId: node.type === "file" && node.documentId ? node.documentId : node.id,
+          entityLabel: node.title,
+          parentEntityType: EntityType.DOCUMENT_HUB,
+          parentEntityId: documentHubId,
+          beforeData: { isDeleted: true },
+          afterData: { isDeleted: false },
+          changedFields: ["isDeleted"],
+          metadata: { nodeType: node.type, restoredToHubId: documentHubId, parentId: parentId || null, hubName: hubName ?? null },
+          statusCode: 200,
+        });
+      }
 
       res.status(200).json({
         success: true,
@@ -2071,6 +2388,7 @@ export class DocumentHubController {
           tenantId: req.tenantId,
           isDeleted: false,
         },
+        include: { documentHub: { select: { name: true } } },
       });
 
       if (!document) {
@@ -2115,6 +2433,28 @@ export class DocumentHubController {
         "documenthub:document_updated",
         updatedDocument,
       );
+
+      if (visibility !== document.visibility) {
+        const hubName = (document as any).documentHub?.name as string | undefined;
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.DOCUMENT_HUB,
+          page: Page.DOCUMENT_DETAIL,
+          action: visibility === "public" ? Action.SHARE : Action.UNSHARE,
+          actionLabel: `Document ${visibility === "public" ? "shared" : "made private"}${hubName ? ` in ${hubName}` : ""}`,
+          entityType: EntityType.DOCUMENT,
+          entityId: id,
+          entityLabel: document.title,
+          parentEntityType: EntityType.DOCUMENT_HUB,
+          parentEntityId: document.documentHubId,
+          beforeData: { visibility: document.visibility },
+          afterData: { visibility },
+          changedFields: ["visibility"],
+          metadata: hubName ? { hubName } : null,
+          statusCode: 200,
+        });
+      }
 
       res.status(200).json({
         success: true,
@@ -2327,6 +2667,24 @@ export class DocumentHubController {
         updatedHub,
       );
 
+      if (visibility !== hub.visibility) {
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.DOCUMENT_HUB,
+          page: Page.DOCUMENT_HUB_LIST,
+          action: visibility === "public" ? Action.SHARE : Action.UNSHARE,
+          actionLabel: `Document hub ${visibility === "public" ? "shared" : "made private"}`,
+          entityType: EntityType.DOCUMENT_HUB,
+          entityId: id,
+          entityLabel: hub.name,
+          beforeData: { visibility: hub.visibility },
+          afterData: { visibility },
+          changedFields: ["visibility"],
+          statusCode: 200,
+        });
+      }
+
       res.status(200).json({
         success: true,
         data: updatedHub,
@@ -2397,6 +2755,24 @@ export class DocumentHubController {
         "documenthub:updated",
         { id, visibility: 'private' },
       );
+
+      if (hub.visibility !== "private") {
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.DOCUMENT_HUB,
+          page: Page.DOCUMENT_HUB_LIST,
+          action: Action.UNSHARE,
+          actionLabel: "Document hub sharing revoked",
+          entityType: EntityType.DOCUMENT_HUB,
+          entityId: id,
+          entityLabel: hub.name,
+          beforeData: { visibility: hub.visibility },
+          afterData: { visibility: "private" },
+          changedFields: ["visibility"],
+          statusCode: 200,
+        });
+      }
 
       res.status(200).json({
         success: true,
