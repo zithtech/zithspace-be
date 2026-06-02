@@ -19,6 +19,7 @@ import {
 } from '../models/invoice.model';
 import { emailService, EmailService } from '../utils/emailService';
 import { MailService } from '../services/mail/MailService';
+import { recordTransaction, Section, Module, Page, Action, EntityType } from '../utils/transactionHistory';
 import { 
   PaymentStatus,
   PaymentMethod,
@@ -589,6 +590,25 @@ export class InvoiceController {
 
       console.log('CREATE INVOICE COMPLETE ====================');
 
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.FINANCE,
+        module: Module.INVOICES,
+        page: Page.INVOICE_LIST,
+        action: Action.CREATE,
+        actionLabel: `Created invoice ${createdInvoice.invoiceNumber}`,
+        entityType: EntityType.INVOICE,
+        entityId: createdInvoice.id,
+        entityLabel: createdInvoice.invoiceNumber,
+        afterData: {
+          invoiceNumber: createdInvoice.invoiceNumber,
+          status: createdInvoice.status,
+          grandTotal: createdInvoice.grandTotal,
+          currency: createdInvoice.currency,
+        },
+      });
+
       res.status(201).json({ 
         success: true, 
         data: createdInvoice, 
@@ -1064,6 +1084,24 @@ export class InvoiceController {
         grandTotal: updatedInvoice.grandTotal
       });
 
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.FINANCE,
+        module: Module.INVOICES,
+        page: Page.INVOICE_LIST,
+        action: Action.UPDATE,
+        actionLabel: `Updated invoice ${updatedInvoice.invoiceNumber}`,
+        entityType: EntityType.INVOICE,
+        entityId: updatedInvoice.id,
+        entityLabel: updatedInvoice.invoiceNumber,
+        afterData: {
+          invoiceNumber: updatedInvoice.invoiceNumber,
+          status: updatedInvoice.status,
+          grandTotal: updatedInvoice.grandTotal,
+        },
+      });
+
       res.status(200).json({
         success: true,
         data: updatedInvoice,
@@ -1307,6 +1345,24 @@ export class InvoiceController {
         }
       });
 
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.FINANCE,
+        module: Module.INVOICES,
+        page: Page.INVOICE_LIST,
+        action: Action.DELETE,
+        actionLabel: `Moved invoice ${existingInvoice.invoiceNumber} to trash`,
+        entityType: EntityType.INVOICE,
+        entityId: id,
+        entityLabel: existingInvoice.invoiceNumber,
+        beforeData: {
+          invoiceNumber: existingInvoice.invoiceNumber,
+          status: existingInvoice.status,
+          grandTotal: existingInvoice.grandTotal,
+        },
+      });
+
       console.log(`Invoice ${id} soft deleted successfully`);
 
       res.status(200).json({
@@ -1338,6 +1394,9 @@ export class InvoiceController {
       const { id } = req.params;
       console.log(`RESTORE INVOICE - ID: ${id}`);
 
+      // Fetch invoice details for the log label BEFORE restoring
+      const invoiceToRestore = await getInvoiceById(id, req.tenantId).catch(() => null);
+
       // Restore the invoice
       const restored = await restoreInvoice(id, req.tenantId, req.user.id);
       
@@ -1353,6 +1412,19 @@ export class InvoiceController {
         metadata: {
           restoredAt: new Date()
         }
+      });
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.FINANCE,
+        module: Module.INVOICES,
+        page: Page.INVOICE_LIST,
+        action: Action.RESTORE,
+        actionLabel: `Restored invoice ${invoiceToRestore?.invoiceNumber ?? id}`,
+        entityType: EntityType.INVOICE,
+        entityId: id,
+        entityLabel: invoiceToRestore?.invoiceNumber ?? id,
       });
 
       console.log(`Invoice ${id} restored successfully`);
@@ -1432,6 +1504,24 @@ export class InvoiceController {
           invoiceNumber: invoiceForLog?.invoiceNumber || 'Unknown',
           total: invoiceForLog?.grandTotal || 0
         }
+      });
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.FINANCE,
+        module: Module.INVOICES,
+        page: Page.INVOICE_LIST,
+        action: Action.PERMANENT_DELETE,
+        actionLabel: `Permanently deleted invoice ${invoiceForLog?.invoiceNumber || id}`,
+        entityType: EntityType.INVOICE,
+        entityId: id,
+        entityLabel: invoiceForLog?.invoiceNumber || id,
+        beforeData: {
+          invoiceNumber: invoiceForLog?.invoiceNumber,
+          status: invoiceForLog?.status,
+          grandTotal: invoiceForLog?.grandTotal,
+        },
       });
 
       console.log(`Invoice ${id} permanently deleted successfully`);
@@ -1863,6 +1953,25 @@ export class InvoiceController {
             invoiceNumber: invoice.invoiceNumber
           }
         } as ApiResponse);
+
+        // ─── Activity log ───────────────────────────────────────────────
+        recordTransaction({
+          req,
+          section: Section.FINANCE,
+          module: Module.INVOICES,
+          page: Page.INVOICE_LIST,
+          action: Action.EMAIL_SENT,
+          actionLabel: `Email sent for invoice ${invoice.invoiceNumber} to ${recipientEmail}`,
+          entityType: EntityType.INVOICE,
+          entityId: id,
+          entityLabel: invoice.invoiceNumber,
+          afterData: {
+            recipientEmail,
+            customerName,
+            invoiceNumber: invoice.invoiceNumber,
+            subject: subject || `Invoice ${invoice.invoiceNumber}`,
+          },
+        });
       } else {
         console.error(`❌ Failed to send email to ${recipientEmail}`);
         res.status(500).json({
@@ -2072,6 +2181,22 @@ export class InvoiceController {
         }
       });
 
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.FINANCE,
+        module: Module.INVOICES,
+        page: Page.INVOICE_LIST,
+        action: Action.STATUS_CHANGE,
+        actionLabel: `Invoice ${existingInvoice.invoiceNumber} status changed to ${normalizedStatus}`,
+        entityType: EntityType.INVOICE,
+        entityId: id,
+        entityLabel: existingInvoice.invoiceNumber,
+        beforeData: { status: existingInvoice.status },
+        afterData: { status: normalizedStatus },
+        changedFields: ['status'],
+      });
+
       console.log(`Invoice ${id} status updated to ${status}`);
 
       res.status(200).json({
@@ -2173,6 +2298,20 @@ export class InvoiceController {
           pdfUrl,
           downloadedAt: new Date()
         }
+      });
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.FINANCE,
+        module: Module.INVOICES,
+        page: Page.INVOICE_LIST,
+        action: Action.DOWNLOAD,
+        actionLabel: `Downloaded PDF for invoice ${invoice.invoiceNumber}`,
+        entityType: EntityType.INVOICE,
+        entityId: id,
+        entityLabel: invoice.invoiceNumber,
+        afterData: { pdfUrl, invoiceNumber: invoice.invoiceNumber },
       });
 
       console.log(`Invoice ${id} PDF downloaded successfully`);

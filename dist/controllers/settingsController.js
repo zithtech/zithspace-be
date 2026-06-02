@@ -769,6 +769,10 @@ class SettingsController {
                 });
                 return;
             }
+            const existingTenant = await database_1.prisma.tenant.findUnique({
+                where: { id: req.tenantId },
+                select: { settings: true }
+            });
             const updatedTenant = await database_1.prisma.tenant.update({
                 where: { id: req.tenantId },
                 data: {
@@ -782,6 +786,26 @@ class SettingsController {
                     updatedAt: true
                 }
             });
+            const beforeSettings = existingTenant?.settings || {};
+            const afterSettings = updatedTenant?.settings || {};
+            const { changedFields, before, after } = (0, transactionHistory_1.diffShallow)(beforeSettings, afterSettings);
+            if (changedFields.length > 0) {
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.ADMIN,
+                    module: transactionHistory_1.Module.GENERAL_SETTINGS,
+                    page: transactionHistory_1.Page.GENERAL_SETTINGS_VIEW,
+                    action: transactionHistory_1.Action.UPDATE,
+                    actionLabel: `Tenant settings updated (${changedFields.join(', ')})`,
+                    entityType: transactionHistory_1.EntityType.TENANT_SETTINGS,
+                    entityId: req.tenantId,
+                    entityLabel: 'General Settings',
+                    beforeData: before,
+                    afterData: after,
+                    changedFields,
+                    statusCode: 200
+                });
+            }
             res.status(200).json({
                 success: true,
                 data: updatedTenant,

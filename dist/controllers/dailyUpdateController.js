@@ -1,8 +1,13 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DailyUpdateController = void 0;
 const database_1 = require("@/config/database");
 const types_1 = require("@/types");
+const dayjs_1 = __importDefault(require("dayjs"));
+const transactionHistory_1 = require("../utils/transactionHistory");
 class DailyUpdateController {
     /**
      * Create new daily status update
@@ -228,6 +233,27 @@ class DailyUpdateController {
                 });
                 return statusUpdate;
             });
+            // ─── Activity log ───────────────────────────────────────────────
+            if (result) {
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.WORK,
+                    module: transactionHistory_1.Module.DAILY_UPDATES,
+                    page: transactionHistory_1.Page.DAILY_UPDATES_SUBMIT,
+                    action: transactionHistory_1.Action.CREATE,
+                    actionLabel: `Submitted daily status update for ${(0, dayjs_1.default)(result.date).format("YYYY-MM-DD")}`,
+                    entityType: transactionHistory_1.EntityType.DAILY_UPDATE,
+                    entityId: result.id,
+                    entityLabel: (0, dayjs_1.default)(result.date).format("YYYY-MM-DD"),
+                    afterData: {
+                        mood: result.mood,
+                        totalHoursWorked: result.totalHoursWorked,
+                        generalNotes: result.generalNotes,
+                        updateType: result.updateType,
+                        projectUpdates: result.projectUpdates,
+                    },
+                });
+            }
             res.status(201).json({
                 success: true,
                 data: result,
@@ -758,11 +784,53 @@ class DailyUpdateController {
                         },
                     },
                 });
-                return updated;
+                return {
+                    existing: {
+                        mood: existing.mood,
+                        totalHoursWorked: existing.totalHoursWorked,
+                        generalNotes: existing.generalNotes,
+                        updateType: existing.updateType,
+                        projectUpdates: existing.projectUpdates,
+                    },
+                    updated,
+                };
             });
+            const { existing, updated } = result;
+            // ─── Activity log ───────────────────────────────────────────────
+            if (existing && updated) {
+                const beforeSnap = {
+                    mood: existing.mood,
+                    totalHoursWorked: existing.totalHoursWorked,
+                    generalNotes: existing.generalNotes,
+                    updateType: existing.updateType,
+                    projectUpdates: existing.projectUpdates,
+                };
+                const afterSnap = {
+                    mood: updated.mood,
+                    totalHoursWorked: updated.totalHoursWorked,
+                    generalNotes: updated.generalNotes,
+                    updateType: updated.updateType,
+                    projectUpdates: updated.projectUpdates,
+                };
+                const { changedFields, before, after } = (0, transactionHistory_1.diffShallow)(beforeSnap, afterSnap);
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.WORK,
+                    module: transactionHistory_1.Module.DAILY_UPDATES,
+                    page: transactionHistory_1.Page.DAILY_UPDATES_SUBMIT,
+                    action: transactionHistory_1.Action.UPDATE,
+                    actionLabel: `Updated daily status update for ${(0, dayjs_1.default)(updated.date).format("YYYY-MM-DD")}`,
+                    entityType: transactionHistory_1.EntityType.DAILY_UPDATE,
+                    entityId: id,
+                    entityLabel: (0, dayjs_1.default)(updated.date).format("YYYY-MM-DD"),
+                    beforeData: before,
+                    afterData: after,
+                    changedFields,
+                });
+            }
             res.status(200).json({
                 success: true,
-                data: result,
+                data: updated,
                 message: "Daily update updated successfully",
             });
         }
@@ -798,9 +866,10 @@ class DailyUpdateController {
                     success: false,
                     error: "Tenant context and authentication required",
                 });
+                return;
             }
             const { id } = req.params;
-            await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+            const deletedRecord = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
                 console.log("Trying to delete ID:", id, "Tenant:", req.tenantId);
                 // ✅ Use findUnique if id is unique
                 const existing = await client.statusUpdate.findUnique({
@@ -808,23 +877,32 @@ class DailyUpdateController {
                 });
                 console.log("Existing record found:", existing);
                 if (!existing) {
-                    return res.status(404).json({
-                        success: false,
-                        error: "Daily update not found",
-                    });
+                    throw new types_1.NotFoundError("Daily update not found");
                 }
                 // ✅ Only owner can delete
                 if (existing.userId !== req.user.id) {
-                    return res.status(403).json({
-                        success: false,
-                        error: "You can only delete your own daily updates",
-                    });
+                    throw new types_1.ValidationError("You can only delete your own daily updates");
                 }
                 // ✅ Delete by unique id only
                 await client.statusUpdate.delete({
                     where: { id },
                 });
+                return existing;
             });
+            // ─── Activity log ───────────────────────────────────────────────
+            if (deletedRecord) {
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.WORK,
+                    module: transactionHistory_1.Module.DAILY_UPDATES,
+                    page: transactionHistory_1.Page.DAILY_UPDATES_SUBMIT,
+                    action: transactionHistory_1.Action.DELETE,
+                    actionLabel: `Deleted daily status update for ${(0, dayjs_1.default)(deletedRecord.date).format("YYYY-MM-DD")}`,
+                    entityType: transactionHistory_1.EntityType.DAILY_UPDATE,
+                    entityId: id,
+                    entityLabel: (0, dayjs_1.default)(deletedRecord.date).format("YYYY-MM-DD"),
+                });
+            }
             // ✅ Success response
             res.status(200).json({
                 success: true,
@@ -833,6 +911,20 @@ class DailyUpdateController {
         }
         catch (error) {
             console.error("Delete daily update error:", error);
+            if (error instanceof types_1.NotFoundError) {
+                res.status(404).json({
+                    success: false,
+                    error: error.message,
+                });
+                return;
+            }
+            if (error instanceof types_1.ValidationError) {
+                res.status(403).json({
+                    success: false,
+                    error: error.message,
+                });
+                return;
+            }
             res.status(500).json({
                 success: false,
                 error: "Failed to delete daily update",

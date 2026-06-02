@@ -8,6 +8,7 @@ import {
   ValidationError,
 } from "@/types";
 import dayjs from "dayjs";
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from "../utils/transactionHistory";
 
 export class DailyUpdateController {
   /**
@@ -300,6 +301,28 @@ export class DailyUpdateController {
           return statusUpdate;
         },
       );
+
+      // ─── Activity log ───────────────────────────────────────────────
+      if (result) {
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.DAILY_UPDATES,
+          page: Page.DAILY_UPDATES_SUBMIT,
+          action: Action.CREATE,
+          actionLabel: `Submitted daily status update for ${dayjs(result.date).format("YYYY-MM-DD")}`,
+          entityType: EntityType.DAILY_UPDATE,
+          entityId: result.id,
+          entityLabel: dayjs(result.date).format("YYYY-MM-DD"),
+          afterData: {
+            mood: result.mood,
+            totalHoursWorked: result.totalHoursWorked,
+            generalNotes: result.generalNotes,
+            updateType: result.updateType,
+            projectUpdates: result.projectUpdates,
+          },
+        });
+      }
 
       res.status(201).json({
         success: true,
@@ -941,13 +964,58 @@ export class DailyUpdateController {
             },
           });
 
-          return updated;
+          return {
+            existing: {
+              mood: existing.mood,
+              totalHoursWorked: existing.totalHoursWorked,
+              generalNotes: existing.generalNotes,
+              updateType: existing.updateType,
+              projectUpdates: existing.projectUpdates,
+            },
+            updated,
+          };
         },
       );
 
+      const { existing, updated } = result;
+
+      // ─── Activity log ───────────────────────────────────────────────
+      if (existing && updated) {
+        const beforeSnap = {
+          mood: existing.mood,
+          totalHoursWorked: existing.totalHoursWorked,
+          generalNotes: existing.generalNotes,
+          updateType: existing.updateType,
+          projectUpdates: existing.projectUpdates,
+        };
+        const afterSnap = {
+          mood: updated.mood,
+          totalHoursWorked: updated.totalHoursWorked,
+          generalNotes: updated.generalNotes,
+          updateType: updated.updateType,
+          projectUpdates: updated.projectUpdates,
+        };
+        const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.DAILY_UPDATES,
+          page: Page.DAILY_UPDATES_SUBMIT,
+          action: Action.UPDATE,
+          actionLabel: `Updated daily status update for ${dayjs(updated.date).format("YYYY-MM-DD")}`,
+          entityType: EntityType.DAILY_UPDATE,
+          entityId: id,
+          entityLabel: dayjs(updated.date).format("YYYY-MM-DD"),
+          beforeData: before,
+          afterData: after,
+          changedFields,
+        });
+      }
+
       res.status(200).json({
         success: true,
-        data: result,
+        data: updated,
         message: "Daily update updated successfully",
       } as ApiResponse);
     } catch (error: any) {
@@ -986,11 +1054,12 @@ export class DailyUpdateController {
           success: false,
           error: "Tenant context and authentication required",
         } as ApiResponse);
+        return;
       }
 
       const { id } = req.params;
 
-      await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+      const deletedRecord = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
         console.log("Trying to delete ID:", id, "Tenant:", req.tenantId);
 
         // ✅ Use findUnique if id is unique
@@ -1001,25 +1070,36 @@ export class DailyUpdateController {
         console.log("Existing record found:", existing);
 
         if (!existing) {
-          return res.status(404).json({
-            success: false,
-            error: "Daily update not found",
-          } as ApiResponse);
+          throw new NotFoundError("Daily update not found");
         }
 
         // ✅ Only owner can delete
         if (existing.userId !== req.user.id) {
-          return res.status(403).json({
-            success: false,
-            error: "You can only delete your own daily updates",
-          } as ApiResponse);
+          throw new ValidationError("You can only delete your own daily updates");
         }
 
         // ✅ Delete by unique id only
         await client.statusUpdate.delete({
           where: { id },
         });
+
+        return existing;
       });
+
+      // ─── Activity log ───────────────────────────────────────────────
+      if (deletedRecord) {
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.DAILY_UPDATES,
+          page: Page.DAILY_UPDATES_SUBMIT,
+          action: Action.DELETE,
+          actionLabel: `Deleted daily status update for ${dayjs(deletedRecord.date).format("YYYY-MM-DD")}`,
+          entityType: EntityType.DAILY_UPDATE,
+          entityId: id,
+          entityLabel: dayjs(deletedRecord.date).format("YYYY-MM-DD"),
+        });
+      }
 
       // ✅ Success response
       res.status(200).json({
@@ -1028,6 +1108,23 @@ export class DailyUpdateController {
       } as ApiResponse);
     } catch (error: any) {
       console.error("Delete daily update error:", error);
+
+      if (error instanceof NotFoundError) {
+        res.status(404).json({
+          success: false,
+          error: error.message,
+        } as ApiResponse);
+        return;
+      }
+
+      if (error instanceof ValidationError) {
+        res.status(403).json({
+          success: false,
+          error: error.message,
+        } as ApiResponse);
+        return;
+      }
+
       res.status(500).json({
         success: false,
         error: "Failed to delete daily update",

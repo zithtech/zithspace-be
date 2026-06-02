@@ -9,6 +9,7 @@ const types_1 = require("@/types");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const r2Client_1 = require("@/utils/r2Client");
 const emailService_1 = require("@/utils/emailService");
+const transactionHistory_1 = require("@/utils/transactionHistory");
 class UserController {
     /**
      * Get all members/users with filtering and pagination (tenant-aware)
@@ -320,6 +321,27 @@ class UserController {
             catch (mailError) {
                 console.error("⚠️ Failed to enqueue welcome email for new member:", mailError);
             }
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.ADMIN,
+                module: transactionHistory_1.Module.MEMBERS,
+                page: transactionHistory_1.Page.MEMBER_LIST,
+                action: transactionHistory_1.Action.CREATE,
+                actionLabel: `Member created: ${newUser.name}`,
+                entityType: transactionHistory_1.EntityType.USER,
+                entityId: newUser.id,
+                entityLabel: newUser.name,
+                afterData: {
+                    name: newUser.name,
+                    workEmail: newUser.workEmail,
+                    personalEmail: newUser.personalEmail,
+                    phone: newUser.phone,
+                    role: newUser.role,
+                    position: newUser.position?.title,
+                    isActive: newUser.isActive,
+                },
+                statusCode: 201,
+            });
             res.status(201).json({
                 success: true,
                 data: newUser,
@@ -488,6 +510,46 @@ class UserController {
                     });
                 }
             }
+            const cleanExisting = {
+                name: existingUser.name,
+                workEmail: existingUser.workEmail,
+                personalEmail: existingUser.personalEmail,
+                phone: existingUser.phone,
+                role: existingUser.role,
+                positionId: existingUser.positionId,
+                reportsToId: existingUser.reportsToId,
+                assignedShiftId: existingUser.assignedShiftId,
+                isActive: existingUser.isActive,
+            };
+            const cleanUpdated = {
+                name: updatedUser.name,
+                workEmail: updatedUser.workEmail,
+                personalEmail: updatedUser.personalEmail,
+                phone: updatedUser.phone,
+                role: updatedUser.role,
+                positionId: positionId || existingUser.positionId,
+                reportsToId: updatedUser.reportsTo?.id || null,
+                assignedShiftId: updatedUser.assignedShift?.id || null,
+                isActive: updatedUser.isActive,
+            };
+            const { changedFields, before, after } = (0, transactionHistory_1.diffShallow)(cleanExisting, cleanUpdated);
+            if (changedFields.length > 0) {
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.ADMIN,
+                    module: transactionHistory_1.Module.MEMBERS,
+                    page: transactionHistory_1.Page.MEMBER_LIST,
+                    action: transactionHistory_1.Action.UPDATE,
+                    actionLabel: `Member updated: ${updatedUser.name} (${changedFields.join(", ")})`,
+                    entityType: transactionHistory_1.EntityType.USER,
+                    entityId: id,
+                    entityLabel: updatedUser.name,
+                    beforeData: before,
+                    afterData: after,
+                    changedFields,
+                    statusCode: 200,
+                });
+            }
             res.status(200).json({
                 success: true,
                 data: updatedUser,
@@ -553,6 +615,21 @@ class UserController {
                     updatedAt: true,
                 },
             });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.ADMIN,
+                module: transactionHistory_1.Module.MEMBERS,
+                page: transactionHistory_1.Page.MEMBER_LIST,
+                action: transactionHistory_1.Action.DELETE,
+                actionLabel: `Member deactivated: ${updatedUser.name}`,
+                entityType: transactionHistory_1.EntityType.USER,
+                entityId: id,
+                entityLabel: updatedUser.name,
+                beforeData: { isActive: existingUser.isActive },
+                afterData: { isActive: false },
+                changedFields: ["isActive"],
+                statusCode: 200,
+            });
             res.status(200).json({
                 success: true,
                 data: updatedUser,
@@ -609,6 +686,21 @@ class UserController {
                     isActive: true,
                     updatedAt: true,
                 },
+            });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.ADMIN,
+                module: transactionHistory_1.Module.MEMBERS,
+                page: transactionHistory_1.Page.MEMBER_LIST,
+                action: transactionHistory_1.Action.RESTORE,
+                actionLabel: `Member activated: ${updatedUser.name}`,
+                entityType: transactionHistory_1.EntityType.USER,
+                entityId: id,
+                entityLabel: updatedUser.name,
+                beforeData: { isActive: existingUser.isActive },
+                afterData: { isActive: true },
+                changedFields: ["isActive"],
+                statusCode: 200,
             });
             res.status(200).json({
                 success: true,
@@ -1067,6 +1159,21 @@ class UserController {
                         },
                     },
                 },
+            });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.ADMIN,
+                module: transactionHistory_1.Module.MEMBERS,
+                page: transactionHistory_1.Page.MEMBER_LIST,
+                action: transactionHistory_1.Action.UPDATE,
+                actionLabel: `Shift assigned to ${updatedMember.name}: ${shift.name}`,
+                entityType: transactionHistory_1.EntityType.USER,
+                entityId: id,
+                entityLabel: updatedMember.name,
+                beforeData: { assignedShiftId: member.assignedShiftId },
+                afterData: { assignedShiftId: shiftId, shiftName: shift.name },
+                changedFields: ["assignedShiftId"],
+                statusCode: 200,
             });
             res.status(200).json({
                 success: true,

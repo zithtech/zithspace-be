@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.RBACController = void 0;
 const database_1 = require("@/config/database");
 const rbac_service_1 = require("./rbac.service");
+const transactionHistory_1 = require("@/utils/transactionHistory");
 class RBACController {
     // ─── Permissions ─────────────────────────────────────────────────────────────
     /**
@@ -132,6 +133,24 @@ class RBACController {
                     _count: { select: { rolePermissions: true, userRoles: true } },
                 },
             });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.ADMIN,
+                module: transactionHistory_1.Module.ROLE_AND_PERMISSIONS,
+                page: transactionHistory_1.Page.ROLE_LIST,
+                action: transactionHistory_1.Action.CREATE,
+                actionLabel: `Role created: ${role.name}`,
+                entityType: transactionHistory_1.EntityType.ROLE,
+                entityId: role.id,
+                entityLabel: role.name,
+                afterData: {
+                    name: role.name,
+                    description: role.description,
+                    isSystem: role.isSystem,
+                    permissionIds: permissionIds || [],
+                },
+                statusCode: 201,
+            });
             res.status(201).json({ success: true, data: role, message: 'Role created successfully' });
         }
         catch (error) {
@@ -160,6 +179,24 @@ class RBACController {
                     ...(description !== undefined ? { description } : {}),
                 },
             });
+            const { changedFields, before, after } = (0, transactionHistory_1.diffShallow)({ name: role.name, description: role.description }, { name: updated.name, description: updated.description });
+            if (changedFields.length > 0) {
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.ADMIN,
+                    module: transactionHistory_1.Module.ROLE_AND_PERMISSIONS,
+                    page: transactionHistory_1.Page.ROLE_LIST,
+                    action: transactionHistory_1.Action.UPDATE,
+                    actionLabel: `Role updated: ${updated.name} (${changedFields.join(", ")})`,
+                    entityType: transactionHistory_1.EntityType.ROLE,
+                    entityId: id,
+                    entityLabel: updated.name,
+                    beforeData: before,
+                    afterData: after,
+                    changedFields,
+                    statusCode: 200,
+                });
+            }
             res.status(200).json({ success: true, data: updated, message: 'Role updated' });
         }
         catch (error) {
@@ -187,6 +224,23 @@ class RBACController {
             // Invalidate cache for all users with this role before deleting
             await rbac_service_1.RBACService.invalidateRole(id);
             await database_1.prisma.role.delete({ where: { id } });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.ADMIN,
+                module: transactionHistory_1.Module.ROLE_AND_PERMISSIONS,
+                page: transactionHistory_1.Page.ROLE_LIST,
+                action: transactionHistory_1.Action.DELETE,
+                actionLabel: `Role deleted: ${role.name}`,
+                entityType: transactionHistory_1.EntityType.ROLE,
+                entityId: id,
+                entityLabel: role.name,
+                beforeData: {
+                    name: role.name,
+                    description: role.description,
+                    isSystem: role.isSystem,
+                },
+                statusCode: 200,
+            });
             res.status(200).json({ success: true, message: 'Role deleted' });
         }
         catch (error) {
@@ -214,6 +268,11 @@ class RBACController {
                 res.status(400).json({ success: false, error: 'permissionIds must be an array' });
                 return;
             }
+            const oldPermissions = await database_1.prisma.rolePermission.findMany({
+                where: { roleId: id },
+                select: { permissionId: true },
+            });
+            const oldIds = oldPermissions.map((p) => p.permissionId);
             // Replace all permissions in a transaction
             await database_1.prisma.$transaction([
                 database_1.prisma.rolePermission.deleteMany({ where: { roleId: id } }),
@@ -227,6 +286,21 @@ class RBACController {
             const updated = await database_1.prisma.role.findFirst({
                 where: { id },
                 include: { rolePermissions: { include: { permission: true } } },
+            });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.ADMIN,
+                module: transactionHistory_1.Module.ROLE_AND_PERMISSIONS,
+                page: transactionHistory_1.Page.ROLE_LIST,
+                action: transactionHistory_1.Action.UPDATE,
+                actionLabel: `Permissions updated for role ${role.name}`,
+                entityType: transactionHistory_1.EntityType.ROLE_PERMISSION,
+                entityId: id,
+                entityLabel: role.name,
+                beforeData: { permissionIds: oldIds },
+                afterData: { permissionIds },
+                changedFields: ["permissionIds"],
+                statusCode: 200,
             });
             res.status(200).json({ success: true, data: updated, message: 'Permissions updated' });
         }
@@ -254,6 +328,19 @@ class RBACController {
                 skipDuplicates: true,
             });
             await rbac_service_1.RBACService.invalidateRole(id);
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.ADMIN,
+                module: transactionHistory_1.Module.ROLE_AND_PERMISSIONS,
+                page: transactionHistory_1.Page.ROLE_LIST,
+                action: transactionHistory_1.Action.UPDATE,
+                actionLabel: `Added ${permissionIds.length} permission(s) to role ${role.name}`,
+                entityType: transactionHistory_1.EntityType.ROLE_PERMISSION,
+                entityId: id,
+                entityLabel: role.name,
+                afterData: { addedPermissionIds: permissionIds },
+                statusCode: 200,
+            });
             res.status(200).json({ success: true, message: `Added ${permissionIds.length} permission(s)` });
         }
         catch (error) {
@@ -278,6 +365,19 @@ class RBACController {
                 where: { roleId_permissionId: { roleId: id, permissionId } },
             });
             await rbac_service_1.RBACService.invalidateRole(id);
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.ADMIN,
+                module: transactionHistory_1.Module.ROLE_AND_PERMISSIONS,
+                page: transactionHistory_1.Page.ROLE_LIST,
+                action: transactionHistory_1.Action.DELETE,
+                actionLabel: `Removed permission from role ${role.name}`,
+                entityType: transactionHistory_1.EntityType.ROLE_PERMISSION,
+                entityId: id,
+                entityLabel: role.name,
+                beforeData: { removedPermissionId: permissionId },
+                statusCode: 200,
+            });
             res.status(200).json({ success: true, message: 'Permission removed' });
         }
         catch (error) {
@@ -378,6 +478,21 @@ class RBACController {
                 })
             ]);
             rbac_service_1.RBACService.invalidateUser(userId, tenantId);
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.ADMIN,
+                module: transactionHistory_1.Module.ROLE_AND_PERMISSIONS,
+                page: transactionHistory_1.Page.ROLE_LIST,
+                action: transactionHistory_1.Action.UPDATE,
+                actionLabel: `Assigned role "${role.name}" to user ${user?.name || userId}`,
+                entityType: transactionHistory_1.EntityType.USER_ROLE,
+                entityId: roleId,
+                entityLabel: role.name,
+                parentEntityType: transactionHistory_1.EntityType.USER,
+                parentEntityId: userId,
+                afterData: { roleName: role.name, roleSlug: role.slug, userId, userName: user?.name },
+                statusCode: 200,
+            });
             res.status(200).json({ success: true, message: `Role "${role.name}" assigned to user` });
         }
         catch (error) {
@@ -398,6 +513,7 @@ class RBACController {
                 res.status(404).json({ success: false, error: 'Role not found' });
                 return;
             }
+            const user = await database_1.prisma.user.findFirst({ where: { id: userId, tenantId } });
             await database_1.prisma.userRole.delete({
                 where: { userId_roleId: { userId, roleId } },
             });
@@ -412,6 +528,21 @@ class RBACController {
                 data: { role: latestRole?.role.slug || 'user' }
             });
             rbac_service_1.RBACService.invalidateUser(userId, tenantId);
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.ADMIN,
+                module: transactionHistory_1.Module.ROLE_AND_PERMISSIONS,
+                page: transactionHistory_1.Page.ROLE_LIST,
+                action: transactionHistory_1.Action.DELETE,
+                actionLabel: `Removed role "${role.name}" from user ${user?.name || userId}`,
+                entityType: transactionHistory_1.EntityType.USER_ROLE,
+                entityId: roleId,
+                entityLabel: role.name,
+                parentEntityType: transactionHistory_1.EntityType.USER,
+                parentEntityId: userId,
+                beforeData: { roleName: role.name, roleSlug: role.slug, userId, userName: user?.name },
+                statusCode: 200,
+            });
             res.status(200).json({ success: true, message: 'Role removed from user' });
         }
         catch (error) {

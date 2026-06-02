@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { prisma } from "@/config/database";
 import { AuthRequest, ApiResponse } from "@/types";
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from "../utils/transactionHistory";
 
 export class GradeController {
   // Create a new Grade
@@ -33,6 +34,27 @@ export class GradeController {
       });
 
       res.status(201).json({ success: true, data: newGrade, message: "Grade created successfully" } as ApiResponse);
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.ORG_STRUCTURE,
+        page: Page.ORG_STRUCTURE_GRADES,
+        action: Action.CREATE,
+        actionLabel: `Created grade "${newGrade.name}"`,
+        entityType: EntityType.ORG_GRADE,
+        entityId: newGrade.id,
+        entityLabel: newGrade.name,
+        afterData: {
+          name: newGrade.name,
+          code: newGrade.code,
+          codes: newGrade.codes,
+          levelOrder: newGrade.levelOrder,
+          description: newGrade.description,
+          isActive: newGrade.isActive,
+        },
+      });
     } catch (error: any) {
       console.error("Error creating grade:", error);
       if (error.code === 'P2002') {
@@ -128,6 +150,42 @@ export class GradeController {
       });
 
       res.status(200).json({ success: true, data: updatedGrade, message: "Grade updated successfully" } as ApiResponse);
+
+      // ─── Activity log ───────────────────────────────────────────────
+      if (existing) {
+        const beforeSnap = {
+          name: existing.name,
+          code: existing.code,
+          codes: existing.codes,
+          levelOrder: existing.levelOrder,
+          description: existing.description,
+          isActive: existing.isActive,
+        };
+        const afterSnap = {
+          name: updatedGrade.name,
+          code: updatedGrade.code,
+          codes: updatedGrade.codes,
+          levelOrder: updatedGrade.levelOrder,
+          description: updatedGrade.description,
+          isActive: updatedGrade.isActive,
+        };
+        const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.ORG_STRUCTURE,
+          page: Page.ORG_STRUCTURE_GRADES,
+          action: Action.UPDATE,
+          actionLabel: `Updated grade "${updatedGrade.name}"`,
+          entityType: EntityType.ORG_GRADE,
+          entityId: id,
+          entityLabel: updatedGrade.name,
+          beforeData: before,
+          afterData: after,
+          changedFields,
+        });
+      }
     } catch (error: any) {
       console.error("Error updating grade:", error);
       res.status(500).json({ success: false, error: "Failed to update grade" } as ApiResponse);
@@ -155,6 +213,21 @@ export class GradeController {
       await prisma.grade.delete({ where: { id } });
 
       res.status(200).json({ success: true, message: "Grade deleted successfully" } as ApiResponse);
+
+      // ─── Activity log ───────────────────────────────────────────────
+      if (existing) {
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.ORG_STRUCTURE,
+          page: Page.ORG_STRUCTURE_GRADES,
+          action: Action.DELETE,
+          actionLabel: `Deleted grade "${existing.name}"`,
+          entityType: EntityType.ORG_GRADE,
+          entityId: id,
+          entityLabel: existing.name,
+        });
+      }
     } catch (error: any) {
       console.error("Error deleting grade:", error);
       if (error.code === 'P2003') {

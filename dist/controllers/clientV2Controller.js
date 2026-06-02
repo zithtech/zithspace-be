@@ -8,6 +8,8 @@ const database_1 = require("@/config/database");
 const dbpool_1 = __importDefault(require("@/config/dbpool"));
 const r2Client_1 = require("@/utils/r2Client");
 const socketService_1 = require("@/services/socketService");
+const transactionHistory_1 = require("@/utils/transactionHistory");
+const crypto_1 = require("crypto");
 // Utility for auto-generating Client Code
 async function generateClientCode(tenantId, idPrefix = 'CL-') {
     return await database_1.tenantAwarePrisma.withTenant(tenantId, async (client) => {
@@ -301,6 +303,24 @@ class ClientV2Controller {
                         createdById: req.user.id,
                     }
                 });
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.ADMIN,
+                    module: transactionHistory_1.Module.CLIENTS_V2,
+                    page: transactionHistory_1.Page.CLIENT_LIST,
+                    action: transactionHistory_1.Action.CREATE,
+                    actionLabel: `Client created: ${newClient.companyName}`,
+                    entityType: transactionHistory_1.EntityType.CLIENT,
+                    entityId: newClient.id,
+                    entityLabel: newClient.companyName,
+                    afterData: {
+                        clientCode: newClient.clientCode,
+                        companyName: newClient.companyName,
+                        clientType: newClient.clientType,
+                        status: newClient.status
+                    },
+                    statusCode: 201
+                });
                 res.status(201).json({ success: true, data: newClient, message: 'Client created successfully' });
             });
         }
@@ -382,6 +402,30 @@ class ClientV2Controller {
                     where: { id },
                     data: updates
                 });
+                const beforeSnap = {};
+                const afterSnap = {};
+                for (const k of Object.keys(updates)) {
+                    beforeSnap[k] = existingClient[k];
+                    afterSnap[k] = updatedClient[k];
+                }
+                const { changedFields, before, after } = (0, transactionHistory_1.diffShallow)(beforeSnap, afterSnap);
+                if (changedFields.length > 0) {
+                    (0, transactionHistory_1.recordTransaction)({
+                        req,
+                        section: transactionHistory_1.Section.ADMIN,
+                        module: transactionHistory_1.Module.CLIENTS_V2,
+                        page: transactionHistory_1.Page.CLIENT_DETAIL,
+                        action: transactionHistory_1.Action.UPDATE,
+                        actionLabel: `Client updated (${changedFields.join(', ')})`,
+                        entityType: transactionHistory_1.EntityType.CLIENT,
+                        entityId: updatedClient.id,
+                        entityLabel: updatedClient.companyName,
+                        beforeData: before,
+                        afterData: after,
+                        changedFields,
+                        statusCode: 200
+                    });
+                }
                 res.status(200).json({ success: true, data: updatedClient, message: 'Client updated successfully' });
             });
         }
@@ -407,6 +451,26 @@ class ClientV2Controller {
                         clientId,
                     }
                 });
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.ADMIN,
+                    module: transactionHistory_1.Module.CLIENTS_V2,
+                    page: transactionHistory_1.Page.CLIENT_DETAIL,
+                    action: transactionHistory_1.Action.CREATE,
+                    actionLabel: `Client contact added: ${contact.firstName} ${contact.lastName}`,
+                    entityType: transactionHistory_1.EntityType.CLIENT_CONTACT,
+                    entityId: contact.id,
+                    entityLabel: `${contact.firstName} ${contact.lastName}`,
+                    parentEntityType: transactionHistory_1.EntityType.CLIENT,
+                    parentEntityId: clientId,
+                    afterData: {
+                        firstName: contact.firstName,
+                        lastName: contact.lastName,
+                        officialEmail: contact.officialEmail,
+                        isPrimary: contact.isPrimary,
+                    },
+                    statusCode: 201
+                });
                 res.status(201).json({ success: true, data: contact });
             });
         }
@@ -421,10 +485,43 @@ class ClientV2Controller {
             const { contactId } = req.params;
             const data = req.body;
             await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                const existing = await prisma.clientContactV2.findUnique({
+                    where: { id: contactId }
+                });
+                if (!existing) {
+                    res.status(404).json({ success: false, error: 'Contact not found' });
+                    return;
+                }
                 const contact = await prisma.clientContactV2.update({
                     where: { id: contactId },
                     data
                 });
+                const beforeSnap = {};
+                const afterSnap = {};
+                for (const k of Object.keys(data)) {
+                    beforeSnap[k] = existing[k];
+                    afterSnap[k] = contact[k];
+                }
+                const { changedFields, before, after } = (0, transactionHistory_1.diffShallow)(beforeSnap, afterSnap);
+                if (changedFields.length > 0) {
+                    (0, transactionHistory_1.recordTransaction)({
+                        req,
+                        section: transactionHistory_1.Section.ADMIN,
+                        module: transactionHistory_1.Module.CLIENTS_V2,
+                        page: transactionHistory_1.Page.CLIENT_DETAIL,
+                        action: transactionHistory_1.Action.UPDATE,
+                        actionLabel: `Client contact updated (${changedFields.join(', ')})`,
+                        entityType: transactionHistory_1.EntityType.CLIENT_CONTACT,
+                        entityId: contact.id,
+                        entityLabel: `${contact.firstName} ${contact.lastName}`,
+                        parentEntityType: transactionHistory_1.EntityType.CLIENT,
+                        parentEntityId: contact.clientId,
+                        beforeData: before,
+                        afterData: after,
+                        changedFields,
+                        statusCode: 200
+                    });
+                }
                 res.status(200).json({ success: true, data: contact });
             });
         }
@@ -501,6 +598,25 @@ class ClientV2Controller {
                         uploadedById: req.user.id
                     }
                 });
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.ADMIN,
+                    module: transactionHistory_1.Module.CLIENTS_V2,
+                    page: transactionHistory_1.Page.CLIENT_DETAIL,
+                    action: transactionHistory_1.Action.CREATE,
+                    actionLabel: `Client document uploaded: ${document.fileName}`,
+                    entityType: transactionHistory_1.EntityType.CLIENT_DOCUMENT,
+                    entityId: document.id,
+                    entityLabel: document.fileName,
+                    parentEntityType: transactionHistory_1.EntityType.CLIENT,
+                    parentEntityId: clientId,
+                    afterData: {
+                        fileName: document.fileName,
+                        category: document.category,
+                        documentType: document.documentType,
+                    },
+                    statusCode: 201
+                });
                 socketService_1.socketService.emitToClient(req.tenantId, clientId, "client_document:created", {
                     clientId,
                     document: { id: document.id },
@@ -547,6 +663,26 @@ class ClientV2Controller {
                 }
                 await prisma.clientDocumentV2.delete({
                     where: { id: documentId }
+                });
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.ADMIN,
+                    module: transactionHistory_1.Module.CLIENTS_V2,
+                    page: transactionHistory_1.Page.CLIENT_DETAIL,
+                    action: transactionHistory_1.Action.DELETE,
+                    actionLabel: `Client document deleted: ${document.fileName}`,
+                    entityType: transactionHistory_1.EntityType.CLIENT_DOCUMENT,
+                    entityId: documentId,
+                    entityLabel: document.fileName,
+                    parentEntityType: transactionHistory_1.EntityType.CLIENT,
+                    parentEntityId: document.clientId,
+                    beforeData: {
+                        fileName: document.fileName,
+                        category: document.category,
+                        documentType: document.documentType,
+                    },
+                    afterData: null,
+                    statusCode: 200
                 });
                 socketService_1.socketService.emitToClient(req.tenantId, document.clientId, "client_document:deleted", {
                     clientId: document.clientId,
@@ -602,6 +738,8 @@ class ClientV2Controller {
             params.push(documentId);
             params.push(req.tenantId);
             params.push(clientId);
+            const existingRes = await dbpool_1.default.query(`SELECT category, document_type, file_name FROM client_documents_v2 WHERE id = $1 AND tenant_id = $2 AND client_id = $3`, [documentId, req.tenantId, clientId]);
+            const existingDoc = existingRes.rows[0];
             const r = await dbpool_1.default.query(`UPDATE client_documents_v2
                     SET ${sets.join(', ')}
                   WHERE id = $${params.length - 2}
@@ -614,6 +752,38 @@ class ClientV2Controller {
                 return;
             }
             const row = r.rows[0];
+            if (existingDoc) {
+                const beforeSnap = {
+                    category: existingDoc.category,
+                    documentType: existingDoc.document_type,
+                    fileName: existingDoc.file_name,
+                };
+                const afterSnap = {
+                    category: row.category,
+                    documentType: row.document_type,
+                    fileName: row.file_name,
+                };
+                const { changedFields, before, after } = (0, transactionHistory_1.diffShallow)(beforeSnap, afterSnap);
+                if (changedFields.length > 0) {
+                    (0, transactionHistory_1.recordTransaction)({
+                        req,
+                        section: transactionHistory_1.Section.ADMIN,
+                        module: transactionHistory_1.Module.CLIENTS_V2,
+                        page: transactionHistory_1.Page.CLIENT_DETAIL,
+                        action: transactionHistory_1.Action.UPDATE,
+                        actionLabel: `Client document updated (${changedFields.join(', ')})`,
+                        entityType: transactionHistory_1.EntityType.CLIENT_DOCUMENT,
+                        entityId: row.id,
+                        entityLabel: row.file_name,
+                        parentEntityType: transactionHistory_1.EntityType.CLIENT,
+                        parentEntityId: clientId,
+                        beforeData: before,
+                        afterData: after,
+                        changedFields,
+                        statusCode: 200
+                    });
+                }
+            }
             socketService_1.socketService.emitToClient(req.tenantId, clientId, "client_document:updated", {
                 clientId,
                 id: row.id,
@@ -702,11 +872,18 @@ class ClientV2Controller {
             }
             const { id } = req.params;
             await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                const client = await prisma.clientV2.findUnique({
+                    where: { id }
+                });
+                if (!client) {
+                    res.status(404).json({ success: false, error: 'Client not found' });
+                    return;
+                }
                 // 1. Fetch documents to cleanup R2 files
                 const documents = await prisma.clientDocumentV2.findMany({
                     where: { clientId: id }
                 });
-                return await prisma.$transaction(async (tx) => {
+                await prisma.$transaction(async (tx) => {
                     // 2. Cleanup R2 files
                     for (const doc of documents) {
                         if (doc.fileUrl) {
@@ -722,12 +899,28 @@ class ClientV2Controller {
                     await tx.clientContactV2.deleteMany({ where: { clientId: id } });
                     await tx.clientDocumentV2.deleteMany({ where: { clientId: id } });
                     await tx.employeeClientAllocationV2.deleteMany({ where: { clientId: id } });
-                    // ClientProject has onDelete: Cascade in schema, but we'll be explicit if needed.
-                    // Actually, let's just delete the client and let cascade handle ClientProject
                     // 4. Delete the client itself
                     await tx.clientV2.delete({
                         where: { id }
                     });
+                });
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.ADMIN,
+                    module: transactionHistory_1.Module.CLIENTS_V2,
+                    page: transactionHistory_1.Page.CLIENT_DETAIL,
+                    action: transactionHistory_1.Action.DELETE,
+                    actionLabel: `Client deleted: ${client.companyName}`,
+                    entityType: transactionHistory_1.EntityType.CLIENT,
+                    entityId: client.id,
+                    entityLabel: client.companyName,
+                    beforeData: {
+                        companyName: client.companyName,
+                        clientCode: client.clientCode,
+                        clientType: client.clientType,
+                    },
+                    afterData: null,
+                    statusCode: 200
                 });
             });
             res.status(200).json({ success: true, message: 'Client deleted successfully' });
@@ -974,6 +1167,21 @@ class ClientV2Controller {
                      VALUES (gen_random_uuid()::text, $1, $2, $3, $4, $5, NOW())
                      ON CONFLICT DO NOTHING`, [req.tenantId, clientId, pid, billingType || null, budget ?? null]);
             }
+            if (toLink.length > 0) {
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.ADMIN,
+                    module: transactionHistory_1.Module.CLIENTS_V2,
+                    page: transactionHistory_1.Page.CLIENT_DETAIL,
+                    action: transactionHistory_1.Action.BULK_ASSIGN,
+                    actionLabel: `Imported ${toLink.length} project(s) to client`,
+                    entityType: transactionHistory_1.EntityType.CLIENT,
+                    entityId: clientId,
+                    correlationId: (0, crypto_1.randomUUID)(),
+                    metadata: { projectIds: toLink, billingType, budget },
+                    statusCode: 201
+                });
+            }
             res.status(201).json({
                 success: true,
                 data: { linked: toLink.length, skipped, projectIds: toLink },
@@ -1029,6 +1237,26 @@ class ClientV2Controller {
                 return { project, mapping };
             });
             res.status(201).json({ success: true, data: result });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.ADMIN,
+                module: transactionHistory_1.Module.CLIENTS_V2,
+                page: transactionHistory_1.Page.CLIENT_DETAIL,
+                action: transactionHistory_1.Action.CREATE,
+                actionLabel: `Client project created: ${result.project.name}`,
+                entityType: transactionHistory_1.EntityType.PROJECT,
+                entityId: result.project.id,
+                entityLabel: result.project.name,
+                parentEntityType: transactionHistory_1.EntityType.CLIENT,
+                parentEntityId: clientId,
+                afterData: {
+                    name: result.project.name,
+                    code: result.project.code,
+                    budget: result.mapping.budget,
+                    billingType: result.mapping.billingType,
+                },
+                statusCode: 201
+            });
         }
         catch (error) {
             console.error('addProject error:', error);
@@ -1085,11 +1313,10 @@ class ClientV2Controller {
                 if (budget !== undefined)
                     mappingUpdateData.budget = budget;
                 let mapping = null;
+                const existingMapping = await prisma.clientProject.findFirst({
+                    where: { projectId: projectId, tenantId: req.tenantId }
+                });
                 if (Object.keys(mappingUpdateData).length > 0) {
-                    // Find the mapping first because we need the compound unique key or ID
-                    const existingMapping = await prisma.clientProject.findFirst({
-                        where: { projectId: projectId, tenantId: req.tenantId }
-                    });
                     if (existingMapping) {
                         mapping = await prisma.clientProject.update({
                             where: { id: existingMapping.id },
@@ -1097,6 +1324,25 @@ class ClientV2Controller {
                         });
                     }
                 }
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.ADMIN,
+                    module: transactionHistory_1.Module.CLIENTS_V2,
+                    page: transactionHistory_1.Page.CLIENT_DETAIL,
+                    action: transactionHistory_1.Action.UPDATE,
+                    actionLabel: `Client project updated: ${project.name}`,
+                    entityType: transactionHistory_1.EntityType.PROJECT,
+                    entityId: project.id,
+                    entityLabel: project.name,
+                    parentEntityType: transactionHistory_1.EntityType.CLIENT,
+                    parentEntityId: existingMapping?.clientId || null,
+                    afterData: {
+                        name: project.name,
+                        code: project.code,
+                        status: project.status,
+                    },
+                    statusCode: 200
+                });
                 res.status(200).json({ success: true, data: { project, mapping }, message: 'Project updated successfully' });
             });
         }
@@ -1125,6 +1371,12 @@ class ClientV2Controller {
             }
             const { projectId } = req.params;
             await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                const mapping = await prisma.clientProject.findFirst({
+                    where: { projectId, tenantId: req.tenantId }
+                });
+                const project = await prisma.project.findUnique({
+                    where: { id: projectId }
+                });
                 // Delete the mapping first
                 await prisma.clientProject.deleteMany({
                     where: { projectId: projectId, tenantId: req.tenantId }
@@ -1133,6 +1385,27 @@ class ClientV2Controller {
                 await prisma.project.delete({
                     where: { id: projectId }
                 });
+                if (project) {
+                    (0, transactionHistory_1.recordTransaction)({
+                        req,
+                        section: transactionHistory_1.Section.ADMIN,
+                        module: transactionHistory_1.Module.CLIENTS_V2,
+                        page: transactionHistory_1.Page.CLIENT_DETAIL,
+                        action: transactionHistory_1.Action.DELETE,
+                        actionLabel: `Client project deleted: ${project.name}`,
+                        entityType: transactionHistory_1.EntityType.PROJECT,
+                        entityId: projectId,
+                        entityLabel: project.name,
+                        parentEntityType: transactionHistory_1.EntityType.CLIENT,
+                        parentEntityId: mapping?.clientId || null,
+                        beforeData: {
+                            name: project.name,
+                            code: project.code
+                        },
+                        afterData: null,
+                        statusCode: 200
+                    });
+                }
             });
             res.status(200).json({ success: true, message: 'Project deleted successfully' });
         }
@@ -1159,6 +1432,28 @@ class ClientV2Controller {
                         // Calculate actual bill amount base values on UI or here (we assume passed from FE for now)
                     }
                 });
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.ADMIN,
+                    module: transactionHistory_1.Module.CLIENTS_V2,
+                    page: transactionHistory_1.Page.CLIENT_DETAIL,
+                    action: transactionHistory_1.Action.CREATE,
+                    actionLabel: 'Employee allocated to client',
+                    entityType: transactionHistory_1.EntityType.CLIENT_ALLOCATION,
+                    entityId: allocation.id,
+                    entityLabel: `Employee: ${allocation.employeeId}`,
+                    parentEntityType: transactionHistory_1.EntityType.CLIENT,
+                    parentEntityId: clientId,
+                    afterData: {
+                        employeeId: allocation.employeeId,
+                        projectId: allocation.projectId,
+                        billingType: allocation.billingType,
+                        billAmount: allocation.billAmount,
+                        startDate: allocation.startDate,
+                        endDate: allocation.endDate,
+                    },
+                    statusCode: 201
+                });
                 res.status(201).json({ success: true, data: allocation });
             });
         }
@@ -1173,10 +1468,43 @@ class ClientV2Controller {
             const { allocationId } = req.params;
             const data = req.body;
             await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                const existing = await prisma.employeeClientAllocationV2.findUnique({
+                    where: { id: allocationId }
+                });
+                if (!existing) {
+                    res.status(404).json({ success: false, error: 'Allocation not found' });
+                    return;
+                }
                 const allocation = await prisma.employeeClientAllocationV2.update({
                     where: { id: allocationId },
                     data
                 });
+                const beforeSnap = {};
+                const afterSnap = {};
+                for (const k of Object.keys(data)) {
+                    beforeSnap[k] = existing[k];
+                    afterSnap[k] = allocation[k];
+                }
+                const { changedFields, before, after } = (0, transactionHistory_1.diffShallow)(beforeSnap, afterSnap);
+                if (changedFields.length > 0) {
+                    (0, transactionHistory_1.recordTransaction)({
+                        req,
+                        section: transactionHistory_1.Section.ADMIN,
+                        module: transactionHistory_1.Module.CLIENTS_V2,
+                        page: transactionHistory_1.Page.CLIENT_DETAIL,
+                        action: transactionHistory_1.Action.UPDATE,
+                        actionLabel: `Employee client allocation updated (${changedFields.join(', ')})`,
+                        entityType: transactionHistory_1.EntityType.CLIENT_ALLOCATION,
+                        entityId: allocation.id,
+                        entityLabel: `Employee: ${allocation.employeeId}`,
+                        parentEntityType: transactionHistory_1.EntityType.CLIENT,
+                        parentEntityId: allocation.clientId,
+                        beforeData: before,
+                        afterData: after,
+                        changedFields,
+                        statusCode: 200
+                    });
+                }
                 res.status(200).json({ success: true, data: allocation });
             });
         }

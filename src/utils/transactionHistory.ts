@@ -13,6 +13,7 @@ export const Section = {
   FINANCE: "FINANCE",
   SETTINGS: "SETTINGS",
   CLIENT_PORTAL: "CLIENT_PORTAL",
+  ADMIN: "ADMIN",
 } as const;
 export type SectionT = typeof Section[keyof typeof Section];
 
@@ -27,7 +28,26 @@ export const Module = {
   TRASH: "Trash",
   ARCHIVED: "Archived",
   DOCUMENT_HUB: "DocumentHub",
-  // HR / FIN / etc. — fill in as we wire them
+  LEADS: "Leads",
+  PROPOSALS: "Proposals",
+  SQUAD: "Squad",
+  ESCALATIONS: "Escalations",
+  DAILY_UPDATES: "DailyUpdates",
+  TIME_TRACKING: "TimeTracking",
+  ORG_STRUCTURE: "OrgStructure",
+  // FINANCE
+  ACCOUNTS: "Accounts",
+  INVOICES: "Invoices",
+  INVOICE_CUSTOMERS: "InvoiceCustomers",
+  INVOICE_SETTINGS: "InvoiceSettings",
+  INVOICE_TEMPLATES: "InvoiceTemplates",
+  INVOICE_TRASH: "InvoiceTrash",
+  // ADMIN
+  CLIENTS_V2: "ClientsV2",
+  GENERAL_SETTINGS: "GeneralSettings",
+  MEMBERS: "Members",
+  ROLE_AND_PERMISSIONS: "RoleAndPermissions",
+  AUTH: "Auth",
 } as const;
 export type ModuleT = typeof Module[keyof typeof Module];
 
@@ -64,6 +84,41 @@ export const Page = {
   // Document Hub module
   DOCUMENT_HUB_LIST: "DocumentHubList",
   DOCUMENT_DETAIL: "DocumentDetail",
+  LEADS_LIST: "LeadsList",
+  LEAD_DETAIL: "LeadDetail",
+  LEAD_SETTINGS: "LeadSettings",
+  LEADS_TRASH: "LeadsTrash",
+  PROPOSAL_LIST: "ProposalList",
+  PROPOSAL_BUILDER: "ProposalBuilder",
+  SQUAD_VIEW: "SquadView",
+  ESCALATION_LIST: "EscalationList",
+  ESCALATION_SETTINGS: "EscalationSettings",
+  DAILY_UPDATES_SUBMIT: "DailyUpdatesSubmit",
+  DAILY_UPDATES_VIEW: "DailyUpdatesView",
+  TIME_TRACKING_MY: "TimeTrackingMy",
+  TIME_TRACKING_TEAM: "TimeTrackingTeam",
+  ORG_STRUCTURE_OVERVIEW: "OrgStructureOverview",
+  ORG_STRUCTURE_GRADES: "OrgStructureGrades",
+  ORG_STRUCTURE_EMPLOYMENT_TYPES: "OrgStructureEmploymentTypes",
+  ORG_STRUCTURE_DEPARTMENTS: "OrgStructureDepartments",
+  ORG_STRUCTURE_SUB_DEPARTMENTS: "OrgStructureSubDepartments",
+  ORG_STRUCTURE_POSITIONS: "OrgStructurePositions",
+  // Admin module pages
+  CLIENT_LIST: "ClientList",
+  CLIENT_DETAIL: "ClientDetail",
+  GENERAL_SETTINGS_VIEW: "GeneralSettingsView",
+  MEMBER_LIST: "MemberList",
+  ROLE_LIST: "RoleList",
+  LOGIN: "Login",
+  // Finance module pages
+  ACCOUNTS_DASHBOARD: "AccountsDashboard",
+  ACCOUNTS_SETTINGS: "AccountsSettings",
+  INVOICE_LIST: "InvoiceList",
+  INVOICE_DETAIL: "InvoiceDetail",
+  INVOICE_CUSTOMER_LIST: "InvoiceCustomerList",
+  INVOICE_SETTINGS_VIEW: "InvoiceSettingsView",
+  INVOICE_TEMPLATE_LIST: "InvoiceTemplateList",
+  INVOICE_TRASH_VIEW: "InvoiceTrashView",
 } as const;
 export type PageT = typeof Page[keyof typeof Page];
 
@@ -98,6 +153,10 @@ export const Action = {
   REORDER: "reorder",
   SHARE: "share",
   UNSHARE: "unshare",
+  DOWNLOAD: "download",
+  EMAIL_SENT: "email_sent",
+  LOGIN: "login",
+  LOGOUT: "logout",
 } as const;
 export type ActionT = typeof Action[keyof typeof Action] | string;
 
@@ -120,6 +179,42 @@ export const EntityType = {
   DOCUMENT_TREE_NODE: "document_tree_node",
   DOCUMENT: "document",
   DOCUMENT_HISTORY_ENTRY: "document_history_entry",
+  LEAD: "lead",
+  LEAD_STATUS: "lead_status",
+  LEAD_ACTION_OPTION: "lead_action_option",
+  PROPOSAL: "proposal",
+  SQUAD: "squad",
+  ESCALATION: "escalation",
+  ESCALATION_CATEGORY: "escalation_category",
+  ESCALATION_PRIORITY: "escalation_priority",
+  ESCALATION_STATUS: "escalation_status",
+  DAILY_UPDATE: "daily_update",
+  TIME_ENTRY: "time_entry",
+  ORG_GRADE: "org_grade",
+  ORG_EMPLOYMENT_TYPE: "org_employment_type",
+  ORG_DEPARTMENT: "org_department",
+  ORG_SUB_DEPARTMENT: "org_sub_department",
+  ORG_POSITION: "org_position",
+  // Admin entities
+  CLIENT: "client",
+  CLIENT_CONTACT: "client_contact",
+  CLIENT_DOCUMENT: "client_document",
+  CLIENT_ALLOCATION: "client_allocation",
+  TENANT_SETTINGS: "tenant_settings",
+  USER: "user",
+  SESSION: "session",
+  ROLE: "role",
+  PERMISSION: "permission",
+  ROLE_PERMISSION: "role_permission",
+  USER_ROLE: "user_role",
+  // Finance entities
+  INVOICE: "invoice",
+  ACCOUNT_TRANSACTION: "account_transaction",
+  EXPENSE_CATEGORY: "expense_category",
+  INVOICE_PAYMENT: "invoice_payment",
+  INVOICE_TEMPLATE: "invoice_template",
+  INVOICE_CUSTOMER: "invoice_customer",
+  INVOICE_SETTINGS_PROFILE: "invoice_settings_profile",
 } as const;
 
 // ===== PII scrub =====

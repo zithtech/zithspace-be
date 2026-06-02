@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { prisma } from "@/config/database";
 import { AuthRequest, ApiResponse } from "@/types";
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from "../utils/transactionHistory";
 
 export class PositionController {
   // Create a new Position
@@ -44,6 +45,28 @@ export class PositionController {
       });
 
       res.status(201).json({ success: true, data: position, message: "Position created successfully" } as ApiResponse);
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.ORG_STRUCTURE,
+        page: Page.ORG_STRUCTURE_POSITIONS,
+        action: Action.CREATE,
+        actionLabel: `Created position "${position.title}"`,
+        entityType: EntityType.ORG_POSITION,
+        entityId: position.id,
+        entityLabel: position.title,
+        afterData: {
+          title: position.title,
+          code: position.code,
+          departmentId: position.departmentId,
+          subDepartmentId: position.subDepartmentId,
+          gradeId: position.gradeId,
+          description: position.description,
+          isActive: position.isActive,
+        },
+      });
     } catch (error: any) {
       console.error("Error creating position:", error);
       // Handle unique constraint violation (P2002)
@@ -141,7 +164,7 @@ export class PositionController {
         return;
       }
 
-      const position = await prisma.position.update({
+      const updatedPosition = await prisma.position.update({
         where: { id },
         data: {
           code,
@@ -155,7 +178,45 @@ export class PositionController {
         },
       });
 
-      res.status(200).json({ success: true, data: position, message: "Position updated successfully" } as ApiResponse);
+      res.status(200).json({ success: true, data: updatedPosition, message: "Position updated successfully" } as ApiResponse);
+
+      // ─── Activity log ───────────────────────────────────────────────
+      if (existing) {
+        const beforeSnap = {
+          title: existing.title,
+          code: existing.code,
+          departmentId: existing.departmentId,
+          subDepartmentId: existing.subDepartmentId,
+          gradeId: existing.gradeId,
+          description: existing.description,
+          isActive: existing.isActive,
+        };
+        const afterSnap = {
+          title: updatedPosition.title,
+          code: updatedPosition.code,
+          departmentId: updatedPosition.departmentId,
+          subDepartmentId: updatedPosition.subDepartmentId,
+          gradeId: updatedPosition.gradeId,
+          description: updatedPosition.description,
+          isActive: updatedPosition.isActive,
+        };
+        const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.ORG_STRUCTURE,
+          page: Page.ORG_STRUCTURE_POSITIONS,
+          action: Action.UPDATE,
+          actionLabel: `Updated position "${updatedPosition.title}"`,
+          entityType: EntityType.ORG_POSITION,
+          entityId: id,
+          entityLabel: updatedPosition.title,
+          beforeData: before,
+          afterData: after,
+          changedFields,
+        });
+      }
     } catch (error: any) {
       console.error("Error updating position:", error);
       if (error.code === 'P2002') {
@@ -189,6 +250,21 @@ export class PositionController {
       });
 
       res.status(200).json({ success: true, message: "Position deleted successfully" } as ApiResponse);
+
+      // ─── Activity log ───────────────────────────────────────────────
+      if (existing) {
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.ORG_STRUCTURE,
+          page: Page.ORG_STRUCTURE_POSITIONS,
+          action: Action.DELETE,
+          actionLabel: `Deleted position "${existing.title}"`,
+          entityType: EntityType.ORG_POSITION,
+          entityId: id,
+          entityLabel: existing.title,
+        });
+      }
     } catch (error: any) {
       console.error("Error deleting position:", error);
       res.status(500).json({ success: false, error: "Failed to delete position" } as ApiResponse);
