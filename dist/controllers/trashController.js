@@ -23,7 +23,7 @@ class TrashController {
                 });
                 return;
             }
-            const { page = 1, limit = 20, projectId, search, sortBy = "deletedAt", sortOrder = "desc", } = req.query;
+            const { page = 1, limit = 20, projectId, search, status, deletedBy, startDate, endDate, sortBy = "deletedAt", sortOrder = "desc", } = req.query;
             // Calculate 7 days ago
             const sevenDaysAgo = new Date();
             sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
@@ -37,6 +37,18 @@ class TrashController {
             };
             if (projectId)
                 where.projectId = projectId;
+            if (status)
+                where.status = status;
+            if (deletedBy)
+                where.deletedById = deletedBy;
+            if (startDate || endDate) {
+                const start = startDate ? new Date(startDate) : sevenDaysAgo;
+                const end = endDate ? new Date(endDate) : undefined;
+                where.deletedAt = {
+                    gte: start > sevenDaysAgo ? start : sevenDaysAgo,
+                    ...(end ? { lte: end } : {}),
+                };
+            }
             if (search) {
                 where.OR = [
                     { title: { contains: search, mode: "insensitive" } },

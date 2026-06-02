@@ -113,6 +113,7 @@ class DailyUpdateController {
                         "in_testing",
                         "pushed_to_staging",
                         "pushed_to_production",
+                        "completed",
                     ];
                     if (!validStatuses.includes(task.status)) {
                         res.status(400).json({
