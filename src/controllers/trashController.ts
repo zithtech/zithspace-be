@@ -29,6 +29,10 @@ export class TrashController {
         limit = 20,
         projectId,
         search,
+        status,
+        deletedBy,
+        startDate,
+        endDate,
         sortBy = "deletedAt",
         sortOrder = "desc",
       } = req.query;
@@ -47,6 +51,18 @@ export class TrashController {
       };
 
       if (projectId) where.projectId = projectId;
+      if (status) where.status = status;
+      if (deletedBy) where.deletedById = deletedBy;
+
+      if (startDate || endDate) {
+        const start = startDate ? new Date(startDate as string) : sevenDaysAgo;
+        const end = endDate ? new Date(endDate as string) : undefined;
+
+        where.deletedAt = {
+          gte: start > sevenDaysAgo ? start : sevenDaysAgo,
+          ...(end ? { lte: end } : {}),
+        };
+      }
 
       if (search) {
         where.OR = [
