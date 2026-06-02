@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DepartmentController = void 0;
 const database_1 = require("@/config/database");
+const transactionHistory_1 = require("../utils/transactionHistory");
 class DepartmentController {
     // Create a new Department
     static async createDepartment(req, res) {
@@ -55,6 +56,26 @@ class DepartmentController {
                 },
             });
             res.status(201).json({ success: true, data: newDepartment, message: "Department created successfully" });
+            // ─── Activity log ───────────────────────────────────────────────
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.ORG_STRUCTURE,
+                page: transactionHistory_1.Page.ORG_STRUCTURE_DEPARTMENTS,
+                action: transactionHistory_1.Action.CREATE,
+                actionLabel: `Created department "${newDepartment.name}"`,
+                entityType: transactionHistory_1.EntityType.ORG_DEPARTMENT,
+                entityId: newDepartment.id,
+                entityLabel: newDepartment.name,
+                afterData: {
+                    name: newDepartment.name,
+                    code: newDepartment.code,
+                    employmentType: newDepartment.employmentType,
+                    description: newDepartment.description,
+                    headId: newDepartment.headId,
+                    isActive: newDepartment.isActive,
+                },
+            });
         }
         catch (error) {
             console.error("Error creating department:", error);
@@ -159,6 +180,40 @@ class DepartmentController {
                 },
             });
             res.status(200).json({ success: true, data: updatedDepartment, message: "Department updated successfully" });
+            // ─── Activity log ───────────────────────────────────────────────
+            if (existing) {
+                const beforeSnap = {
+                    name: existing.name,
+                    code: existing.code,
+                    employmentType: existing.employmentType,
+                    description: existing.description,
+                    headId: existing.headId,
+                    isActive: existing.isActive,
+                };
+                const afterSnap = {
+                    name: updatedDepartment.name,
+                    code: updatedDepartment.code,
+                    employmentType: updatedDepartment.employmentType,
+                    description: updatedDepartment.description,
+                    headId: updatedDepartment.headId,
+                    isActive: updatedDepartment.isActive,
+                };
+                const { changedFields, before, after } = (0, transactionHistory_1.diffShallow)(beforeSnap, afterSnap);
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.WORK,
+                    module: transactionHistory_1.Module.ORG_STRUCTURE,
+                    page: transactionHistory_1.Page.ORG_STRUCTURE_DEPARTMENTS,
+                    action: transactionHistory_1.Action.UPDATE,
+                    actionLabel: `Updated department "${updatedDepartment.name}"`,
+                    entityType: transactionHistory_1.EntityType.ORG_DEPARTMENT,
+                    entityId: id,
+                    entityLabel: updatedDepartment.name,
+                    beforeData: before,
+                    afterData: after,
+                    changedFields,
+                });
+            }
         }
         catch (error) {
             console.error("Error updating department:", error);
@@ -182,6 +237,20 @@ class DepartmentController {
             }
             await database_1.prisma.department.delete({ where: { id } });
             res.status(200).json({ success: true, message: "Department deleted successfully" });
+            // ─── Activity log ───────────────────────────────────────────────
+            if (existing) {
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.WORK,
+                    module: transactionHistory_1.Module.ORG_STRUCTURE,
+                    page: transactionHistory_1.Page.ORG_STRUCTURE_DEPARTMENTS,
+                    action: transactionHistory_1.Action.DELETE,
+                    actionLabel: `Deleted department "${existing.name}"`,
+                    entityType: transactionHistory_1.EntityType.ORG_DEPARTMENT,
+                    entityId: id,
+                    entityLabel: existing.name,
+                });
+            }
         }
         catch (error) {
             console.error("Error deleting department:", error);

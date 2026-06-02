@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PositionController = void 0;
 const database_1 = require("@/config/database");
+const transactionHistory_1 = require("../utils/transactionHistory");
 class PositionController {
     // Create a new Position
     static async createPosition(req, res) {
@@ -32,6 +33,27 @@ class PositionController {
                 },
             });
             res.status(201).json({ success: true, data: position, message: "Position created successfully" });
+            // ─── Activity log ───────────────────────────────────────────────
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.ORG_STRUCTURE,
+                page: transactionHistory_1.Page.ORG_STRUCTURE_POSITIONS,
+                action: transactionHistory_1.Action.CREATE,
+                actionLabel: `Created position "${position.title}"`,
+                entityType: transactionHistory_1.EntityType.ORG_POSITION,
+                entityId: position.id,
+                entityLabel: position.title,
+                afterData: {
+                    title: position.title,
+                    code: position.code,
+                    departmentId: position.departmentId,
+                    subDepartmentId: position.subDepartmentId,
+                    gradeId: position.gradeId,
+                    description: position.description,
+                    isActive: position.isActive,
+                },
+            });
         }
         catch (error) {
             console.error("Error creating position:", error);
@@ -113,7 +135,7 @@ class PositionController {
                 res.status(404).json({ success: false, error: "Position not found" });
                 return;
             }
-            const position = await database_1.prisma.position.update({
+            const updatedPosition = await database_1.prisma.position.update({
                 where: { id },
                 data: {
                     code,
@@ -126,7 +148,43 @@ class PositionController {
                     updatedById,
                 },
             });
-            res.status(200).json({ success: true, data: position, message: "Position updated successfully" });
+            res.status(200).json({ success: true, data: updatedPosition, message: "Position updated successfully" });
+            // ─── Activity log ───────────────────────────────────────────────
+            if (existing) {
+                const beforeSnap = {
+                    title: existing.title,
+                    code: existing.code,
+                    departmentId: existing.departmentId,
+                    subDepartmentId: existing.subDepartmentId,
+                    gradeId: existing.gradeId,
+                    description: existing.description,
+                    isActive: existing.isActive,
+                };
+                const afterSnap = {
+                    title: updatedPosition.title,
+                    code: updatedPosition.code,
+                    departmentId: updatedPosition.departmentId,
+                    subDepartmentId: updatedPosition.subDepartmentId,
+                    gradeId: updatedPosition.gradeId,
+                    description: updatedPosition.description,
+                    isActive: updatedPosition.isActive,
+                };
+                const { changedFields, before, after } = (0, transactionHistory_1.diffShallow)(beforeSnap, afterSnap);
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.WORK,
+                    module: transactionHistory_1.Module.ORG_STRUCTURE,
+                    page: transactionHistory_1.Page.ORG_STRUCTURE_POSITIONS,
+                    action: transactionHistory_1.Action.UPDATE,
+                    actionLabel: `Updated position "${updatedPosition.title}"`,
+                    entityType: transactionHistory_1.EntityType.ORG_POSITION,
+                    entityId: id,
+                    entityLabel: updatedPosition.title,
+                    beforeData: before,
+                    afterData: after,
+                    changedFields,
+                });
+            }
         }
         catch (error) {
             console.error("Error updating position:", error);
@@ -156,6 +214,20 @@ class PositionController {
                 where: { id },
             });
             res.status(200).json({ success: true, message: "Position deleted successfully" });
+            // ─── Activity log ───────────────────────────────────────────────
+            if (existing) {
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.WORK,
+                    module: transactionHistory_1.Module.ORG_STRUCTURE,
+                    page: transactionHistory_1.Page.ORG_STRUCTURE_POSITIONS,
+                    action: transactionHistory_1.Action.DELETE,
+                    actionLabel: `Deleted position "${existing.title}"`,
+                    entityType: transactionHistory_1.EntityType.ORG_POSITION,
+                    entityId: id,
+                    entityLabel: existing.title,
+                });
+            }
         }
         catch (error) {
             console.error("Error deleting position:", error);

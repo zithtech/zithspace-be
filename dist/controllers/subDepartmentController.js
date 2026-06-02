@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SubDepartmentController = void 0;
 const database_1 = require("@/config/database");
+const transactionHistory_1 = require("../utils/transactionHistory");
 class SubDepartmentController {
     // Create a new sub-department
     static async createSubDepartment(req, res) {
@@ -42,6 +43,25 @@ class SubDepartmentController {
                 },
             });
             res.status(201).json({ success: true, data: subDepartment, message: "Sub-Department created successfully" });
+            // ─── Activity log ───────────────────────────────────────────────
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.ORG_STRUCTURE,
+                page: transactionHistory_1.Page.ORG_STRUCTURE_SUB_DEPARTMENTS,
+                action: transactionHistory_1.Action.CREATE,
+                actionLabel: `Created sub-department "${subDepartment.name}"`,
+                entityType: transactionHistory_1.EntityType.ORG_SUB_DEPARTMENT,
+                entityId: subDepartment.id,
+                entityLabel: subDepartment.name,
+                afterData: {
+                    name: subDepartment.name,
+                    code: subDepartment.code,
+                    parentDepartmentId: subDepartment.parentDepartmentId,
+                    description: subDepartment.description,
+                    isActive: subDepartment.isActive,
+                },
+            });
         }
         catch (error) {
             console.error("Error creating sub-department:", error);
@@ -128,6 +148,36 @@ class SubDepartmentController {
                 },
             });
             res.status(200).json({ success: true, data: updatedSubDepartment, message: "Sub-Department updated successfully" });
+            // ─── Activity log ───────────────────────────────────────────────
+            if (existing) {
+                const beforeSnap = {
+                    name: existing.name,
+                    parentDepartmentId: existing.parentDepartmentId,
+                    description: existing.description,
+                    isActive: existing.isActive,
+                };
+                const afterSnap = {
+                    name: updatedSubDepartment.name,
+                    parentDepartmentId: updatedSubDepartment.parentDepartmentId,
+                    description: updatedSubDepartment.description,
+                    isActive: updatedSubDepartment.isActive,
+                };
+                const { changedFields, before, after } = (0, transactionHistory_1.diffShallow)(beforeSnap, afterSnap);
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.WORK,
+                    module: transactionHistory_1.Module.ORG_STRUCTURE,
+                    page: transactionHistory_1.Page.ORG_STRUCTURE_SUB_DEPARTMENTS,
+                    action: transactionHistory_1.Action.UPDATE,
+                    actionLabel: `Updated sub-department "${updatedSubDepartment.name}"`,
+                    entityType: transactionHistory_1.EntityType.ORG_SUB_DEPARTMENT,
+                    entityId: id,
+                    entityLabel: updatedSubDepartment.name,
+                    beforeData: before,
+                    afterData: after,
+                    changedFields,
+                });
+            }
         }
         catch (error) {
             console.error("Error updating sub-department:", error);
@@ -146,10 +196,29 @@ class SubDepartmentController {
                 return;
             }
             const { id } = req.params;
+            const existing = await database_1.prisma.subDepartment.findFirst({
+                where: { id, tenantId: req.tenantId },
+            });
+            if (!existing) {
+                res.status(404).json({ success: false, error: "Sub-Department not found" });
+                return;
+            }
             await database_1.prisma.subDepartment.delete({
-                where: { id }, // Prisma will throw if not found or if tenant constraint (via middleware/RLS logic if applied) fails, but here we rely on ID uniqueness. Ideally verify tenant ownership first.
+                where: { id },
             });
             res.status(200).json({ success: true, message: "Sub-Department deleted successfully" });
+            // ─── Activity log ───────────────────────────────────────────────
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.ORG_STRUCTURE,
+                page: transactionHistory_1.Page.ORG_STRUCTURE_SUB_DEPARTMENTS,
+                action: transactionHistory_1.Action.DELETE,
+                actionLabel: `Deleted sub-department "${existing.name}"`,
+                entityType: transactionHistory_1.EntityType.ORG_SUB_DEPARTMENT,
+                entityId: id,
+                entityLabel: existing.name,
+            });
         }
         catch (error) {
             console.error("Error deleting sub-department:", error);

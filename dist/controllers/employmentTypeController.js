@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.EmploymentTypeController = void 0;
 const database_1 = require("@/config/database");
+const transactionHistory_1 = require("../utils/transactionHistory");
 class EmploymentTypeController {
     // Create a new employment type
     static async createEmploymentType(req, res) {
@@ -58,6 +59,24 @@ class EmploymentTypeController {
                 },
             });
             res.status(201).json({ success: true, data: employmentType, message: "Employment type created successfully" });
+            // ─── Activity log ───────────────────────────────────────────────
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.ORG_STRUCTURE,
+                page: transactionHistory_1.Page.ORG_STRUCTURE_EMPLOYMENT_TYPES,
+                action: transactionHistory_1.Action.CREATE,
+                actionLabel: `Created employment type "${employmentType.name}"`,
+                entityType: transactionHistory_1.EntityType.ORG_EMPLOYMENT_TYPE,
+                entityId: employmentType.id,
+                entityLabel: employmentType.name,
+                afterData: {
+                    name: employmentType.name,
+                    code: employmentType.code,
+                    description: employmentType.description,
+                    isActive: employmentType.isActive,
+                },
+            });
         }
         catch (error) {
             console.error("Error creating employment type:", error);
@@ -182,6 +201,36 @@ class EmploymentTypeController {
                 },
             });
             res.status(200).json({ success: true, data: updatedEmploymentType, message: "Employment type updated successfully" });
+            // ─── Activity log ───────────────────────────────────────────────
+            if (employmentTypeToUpdate) {
+                const beforeSnap = {
+                    name: employmentTypeToUpdate.name,
+                    code: employmentTypeToUpdate.code,
+                    description: employmentTypeToUpdate.description,
+                    isActive: employmentTypeToUpdate.isActive,
+                };
+                const afterSnap = {
+                    name: updatedEmploymentType.name,
+                    code: updatedEmploymentType.code,
+                    description: updatedEmploymentType.description,
+                    isActive: updatedEmploymentType.isActive,
+                };
+                const { changedFields, before, after } = (0, transactionHistory_1.diffShallow)(beforeSnap, afterSnap);
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.WORK,
+                    module: transactionHistory_1.Module.ORG_STRUCTURE,
+                    page: transactionHistory_1.Page.ORG_STRUCTURE_EMPLOYMENT_TYPES,
+                    action: transactionHistory_1.Action.UPDATE,
+                    actionLabel: `Updated employment type "${updatedEmploymentType.name}"`,
+                    entityType: transactionHistory_1.EntityType.ORG_EMPLOYMENT_TYPE,
+                    entityId: id,
+                    entityLabel: updatedEmploymentType.name,
+                    beforeData: before,
+                    afterData: after,
+                    changedFields,
+                });
+            }
         }
         catch (error) {
             console.error("Error updating employment type:", error);
@@ -207,6 +256,20 @@ class EmploymentTypeController {
                 where: { id },
             });
             res.status(200).json({ success: true, message: "Employment type deleted successfully" });
+            // ─── Activity log ───────────────────────────────────────────────
+            if (employmentTypeToDelete) {
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.WORK,
+                    module: transactionHistory_1.Module.ORG_STRUCTURE,
+                    page: transactionHistory_1.Page.ORG_STRUCTURE_EMPLOYMENT_TYPES,
+                    action: transactionHistory_1.Action.DELETE,
+                    actionLabel: `Deleted employment type "${employmentTypeToDelete.name}"`,
+                    entityType: transactionHistory_1.EntityType.ORG_EMPLOYMENT_TYPE,
+                    entityId: id,
+                    entityLabel: employmentTypeToDelete.name,
+                });
+            }
         }
         catch (error) {
             console.error("Error deleting employment type:", error);
