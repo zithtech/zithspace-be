@@ -1,11 +1,10 @@
 import { Response } from "express";
 
-import { EscalationModel, CreateEscalationPayload, UpdateEscalationPayload } from "../models/escalationModel";
+import * as EscalationDb from "../models/escalation.model";
 import { AuthRequest, ApiResponse } from "@/types";
 import { uploadEscalationDocumentToR2 } from "../utils/r2Client";
 import { nanoid } from "nanoid";
 import { emailService } from "@/utils/emailService";
-import { prisma } from "@/config/database";
 
 
 /**
@@ -72,7 +71,7 @@ export const createEscalation = async (req: AuthRequest, res: Response): Promise
             }
         }
 
-        const payload: CreateEscalationPayload = {
+        const payload: EscalationDb.CreateEscalationData = {
             tenantId,
             createdById,
             subject,
@@ -86,7 +85,7 @@ export const createEscalation = async (req: AuthRequest, res: Response): Promise
             documentUrl
         };
 
-        const escalation = await EscalationModel.create(payload);
+        const escalation = await EscalationDb.createEscalation(payload);
 
         // Notify target users about the escalation asynchronously
         if (targetMemberIds && targetMemberIds.length > 0) {
@@ -102,17 +101,8 @@ export const createEscalation = async (req: AuthRequest, res: Response): Promise
 
             // Query target users and full escalation details in parallel
             Promise.all([
-                prisma.user.findMany({
-                    where: {
-                        id: { in: targetMemberIds },
-                        tenantId: tenantId
-                    },
-                    select: {
-                        name: true,
-                        workEmail: true
-                    }
-                }),
-                EscalationModel.findById(escalation.id, tenantId)
+                EscalationDb.getTargetUsers(tenantId, targetMemberIds),
+                EscalationDb.getEscalationById(escalation.id, tenantId)
             ]).then(([targetUsers, fullEscalation]) => {
                 targetUsers.forEach(user => {
                     if (user.workEmail) {
@@ -167,7 +157,7 @@ export const getAllEscalations = async (req: AuthRequest, res: Response): Promis
             return;
         }
 
-        const escalations = await EscalationModel.findAll(tenantId);
+        const escalations = await EscalationDb.getEscalations(tenantId);
 
         const response: ApiResponse = {
             success: true,
@@ -203,7 +193,7 @@ export const getEscalationById = async (req: AuthRequest, res: Response): Promis
             return;
         }
 
-        const escalation = await EscalationModel.findById(id, tenantId);
+        const escalation = await EscalationDb.getEscalationById(id, tenantId);
 
         if (!escalation) {
             const response: ApiResponse = {
@@ -253,11 +243,11 @@ export const updateEscalation = async (req: AuthRequest, res: Response): Promise
             subject, description, categoryId, priorityId, statusId, projectId
         } = req.body;
 
-        const payload: UpdateEscalationPayload = {
+        const payload: EscalationDb.UpdateEscalationData = {
             subject, description, categoryId, priorityId, statusId, projectId
         };
 
-        const updated = await EscalationModel.update(id, tenantId, payload, updatedById);
+        const updated = await EscalationDb.updateEscalation(id, tenantId, payload, updatedById);
 
         if (!updated) {
             const response: ApiResponse = {
@@ -302,7 +292,7 @@ export const deleteEscalation = async (req: AuthRequest, res: Response): Promise
             return;
         }
 
-        const isDeleted = await EscalationModel.delete(id, tenantId);
+        const isDeleted = await EscalationDb.deleteEscalation(id, tenantId);
 
         if (!isDeleted) {
             const response: ApiResponse = {
@@ -315,11 +305,237 @@ export const deleteEscalation = async (req: AuthRequest, res: Response): Promise
 
         const response: ApiResponse = {
             success: true,
-            message: "Escalation deleted successfully",
+            message: "Escalation moved to trash successfully",
         };
         res.status(200).json(response);
     } catch (error: any) {
         console.error("Error in deleteEscalation:", error.message);
+        const response: ApiResponse = {
+            success: false,
+            message: "Internal server error",
+            error: error.message,
+        };
+        res.status(500).json(response);
+    }
+};
+
+/**
+ * Get all trashed escalations
+ */
+export const getTrashEscalations = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const tenantId = req.user?.tenantId;
+        if (!tenantId) {
+            const response: ApiResponse = {
+                success: false,
+                message: "Unauthorized",
+            };
+            res.status(401).json(response);
+            return;
+        }
+        const escalations = await EscalationDb.getTrashEscalations(tenantId);
+        const response: ApiResponse = {
+            success: true,
+            message: "Trash escalations fetched successfully",
+            data: escalations,
+        };
+        res.status(200).json(response);
+    } catch (error: any) {
+        console.error("Error in getTrashEscalations:", error.message);
+        const response: ApiResponse = {
+            success: false,
+            message: "Internal server error",
+            error: error.message,
+        };
+        res.status(500).json(response);
+    }
+};
+
+/**
+ * Restore a single escalation from trash
+ */
+export const restoreEscalation = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const tenantId = req.user?.tenantId;
+        const { id } = req.params;
+        if (!tenantId) {
+            const response: ApiResponse = {
+                success: false,
+                message: "Unauthorized",
+            };
+            res.status(401).json(response);
+            return;
+        }
+        const restored = await EscalationDb.restoreEscalation(id, tenantId);
+        if (!restored) {
+            const response: ApiResponse = {
+                success: false,
+                message: "Escalation not found in trash",
+            };
+            res.status(404).json(response);
+            return;
+        }
+        const response: ApiResponse = {
+            success: true,
+            message: "Escalation restored successfully",
+        };
+        res.status(200).json(response);
+    } catch (error: any) {
+        console.error("Error in restoreEscalation:", error.message);
+        const response: ApiResponse = {
+            success: false,
+            message: "Internal server error",
+            error: error.message,
+        };
+        res.status(500).json(response);
+    }
+};
+
+/**
+ * Permanently delete a single escalation
+ */
+export const permanentDeleteEscalation = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const tenantId = req.user?.tenantId;
+        const { id } = req.params;
+        if (!tenantId) {
+            const response: ApiResponse = {
+                success: false,
+                message: "Unauthorized",
+            };
+            res.status(401).json(response);
+            return;
+        }
+        const deleted = await EscalationDb.permanentDeleteEscalation(id, tenantId);
+        if (!deleted) {
+            const response: ApiResponse = {
+                success: false,
+                message: "Escalation not found in trash",
+            };
+            res.status(404).json(response);
+            return;
+        }
+        const response: ApiResponse = {
+            success: true,
+            message: "Escalation permanently deleted successfully",
+        };
+        res.status(200).json(response);
+    } catch (error: any) {
+        console.error("Error in permanentDeleteEscalation:", error.message);
+        const response: ApiResponse = {
+            success: false,
+            message: "Internal server error",
+            error: error.message,
+        };
+        res.status(500).json(response);
+    }
+};
+
+/**
+ * Empty escalation trash
+ */
+export const emptyTrash = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const tenantId = req.user?.tenantId;
+        if (!tenantId) {
+            const response: ApiResponse = {
+                success: false,
+                message: "Unauthorized",
+            };
+            res.status(401).json(response);
+            return;
+        }
+        const count = await EscalationDb.emptyEscalationTrash(tenantId);
+        const response: ApiResponse = {
+            success: true,
+            message: `Trash emptied: ${count} escalations permanently deleted`,
+            data: { deletedCount: count },
+        };
+        res.status(200).json(response);
+    } catch (error: any) {
+        console.error("Error in emptyTrash:", error.message);
+        const response: ApiResponse = {
+            success: false,
+            message: "Internal server error",
+            error: error.message,
+        };
+        res.status(500).json(response);
+    }
+};
+
+/**
+ * Bulk restore escalations from trash
+ */
+export const bulkRestoreEscalations = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const tenantId = req.user?.tenantId;
+        const { ids } = req.body;
+        if (!tenantId) {
+            const response: ApiResponse = {
+                success: false,
+                message: "Unauthorized",
+            };
+            res.status(401).json(response);
+            return;
+        }
+        if (!ids || !Array.isArray(ids) || ids.length === 0) {
+            const response: ApiResponse = {
+                success: false,
+                message: "Invalid or empty IDs list",
+            };
+            res.status(400).json(response);
+            return;
+        }
+        const count = await EscalationDb.bulkRestoreEscalations(ids, tenantId);
+        const response: ApiResponse = {
+            success: true,
+            message: `${count} escalations restored successfully`,
+            data: { restoredCount: count },
+        };
+        res.status(200).json(response);
+    } catch (error: any) {
+        console.error("Error in bulkRestoreEscalations:", error.message);
+        const response: ApiResponse = {
+            success: false,
+            message: "Internal server error",
+            error: error.message,
+        };
+        res.status(500).json(response);
+    }
+};
+
+/**
+ * Bulk permanently delete escalations
+ */
+export const bulkPermanentDeleteEscalations = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const tenantId = req.user?.tenantId;
+        const { ids } = req.body;
+        if (!tenantId) {
+            const response: ApiResponse = {
+                success: false,
+                message: "Unauthorized",
+            };
+            res.status(401).json(response);
+            return;
+        }
+        if (!ids || !Array.isArray(ids) || ids.length === 0) {
+            const response: ApiResponse = {
+                success: false,
+                message: "Invalid or empty IDs list",
+            };
+            res.status(400).json(response);
+            return;
+        }
+        const count = await EscalationDb.bulkPermanentDeleteEscalations(ids, tenantId);
+        const response: ApiResponse = {
+            success: true,
+            message: `${count} escalations permanently deleted`,
+            data: { deletedCount: count },
+        };
+        res.status(200).json(response);
+    } catch (error: any) {
+        console.error("Error in bulkPermanentDeleteEscalations:", error.message);
         const response: ApiResponse = {
             success: false,
             message: "Internal server error",
