@@ -7,6 +7,7 @@ const generalSettings_model_1 = require("@/models/generalSettings.model");
 const invoiceSettings_model_1 = require("@/models/invoiceSettings.model");
 const paymentSettings_model_1 = require("@/models/paymentSettings.model");
 const qrValidator_1 = require("@/utils/qrValidator");
+const signatureValidator_1 = require("@/utils/signatureValidator");
 const transactionHistory_1 = require("@/utils/transactionHistory");
 const parseInvoiceFormat = (formatString) => {
     // Finds the sequence of # inside curly braces (e.g., {####})
@@ -111,6 +112,14 @@ class InvoiceSettingsController {
             const invoiceFormatString = invoice.format || "INV-{YYYY}-{###}";
             const parsedInvoiceData = parseInvoiceFormat(invoiceFormatString);
             // --- DYNAMIC DESTRUCTURING END ---
+            // Validate signature image if provided
+            if (general && general.signature) {
+                const signatureValidation = await (0, signatureValidator_1.validateSignatureImage)(general.signature);
+                if (!signatureValidation.isValid) {
+                    res.status(400).json({ success: false, error: signatureValidation.error });
+                    return;
+                }
+            }
             // Create general setting
             const generalSetting = await (0, generalSettings_model_1.createGeneralSetting)({
                 tenantId: req.tenantId,
@@ -211,6 +220,13 @@ class InvoiceSettingsController {
             }
             // 2. Update related settings if provided
             if (general) {
+                if (general.signature) {
+                    const signatureValidation = await (0, signatureValidator_1.validateSignatureImage)(general.signature);
+                    if (!signatureValidation.isValid) {
+                        res.status(400).json({ success: false, error: signatureValidation.error });
+                        return;
+                    }
+                }
                 await (0, generalSettings_model_1.updateGeneralSetting)(existing.generalId, req.tenantId, {
                     ...general,
                     gstin: general.gstin === "" ? null : general.gstin,
