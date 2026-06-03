@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { prisma } from "@/config/database";
 import { AuthRequest, ApiResponse } from "@/types";
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from "../utils/transactionHistory";
 
 export class SubDepartmentController {
   // Create a new sub-department
@@ -48,6 +49,26 @@ export class SubDepartmentController {
       });
 
       res.status(201).json({ success: true, data: subDepartment, message: "Sub-Department created successfully" } as ApiResponse);
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.ORG_STRUCTURE,
+        page: Page.ORG_STRUCTURE_SUB_DEPARTMENTS,
+        action: Action.CREATE,
+        actionLabel: `Created sub-department "${subDepartment.name}"`,
+        entityType: EntityType.ORG_SUB_DEPARTMENT,
+        entityId: subDepartment.id,
+        entityLabel: subDepartment.name,
+        afterData: {
+          name: subDepartment.name,
+          code: subDepartment.code,
+          parentDepartmentId: subDepartment.parentDepartmentId,
+          description: subDepartment.description,
+          isActive: subDepartment.isActive,
+        },
+      });
     } catch (error: any) {
       console.error("Error creating sub-department:", error);
       if (error.code === 'P2003') {
@@ -143,6 +164,38 @@ export class SubDepartmentController {
       });
 
       res.status(200).json({ success: true, data: updatedSubDepartment, message: "Sub-Department updated successfully" } as ApiResponse);
+
+      // ─── Activity log ───────────────────────────────────────────────
+      if (existing) {
+        const beforeSnap = {
+          name: existing.name,
+          parentDepartmentId: existing.parentDepartmentId,
+          description: existing.description,
+          isActive: existing.isActive,
+        };
+        const afterSnap = {
+          name: updatedSubDepartment.name,
+          parentDepartmentId: updatedSubDepartment.parentDepartmentId,
+          description: updatedSubDepartment.description,
+          isActive: updatedSubDepartment.isActive,
+        };
+        const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.ORG_STRUCTURE,
+          page: Page.ORG_STRUCTURE_SUB_DEPARTMENTS,
+          action: Action.UPDATE,
+          actionLabel: `Updated sub-department "${updatedSubDepartment.name}"`,
+          entityType: EntityType.ORG_SUB_DEPARTMENT,
+          entityId: id,
+          entityLabel: updatedSubDepartment.name,
+          beforeData: before,
+          afterData: after,
+          changedFields,
+        });
+      }
     } catch (error: any) {
       console.error("Error updating sub-department:", error);
       if (error.code === 'P2003') {
@@ -162,11 +215,33 @@ export class SubDepartmentController {
       }
       const { id } = req.params;
 
+      const existing = await prisma.subDepartment.findFirst({
+        where: { id, tenantId: req.tenantId },
+      });
+
+      if (!existing) {
+        res.status(404).json({ success: false, error: "Sub-Department not found" } as ApiResponse);
+        return;
+      }
+
       await prisma.subDepartment.delete({
-        where: { id }, // Prisma will throw if not found or if tenant constraint (via middleware/RLS logic if applied) fails, but here we rely on ID uniqueness. Ideally verify tenant ownership first.
+        where: { id },
       });
 
       res.status(200).json({ success: true, message: "Sub-Department deleted successfully" } as ApiResponse);
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.ORG_STRUCTURE,
+        page: Page.ORG_STRUCTURE_SUB_DEPARTMENTS,
+        action: Action.DELETE,
+        actionLabel: `Deleted sub-department "${existing.name}"`,
+        entityType: EntityType.ORG_SUB_DEPARTMENT,
+        entityId: id,
+        entityLabel: existing.name,
+      });
     } catch (error: any) {
       console.error("Error deleting sub-department:", error);
       if (error.code === 'P2025') {

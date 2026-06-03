@@ -1,5 +1,6 @@
 import { Response } from "express";
 import { prisma } from "@/config/database";
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from '../utils/transactionHistory';
 import {
   AuthRequest,
   ApiResponse,
@@ -172,6 +173,23 @@ export class SquadController {
         return squad;
       });
 
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.SQUAD,
+        page: Page.SQUAD_VIEW,
+        action: Action.CREATE,
+        actionLabel: `Created squad "${result.squadName}"`,
+        entityType: EntityType.SQUAD,
+        entityId: result.id,
+        entityLabel: result.squadName,
+        afterData: {
+          squadName: result.squadName,
+          squadCode: result.squadCode,
+        },
+      });
+
       res.status(201).json({ success: true, data: result, message: "Squad created successfully" });
     } catch (error: any) {
       console.error("Create squad error:", error);
@@ -252,6 +270,38 @@ export class SquadController {
         return updatedSquad;
       });
 
+      // ─── Activity log ───────────────────────────────────────────────
+      if (existingSquad && result) {
+        const beforeSnap = {
+          squadName: existingSquad.squadName,
+          squadCode: existingSquad.squadCode,
+          squadStatus: existingSquad.squadStatus,
+          isArchived: existingSquad.isArchived,
+        };
+        const afterSnap = {
+          squadName: result.squadName,
+          squadCode: result.squadCode,
+          squadStatus: result.squadStatus,
+          isArchived: result.isArchived,
+        };
+        const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.SQUAD,
+          page: Page.SQUAD_VIEW,
+          action: Action.UPDATE,
+          actionLabel: `Updated squad "${result.squadName}"`,
+          entityType: EntityType.SQUAD,
+          entityId: id,
+          entityLabel: result.squadName,
+          beforeData: before,
+          afterData: after,
+          changedFields,
+        });
+      }
+
       res.status(200).json({ success: true, data: result, message: "Squad updated successfully" });
     } catch (error: any) {
       console.error("Update squad error:", error);
@@ -268,9 +318,27 @@ export class SquadController {
   static async deleteSquad(req: AuthRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
+      const squad = await prisma.squad.findFirst({
+        where: { id, tenantId: req.tenantId as string },
+      });
+      const squadName = squad ? squad.squadName : id;
+
       await prisma.squad.update({
         where: { id },
         data: { isDeleted: true, updatedById: req.user!.id },
+      });
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.SQUAD,
+        page: Page.SQUAD_VIEW,
+        action: Action.DELETE,
+        actionLabel: `Deleted squad "${squadName}"`,
+        entityType: EntityType.SQUAD,
+        entityId: id,
+        entityLabel: squadName,
       });
 
       res.status(200).json({ success: true, message: "Squad deleted successfully" });
@@ -288,9 +356,25 @@ export class SquadController {
       const { id } = req.params;
       const { isArchived } = req.body;
 
-      await prisma.squad.update({
+      const squad = await prisma.squad.update({
         where: { id },
         data: { isArchived: !!isArchived, updatedById: req.user!.id },
+      });
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.SQUAD,
+        page: Page.SQUAD_VIEW,
+        action: Action.STATUS_CHANGE,
+        actionLabel: isArchived ? `Archived squad "${squad.squadName}"` : `Unarchived squad "${squad.squadName}"`,
+        entityType: EntityType.SQUAD,
+        entityId: id,
+        entityLabel: squad.squadName,
+        beforeData: { isArchived: !isArchived },
+        afterData: { isArchived: !!isArchived },
+        changedFields: ["isArchived"],
       });
 
       res.status(200).json({

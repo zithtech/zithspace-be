@@ -3,6 +3,7 @@ import { Response } from "express";
 import { EscalationModel, CreateEscalationPayload, UpdateEscalationPayload } from "../models/escalationModel";
 import { AuthRequest, ApiResponse } from "@/types";
 import { uploadEscalationDocumentToR2 } from "../utils/r2Client";
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from '../utils/transactionHistory';
 import { nanoid } from "nanoid";
 import { emailService } from "@/utils/emailService";
 import { prisma } from "@/config/database";
@@ -139,6 +140,24 @@ export const createEscalation = async (req: AuthRequest, res: Response): Promise
             message: "Escalation created successfully",
             data: escalation,
         };
+
+        // ─── Activity log ───────────────────────────────────────────────
+        recordTransaction({
+            req,
+            section: Section.WORK,
+            module: Module.ESCALATIONS,
+            page: Page.ESCALATION_LIST,
+            action: Action.CREATE,
+            actionLabel: `Created escalation "${escalation.short_summary}"`,
+            entityType: EntityType.ESCALATION,
+            entityId: escalation.id,
+            entityLabel: escalation.short_summary,
+            afterData: {
+                subject: escalation.short_summary,
+                description: escalation.detailed_description,
+            },
+        });
+
         res.status(201).json(response);
     } catch (error: any) {
         console.error("Error in createEscalation:", error.message);
@@ -257,9 +276,10 @@ export const updateEscalation = async (req: AuthRequest, res: Response): Promise
             subject, description, categoryId, priorityId, statusId, projectId
         };
 
-        const updated = await EscalationModel.update(id, tenantId, payload, updatedById);
+        const existingEscalation = await EscalationModel.findById(id, tenantId);
+        const updatedRaw = await EscalationModel.update(id, tenantId, payload, updatedById);
 
-        if (!updated) {
+        if (!updatedRaw) {
             const response: ApiResponse = {
                 success: false,
                 message: "Escalation update failed or not found",
@@ -268,11 +288,48 @@ export const updateEscalation = async (req: AuthRequest, res: Response): Promise
             return;
         }
 
+        const updated = await EscalationModel.findById(id, tenantId);
+
         const response: ApiResponse = {
             success: true,
             message: "Escalation updated successfully",
-            data: updated,
+            data: updatedRaw,
         };
+
+        // ─── Activity log ───────────────────────────────────────────────
+        if (existingEscalation && updated) {
+            const beforeSnap = {
+                subject: existingEscalation.short_summary,
+                description: existingEscalation.detailed_description,
+                category: existingEscalation.category_name,
+                priority: existingEscalation.priority_name,
+                status: existingEscalation.status_name,
+            };
+            const afterSnap = {
+                subject: updated.short_summary,
+                description: updated.detailed_description,
+                category: updated.category_name,
+                priority: updated.priority_name,
+                status: updated.status_name,
+            };
+            const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+
+            recordTransaction({
+                req,
+                section: Section.WORK,
+                module: Module.ESCALATIONS,
+                page: Page.ESCALATION_LIST,
+                action: Action.UPDATE,
+                actionLabel: `Updated escalation "${updated.short_summary}"`,
+                entityType: EntityType.ESCALATION,
+                entityId: id,
+                entityLabel: updated.short_summary,
+                beforeData: before,
+                afterData: after,
+                changedFields,
+            });
+        }
+
         res.status(200).json(response);
     } catch (error: any) {
         console.error("Error in updateEscalation:", error.message);
@@ -302,6 +359,9 @@ export const deleteEscalation = async (req: AuthRequest, res: Response): Promise
             return;
         }
 
+        const existingEscalation = await EscalationModel.findById(id, tenantId);
+        const escalationSubject = existingEscalation ? existingEscalation.short_summary : id;
+
         const isDeleted = await EscalationModel.delete(id, tenantId);
 
         if (!isDeleted) {
@@ -317,6 +377,20 @@ export const deleteEscalation = async (req: AuthRequest, res: Response): Promise
             success: true,
             message: "Escalation deleted successfully",
         };
+
+        // ─── Activity log ───────────────────────────────────────────────
+        recordTransaction({
+            req,
+            section: Section.WORK,
+            module: Module.ESCALATIONS,
+            page: Page.ESCALATION_LIST,
+            action: Action.DELETE,
+            actionLabel: `Deleted escalation "${escalationSubject}"`,
+            entityType: EntityType.ESCALATION,
+            entityId: id,
+            entityLabel: escalationSubject,
+        });
+
         res.status(200).json(response);
     } catch (error: any) {
         console.error("Error in deleteEscalation:", error.message);

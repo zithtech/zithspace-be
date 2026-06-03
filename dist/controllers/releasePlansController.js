@@ -4,6 +4,8 @@ exports.ReleasePlansController = void 0;
 const database_1 = require("@/config/database");
 const types_1 = require("@/types");
 const socketService_1 = require("@/services/socketService");
+const transactionHistory_1 = require("@/utils/transactionHistory");
+const crypto_1 = require("crypto");
 class ReleasePlansController {
     /**
      * Get all release plans with filtering and pagination (tenant-aware)
@@ -266,6 +268,30 @@ class ReleasePlansController {
                     data: ticketUpdateData,
                 });
             }
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.SPRINTS,
+                page: transactionHistory_1.Page.SPRINT_LIST,
+                action: transactionHistory_1.Action.CREATE,
+                actionLabel: `${type === "sprint_plan" ? "Sprint" : type === "demo_plan" ? "Demo plan" : "Release plan"} created`,
+                entityType: transactionHistory_1.EntityType.RELEASE_PLAN,
+                entityId: newReleasePlan.id,
+                entityLabel: newReleasePlan.version,
+                parentEntityType: transactionHistory_1.EntityType.PROJECT,
+                parentEntityId: projectId,
+                afterData: {
+                    version,
+                    type,
+                    status,
+                    startDate,
+                    endDate,
+                    releaseDate,
+                    goal,
+                    ticketCount: Array.isArray(tickets) ? tickets.length : 0,
+                },
+                statusCode: 201,
+            });
             res.status(201).json({
                 success: true,
                 data: newReleasePlan,
@@ -364,6 +390,49 @@ class ReleasePlansController {
             const updatedPlan = await database_1.prisma.releasePlan.findUnique({
                 where: { id },
             });
+            {
+                const trackedKeys = [
+                    "version",
+                    "description",
+                    "goal",
+                    "status",
+                    "startDate",
+                    "endDate",
+                    "releaseDate",
+                ];
+                const beforeSnap = {};
+                const afterSnap = {};
+                for (const k of trackedKeys) {
+                    if (updates[k] !== undefined) {
+                        beforeSnap[k] = existingPlan[k];
+                        afterSnap[k] = updatedPlan?.[k];
+                    }
+                }
+                const { changedFields, before, after } = (0, transactionHistory_1.diffShallow)(beforeSnap, afterSnap);
+                const ticketsReplaced = ticketsToAssign !== undefined && Array.isArray(ticketsToAssign);
+                if (changedFields.length > 0 || ticketsReplaced) {
+                    (0, transactionHistory_1.recordTransaction)({
+                        req,
+                        section: transactionHistory_1.Section.WORK,
+                        module: transactionHistory_1.Module.SPRINTS,
+                        page: transactionHistory_1.Page.SPRINT_DETAIL,
+                        action: transactionHistory_1.Action.UPDATE,
+                        actionLabel: `Plan updated${changedFields.length ? ` (${changedFields.join(", ")})` : ""}`,
+                        entityType: transactionHistory_1.EntityType.RELEASE_PLAN,
+                        entityId: id,
+                        entityLabel: existingPlan.version,
+                        parentEntityType: transactionHistory_1.EntityType.PROJECT,
+                        parentEntityId: existingPlan.projectId,
+                        beforeData: before,
+                        afterData: after,
+                        changedFields,
+                        statusCode: 200,
+                        metadata: ticketsReplaced
+                            ? { ticketsReplaced: true, newTicketCount: ticketsToAssign.length }
+                            : null,
+                    });
+                }
+            }
             res.status(200).json({
                 success: true,
                 data: updatedPlan,
@@ -425,7 +494,7 @@ class ReleasePlansController {
                 matchData.releasePlanId = id;
                 resetData.releasePlanId = null;
             }
-            await database_1.prisma.ticket.updateMany({
+            const unassigned = await database_1.prisma.ticket.updateMany({
                 where: matchData,
                 data: {
                     ...resetData,
@@ -441,6 +510,22 @@ class ReleasePlansController {
             });
             await database_1.prisma.releasePlan.delete({
                 where: { id },
+            });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.SPRINTS,
+                page: transactionHistory_1.Page.SPRINT_LIST,
+                action: transactionHistory_1.Action.DELETE,
+                actionLabel: "Plan deleted",
+                entityType: transactionHistory_1.EntityType.RELEASE_PLAN,
+                entityId: id,
+                entityLabel: plan.version,
+                parentEntityType: transactionHistory_1.EntityType.PROJECT,
+                parentEntityId: plan.projectId,
+                beforeData: { type: plan.type, status: plan.status },
+                statusCode: 200,
+                metadata: { ticketsUnassigned: unassigned.count, hardDelete: true },
             });
             res.status(200).json({
                 success: true,
@@ -522,6 +607,23 @@ class ReleasePlansController {
                     startedAt: new Date(),
                     updatedAt: new Date(),
                 },
+            });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.SPRINTS,
+                page: transactionHistory_1.Page.SPRINT_DETAIL,
+                action: transactionHistory_1.Action.START,
+                actionLabel: "Sprint started",
+                entityType: transactionHistory_1.EntityType.RELEASE_PLAN,
+                entityId: id,
+                entityLabel: sprint.version,
+                parentEntityType: transactionHistory_1.EntityType.PROJECT,
+                parentEntityId: sprint.projectId,
+                beforeData: { status: sprint.status, startedAt: sprint.startedAt },
+                afterData: { status: "active", startedAt: updatedSprint.startedAt },
+                changedFields: ["status", "startedAt"],
+                statusCode: 200,
             });
             res.status(200).json({
                 success: true,
@@ -632,6 +734,34 @@ class ReleasePlansController {
             // Fetch updated sprint
             const updatedSprint = await database_1.prisma.releasePlan.findUnique({
                 where: { id },
+            });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.SPRINTS,
+                page: transactionHistory_1.Page.SPRINT_DETAIL,
+                action: transactionHistory_1.Action.COMPLETE,
+                actionLabel: `Sprint completed (${completedTickets.length}/${tickets.length} tickets, ${completedPoints} pts)`,
+                entityType: transactionHistory_1.EntityType.RELEASE_PLAN,
+                entityId: id,
+                entityLabel: sprint.version,
+                parentEntityType: transactionHistory_1.EntityType.PROJECT,
+                parentEntityId: sprint.projectId,
+                beforeData: { status: sprint.status, completedAt: sprint.completedAt },
+                afterData: {
+                    status: "completed",
+                    completedAt: updatedSprint?.completedAt,
+                    completedPoints,
+                },
+                changedFields: ["status", "completedAt", "completedPoints"],
+                statusCode: 200,
+                metadata: {
+                    totalTickets: tickets.length,
+                    completedTickets: completedTickets.length,
+                    archivedTickets: completedTickets.length,
+                    returnedToBacklog: incompleteTickets.length,
+                    completedPoints,
+                },
             });
             res.status(200).json({
                 success: true,
@@ -860,12 +990,33 @@ class ReleasePlansController {
                 updateData.demoPlanId = id;
             else
                 updateData.releasePlanId = id;
-            await database_1.prisma.ticket.updateMany({
+            const assignRes = await database_1.prisma.ticket.updateMany({
                 where: {
                     id: { in: ticketIds },
                     tenantId: req.tenantId
                 },
                 data: updateData
+            });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.SPRINTS,
+                page: transactionHistory_1.Page.SPRINT_DETAIL,
+                action: transactionHistory_1.Action.BULK_ASSIGN,
+                actionLabel: `Tickets assigned to plan (${assignRes.count})`,
+                entityType: transactionHistory_1.EntityType.RELEASE_PLAN,
+                entityId: id,
+                entityLabel: plan.version,
+                parentEntityType: transactionHistory_1.EntityType.PROJECT,
+                parentEntityId: plan.projectId,
+                correlationId: (0, crypto_1.randomUUID)(),
+                metadata: {
+                    planType: plan.type,
+                    targetTicketIds: ticketIds,
+                    requested: ticketIds.length,
+                    assigned: assignRes.count,
+                },
+                statusCode: 200,
             });
             res.status(200).json({ success: true, message: "Tickets assigned successfully" });
         }
@@ -900,12 +1051,33 @@ class ReleasePlansController {
                 updateData.demoPlanId = null;
             else
                 updateData.releasePlanId = null;
-            await database_1.prisma.ticket.updateMany({
+            const removeRes = await database_1.prisma.ticket.updateMany({
                 where: {
                     id: { in: ticketIds },
                     tenantId: req.tenantId
                 },
                 data: updateData
+            });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.SPRINTS,
+                page: transactionHistory_1.Page.SPRINT_DETAIL,
+                action: transactionHistory_1.Action.BULK_UNASSIGN,
+                actionLabel: `Tickets removed from plan (${removeRes.count})`,
+                entityType: transactionHistory_1.EntityType.RELEASE_PLAN,
+                entityId: id,
+                entityLabel: plan.version,
+                parentEntityType: transactionHistory_1.EntityType.PROJECT,
+                parentEntityId: plan.projectId,
+                correlationId: (0, crypto_1.randomUUID)(),
+                metadata: {
+                    planType: plan.type,
+                    targetTicketIds: ticketIds,
+                    requested: ticketIds.length,
+                    removed: removeRes.count,
+                },
+                statusCode: 200,
             });
             res.status(200).json({ success: true, message: "Tickets removed successfully" });
         }

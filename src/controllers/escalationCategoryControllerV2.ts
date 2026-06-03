@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { AuthRequest, ApiResponse } from "@/types";
 import { EscalationCategoryModel } from "@/models/escalationCategory.model";
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from '../utils/transactionHistory';
 
 /**
  * Create a new escalation category
@@ -44,6 +45,26 @@ export const createEscalationCategory = async (req: AuthRequest, res: Response):
             message: "Escalation category created successfully",
             data: category,
         };
+
+        // ─── Activity log ───────────────────────────────────────────────
+        recordTransaction({
+            req,
+            section: Section.WORK,
+            module: Module.ESCALATIONS,
+            page: Page.ESCALATION_SETTINGS,
+            action: Action.CREATE,
+            actionLabel: `Created escalation category "${category.displayname}"`,
+            entityType: EntityType.ESCALATION_CATEGORY,
+            entityId: category.id,
+            entityLabel: category.displayname,
+            afterData: {
+                displayName: category.displayname,
+                description: category.description,
+                visualColor: category.visualcolor,
+                status: category.status,
+            },
+        });
+
         res.status(201).json(response);
     } catch (error: any) {
         console.error("Error in createEscalationCategory:", error.message);
@@ -165,6 +186,8 @@ export const updateEscalationCategory = async (req: AuthRequest, res: Response):
             return;
         }
 
+        const existingCategory = await EscalationCategoryModel.findById(id, tenantId);
+
         const updated = await EscalationCategoryModel.update(
             id,
             tenantId,
@@ -186,6 +209,39 @@ export const updateEscalationCategory = async (req: AuthRequest, res: Response):
             message: "Escalation category updated successfully",
             data: updated,
         };
+
+        // ─── Activity log ───────────────────────────────────────────────
+        if (existingCategory) {
+            const beforeSnap = {
+                displayName: existingCategory.displayname,
+                description: existingCategory.description,
+                visualColor: existingCategory.visualcolor,
+                status: existingCategory.status,
+            };
+            const afterSnap = {
+                displayName: updated.displayname,
+                description: updated.description,
+                visualColor: updated.visualcolor,
+                status: updated.status,
+            };
+            const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+
+            recordTransaction({
+                req,
+                section: Section.WORK,
+                module: Module.ESCALATIONS,
+                page: Page.ESCALATION_SETTINGS,
+                action: Action.UPDATE,
+                actionLabel: `Updated escalation category "${updated.displayname}"`,
+                entityType: EntityType.ESCALATION_CATEGORY,
+                entityId: id,
+                entityLabel: updated.displayname,
+                beforeData: before,
+                afterData: after,
+                changedFields,
+            });
+        }
+
         res.status(200).json(response);
     } catch (error: any) {
         console.error("Error in updateEscalationCategory:", error.message);
@@ -232,6 +288,23 @@ export const softDeleteEscalationCategory = async (req: AuthRequest, res: Respon
             message: "Escalation category deactivated successfully",
             data: result,
         };
+
+        // ─── Activity log ───────────────────────────────────────────────
+        recordTransaction({
+            req,
+            section: Section.WORK,
+            module: Module.ESCALATIONS,
+            page: Page.ESCALATION_SETTINGS,
+            action: Action.STATUS_CHANGE,
+            actionLabel: `Deactivated escalation category "${result.displayname}"`,
+            entityType: EntityType.ESCALATION_CATEGORY,
+            entityId: id,
+            entityLabel: result.displayname,
+            beforeData: { status: true },
+            afterData: { status: false },
+            changedFields: ["status"],
+        });
+
         res.status(200).json(response);
     } catch (error: any) {
         console.error("Error in softDeleteEscalationCategory:", error.message);
@@ -261,6 +334,9 @@ export const deleteEscalationCategory = async (req: AuthRequest, res: Response):
             return;
         }
 
+        const existingCategory = await EscalationCategoryModel.findById(id, tenantId);
+        const categoryName = existingCategory ? existingCategory.displayname : id;
+
         const deleted = await EscalationCategoryModel.delete(id, tenantId);
 
         if (!deleted) {
@@ -276,6 +352,20 @@ export const deleteEscalationCategory = async (req: AuthRequest, res: Response):
             success: true,
             message: "Escalation category deleted successfully",
         };
+
+        // ─── Activity log ───────────────────────────────────────────────
+        recordTransaction({
+            req,
+            section: Section.WORK,
+            module: Module.ESCALATIONS,
+            page: Page.ESCALATION_SETTINGS,
+            action: Action.DELETE,
+            actionLabel: `Deleted escalation category "${categoryName}"`,
+            entityType: EntityType.ESCALATION_CATEGORY,
+            entityId: id,
+            entityLabel: categoryName,
+        });
+
         res.status(200).json(response);
     } catch (error: any) {
         console.error("Error in deleteEscalationCategory:", error.message);

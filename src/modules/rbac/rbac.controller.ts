@@ -3,6 +3,15 @@ import { prisma } from '@/config/database';
 import { AuthRequest, ApiResponse } from '@/types';
 import { RBACService } from './rbac.service';
 import { PERMISSIONS_BY_RESOURCE } from '@/types/permissions';
+import {
+  recordTransaction,
+  diffShallow,
+  Section,
+  Module,
+  Page,
+  Action,
+  EntityType,
+} from "@/utils/transactionHistory";
 
 export class RBACController {
   // ─── Permissions ─────────────────────────────────────────────────────────────
@@ -150,6 +159,25 @@ export class RBACController {
         },
       });
 
+      recordTransaction({
+        req,
+        section: Section.ADMIN,
+        module: Module.ROLE_AND_PERMISSIONS,
+        page: Page.ROLE_LIST,
+        action: Action.CREATE,
+        actionLabel: `Role created: ${role.name}`,
+        entityType: EntityType.ROLE,
+        entityId: role.id,
+        entityLabel: role.name,
+        afterData: {
+          name: role.name,
+          description: role.description,
+          isSystem: role.isSystem,
+          permissionIds: permissionIds || [],
+        },
+        statusCode: 201,
+      });
+
       res.status(201).json({ success: true, data: role, message: 'Role created successfully' } as ApiResponse);
     } catch (error) {
       console.error('createRole error:', error);
@@ -180,6 +208,29 @@ export class RBACController {
           ...(description !== undefined ? { description } : {}),
         },
       });
+
+      const { changedFields, before, after } = diffShallow(
+        { name: role.name, description: role.description },
+        { name: updated.name, description: updated.description }
+      );
+
+      if (changedFields.length > 0) {
+        recordTransaction({
+          req,
+          section: Section.ADMIN,
+          module: Module.ROLE_AND_PERMISSIONS,
+          page: Page.ROLE_LIST,
+          action: Action.UPDATE,
+          actionLabel: `Role updated: ${updated.name} (${changedFields.join(", ")})`,
+          entityType: EntityType.ROLE,
+          entityId: id,
+          entityLabel: updated.name,
+          beforeData: before,
+          afterData: after,
+          changedFields,
+          statusCode: 200,
+        });
+      }
 
       res.status(200).json({ success: true, data: updated, message: 'Role updated' } as ApiResponse);
     } catch (error) {
@@ -212,6 +263,24 @@ export class RBACController {
 
       await prisma.role.delete({ where: { id } });
 
+      recordTransaction({
+        req,
+        section: Section.ADMIN,
+        module: Module.ROLE_AND_PERMISSIONS,
+        page: Page.ROLE_LIST,
+        action: Action.DELETE,
+        actionLabel: `Role deleted: ${role.name}`,
+        entityType: EntityType.ROLE,
+        entityId: id,
+        entityLabel: role.name,
+        beforeData: {
+          name: role.name,
+          description: role.description,
+          isSystem: role.isSystem,
+        },
+        statusCode: 200,
+      });
+
       res.status(200).json({ success: true, message: 'Role deleted' } as ApiResponse);
     } catch (error) {
       console.error('deleteRole error:', error);
@@ -243,6 +312,12 @@ export class RBACController {
         return;
       }
 
+      const oldPermissions = await prisma.rolePermission.findMany({
+        where: { roleId: id },
+        select: { permissionId: true },
+      });
+      const oldIds = oldPermissions.map((p) => p.permissionId);
+
       // Replace all permissions in a transaction
       await prisma.$transaction([
         prisma.rolePermission.deleteMany({ where: { roleId: id } }),
@@ -258,6 +333,22 @@ export class RBACController {
       const updated = await prisma.role.findFirst({
         where: { id },
         include: { rolePermissions: { include: { permission: true } } },
+      });
+
+      recordTransaction({
+        req,
+        section: Section.ADMIN,
+        module: Module.ROLE_AND_PERMISSIONS,
+        page: Page.ROLE_LIST,
+        action: Action.UPDATE,
+        actionLabel: `Permissions updated for role ${role.name}`,
+        entityType: EntityType.ROLE_PERMISSION,
+        entityId: id,
+        entityLabel: role.name,
+        beforeData: { permissionIds: oldIds },
+        afterData: { permissionIds },
+        changedFields: ["permissionIds"],
+        statusCode: 200,
       });
 
       res.status(200).json({ success: true, data: updated, message: 'Permissions updated' } as ApiResponse);
@@ -290,6 +381,20 @@ export class RBACController {
 
       await RBACService.invalidateRole(id);
 
+      recordTransaction({
+        req,
+        section: Section.ADMIN,
+        module: Module.ROLE_AND_PERMISSIONS,
+        page: Page.ROLE_LIST,
+        action: Action.UPDATE,
+        actionLabel: `Added ${permissionIds.length} permission(s) to role ${role.name}`,
+        entityType: EntityType.ROLE_PERMISSION,
+        entityId: id,
+        entityLabel: role.name,
+        afterData: { addedPermissionIds: permissionIds },
+        statusCode: 200,
+      });
+
       res.status(200).json({ success: true, message: `Added ${permissionIds.length} permission(s)` } as ApiResponse);
     } catch (error) {
       console.error('addPermissionsToRole error:', error);
@@ -317,6 +422,20 @@ export class RBACController {
       });
 
       await RBACService.invalidateRole(id);
+
+      recordTransaction({
+        req,
+        section: Section.ADMIN,
+        module: Module.ROLE_AND_PERMISSIONS,
+        page: Page.ROLE_LIST,
+        action: Action.DELETE,
+        actionLabel: `Removed permission from role ${role.name}`,
+        entityType: EntityType.ROLE_PERMISSION,
+        entityId: id,
+        entityLabel: role.name,
+        beforeData: { removedPermissionId: permissionId },
+        statusCode: 200,
+      });
 
       res.status(200).json({ success: true, message: 'Permission removed' } as ApiResponse);
     } catch (error) {
@@ -430,6 +549,22 @@ export class RBACController {
 
       RBACService.invalidateUser(userId, tenantId);
 
+      recordTransaction({
+        req,
+        section: Section.ADMIN,
+        module: Module.ROLE_AND_PERMISSIONS,
+        page: Page.ROLE_LIST,
+        action: Action.UPDATE,
+        actionLabel: `Assigned role "${role.name}" to user ${user?.name || userId}`,
+        entityType: EntityType.USER_ROLE,
+        entityId: roleId,
+        entityLabel: role.name,
+        parentEntityType: EntityType.USER,
+        parentEntityId: userId,
+        afterData: { roleName: role.name, roleSlug: role.slug, userId, userName: user?.name },
+        statusCode: 200,
+      });
+
       res.status(200).json({ success: true, message: `Role "${role.name}" assigned to user` } as ApiResponse);
     } catch (error) {
       console.error('assignRoleToUser error:', error);
@@ -452,6 +587,8 @@ export class RBACController {
         return;
       }
 
+      const user = await prisma.user.findFirst({ where: { id: userId, tenantId } });
+
       await prisma.userRole.delete({
         where: { userId_roleId: { userId, roleId } },
       });
@@ -469,6 +606,22 @@ export class RBACController {
       });
 
       RBACService.invalidateUser(userId, tenantId);
+
+      recordTransaction({
+        req,
+        section: Section.ADMIN,
+        module: Module.ROLE_AND_PERMISSIONS,
+        page: Page.ROLE_LIST,
+        action: Action.DELETE,
+        actionLabel: `Removed role "${role.name}" from user ${user?.name || userId}`,
+        entityType: EntityType.USER_ROLE,
+        entityId: roleId,
+        entityLabel: role.name,
+        parentEntityType: EntityType.USER,
+        parentEntityId: userId,
+        beforeData: { roleName: role.name, roleSlug: role.slug, userId, userName: user?.name },
+        statusCode: 200,
+      });
 
       res.status(200).json({ success: true, message: 'Role removed from user' } as ApiResponse);
     } catch (error) {

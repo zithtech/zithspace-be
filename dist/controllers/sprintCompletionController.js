@@ -8,6 +8,8 @@ const database_1 = require("@/config/database");
 const types_1 = require("@/types");
 const socketService_1 = require("@/services/socketService");
 const cacheService_1 = __importDefault(require("@/utils/cacheService"));
+const transactionHistory_1 = require("@/utils/transactionHistory");
+const crypto_1 = require("crypto");
 class SprintCompletionController {
     /**
      * Get sprint completion summary (tenant-aware)
@@ -422,6 +424,32 @@ class SprintCompletionController {
                 sprintId,
                 updates: results.updates,
             });
+            {
+                const counts = results.updates.reduce((acc, u) => {
+                    acc[u.action] = (acc[u.action] ?? 0) + 1;
+                    return acc;
+                }, {});
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.WORK,
+                    module: transactionHistory_1.Module.SPRINTS,
+                    page: transactionHistory_1.Page.SPRINT_COMPLETION,
+                    action: transactionHistory_1.Action.BULK_RESOLVE,
+                    actionLabel: `Sprint tickets resolved (${results.updates.length})`,
+                    entityType: transactionHistory_1.EntityType.RELEASE_PLAN,
+                    entityId: sprintId,
+                    entityLabel: sprint.version,
+                    parentEntityType: transactionHistory_1.EntityType.PROJECT,
+                    parentEntityId: sprint.projectId,
+                    correlationId: (0, crypto_1.randomUUID)(),
+                    metadata: {
+                        actionCounts: counts,
+                        totalRequested: actions.length,
+                        totalProcessed: results.updates.length,
+                    },
+                    statusCode: 200,
+                });
+            }
             res.status(200).json({
                 success: true,
                 data: {
@@ -552,6 +580,32 @@ class SprintCompletionController {
             socketService_1.socketService.emitToTenant(req.tenantId, "sprint:completed", {
                 sprintId,
                 sprint: updatedSprint,
+            });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.SPRINTS,
+                page: transactionHistory_1.Page.SPRINT_COMPLETION,
+                action: transactionHistory_1.Action.COMPLETE,
+                actionLabel: `Sprint completed (${totalCompletedPoints} pts)`,
+                entityType: transactionHistory_1.EntityType.RELEASE_PLAN,
+                entityId: sprintId,
+                entityLabel: sprint.version,
+                parentEntityType: transactionHistory_1.EntityType.PROJECT,
+                parentEntityId: sprint.projectId,
+                beforeData: { status: sprint.status },
+                afterData: {
+                    status: "completed",
+                    completedAt: updatedSprint.completedAt,
+                    completedPoints: totalCompletedPoints,
+                },
+                changedFields: ["status", "completedAt", "completedPoints"],
+                statusCode: 200,
+                metadata: {
+                    force,
+                    unresolvedAtStart: unresolvedTickets,
+                    completedPoints: totalCompletedPoints,
+                },
             });
             res.status(200).json({
                 success: true,

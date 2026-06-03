@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { AuthRequest, ApiResponse } from "@/types";
 import { EscalationStatusModel } from "@/models/escalationStatus";
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from "../utils/transactionHistory";
 
 /**
  * Create a new escalation status
@@ -64,6 +65,28 @@ export const createEscalationStatus = async (req: AuthRequest, res: Response): P
             message: "Escalation status created successfully",
             data: escalationStatus,
         };
+
+        // ─── Activity log ───────────────────────────────────────────────
+        recordTransaction({
+            req,
+            section: Section.WORK,
+            module: Module.ESCALATIONS,
+            page: Page.ESCALATION_SETTINGS,
+            action: Action.CREATE,
+            actionLabel: `Created escalation status "${escalationStatus.displayname}"`,
+            entityType: EntityType.ESCALATION_STATUS,
+            entityId: escalationStatus.id,
+            entityLabel: escalationStatus.displayname,
+            afterData: {
+                displayName: escalationStatus.displayname,
+                priorityWeight: escalationStatus.priorityweight,
+                visualColor: escalationStatus.visualcolor,
+                status: escalationStatus.status,
+                isFinal: escalationStatus.finalstate,
+                isDefault: escalationStatus.defaultstatus,
+            },
+        });
+
         res.status(201).json(response);
     } catch (error: any) {
         console.error("Error in createEscalationStatus:", error.message);
@@ -201,6 +224,8 @@ export const updateEscalationStatus = async (req: AuthRequest, res: Response): P
             return;
         }
 
+        const existingStatus = await EscalationStatusModel.findById(id, tenantId);
+
         const updated = await EscalationStatusModel.update(
             id,
             tenantId,
@@ -222,6 +247,43 @@ export const updateEscalationStatus = async (req: AuthRequest, res: Response): P
             message: "Escalation status updated successfully",
             data: updated,
         };
+
+        // ─── Activity log ───────────────────────────────────────────────
+        if (existingStatus) {
+            const beforeSnap = {
+                displayName: existingStatus.displayname,
+                priorityWeight: existingStatus.priorityweight,
+                visualColor: existingStatus.visualcolor,
+                status: existingStatus.status,
+                isFinal: existingStatus.finalstate,
+                isDefault: existingStatus.defaultstatus,
+            };
+            const afterSnap = {
+                displayName: updated.displayname,
+                priorityWeight: updated.priorityweight,
+                visualColor: updated.visualcolor,
+                status: updated.status,
+                isFinal: updated.finalstate,
+                isDefault: updated.defaultstatus,
+            };
+            const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+
+            recordTransaction({
+                req,
+                section: Section.WORK,
+                module: Module.ESCALATIONS,
+                page: Page.ESCALATION_SETTINGS,
+                action: Action.UPDATE,
+                actionLabel: `Updated escalation status "${updated.displayname}"`,
+                entityType: EntityType.ESCALATION_STATUS,
+                entityId: id,
+                entityLabel: updated.displayname,
+                beforeData: before,
+                afterData: after,
+                changedFields,
+            });
+        }
+
         res.status(200).json(response);
     } catch (error: any) {
         console.error("Error in updateEscalationStatus:", error.message);
@@ -268,6 +330,23 @@ export const softDeleteEscalationStatus = async (req: AuthRequest, res: Response
             message: "Escalation status deactivated successfully",
             data: result,
         };
+
+        // ─── Activity log ───────────────────────────────────────────────
+        recordTransaction({
+            req,
+            section: Section.WORK,
+            module: Module.ESCALATIONS,
+            page: Page.ESCALATION_SETTINGS,
+            action: Action.STATUS_CHANGE,
+            actionLabel: `Deactivated escalation status "${result.displayname}"`,
+            entityType: EntityType.ESCALATION_STATUS,
+            entityId: id,
+            entityLabel: result.displayname,
+            beforeData: { status: true },
+            afterData: { status: false },
+            changedFields: ["status"],
+        });
+
         res.status(200).json(response);
     } catch (error: any) {
         console.error("Error in softDeleteEscalationStatus:", error.message);
@@ -297,6 +376,9 @@ export const deleteEscalationStatus = async (req: AuthRequest, res: Response): P
             return;
         }
 
+        const existingStatus = await EscalationStatusModel.findById(id, tenantId);
+        const statusName = existingStatus ? existingStatus.displayname : id;
+
         const deleted = await EscalationStatusModel.delete(id, tenantId);
 
         if (!deleted) {
@@ -312,6 +394,20 @@ export const deleteEscalationStatus = async (req: AuthRequest, res: Response): P
             success: true,
             message: "Escalation status deleted successfully",
         };
+
+        // ─── Activity log ───────────────────────────────────────────────
+        recordTransaction({
+            req,
+            section: Section.WORK,
+            module: Module.ESCALATIONS,
+            page: Page.ESCALATION_SETTINGS,
+            action: Action.DELETE,
+            actionLabel: `Deleted escalation status "${statusName}"`,
+            entityType: EntityType.ESCALATION_STATUS,
+            entityId: id,
+            entityLabel: statusName,
+        });
+
         res.status(200).json(response);
     } catch (error: any) {
         console.error("Error in deleteEscalationStatus:", error.message);

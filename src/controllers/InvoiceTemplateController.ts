@@ -10,6 +10,7 @@ import {
   UpdateInvoiceTemplateDto 
 } from '../types/invoiceTemplate';
 import { InvoiceTemplateModel } from '../models/invoiceTemplate.model';
+import { recordTransaction, Section, Module, Page, Action, EntityType } from '../utils/transactionHistory';
 
 export class InvoiceTemplateController {
   
@@ -42,6 +43,20 @@ export class InvoiceTemplateController {
         data: templateWithFields,
         message: 'Invoice template created successfully'
       } as ApiResponse);
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.FINANCE,
+        module: Module.INVOICES,
+        page: Page.INVOICE_TEMPLATE_LIST,
+        action: Action.CREATE,
+        actionLabel: `Created template ${name}`,
+        entityType: EntityType.INVOICE_TEMPLATE,
+        entityId: template.id,
+        entityLabel: name,
+        afterData: { name, billingType, isDefault, isActive },
+      });
 
     } catch (error: any) {
       console.error('Create template error:', error);
@@ -147,6 +162,20 @@ export class InvoiceTemplateController {
         message: 'Invoice template updated successfully'
       } as ApiResponse);
 
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.FINANCE,
+        module: Module.INVOICES,
+        page: Page.INVOICE_TEMPLATE_LIST,
+        action: Action.UPDATE,
+        actionLabel: `Updated template ${updatedTemplate.name}`,
+        entityType: EntityType.INVOICE_TEMPLATE,
+        entityId: id,
+        entityLabel: updatedTemplate.name,
+        afterData: { name: updatedTemplate.name, isActive: updatedTemplate.isActive, isDefault: updatedTemplate.isDefault },
+      });
+
     } catch (error: any) {
       console.error('Update template error:', error);
       const isValidationError = error instanceof ValidationError || 
@@ -168,7 +197,23 @@ export class InvoiceTemplateController {
 
       const { id } = req.params;
       
+      const templateResult = await InvoiceTemplateModel.getTemplateById(req.tenantId, id);
+      const templateName = templateResult?.template?.name || id;
+
       await InvoiceTemplateModel.deleteTemplate(req.tenantId, id);
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.FINANCE,
+        module: Module.INVOICES,
+        page: Page.INVOICE_TEMPLATE_LIST,
+        action: Action.DELETE,
+        actionLabel: `Deleted template ${templateName}`,
+        entityType: EntityType.INVOICE_TEMPLATE,
+        entityId: id,
+        entityLabel: templateName,
+      });
 
       res.status(200).json({
         success: true,

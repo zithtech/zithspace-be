@@ -331,6 +331,8 @@ export declare const Permissions: {
     readonly TIME_TRACKING_DELETE: "time_tracking.delete";
     readonly TIME_TRACKING_TEAM_READ: "time_tracking.team.read";
     readonly TIME_TRACKING_MANAGE_TIME: "time_tracking.manage_time";
+    readonly ACTIVITY_LOG_READ: "activity_log.read";
+    readonly ACTIVITY_LOG_READ_ALL: "activity_log.read_all";
 };
 export type Permission = (typeof Permissions)[keyof typeof Permissions];
 /**
