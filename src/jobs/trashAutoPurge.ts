@@ -33,6 +33,7 @@ interface PurgeStats {
   activityLogsDeleted: number;
   duration: number; // in milliseconds
   leadsDeleted?: number;
+  escalationsDeleted?: number;
 }
 
 interface PurgeSummary {
@@ -46,6 +47,7 @@ interface PurgeSummary {
   totalLinksDeleted: number;
   totalActivityLogsDeleted: number;
   totalLeadsDeleted: number;
+  totalEscalationsDeleted: number;
   errors: Array<{ tenantId: string; error: string }>;
   stats: PurgeStats[];
 }
@@ -179,6 +181,52 @@ async function purgeLeadsForTenant(tenantId: string): Promise<number> {
 }
 
 /**
+ * Purge expired escalations for a single tenant
+ */
+async function purgeEscalationsForTenant(tenantId: string): Promise<number> {
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    
+    // Find all expired trashed escalation IDs for this tenant
+    const idsRes = await client.query(
+      `SELECT id FROM escalation WHERE tenant_id = $1 AND is_deleted = TRUE AND deleted_at <= $2`,
+      [tenantId, sevenDaysAgo]
+    );
+    const ids = idsRes.rows.map((row: any) => row.id);
+
+    if (ids.length > 0) {
+      // 1. Delete tickets
+      await client.query(`DELETE FROM escalation_tickets WHERE escalation_id = ANY($1::uuid[])`, [ids]);
+      
+      // 2. Delete team members
+      await client.query(`DELETE FROM escalation_team_members WHERE escalation_id = ANY($1::uuid[])`, [ids]);
+      
+      // 3. Delete escalations
+      const result = await client.query(
+        `DELETE FROM escalation WHERE tenant_id = $1 AND is_deleted = TRUE AND deleted_at <= $2`,
+        [tenantId, sevenDaysAgo]
+      );
+      
+      await client.query("COMMIT");
+      return result.rowCount ?? 0;
+    }
+    
+    await client.query("COMMIT");
+    return 0;
+  } catch (error) {
+    await client.query("ROLLBACK");
+    console.error(`[Trash Auto-Purge] Error purging escalations for tenant ${tenantId}:`, error);
+    return 0;
+  } finally {
+    client.release();
+  }
+}
+
+/**
  * Run the trash auto-purge job for all tenants
  */
 async function runAutoPurgeJob(): Promise<PurgeSummary> {
@@ -198,6 +246,7 @@ async function runAutoPurgeJob(): Promise<PurgeSummary> {
     totalLinksDeleted: 0,
     totalActivityLogsDeleted: 0,
     totalLeadsDeleted: 0,
+    totalEscalationsDeleted: 0,
     errors: [],
     stats: [],
   };
@@ -227,10 +276,15 @@ async function runAutoPurgeJob(): Promise<PurgeSummary> {
         const leadsDeleted = await purgeLeadsForTenant(tenant.id);
         summary.totalLeadsDeleted += leadsDeleted;
         
-        // Update stats for lead purging
+        // Purge Escalations
+        const escalationsDeleted = await purgeEscalationsForTenant(tenant.id);
+        summary.totalEscalationsDeleted += escalationsDeleted;
+        
+        // Update stats for purging
         const tenantStats = summary.stats.find(s => s.tenantId === tenant.id);
         if (tenantStats) {
           tenantStats.leadsDeleted = leadsDeleted;
+          tenantStats.escalationsDeleted = escalationsDeleted;
         }
       } catch (error: any) {
         console.error(`[Trash Auto-Purge] Error processing tenant ${tenant.id}:`, error);
@@ -263,6 +317,7 @@ async function runAutoPurgeJob(): Promise<PurgeSummary> {
   console.log(`Total Links Deleted: ${summary.totalLinksDeleted}`);
   console.log(`Total Activity Logs Deleted: ${summary.totalActivityLogsDeleted}`);
   console.log(`Total Leads Deleted: ${summary.totalLeadsDeleted}`);
+  console.log(`Total Escalations Deleted: ${summary.totalEscalationsDeleted}`);
   
   if (summary.errors.length > 0) {
     console.log(`\nErrors encountered: ${summary.errors.length}`);

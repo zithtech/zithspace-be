@@ -1414,6 +1414,7 @@ export class BugListController {
       module,
       severity,
       status,
+      bugStatus,
       bugType,
       createdById,
       assigneeId,
@@ -1443,6 +1444,13 @@ export class BugListController {
       if (module) push("b.module = $$", module);
       if (severity) push("b.severity = $$", severity);
       if (status && ALLOWED_STATUS.has(status)) push("b.status = $$", status);
+      if (bugStatus && ALLOWED_BUG_STATUS.has(bugStatus)) {
+        if (bugStatus === "not started") {
+          push("(b.bug_status = $$ OR b.bug_status IS NULL)", "not started");
+        } else {
+          push("b.bug_status = $$", bugStatus);
+        }
+      }
       if (bugType) push("b.bug_type = $$", bugType);
       if (createdById) push("b.created_by_id = $$", createdById);
       if (assigneeId) push("(b.assignee_id = $$ OR (b.assignee_id IS NULL AND t.assignee_id = $$))", assigneeId);

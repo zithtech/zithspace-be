@@ -1162,7 +1162,6 @@ export class TicketController {
         where: {
           id,
           tenantId: req.tenantId,
-          isDeleted: false,
         },
         select: {
           // All ticket fields
@@ -2208,7 +2207,6 @@ export class TicketController {
         where: {
           id,
           tenantId: req.tenantId,
-          isDeleted: false,
         },
       });
 
@@ -2398,7 +2396,6 @@ export class TicketController {
         where: {
           id,
           tenantId: req.tenantId,
-          isDeleted: false,
         },
       });
 
@@ -2757,7 +2754,6 @@ export class TicketController {
         where: {
           id,
           tenantId: req.tenantId,
-          isDeleted: false,
         },
       });
 
@@ -3107,7 +3103,6 @@ export class TicketController {
         where: {
           id,
           tenantId: req.tenantId,
-          isDeleted: false,
         },
       });
 
@@ -3401,7 +3396,6 @@ export class TicketController {
         where: {
           id,
           tenantId: req.tenantId,
-          isDeleted: false,
         },
       });
 
@@ -3832,7 +3826,6 @@ export class TicketController {
         where: {
           id,
           tenantId: req.tenantId,
-          isDeleted: false,
         },
       });
 
