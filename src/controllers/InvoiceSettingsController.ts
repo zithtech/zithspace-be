@@ -27,6 +27,7 @@ import {
   createPaymentSetting,
   updatePaymentSetting
 } from '@/models/paymentSettings.model';
+import { recordTransaction, Section, Module, Page, Action, EntityType } from '@/utils/transactionHistory';
 
 const parseInvoiceFormat = (formatString: string) => {
   // Finds the sequence of # inside curly braces (e.g., {####})
@@ -215,6 +216,19 @@ export class InvoiceSettingsController {
       message: 'Profile created successfully'
     } as ApiResponse);
 
+    // ─── Activity log ───────────────────────────────────────────────
+    recordTransaction({
+      req,
+      section: Section.FINANCE,
+      module: Module.INVOICES,
+      page: Page.INVOICE_SETTINGS_VIEW,
+      action: Action.CREATE,
+      actionLabel: `Created settings profile ${name}`,
+      entityType: EntityType.INVOICE_SETTINGS_PROFILE,
+      entityId: newProfile.id,
+      entityLabel: name,
+    });
+
   } catch (error: any) {
     console.error('Create profile error:', error);
     if (error instanceof ValidationError) {
@@ -275,6 +289,20 @@ export class InvoiceSettingsController {
     const completeProfile = await getSettingsProfileById(id, req.tenantId);
 
     res.status(200).json({ success: true, data: completeProfile });
+
+    // ─── Activity log ───────────────────────────────────────────────
+    const profileName = name || existing.name;
+    recordTransaction({
+      req,
+      section: Section.FINANCE,
+      module: Module.INVOICES,
+      page: Page.INVOICE_SETTINGS_VIEW,
+      action: Action.UPDATE,
+      actionLabel: `Updated settings profile ${profileName}`,
+      entityType: EntityType.INVOICE_SETTINGS_PROFILE,
+      entityId: id,
+      entityLabel: profileName,
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, error: 'Internal Server Error' });
@@ -304,6 +332,19 @@ static async hardDeleteProfile(req: AuthRequest, res: Response): Promise<void> {
     }
 
     res.status(200).json({ success: true, message: 'Profile deleted permanently' });
+
+    // ─── Activity log ───────────────────────────────────────────────
+    recordTransaction({
+      req,
+      section: Section.FINANCE,
+      module: Module.INVOICES,
+      page: Page.INVOICE_SETTINGS_VIEW,
+      action: Action.PERMANENT_DELETE,
+      actionLabel: `Permanently deleted settings profile ${profile.name}`,
+      entityType: EntityType.INVOICE_SETTINGS_PROFILE,
+      entityId: id,
+      entityLabel: profile.name,
+    });
 
   } catch (error: any) {
     console.error('Hard delete error:', error);
@@ -338,6 +379,20 @@ static async hardDeleteProfile(req: AuthRequest, res: Response): Promise<void> {
       success: true, 
       data: updatedProfile, 
       message: `Profile ${isActive ? 'activated' : 'deactivated'} successfully` 
+    });
+
+    // ─── Activity log ───────────────────────────────────────────────
+    recordTransaction({
+      req,
+      section: Section.FINANCE,
+      module: Module.INVOICES,
+      page: Page.INVOICE_SETTINGS_VIEW,
+      action: Action.STATUS_CHANGE,
+      actionLabel: `Settings profile "${updatedProfile.name}" ${isActive ? 'activated' : 'deactivated'}`,
+      entityType: EntityType.INVOICE_SETTINGS_PROFILE,
+      entityId: id,
+      entityLabel: updatedProfile.name,
+      afterData: { isActive },
     });
 
   } catch (error: any) {

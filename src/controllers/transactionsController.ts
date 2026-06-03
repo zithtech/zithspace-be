@@ -22,6 +22,7 @@ import {
   restoreTransactionQuery,
   permanentlyDeleteTransactionQuery
 } from '../models/transaction.model';
+import { recordTransaction, Section, Module, Page, Action, EntityType } from '../utils/transactionHistory';
 
 export class TransactionsController {
   /**
@@ -217,6 +218,25 @@ export class TransactionsController {
         type: (newTransaction.type === 'income' || newTransaction.type === 'bonus' || newTransaction.type === 'credit') ? 'credit' : 'debit'
       };
 
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.FINANCE,
+        module: Module.ACCOUNTS,
+        page: Page.ACCOUNTS_DASHBOARD,
+        action: Action.CREATE,
+        actionLabel: `Created ${transformedTransaction.type} transaction: ${transactionData.description}`,
+        entityType: EntityType.ACCOUNT_TRANSACTION,
+        entityId: newTransaction.id,
+        entityLabel: transactionData.description,
+        afterData: {
+          type: transformedTransaction.type,
+          amount: newTransaction.amount,
+          category: newTransaction.category,
+          description: newTransaction.description,
+        },
+      });
+
       res.status(201).json({
         success: true,
         data: transformedTransaction,
@@ -310,6 +330,25 @@ export class TransactionsController {
         type: (updatedTransaction.type === 'income' || updatedTransaction.type === 'bonus' || updatedTransaction.type === 'credit') ? 'credit' : 'debit'
       };
 
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.FINANCE,
+        module: Module.ACCOUNTS,
+        page: Page.ACCOUNTS_DASHBOARD,
+        action: Action.UPDATE,
+        actionLabel: `Updated transaction: ${updatedTransaction.description}`,
+        entityType: EntityType.ACCOUNT_TRANSACTION,
+        entityId: id,
+        entityLabel: updatedTransaction.description,
+        afterData: {
+          type: transformedTransaction.type,
+          amount: updatedTransaction.amount,
+          category: updatedTransaction.category,
+          description: updatedTransaction.description,
+        },
+      });
+
       res.status(200).json({
         success: true,
         data: transformedTransaction,
@@ -355,6 +394,24 @@ export class TransactionsController {
       }
 
       await deleteTransactionQuery(id, req.tenantId);
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.FINANCE,
+        module: Module.ACCOUNTS,
+        page: Page.ACCOUNTS_DASHBOARD,
+        action: Action.DELETE,
+        actionLabel: `Deleted transaction: ${existingTransaction.description}`,
+        entityType: EntityType.ACCOUNT_TRANSACTION,
+        entityId: id,
+        entityLabel: existingTransaction.description,
+        beforeData: {
+          type: existingTransaction.type,
+          amount: existingTransaction.amount,
+          description: existingTransaction.description,
+        },
+      });
 
       res.status(200).json({
         success: true,

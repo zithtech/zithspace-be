@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.GradeController = void 0;
 const database_1 = require("@/config/database");
+const transactionHistory_1 = require("../utils/transactionHistory");
 class GradeController {
     // Create a new Grade
     static async createGrade(req, res) {
@@ -29,6 +30,26 @@ class GradeController {
                 },
             });
             res.status(201).json({ success: true, data: newGrade, message: "Grade created successfully" });
+            // ─── Activity log ───────────────────────────────────────────────
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.ORG_STRUCTURE,
+                page: transactionHistory_1.Page.ORG_STRUCTURE_GRADES,
+                action: transactionHistory_1.Action.CREATE,
+                actionLabel: `Created grade "${newGrade.name}"`,
+                entityType: transactionHistory_1.EntityType.ORG_GRADE,
+                entityId: newGrade.id,
+                entityLabel: newGrade.name,
+                afterData: {
+                    name: newGrade.name,
+                    code: newGrade.code,
+                    codes: newGrade.codes,
+                    levelOrder: newGrade.levelOrder,
+                    description: newGrade.description,
+                    isActive: newGrade.isActive,
+                },
+            });
         }
         catch (error) {
             console.error("Error creating grade:", error);
@@ -114,6 +135,40 @@ class GradeController {
                 data: { name, code, codes, levelOrder, description, isActive, updatedById },
             });
             res.status(200).json({ success: true, data: updatedGrade, message: "Grade updated successfully" });
+            // ─── Activity log ───────────────────────────────────────────────
+            if (existing) {
+                const beforeSnap = {
+                    name: existing.name,
+                    code: existing.code,
+                    codes: existing.codes,
+                    levelOrder: existing.levelOrder,
+                    description: existing.description,
+                    isActive: existing.isActive,
+                };
+                const afterSnap = {
+                    name: updatedGrade.name,
+                    code: updatedGrade.code,
+                    codes: updatedGrade.codes,
+                    levelOrder: updatedGrade.levelOrder,
+                    description: updatedGrade.description,
+                    isActive: updatedGrade.isActive,
+                };
+                const { changedFields, before, after } = (0, transactionHistory_1.diffShallow)(beforeSnap, afterSnap);
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.WORK,
+                    module: transactionHistory_1.Module.ORG_STRUCTURE,
+                    page: transactionHistory_1.Page.ORG_STRUCTURE_GRADES,
+                    action: transactionHistory_1.Action.UPDATE,
+                    actionLabel: `Updated grade "${updatedGrade.name}"`,
+                    entityType: transactionHistory_1.EntityType.ORG_GRADE,
+                    entityId: id,
+                    entityLabel: updatedGrade.name,
+                    beforeData: before,
+                    afterData: after,
+                    changedFields,
+                });
+            }
         }
         catch (error) {
             console.error("Error updating grade:", error);
@@ -137,6 +192,20 @@ class GradeController {
             }
             await database_1.prisma.grade.delete({ where: { id } });
             res.status(200).json({ success: true, message: "Grade deleted successfully" });
+            // ─── Activity log ───────────────────────────────────────────────
+            if (existing) {
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.WORK,
+                    module: transactionHistory_1.Module.ORG_STRUCTURE,
+                    page: transactionHistory_1.Page.ORG_STRUCTURE_GRADES,
+                    action: transactionHistory_1.Action.DELETE,
+                    actionLabel: `Deleted grade "${existing.name}"`,
+                    entityType: transactionHistory_1.EntityType.ORG_GRADE,
+                    entityId: id,
+                    entityLabel: existing.name,
+                });
+            }
         }
         catch (error) {
             console.error("Error deleting grade:", error);

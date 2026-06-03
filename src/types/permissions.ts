@@ -402,6 +402,10 @@ export const Permissions = {
   TIME_TRACKING_DELETE: 'time_tracking.delete',
   TIME_TRACKING_TEAM_READ: 'time_tracking.team.read',
   TIME_TRACKING_MANAGE_TIME: 'time_tracking.manage_time',
+
+  // ─── Transaction History (audit log) ─────────────────────────────
+  ACTIVITY_LOG_READ: 'activity_log.read',         // view history of a specific entity (drawer)
+  ACTIVITY_LOG_READ_ALL: 'activity_log.read_all', // view global audit log (admin page)
 } as const;
 
 export type Permission = (typeof Permissions)[keyof typeof Permissions];
@@ -688,6 +692,10 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.TIME_TRACKING_DELETE,
     Permissions.TIME_TRACKING_TEAM_READ,
     Permissions.TIME_TRACKING_MANAGE_TIME,
+  ],
+  activity_log: [
+    Permissions.ACTIVITY_LOG_READ,
+    Permissions.ACTIVITY_LOG_READ_ALL,
   ],
 };
 

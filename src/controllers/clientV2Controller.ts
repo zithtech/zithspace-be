@@ -15,6 +15,16 @@ import {
 } from '@/types';
 import { uploadClientDocumentToR2, deleteFileFromR2, generatePresignedUrl, getFileBufferFromR2 } from '@/utils/r2Client';
 import { socketService } from '@/services/socketService';
+import {
+    recordTransaction,
+    diffShallow,
+    Section,
+    Module,
+    Page,
+    Action,
+    EntityType,
+} from '@/utils/transactionHistory';
+import { randomUUID } from 'crypto';
 
 // Utility for auto-generating Client Code
 async function generateClientCode(tenantId: string, idPrefix = 'CL-') {
@@ -338,6 +348,26 @@ export class ClientV2Controller {
                         createdById: req.user!.id,
                     }
                 });
+
+                recordTransaction({
+                    req,
+                    section: Section.ADMIN,
+                    module: Module.CLIENTS_V2,
+                    page: Page.CLIENT_LIST,
+                    action: Action.CREATE,
+                    actionLabel: `Client created: ${newClient.companyName}`,
+                    entityType: EntityType.CLIENT,
+                    entityId: newClient.id,
+                    entityLabel: newClient.companyName,
+                    afterData: {
+                        clientCode: newClient.clientCode,
+                        companyName: newClient.companyName,
+                        clientType: newClient.clientType,
+                        status: newClient.status
+                    },
+                    statusCode: 201
+                });
+
                 res.status(201).json({ success: true, data: newClient, message: 'Client created successfully' } as ApiResponse);
             });
         } catch (error: any) {
@@ -433,6 +463,32 @@ export class ClientV2Controller {
                     where: { id },
                     data: updates
                 });
+
+                const beforeSnap: Record<string, any> = {};
+                const afterSnap: Record<string, any> = {};
+                for (const k of Object.keys(updates)) {
+                    beforeSnap[k] = (existingClient as any)[k];
+                    afterSnap[k] = (updatedClient as any)[k];
+                }
+                const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+                if (changedFields.length > 0) {
+                    recordTransaction({
+                        req,
+                        section: Section.ADMIN,
+                        module: Module.CLIENTS_V2,
+                        page: Page.CLIENT_DETAIL,
+                        action: Action.UPDATE,
+                        actionLabel: `Client updated (${changedFields.join(', ')})`,
+                        entityType: EntityType.CLIENT,
+                        entityId: updatedClient.id,
+                        entityLabel: updatedClient.companyName,
+                        beforeData: before,
+                        afterData: after,
+                        changedFields,
+                        statusCode: 200
+                    });
+                }
+
                 res.status(200).json({ success: true, data: updatedClient, message: 'Client updated successfully' } as ApiResponse);
             });
         } catch (error: any) {
@@ -460,6 +516,28 @@ export class ClientV2Controller {
                         clientId,
                     }
                 });
+
+                recordTransaction({
+                    req,
+                    section: Section.ADMIN,
+                    module: Module.CLIENTS_V2,
+                    page: Page.CLIENT_DETAIL,
+                    action: Action.CREATE,
+                    actionLabel: `Client contact added: ${contact.firstName} ${contact.lastName}`,
+                    entityType: EntityType.CLIENT_CONTACT,
+                    entityId: contact.id,
+                    entityLabel: `${contact.firstName} ${contact.lastName}`,
+                    parentEntityType: EntityType.CLIENT,
+                    parentEntityId: clientId,
+                    afterData: {
+                        firstName: contact.firstName,
+                        lastName: contact.lastName,
+                        officialEmail: contact.officialEmail,
+                        isPrimary: contact.isPrimary,
+                    },
+                    statusCode: 201
+                });
+
                 res.status(201).json({ success: true, data: contact } as ApiResponse);
             });
         } catch (error) {
@@ -474,10 +552,47 @@ export class ClientV2Controller {
             const data: UpdateClientContactV2Data = req.body;
 
             await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                const existing = await prisma.clientContactV2.findUnique({
+                    where: { id: contactId }
+                });
+                if (!existing) {
+                    res.status(404).json({ success: false, error: 'Contact not found' } as ApiResponse);
+                    return;
+                }
+
                 const contact = await prisma.clientContactV2.update({
                     where: { id: contactId },
                     data
                 });
+
+                const beforeSnap: Record<string, any> = {};
+                const afterSnap: Record<string, any> = {};
+                for (const k of Object.keys(data)) {
+                    beforeSnap[k] = (existing as any)[k];
+                    afterSnap[k] = (contact as any)[k];
+                }
+                const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+
+                if (changedFields.length > 0) {
+                    recordTransaction({
+                        req,
+                        section: Section.ADMIN,
+                        module: Module.CLIENTS_V2,
+                        page: Page.CLIENT_DETAIL,
+                        action: Action.UPDATE,
+                        actionLabel: `Client contact updated (${changedFields.join(', ')})`,
+                        entityType: EntityType.CLIENT_CONTACT,
+                        entityId: contact.id,
+                        entityLabel: `${contact.firstName} ${contact.lastName}`,
+                        parentEntityType: EntityType.CLIENT,
+                        parentEntityId: contact.clientId,
+                        beforeData: before,
+                        afterData: after,
+                        changedFields,
+                        statusCode: 200
+                    });
+                }
+
                 res.status(200).json({ success: true, data: contact } as ApiResponse);
             });
         } catch (error) {
@@ -564,6 +679,27 @@ export class ClientV2Controller {
                         uploadedById: req.user!.id
                     }
                 });
+
+                recordTransaction({
+                    req,
+                    section: Section.ADMIN,
+                    module: Module.CLIENTS_V2,
+                    page: Page.CLIENT_DETAIL,
+                    action: Action.CREATE,
+                    actionLabel: `Client document uploaded: ${document.fileName}`,
+                    entityType: EntityType.CLIENT_DOCUMENT,
+                    entityId: document.id,
+                    entityLabel: document.fileName,
+                    parentEntityType: EntityType.CLIENT,
+                    parentEntityId: clientId,
+                    afterData: {
+                        fileName: document.fileName,
+                        category: document.category,
+                        documentType: document.documentType,
+                    },
+                    statusCode: 201
+                });
+
                 socketService.emitToClient(req.tenantId!, clientId, "client_document:created", {
                     clientId,
                     document: { id: document.id },
@@ -614,6 +750,27 @@ export class ClientV2Controller {
 
                 await prisma.clientDocumentV2.delete({
                     where: { id: documentId }
+                });
+
+                recordTransaction({
+                    req,
+                    section: Section.ADMIN,
+                    module: Module.CLIENTS_V2,
+                    page: Page.CLIENT_DETAIL,
+                    action: Action.DELETE,
+                    actionLabel: `Client document deleted: ${document.fileName}`,
+                    entityType: EntityType.CLIENT_DOCUMENT,
+                    entityId: documentId,
+                    entityLabel: document.fileName,
+                    parentEntityType: EntityType.CLIENT,
+                    parentEntityId: document.clientId,
+                    beforeData: {
+                        fileName: document.fileName,
+                        category: document.category,
+                        documentType: document.documentType,
+                    },
+                    afterData: null,
+                    statusCode: 200
                 });
 
                 socketService.emitToClient(req.tenantId!, document.clientId, "client_document:deleted", {
@@ -676,6 +833,12 @@ export class ClientV2Controller {
             params.push(req.tenantId);
             params.push(clientId);
 
+            const existingRes = await pool.query(
+                `SELECT category, document_type, file_name FROM client_documents_v2 WHERE id = $1 AND tenant_id = $2 AND client_id = $3`,
+                [documentId, req.tenantId, clientId]
+            );
+            const existingDoc = existingRes.rows[0];
+
             const r = await pool.query(
                 `UPDATE client_documents_v2
                     SET ${sets.join(', ')}
@@ -693,6 +856,40 @@ export class ClientV2Controller {
             }
 
             const row = r.rows[0];
+
+            if (existingDoc) {
+                const beforeSnap = {
+                    category: existingDoc.category,
+                    documentType: existingDoc.document_type,
+                    fileName: existingDoc.file_name,
+                };
+                const afterSnap = {
+                    category: row.category,
+                    documentType: row.document_type,
+                    fileName: row.file_name,
+                };
+                const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+                if (changedFields.length > 0) {
+                    recordTransaction({
+                        req,
+                        section: Section.ADMIN,
+                        module: Module.CLIENTS_V2,
+                        page: Page.CLIENT_DETAIL,
+                        action: Action.UPDATE,
+                        actionLabel: `Client document updated (${changedFields.join(', ')})`,
+                        entityType: EntityType.CLIENT_DOCUMENT,
+                        entityId: row.id,
+                        entityLabel: row.file_name,
+                        parentEntityType: EntityType.CLIENT,
+                        parentEntityId: clientId,
+                        beforeData: before,
+                        afterData: after,
+                        changedFields,
+                        statusCode: 200
+                    });
+                }
+            }
+
             socketService.emitToClient(req.tenantId!, clientId, "client_document:updated", {
                 clientId,
                 id: row.id,
@@ -793,12 +990,20 @@ export class ClientV2Controller {
             const { id } = req.params;
 
             await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                const client = await prisma.clientV2.findUnique({
+                    where: { id }
+                });
+                if (!client) {
+                    res.status(404).json({ success: false, error: 'Client not found' } as ApiResponse);
+                    return;
+                }
+
                 // 1. Fetch documents to cleanup R2 files
                 const documents = await prisma.clientDocumentV2.findMany({
                     where: { clientId: id }
                 });
 
-                return await prisma.$transaction(async (tx) => {
+                await prisma.$transaction(async (tx) => {
                     // 2. Cleanup R2 files
                     for (const doc of documents) {
                         if (doc.fileUrl) {
@@ -814,13 +1019,30 @@ export class ClientV2Controller {
                     await tx.clientContactV2.deleteMany({ where: { clientId: id } });
                     await tx.clientDocumentV2.deleteMany({ where: { clientId: id } });
                     await tx.employeeClientAllocationV2.deleteMany({ where: { clientId: id } });
-                    // ClientProject has onDelete: Cascade in schema, but we'll be explicit if needed.
-                    // Actually, let's just delete the client and let cascade handle ClientProject
                     
                     // 4. Delete the client itself
                     await tx.clientV2.delete({
                         where: { id }
                     });
+                });
+
+                recordTransaction({
+                    req,
+                    section: Section.ADMIN,
+                    module: Module.CLIENTS_V2,
+                    page: Page.CLIENT_DETAIL,
+                    action: Action.DELETE,
+                    actionLabel: `Client deleted: ${client.companyName}`,
+                    entityType: EntityType.CLIENT,
+                    entityId: client.id,
+                    entityLabel: client.companyName,
+                    beforeData: {
+                        companyName: client.companyName,
+                        clientCode: client.clientCode,
+                        clientType: client.clientType,
+                    },
+                    afterData: null,
+                    statusCode: 200
                 });
             });
 
@@ -1117,6 +1339,22 @@ export class ClientV2Controller {
                 );
             }
 
+            if (toLink.length > 0) {
+                recordTransaction({
+                    req,
+                    section: Section.ADMIN,
+                    module: Module.CLIENTS_V2,
+                    page: Page.CLIENT_DETAIL,
+                    action: Action.BULK_ASSIGN,
+                    actionLabel: `Imported ${toLink.length} project(s) to client`,
+                    entityType: EntityType.CLIENT,
+                    entityId: clientId,
+                    correlationId: randomUUID(),
+                    metadata: { projectIds: toLink, billingType, budget },
+                    statusCode: 201
+                });
+            }
+
             res.status(201).json({
                 success: true,
                 data: { linked: toLink.length, skipped, projectIds: toLink },
@@ -1179,6 +1417,27 @@ export class ClientV2Controller {
             });
 
             res.status(201).json({ success: true, data: result } as ApiResponse);
+
+            recordTransaction({
+                req,
+                section: Section.ADMIN,
+                module: Module.CLIENTS_V2,
+                page: Page.CLIENT_DETAIL,
+                action: Action.CREATE,
+                actionLabel: `Client project created: ${result.project.name}`,
+                entityType: EntityType.PROJECT,
+                entityId: result.project.id,
+                entityLabel: result.project.name,
+                parentEntityType: EntityType.CLIENT,
+                parentEntityId: clientId,
+                afterData: {
+                    name: result.project.name,
+                    code: result.project.code,
+                    budget: result.mapping.budget,
+                    billingType: result.mapping.billingType,
+                },
+                statusCode: 201
+            });
         } catch (error: any) {
             console.error('addProject error:', error);
             if (error.message === 'UserAccountNotFound') {
@@ -1233,12 +1492,10 @@ export class ClientV2Controller {
                 if (budget !== undefined) mappingUpdateData.budget = budget;
 
                 let mapping = null;
+                const existingMapping = await prisma.clientProject.findFirst({
+                    where: { projectId: projectId, tenantId: req.tenantId! }
+                });
                 if (Object.keys(mappingUpdateData).length > 0) {
-                    // Find the mapping first because we need the compound unique key or ID
-                    const existingMapping = await prisma.clientProject.findFirst({
-                        where: { projectId: projectId, tenantId: req.tenantId! }
-                    });
-
                     if (existingMapping) {
                         mapping = await prisma.clientProject.update({
                             where: { id: existingMapping.id },
@@ -1246,6 +1503,26 @@ export class ClientV2Controller {
                         });
                     }
                 }
+
+                recordTransaction({
+                    req,
+                    section: Section.ADMIN,
+                    module: Module.CLIENTS_V2,
+                    page: Page.CLIENT_DETAIL,
+                    action: Action.UPDATE,
+                    actionLabel: `Client project updated: ${project.name}`,
+                    entityType: EntityType.PROJECT,
+                    entityId: project.id,
+                    entityLabel: project.name,
+                    parentEntityType: EntityType.CLIENT,
+                    parentEntityId: existingMapping?.clientId || null,
+                    afterData: {
+                        name: project.name,
+                        code: project.code,
+                        status: project.status,
+                    },
+                    statusCode: 200
+                });
 
                 res.status(200).json({ success: true, data: { project, mapping }, message: 'Project updated successfully' } as ApiResponse);
             });
@@ -1277,6 +1554,13 @@ export class ClientV2Controller {
             const { projectId } = req.params;
 
             await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                const mapping = await prisma.clientProject.findFirst({
+                    where: { projectId, tenantId: req.tenantId! }
+                });
+                const project = await prisma.project.findUnique({
+                    where: { id: projectId }
+                });
+
                 // Delete the mapping first
                 await prisma.clientProject.deleteMany({
                     where: { projectId: projectId, tenantId: req.tenantId! }
@@ -1286,6 +1570,28 @@ export class ClientV2Controller {
                 await prisma.project.delete({
                     where: { id: projectId }
                 });
+
+                if (project) {
+                    recordTransaction({
+                        req,
+                        section: Section.ADMIN,
+                        module: Module.CLIENTS_V2,
+                        page: Page.CLIENT_DETAIL,
+                        action: Action.DELETE,
+                        actionLabel: `Client project deleted: ${project.name}`,
+                        entityType: EntityType.PROJECT,
+                        entityId: projectId,
+                        entityLabel: project.name,
+                        parentEntityType: EntityType.CLIENT,
+                        parentEntityId: mapping?.clientId || null,
+                        beforeData: {
+                            name: project.name,
+                            code: project.code
+                        },
+                        afterData: null,
+                        statusCode: 200
+                    });
+                }
             });
 
             res.status(200).json({ success: true, message: 'Project deleted successfully' } as ApiResponse);
@@ -1314,6 +1620,30 @@ export class ClientV2Controller {
                         // Calculate actual bill amount base values on UI or here (we assume passed from FE for now)
                     }
                 });
+
+                recordTransaction({
+                    req,
+                    section: Section.ADMIN,
+                    module: Module.CLIENTS_V2,
+                    page: Page.CLIENT_DETAIL,
+                    action: Action.CREATE,
+                    actionLabel: 'Employee allocated to client',
+                    entityType: EntityType.CLIENT_ALLOCATION,
+                    entityId: allocation.id,
+                    entityLabel: `Employee: ${allocation.employeeId}`,
+                    parentEntityType: EntityType.CLIENT,
+                    parentEntityId: clientId,
+                    afterData: {
+                        employeeId: allocation.employeeId,
+                        projectId: allocation.projectId,
+                        billingType: allocation.billingType,
+                        billAmount: allocation.billAmount,
+                        startDate: allocation.startDate,
+                        endDate: allocation.endDate,
+                    },
+                    statusCode: 201
+                });
+
                 res.status(201).json({ success: true, data: allocation } as ApiResponse);
             });
         } catch (error) {
@@ -1328,10 +1658,47 @@ export class ClientV2Controller {
             const data: UpdateEmployeeClientAllocationV2Data = req.body;
 
             await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                const existing = await prisma.employeeClientAllocationV2.findUnique({
+                    where: { id: allocationId }
+                });
+                if (!existing) {
+                    res.status(404).json({ success: false, error: 'Allocation not found' } as ApiResponse);
+                    return;
+                }
+
                 const allocation = await prisma.employeeClientAllocationV2.update({
                     where: { id: allocationId },
                     data
                 });
+
+                const beforeSnap: Record<string, any> = {};
+                const afterSnap: Record<string, any> = {};
+                for (const k of Object.keys(data)) {
+                    beforeSnap[k] = (existing as any)[k];
+                    afterSnap[k] = (allocation as any)[k];
+                }
+                const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+
+                if (changedFields.length > 0) {
+                    recordTransaction({
+                        req,
+                        section: Section.ADMIN,
+                        module: Module.CLIENTS_V2,
+                        page: Page.CLIENT_DETAIL,
+                        action: Action.UPDATE,
+                        actionLabel: `Employee client allocation updated (${changedFields.join(', ')})`,
+                        entityType: EntityType.CLIENT_ALLOCATION,
+                        entityId: allocation.id,
+                        entityLabel: `Employee: ${allocation.employeeId}`,
+                        parentEntityType: EntityType.CLIENT,
+                        parentEntityId: allocation.clientId,
+                        beforeData: before,
+                        afterData: after,
+                        changedFields,
+                        statusCode: 200
+                    });
+                }
+
                 res.status(200).json({ success: true, data: allocation } as ApiResponse);
             });
         } catch (error) {

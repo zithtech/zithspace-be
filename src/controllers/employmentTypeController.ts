@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { prisma } from "@/config/database";
 import { AuthRequest, ApiResponse } from "@/types";
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from "../utils/transactionHistory";
 
 export class EmploymentTypeController {
   // Create a new employment type
@@ -67,6 +68,25 @@ export class EmploymentTypeController {
       });
 
       res.status(201).json({ success: true, data: employmentType, message: "Employment type created successfully" } as ApiResponse);
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.ORG_STRUCTURE,
+        page: Page.ORG_STRUCTURE_EMPLOYMENT_TYPES,
+        action: Action.CREATE,
+        actionLabel: `Created employment type "${employmentType.name}"`,
+        entityType: EntityType.ORG_EMPLOYMENT_TYPE,
+        entityId: employmentType.id,
+        entityLabel: employmentType.name,
+        afterData: {
+          name: employmentType.name,
+          code: employmentType.code,
+          description: employmentType.description,
+          isActive: employmentType.isActive,
+        },
+      });
     } catch (error: any) {
       console.error("Error creating employment type:", error);
       if (error.code === 'P2002') {
@@ -204,6 +224,38 @@ export class EmploymentTypeController {
       });
 
       res.status(200).json({ success: true, data: updatedEmploymentType, message: "Employment type updated successfully" } as ApiResponse);
+
+      // ─── Activity log ───────────────────────────────────────────────
+      if (employmentTypeToUpdate) {
+        const beforeSnap = {
+          name: employmentTypeToUpdate.name,
+          code: employmentTypeToUpdate.code,
+          description: employmentTypeToUpdate.description,
+          isActive: employmentTypeToUpdate.isActive,
+        };
+        const afterSnap = {
+          name: updatedEmploymentType.name,
+          code: updatedEmploymentType.code,
+          description: updatedEmploymentType.description,
+          isActive: updatedEmploymentType.isActive,
+        };
+        const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.ORG_STRUCTURE,
+          page: Page.ORG_STRUCTURE_EMPLOYMENT_TYPES,
+          action: Action.UPDATE,
+          actionLabel: `Updated employment type "${updatedEmploymentType.name}"`,
+          entityType: EntityType.ORG_EMPLOYMENT_TYPE,
+          entityId: id,
+          entityLabel: updatedEmploymentType.name,
+          beforeData: before,
+          afterData: after,
+          changedFields,
+        });
+      }
     } catch (error: any) {
       console.error("Error updating employment type:", error);
       res.status(500).json({ success: false, error: "Failed to update employment type" } as ApiResponse);
@@ -233,6 +285,21 @@ export class EmploymentTypeController {
       });
 
       res.status(200).json({ success: true, message: "Employment type deleted successfully" } as ApiResponse);
+
+      // ─── Activity log ───────────────────────────────────────────────
+      if (employmentTypeToDelete) {
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.ORG_STRUCTURE,
+          page: Page.ORG_STRUCTURE_EMPLOYMENT_TYPES,
+          action: Action.DELETE,
+          actionLabel: `Deleted employment type "${employmentTypeToDelete.name}"`,
+          entityType: EntityType.ORG_EMPLOYMENT_TYPE,
+          entityId: id,
+          entityLabel: employmentTypeToDelete.name,
+        });
+      }
     } catch (error: any) {
       console.error("Error deleting employment type:", error);
       // Handle foreign key constraint errors (P2003)

@@ -17,6 +17,7 @@ import {
   getCategoryStats,
   categoryNameExists
 } from '../models/category.model';
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from '../utils/transactionHistory';
 
 export class CategoryController {
   /**
@@ -128,6 +129,25 @@ export class CategoryController {
         message: 'Category created successfully'
       } as ApiResponse);
 
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.FINANCE,
+        module: Module.ACCOUNTS,
+        page: Page.ACCOUNTS_SETTINGS,
+        action: Action.CREATE,
+        actionLabel: `Created category "${category.name}"`,
+        entityType: EntityType.EXPENSE_CATEGORY,
+        entityId: category.id,
+        entityLabel: category.name,
+        afterData: {
+          name: category.name,
+          description: category.description,
+          color: category.color,
+          isActive: category.isActive,
+        },
+      });
+
     } catch (error: any) {
       console.error('Create category error:', error);
       res.status(
@@ -190,6 +210,36 @@ export class CategoryController {
         message: 'Category updated successfully'
       } as ApiResponse);
 
+      // ─── Activity log ───────────────────────────────────────────────
+      const beforeSnap = {
+        name: existingCategory.name,
+        description: existingCategory.description,
+        color: existingCategory.color,
+        isActive: existingCategory.isActive,
+      };
+      const afterSnap = {
+        name: updatedCategory.name,
+        description: updatedCategory.description,
+        color: updatedCategory.color,
+        isActive: updatedCategory.isActive,
+      };
+      const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+
+      recordTransaction({
+        req,
+        section: Section.FINANCE,
+        module: Module.ACCOUNTS,
+        page: Page.ACCOUNTS_SETTINGS,
+        action: Action.UPDATE,
+        actionLabel: `Updated category "${updatedCategory.name}"`,
+        entityType: EntityType.EXPENSE_CATEGORY,
+        entityId: id,
+        entityLabel: updatedCategory.name,
+        beforeData: before,
+        afterData: after,
+        changedFields,
+      });
+
     } catch (error: any) {
       console.error('Update category error:', error);
       res.status(
@@ -232,6 +282,19 @@ export class CategoryController {
         success: true,
         message: 'Category deleted successfully'
       } as ApiResponse);
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.FINANCE,
+        module: Module.ACCOUNTS,
+        page: Page.ACCOUNTS_SETTINGS,
+        action: Action.DELETE,
+        actionLabel: `Deleted category "${existingCategory.name}"`,
+        entityType: EntityType.EXPENSE_CATEGORY,
+        entityId: id,
+        entityLabel: existingCategory.name,
+      });
 
     } catch (error: any) {
       console.error('Delete category error:', error);

@@ -8,6 +8,7 @@ const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const database_1 = require("@/config/database");
 const jwt_1 = require("@/utils/jwt");
 const rbac_service_1 = require("@/modules/rbac/rbac.service");
+const transactionHistory_1 = require("../utils/transactionHistory");
 class AuthController {
     /**
      * User login with tenant context
@@ -132,6 +133,30 @@ class AuthController {
                 },
                 message: "Login successful",
             };
+            // Populate req.user temporarily for transaction history logging
+            req.user = {
+                id: user.id,
+                email: user.workEmail,
+                name: user.name,
+                tenantId: user.tenantId,
+                role: user.role,
+                position: user.position?.title || null,
+            };
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.ADMIN,
+                module: transactionHistory_1.Module.AUTH,
+                page: transactionHistory_1.Page.LOGIN,
+                action: transactionHistory_1.Action.LOGIN,
+                actionLabel: `User ${user.name || user.workEmail} logged in`,
+                entityType: transactionHistory_1.EntityType.SESSION,
+                entityId: user.id,
+                entityLabel: user.workEmail,
+                metadata: {
+                    ip: req.ip ?? req.socket?.remoteAddress ?? null,
+                    userAgent: req.headers["user-agent"] ?? null,
+                },
+            });
             res.status(200).json(loginResponse);
         }
         catch (error) {
@@ -258,6 +283,20 @@ class AuthController {
                     console.error("Error revoking refresh token:", error);
                     // Continue with logout even if token deletion fails
                 }
+            }
+            // Log logout transaction
+            if (req.user) {
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.ADMIN,
+                    module: transactionHistory_1.Module.AUTH,
+                    page: transactionHistory_1.Page.LOGIN,
+                    action: transactionHistory_1.Action.LOGOUT,
+                    actionLabel: `User ${req.user.name || req.user.email} logged out`,
+                    entityType: transactionHistory_1.EntityType.SESSION,
+                    entityId: req.user.id,
+                    entityLabel: req.user.email,
+                });
             }
             // Clear refresh token cookie
             res.clearCookie("refreshToken");

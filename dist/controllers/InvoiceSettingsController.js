@@ -6,6 +6,7 @@ const settingsProfile_model_1 = require("@/models/settingsProfile.model");
 const generalSettings_model_1 = require("@/models/generalSettings.model");
 const invoiceSettings_model_1 = require("@/models/invoiceSettings.model");
 const paymentSettings_model_1 = require("@/models/paymentSettings.model");
+const transactionHistory_1 = require("@/utils/transactionHistory");
 const parseInvoiceFormat = (formatString) => {
     // Finds the sequence of # inside curly braces (e.g., {####})
     const paddingMatch = formatString.match(/{#+}/);
@@ -160,6 +161,18 @@ class InvoiceSettingsController {
                 data: completeProfile,
                 message: 'Profile created successfully'
             });
+            // ─── Activity log ───────────────────────────────────────────────
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.FINANCE,
+                module: transactionHistory_1.Module.INVOICES,
+                page: transactionHistory_1.Page.INVOICE_SETTINGS_VIEW,
+                action: transactionHistory_1.Action.CREATE,
+                actionLabel: `Created settings profile ${name}`,
+                entityType: transactionHistory_1.EntityType.INVOICE_SETTINGS_PROFILE,
+                entityId: newProfile.id,
+                entityLabel: name,
+            });
         }
         catch (error) {
             console.error('Create profile error:', error);
@@ -211,6 +224,19 @@ class InvoiceSettingsController {
             // 4. Get the complete updated profile with relations
             const completeProfile = await (0, settingsProfile_model_1.getSettingsProfileById)(id, req.tenantId);
             res.status(200).json({ success: true, data: completeProfile });
+            // ─── Activity log ───────────────────────────────────────────────
+            const profileName = name || existing.name;
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.FINANCE,
+                module: transactionHistory_1.Module.INVOICES,
+                page: transactionHistory_1.Page.INVOICE_SETTINGS_VIEW,
+                action: transactionHistory_1.Action.UPDATE,
+                actionLabel: `Updated settings profile ${profileName}`,
+                entityType: transactionHistory_1.EntityType.INVOICE_SETTINGS_PROFILE,
+                entityId: id,
+                entityLabel: profileName,
+            });
         }
         catch (error) {
             console.error(error);
@@ -232,6 +258,18 @@ class InvoiceSettingsController {
                 throw new Error('Failed to delete profile');
             }
             res.status(200).json({ success: true, message: 'Profile deleted permanently' });
+            // ─── Activity log ───────────────────────────────────────────────
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.FINANCE,
+                module: transactionHistory_1.Module.INVOICES,
+                page: transactionHistory_1.Page.INVOICE_SETTINGS_VIEW,
+                action: transactionHistory_1.Action.PERMANENT_DELETE,
+                actionLabel: `Permanently deleted settings profile ${profile.name}`,
+                entityType: transactionHistory_1.EntityType.INVOICE_SETTINGS_PROFILE,
+                entityId: id,
+                entityLabel: profile.name,
+            });
         }
         catch (error) {
             console.error('Hard delete error:', error);
@@ -259,6 +297,19 @@ class InvoiceSettingsController {
                 success: true,
                 data: updatedProfile,
                 message: `Profile ${isActive ? 'activated' : 'deactivated'} successfully`
+            });
+            // ─── Activity log ───────────────────────────────────────────────
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.FINANCE,
+                module: transactionHistory_1.Module.INVOICES,
+                page: transactionHistory_1.Page.INVOICE_SETTINGS_VIEW,
+                action: transactionHistory_1.Action.STATUS_CHANGE,
+                actionLabel: `Settings profile "${updatedProfile.name}" ${isActive ? 'activated' : 'deactivated'}`,
+                entityType: transactionHistory_1.EntityType.INVOICE_SETTINGS_PROFILE,
+                entityId: id,
+                entityLabel: updatedProfile.name,
+                afterData: { isActive },
             });
         }
         catch (error) {

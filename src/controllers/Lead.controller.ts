@@ -11,6 +11,7 @@ import { s3Client, BUCKET_NAME } from '../utils/r2Client';
 import { Readable } from 'stream';
 import { LeadActivityLogModel } from '../models/LeadActivityLog.model';
 import { LeadMailModel } from '../models/LeadMail.model';
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from '../utils/transactionHistory';
 
 export class LeadController {
 
@@ -110,6 +111,26 @@ export class LeadController {
           performedBy: req.user.id,
         }).catch(() => {});
       }
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.LEADS,
+        page: Page.LEADS_LIST,
+        action: Action.CREATE,
+        actionLabel: `Created lead "${lead.title}"`,
+        entityType: EntityType.LEAD,
+        entityId: lead.id,
+        entityLabel: lead.title,
+        afterData: {
+          clientName: lead.client_name,
+          clientMail: lead.client_mail,
+          title: lead.title,
+          status: lead.status,
+          budget: lead.budget,
+        },
+      });
 
       return res.status(201).json({
         success: true,
@@ -284,6 +305,7 @@ export class LeadController {
       console.log('--- UPDATE LEAD REQUEST ---');
       console.log('ID:', id);
 
+      const existingLead = await LeadModel.findById(id, tenantId);
       const lead = await LeadModel.update(id, tenantId, updateData);
 
       if (!lead) {
@@ -297,6 +319,40 @@ export class LeadController {
         action: 'UPDATED_LEAD',
         performedBy: req.user!.id,
       }).catch(() => {});
+
+      // ─── Activity log ───────────────────────────────────────────────
+      if (existingLead) {
+        const beforeSnap = {
+          clientName: existingLead.client_name,
+          clientMail: existingLead.client_mail,
+          title: existingLead.title,
+          status: existingLead.status,
+          budget: existingLead.budget,
+        };
+        const afterSnap = {
+          clientName: lead.client_name,
+          clientMail: lead.client_mail,
+          title: lead.title,
+          status: lead.status,
+          budget: lead.budget,
+        };
+        const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.LEADS,
+          page: Page.LEAD_DETAIL,
+          action: Action.UPDATE,
+          actionLabel: `Updated lead "${lead.title}"`,
+          entityType: EntityType.LEAD,
+          entityId: id,
+          entityLabel: lead.title,
+          beforeData: before,
+          afterData: after,
+          changedFields,
+        });
+      }
 
       return res.status(200).json({
         success: true,
@@ -331,11 +387,27 @@ export class LeadController {
         return res.status(400).json({ success: false, error: 'Tenant context required' });
       }
 
+      const lead = await LeadModel.findById(id, tenantId);
+      const leadName = lead ? lead.title : id;
+
       const success = await LeadModel.delete(id, tenantId);
 
       if (!success) {
         return res.status(404).json({ success: false, error: 'Lead not found' });
       }
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.LEADS,
+        page: Page.LEADS_LIST,
+        action: Action.DELETE,
+        actionLabel: `Deleted lead "${leadName}" (Moved to Trash)`,
+        entityType: EntityType.LEAD,
+        entityId: id,
+        entityLabel: leadName,
+      });
 
       return res.status(200).json({
         success: true,
@@ -387,11 +459,27 @@ export class LeadController {
         return res.status(400).json({ success: false, error: 'Tenant context required' });
       }
 
+      const lead = await LeadModel.findById(id, tenantId);
+      const leadName = lead ? lead.title : id;
+
       const success = await LeadModel.restore(id, tenantId);
 
       if (!success) {
         return res.status(404).json({ success: false, error: 'Lead not found in Trash' });
       }
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.LEADS,
+        page: Page.LEADS_TRASH,
+        action: Action.RESTORE,
+        actionLabel: `Restored lead "${leadName}" from Trash`,
+        entityType: EntityType.LEAD,
+        entityId: id,
+        entityLabel: leadName,
+      });
 
       return res.status(200).json({
         success: true,
@@ -417,11 +505,27 @@ export class LeadController {
         return res.status(400).json({ success: false, error: 'Tenant context required' });
       }
 
+      const leadResult = await pool.query('SELECT title FROM leads WHERE id = $1 AND tenant_id = $2', [id, tenantId]);
+      const leadName = leadResult.rows[0]?.title || id;
+
       const success = await LeadModel.permanentDelete(id, tenantId);
 
       if (!success) {
         return res.status(404).json({ success: false, error: 'Lead not found in Trash' });
       }
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.LEADS,
+        page: Page.LEADS_TRASH,
+        action: Action.PERMANENT_DELETE,
+        actionLabel: `Permanently deleted lead "${leadName}"`,
+        entityType: EntityType.LEAD,
+        entityId: id,
+        entityLabel: leadName,
+      });
 
       return res.status(200).json({
         success: true,
@@ -535,6 +639,20 @@ export class LeadController {
         metadata: { projectId: project.id, projectName: projectTitle }
       });
 
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.LEADS,
+        page: Page.LEAD_DETAIL,
+        action: Action.CONVERT,
+        actionLabel: `Onboarded lead "${lead.title}" to project "${projectTitle}"`,
+        entityType: EntityType.LEAD,
+        entityId: id,
+        entityLabel: lead.title,
+        metadata: { projectId: project.id, clientId },
+      });
+
       return res.status(200).json({
         success: true,
         message: 'Lead successfully onboarded: Client and Project created.',
@@ -565,6 +683,17 @@ export class LeadController {
 
       const count = await LeadModel.emptyTrash(tenantId);
 
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.LEADS,
+        page: Page.LEADS_TRASH,
+        action: Action.EMPTY_TRASH,
+        actionLabel: `Emptied trash: permanently deleted all trashed leads`,
+        entityType: EntityType.LEAD,
+      });
+
       return res.status(200).json({
         success: true,
         message: `Trash emptied: ${count} leads permanently deleted`,
@@ -592,6 +721,18 @@ export class LeadController {
 
       const count = await LeadModel.bulkRestore(ids, tenantId);
 
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.LEADS,
+        page: Page.LEADS_TRASH,
+        action: Action.BULK_RESTORE,
+        actionLabel: `Bulk restored ${count} leads from Trash`,
+        entityType: EntityType.LEAD,
+        metadata: { ids },
+      });
+
       return res.status(200).json({
         success: true,
         message: `${count} leads restored successfully`,
@@ -618,6 +759,18 @@ export class LeadController {
       }
 
       const count = await LeadModel.bulkPermanentDelete(ids, tenantId);
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.LEADS,
+        page: Page.LEADS_TRASH,
+        action: Action.BULK_PERMANENT_DELETE,
+        actionLabel: `Bulk permanently deleted ${count} leads`,
+        entityType: EntityType.LEAD,
+        metadata: { ids },
+      });
 
       return res.status(200).json({
         success: true,
@@ -683,6 +836,19 @@ export class LeadController {
           console.error("[LeadController] Failed to store mail in lead_mails:", err);
         }
       }
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.LEADS,
+        page: Page.LEAD_DETAIL,
+        action: Action.EMAIL_SENT,
+        actionLabel: `Sent email to lead at ${Array.isArray(to) ? to.join(', ') : to}`,
+        entityType: EntityType.LEAD,
+        entityId: leadId,
+        metadata: { subject },
+      });
 
       return res.json({
         success: true,

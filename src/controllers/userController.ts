@@ -12,6 +12,15 @@ import {
 import bcrypt from "bcryptjs";
 import { uploadImageToR2 } from "@/utils/r2Client";
 import { emailService } from "@/utils/emailService";
+import {
+  recordTransaction,
+  diffShallow,
+  Section,
+  Module,
+  Page,
+  Action,
+  EntityType,
+} from "@/utils/transactionHistory";
 
 export class UserController {
   /**
@@ -368,6 +377,28 @@ export class UserController {
         console.error("⚠️ Failed to enqueue welcome email for new member:", mailError);
       }
 
+      recordTransaction({
+        req,
+        section: Section.ADMIN,
+        module: Module.MEMBERS,
+        page: Page.MEMBER_LIST,
+        action: Action.CREATE,
+        actionLabel: `Member created: ${newUser.name}`,
+        entityType: EntityType.USER,
+        entityId: newUser.id,
+        entityLabel: newUser.name,
+        afterData: {
+          name: newUser.name,
+          workEmail: newUser.workEmail,
+          personalEmail: newUser.personalEmail,
+          phone: newUser.phone,
+          role: newUser.role,
+          position: newUser.position?.title,
+          isActive: newUser.isActive,
+        },
+        statusCode: 201,
+      });
+
       res.status(201).json({
         success: true,
         data: newUser,
@@ -565,6 +596,50 @@ export class UserController {
         }
       }
 
+      const cleanExisting = {
+        name: existingUser.name,
+        workEmail: existingUser.workEmail,
+        personalEmail: existingUser.personalEmail,
+        phone: existingUser.phone,
+        role: existingUser.role,
+        positionId: existingUser.positionId,
+        reportsToId: existingUser.reportsToId,
+        assignedShiftId: existingUser.assignedShiftId,
+        isActive: existingUser.isActive,
+      };
+
+      const cleanUpdated = {
+        name: updatedUser.name,
+        workEmail: updatedUser.workEmail,
+        personalEmail: updatedUser.personalEmail,
+        phone: updatedUser.phone,
+        role: updatedUser.role,
+        positionId: positionId || existingUser.positionId,
+        reportsToId: updatedUser.reportsTo?.id || null,
+        assignedShiftId: updatedUser.assignedShift?.id || null,
+        isActive: updatedUser.isActive,
+      };
+
+      const { changedFields, before, after } = diffShallow(cleanExisting, cleanUpdated);
+
+      if (changedFields.length > 0) {
+        recordTransaction({
+          req,
+          section: Section.ADMIN,
+          module: Module.MEMBERS,
+          page: Page.MEMBER_LIST,
+          action: Action.UPDATE,
+          actionLabel: `Member updated: ${updatedUser.name} (${changedFields.join(", ")})`,
+          entityType: EntityType.USER,
+          entityId: id,
+          entityLabel: updatedUser.name,
+          beforeData: before,
+          afterData: after,
+          changedFields,
+          statusCode: 200,
+        });
+      }
+
       res.status(200).json({
         success: true,
         data: updatedUser,
@@ -638,6 +713,22 @@ export class UserController {
         },
       });
 
+      recordTransaction({
+        req,
+        section: Section.ADMIN,
+        module: Module.MEMBERS,
+        page: Page.MEMBER_LIST,
+        action: Action.DELETE,
+        actionLabel: `Member deactivated: ${updatedUser.name}`,
+        entityType: EntityType.USER,
+        entityId: id,
+        entityLabel: updatedUser.name,
+        beforeData: { isActive: existingUser.isActive },
+        afterData: { isActive: false },
+        changedFields: ["isActive"],
+        statusCode: 200,
+      });
+
       res.status(200).json({
         success: true,
         data: updatedUser,
@@ -700,6 +791,22 @@ export class UserController {
           isActive: true,
           updatedAt: true,
         },
+      });
+
+      recordTransaction({
+        req,
+        section: Section.ADMIN,
+        module: Module.MEMBERS,
+        page: Page.MEMBER_LIST,
+        action: Action.RESTORE,
+        actionLabel: `Member activated: ${updatedUser.name}`,
+        entityType: EntityType.USER,
+        entityId: id,
+        entityLabel: updatedUser.name,
+        beforeData: { isActive: existingUser.isActive },
+        afterData: { isActive: true },
+        changedFields: ["isActive"],
+        statusCode: 200,
       });
 
       res.status(200).json({
@@ -1220,6 +1327,22 @@ export class UserController {
             },
           },
         },
+      });
+
+      recordTransaction({
+        req,
+        section: Section.ADMIN,
+        module: Module.MEMBERS,
+        page: Page.MEMBER_LIST,
+        action: Action.UPDATE,
+        actionLabel: `Shift assigned to ${updatedMember.name}: ${shift.name}`,
+        entityType: EntityType.USER,
+        entityId: id,
+        entityLabel: updatedMember.name,
+        beforeData: { assignedShiftId: member.assignedShiftId },
+        afterData: { assignedShiftId: shiftId, shiftName: shift.name },
+        changedFields: ["assignedShiftId"],
+        statusCode: 200,
       });
 
       res.status(200).json({

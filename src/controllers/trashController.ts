@@ -8,6 +8,15 @@ import {
 } from "@/types";
 import { socketService } from "@/services/socketService";
 import cacheService from "@/utils/cacheService";
+import {
+  recordTransaction,
+  Section,
+  Module,
+  Page,
+  Action,
+  EntityType,
+} from "@/utils/transactionHistory";
+import { randomUUID } from "crypto";
 
 export class TrashController {
   /**
@@ -216,6 +225,27 @@ export class TrashController {
         });
       });
 
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.TRASH,
+        page: Page.TRASH_VIEW,
+        action: Action.BULK_DELETE,
+        actionLabel: `Tickets moved to trash (${result.count})`,
+        entityType: EntityType.TICKET,
+        beforeData: { isDeleted: false },
+        afterData: { isDeleted: true },
+        changedFields: ["isDeleted"],
+        correlationId: randomUUID(),
+        metadata: {
+          targetIds: tickets.map((t) => t.id),
+          requested: ticketIds.length,
+          movedToTrash: result.count,
+          softDelete: true,
+        },
+        statusCode: 200,
+      });
+
       res.status(200).json({
         success: true,
         data: { deletedCount: result.count },
@@ -303,6 +333,26 @@ export class TrashController {
         socketService.emitToTenant(req.tenantId, "ticket:restored", {
           id: ticket.id,
         });
+      });
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.TRASH,
+        page: Page.TRASH_VIEW,
+        action: Action.BULK_RESTORE,
+        actionLabel: `Tickets restored from trash (${result.count})`,
+        entityType: EntityType.TICKET,
+        beforeData: { isDeleted: true },
+        afterData: { isDeleted: false },
+        changedFields: ["isDeleted"],
+        correlationId: randomUUID(),
+        metadata: {
+          targetIds: tickets.map((t) => t.id),
+          requested: ticketIds.length,
+          restored: result.count,
+        },
+        statusCode: 200,
       });
 
       res.status(200).json({
@@ -427,6 +477,23 @@ export class TrashController {
         });
       });
 
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.TRASH,
+        page: Page.TRASH_VIEW,
+        action: Action.BULK_PERMANENT_DELETE,
+        actionLabel: `Tickets permanently deleted (${tickets.length})`,
+        entityType: EntityType.TICKET,
+        correlationId: randomUUID(),
+        metadata: {
+          targetIds: tickets.map((t) => t.id),
+          requested: ticketIds.length,
+          deleted: tickets.length,
+        },
+        statusCode: 200,
+      });
+
       res.status(200).json({
         success: true,
         data: { deletedCount: tickets.length },
@@ -536,6 +603,23 @@ export class TrashController {
       );
       await Promise.allSettled(cachePromises);
 
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.TRASH,
+        page: Page.TRASH_VIEW,
+        action: Action.EMPTY_TRASH,
+        actionLabel: `Trash emptied (${tickets.length} ticket${tickets.length === 1 ? "" : "s"})`,
+        entityType: EntityType.TICKET,
+        correlationId: randomUUID(),
+        metadata: {
+          deleted: tickets.length,
+          force,
+          projectId: projectId ?? null,
+        },
+        statusCode: 200,
+      });
+
       res.status(200).json({
         success: true,
         data: { deletedCount: tickets.length },
@@ -623,6 +707,20 @@ export class TrashController {
       console.log(
         `Auto-purge completed for tenant ${req.tenantId}: ${tickets.length} tickets deleted`
       );
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.TRASH,
+        page: Page.TRASH_VIEW,
+        action: Action.AUTO_PURGE,
+        actionLabel: `Auto-purge (${tickets.length} ticket${tickets.length === 1 ? "" : "s"} older than 7 days)`,
+        entityType: EntityType.TICKET,
+        correlationId: randomUUID(),
+        actorType: "system",
+        metadata: { purged: tickets.length, cutoffDays: 7 },
+        statusCode: 200,
+      });
 
       res.status(200).json({
         success: true,

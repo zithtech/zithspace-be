@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CustomerController = void 0;
 const types_1 = require("../types");
 const customer_model_1 = require("../models/customer.model");
+const transactionHistory_1 = require("../utils/transactionHistory");
 class CustomerController {
     /**
      * Get all customers (tenant-aware, with pagination and search)
@@ -96,6 +97,23 @@ class CustomerController {
                 data: newCustomer,
                 message: "Customer created successfully",
             });
+            // ─── Activity log ───────────────────────────────────────────────
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.FINANCE,
+                module: transactionHistory_1.Module.INVOICES,
+                page: transactionHistory_1.Page.INVOICE_CUSTOMER_LIST,
+                action: transactionHistory_1.Action.CREATE,
+                actionLabel: `Created customer ${newCustomer.companyName}`,
+                entityType: transactionHistory_1.EntityType.INVOICE_CUSTOMER,
+                entityId: newCustomer.id,
+                entityLabel: newCustomer.companyName,
+                afterData: {
+                    companyName: newCustomer.companyName,
+                    email: newCustomer.email,
+                    isActive: newCustomer.isActive,
+                },
+            });
         }
         catch (error) {
             console.error("Create customer error:", error);
@@ -145,6 +163,22 @@ class CustomerController {
                 data: updatedCustomer,
                 message: "Customer updated successfully",
             });
+            // ─── Activity log ───────────────────────────────────────────────
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.FINANCE,
+                module: transactionHistory_1.Module.INVOICES,
+                page: transactionHistory_1.Page.INVOICE_CUSTOMER_LIST,
+                action: transactionHistory_1.Action.UPDATE,
+                actionLabel: `Updated customer ${updatedCustomer.companyName}`,
+                entityType: transactionHistory_1.EntityType.INVOICE_CUSTOMER,
+                entityId: id,
+                entityLabel: updatedCustomer.companyName,
+                afterData: {
+                    companyName: updatedCustomer.companyName,
+                    isActive: updatedCustomer.isActive,
+                },
+            });
         }
         catch (error) {
             console.error("Update customer error:", error);
@@ -176,7 +210,21 @@ class CustomerController {
     static async deleteCustomer(req, res) {
         try {
             const { id } = req.params;
+            const customer = await customer_model_1.CustomerModel.getCustomerById(req.tenantId, id);
+            const customerName = customer ? customer.companyName : id;
             await customer_model_1.CustomerModel.deleteCustomer(req.tenantId, id);
+            // ─── Activity log ───────────────────────────────────────────────
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.FINANCE,
+                module: transactionHistory_1.Module.INVOICES,
+                page: transactionHistory_1.Page.INVOICE_CUSTOMER_LIST,
+                action: transactionHistory_1.Action.DELETE,
+                actionLabel: `Deleted customer ${customerName}`,
+                entityType: transactionHistory_1.EntityType.INVOICE_CUSTOMER,
+                entityId: id,
+                entityLabel: customerName,
+            });
             res.status(200).json({
                 success: true,
                 message: "Customer deleted successfully",

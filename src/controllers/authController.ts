@@ -12,6 +12,7 @@ import {
   CreateUserData,
 } from "@/types";
 import { RBACService } from "@/modules/rbac/rbac.service";
+import { recordTransaction, Section, Module, Page, Action, EntityType } from "../utils/transactionHistory";
 
 export class AuthController {
   /**
@@ -157,6 +158,32 @@ export class AuthController {
         },
         message: "Login successful",
       };
+
+      // Populate req.user temporarily for transaction history logging
+      req.user = {
+        id: user.id,
+        email: user.workEmail,
+        name: user.name,
+        tenantId: user.tenantId,
+        role: user.role as any,
+        position: user.position?.title || null,
+      };
+
+      recordTransaction({
+        req,
+        section: Section.ADMIN,
+        module: Module.AUTH,
+        page: Page.LOGIN,
+        action: Action.LOGIN,
+        actionLabel: `User ${user.name || user.workEmail} logged in`,
+        entityType: EntityType.SESSION,
+        entityId: user.id,
+        entityLabel: user.workEmail,
+        metadata: {
+          ip: req.ip ?? req.socket?.remoteAddress ?? null,
+          userAgent: req.headers["user-agent"] ?? null,
+        },
+      });
 
       res.status(200).json(loginResponse);
     } catch (error) {
@@ -305,6 +332,21 @@ export class AuthController {
           console.error("Error revoking refresh token:", error);
           // Continue with logout even if token deletion fails
         }
+      }
+
+      // Log logout transaction
+      if (req.user) {
+        recordTransaction({
+          req,
+          section: Section.ADMIN,
+          module: Module.AUTH,
+          page: Page.LOGIN,
+          action: Action.LOGOUT,
+          actionLabel: `User ${(req.user as any).name || (req.user as any).email} logged out`,
+          entityType: EntityType.SESSION,
+          entityId: req.user.id,
+          entityLabel: (req.user as any).email,
+        });
       }
 
       // Clear refresh token cookie

@@ -3,6 +3,7 @@ import { prisma } from "@/config/database";
 import { AuthRequest, ApiResponse } from "@/types";
 import { RBACService } from "@/modules/rbac/rbac.service";
 import { Permissions } from "@/types/permissions";
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from "../utils/transactionHistory";
 
 export class TimeTrackingController {
 
@@ -116,6 +117,32 @@ export class TimeTrackingController {
         }
       });
 
+      // ─── Activity log ───────────────────────────────────────────────
+      if (newEntry) {
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.TIME_TRACKING,
+          page: Page.TIME_TRACKING_MY,
+          action: Action.CREATE,
+          actionLabel: `Created manual time entry of ${Math.round((newEntry.duration || 0) / 60)} minutes`,
+          entityType: EntityType.TIME_ENTRY,
+          entityId: newEntry.id,
+          entityLabel: newEntry.description || "Manual Time Entry",
+          afterData: {
+            projectId: newEntry.projectId,
+            ticketId: newEntry.ticketId,
+            description: newEntry.description,
+            billable: newEntry.billable,
+            billingRate: newEntry.billingRate,
+            startTime: newEntry.startTime,
+            endTime: newEntry.endTime,
+            duration: newEntry.duration,
+            status: newEntry.status,
+          },
+        });
+      }
+
       res.status(201).json({ success: true, data: newEntry } as ApiResponse);
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message } as ApiResponse);
@@ -190,6 +217,30 @@ export class TimeTrackingController {
         }
       });
 
+      // ─── Activity log ───────────────────────────────────────────────
+      if (newEntry) {
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.TIME_TRACKING,
+          page: Page.TIME_TRACKING_MY,
+          action: Action.START,
+          actionLabel: `Started time tracking timer`,
+          entityType: EntityType.TIME_ENTRY,
+          entityId: newEntry.id,
+          entityLabel: newEntry.description || "Timer",
+          afterData: {
+            projectId: newEntry.projectId,
+            ticketId: newEntry.ticketId,
+            description: newEntry.description,
+            billable: newEntry.billable,
+            billingRate: newEntry.billingRate,
+            startTime: newEntry.startTime,
+            status: newEntry.status,
+          },
+        });
+      }
+
       res.status(201).json({ success: true, data: newEntry } as ApiResponse);
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message } as ApiResponse);
@@ -240,6 +291,30 @@ export class TimeTrackingController {
         }
       });
 
+      // ─── Activity log ───────────────────────────────────────────────
+      if (updatedEntry) {
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.TIME_TRACKING,
+          page: Page.TIME_TRACKING_MY,
+          action: Action.UPDATE,
+          actionLabel: `Paused time tracking timer`,
+          entityType: EntityType.TIME_ENTRY,
+          entityId: id,
+          entityLabel: updatedEntry.description || "Timer",
+          beforeData: {
+            status: entry.status,
+            duration: entry.duration,
+          },
+          afterData: {
+            status: "PAUSED",
+            duration: updatedEntry.duration,
+          },
+          changedFields: ["status", "duration"],
+        });
+      }
+
       res.status(200).json({ success: true, data: updatedEntry } as ApiResponse);
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message } as ApiResponse);
@@ -279,6 +354,28 @@ export class TimeTrackingController {
           logs: { orderBy: { createdAt: 'desc' } }
         }
       });
+
+      // ─── Activity log ───────────────────────────────────────────────
+      if (updatedEntry) {
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.TIME_TRACKING,
+          page: Page.TIME_TRACKING_MY,
+          action: Action.UPDATE,
+          actionLabel: `Resumed time tracking timer`,
+          entityType: EntityType.TIME_ENTRY,
+          entityId: id,
+          entityLabel: updatedEntry.description || "Timer",
+          beforeData: {
+            status: entry.status,
+          },
+          afterData: {
+            status: "RUNNING",
+          },
+          changedFields: ["status"],
+        });
+      }
 
       res.status(200).json({ success: true, data: updatedEntry } as ApiResponse);
     } catch (error: any) {
@@ -336,6 +433,32 @@ export class TimeTrackingController {
           logs: { orderBy: { createdAt: 'desc' } }
         }
       });
+
+      // ─── Activity log ───────────────────────────────────────────────
+      if (updatedEntry) {
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.TIME_TRACKING,
+          page: Page.TIME_TRACKING_MY,
+          action: Action.COMPLETE,
+          actionLabel: `Stopped time tracking timer (Logged ${Math.round((updatedEntry.duration || 0) / 60)} minutes)`,
+          entityType: EntityType.TIME_ENTRY,
+          entityId: id,
+          entityLabel: updatedEntry.description || "Timer",
+          beforeData: {
+            status: entry.status,
+            endTime: entry.endTime,
+            duration: entry.duration,
+          },
+          afterData: {
+            status: "STOPPED",
+            endTime: updatedEntry.endTime,
+            duration: updatedEntry.duration,
+          },
+          changedFields: ["status", "endTime", "duration"],
+        });
+      }
 
       res.status(200).json({ success: true, data: updatedEntry } as ApiResponse);
     } catch (error: any) {
@@ -473,6 +596,48 @@ export class TimeTrackingController {
         }
       });
 
+      // ─── Activity log ───────────────────────────────────────────────
+      if (entry && updatedEntry) {
+        const beforeSnap = {
+          projectId: entry.projectId,
+          ticketId: entry.ticketId,
+          description: entry.description,
+          billable: entry.billable,
+          billingRate: entry.billingRate,
+          startTime: entry.startTime,
+          endTime: entry.endTime,
+          duration: entry.duration,
+          status: entry.status,
+        };
+        const afterSnap = {
+          projectId: updatedEntry.projectId,
+          ticketId: updatedEntry.ticketId,
+          description: updatedEntry.description,
+          billable: updatedEntry.billable,
+          billingRate: updatedEntry.billingRate,
+          startTime: updatedEntry.startTime,
+          endTime: updatedEntry.endTime,
+          duration: updatedEntry.duration,
+          status: updatedEntry.status,
+        };
+        const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.TIME_TRACKING,
+          page: Page.TIME_TRACKING_MY,
+          action: Action.UPDATE,
+          actionLabel: `Updated time tracking entry`,
+          entityType: EntityType.TIME_ENTRY,
+          entityId: id,
+          entityLabel: updatedEntry.description || "Time Entry",
+          beforeData: before,
+          afterData: after,
+          changedFields,
+        });
+      }
+
       res.status(200).json({ success: true, data: updatedEntry } as ApiResponse);
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message } as ApiResponse);
@@ -488,8 +653,30 @@ export class TimeTrackingController {
 
       const { id } = req.params;
 
+      const entry = await prisma.timeTrackingEntry.findUnique({
+        where: { id, tenantId: req.tenantId }
+      });
+
+      if (!entry) {
+        res.status(404).json({ success: false, error: "Entry not found" } as ApiResponse);
+        return;
+      }
+
       await prisma.timeTrackingEntry.delete({
         where: { id, tenantId: req.tenantId }
+      });
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.TIME_TRACKING,
+        page: Page.TIME_TRACKING_MY,
+        action: Action.DELETE,
+        actionLabel: `Deleted time tracking entry`,
+        entityType: EntityType.TIME_ENTRY,
+        entityId: id,
+        entityLabel: entry.description || "Time Entry",
       });
 
       res.status(200).json({ success: true, message: "Entry deleted successfully" } as ApiResponse);
