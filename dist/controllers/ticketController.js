@@ -1013,7 +1013,6 @@ class TicketController {
                 where: {
                     id,
                     tenantId: req.tenantId,
-                    isDeleted: false,
                 },
                 select: {
                     // All ticket fields
@@ -1948,7 +1947,6 @@ class TicketController {
                 where: {
                     id,
                     tenantId: req.tenantId,
-                    isDeleted: false,
                 },
             });
             if (!ticket) {
@@ -2116,7 +2114,6 @@ class TicketController {
                 where: {
                     id,
                     tenantId: req.tenantId,
-                    isDeleted: false,
                 },
             });
             if (!ticket) {
@@ -2432,7 +2429,6 @@ class TicketController {
                 where: {
                     id,
                     tenantId: req.tenantId,
-                    isDeleted: false,
                 },
             });
             if (!ticket) {
@@ -2738,7 +2734,6 @@ class TicketController {
                 where: {
                     id,
                     tenantId: req.tenantId,
-                    isDeleted: false,
                 },
             });
             if (!ticket) {
@@ -2992,7 +2987,6 @@ class TicketController {
                 where: {
                     id,
                     tenantId: req.tenantId,
-                    isDeleted: false,
                 },
             });
             if (!ticket) {
@@ -3365,7 +3359,6 @@ class TicketController {
                 where: {
                     id,
                     tenantId: req.tenantId,
-                    isDeleted: false,
                 },
             });
             if (!parentTicket) {

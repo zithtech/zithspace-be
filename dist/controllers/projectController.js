@@ -1615,6 +1615,7 @@ class ProjectController {
                     projectId: id,
                     tenantId: req.tenantId,
                     assigneeId: req.user.id,
+                    isDeleted: false,
                 },
                 select: {
                     id: true,
@@ -1684,6 +1685,7 @@ class ProjectController {
                 where: {
                     projectId: id,
                     tenantId: req.tenantId,
+                    isDeleted: false,
                 },
                 select: {
                     id: true,
