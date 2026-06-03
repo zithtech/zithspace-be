@@ -14,6 +14,8 @@ const htmlSanitizer_1 = require("@/utils/htmlSanitizer");
 const socketService_1 = require("@/services/socketService");
 const cacheService_1 = __importDefault(require("@/utils/cacheService"));
 const aiTicketService_1 = require("@/services/aiTicketService");
+const transactionHistory_1 = require("@/utils/transactionHistory");
+const crypto_1 = require("crypto");
 class TicketController {
     /**
      * Upload image to R2 for ticket description
@@ -483,6 +485,30 @@ class TicketController {
                         status,
                     },
                 },
+            });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.TICKETS,
+                page: transactionHistory_1.Page.TICKET_LIST,
+                action: transactionHistory_1.Action.CREATE,
+                actionLabel: "Ticket created",
+                entityType: transactionHistory_1.EntityType.TICKET,
+                entityId: ticket.id,
+                entityLabel: `${ticketNumber} — ${title}`,
+                parentEntityType: projectId ? "project" : null,
+                parentEntityId: projectId ?? null,
+                afterData: {
+                    ticketNumber,
+                    title,
+                    status,
+                    priority,
+                    type: ticketType,
+                    projectId,
+                    assigneeId,
+                    dueDate,
+                },
+                statusCode: 201,
             });
             if (parentId) {
                 await cacheService_1.default.invalidateTicket(parentId, req.tenantId);
@@ -1364,6 +1390,45 @@ class TicketController {
             catch (logError) {
                 console.error("Failed to log ticket update activity:", logError);
             }
+            {
+                const beforeSnap = {
+                    status: existingTicket.status,
+                    priority: existingTicket.priority,
+                    assigneeId: existingTicket.assigneeId,
+                    reportToId: existingTicket.reportToId,
+                    title: existingTicket.title,
+                    dueDate: existingTicket.dueDate,
+                    storyPoint: existingTicket.storyPoint,
+                    isArchived: existingTicket.isArchived,
+                    sprintPlanId: existingTicket.sprintPlanId,
+                    releasePlanId: existingTicket.releasePlanId,
+                };
+                const afterSnap = {};
+                for (const k of Object.keys(beforeSnap)) {
+                    if (k in mappedUpdates)
+                        afterSnap[k] = mappedUpdates[k];
+                }
+                const { changedFields, before, after } = (0, transactionHistory_1.diffShallow)(beforeSnap, afterSnap);
+                if (changedFields.length > 0) {
+                    (0, transactionHistory_1.recordTransaction)({
+                        req,
+                        section: transactionHistory_1.Section.WORK,
+                        module: transactionHistory_1.Module.TICKETS,
+                        page: transactionHistory_1.Page.TICKET_DETAIL,
+                        action: transactionHistory_1.Action.UPDATE,
+                        actionLabel: `Ticket updated (${changedFields.join(", ")})`,
+                        entityType: transactionHistory_1.EntityType.TICKET,
+                        entityId: id,
+                        entityLabel: `${existingTicket.ticketNumber} — ${existingTicket.title}`,
+                        parentEntityType: existingTicket.projectId ? "project" : null,
+                        parentEntityId: existingTicket.projectId ?? null,
+                        beforeData: before,
+                        afterData: after,
+                        changedFields,
+                        statusCode: 200,
+                    });
+                }
+            }
             // Side effects (Cache & Socket)
             try {
                 socketService_1.socketService.emitToTenant(req.tenantId, "ticket:updated", ticket);
@@ -1460,6 +1525,31 @@ class TicketController {
             catch (logError) {
                 console.error("Failed to log ticket deletion activity:", logError);
             }
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.TICKETS,
+                page: transactionHistory_1.Page.TICKET_DETAIL,
+                action: transactionHistory_1.Action.DELETE,
+                actionLabel: "Ticket moved to trash",
+                entityType: transactionHistory_1.EntityType.TICKET,
+                entityId: id,
+                entityLabel: `${ticket.ticketNumber} — ${ticket.title}`,
+                parentEntityType: ticket.projectId ? "project" : null,
+                parentEntityId: ticket.projectId ?? null,
+                beforeData: {
+                    status: ticket.status,
+                    isDeleted: ticket.isDeleted,
+                },
+                afterData: {
+                    status: ticket.status,
+                    isDeleted: true,
+                    deletedAt: new Date().toISOString(),
+                },
+                changedFields: ["isDeleted", "deletedAt"],
+                statusCode: 200,
+                metadata: { softDelete: true },
+            });
             socketService_1.socketService.emitToTenant(req.tenantId, "ticket:deleted", { id, isSoftDelete: true });
             const invalidationPromises = [
                 cacheService_1.default.invalidateTicket(id, req.tenantId)
@@ -1584,6 +1674,20 @@ class TicketController {
                     updatedAt: new Date(),
                 },
             });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.TICKETS,
+                page: transactionHistory_1.Page.TICKET_LIST,
+                action: transactionHistory_1.Action.BULK_UPDATE_STATUS,
+                actionLabel: `Bulk status -> ${status} (${result.count})`,
+                entityType: transactionHistory_1.EntityType.TICKET,
+                afterData: { status },
+                changedFields: ["status"],
+                correlationId: (0, crypto_1.randomUUID)(),
+                metadata: { targetIds: ticketIds, requested: ticketIds.length, updated: result.count },
+                statusCode: 200,
+            });
             res.status(200).json({
                 success: true,
                 data: { updatedCount: result.count },
@@ -1629,6 +1733,20 @@ class TicketController {
                     archivedById: req.user.id,
                     updatedAt: new Date(),
                 },
+            });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.TICKETS,
+                page: transactionHistory_1.Page.TICKET_LIST,
+                action: transactionHistory_1.Action.BULK_ARCHIVE,
+                actionLabel: `Bulk archive (${result.count})`,
+                entityType: transactionHistory_1.EntityType.TICKET,
+                afterData: { isArchived: true },
+                changedFields: ["isArchived"],
+                correlationId: (0, crypto_1.randomUUID)(),
+                metadata: { targetIds: ticketIds, requested: ticketIds.length, updated: result.count },
+                statusCode: 200,
             });
             res.status(200).json({
                 success: true,
@@ -1676,6 +1794,20 @@ class TicketController {
                     updatedAt: new Date(),
                 },
             });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.ARCHIVED,
+                page: transactionHistory_1.Page.ARCHIVED_VIEW,
+                action: transactionHistory_1.Action.BULK_UNARCHIVE,
+                actionLabel: `Tickets restored from archive (${result.count})`,
+                entityType: transactionHistory_1.EntityType.TICKET,
+                afterData: { isArchived: false },
+                changedFields: ["isArchived"],
+                correlationId: (0, crypto_1.randomUUID)(),
+                metadata: { targetIds: ticketIds, requested: ticketIds.length, updated: result.count },
+                statusCode: 200,
+            });
             res.status(200).json({
                 success: true,
                 data: { updatedCount: result.count },
@@ -1721,6 +1853,20 @@ class TicketController {
                     deletedById: req.user.id,
                     updatedAt: new Date(),
                 },
+            });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.TICKETS,
+                page: transactionHistory_1.Page.TICKET_LIST,
+                action: transactionHistory_1.Action.BULK_DELETE,
+                actionLabel: `Bulk move to trash (${result.count})`,
+                entityType: transactionHistory_1.EntityType.TICKET,
+                afterData: { isDeleted: true },
+                changedFields: ["isDeleted", "deletedAt"],
+                correlationId: (0, crypto_1.randomUUID)(),
+                metadata: { targetIds: ticketIds, requested: ticketIds.length, updated: result.count, softDelete: true },
+                statusCode: 200,
             });
             res.status(200).json({
                 success: true,

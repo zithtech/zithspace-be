@@ -27,6 +27,9 @@ import {
   createPaymentSetting,
   updatePaymentSetting
 } from '@/models/paymentSettings.model';
+import { validatePaymentQR } from '@/utils/qrValidator';
+import { validateSignatureImage } from '@/utils/signatureValidator';
+import { recordTransaction, Section, Module, Page, Action, EntityType } from '@/utils/transactionHistory';
 
 const parseInvoiceFormat = (formatString: string) => {
   // Finds the sequence of # inside curly braces (e.g., {####})
@@ -158,6 +161,15 @@ export class InvoiceSettingsController {
     const parsedInvoiceData = parseInvoiceFormat(invoiceFormatString);
     // --- DYNAMIC DESTRUCTURING END ---
 
+    // Validate signature image if provided
+    if (general && general.signature) {
+      const signatureValidation = await validateSignatureImage(general.signature);
+      if (!signatureValidation.isValid) {
+        res.status(400).json({ success: false, error: signatureValidation.error });
+        return;
+      }
+    }
+
     // Create general setting
     const generalSetting = await createGeneralSetting({
       tenantId: req.tenantId,
@@ -184,6 +196,17 @@ export class InvoiceSettingsController {
       createdBy: req.user.id,
     });
 
+    // Validate payment QR code if provided
+    let qrDetails: any = null;
+    if (payment && payment.qrCode) {
+      const qrValidation = await validatePaymentQR(payment.qrCode);
+      if (!qrValidation.isValid) {
+        res.status(400).json({ success: false, error: qrValidation.error });
+        return;
+      }
+      qrDetails = qrValidation.details;
+    }
+
     // Create payment setting
     const paymentSetting = await createPaymentSetting({
       tenantId: req.tenantId,
@@ -193,6 +216,9 @@ export class InvoiceSettingsController {
       branchName: payment.branchName || '',
       qrCode: payment.qrCode,
       createdBy: req.user.id,
+      upiId: qrDetails ? qrDetails.upiId : null,
+      merchantName: qrDetails ? qrDetails.merchantName : null,
+      bankHandle: qrDetails ? qrDetails.bankHandle : null,
     });
 
     // Create settings profile
@@ -214,6 +240,19 @@ export class InvoiceSettingsController {
       data: completeProfile,
       message: 'Profile created successfully'
     } as ApiResponse);
+
+    // ─── Activity log ───────────────────────────────────────────────
+    recordTransaction({
+      req,
+      section: Section.FINANCE,
+      module: Module.INVOICES,
+      page: Page.INVOICE_SETTINGS_VIEW,
+      action: Action.CREATE,
+      actionLabel: `Created settings profile ${name}`,
+      entityType: EntityType.INVOICE_SETTINGS_PROFILE,
+      entityId: newProfile.id,
+      entityLabel: name,
+    });
 
   } catch (error: any) {
     console.error('Create profile error:', error);
@@ -243,6 +282,14 @@ export class InvoiceSettingsController {
 
     // 2. Update related settings if provided
     if (general) {
+      if (general.signature) {
+        const signatureValidation = await validateSignatureImage(general.signature);
+        if (!signatureValidation.isValid) {
+          res.status(400).json({ success: false, error: signatureValidation.error });
+          return;
+        }
+      }
+
       await updateGeneralSetting(existing.generalId, req.tenantId, {
         ...general,
         gstin: general.gstin === "" ? null : general.gstin,
@@ -259,8 +306,27 @@ export class InvoiceSettingsController {
     }
 
     if (payment) {
+      let qrDetails: any = undefined;
+      // Note: check if qrCode is explicitly being cleared or updated
+      if (payment.qrCode !== undefined) {
+        if (payment.qrCode) {
+          const qrValidation = await validatePaymentQR(payment.qrCode);
+          if (!qrValidation.isValid) {
+            res.status(400).json({ success: false, error: qrValidation.error });
+            return;
+          }
+          qrDetails = qrValidation.details;
+        } else {
+          // If qrCode is null or empty, it means we are clearing the QR code
+          qrDetails = null;
+        }
+      }
+
       await updatePaymentSetting(existing.paymentId, req.tenantId, {
         ...payment,
+        upiId: qrDetails !== undefined ? (qrDetails ? qrDetails.upiId : null) : undefined,
+        merchantName: qrDetails !== undefined ? (qrDetails ? qrDetails.merchantName : null) : undefined,
+        bankHandle: qrDetails !== undefined ? (qrDetails ? qrDetails.bankHandle : null) : undefined,
         updatedBy: req.user.id,
       });
     }
@@ -275,6 +341,20 @@ export class InvoiceSettingsController {
     const completeProfile = await getSettingsProfileById(id, req.tenantId);
 
     res.status(200).json({ success: true, data: completeProfile });
+
+    // ─── Activity log ───────────────────────────────────────────────
+    const profileName = name || existing.name;
+    recordTransaction({
+      req,
+      section: Section.FINANCE,
+      module: Module.INVOICES,
+      page: Page.INVOICE_SETTINGS_VIEW,
+      action: Action.UPDATE,
+      actionLabel: `Updated settings profile ${profileName}`,
+      entityType: EntityType.INVOICE_SETTINGS_PROFILE,
+      entityId: id,
+      entityLabel: profileName,
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, error: 'Internal Server Error' });
@@ -304,6 +384,19 @@ static async hardDeleteProfile(req: AuthRequest, res: Response): Promise<void> {
     }
 
     res.status(200).json({ success: true, message: 'Profile deleted permanently' });
+
+    // ─── Activity log ───────────────────────────────────────────────
+    recordTransaction({
+      req,
+      section: Section.FINANCE,
+      module: Module.INVOICES,
+      page: Page.INVOICE_SETTINGS_VIEW,
+      action: Action.PERMANENT_DELETE,
+      actionLabel: `Permanently deleted settings profile ${profile.name}`,
+      entityType: EntityType.INVOICE_SETTINGS_PROFILE,
+      entityId: id,
+      entityLabel: profile.name,
+    });
 
   } catch (error: any) {
     console.error('Hard delete error:', error);
@@ -338,6 +431,20 @@ static async hardDeleteProfile(req: AuthRequest, res: Response): Promise<void> {
       success: true, 
       data: updatedProfile, 
       message: `Profile ${isActive ? 'activated' : 'deactivated'} successfully` 
+    });
+
+    // ─── Activity log ───────────────────────────────────────────────
+    recordTransaction({
+      req,
+      section: Section.FINANCE,
+      module: Module.INVOICES,
+      page: Page.INVOICE_SETTINGS_VIEW,
+      action: Action.STATUS_CHANGE,
+      actionLabel: `Settings profile "${updatedProfile.name}" ${isActive ? 'activated' : 'deactivated'}`,
+      entityType: EntityType.INVOICE_SETTINGS_PROFILE,
+      entityId: id,
+      entityLabel: updatedProfile.name,
+      afterData: { isActive },
     });
 
   } catch (error: any) {

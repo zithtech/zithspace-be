@@ -9,6 +9,7 @@ import { AIService } from '@/services/aiService';
 import { LeadModel } from '@/models/Lead.model';
 import { ProposalModel } from '@/models/Proposal.model';
 import { LeadActivityLogModel } from '@/models/LeadActivityLog.model';
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from '../utils/transactionHistory';
 
 export class ProposalController {
 
@@ -113,6 +114,24 @@ export class ProposalController {
         }).catch(() => {});
       }
 
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.PROPOSALS,
+        page: Page.PROPOSAL_BUILDER,
+        action: Action.CREATE,
+        actionLabel: `Created proposal "${proposal.title}"`,
+        entityType: EntityType.PROPOSAL,
+        entityId: proposal.id,
+        entityLabel: proposal.title,
+        afterData: {
+          title: proposal.title,
+          client_name: proposal.client_name,
+          status: proposal.status,
+        },
+      });
+
       res.status(201).json({
         success: true,
         data: proposal,
@@ -132,6 +151,8 @@ export class ProposalController {
       const { title, client_name, blocks, status, lead_id } = req.body;
       const tenantId = req.tenantId;
 
+      const existingProposal = await ProposalModel.findById(id, tenantId);
+
       const proposal = await ProposalModel.update(id, tenantId, {
         title,
         client_name,
@@ -143,6 +164,36 @@ export class ProposalController {
       if (!proposal) {
         res.status(404).json({ success: false, error: 'Proposal not found or unauthorized' });
         return;
+      }
+
+      // ─── Activity log ───────────────────────────────────────────────
+      if (existingProposal) {
+        const beforeSnap = {
+          title: existingProposal.title,
+          client_name: existingProposal.client_name,
+          status: existingProposal.status,
+        };
+        const afterSnap = {
+          title: proposal.title,
+          client_name: proposal.client_name,
+          status: proposal.status,
+        };
+        const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.PROPOSALS,
+          page: Page.PROPOSAL_BUILDER,
+          action: Action.UPDATE,
+          actionLabel: `Updated proposal "${proposal.title}"`,
+          entityType: EntityType.PROPOSAL,
+          entityId: id,
+          entityLabel: proposal.title,
+          beforeData: before,
+          afterData: after,
+          changedFields,
+        });
       }
 
       res.status(200).json({
@@ -163,6 +214,9 @@ export class ProposalController {
       const { id } = req.params;
       const tenantId = req.tenantId;
 
+      const existingProposal = await ProposalModel.findById(id, tenantId);
+      const proposalTitle = existingProposal ? existingProposal.title : id;
+
       let success = await ProposalModel.delete(id, tenantId);
 
       // DEV FALLBACK
@@ -175,6 +229,19 @@ export class ProposalController {
         res.status(404).json({ success: false, error: 'Proposal not found' });
         return;
       }
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.PROPOSALS,
+        page: Page.PROPOSAL_LIST,
+        action: Action.DELETE,
+        actionLabel: `Deleted proposal "${proposalTitle}"`,
+        entityType: EntityType.PROPOSAL,
+        entityId: id,
+        entityLabel: proposalTitle,
+      });
 
       res.status(200).json({
         success: true,
@@ -256,6 +323,24 @@ export class ProposalController {
           metadata: { proposalId: proposal.id, title: proposal.title, ai_generated: true }
         }).catch(() => {});
       }
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.PROPOSALS,
+        page: Page.PROPOSAL_BUILDER,
+        action: Action.CREATE,
+        actionLabel: `Generated proposal "${proposal.title}" from lead via AI`,
+        entityType: EntityType.PROPOSAL,
+        entityId: proposal.id,
+        entityLabel: proposal.title,
+        afterData: {
+          title: proposal.title,
+          client_name: proposal.client_name,
+          status: proposal.status,
+        },
+      });
 
       res.status(201).json({
         success: true,

@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { AuthRequest } from '@/types';
 import { LeadStatusModel } from '@/models/LeadStatus.model';
 import { LeadActionModel } from '@/models/LeadAction.model';
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from '../utils/transactionHistory';
 
 export class LeadSettingsController {
   
@@ -23,6 +24,19 @@ export class LeadSettingsController {
       });
 
       console.log('Status created successfully:', status.id);
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.LEADS,
+        page: Page.LEAD_SETTINGS,
+        action: Action.CREATE,
+        actionLabel: `Created lead status "${status.name}"`,
+        entityType: EntityType.LEAD_STATUS,
+        entityId: status.id,
+        entityLabel: status.name,
+      });
 
       return res.status(201).json({ success: true, data: status });
     } catch (error: any) {
@@ -64,6 +78,7 @@ export class LeadSettingsController {
         return res.status(400).json({ success: false, error: 'Tenant context required' });
       }
 
+      const existingStatus = await LeadStatusModel.findById(id, tenantId);
       const status = await LeadStatusModel.update(id, tenantId, req.body);
       if (!status) {
         console.warn(`Status not found for update: ${id}`);
@@ -71,6 +86,28 @@ export class LeadSettingsController {
       }
 
       console.log('Status updated successfully:', id);
+
+      // ─── Activity log ───────────────────────────────────────────────
+      if (existingStatus) {
+        const beforeSnap = { name: existingStatus.name, color: existingStatus.color, isActive: existingStatus.isActive };
+        const afterSnap = { name: status.name, color: status.color, isActive: status.isActive };
+        const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.LEADS,
+          page: Page.LEAD_SETTINGS,
+          action: Action.UPDATE,
+          actionLabel: `Updated lead status "${status.name}"`,
+          entityType: EntityType.LEAD_STATUS,
+          entityId: id,
+          entityLabel: status.name,
+          beforeData: before,
+          afterData: after,
+          changedFields,
+        });
+      }
 
       return res.status(200).json({ success: true, data: status });
     } catch (error: any) {
@@ -93,6 +130,9 @@ export class LeadSettingsController {
         return res.status(400).json({ success: false, error: 'Tenant context required' });
       }
 
+      const existingStatus = await LeadStatusModel.findById(id, tenantId);
+      const statusName = existingStatus ? existingStatus.name : id;
+
       const success = await LeadStatusModel.delete(id, tenantId);
       if (!success) {
         console.warn(`Status not found for delete: ${id}`);
@@ -100,6 +140,20 @@ export class LeadSettingsController {
       }
 
       console.log('Status deleted successfully:', id);
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.LEADS,
+        page: Page.LEAD_SETTINGS,
+        action: Action.DELETE,
+        actionLabel: `Deleted lead status "${statusName}"`,
+        entityType: EntityType.LEAD_STATUS,
+        entityId: id,
+        entityLabel: statusName,
+      });
+
       return res.status(200).json({ success: true, message: 'Status deleted successfully' });
     } catch (error: any) {
       console.error('Delete Status Error:', error);
@@ -125,6 +179,19 @@ export class LeadSettingsController {
       });
 
       console.log('Action created successfully:', action.id);
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.LEADS,
+        page: Page.LEAD_SETTINGS,
+        action: Action.CREATE,
+        actionLabel: `Created lead action option "${action.name}"`,
+        entityType: EntityType.LEAD_ACTION_OPTION,
+        entityId: action.id,
+        entityLabel: action.name,
+      });
 
       return res.status(201).json({ success: true, data: action });
     } catch (error: any) {
@@ -166,6 +233,7 @@ export class LeadSettingsController {
         return res.status(400).json({ success: false, error: 'Tenant context required' });
       }
 
+      const existingAction = await LeadActionModel.findById(id, tenantId);
       const action = await LeadActionModel.update(id, tenantId, req.body);
       if (!action) {
         console.warn(`Action not found for update: ${id}`);
@@ -173,6 +241,28 @@ export class LeadSettingsController {
       }
 
       console.log('Action updated successfully:', id);
+
+      // ─── Activity log ───────────────────────────────────────────────
+      if (existingAction) {
+        const beforeSnap = { name: existingAction.name, color: existingAction.color, isActive: existingAction.isActive };
+        const afterSnap = { name: action.name, color: action.color, isActive: action.isActive };
+        const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.LEADS,
+          page: Page.LEAD_SETTINGS,
+          action: Action.UPDATE,
+          actionLabel: `Updated lead action option "${action.name}"`,
+          entityType: EntityType.LEAD_ACTION_OPTION,
+          entityId: id,
+          entityLabel: action.name,
+          beforeData: before,
+          afterData: after,
+          changedFields,
+        });
+      }
 
       return res.status(200).json({ success: true, data: action });
     } catch (error: any) {
@@ -195,6 +285,9 @@ export class LeadSettingsController {
         return res.status(400).json({ success: false, error: 'Tenant context required' });
       }
 
+      const existingAction = await LeadActionModel.findById(id, tenantId);
+      const actionName = existingAction ? existingAction.name : id;
+
       const success = await LeadActionModel.delete(id, tenantId);
       if (!success) {
         console.warn(`Action not found for delete: ${id}`);
@@ -202,6 +295,20 @@ export class LeadSettingsController {
       }
 
       console.log('Action deleted successfully:', id);
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.LEADS,
+        page: Page.LEAD_SETTINGS,
+        action: Action.DELETE,
+        actionLabel: `Deleted lead action option "${actionName}"`,
+        entityType: EntityType.LEAD_ACTION_OPTION,
+        entityId: id,
+        entityLabel: actionName,
+      });
+
       return res.status(200).json({ success: true, message: 'Action deleted successfully' });
     } catch (error: any) {
       console.error('Delete Action Error:', error);

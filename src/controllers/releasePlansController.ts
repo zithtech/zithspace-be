@@ -7,6 +7,16 @@ import {
   ValidationError,
 } from "@/types";
 import { socketService } from "@/services/socketService";
+import {
+  recordTransaction,
+  diffShallow,
+  Section,
+  Module,
+  Page,
+  Action,
+  EntityType,
+} from "@/utils/transactionHistory";
+import { randomUUID } from "crypto";
 
 export class ReleasePlansController {
   /**
@@ -308,6 +318,31 @@ export class ReleasePlansController {
         });
       }
 
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.SPRINTS,
+        page: Page.SPRINT_LIST,
+        action: Action.CREATE,
+        actionLabel: `${type === "sprint_plan" ? "Sprint" : type === "demo_plan" ? "Demo plan" : "Release plan"} created`,
+        entityType: EntityType.RELEASE_PLAN,
+        entityId: newReleasePlan.id,
+        entityLabel: newReleasePlan.version,
+        parentEntityType: EntityType.PROJECT,
+        parentEntityId: projectId,
+        afterData: {
+          version,
+          type,
+          status,
+          startDate,
+          endDate,
+          releaseDate,
+          goal,
+          ticketCount: Array.isArray(tickets) ? tickets.length : 0,
+        },
+        statusCode: 201,
+      });
+
       res.status(201).json({
         success: true,
         data: newReleasePlan,
@@ -414,6 +449,50 @@ export class ReleasePlansController {
         where: { id },
       });
 
+      {
+        const trackedKeys = [
+          "version",
+          "description",
+          "goal",
+          "status",
+          "startDate",
+          "endDate",
+          "releaseDate",
+        ] as const;
+        const beforeSnap: Record<string, any> = {};
+        const afterSnap: Record<string, any> = {};
+        for (const k of trackedKeys) {
+          if ((updates as any)[k] !== undefined) {
+            beforeSnap[k] = (existingPlan as any)[k];
+            afterSnap[k] = (updatedPlan as any)?.[k];
+          }
+        }
+        const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+        const ticketsReplaced = ticketsToAssign !== undefined && Array.isArray(ticketsToAssign);
+        if (changedFields.length > 0 || ticketsReplaced) {
+          recordTransaction({
+            req,
+            section: Section.WORK,
+            module: Module.SPRINTS,
+            page: Page.SPRINT_DETAIL,
+            action: Action.UPDATE,
+            actionLabel: `Plan updated${changedFields.length ? ` (${changedFields.join(", ")})` : ""}`,
+            entityType: EntityType.RELEASE_PLAN,
+            entityId: id,
+            entityLabel: existingPlan.version,
+            parentEntityType: EntityType.PROJECT,
+            parentEntityId: existingPlan.projectId,
+            beforeData: before,
+            afterData: after,
+            changedFields,
+            statusCode: 200,
+            metadata: ticketsReplaced
+              ? { ticketsReplaced: true, newTicketCount: ticketsToAssign.length }
+              : null,
+          });
+        }
+      }
+
       res.status(200).json({
         success: true,
         data: updatedPlan,
@@ -480,7 +559,7 @@ export class ReleasePlansController {
         resetData.releasePlanId = null;
       }
 
-      await prisma.ticket.updateMany({
+      const unassigned = await prisma.ticket.updateMany({
         where: matchData,
         data: {
           ...resetData,
@@ -497,6 +576,23 @@ export class ReleasePlansController {
 
       await prisma.releasePlan.delete({
         where: { id },
+      });
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.SPRINTS,
+        page: Page.SPRINT_LIST,
+        action: Action.DELETE,
+        actionLabel: "Plan deleted",
+        entityType: EntityType.RELEASE_PLAN,
+        entityId: id,
+        entityLabel: plan.version,
+        parentEntityType: EntityType.PROJECT,
+        parentEntityId: plan.projectId,
+        beforeData: { type: plan.type, status: plan.status },
+        statusCode: 200,
+        metadata: { ticketsUnassigned: unassigned.count, hardDelete: true },
       });
 
       res.status(200).json({
@@ -589,6 +685,24 @@ export class ReleasePlansController {
           startedAt: new Date(),
           updatedAt: new Date(),
         },
+      });
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.SPRINTS,
+        page: Page.SPRINT_DETAIL,
+        action: Action.START,
+        actionLabel: "Sprint started",
+        entityType: EntityType.RELEASE_PLAN,
+        entityId: id,
+        entityLabel: sprint.version,
+        parentEntityType: EntityType.PROJECT,
+        parentEntityId: sprint.projectId,
+        beforeData: { status: sprint.status, startedAt: sprint.startedAt },
+        afterData: { status: "active", startedAt: updatedSprint.startedAt },
+        changedFields: ["status", "startedAt"],
+        statusCode: 200,
       });
 
       res.status(200).json({
@@ -716,6 +830,35 @@ export class ReleasePlansController {
       // Fetch updated sprint
       const updatedSprint = await prisma.releasePlan.findUnique({
         where: { id },
+      });
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.SPRINTS,
+        page: Page.SPRINT_DETAIL,
+        action: Action.COMPLETE,
+        actionLabel: `Sprint completed (${completedTickets.length}/${tickets.length} tickets, ${completedPoints} pts)`,
+        entityType: EntityType.RELEASE_PLAN,
+        entityId: id,
+        entityLabel: sprint.version,
+        parentEntityType: EntityType.PROJECT,
+        parentEntityId: sprint.projectId,
+        beforeData: { status: sprint.status, completedAt: sprint.completedAt },
+        afterData: {
+          status: "completed",
+          completedAt: updatedSprint?.completedAt,
+          completedPoints,
+        },
+        changedFields: ["status", "completedAt", "completedPoints"],
+        statusCode: 200,
+        metadata: {
+          totalTickets: tickets.length,
+          completedTickets: completedTickets.length,
+          archivedTickets: completedTickets.length,
+          returnedToBacklog: incompleteTickets.length,
+          completedPoints,
+        },
       });
 
       res.status(200).json({
@@ -958,12 +1101,34 @@ export class ReleasePlansController {
       else if (plan.type === 'demo_plan') updateData.demoPlanId = id;
       else updateData.releasePlanId = id;
 
-      await prisma.ticket.updateMany({
+      const assignRes = await prisma.ticket.updateMany({
         where: {
           id: { in: ticketIds },
           tenantId: req.tenantId
         },
         data: updateData
+      });
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.SPRINTS,
+        page: Page.SPRINT_DETAIL,
+        action: Action.BULK_ASSIGN,
+        actionLabel: `Tickets assigned to plan (${assignRes.count})`,
+        entityType: EntityType.RELEASE_PLAN,
+        entityId: id,
+        entityLabel: plan.version,
+        parentEntityType: EntityType.PROJECT,
+        parentEntityId: plan.projectId,
+        correlationId: randomUUID(),
+        metadata: {
+          planType: plan.type,
+          targetTicketIds: ticketIds,
+          requested: ticketIds.length,
+          assigned: assignRes.count,
+        },
+        statusCode: 200,
       });
 
       res.status(200).json({ success: true, message: "Tickets assigned successfully" } as ApiResponse);
@@ -1001,12 +1166,34 @@ export class ReleasePlansController {
       else if (plan.type === 'demo_plan') updateData.demoPlanId = null;
       else updateData.releasePlanId = null;
 
-      await prisma.ticket.updateMany({
+      const removeRes = await prisma.ticket.updateMany({
         where: {
           id: { in: ticketIds },
           tenantId: req.tenantId
         },
         data: updateData
+      });
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.SPRINTS,
+        page: Page.SPRINT_DETAIL,
+        action: Action.BULK_UNASSIGN,
+        actionLabel: `Tickets removed from plan (${removeRes.count})`,
+        entityType: EntityType.RELEASE_PLAN,
+        entityId: id,
+        entityLabel: plan.version,
+        parentEntityType: EntityType.PROJECT,
+        parentEntityId: plan.projectId,
+        correlationId: randomUUID(),
+        metadata: {
+          planType: plan.type,
+          targetTicketIds: ticketIds,
+          requested: ticketIds.length,
+          removed: removeRes.count,
+        },
+        statusCode: 200,
       });
 
       res.status(200).json({ success: true, message: "Tickets removed successfully" } as ApiResponse);

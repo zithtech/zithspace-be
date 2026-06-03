@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.TransactionsController = void 0;
 const types_1 = require("@/types");
 const transaction_model_1 = require("../models/transaction.model");
+const transactionHistory_1 = require("../utils/transactionHistory");
 class TransactionsController {
     /**
      * Get all transactions with filtering and pagination (tenant-aware)
@@ -163,6 +164,24 @@ class TransactionsController {
                 member: newTransaction.user,
                 type: (newTransaction.type === 'income' || newTransaction.type === 'bonus' || newTransaction.type === 'credit') ? 'credit' : 'debit'
             };
+            // ─── Activity log ───────────────────────────────────────────────
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.FINANCE,
+                module: transactionHistory_1.Module.ACCOUNTS,
+                page: transactionHistory_1.Page.ACCOUNTS_DASHBOARD,
+                action: transactionHistory_1.Action.CREATE,
+                actionLabel: `Created ${transformedTransaction.type} transaction: ${transactionData.description}`,
+                entityType: transactionHistory_1.EntityType.ACCOUNT_TRANSACTION,
+                entityId: newTransaction.id,
+                entityLabel: transactionData.description,
+                afterData: {
+                    type: transformedTransaction.type,
+                    amount: newTransaction.amount,
+                    category: newTransaction.category,
+                    description: newTransaction.description,
+                },
+            });
             res.status(201).json({
                 success: true,
                 data: transformedTransaction,
@@ -243,6 +262,24 @@ class TransactionsController {
                 member: updatedTransaction.user,
                 type: (updatedTransaction.type === 'income' || updatedTransaction.type === 'bonus' || updatedTransaction.type === 'credit') ? 'credit' : 'debit'
             };
+            // ─── Activity log ───────────────────────────────────────────────
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.FINANCE,
+                module: transactionHistory_1.Module.ACCOUNTS,
+                page: transactionHistory_1.Page.ACCOUNTS_DASHBOARD,
+                action: transactionHistory_1.Action.UPDATE,
+                actionLabel: `Updated transaction: ${updatedTransaction.description}`,
+                entityType: transactionHistory_1.EntityType.ACCOUNT_TRANSACTION,
+                entityId: id,
+                entityLabel: updatedTransaction.description,
+                afterData: {
+                    type: transformedTransaction.type,
+                    amount: updatedTransaction.amount,
+                    category: updatedTransaction.category,
+                    description: updatedTransaction.description,
+                },
+            });
             res.status(200).json({
                 success: true,
                 data: transformedTransaction,
@@ -282,6 +319,23 @@ class TransactionsController {
                 throw new types_1.NotFoundError('Transaction not found in this tenant');
             }
             await (0, transaction_model_1.deleteTransactionQuery)(id, req.tenantId);
+            // ─── Activity log ───────────────────────────────────────────────
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.FINANCE,
+                module: transactionHistory_1.Module.ACCOUNTS,
+                page: transactionHistory_1.Page.ACCOUNTS_DASHBOARD,
+                action: transactionHistory_1.Action.DELETE,
+                actionLabel: `Deleted transaction: ${existingTransaction.description}`,
+                entityType: transactionHistory_1.EntityType.ACCOUNT_TRANSACTION,
+                entityId: id,
+                entityLabel: existingTransaction.description,
+                beforeData: {
+                    type: existingTransaction.type,
+                    amount: existingTransaction.amount,
+                    description: existingTransaction.description,
+                },
+            });
             res.status(200).json({
                 success: true,
                 message: 'Transaction deleted successfully'

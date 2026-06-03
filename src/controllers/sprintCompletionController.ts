@@ -8,6 +8,15 @@ import {
 } from "@/types";
 import { socketService } from "@/services/socketService";
 import cacheService from "@/utils/cacheService";
+import {
+  recordTransaction,
+  Section,
+  Module,
+  Page,
+  Action,
+  EntityType,
+} from "@/utils/transactionHistory";
+import { randomUUID } from "crypto";
 
 interface BulkResolveAction {
   ticketId: string;
@@ -502,6 +511,36 @@ export class SprintCompletionController {
         updates: results.updates,
       });
 
+      {
+        const counts = results.updates.reduce(
+          (acc: Record<string, number>, u: any) => {
+            acc[u.action] = (acc[u.action] ?? 0) + 1;
+            return acc;
+          },
+          {}
+        );
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.SPRINTS,
+          page: Page.SPRINT_COMPLETION,
+          action: Action.BULK_RESOLVE,
+          actionLabel: `Sprint tickets resolved (${results.updates.length})`,
+          entityType: EntityType.RELEASE_PLAN,
+          entityId: sprintId,
+          entityLabel: sprint.version,
+          parentEntityType: EntityType.PROJECT,
+          parentEntityId: sprint.projectId,
+          correlationId: randomUUID(),
+          metadata: {
+            actionCounts: counts,
+            totalRequested: actions.length,
+            totalProcessed: results.updates.length,
+          },
+          statusCode: 200,
+        });
+      }
+
       res.status(200).json({
         success: true,
         data: {
@@ -650,6 +689,33 @@ export class SprintCompletionController {
       socketService.emitToTenant(req.tenantId, "sprint:completed", {
         sprintId,
         sprint: updatedSprint,
+      });
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.SPRINTS,
+        page: Page.SPRINT_COMPLETION,
+        action: Action.COMPLETE,
+        actionLabel: `Sprint completed (${totalCompletedPoints} pts)`,
+        entityType: EntityType.RELEASE_PLAN,
+        entityId: sprintId,
+        entityLabel: sprint.version,
+        parentEntityType: EntityType.PROJECT,
+        parentEntityId: sprint.projectId,
+        beforeData: { status: sprint.status },
+        afterData: {
+          status: "completed",
+          completedAt: updatedSprint.completedAt,
+          completedPoints: totalCompletedPoints,
+        },
+        changedFields: ["status", "completedAt", "completedPoints"],
+        statusCode: 200,
+        metadata: {
+          force,
+          unresolvedAtStart: unresolvedTickets,
+          completedPoints: totalCompletedPoints,
+        },
       });
 
       res.status(200).json({

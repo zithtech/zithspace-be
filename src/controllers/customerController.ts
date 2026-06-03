@@ -8,6 +8,7 @@ import {
   UpdateCustomerData,
 } from "../types";
 import { CustomerModel } from "../models/customer.model";
+import { recordTransaction, Section, Module, Page, Action, EntityType } from '../utils/transactionHistory';
 
 export class CustomerController {
   /**
@@ -126,6 +127,24 @@ export class CustomerController {
       message: "Customer created successfully",
     } as ApiResponse);
 
+    // ─── Activity log ───────────────────────────────────────────────
+    recordTransaction({
+      req,
+      section: Section.FINANCE,
+      module: Module.INVOICES,
+      page: Page.INVOICE_CUSTOMER_LIST,
+      action: Action.CREATE,
+      actionLabel: `Created customer ${newCustomer.companyName}`,
+      entityType: EntityType.INVOICE_CUSTOMER,
+      entityId: newCustomer.id,
+      entityLabel: newCustomer.companyName,
+      afterData: {
+        companyName: newCustomer.companyName,
+        email: newCustomer.email,
+        isActive: newCustomer.isActive,
+      },
+    });
+
   } catch (error: any) {
     console.error("Create customer error:", error);
 
@@ -187,6 +206,23 @@ static async updateCustomer(req: AuthRequest, res: Response): Promise<void> {
       data: updatedCustomer,
       message: "Customer updated successfully",
     } as ApiResponse);
+
+    // ─── Activity log ───────────────────────────────────────────────
+    recordTransaction({
+      req,
+      section: Section.FINANCE,
+      module: Module.INVOICES,
+      page: Page.INVOICE_CUSTOMER_LIST,
+      action: Action.UPDATE,
+      actionLabel: `Updated customer ${updatedCustomer.companyName}`,
+      entityType: EntityType.INVOICE_CUSTOMER,
+      entityId: id,
+      entityLabel: updatedCustomer.companyName,
+      afterData: {
+        companyName: updatedCustomer.companyName,
+        isActive: updatedCustomer.isActive,
+      },
+    });
   } catch (error: any) {
     console.error("Update customer error:", error);
 
@@ -226,7 +262,23 @@ static async updateCustomer(req: AuthRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
 
+      const customer = await CustomerModel.getCustomerById(req.tenantId!, id);
+      const customerName = customer ? customer.companyName : id;
+
       await CustomerModel.deleteCustomer(req.tenantId!, id);
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.FINANCE,
+        module: Module.INVOICES,
+        page: Page.INVOICE_CUSTOMER_LIST,
+        action: Action.DELETE,
+        actionLabel: `Deleted customer ${customerName}`,
+        entityType: EntityType.INVOICE_CUSTOMER,
+        entityId: id,
+        entityLabel: customerName,
+      });
 
       res.status(200).json({
         success: true,
