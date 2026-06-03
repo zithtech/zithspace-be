@@ -27,6 +27,8 @@ import {
   createPaymentSetting,
   updatePaymentSetting
 } from '@/models/paymentSettings.model';
+import { validatePaymentQR } from '@/utils/qrValidator';
+import { validateSignatureImage } from '@/utils/signatureValidator';
 
 const parseInvoiceFormat = (formatString: string) => {
   // Finds the sequence of # inside curly braces (e.g., {####})
@@ -158,6 +160,15 @@ export class InvoiceSettingsController {
     const parsedInvoiceData = parseInvoiceFormat(invoiceFormatString);
     // --- DYNAMIC DESTRUCTURING END ---
 
+    // Validate signature image if provided
+    if (general && general.signature) {
+      const signatureValidation = await validateSignatureImage(general.signature);
+      if (!signatureValidation.isValid) {
+        res.status(400).json({ success: false, error: signatureValidation.error });
+        return;
+      }
+    }
+
     // Create general setting
     const generalSetting = await createGeneralSetting({
       tenantId: req.tenantId,
@@ -184,6 +195,17 @@ export class InvoiceSettingsController {
       createdBy: req.user.id,
     });
 
+    // Validate payment QR code if provided
+    let qrDetails: any = null;
+    if (payment && payment.qrCode) {
+      const qrValidation = await validatePaymentQR(payment.qrCode);
+      if (!qrValidation.isValid) {
+        res.status(400).json({ success: false, error: qrValidation.error });
+        return;
+      }
+      qrDetails = qrValidation.details;
+    }
+
     // Create payment setting
     const paymentSetting = await createPaymentSetting({
       tenantId: req.tenantId,
@@ -193,6 +215,9 @@ export class InvoiceSettingsController {
       branchName: payment.branchName || '',
       qrCode: payment.qrCode,
       createdBy: req.user.id,
+      upiId: qrDetails ? qrDetails.upiId : null,
+      merchantName: qrDetails ? qrDetails.merchantName : null,
+      bankHandle: qrDetails ? qrDetails.bankHandle : null,
     });
 
     // Create settings profile
@@ -243,6 +268,14 @@ export class InvoiceSettingsController {
 
     // 2. Update related settings if provided
     if (general) {
+      if (general.signature) {
+        const signatureValidation = await validateSignatureImage(general.signature);
+        if (!signatureValidation.isValid) {
+          res.status(400).json({ success: false, error: signatureValidation.error });
+          return;
+        }
+      }
+
       await updateGeneralSetting(existing.generalId, req.tenantId, {
         ...general,
         gstin: general.gstin === "" ? null : general.gstin,
@@ -259,8 +292,27 @@ export class InvoiceSettingsController {
     }
 
     if (payment) {
+      let qrDetails: any = undefined;
+      // Note: check if qrCode is explicitly being cleared or updated
+      if (payment.qrCode !== undefined) {
+        if (payment.qrCode) {
+          const qrValidation = await validatePaymentQR(payment.qrCode);
+          if (!qrValidation.isValid) {
+            res.status(400).json({ success: false, error: qrValidation.error });
+            return;
+          }
+          qrDetails = qrValidation.details;
+        } else {
+          // If qrCode is null or empty, it means we are clearing the QR code
+          qrDetails = null;
+        }
+      }
+
       await updatePaymentSetting(existing.paymentId, req.tenantId, {
         ...payment,
+        upiId: qrDetails !== undefined ? (qrDetails ? qrDetails.upiId : null) : undefined,
+        merchantName: qrDetails !== undefined ? (qrDetails ? qrDetails.merchantName : null) : undefined,
+        bankHandle: qrDetails !== undefined ? (qrDetails ? qrDetails.bankHandle : null) : undefined,
         updatedBy: req.user.id,
       });
     }
