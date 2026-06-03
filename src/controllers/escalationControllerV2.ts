@@ -258,6 +258,16 @@ export const updateEscalation = async (req: AuthRequest, res: Response): Promise
             return;
         }
 
+        const existingEscalation = await EscalationDb.getEscalationById(id, tenantId);
+        if (!existingEscalation) {
+            const response: ApiResponse = {
+                success: false,
+                message: "Escalation not found",
+            };
+            res.status(404).json(response);
+            return;
+        }
+
         const {
             subject, description, categoryId, priorityId, statusId, projectId
         } = req.body;
@@ -266,7 +276,7 @@ export const updateEscalation = async (req: AuthRequest, res: Response): Promise
             subject, description, categoryId, priorityId, statusId, projectId
         };
 
-        const updated = await EscalationDb.updateEscalation(id, tenantId, payload, updatedById);
+        const updatedRaw = await EscalationDb.updateEscalation(id, tenantId, payload, updatedById);
 
         if (!updatedRaw) {
             const response: ApiResponse = {
@@ -277,12 +287,12 @@ export const updateEscalation = async (req: AuthRequest, res: Response): Promise
             return;
         }
 
-        const updated = await EscalationModel.findById(id, tenantId);
+        const updated = await EscalationDb.getEscalationById(id, tenantId);
 
         const response: ApiResponse = {
             success: true,
             message: "Escalation updated successfully",
-            data: updatedRaw,
+            data: updated,
         };
 
         // ─── Activity log ───────────────────────────────────────────────
@@ -348,6 +358,16 @@ export const deleteEscalation = async (req: AuthRequest, res: Response): Promise
             return;
         }
 
+        const escalation = await EscalationDb.getEscalationById(id, tenantId);
+        if (!escalation) {
+            const response: ApiResponse = {
+                success: false,
+                message: "Escalation not found",
+            };
+            res.status(404).json(response);
+            return;
+        }
+
         const isDeleted = await EscalationDb.deleteEscalation(id, tenantId);
 
         if (!isDeleted) {
@@ -371,10 +391,10 @@ export const deleteEscalation = async (req: AuthRequest, res: Response): Promise
             module: Module.ESCALATIONS,
             page: Page.ESCALATION_LIST,
             action: Action.DELETE,
-            actionLabel: `Deleted escalation "${escalationSubject}"`,
+            actionLabel: `Deleted escalation "${escalation.short_summary}"`,
             entityType: EntityType.ESCALATION,
             entityId: id,
-            entityLabel: escalationSubject,
+            entityLabel: escalation.short_summary,
         });
 
         res.status(200).json(response);
