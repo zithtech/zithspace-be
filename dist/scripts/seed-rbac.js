@@ -289,6 +289,8 @@ const PERMISSION_DESCRIPTIONS = {
     'time_tracking.delete': 'Delete own time tracking records',
     'time_tracking.team.read': 'View team time tracking records',
     'time_tracking.manage_time': 'Manage team time logs and settings',
+    'activity_log.read': 'View transaction history of a specific entity in detail page drawers',
+    'activity_log.read_all': 'View global activity feed and transaction history filters',
 };
 // ─── Role permission maps ─────────────────────────────────────────────────────
 const ROLE_PERMISSIONS = {
