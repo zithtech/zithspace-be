@@ -124,7 +124,6 @@ export class CalendarController {
                 user.tenantId
             );
 
-            /*
             // Sync BOTH Calendar and Mail immediately after connection (Triggered via RabbitMQ)
             const integration = await prisma.calendarIntegration.findFirst({
                 where: { userId, provider: provider.toUpperCase() as CalendarProvider }
@@ -147,7 +146,6 @@ export class CalendarController {
                     email: mailAccount.email
                 }).catch(err => console.error("Initial mail enqueue failed:", err));
             }
-            */
 
             res.redirect(`${FRONTEND_URL}/calendar?connected=true&provider=${provider}`);
         } catch (error) {
