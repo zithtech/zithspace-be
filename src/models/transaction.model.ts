@@ -84,15 +84,22 @@ export async function getTransactions(
     paramIndex++;
   }
 
-  // Map sort fields to snake case table columns
-  let dbColumnName = sortBy;
-  if (sortBy === 'date') dbColumnName = 't.date';
-  else if (sortBy === 'createdAt') dbColumnName = 't.created_at';
-  else if (sortBy === 'amount') dbColumnName = 't.amount';
-  else if (sortBy === 'type') dbColumnName = 't.type';
-  else dbColumnName = `t.${sortBy}`;
+  // Sanitize and default sort parameters to prevent empty string syntax errors or SQL injection
+  const safeSortBy = sortBy && typeof sortBy === 'string' && sortBy.trim() !== '' ? sortBy.trim() : 'date';
+  const safeSortOrder = sortOrder && typeof sortOrder === 'string' && sortOrder.trim() !== '' ? sortOrder.trim() : 'desc';
 
-  const orderByClause = `ORDER BY ${dbColumnName} ${sortOrder.toUpperCase() === 'DESC' ? 'DESC' : 'ASC'}, t.created_at DESC`;
+  // Map sort fields to snake case table columns
+  let dbColumnName = safeSortBy;
+  if (safeSortBy === 'date') dbColumnName = 't.date';
+  else if (safeSortBy === 'createdAt') dbColumnName = 't.created_at';
+  else if (safeSortBy === 'amount') dbColumnName = 't.amount';
+  else if (safeSortBy === 'type') dbColumnName = 't.type';
+  else if (safeSortBy === 'member') dbColumnName = 'u.name';
+  else if (safeSortBy === 'category') dbColumnName = 't.category';
+  else if (safeSortBy === 'description') dbColumnName = 't.description';
+  else dbColumnName = `t.${safeSortBy}`;
+
+  const orderByClause = `ORDER BY ${dbColumnName} ${safeSortOrder.toUpperCase() === 'DESC' ? 'DESC' : 'ASC'}, t.created_at DESC`;
   const offset = (page - 1) * limit;
 
   // We join users table, and optionally positions to match the typical Prisma include
