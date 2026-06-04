@@ -231,6 +231,18 @@ export class UserController {
         return;
       }
 
+      // Validate phone number — must be exactly 10 digits
+      if (userData.phone !== undefined && userData.phone !== null && userData.phone !== "") {
+        const phoneDigits = String(userData.phone).replace(/\D/g, "");
+        if (phoneDigits.length !== 10) {
+          res.status(400).json({
+            success: false,
+            error: "Phone number must be exactly 10 digits",
+          } as ApiResponse);
+          return;
+        }
+      }
+
       // Check if user already exists within tenant
       const existingUser = await prisma.user.findFirst({
         where: {
@@ -470,6 +482,18 @@ export class UserController {
 
         if (duplicateUser) {
           throw new ValidationError("Work email already exists in this tenant");
+        }
+      }
+
+      // Validate phone number — must be exactly 10 digits if provided
+      if (updates.phone !== undefined && updates.phone !== null && updates.phone !== "") {
+        const phoneDigits = String(updates.phone).replace(/\D/g, "");
+        if (phoneDigits.length !== 10) {
+          res.status(400).json({
+            success: false,
+            error: "Phone number must be exactly 10 digits",
+          } as ApiResponse);
+          return;
         }
       }
 
