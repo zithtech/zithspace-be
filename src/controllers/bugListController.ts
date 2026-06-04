@@ -1104,7 +1104,9 @@ export class BugListController {
       if (status === "archived") {
         await client.query(
           `UPDATE bugs
-              SET status = 'archived', updated_at = NOW()
+              SET status = 'archived',
+                  original_status = COALESCE(original_status, status),
+                  updated_at = NOW()
             WHERE sheet_id = $1 AND tenant_id = $2 AND status NOT IN ('archived', 'deleted')`,
           [id, req.tenantId]
         );
@@ -1112,7 +1114,9 @@ export class BugListController {
         // When restoring sheet, restore bugs that were archived when sheet was archived
         await client.query(
           `UPDATE bugs
-              SET status = 'new', updated_at = NOW()
+              SET status = COALESCE(original_status, 'new'),
+                  original_status = NULL,
+                  updated_at = NOW()
             WHERE sheet_id = $1 AND tenant_id = $2 AND status = 'archived'`,
           [id, req.tenantId]
         );
@@ -1911,7 +1915,7 @@ export class BugListController {
     try {
       // First get current status to preserve it before moving to trash
       const bugResult = await pool.query(
-        `SELECT status FROM bugs WHERE id = $1 AND tenant_id = $2`,
+        `SELECT status, original_status FROM bugs WHERE id = $1 AND tenant_id = $2`,
         [id, req.tenantId],
       );
       
@@ -1920,9 +1924,10 @@ export class BugListController {
         return;
       }
       
-      const currentStatus = bugResult.rows[0].status;
-      // Only preserve status if it's not already trash
-      const originalStatus = currentStatus === 'trash' ? null : currentStatus;
+      const bugRow = bugResult.rows[0];
+      const currentStatus = bugRow.status;
+      // Only preserve status if it's not already trash, using COALESCE logic
+      const originalStatus = currentStatus === 'trash' ? bugRow.original_status : (bugRow.original_status || currentStatus);
       
       const r = await pool.query(
         `UPDATE bugs SET status = 'trash', original_status = $1, updated_at = NOW()
@@ -2017,7 +2022,7 @@ export class BugListController {
       const restoredStatus = bug.original_status || 'new';
       
       const r = await pool.query(
-        `UPDATE bugs SET status = $1, updated_at = NOW()
+        `UPDATE bugs SET status = $1, original_status = NULL, updated_at = NOW()
           WHERE id = $2 AND tenant_id = $3 RETURNING id`,
         [restoredStatus, id, req.tenantId],
       );
@@ -2061,8 +2066,15 @@ export class BugListController {
     }
     try {
       const r = await pool.query(
-        `UPDATE bugs SET status = $1, updated_at = NOW()
-           WHERE id = ANY($2::text[]) AND tenant_id = $3`,
+        `UPDATE bugs
+           SET status = $1,
+               original_status = CASE 
+                 WHEN $1 = 'archived' THEN (CASE WHEN status = 'archived' THEN original_status ELSE status END)
+                 WHEN $1 = 'trash' THEN (CASE WHEN status = 'trash' THEN original_status ELSE status END)
+                 ELSE NULL
+               END,
+               updated_at = NOW()
+         WHERE id = ANY($2::text[]) AND tenant_id = $3`,
         [status, bugIds, req.tenantId],
       );
       recordTransaction({
@@ -2098,7 +2110,7 @@ export class BugListController {
       const r = await pool.query(
         `UPDATE bugs
            SET status = 'trash',
-               original_status = CASE WHEN status = 'trash' THEN NULL ELSE status END,
+               original_status = CASE WHEN status = 'trash' THEN original_status ELSE COALESCE(original_status, status) END,
                updated_at = NOW()
          WHERE id = ANY($1::text[]) AND tenant_id = $2`,
         [bugIds, req.tenantId],
@@ -2188,7 +2200,7 @@ export class BugListController {
       // Update each bug with its original status, defaulting to 'new' if no original status
       const r = await pool.query(
         `UPDATE bugs
-           SET status = COALESCE(original_status, 'new'), updated_at = NOW()
+           SET status = COALESCE(original_status, 'new'), original_status = NULL, updated_at = NOW()
          WHERE id = ANY($1::text[]) AND tenant_id = $2`,
         [bugIds, req.tenantId],
       );
