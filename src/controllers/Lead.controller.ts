@@ -90,7 +90,19 @@ export class LeadController {
         internal_notes: req.body.internalNotes,
         skill_analysis: req.body.skillAnalysis,
         ai_summary: req.body.ai_summary || req.body.aiSummary,
-        documents: req.body.attachments || req.body.documents
+        documents: req.body.attachments || req.body.documents,
+
+        // Lead source kind + shared company block
+        lead_source_kind: req.body.leadSourceKind,
+        company: req.body.company,
+        company_domain: req.body.companyDomain,
+        company_size: req.body.companySize,
+        inquiry_message: req.body.inquiryMessage,
+        website_source: req.body.websiteSource,
+
+        // Real owner — captured here so we never have to fall back to the
+        // currently-signed-in user on render.
+        created_by: req.user?.id,
       };
 
       console.log('Mapped LeadData:', JSON.stringify(leadData, null, 2));
@@ -275,7 +287,15 @@ export class LeadController {
         skillAnalysis: 'skill_analysis',
         aiSummary: 'ai_summary',
         ai_summary: 'ai_summary',
-        attachments: 'documents'
+        attachments: 'documents',
+
+        // Lead source kind + shared company block
+        leadSourceKind: 'lead_source_kind',
+        company: 'company',
+        companyDomain: 'company_domain',
+        companySize: 'company_size',
+        inquiryMessage: 'inquiry_message',
+        websiteSource: 'website_source',
       };
 
       const parseDate = (val: any) => {
