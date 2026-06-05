@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { AuthRequest } from '@/types';
 import { LeadStatusModel } from '@/models/LeadStatus.model';
 import { LeadActionModel } from '@/models/LeadAction.model';
+import { LeadPlatformModel, deriveCode as derivePlatformCode } from '@/models/LeadPlatform.model';
 import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from '../utils/transactionHistory';
 
 export class LeadSettingsController {
@@ -312,6 +313,143 @@ export class LeadSettingsController {
       return res.status(200).json({ success: true, message: 'Action deleted successfully' });
     } catch (error: any) {
       console.error('Delete Action Error:', error);
+      return res.status(500).json({ success: false, error: error.message });
+    }
+  }
+
+  // --- Platform Methods ---
+
+  static async createPlatform(req: AuthRequest, res: Response) {
+    try {
+      const tenantId = req.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ success: false, error: 'Tenant context required' });
+      }
+      const { name, type } = req.body || {};
+      if (!name || !type) {
+        return res.status(400).json({ success: false, error: 'name and type are required' });
+      }
+      if (type !== 'online' && type !== 'website') {
+        return res.status(400).json({ success: false, error: "type must be 'online' or 'website'" });
+      }
+
+      const platform = await LeadPlatformModel.create({
+        ...req.body,
+        tenant_id: tenantId,
+        // Always re-derive on create — body.code is ignored if present.
+        code: derivePlatformCode(name),
+      });
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.LEADS,
+        page: Page.LEAD_SETTINGS,
+        action: Action.CREATE,
+        actionLabel: `Created lead platform "${platform.name}"`,
+        entityType: EntityType.LEAD_STATUS, // closest existing entity bucket
+        entityId: platform.id,
+        entityLabel: platform.name,
+      });
+
+      return res.status(201).json({ success: true, data: platform });
+    } catch (error: any) {
+      console.error('Create Platform Error:', error);
+      if (error.code === '23505') {
+        return res.status(409).json({ success: false, error: 'A platform with this name already exists.' });
+      }
+      return res.status(500).json({ success: false, error: error.message });
+    }
+  }
+
+  static async getPlatforms(req: AuthRequest, res: Response) {
+    try {
+      const tenantId = req.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ success: false, error: 'Tenant context required' });
+      }
+      const platforms = await LeadPlatformModel.findAll(tenantId);
+      return res.status(200).json({ success: true, data: platforms });
+    } catch (error: any) {
+      console.error('Get Platforms Error:', error);
+      return res.status(500).json({ success: false, error: error.message });
+    }
+  }
+
+  static async updatePlatform(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+      const tenantId = req.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ success: false, error: 'Tenant context required' });
+      }
+
+      // Strip code from payload — it's derived at create time and immutable.
+      const { code: _ignored, ...payload } = req.body || {};
+      const existing = await LeadPlatformModel.findById(id, tenantId);
+      const platform = await LeadPlatformModel.update(id, tenantId, payload);
+      if (!platform) {
+        return res.status(404).json({ success: false, error: 'Platform not found' });
+      }
+
+      if (existing) {
+        const beforeSnap = { name: existing.name, type: existing.type, is_active: existing.is_active, url: existing.url };
+        const afterSnap = { name: platform.name, type: platform.type, is_active: platform.is_active, url: platform.url };
+        const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.LEADS,
+          page: Page.LEAD_SETTINGS,
+          action: Action.UPDATE,
+          actionLabel: `Updated lead platform "${platform.name}"`,
+          entityType: EntityType.LEAD_STATUS,
+          entityId: id,
+          entityLabel: platform.name,
+          beforeData: before,
+          afterData: after,
+          changedFields,
+        });
+      }
+
+      return res.status(200).json({ success: true, data: platform });
+    } catch (error: any) {
+      console.error('Update Platform Error:', error);
+      return res.status(500).json({ success: false, error: error.message });
+    }
+  }
+
+  static async deletePlatform(req: AuthRequest, res: Response) {
+    try {
+      const { id } = req.params;
+      const tenantId = req.tenantId;
+      if (!tenantId) {
+        return res.status(400).json({ success: false, error: 'Tenant context required' });
+      }
+
+      const existing = await LeadPlatformModel.findById(id, tenantId);
+      const platformName = existing ? existing.name : id;
+
+      const success = await LeadPlatformModel.delete(id, tenantId);
+      if (!success) {
+        return res.status(404).json({ success: false, error: 'Platform not found' });
+      }
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.LEADS,
+        page: Page.LEAD_SETTINGS,
+        action: Action.DELETE,
+        actionLabel: `Deleted lead platform "${platformName}"`,
+        entityType: EntityType.LEAD_STATUS,
+        entityId: id,
+        entityLabel: platformName,
+      });
+
+      return res.status(200).json({ success: true, message: 'Platform deleted successfully' });
+    } catch (error: any) {
+      console.error('Delete Platform Error:', error);
       return res.status(500).json({ success: false, error: error.message });
     }
   }
