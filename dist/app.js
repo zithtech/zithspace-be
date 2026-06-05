@@ -131,6 +131,7 @@ const MailSyncWorker_1 = require("@/workers/MailSyncWorker");
 const MailController_1 = require("@/controllers/MailController");
 const lead_routes_1 = __importDefault(require("@/routes/lead.routes"));
 const leadSettings_routes_1 = __importDefault(require("@/routes/leadSettings.routes"));
+const webInquiry_routes_1 = __importDefault(require("@/routes/webInquiry.routes"));
 const generate_routes_1 = __importDefault(require("@/routes/generate.routes"));
 // import escalationSettingsRoutes from "./routes/escalationSettingsRoutes";
 // import escalationRoutes from "./routes/escalationRoutes";
@@ -291,6 +292,8 @@ app.use("/api/company-locations", companyLocationRoutes_1.default);
 app.use("/api/opening-management", openingManagementRoutes_1.default);
 app.use("/api/leads", lead_routes_1.default);
 app.use("/api/lead-settings", leadSettings_routes_1.default);
+// ── Public web-inquiry endpoint (no auth, any cross-origin website) ──────────
+app.use("/api/public/web-inquiry", webInquiry_routes_1.default);
 app.use("/api", skillExperience_routes_1.default);
 app.use("/api/departments", departmentRoutes_1.default);
 app.use("/api/sub-departments", subDepartmentRoutes_1.default);
