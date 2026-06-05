@@ -109,7 +109,7 @@ export class MailController {
 
             // 2. Fetch unique attendees from calendar events
             const events = await prisma.calendarEvent.findMany({
-                where: { tenantId, userId },
+                where: { tenantId, userId, isDeleted: false },
                 select: { attendees: true, organizerEmail: true }
             });
 

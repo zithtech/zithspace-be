@@ -125,6 +125,8 @@ const candidateRoutes_1 = __importDefault(require("@/routes/candidateRoutes"));
 const companyLocationRoutes_1 = __importDefault(require("@/routes/companyLocationRoutes"));
 const openingManagementRoutes_1 = __importDefault(require("@/routes/openingManagementRoutes"));
 const RabbitMQService_1 = require("@/utils/RabbitMQService");
+const CalendarSyncWorker_1 = require("@/workers/CalendarSyncWorker");
+const MailSyncWorker_1 = require("@/workers/MailSyncWorker");
 //import { CentralMailWorker } from "@/workers/CentralMailWorker";
 const MailController_1 = require("@/controllers/MailController");
 const lead_routes_1 = __importDefault(require("@/routes/lead.routes"));
@@ -143,6 +145,7 @@ console.log("📅 Mounting calendar routes at /api/calendar");
 console.log("🤖 DevBot deployment test — 2026-03-22");
 // Create Express application
 const app = (0, express_1.default)();
+app.set('trust proxy', 1);
 const allowedOrigins = [
     "http://localhost:3000", // Local development
     "http://localhost:3005", // Local development for internal app
@@ -463,12 +466,11 @@ const startServer = async () => {
         await BidIQModel.initTable();
         // Connect RabbitMQ & Start Workers
         try {
-            // await rabbitMQService.connect();
-            // await CalendarSyncWorker.start();
-            // await MailSyncWorker.start();
+            await RabbitMQService_1.rabbitMQService.connect();
+            await CalendarSyncWorker_1.CalendarSyncWorker.start();
+            await MailSyncWorker_1.MailSyncWorker.start();
             // await CentralMailWorker.start();
-            // console.log("🚀 RabbitMQ connected, Calendar & Mail Sync Workers started");
-            console.log("🚀 RabbitMQ sync workers disabled (commented out)");
+            console.log("🚀 RabbitMQ connected, Calendar & Mail Sync Workers started");
         }
         catch (mqError) {
             console.error("❌ RabbitMQ initialization failed:", mqError.message);

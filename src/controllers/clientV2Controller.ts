@@ -160,6 +160,49 @@ function validateYearOfIncorporation(year?: string | number): string | null {
     return null;
 }
 
+function validateDuns(duns?: string | null): string | null {
+    if (!duns) return null;
+    const val = duns.trim();
+    if (val === '') return null;
+    if (!/^\d{9}$/.test(val)) {
+        return 'Enter a valid DUNS number (must be exactly 9 digits).';
+    }
+    return null;
+}
+
+function validateIfscSwift(code?: string | null): string | null {
+    if (!code) return null;
+    const val = code.trim();
+    if (val === '') return null;
+    const ifscRegex = /^[A-Za-z]{4}0[A-Za-z0-9]{6}$/;
+    const swiftRegex = /^[A-Za-z]{6}[A-Za-z0-9]{2}([A-Za-z0-9]{3})?$/;
+    if (!ifscRegex.test(val) && !swiftRegex.test(val)) {
+        return 'Enter a valid IFSC or SWIFT code.';
+    }
+    return null;
+}
+
+function validateBankAccountNumber(num?: string | null): string | null {
+    if (!num) return null;
+    const val = num.trim();
+    if (val === '') return null;
+    if (!/^\d{6,20}$/.test(val)) {
+        return 'Enter a valid bank account number (must be between 6 and 20 digits, containing only numbers).';
+    }
+    return null;
+}
+
+function validateWebsite(url?: string | null): string | null {
+    if (!url) return null;
+    const val = url.trim();
+    if (val === '') return null;
+    const websiteRegex = /^(https?:\/\/)?(www\.)?([a-zA-Z0-9-]{1,63}\.)+[a-zA-Z]{2,63}(\/[a-zA-Z0-9-._~:/?#[\]@!$&'()*+,;=]*)?$/;
+    if (!websiteRegex.test(val)) {
+        return 'Enter a valid website URL.';
+    }
+    return null;
+}
+
 export class ClientV2Controller {
     // ==============================================
     // CLIENT CORE DETAILS
@@ -337,6 +380,30 @@ export class ClientV2Controller {
                 return;
             }
 
+            const dunsValidationError = validateDuns(clientData.dunsNumber);
+            if (dunsValidationError) {
+                res.status(400).json({ success: false, error: dunsValidationError } as ApiResponse);
+                return;
+            }
+
+            const ifscSwiftValidationError = validateIfscSwift(clientData.ifscSwift);
+            if (ifscSwiftValidationError) {
+                res.status(400).json({ success: false, error: ifscSwiftValidationError } as ApiResponse);
+                return;
+            }
+
+            const bankAccountValidationError = validateBankAccountNumber(clientData.bankAccountNumber);
+            if (bankAccountValidationError) {
+                res.status(400).json({ success: false, error: bankAccountValidationError } as ApiResponse);
+                return;
+            }
+
+            const websiteValidationError = validateWebsite(clientData.website);
+            if (websiteValidationError) {
+                res.status(400).json({ success: false, error: websiteValidationError } as ApiResponse);
+                return;
+            }
+
             const clientCode = await generateClientCode(req.tenantId);
 
             await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
@@ -440,6 +507,10 @@ export class ClientV2Controller {
                 const country = 'country' in updates ? updates.country : existingClient.country;
                 const pan = 'pan' in updates ? updates.pan : existingClient.pan;
                 const yearOfIncorporation = 'yearOfIncorporation' in updates ? updates.yearOfIncorporation : existingClient.yearOfIncorporation;
+                const dunsNumber = 'dunsNumber' in updates ? updates.dunsNumber : existingClient.dunsNumber;
+                const ifscSwift = 'ifscSwift' in updates ? updates.ifscSwift : existingClient.ifscSwift;
+                const bankAccountNumber = 'bankAccountNumber' in updates ? updates.bankAccountNumber : existingClient.bankAccountNumber;
+                const website = 'website' in updates ? updates.website : existingClient.website;
 
                 const validationError = validateGstVatTaxId(gstVatTaxId, country);
                 if (validationError) {
@@ -456,6 +527,30 @@ export class ClientV2Controller {
                 const yearValidationError = validateYearOfIncorporation(yearOfIncorporation);
                 if (yearValidationError) {
                     res.status(400).json({ success: false, error: yearValidationError } as ApiResponse);
+                    return;
+                }
+
+                const dunsValidationError = validateDuns(dunsNumber);
+                if (dunsValidationError) {
+                    res.status(400).json({ success: false, error: dunsValidationError } as ApiResponse);
+                    return;
+                }
+
+                const ifscSwiftValidationError = validateIfscSwift(ifscSwift);
+                if (ifscSwiftValidationError) {
+                    res.status(400).json({ success: false, error: ifscSwiftValidationError } as ApiResponse);
+                    return;
+                }
+
+                const bankAccountValidationError = validateBankAccountNumber(bankAccountNumber);
+                if (bankAccountValidationError) {
+                    res.status(400).json({ success: false, error: bankAccountValidationError } as ApiResponse);
+                    return;
+                }
+
+                const websiteValidationError = validateWebsite(website);
+                if (websiteValidationError) {
+                    res.status(400).json({ success: false, error: websiteValidationError } as ApiResponse);
                     return;
                 }
 

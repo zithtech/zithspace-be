@@ -5,6 +5,7 @@ const database_1 = require("@/config/database");
 const CalendarService_1 = require("@/services/calendar/CalendarService");
 const UnifiedAuthService_1 = require("@/services/UnifiedAuthService");
 const CalendarSyncProducer_1 = require("../services/calendar/CalendarSyncProducer");
+const MailSyncProducer_1 = require("../services/mail/MailSyncProducer");
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 class CalendarController {
     /**
@@ -35,6 +36,7 @@ class CalendarController {
                     connected: !!integration,
                     provider,
                     lastSync: integration?.updatedAt || null,
+                    isSyncing: integration?.isSyncing || false,
                 },
             });
         }
@@ -101,14 +103,12 @@ class CalendarController {
             if (!user)
                 throw new Error("User not found");
             const mailAccount = await UnifiedAuthService_1.UnifiedAuthService.handleCallback(provider.toUpperCase(), code, state, userId, user.tenantId);
-            /*
             // Sync BOTH Calendar and Mail immediately after connection (Triggered via RabbitMQ)
-            const integration = await prisma.calendarIntegration.findFirst({
-                where: { userId, provider: provider.toUpperCase() as CalendarProvider }
+            const integration = await database_1.prisma.calendarIntegration.findFirst({
+                where: { userId, provider: provider.toUpperCase() }
             });
-
             if (integration) {
-                await CalendarSyncProducer.enqueueSync({
+                await CalendarSyncProducer_1.CalendarSyncProducer.enqueueSync({
                     integrationId: integration.id,
                     userId: integration.userId,
                     tenantId: integration.tenantId,
@@ -116,15 +116,13 @@ class CalendarController {
                     forceSync: true
                 }).catch(err => console.error("Initial calendar enqueue failed:", err));
             }
-
             if (mailAccount && mailAccount.email) {
-                await MailSyncProducer.enqueueSync({
+                await MailSyncProducer_1.MailSyncProducer.enqueueSync({
                     userId,
                     tenantId: user.tenantId,
                     email: mailAccount.email
                 }).catch(err => console.error("Initial mail enqueue failed:", err));
             }
-            */
             res.redirect(`${FRONTEND_URL}/calendar?connected=true&provider=${provider}`);
         }
         catch (error) {
@@ -433,8 +431,12 @@ class CalendarController {
                 });
                 return;
             }
-            // Dispatch sync jobs to RabbitMQ for background processing
+            // Dispatch sync jobs directly in the background & attempt RabbitMQ enqueue
             for (const integ of integrations) {
+                // Trigger incremental sync directly in background process to guarantee execution
+                CalendarService_1.CalendarService.processIncrementalSync(integ.id).catch(err => {
+                    console.error(`[CalendarController] Background sync failed for ${integ.id}:`, err.message);
+                });
                 try {
                     await CalendarSyncProducer_1.CalendarSyncProducer.enqueueSync({
                         integrationId: integ.id,
@@ -445,11 +447,7 @@ class CalendarController {
                     });
                 }
                 catch (enqueueError) {
-                    console.error(`[CalendarController] Failed to enqueue RabbitMQ sync for ${integ.id}:`, enqueueError.message);
-                    // Fallback to direct process if MQ is down (optional, but safer for SaaS uptime)
-                    CalendarService_1.CalendarService.processIncrementalSync(integ.id).catch(err => {
-                        console.error(`[CalendarController] Emergency fallback sync failed for ${integ.id}:`, err.message);
-                    });
+                    console.warn(`[CalendarController] Optional RabbitMQ enqueue failed for ${integ.id}:`, enqueueError.message);
                 }
             }
             res.status(202).json({

@@ -152,6 +152,7 @@ console.log("📅 Mounting calendar routes at /api/calendar");
 console.log("🤖 DevBot deployment test — 2026-03-22");
 // Create Express application
 const app = express();
+app.set('trust proxy', 1);
 
 
 const allowedOrigins = [
@@ -531,12 +532,11 @@ const startServer = async () => {
 
     // Connect RabbitMQ & Start Workers
     try {
-      // await rabbitMQService.connect();
-      // await CalendarSyncWorker.start();
-      // await MailSyncWorker.start();
+      await rabbitMQService.connect();
+      await CalendarSyncWorker.start();
+      await MailSyncWorker.start();
       // await CentralMailWorker.start();
-      // console.log("🚀 RabbitMQ connected, Calendar & Mail Sync Workers started");
-      console.log("🚀 RabbitMQ sync workers disabled (commented out)");
+      console.log("🚀 RabbitMQ connected, Calendar & Mail Sync Workers started");
     } catch (mqError: any) {
       console.error("❌ RabbitMQ initialization failed:", mqError.message);
       // In a SaaS environment, we log and continue, 
