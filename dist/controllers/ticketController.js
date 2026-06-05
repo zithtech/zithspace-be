@@ -941,6 +941,10 @@ class TicketController {
                         dueDate: true,
                         createdAt: true,
                         updatedAt: true,
+                        sprintPlanId: true,
+                        releasePlanId: true,
+                        demoPlanId: true,
+                        bucketId: true,
                         // Exclude large fields: description (can be fetched in detail view)
                         createdBy: {
                             select: { id: true, name: true, workEmail: true, avatarUrl: true },
