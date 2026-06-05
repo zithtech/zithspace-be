@@ -151,6 +151,7 @@ console.log("📅 Mounting calendar routes at /api/calendar");
 console.log("🤖 DevBot deployment test — 2026-03-22");
 // Create Express application
 const app = express();
+app.set('trust proxy', 1);
 
 
 const allowedOrigins = [

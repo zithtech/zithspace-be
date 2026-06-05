@@ -54,9 +54,10 @@ class RabbitMQService {
 
         try {
             const url = process.env.RABBITMQ_URL || 'amqp://localhost';
-            const conn = await amqp.connect(url);
+            const conn = await amqp.connect(url, { heartbeat: 30 });
             this.connection = conn as any;
             this.channel = await (this.connection as any).createChannel();
+            await this.channel.prefetch(10);
 
             // Set up topological structure (SaaS-friendly DLQ pattern)
             await this.setupTopology();
