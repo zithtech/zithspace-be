@@ -24,4 +24,10 @@ router.get('/actions', requirePermission(Permissions.LEAD_SETTING_READ), LeadSet
 router.put('/actions/:id', requirePermission(Permissions.LEAD_SETTING_UPDATE), LeadSettingsController.updateAction);
 router.delete('/actions/:id', requirePermission(Permissions.LEAD_SETTING_DELETE), LeadSettingsController.deleteAction);
 
+// Platform Routes
+router.post('/platforms', requirePermission(Permissions.LEAD_SETTING_CREATE), LeadSettingsController.createPlatform);
+router.get('/platforms', requirePermission(Permissions.LEAD_SETTING_READ), LeadSettingsController.getPlatforms);
+router.put('/platforms/:id', requirePermission(Permissions.LEAD_SETTING_UPDATE), LeadSettingsController.updatePlatform);
+router.delete('/platforms/:id', requirePermission(Permissions.LEAD_SETTING_DELETE), LeadSettingsController.deletePlatform);
+
 export default router;
