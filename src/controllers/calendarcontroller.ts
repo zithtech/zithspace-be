@@ -41,6 +41,7 @@ export class CalendarController {
                     connected: !!integration,
                     provider,
                     lastSync: integration?.updatedAt || null,
+                    isSyncing: (integration as any)?.isSyncing || false,
                 },
             } as ApiResponse);
         } catch (error) {
@@ -533,8 +534,13 @@ export class CalendarController {
                 return;
             }
 
-            // Dispatch sync jobs to RabbitMQ for background processing
+            // Dispatch sync jobs directly in the background & attempt RabbitMQ enqueue
             for (const integ of integrations) {
+                // Trigger incremental sync directly in background process to guarantee execution
+                CalendarService.processIncrementalSync(integ.id).catch(err => {
+                    console.error(`[CalendarController] Background sync failed for ${integ.id}:`, err.message);
+                });
+
                 try {
                     await CalendarSyncProducer.enqueueSync({
                         integrationId: integ.id,
@@ -544,11 +550,7 @@ export class CalendarController {
                         forceSync: true
                     });
                 } catch (enqueueError: any) {
-                    console.error(`[CalendarController] Failed to enqueue RabbitMQ sync for ${integ.id}:`, enqueueError.message);
-                    // Fallback to direct process if MQ is down (optional, but safer for SaaS uptime)
-                    CalendarService.processIncrementalSync(integ.id).catch(err => {
-                        console.error(`[CalendarController] Emergency fallback sync failed for ${integ.id}:`, err.message);
-                    });
+                    console.warn(`[CalendarController] Optional RabbitMQ enqueue failed for ${integ.id}:`, enqueueError.message);
                 }
             }
 

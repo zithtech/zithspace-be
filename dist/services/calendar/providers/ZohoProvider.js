@@ -70,29 +70,8 @@ class ZohoProvider {
         return response.data?.events || [];
     }
     async getIncrementalChanges(accessToken, calendarId, token) {
-        const params = {};
-        let syncTimeMs = 0;
-        if (token) {
-            try {
-                // We'll use the token internally for client-side filtering
-                const d = new Date(token);
-                if (!isNaN(d.getTime())) {
-                    syncTimeMs = d.getTime();
-                }
-            }
-            catch {
-                // Invalid token, proceed as full fetch
-            }
-        }
         const headers = { Authorization: `Zoho-oauthtoken ${accessToken}` };
-        // If we have a valid sync token (timestamp), use true incremental sync via If-Modified-Since
-        if (syncTimeMs > 0) {
-            headers['If-Modified-Since'] = new Date(syncTimeMs).toUTCString();
-            console.log(`[ZohoProvider] True incremental sync using If-Modified-Since: ${headers['If-Modified-Since']}`);
-        }
-        else {
-            console.log(`[ZohoProvider] Full sync (no valid token provided)`);
-        }
+        console.log(`[ZohoProvider] Full sync (always full sync for Zoho to support deletions/updates properly)`);
         const response = await axios_1.default.get(`${ZOHO_CALENDAR_API}/calendars/${calendarId}/events`, {
             headers,
             validateStatus: () => true, // Don't throw on 4xx

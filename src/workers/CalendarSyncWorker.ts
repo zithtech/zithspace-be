@@ -18,8 +18,8 @@ export class CalendarSyncWorker {
         try {
             const channel = await rabbitMQService.getChannel();
 
-            // Set prefetch to 1 for production-grade rate limiting and SaaS predictability
-            await channel.prefetch(1);
+            // Set prefetch to 10 for production-grade rate limiting and SaaS predictability
+            await channel.prefetch(10);
 
             syncLogger.info('Calendar Sync Worker (PRO) started', { queue: CALENDAR_SYNC_QUEUE });
 
