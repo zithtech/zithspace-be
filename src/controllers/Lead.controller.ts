@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { AuthRequest } from '@/types';
 import { LeadModel } from '@/models/Lead.model';
 import { LeadStatusModel } from '@/models/LeadStatus.model';
+import { LeadPlatformModel, deriveCode as derivePlatformCode } from '@/models/LeadPlatform.model';
 import { BidIQModel } from "../models/BidIQ.model";
 import { AIService } from "../services/aiService";
 import pool from '@/config/dbpool';
@@ -12,6 +13,37 @@ import { Readable } from 'stream';
 import { LeadActivityLogModel } from '../models/LeadActivityLog.model';
 import { LeadMailModel } from '../models/LeadMail.model';
 import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from '../utils/transactionHistory';
+
+/**
+ * Built-in platform metadata. Keys are the lowercase normalised name of the
+ * platform. `icon` must match a key in the frontend PLATFORM_ICON_RESOLVERS
+ * map (stored as "icon:<key>" in the logo_url column). Leave `icon` / `url`
+ * absent for platforms that have no built-in icon — the user can customise
+ * the logo from the Settings page.
+ */
+const KNOWN_PLATFORMS: Record<string, { url: string; icon: string }> = {
+  upwork:        { url: 'https://www.upwork.com',           icon: 'icon:upwork' },
+  freelancer:    { url: 'https://www.freelancer.com',       icon: 'icon:freelancer' },
+  fiverr:        { url: 'https://www.fiverr.com',           icon: 'icon:fiverr' },
+  linkedin:      { url: 'https://www.linkedin.com/jobs',   icon: 'icon:linkedin' },
+  toptal:        { url: 'https://www.toptal.com',           icon: 'icon:toptal' },
+  guru:          { url: 'https://www.guru.com',             icon: 'icon:guru' },
+  peopleperhour: { url: 'https://www.peopleperhour.com',   icon: 'icon:peopleperhour' },
+  hubstaff:      { url: 'https://talent.hubstaff.com',      icon: 'icon:hubstaff' },
+  indeed:        { url: 'https://www.indeed.com',           icon: 'icon:indeed' },
+};
+
+/**
+ * Returns { url, logo_url } for a given platform name, resolving against the
+ * KNOWN_PLATFORMS catalogue. Unknown platforms get empty strings so the admin
+ * can supply a custom logo from the Settings page.
+ */
+function resolvePlatformMeta(name: string): { url: string; logo_url: string } {
+  const key = (name || '').toLowerCase().replace(/[^a-z]/g, '');
+  const meta = KNOWN_PLATFORMS[key];
+  if (meta) return { url: meta.url, logo_url: meta.icon };
+  return { url: '', logo_url: '' };
+}
 
 export class LeadController {
 
@@ -110,6 +142,34 @@ export class LeadController {
       // Process and upload documents if they are Base64
       if (leadData.documents && Array.isArray(leadData.documents)) {
         leadData.documents = await LeadController.processLeadDocuments(tenantId, leadData.documents);
+      }
+
+      // Ensure the platform setting exists, otherwise auto-create it
+      if (leadData.platform) {
+        try {
+          const platformCode = derivePlatformCode(leadData.platform);
+          const platformCheck = await pool.query(
+            'SELECT id FROM lead_platforms WHERE tenant_id = $1 AND code = $2 LIMIT 1',
+            [tenantId, platformCode]
+          );
+          if (platformCheck.rows.length === 0) {
+            const { url: platUrl, logo_url: platLogoUrl } = resolvePlatformMeta(leadData.platform);
+            console.log(`Auto-creating lead platform setting: ${leadData.platform} (${platformCode}), icon=${platLogoUrl || 'none'}`);
+            await LeadPlatformModel.create({
+              tenant_id: tenantId,
+              name: leadData.platform,
+              code: platformCode,
+              type: 'online',
+              is_active: true,
+              order: 0,
+              url: platUrl || undefined,
+              logo_url: platLogoUrl || undefined,
+              description: `Automatically created from ${leadData.platform}`,
+            });
+          }
+        } catch (err) {
+          console.error('[LeadController.createLead] Failed to auto-create platform setting:', err);
+        }
       }
 
       const lead = await LeadModel.create(leadData);
@@ -324,6 +384,34 @@ export class LeadController {
 
       console.log('--- UPDATE LEAD REQUEST ---');
       console.log('ID:', id);
+
+      // Ensure the platform setting exists, otherwise auto-create it
+      if (updateData.platform) {
+        try {
+          const platformCode = derivePlatformCode(updateData.platform);
+          const platformCheck = await pool.query(
+            'SELECT id FROM lead_platforms WHERE tenant_id = $1 AND code = $2 LIMIT 1',
+            [tenantId, platformCode]
+          );
+          if (platformCheck.rows.length === 0) {
+            const { url: platUrl, logo_url: platLogoUrl } = resolvePlatformMeta(updateData.platform);
+            console.log(`Auto-creating lead platform setting on update: ${updateData.platform} (${platformCode}), icon=${platLogoUrl || 'none'}`);
+            await LeadPlatformModel.create({
+              tenant_id: tenantId,
+              name: updateData.platform,
+              code: platformCode,
+              type: 'online',
+              is_active: true,
+              order: 0,
+              url: platUrl || undefined,
+              logo_url: platLogoUrl || undefined,
+              description: `Automatically created from ${updateData.platform}`,
+            });
+          }
+        } catch (err) {
+          console.error('[LeadController.updateLead] Failed to auto-create platform setting:', err);
+        }
+      }
 
       const existingLead = await LeadModel.findById(id, tenantId);
       const lead = await LeadModel.update(id, tenantId, updateData);
