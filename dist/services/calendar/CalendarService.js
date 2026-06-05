@@ -96,6 +96,7 @@ class CalendarService {
         let whereCondition = {
             userId,
             tenantId,
+            isDeleted: false,
         };
         if (startDate || endDate) {
             // If date range is specified, filter by intersection OR include recurring events
@@ -1387,9 +1388,16 @@ class CalendarService {
             let hasMore = true;
             let currentToken = token;
             let totalEvents = 0;
+            const syncedExternalIds = new Set();
             while (hasMore) {
                 const result = await providerImpl.getIncrementalChanges(accessToken, calendarId || "primary", currentToken);
                 await this.handleSyncResult(integration.userId, integration.tenantId, integration.provider, result.events);
+                if (integration.provider === client_1.CalendarProvider.ZOHO) {
+                    for (const rawEvent of result.events) {
+                        const mapped = this.mapToCalendarEvent(rawEvent, integration.provider, integration.userId, integration.tenantId);
+                        syncedExternalIds.add(mapped.externalId);
+                    }
+                }
                 currentToken = result.nextToken;
                 hasMore = result.hasMore;
                 totalEvents += result.events.length;
@@ -1397,6 +1405,52 @@ class CalendarService {
                 if (totalEvents > 5000) {
                     logger_1.syncLogger.warn('Hit 5000 event limit during sync cycle, breaking loop', { integrationId });
                     break;
+                }
+            }
+            // Perform diff-based deletion for Zoho since Zoho does not return deleted events in API responses.
+            if (integration.provider === client_1.CalendarProvider.ZOHO) {
+                const localEvents = await database_1.prisma.calendarEvent.findMany({
+                    where: {
+                        userId: integration.userId,
+                        tenantId: integration.tenantId,
+                        provider: client_1.CalendarProvider.ZOHO,
+                        isDeleted: false
+                    },
+                    select: { externalId: true, startTime: true }
+                });
+                const syncStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // 30 days ago
+                const syncEnd = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000); // 90 days ahead
+                if (syncedExternalIds.size > 0) {
+                    const missingExternalIds = localEvents
+                        .filter(le => {
+                        const leTime = new Date(le.startTime).getTime();
+                        return leTime >= syncStart.getTime() && leTime <= syncEnd.getTime() && !syncedExternalIds.has(le.externalId);
+                    })
+                        .map(le => le.externalId);
+                    if (missingExternalIds.length > 0) {
+                        logger_1.syncLogger.info(`[processIncrementalSync] Marking ${missingExternalIds.length} Zoho events as deleted due to absence in Zoho API response`, { missingExternalIds });
+                        await database_1.prisma.calendarEvent.updateMany({
+                            where: {
+                                userId: integration.userId,
+                                tenantId: integration.tenantId,
+                                provider: client_1.CalendarProvider.ZOHO,
+                                externalId: { in: missingExternalIds }
+                            },
+                            data: { isDeleted: true }
+                        });
+                    }
+                }
+                else {
+                    logger_1.syncLogger.info(`[processIncrementalSync] Marking all Zoho events in sync window as deleted since Zoho API returned 0 events`);
+                    await database_1.prisma.calendarEvent.updateMany({
+                        where: {
+                            userId: integration.userId,
+                            tenantId: integration.tenantId,
+                            provider: client_1.CalendarProvider.ZOHO,
+                            startTime: { gte: syncStart, lte: syncEnd }
+                        },
+                        data: { isDeleted: true }
+                    });
                 }
             }
             const updateData = {
