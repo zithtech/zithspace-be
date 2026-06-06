@@ -65,6 +65,14 @@ router.get("/epics", requirePermission(Permissions.TICKET_READ), TicketControlle
 router.get("/tags", requirePermission(Permissions.TICKET_READ), TicketController.getAllTags);
 
 /**
+ * @route   GET /api/tickets/recent-activity
+ * @desc    Latest comments + attachments across a project (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @query   projectId, limit (default 5, max 50)
+ */
+router.get("/recent-activity", requirePermission(Permissions.TICKET_READ), TicketController.getRecentActivity);
+
+/**
  * @route   GET /api/tickets/:id/epic-progress
  * @desc    Get Epic with detailed story progress (tenant-aware)
  * @access  Private (authenticated users within tenant)
