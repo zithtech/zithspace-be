@@ -11,6 +11,7 @@ export interface LeadStatusData {
   is_final_stage: boolean;
   is_active: boolean;
   order: number;
+  icon?: string;
   created_at?: Date;
   updated_at?: Date;
 }
@@ -22,9 +23,9 @@ export class LeadStatusModel {
   static async create(data: Partial<LeadStatusData> & { tenant_id: string; name: string; category: string; color: string }): Promise<any> {
     const query = `
       INSERT INTO lead_statuses (
-        tenant_id, name, category, applies_to, color, 
-        is_default, is_final_stage, is_active, "order"
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        tenant_id, name, category, applies_to, color,
+        is_default, is_final_stage, is_active, "order", icon
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *;
     `;
 
@@ -37,7 +38,8 @@ export class LeadStatusModel {
       data.is_default ?? false,
       data.is_final_stage ?? false,
       data.is_active ?? true,
-      data.order ?? 0
+      data.order ?? 0,
+      data.icon ?? null,
     ];
 
     try {

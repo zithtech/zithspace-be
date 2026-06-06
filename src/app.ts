@@ -138,6 +138,7 @@ import { MailController } from "@/controllers/MailController";
 
 import leadRoutes from "@/routes/lead.routes";
 import leadSettingsRoutes from "@/routes/leadSettings.routes";
+import webInquiryRoutes from "@/routes/webInquiry.routes";
 import generateRoutes from "@/routes/generate.routes";
 // import escalationSettingsRoutes from "./routes/escalationSettingsRoutes";
 // import escalationRoutes from "./routes/escalationRoutes";
@@ -323,6 +324,10 @@ app.use("/api/company-locations", companyLocationRoutes);
 app.use("/api/opening-management", openingManagementRoutes);
 app.use("/api/leads", leadRoutes);
 app.use("/api/lead-settings", leadSettingsRoutes);
+
+// ── Public web-inquiry endpoint (no auth, any cross-origin website) ──────────
+app.use("/api/public/web-inquiry", webInquiryRoutes);
+
 app.use("/api", skillExperienceRoutes);
 
 app.use("/api/departments", departmentRoutes);
