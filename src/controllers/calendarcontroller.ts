@@ -7,6 +7,7 @@ import { MailService } from "@/services/mail/MailService";
 import { UnifiedAuthService } from "@/services/UnifiedAuthService";
 import { CalendarSyncProducer } from '../services/calendar/CalendarSyncProducer';
 import { MailSyncProducer } from '../services/mail/MailSyncProducer';
+import { PushNotificationService } from '@/services/pushNotificationService';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 
@@ -352,6 +353,54 @@ export class CalendarController {
             );
 
             console.log("🟣 Event(s) created successfully");
+
+            // Extract attendee emails and send system-level notifications asynchronously
+            if (eventData.attendees && Array.isArray(eventData.attendees)) {
+                const attendeeEmails: string[] = [];
+                for (const attendee of eventData.attendees) {
+                    let email = '';
+                    if (typeof attendee === 'string') {
+                        email = attendee;
+                    } else if (typeof attendee === 'object' && attendee !== null) {
+                        email = attendee.email || attendee.emailAddress?.address || attendee.address || '';
+                    }
+                    if (email && email.includes('@')) {
+                        attendeeEmails.push(email.trim().toLowerCase());
+                    }
+                }
+
+                if (attendeeEmails.length > 0) {
+                    const managerName = req.user.name || "A manager";
+                    const meetingTitle = eventData.title || eventData.subject || "New Meeting";
+
+                    PushNotificationService.sendNotificationToEmails(attendeeEmails, {
+                        title: 'New Meeting Scheduled',
+                        body: `${managerName} has scheduled a meeting: "${meetingTitle}"`,
+                        url: '/calendar'
+                    }).catch(err => {
+                        console.error("[CalendarController] Push notification failed:", err.message);
+                    });
+                }
+            }
+
+            // Emit Socket.io real-time event
+            try {
+                const { socketService } = require("@/services/socketService");
+                const managerName = req.user.name || "A manager";
+                const meetingTitle = eventData.title || eventData.subject || "New Meeting";
+
+                socketService.emitToTenant(req.user.tenantId!, "meeting-created", {
+                    title: 'New Meeting Scheduled',
+                    body: `${managerName} has scheduled a meeting: "${meetingTitle}"`,
+                    meetingTitle,
+                    managerName,
+                    event
+                });
+                console.log("Meeting created event sent");
+            } catch (socketErr: any) {
+                console.error("Failed to emit meeting-created socket event:", socketErr.message);
+            }
+
             console.log("🟣🟣🟣 BACKEND CONTROLLER - CREATE EVENT END 🟣🟣🟣");
 
             res.status(201).json({
