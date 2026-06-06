@@ -987,6 +987,19 @@ export class TicketController {
 
       if (createdById) where.createdById = createdById;
 
+      // Restrict to a specific set of ticket ids (comma-separated). Used by the
+      // sidebar "Show commented tickets" / "Show tickets with attachments" actions.
+      const { ticketIds: ticketIdsParam } = req.query;
+      if (ticketIdsParam && typeof ticketIdsParam === 'string' && ticketIdsParam.trim()) {
+        const ids = ticketIdsParam.split(',').map(s => s.trim()).filter(Boolean);
+        if (ids.length > 0) {
+          where.id = { in: ids };
+        } else {
+          // Empty filter list = explicitly match nothing
+          where.id = { in: [] as string[] };
+        }
+      }
+
       // Filter by tags (comma-separated). Match tickets that have ANY of the given tags.
       const { tags: tagsParam } = req.query;
       if (tagsParam && typeof tagsParam === 'string' && tagsParam.trim()) {
@@ -1291,6 +1304,209 @@ export class TicketController {
       res.status(500).json({
         success: false,
         error: "Failed to fetch tags",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Recent comments + attachments across a project (tenant-aware).
+   *
+   * When `userId` is provided, results are scoped to activity the user
+   * cares about: comments/attachments authored by them, OR comments/
+   * attachments others made on tickets assigned to them. This is the
+   * relevance model used by the Ticket page sidebar.
+   *
+   * Each ticket appears at most once per stream (latest activity wins)
+   * so a chatty ticket doesn't crowd out everything else.
+   */
+  static async getRecentActivity(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context required",
+        } as ApiResponse);
+        return;
+      }
+
+      const projectId =
+        typeof req.query.projectId === "string" && req.query.projectId.trim() !== ""
+          ? req.query.projectId.trim()
+          : null;
+      const userId =
+        typeof req.query.userId === "string" && req.query.userId.trim() !== ""
+          ? req.query.userId.trim()
+          : null;
+      const rawLimit = Number(req.query.limit);
+      const limit = Number.isFinite(rawLimit) && rawLimit > 0 && rawLimit <= 50 ? Math.floor(rawLimit) : 5;
+
+      const commentsSql = `
+        SELECT
+          id,
+          comment,
+          "timestamp",
+          user_id,
+          user_name,
+          user_avatar_url,
+          ticket_id,
+          ticket_number,
+          ticket_title,
+          total
+        FROM (
+          SELECT
+            tc.id,
+            tc.comment,
+            tc.timestamp,
+            tc.user_id,
+            u.name              AS user_name,
+            u.avatar_url        AS user_avatar_url,
+            t.id                AS ticket_id,
+            t.ticket_number     AS ticket_number,
+            t.title             AS ticket_title,
+            ROW_NUMBER() OVER (PARTITION BY tc.ticket_id ORDER BY tc.timestamp DESC) AS rn,
+            COUNT(*) OVER (PARTITION BY tc.ticket_id)                                AS total
+          FROM ticket_comments tc
+          JOIN tickets t ON t.id = tc.ticket_id
+          JOIN users   u ON u.id = tc.user_id
+          WHERE tc.tenant_id = $1
+            AND ($2::text IS NULL OR t.project_id = $2)
+            AND COALESCE(t.is_deleted, false) = false
+            AND ($3::text IS NULL OR tc.user_id = $3 OR t.assignee_id = $3)
+        ) ranked
+        WHERE rn = 1
+        ORDER BY "timestamp" DESC
+        LIMIT $4
+      `;
+
+      const attachmentsSql = `
+        SELECT
+          id,
+          file_name,
+          file_url,
+          file_type,
+          uploaded_at,
+          uploaded_by_id,
+          uploader_name,
+          uploader_avatar_url,
+          ticket_id,
+          ticket_number,
+          ticket_title,
+          total
+        FROM (
+          SELECT
+            ta.id,
+            ta.file_name,
+            ta.file_url,
+            ta.file_type,
+            ta.uploaded_at,
+            ta.uploaded_by_id,
+            u.name              AS uploader_name,
+            u.avatar_url        AS uploader_avatar_url,
+            t.id                AS ticket_id,
+            t.ticket_number     AS ticket_number,
+            t.title             AS ticket_title,
+            ROW_NUMBER() OVER (PARTITION BY ta.ticket_id ORDER BY ta.uploaded_at DESC) AS rn,
+            COUNT(*) OVER (PARTITION BY ta.ticket_id)                                  AS total
+          FROM ticket_attachments ta
+          JOIN tickets t ON t.id = ta.ticket_id
+          JOIN users   u ON u.id = ta.uploaded_by_id
+          WHERE ta.tenant_id = $1
+            AND ($2::text IS NULL OR t.project_id = $2)
+            AND COALESCE(t.is_deleted, false) = false
+            AND ($3::text IS NULL OR ta.uploaded_by_id = $3 OR t.assignee_id = $3)
+        ) ranked
+        WHERE rn = 1
+        ORDER BY uploaded_at DESC
+        LIMIT $4
+      `;
+
+      // Overdue tickets — assignee = user, past end_date, not closed/archived.
+      // Used by the sidebar's "Overdue Tickets" section + filtered view union.
+      const overdueSql = `
+        SELECT
+          t.id,
+          t.ticket_number,
+          t.title,
+          t.end_date,
+          t.status,
+          t.priority,
+          GREATEST(0, EXTRACT(DAY FROM (NOW() - t.end_date))::int) AS days_overdue
+        FROM tickets t
+        WHERE t.tenant_id = $1
+          AND ($2::text IS NULL OR t.project_id = $2)
+          AND COALESCE(t.is_deleted, false) = false
+          AND COALESCE(t.is_archived, false) = false
+          AND t.end_date IS NOT NULL
+          AND t.end_date < NOW()
+          AND LOWER(t.status) NOT IN ('completed', 'done', 'closed', 'resolved', 'live')
+          AND ($3::text IS NULL OR t.assignee_id = $3)
+        ORDER BY t.end_date ASC
+        LIMIT $4
+      `;
+
+      const params = [req.tenantId, projectId, userId, limit];
+
+      const [commentRes, attachmentRes, overdueRes] = await Promise.all([
+        pool.query(commentsSql, params),
+        pool.query(attachmentsSql, params),
+        pool.query(overdueSql, params),
+      ]);
+
+      const comments = commentRes.rows.map((r: any) => ({
+        id: r.id,
+        comment: r.comment,
+        timestamp: r.timestamp,
+        total: Number(r.total) || 1,
+        user: {
+          id: r.user_id,
+          name: r.user_name,
+          avatarUrl: r.user_avatar_url,
+        },
+        ticket: {
+          id: r.ticket_id,
+          ticketNumber: r.ticket_number,
+          title: r.ticket_title,
+        },
+      }));
+
+      const attachments = attachmentRes.rows.map((r: any) => ({
+        id: r.id,
+        fileName: r.file_name,
+        fileUrl: r.file_url,
+        fileType: r.file_type,
+        uploadedAt: r.uploaded_at,
+        total: Number(r.total) || 1,
+        uploadedBy: {
+          id: r.uploaded_by_id,
+          name: r.uploader_name,
+          avatarUrl: r.uploader_avatar_url,
+        },
+        ticket: {
+          id: r.ticket_id,
+          ticketNumber: r.ticket_number,
+          title: r.ticket_title,
+        },
+      }));
+
+      const overdue = overdueRes.rows.map((r: any) => ({
+        id: r.id,
+        ticketNumber: r.ticket_number,
+        title: r.title,
+        endDate: r.end_date,
+        status: r.status,
+        priority: r.priority,
+        daysOverdue: Number(r.days_overdue) || 0,
+      }));
+
+      res.status(200).json({
+        success: true,
+        data: { comments, attachments, overdue },
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Get recent ticket activity error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to fetch recent ticket activity",
       } as ApiResponse);
     }
   }

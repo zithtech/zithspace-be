@@ -47,6 +47,18 @@ export declare class TicketController {
      */
     static getAllTags(req: AuthRequest, res: Response): Promise<void>;
     /**
+     * Recent comments + attachments across a project (tenant-aware).
+     *
+     * When `userId` is provided, results are scoped to activity the user
+     * cares about: comments/attachments authored by them, OR comments/
+     * attachments others made on tickets assigned to them. This is the
+     * relevance model used by the Ticket page sidebar.
+     *
+     * Each ticket appears at most once per stream (latest activity wins)
+     * so a chatty ticket doesn't crowd out everything else.
+     */
+    static getRecentActivity(req: AuthRequest, res: Response): Promise<void>;
+    /**
      * Update ticket (tenant-aware)
      */
     static updateTicket(req: AuthRequest, res: Response): Promise<void>;
