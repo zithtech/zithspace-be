@@ -488,7 +488,7 @@ export const generateInvoiceHtml = (invoice: any, profile: any) => {
       </div>
     </div>
     <p class="text-[#6b7280] text-[9px] mt-0.5 mb-2">
-      Visit <span class="text-[#2563eb] font-semibold">zithspace.com/invoice</span> to create truly professional invoices
+      Visit <span class="text-[#2563eb] font-semibold">zukvo.com/invoice</span> to create truly professional invoices
     </p>
   </div>
 </body>
