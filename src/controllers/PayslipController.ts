@@ -420,7 +420,7 @@ export class PayslipController {
       // Construct 'from' address strictly from company details
       const companyFrom = company?.email 
         ? `"${company.name}" <${company.email}>` 
-        : `"${company?.name || 'Enterprise HR'}" <no-reply@zithtech.com>`;
+        : `"${company?.name || 'Enterprise HR'}" <no-reply@zukvo.com>`;
 
       console.log(`[Payslip Controller] 📬 Company Email Found: ${company?.email}, Using Sender: ${companyFrom}`);
 
@@ -504,7 +504,7 @@ export class PayslipController {
           // Construct 'from' address strictly from company details
           const companyFrom = company?.email 
             ? `"${company.name}" <${company.email}>` 
-            : `"${company?.name || 'Enterprise HR'}" <no-reply@zithtech.com>`;
+            : `"${company?.name || 'Enterprise HR'}" <no-reply@zukvo.com>`;
 
           console.log(`[Bulk Payslip] 📮 Sending from: ${companyFrom} to ${payout.employee.work_email}`);
 

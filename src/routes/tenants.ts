@@ -77,6 +77,8 @@ router.get('/profile', tenantRateLimit, resolveTenant, authenticateToken, Tenant
  */
 router.put('/profile', tenantRateLimit, resolveTenant, authenticateToken, requirePermission(Permissions.SETTINGS_UPDATE), TenantController.updateProfile);
 
+router.put('/complete-setup', tenantRateLimit, resolveTenant, authenticateToken, TenantController.completeSetup);
+
 /**
  * DELETE /api/tenants/logo-version
  * Delete a specific logo version
