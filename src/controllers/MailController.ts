@@ -10,6 +10,7 @@ import { s3Client } from "../utils/r2Client";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Readable } from "stream";
+import { PushNotificationService } from "../services/pushNotificationService";
 
 export class MailController {
     /**
@@ -389,6 +390,36 @@ export class MailController {
                 threadId,
                 attachments: mappedAttachments
             });
+
+            // Collect recipient emails and trigger push notifications asynchronously
+            const recipientEmails: string[] = [];
+            const collectEmails = (field: any) => {
+                if (!field) return;
+                const list = Array.isArray(field) ? field : [field];
+                for (const item of list) {
+                    if (typeof item === 'string') {
+                        recipientEmails.push(item.trim().toLowerCase());
+                    } else if (typeof item === 'object' && item !== null && item.email) {
+                        recipientEmails.push(item.email.trim().toLowerCase());
+                    }
+                }
+            };
+
+            collectEmails(to);
+            collectEmails(cc);
+            collectEmails(bcc);
+
+            if (recipientEmails.length > 0) {
+                const senderName = req.user!.name || account.email;
+
+                PushNotificationService.sendNotificationToEmails(recipientEmails, {
+                    title: 'New Email Received',
+                    body: `You have received a new email from ${senderName}`,
+                    url: '/mail'
+                }).catch(err => {
+                    console.error("[MailController] Push notification failed:", err.message);
+                });
+            }
 
             // Trigger background sync (Commented out as requested)
             /*
