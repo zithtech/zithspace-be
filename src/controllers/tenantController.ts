@@ -13,6 +13,15 @@ import {
   AuthUser,
 } from "@/types";
 import { uploadImageToR2 } from "@/utils/r2Client";
+import {
+  recordTransaction,
+  diffShallow,
+  Section,
+  Module,
+  Page,
+  Action,
+  EntityType,
+} from "@/utils/transactionHistory";
 
 export class TenantController {
   /**
@@ -394,7 +403,7 @@ export class TenantController {
       // Handle logo uploads (original, cropped, or setting final)
       const currentTenant = await rawClient.tenant.findUnique({
         where: { id: req.tenantId },
-        select: { settings: true }
+        select: { name: true, settings: true }
       });
       const currentSettings = (currentTenant?.settings as any) || {};
       const logoVersions = Array.isArray(currentSettings.logoVersions) ? [...currentSettings.logoVersions] : [];
@@ -455,6 +464,35 @@ export class TenantController {
         where: { id: req.tenantId },
         data: updateData,
       });
+
+      // Log General Settings transaction if changed
+      const beforeSnap = {
+        name: currentTenant?.name,
+        settings: currentSettings,
+      };
+      const afterSnap = {
+        name: updatedTenant.name,
+        settings: updatedTenant.settings,
+      };
+      const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+
+      if (changedFields.length > 0) {
+        recordTransaction({
+          req,
+          section: Section.ADMIN,
+          module: Module.GENERAL_SETTINGS,
+          page: Page.GENERAL_SETTINGS_VIEW,
+          action: Action.UPDATE,
+          actionLabel: `Tenant settings updated (${changedFields.join(', ')})`,
+          entityType: EntityType.TENANT_SETTINGS,
+          entityId: req.tenantId,
+          entityLabel: 'General Settings',
+          beforeData: before,
+          afterData: after,
+          changedFields,
+          statusCode: 200
+        });
+      }
 
       res.status(200).json({
         success: true,
