@@ -160,9 +160,10 @@ export class EmailService {
   }
 
   public async resolveTenantMailBranding(tenantId?: string) {
-    let companyName = "ZithSpace";
+    let companyName = "Zukvo";
     let companyLogo = "";
-    let replyToEmail = process.env.SYSTEM_EMAIL || "support@zithspace.com";
+    let replyToEmail = process.env.SYSTEM_EMAIL || "support@zukvo.com";
+    let subdomain = "";
 
     if (tenantId) {
       try {
@@ -172,6 +173,7 @@ export class EmailService {
 
         if (tenant) {
           companyName = tenant.name || companyName;
+          subdomain = tenant.subdomain || "";
           const settings = tenant.settings as any;
           if (settings && settings.logoUrl) {
             companyLogo = settings.logoUrl;
@@ -182,7 +184,7 @@ export class EmailService {
       }
     }
 
-    return { companyName, companyLogo, replyToEmail };
+    return { companyName, companyLogo, replyToEmail, subdomain };
   }
 
   public async sendCentralizedMail(options: {
@@ -207,7 +209,7 @@ export class EmailService {
         return true;
       }
 
-      const fromEmail = process.env.SYSTEM_EMAIL || process.env.SMTP_USER || "system@zithspace.com";
+      const fromEmail = process.env.SYSTEM_EMAIL || process.env.SMTP_USER || "system@zukvo.com";
       const fromName = branding.companyName;
 
       const mailOptions = {
@@ -282,7 +284,11 @@ export class EmailService {
     tenantId?: string
   ): Promise<boolean> {
     const branding = await this.resolveTenantMailBranding(tenantId);
-    const loginUrl = `https://zithmi.zithspace.com/login?email=${encodeURIComponent(data.email)}&password=${encodeURIComponent(data.password || '')}`;
+    const appDomain = process.env.APP_DOMAIN || "zukvo.com";
+    const tenantHost = branding.subdomain
+      ? `https://${branding.subdomain}.${appDomain}`
+      : process.env.FRONTEND_URL || `https://${appDomain}`;
+    const loginUrl = `${tenantHost}/login?email=${encodeURIComponent(data.email)}&password=${encodeURIComponent(data.password || '')}`;
 
     const logoHtml = branding.companyLogo
       ? `<img class="logo" src="${branding.companyLogo}" alt="${branding.companyName}" />`
@@ -430,7 +436,7 @@ This is an automated mail, please do not reply.`;
       // Fallback to environment variables if no mail config
       if (!fromAddress) {
         console.log("⚠️ Falling back to environment variables for from address");
-        fromAddress = process.env.SMTP_USER || `"${process.env.SMTP_FROM_NAME || "Zithmi"}" <${process.env.SMTP_FROM_EMAIL || "noreply@zithtech.com"
+        fromAddress = process.env.SMTP_USER || `"${process.env.SMTP_FROM_NAME || "Zukvo"}" <${process.env.SMTP_FROM_EMAIL || "noreply@zukvo.com"
           }>`;
         console.log(`📧 Using fallback from address: ${fromAddress}`);
       }
@@ -812,7 +818,7 @@ If you have any questions or concerns, please contact your manager or HR departm
     const html = EmailService.generateInvoiceHtml(data);
 
     const options: any = {
-      from: data.from || process.env.SMTP_FROM_EMAIL || 'noreply@zithtech.com',
+      from: data.from || process.env.SMTP_FROM_EMAIL || 'noreply@zukvo.com',
       to: data.to,
       subject,
       html
