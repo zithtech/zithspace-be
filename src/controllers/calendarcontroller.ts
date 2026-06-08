@@ -369,11 +369,15 @@ export class CalendarController {
                     }
                 }
 
-                if (attendeeEmails.length > 0) {
+                // Filter out the organizer/creator's own email so they do not receive a notification for their own meeting
+                const creatorEmail = req.user?.email ? req.user.email.trim().toLowerCase() : '';
+                const filteredEmails = attendeeEmails.filter(email => email !== creatorEmail);
+
+                if (filteredEmails.length > 0) {
                     const managerName = req.user.name || "A manager";
                     const meetingTitle = eventData.title || eventData.subject || "New Meeting";
 
-                    PushNotificationService.sendNotificationToEmails(attendeeEmails, {
+                    PushNotificationService.sendNotificationToEmails(filteredEmails, {
                         title: 'New Meeting Scheduled',
                         body: `${managerName} has scheduled a meeting: "${meetingTitle}"`,
                         url: '/calendar'
