@@ -409,10 +409,17 @@ export class MailController {
             collectEmails(cc);
             collectEmails(bcc);
 
-            if (recipientEmails.length > 0) {
+            // Filter out the sender's own emails so they do not receive a notification for sending an email
+            const senderEmails = new Set<string>();
+            if (account.email) senderEmails.add(account.email.trim().toLowerCase());
+            if (req.user?.email) senderEmails.add(req.user.email.trim().toLowerCase());
+
+            const filteredRecipients = recipientEmails.filter(email => !senderEmails.has(email));
+
+            if (filteredRecipients.length > 0) {
                 const senderName = req.user!.name || account.email;
 
-                PushNotificationService.sendNotificationToEmails(recipientEmails, {
+                PushNotificationService.sendNotificationToEmails(filteredRecipients, {
                     title: 'New Email Received',
                     body: `You have received a new email from ${senderName}`,
                     url: '/mail'

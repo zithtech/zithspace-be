@@ -7,6 +7,7 @@ exports.TenantController = void 0;
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const database_1 = require("@/config/database");
 const tenantLogger_1 = __importDefault(require("@/utils/tenantLogger"));
+const dbpool_1 = __importDefault(require("@/config/dbpool"));
 const types_1 = require("@/types");
 const r2Client_1 = require("@/utils/r2Client");
 class TenantController {
@@ -222,21 +223,11 @@ class TenantController {
                 });
                 return;
             }
-            const rawClient = database_1.tenantAwarePrisma.getRawClient();
-            const tenant = await rawClient.tenant.findFirst({
-                where: {
-                    subdomain: subdomain.toLowerCase(),
-                    isActive: true,
-                },
-                select: {
-                    id: true,
-                    name: true,
-                    subdomain: true,
-                    planType: true,
-                    isActive: true,
-                },
-            });
-            console.log("resolve", tenant);
+            const result = await dbpool_1.default.query(`SELECT id, name, subdomain, plan_type, is_active, is_setup_complete
+         FROM tenants
+         WHERE subdomain = $1 AND is_active = true
+         LIMIT 1`, [subdomain.toLowerCase()]);
+            const tenant = result.rows[0];
             if (!tenant) {
                 res.status(404).json({
                     success: false,
@@ -251,8 +242,9 @@ class TenantController {
                     tenantInfo: {
                         name: tenant.name,
                         subdomain: tenant.subdomain,
-                        planType: tenant.planType,
-                        isActive: tenant.isActive,
+                        planType: tenant.plan_type,
+                        isActive: tenant.is_active,
+                        isSetupComplete: tenant.is_setup_complete,
                     },
                 },
             });
@@ -263,6 +255,55 @@ class TenantController {
                 success: false,
                 error: "Failed to resolve tenant",
             });
+        }
+    }
+    static async completeSetup(req, res) {
+        try {
+            if (!req.tenantId) {
+                res.status(400).json({ success: false, error: "Tenant context required" });
+                return;
+            }
+            if (req.user?.role !== "admin" && req.user?.role !== "super_admin") {
+                res.status(403).json({ success: false, error: "Admin access required" });
+                return;
+            }
+            const { workspaceName } = req.body;
+            if (!workspaceName?.trim() || workspaceName.trim().length < 2) {
+                res.status(400).json({ success: false, error: "Workspace name must be at least 2 characters" });
+                return;
+            }
+            const newSubdomain = workspaceName
+                .toLowerCase()
+                .trim()
+                .replace(/[^a-z0-9\s-]/g, "")
+                .replace(/\s+/g, "-")
+                .replace(/-+/g, "-")
+                .replace(/^-|-$/g, "");
+            if (newSubdomain.length < 2) {
+                res.status(400).json({ success: false, error: "Workspace name produces an invalid subdomain" });
+                return;
+            }
+            // Check uniqueness — allow the current tenant to keep its own subdomain
+            const conflict = await dbpool_1.default.query("SELECT id FROM tenants WHERE subdomain = $1 AND id != $2 LIMIT 1", [newSubdomain, req.tenantId]);
+            if (conflict.rows.length > 0) {
+                res.status(409).json({ success: false, error: "This workspace name is already taken. Please choose another." });
+                return;
+            }
+            const updated = await dbpool_1.default.query(`UPDATE tenants
+         SET name = $1, subdomain = $2, is_setup_complete = true, updated_at = now()
+         WHERE id = $3
+         RETURNING id, name, subdomain`, [workspaceName.trim(), newSubdomain, req.tenantId]);
+            res.status(200).json({
+                success: true,
+                data: {
+                    name: updated.rows[0].name,
+                    subdomain: updated.rows[0].subdomain,
+                },
+            });
+        }
+        catch (error) {
+            console.error("Complete setup error:", error);
+            res.status(500).json({ success: false, error: "Something went wrong. Please try again." });
         }
     }
     /**

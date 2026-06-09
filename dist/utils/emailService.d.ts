@@ -42,6 +42,7 @@ export declare class EmailService {
         companyName: string;
         companyLogo: string;
         replyToEmail: string;
+        subdomain: string;
     }>;
     sendCentralizedMail(options: {
         tenantId?: string;
