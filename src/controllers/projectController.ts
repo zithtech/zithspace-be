@@ -275,9 +275,12 @@ export class ProjectController {
 
       let maxNum = 0;
       for (const p of projects) {
-        if (p.code && /^\d{3}$/.test(p.code)) {
-          const num = parseInt(p.code, 10);
-          if (num > maxNum) maxNum = num;
+        if (p.code) {
+          const displayCode = p.code.replace(`${req.tenantId}_`, '');
+          if (/^\d{3}$/.test(displayCode)) {
+            const num = parseInt(displayCode, 10);
+            if (num > maxNum) maxNum = num;
+          }
         }
       }
       const nextCode = String(maxNum + 1).padStart(3, '0');
@@ -342,13 +345,18 @@ export class ProjectController {
         
         let maxNum = 0;
         for (const p of existingProjects) {
-          if (p.code && /^\d{3}$/.test(p.code)) {
-            const num = parseInt(p.code, 10);
-            if (num > maxNum) maxNum = num;
+          if (p.code) {
+            const displayCode = p.code.replace(`${req.tenantId}_`, '');
+            if (/^\d{3}$/.test(displayCode)) {
+              const num = parseInt(displayCode, 10);
+              if (num > maxNum) maxNum = num;
+            }
           }
         }
         projectCode = String(maxNum + 1).padStart(3, '0');
       }
+
+      const dbProjectCode = `${req.tenantId}_${projectCode.toUpperCase()}`;
 
       // Validate project manager exists and belongs to tenant
       const manager = await prisma.user.findFirst({
@@ -384,7 +392,7 @@ export class ProjectController {
       if (projectCode) {
         const existingProject = await prisma.project.findFirst({
           where: {
-            code: projectCode.toUpperCase(),
+            code: dbProjectCode,
             tenantId: req.tenantId,
           },
         });
@@ -401,7 +409,7 @@ export class ProjectController {
         data: {
           tenantId: req.tenantId,
           name,
-          code: projectCode?.toUpperCase(),
+          code: dbProjectCode,
           description,
           status,
           startDate: new Date(startDate),
@@ -552,21 +560,27 @@ export class ProjectController {
       }
 
       // Check if project code already exists (if code is being updated)
-      if (updates.code && updates.code !== existingProject.code) {
-        const duplicateProject = await prisma.project.findFirst({
-          where: {
-            code: updates.code.toUpperCase(),
-            tenantId: req.tenantId,
-            id: { not: id },
-          },
-        });
+      if (updates.code) {
+        const dbProjectCode = `${req.tenantId}_${updates.code.toUpperCase()}`;
+        const existingCleanCode = existingProject.code ? existingProject.code.replace(`${req.tenantId}_`, '') : '';
+        if (updates.code.toUpperCase() !== existingCleanCode.toUpperCase()) {
+          const duplicateProject = await prisma.project.findFirst({
+            where: {
+              code: dbProjectCode,
+              tenantId: req.tenantId,
+              id: { not: id },
+            },
+          });
 
-        if (duplicateProject) {
-          throw new ValidationError(
-            "Project code already exists in this tenant",
-          );
+          if (duplicateProject) {
+            throw new ValidationError(
+              "Project code already exists in this tenant",
+            );
+          }
+          updates.code = dbProjectCode;
+        } else {
+          updates.code = existingProject.code;
         }
-        updates.code = updates.code.toUpperCase();
       }
 
       // Convert date strings to Date objects
