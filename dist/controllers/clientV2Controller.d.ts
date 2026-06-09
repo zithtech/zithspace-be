@@ -7,6 +7,7 @@ export declare class ClientV2Controller {
     static updateClient(req: AuthRequest, res: Response): Promise<void>;
     static addContact(req: AuthRequest, res: Response): Promise<void>;
     static updateContact(req: AuthRequest, res: Response): Promise<void>;
+    static deleteContact(req: AuthRequest, res: Response): Promise<void>;
     static addDocument(req: AuthRequest, res: Response): Promise<void>;
     static deleteDocument(req: AuthRequest, res: Response): Promise<void>;
     /**
