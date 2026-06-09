@@ -695,6 +695,54 @@ export class ClientV2Controller {
         }
     }
 
+    static async deleteContact(req: AuthRequest, res: Response): Promise<void> {
+        try {
+            if (!req.tenantId) {
+                res.status(400).json({ success: false, error: 'Tenant context required' } as ApiResponse);
+                return;
+            }
+            const { contactId } = req.params;
+
+            await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                const existing = await prisma.clientContactV2.findFirst({
+                    where: { id: contactId, tenantId: req.tenantId! }
+                });
+                if (!existing) {
+                    res.status(404).json({ success: false, error: 'Contact not found' } as ApiResponse);
+                    return;
+                }
+
+                await prisma.clientContactV2.delete({ where: { id: contactId } });
+
+                recordTransaction({
+                    req,
+                    section: Section.ADMIN,
+                    module: Module.CLIENTS_V2,
+                    page: Page.CLIENT_DETAIL,
+                    action: Action.DELETE,
+                    actionLabel: `Client contact deleted: ${existing.firstName} ${existing.lastName}`,
+                    entityType: EntityType.CLIENT_CONTACT,
+                    entityId: contactId,
+                    entityLabel: `${existing.firstName} ${existing.lastName}`,
+                    parentEntityType: EntityType.CLIENT,
+                    parentEntityId: existing.clientId,
+                    beforeData: {
+                        firstName: existing.firstName,
+                        lastName: existing.lastName,
+                        officialEmail: existing.officialEmail,
+                        isPrimary: existing.isPrimary,
+                    },
+                    statusCode: 200
+                });
+
+                res.status(200).json({ success: true, message: 'Contact deleted successfully' } as ApiResponse);
+            });
+        } catch (error) {
+            console.error('Delete contact error:', error);
+            res.status(500).json({ success: false, error: 'Failed to delete contact' } as ApiResponse);
+        }
+    }
+
 
     // ==============================================
     // DOCUMENTS

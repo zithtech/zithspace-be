@@ -104,6 +104,12 @@ router.post('/:clientId/contacts', requirePermission(Permissions.CLIENT_UPDATE),
  */
 router.put('/contacts/:contactId', requirePermission(Permissions.CLIENT_UPDATE), ClientV2Controller.updateContact);
 
+/**
+ * @route   DELETE /api/clients-v2/contacts/:contactId
+ * @desc    Delete a contact
+ */
+router.delete('/contacts/:contactId', requirePermission(Permissions.CLIENT_UPDATE), ClientV2Controller.deleteContact);
+
 // ==============================================
 // DOCUMENTS
 // ==============================================
