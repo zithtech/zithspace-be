@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import { tenantAwarePrisma } from "@/config/database";
 import { JWTUtils } from "@/utils/jwt";
 import TenantLogger from "@/utils/tenantLogger";
+import pool from "@/config/dbpool";
 import {
   AuthRequest,
   ApiResponse,
@@ -274,21 +275,15 @@ export class TenantController {
         return;
       }
 
-      const rawClient = tenantAwarePrisma.getRawClient();
-      const tenant = await rawClient.tenant.findFirst({
-        where: {
-          subdomain: subdomain.toLowerCase(),
-          isActive: true,
-        },
-        select: {
-          id: true,
-          name: true,
-          subdomain: true,
-          planType: true,
-          isActive: true,
-        },
-      });
-      console.log("resolve", tenant);
+      const result = await pool.query(
+        `SELECT id, name, subdomain, plan_type, is_active, is_setup_complete
+         FROM tenants
+         WHERE subdomain = $1 AND is_active = true
+         LIMIT 1`,
+        [subdomain.toLowerCase()]
+      );
+
+      const tenant = result.rows[0];
       if (!tenant) {
         res.status(404).json({
           success: false,
@@ -304,8 +299,9 @@ export class TenantController {
           tenantInfo: {
             name: tenant.name,
             subdomain: tenant.subdomain,
-            planType: tenant.planType,
-            isActive: tenant.isActive,
+            planType: tenant.plan_type,
+            isActive: tenant.is_active,
+            isSetupComplete: tenant.is_setup_complete,
           },
         },
       } as ApiResponse);
@@ -315,6 +311,69 @@ export class TenantController {
         success: false,
         error: "Failed to resolve tenant",
       } as ApiResponse);
+    }
+  }
+
+  static async completeSetup(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId) {
+        res.status(400).json({ success: false, error: "Tenant context required" } as ApiResponse);
+        return;
+      }
+
+      if (req.user?.role !== "admin" && req.user?.role !== "super_admin") {
+        res.status(403).json({ success: false, error: "Admin access required" } as ApiResponse);
+        return;
+      }
+
+      const { workspaceName } = req.body;
+      if (!workspaceName?.trim() || workspaceName.trim().length < 2) {
+        res.status(400).json({ success: false, error: "Workspace name must be at least 2 characters" } as ApiResponse);
+        return;
+      }
+
+      const newSubdomain = workspaceName
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9\s-]/g, "")
+        .replace(/\s+/g, "-")
+        .replace(/-+/g, "-")
+        .replace(/^-|-$/g, "");
+
+      if (newSubdomain.length < 2) {
+        res.status(400).json({ success: false, error: "Workspace name produces an invalid subdomain" } as ApiResponse);
+        return;
+      }
+
+      // Check uniqueness — allow the current tenant to keep its own subdomain
+      const conflict = await pool.query(
+        "SELECT id FROM tenants WHERE subdomain = $1 AND id != $2 LIMIT 1",
+        [newSubdomain, req.tenantId]
+      );
+
+      if (conflict.rows.length > 0) {
+        res.status(409).json({ success: false, error: "This workspace name is already taken. Please choose another." } as ApiResponse);
+        return;
+      }
+
+      const updated = await pool.query(
+        `UPDATE tenants
+         SET name = $1, subdomain = $2, is_setup_complete = true, updated_at = now()
+         WHERE id = $3
+         RETURNING id, name, subdomain`,
+        [workspaceName.trim(), newSubdomain, req.tenantId]
+      );
+
+      res.status(200).json({
+        success: true,
+        data: {
+          name: updated.rows[0].name,
+          subdomain: updated.rows[0].subdomain,
+        },
+      } as ApiResponse);
+    } catch (error) {
+      console.error("Complete setup error:", error);
+      res.status(500).json({ success: false, error: "Something went wrong. Please try again." } as ApiResponse);
     }
   }
 

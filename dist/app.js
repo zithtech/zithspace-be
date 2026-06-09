@@ -103,6 +103,7 @@ const subDepartmentRoutes_1 = __importDefault(require("@/routes/subDepartmentRou
 const positionRoutes_1 = __importDefault(require("@/routes/positionRoutes"));
 const calendar_1 = __importDefault(require("@/routes/calendar"));
 const mail_1 = __importDefault(require("@/routes/mail"));
+const notifications_1 = __importDefault(require("@/routes/notifications")); // Web push notification routes
 const employeeExit_routes_1 = __importDefault(require("@/routes/employeeExit.routes"));
 const leaveOriginRoutes_1 = __importDefault(require("@/routes/leaveOriginRoutes"));
 const emailHistoryRoutes_1 = __importDefault(require("@/routes/emailHistoryRoutes"));
@@ -133,6 +134,7 @@ const lead_routes_1 = __importDefault(require("@/routes/lead.routes"));
 const leadSettings_routes_1 = __importDefault(require("@/routes/leadSettings.routes"));
 const webInquiry_routes_1 = __importDefault(require("@/routes/webInquiry.routes"));
 const generate_routes_1 = __importDefault(require("@/routes/generate.routes"));
+const landing_1 = __importDefault(require("@/routes/landing"));
 // import escalationSettingsRoutes from "./routes/escalationSettingsRoutes";
 // import escalationRoutes from "./routes/escalationRoutes";
 const escalationRoutesV2_1 = __importDefault(require("./routes/escalationRoutesV2"));
@@ -150,12 +152,15 @@ app.set('trust proxy', 1);
 const allowedOrigins = [
     "http://localhost:3000", // Local development
     "http://localhost:3005", // Local development for internal app
+    /^http:\/\/[^.]+\.localhost(:\d+)?$/, // *.localhost subdomains (dev)
     "https://zithmi.vercel.app", // Vercel production URL
     "https://www.zithtech.com",
     "https://zithspace.com",
     "https://zithmi.zithspace.com",
     /\.zithspace\.com$/,
     /\.zithtech\.com$/, // allow any subdomain like dinesh.zithtech.com
+    "https://zukvo.com",
+    /\.zukvo\.com$/, // allow any tenant subdomain like zithmi.zukvo.com
     /^chrome-extension:\/\/[a-z]{32}$/, // Allow Chrome extensions
 ];
 app.use((0, cors_1.default)({
@@ -233,6 +238,7 @@ app.use("/api/auth", auth_1.default);
 app.use("/api/generate", generate_routes_1.default);
 app.use("/api/projects", projects_1.default);
 app.use("/api/tenants", tenants_1.default);
+app.use("/api/landing", landing_1.default);
 app.use("/api/calendar", calendar_1.default);
 app.use("/api/squads", squad_1.default);
 app.use("/api/public/tickets", publicTickets_1.default);
@@ -307,6 +313,7 @@ app.use("/api/timesheets", timesheet_1.default);
 app.use("/api/zoho", calendar_1.default);
 app.get("/api/mail/attachments/download", MailController_1.MailController.downloadAttachment);
 app.use("/api/mail", mail_1.default);
+app.use("/api/notifications", notifications_1.default);
 // app.use("/api/mail-configuration", mailConfigurationRoutes);
 app.use("/api/leave-allocation", leaveAllocationRoutes_1.default);
 app.use("/api/leave-request", leaveRequestRoutes_1.default);
@@ -467,6 +474,8 @@ const startServer = async () => {
         // Initialize Tables
         const { BidIQModel } = require("./models/BidIQ.model");
         await BidIQModel.initTable();
+        const { WebPushSubscriptionModel } = require("./models/WebPushSubscription.model");
+        await WebPushSubscriptionModel.initTable();
         // Connect RabbitMQ & Start Workers
         try {
             await RabbitMQService_1.rabbitMQService.connect();
