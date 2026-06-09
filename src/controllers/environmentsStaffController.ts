@@ -27,6 +27,15 @@ const VALID_DEPLOY_STATUS = new Set([
   "in_progress",
 ]);
 
+function isValidUrl(str: string): boolean {
+  try {
+    const url = new URL(str);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export class EnvironmentsStaffController {
   /** GET /api/clients-v2/:clientId/environments */
   static async listForClient(req: AuthRequest, res: Response): Promise<void> {
@@ -95,6 +104,15 @@ export class EnvironmentsStaffController {
     if (!VALID_KINDS.has(String(b.kind))) {
       res.status(400).json({ success: false, error: "Invalid kind" });
       return;
+    }
+    if (b.url) {
+      const trimmedUrl = String(b.url).trim();
+      if (trimmedUrl) {
+        if (!isValidUrl(trimmedUrl)) {
+          res.status(400).json({ success: false, error: "Invalid URL format" });
+          return;
+        }
+      }
     }
     const status = b.status || "operational";
     const visibility = b.visibility || "client";
@@ -227,7 +245,14 @@ export class EnvironmentsStaffController {
       params.push(val);
       sets.push(`${col} = $${params.length}`);
     };
-    if (b.name !== undefined) push("name", String(b.name).trim());
+    if (b.name !== undefined) {
+      const trimmedName = String(b.name).trim();
+      if (!trimmedName) {
+        res.status(400).json({ success: false, error: "name is required" });
+        return;
+      }
+      push("name", trimmedName);
+    }
     if (b.kind !== undefined) {
       if (!VALID_KINDS.has(String(b.kind))) {
         res.status(400).json({ success: false, error: "Invalid kind" });
@@ -235,7 +260,18 @@ export class EnvironmentsStaffController {
       }
       push("kind", b.kind);
     }
-    if (b.url !== undefined) push("url", b.url || null);
+    if (b.url !== undefined) {
+      const trimmedUrl = b.url ? String(b.url).trim() : "";
+      if (trimmedUrl) {
+        if (!isValidUrl(trimmedUrl)) {
+          res.status(400).json({ success: false, error: "Invalid URL format" });
+          return;
+        }
+        push("url", trimmedUrl);
+      } else {
+        push("url", null);
+      }
+    }
     if (b.status !== undefined) {
       if (!VALID_STATUSES.has(String(b.status))) {
         res.status(400).json({ success: false, error: "Invalid status" });

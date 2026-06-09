@@ -27,11 +27,24 @@ import {
 import { randomUUID } from 'crypto';
 
 // Utility for auto-generating Client Code
-async function generateClientCode(tenantId: string, idPrefix = 'CL-') {
+// Uses max-based lookup (not count) to be safe against deletions and concurrent inserts.
+async function generateClientCode(tenantId: string, idPrefix = 'CL-'): Promise<string> {
     return await tenantAwarePrisma.withTenant(tenantId, async (client) => {
-        const clientsCount = await client.clientV2.count({ where: { tenantId } });
-        const paddedNum = (clientsCount + 1).toString().padStart(6, '0');
-        return `${idPrefix}${paddedNum}`;
+        const lastClient = await client.clientV2.findFirst({
+            where: { tenantId, clientCode: { startsWith: idPrefix } },
+            orderBy: { clientCode: 'desc' },
+            select: { clientCode: true },
+        });
+
+        let nextNum = 1;
+        if (lastClient?.clientCode) {
+            const match = lastClient.clientCode.match(/(\d+)$/);
+            if (match) {
+                nextNum = parseInt(match[1], 10) + 1;
+            }
+        }
+
+        return `${idPrefix}${nextNum.toString().padStart(6, '0')}`;
     });
 }
 
@@ -404,39 +417,62 @@ export class ClientV2Controller {
                 return;
             }
 
-            const clientCode = await generateClientCode(req.tenantId);
+            // Retry up to 5 times in case of a concurrent client_code collision (P2002)
+            const MAX_CODE_RETRIES = 5;
+            let newClient: any = null;
 
-            await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
-                const newClient = await prisma.clientV2.create({
-                    data: {
-                        ...clientData,
-                        tenantId: req.tenantId!,
-                        clientCode,
-                        createdById: req.user!.id,
+            for (let attempt = 0; attempt < MAX_CODE_RETRIES; attempt++) {
+                const clientCode = await generateClientCode(req.tenantId);
+                try {
+                    await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                        newClient = await prisma.clientV2.create({
+                            data: {
+                                ...clientData,
+                                tenantId: req.tenantId!,
+                                clientCode,
+                                createdById: req.user!.id,
+                            }
+                        });
+                    });
+                    break; // success — exit retry loop
+                } catch (err: any) {
+                    const isCodeCollision =
+                        err?.code === 'P2002' &&
+                        Array.isArray(err?.meta?.target) &&
+                        err.meta.target.includes('client_code');
+
+                    if (isCodeCollision && attempt < MAX_CODE_RETRIES - 1) {
+                        console.warn(`[createClient] client_code collision on attempt ${attempt + 1}, retrying...`);
+                        continue;
                     }
-                });
+                    throw err; // re-throw for non-collision errors or exhausted retries
+                }
+            }
 
-                recordTransaction({
-                    req,
-                    section: Section.ADMIN,
-                    module: Module.CLIENTS_V2,
-                    page: Page.CLIENT_LIST,
-                    action: Action.CREATE,
-                    actionLabel: `Client created: ${newClient.companyName}`,
-                    entityType: EntityType.CLIENT,
-                    entityId: newClient.id,
-                    entityLabel: newClient.companyName,
-                    afterData: {
-                        clientCode: newClient.clientCode,
-                        companyName: newClient.companyName,
-                        clientType: newClient.clientType,
-                        status: newClient.status
-                    },
-                    statusCode: 201
-                });
+            if (!newClient) {
+                throw new Error('Failed to generate a unique client code after multiple attempts');
+            }
 
-                res.status(201).json({ success: true, data: newClient, message: 'Client created successfully' } as ApiResponse);
+            recordTransaction({
+                req,
+                section: Section.ADMIN,
+                module: Module.CLIENTS_V2,
+                page: Page.CLIENT_LIST,
+                action: Action.CREATE,
+                actionLabel: `Client created: ${newClient.companyName}`,
+                entityType: EntityType.CLIENT,
+                entityId: newClient.id,
+                entityLabel: newClient.companyName,
+                afterData: {
+                    clientCode: newClient.clientCode,
+                    companyName: newClient.companyName,
+                    clientType: newClient.clientType,
+                    status: newClient.status
+                },
+                statusCode: 201
             });
+
+            res.status(201).json({ success: true, data: newClient, message: 'Client created successfully' } as ApiResponse);
         } catch (error: any) {
             console.error('Create ClientV2 error:', error);
             res.status(500).json({ success: false, error: 'Failed to create client' } as ApiResponse);
