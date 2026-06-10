@@ -1,5 +1,4 @@
 import { Response } from 'express';
-import { tenantAwarePrisma } from '@/config/database';
 import { 
   AuthRequest, 
   ApiResponse, 
@@ -8,6 +7,18 @@ import {
   CreateClientData,
   UpdateClientData
 } from '@/types';
+import {
+  getClients as modelGetClients,
+  getClientById as modelGetClientById,
+  getClientByEmail as modelGetClientByEmail,
+  createClient as modelCreateClient,
+  updateClient as modelUpdateClient,
+  deleteClient as modelDeleteClient,
+  getClientStats as modelGetClientStats,
+  getClientsForSelect as modelGetClientsForSelect,
+  bulkUpdateClientStatus as modelBulkUpdateClientStatus,
+  searchClients as modelSearchClients
+} from '../models/client.model';
 
 export class ClientController {
   /**
@@ -32,50 +43,14 @@ export class ClientController {
         sortOrder = 'desc'
       } = req.query;
 
-      // Build filter query
-      const where: any = {
-        tenantId: req.tenantId,
-        isActive: true,
-      };
-
-      // Search functionality
-      if (search) {
-        where.OR = [
-          { name: { contains: search as string, mode: 'insensitive' } },
-          { email: { contains: search as string, mode: 'insensitive' } },
-          { company: { contains: search as string, mode: 'insensitive' } },
-          { contactPerson: { contains: search as string, mode: 'insensitive' } }
-        ];
-      }
-
-      // Apply filters
-      if (status) where.isActive = status === 'active';
-
-      // Build sort object
-      const orderBy: any = {};
-      orderBy[sortBy as string] = sortOrder === 'desc' ? 'desc' : 'asc';
-
-      // Execute query with pagination
-      const skip = (Number(page) - 1) * Number(limit);
-      
-      const [clients, total] = await Promise.all([
-        tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-          return await client.client.findMany({
-            where,
-            include: {
-              createdBy: {
-                select: { id: true, name: true, workEmail: true }
-              }
-            },
-            orderBy,
-            skip,
-            take: Number(limit),
-          });
-        }),
-        tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-          return await client.client.count({ where });
-        })
-      ]);
+      const { clients, total } = await modelGetClients(req.tenantId, {
+        page: Number(page),
+        limit: Number(limit),
+        search: search as string,
+        status: status as string,
+        sortBy: sortBy as string,
+        sortOrder: sortOrder as 'asc' | 'desc',
+      });
 
       const totalPages = Math.ceil(total / Number(limit));
 
@@ -115,19 +90,7 @@ export class ClientController {
 
       const { id } = req.params;
 
-      const client = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-        return await client.client.findFirst({
-          where: {
-            id,
-            tenantId: req.tenantId,
-          },
-          include: {
-            createdBy: {
-              select: { id: true, name: true, workEmail: true }
-            }
-          }
-        });
-      });
+      const client = await modelGetClientById(id, req.tenantId);
 
       if (!client) {
         res.status(404).json({
@@ -174,46 +137,22 @@ export class ClientController {
         return;
       }
 
-      await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-        // Check if client with same email already exists within tenant
-        const existingClient = await client.client.findFirst({
-          where: {
-            email: clientData.email.toLowerCase(),
-            tenantId: req.tenantId,
-            isActive: true
-          }
-        });
-
-        if (existingClient) {
+      // Check if client with same email already exists within tenant
+      if (clientData.email) {
+        const existingClient = await modelGetClientByEmail(clientData.email, req.tenantId);
+        if (existingClient && existingClient.isActive) {
           throw new ValidationError('Client with this email already exists in this tenant');
         }
+      }
 
-        // Create new client
-        const newClient = await client.client.create({
-          data: {
-            tenantId: req.tenantId,
-            name: clientData.name,
-            email: clientData.email.toLowerCase(),
-            phone: clientData.phone,
-            company: clientData.company,
-            address: clientData.address,
-            contactPerson: clientData.contactPerson,
-            notes: clientData.notes,
-            createdById: req.user!.id,
-          },
-          include: {
-            createdBy: {
-              select: { id: true, name: true, workEmail: true }
-            }
-          }
-        });
+      // Create new client
+      const newClient = await modelCreateClient(req.tenantId, req.user.id, clientData);
 
-        res.status(201).json({
-          success: true,
-          data: newClient,
-          message: 'Client created successfully'
-        } as ApiResponse);
-      });
+      res.status(201).json({
+        success: true,
+        data: newClient,
+        message: 'Client created successfully'
+      } as ApiResponse);
     } catch (error: any) {
       console.error('Create client error:', error);
       
@@ -253,55 +192,30 @@ export class ClientController {
       delete updates.createdAt;
       delete updates.tenantId;
 
-      await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-        // Check if client exists and belongs to tenant
-        const existingClient = await client.client.findFirst({
-          where: {
-            id,
-            tenantId: req.tenantId,
-          }
-        });
+      // Check if client exists and belongs to tenant
+      const existingClient = await modelGetClientById(id, req.tenantId);
 
-        if (!existingClient) {
-          throw new NotFoundError('Client not found in this tenant');
+      if (!existingClient) {
+        throw new NotFoundError('Client not found in this tenant');
+      }
+
+      // If email is being updated, check for duplicates within tenant
+      if (updates.email && updates.email.toLowerCase() !== existingClient.email) {
+        const duplicateClient = await modelGetClientByEmail(updates.email, req.tenantId);
+
+        if (duplicateClient && duplicateClient.id !== id && duplicateClient.isActive) {
+          throw new ValidationError('Client with this email already exists in this tenant');
         }
+        updates.email = updates.email.toLowerCase();
+      }
 
-        // If email is being updated, check for duplicates within tenant
-        if (updates.email && updates.email.toLowerCase() !== existingClient.email) {
-          const duplicateClient = await client.client.findFirst({
-            where: {
-              email: updates.email.toLowerCase(),
-              tenantId: req.tenantId,
-              id: { not: id },
-              isActive: true
-            }
-          });
+      const updatedClient = await modelUpdateClient(id, req.tenantId, updates);
 
-          if (duplicateClient) {
-            throw new ValidationError('Client with this email already exists in this tenant');
-          }
-          updates.email = updates.email.toLowerCase();
-        }
-
-        const updatedClient = await client.client.update({
-          where: { id },
-          data: {
-            ...updates,
-            updatedAt: new Date()
-          },
-          include: {
-            createdBy: {
-              select: { id: true, name: true, workEmail: true }
-            }
-          }
-        });
-
-        res.status(200).json({
-          success: true,
-          data: updatedClient,
-          message: 'Client updated successfully'
-        } as ApiResponse);
-      });
+      res.status(200).json({
+        success: true,
+        data: updatedClient,
+        message: 'Client updated successfully'
+      } as ApiResponse);
     } catch (error: any) {
       console.error('Update client error:', error);
       
@@ -343,32 +257,19 @@ export class ClientController {
 
       const { id } = req.params;
 
-      await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-        const existingClient = await client.client.findFirst({
-          where: {
-            id,
-            tenantId: req.tenantId,
-          }
-        });
+      const existingClient = await modelGetClientById(id, req.tenantId);
 
-        if (!existingClient) {
-          throw new NotFoundError('Client not found in this tenant');
-        }
+      if (!existingClient) {
+        throw new NotFoundError('Client not found in this tenant');
+      }
 
-        // Soft delete
-        await client.client.update({
-          where: { id },
-          data: {
-            isActive: false,
-            updatedAt: new Date()
-          }
-        });
+      // Soft delete
+      await modelDeleteClient(id, req.tenantId);
 
-        res.status(200).json({
-          success: true,
-          message: 'Client deleted successfully'
-        } as ApiResponse);
-      });
+      res.status(200).json({
+        success: true,
+        message: 'Client deleted successfully'
+      } as ApiResponse);
     } catch (error: any) {
       console.error('Delete client error:', error);
       
@@ -400,37 +301,7 @@ export class ClientController {
         return;
       }
 
-      const stats = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-        const [totalClients, activeClients, recentClients] = await Promise.all([
-          client.client.count({
-            where: { tenantId: req.tenantId }
-          }),
-          client.client.count({
-            where: { tenantId: req.tenantId, isActive: true }
-          }),
-          client.client.findMany({
-            where: { tenantId: req.tenantId, isActive: true },
-            include: {
-              createdBy: {
-                select: { name: true }
-              }
-            },
-            orderBy: { createdAt: 'desc' },
-            take: 10
-          })
-        ]);
-
-        const inactiveClients = totalClients - activeClients;
-
-        return {
-          overview: {
-            totalClients,
-            activeClients,
-            inactiveClients
-          },
-          recentClients
-        };
-      });
+      const stats = await modelGetClientStats(req.tenantId);
 
       res.status(200).json({
         success: true,
@@ -458,30 +329,7 @@ export class ClientController {
         return;
       }
 
-      const clients = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-        return await client.client.findMany({
-          where: {
-            tenantId: req.tenantId,
-            isActive: true
-          },
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            company: true,
-            contactPerson: true,
-          },
-          orderBy: { name: 'asc' }
-        });
-      });
-
-      const formattedClients = clients.map(client => ({
-        value: client.id,
-        label: client.name,
-        email: client.email,
-        company: client.company,
-        contactPerson: client.contactPerson,
-      }));
+      const formattedClients = await modelGetClientsForSelect(req.tenantId);
 
       res.status(200).json({
         success: true,
@@ -527,23 +375,12 @@ export class ClientController {
         return;
       }
 
-      const result = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-        return await client.client.updateMany({
-          where: {
-            id: { in: clientIds },
-            tenantId: req.tenantId,
-          },
-          data: {
-            isActive,
-            updatedAt: new Date()
-          }
-        });
-      });
+      const count = await modelBulkUpdateClientStatus(clientIds, isActive, req.tenantId);
 
       res.status(200).json({
         success: true,
-        message: `${result.count} clients updated successfully`,
-        data: { modifiedCount: result.count }
+        message: `${count} clients updated successfully`,
+        data: { modifiedCount: count }
       } as ApiResponse);
     } catch (error) {
       console.error('Bulk update clients error:', error);
@@ -577,29 +414,7 @@ export class ClientController {
         return;
       }
 
-      const clients = await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-        return await client.client.findMany({
-          where: {
-            tenantId: req.tenantId,
-            isActive: true,
-            OR: [
-              { name: { contains: q as string, mode: 'insensitive' } },
-              { email: { contains: q as string, mode: 'insensitive' } },
-              { company: { contains: q as string, mode: 'insensitive' } },
-              { contactPerson: { contains: q as string, mode: 'insensitive' } }
-            ]
-          },
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            company: true,
-            contactPerson: true,
-          },
-          take: Number(limit),
-          orderBy: { name: 'asc' }
-        });
-      });
+      const clients = await modelSearchClients(req.tenantId, q as string, Number(limit));
 
       res.status(200).json({
         success: true,
