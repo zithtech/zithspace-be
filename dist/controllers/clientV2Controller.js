@@ -1112,7 +1112,8 @@ class ClientV2Controller {
             let codeExists = false;
             let nameExists = false;
             if (rawCode.length >= 3) {
-                const r = await dbpool_1.default.query('SELECT 1 FROM projects WHERE tenant_id = $1 AND lower(trim(code)) = lower(trim($2)) LIMIT 1', [req.tenantId, rawCode]);
+                const dbCode = `${req.tenantId}_${rawCode.toUpperCase()}`;
+                const r = await dbpool_1.default.query('SELECT 1 FROM projects WHERE tenant_id = $1 AND lower(trim(code)) = lower(trim($2)) LIMIT 1', [req.tenantId, dbCode]);
                 codeExists = (r.rowCount ?? 0) > 0;
             }
             if (rawName.length >= 3) {
@@ -1298,6 +1299,7 @@ class ClientV2Controller {
                 res.status(400).json({ success: false, error: 'Project name and code are required' });
                 return;
             }
+            const dbProjectCode = `${req.tenantId}_${code.toUpperCase()}`;
             const result = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
                 const actualProjectManagerId = await getUserIdFromEmployeeId(prisma, projectManagerId, req.tenantId, req.user.id);
                 // 1. Create the project in the global projects table
@@ -1305,7 +1307,7 @@ class ClientV2Controller {
                     data: {
                         tenantId: req.tenantId,
                         name,
-                        code,
+                        code: dbProjectCode,
                         description: `Client project for ${clientId}`,
                         status: status || 'Draft',
                         projectManagerId: actualProjectManagerId,
@@ -1383,7 +1385,7 @@ class ClientV2Controller {
                 if (name)
                     updateData.name = name;
                 if (code)
-                    updateData.code = code;
+                    updateData.code = `${req.tenantId}_${code.toUpperCase()}`;
                 if (status)
                     updateData.status = status;
                 if (actualProjectManagerId)
