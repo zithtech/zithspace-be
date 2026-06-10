@@ -1632,9 +1632,10 @@ export class ClientV2Controller {
             let nameExists = false;
 
             if (rawCode.length >= 3) {
+                const dbCode = `${req.tenantId}_${rawCode.toUpperCase()}`;
                 const r = await pool.query(
                     'SELECT 1 FROM projects WHERE tenant_id = $1 AND lower(trim(code)) = lower(trim($2)) LIMIT 1',
-                    [req.tenantId, rawCode]
+                    [req.tenantId, dbCode]
                 );
                 codeExists = (r.rowCount ?? 0) > 0;
             }

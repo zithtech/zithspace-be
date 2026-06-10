@@ -223,7 +223,45 @@ app.get("/health", (req, res) => {
         version: "2.0.0",
     });
 });
-// app.use("/api", optionalTenantContext);
+// Middleware to strip tenant prefix from project codes in JSON responses
+function stripTenantPrefix(obj, tenantId) {
+    if (typeof obj === "string") {
+        const globalPrefix = new RegExp(`${tenantId}_`, "g");
+        return obj.replace(globalPrefix, "");
+    }
+    if (Array.isArray(obj)) {
+        return obj.map((item) => stripTenantPrefix(item, tenantId));
+    }
+    if (obj !== null && typeof obj === "object") {
+        if (obj instanceof Date || obj instanceof RegExp) {
+            return obj;
+        }
+        if (Buffer.isBuffer(obj)) {
+            return obj;
+        }
+        const newObj = {};
+        for (const key of Object.keys(obj)) {
+            newObj[key] = stripTenantPrefix(obj[key], tenantId);
+        }
+        return newObj;
+    }
+    return obj;
+}
+app.use((req, res, next) => {
+    const originalJson = res.json;
+    res.json = function (body) {
+        if (req.tenantId && body) {
+            try {
+                body = stripTenantPrefix(body, req.tenantId);
+            }
+            catch (err) {
+                console.error("Error cleaning tenant prefix from response:", err);
+            }
+        }
+        return originalJson.call(this, body);
+    };
+    next();
+});
 // API routes
 app.use("/api/leave-adjustments", leaveAdjustmentRoutes_1.default);
 app.use("/api/company-government-holidays", companyGovernmentHoliday_routes_1.default);

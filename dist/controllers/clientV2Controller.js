@@ -1471,7 +1471,8 @@ class ClientV2Controller {
             let codeExists = false;
             let nameExists = false;
             if (rawCode.length >= 3) {
-                const r = await dbpool_1.default.query('SELECT 1 FROM projects WHERE tenant_id = $1 AND lower(trim(code)) = lower(trim($2)) LIMIT 1', [req.tenantId, rawCode]);
+                const dbCode = `${req.tenantId}_${rawCode.toUpperCase()}`;
+                const r = await dbpool_1.default.query('SELECT 1 FROM projects WHERE tenant_id = $1 AND lower(trim(code)) = lower(trim($2)) LIMIT 1', [req.tenantId, dbCode]);
                 codeExists = (r.rowCount ?? 0) > 0;
             }
             if (rawName.length >= 3) {
