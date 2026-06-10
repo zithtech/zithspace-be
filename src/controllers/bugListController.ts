@@ -2750,7 +2750,8 @@ export class BugListController {
           `SELECT code FROM projects WHERE id = $1 AND tenant_id = $2`,
           [projectId, req.tenantId],
         );
-        const projectCode = projectRes.rows[0]?.code || "TKT";
+        const rawCode = projectRes.rows[0]?.code;
+        const projectCode = rawCode ? rawCode.replace(`${req.tenantId}_`, '') : "TKT";
 
         // Sequence is per-project: pull MAX(numeric tail) for tickets sharing
         // this project's prefix. Doing this inside the open transaction means

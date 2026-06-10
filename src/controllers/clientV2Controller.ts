@@ -1256,9 +1256,10 @@ export class ClientV2Controller {
             let nameExists = false;
 
             if (rawCode.length >= 3) {
+                const dbCode = `${req.tenantId}_${rawCode.toUpperCase()}`;
                 const r = await pool.query(
                     'SELECT 1 FROM projects WHERE tenant_id = $1 AND lower(trim(code)) = lower(trim($2)) LIMIT 1',
-                    [req.tenantId, rawCode]
+                    [req.tenantId, dbCode]
                 );
                 codeExists = (r.rowCount ?? 0) > 0;
             }
@@ -1478,6 +1479,8 @@ export class ClientV2Controller {
                 return;
             }
 
+            const dbProjectCode = `${req.tenantId}_${code.toUpperCase()}`;
+
             const result = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
                 const actualProjectManagerId = await getUserIdFromEmployeeId(prisma, projectManagerId, req.tenantId!, req.user!.id);
 
@@ -1486,7 +1489,7 @@ export class ClientV2Controller {
                     data: {
                         tenantId: req.tenantId!,
                         name,
-                        code,
+                        code: dbProjectCode,
                         description: `Client project for ${clientId}`,
                         status: status || 'Draft',
                         projectManagerId: actualProjectManagerId,
@@ -1569,7 +1572,7 @@ export class ClientV2Controller {
 
                 const updateData: any = {};
                 if (name) updateData.name = name;
-                if (code) updateData.code = code;
+                if (code) updateData.code = `${req.tenantId}_${code.toUpperCase()}`;
                 if (status) updateData.status = status;
                 if (actualProjectManagerId) updateData.projectManagerId = actualProjectManagerId;
                 if (startDate) updateData.startDate = new Date(startDate);

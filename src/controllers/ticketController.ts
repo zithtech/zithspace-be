@@ -471,10 +471,11 @@ export class TicketController {
         attempts++;
 
         // Find the last ticket number for THIS project specific prefix
+        const cleanProjectCode = project.code ? project.code.replace(`${req.tenantId}_`, '') : "TKT";
         const lastTicket = await prisma.ticket.findFirst({
           where: { 
             tenantId: req.tenantId,
-            ticketNumber: { startsWith: `${project.code || "TKT"}-` }
+            ticketNumber: { startsWith: `${cleanProjectCode}-` }
           },
           orderBy: { ticketNumber: 'desc' }
         });
@@ -488,7 +489,7 @@ export class TicketController {
           }
         }
 
-        ticketNumber = `${project.code || "TKT"}-${nextTicketNumber
+        ticketNumber = `${cleanProjectCode}-${nextTicketNumber
           .toString()
           .padStart(4, "0")}`;
 
