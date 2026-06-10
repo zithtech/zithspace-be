@@ -657,11 +657,31 @@ class TicketController {
                 }
             }
             if (assigneeId) {
-                if (typeof assigneeId === "string" && assigneeId.includes(",")) {
-                    baseWhere.assigneeId = { in: assigneeId.split(",").map((id) => id.trim()) };
-                }
-                else {
-                    baseWhere.assigneeId = assigneeId;
+                if (typeof assigneeId === "string") {
+                    const ids = assigneeId.split(",").map((id) => id.trim());
+                    const hasUnassigned = ids.includes("null") || ids.includes("unassigned") || ids.includes("__unassigned__");
+                    const actualUserIds = ids.filter(id => id !== "null" && id !== "unassigned" && id !== "__unassigned__");
+                    if (hasUnassigned) {
+                        if (actualUserIds.length > 0) {
+                            baseWhere.AND = [
+                                ...(baseWhere.AND || []),
+                                {
+                                    OR: [
+                                        { assigneeId: { in: actualUserIds } },
+                                        { assigneeId: null }
+                                    ]
+                                }
+                            ];
+                        }
+                        else {
+                            baseWhere.assigneeId = null;
+                        }
+                    }
+                    else {
+                        if (actualUserIds.length > 0) {
+                            baseWhere.assigneeId = actualUserIds.length === 1 ? actualUserIds[0] : { in: actualUserIds };
+                        }
+                    }
                 }
             }
             if (search) {
@@ -837,15 +857,31 @@ class TicketController {
                 where.projectId = projectId;
             // Handle single or multiple assignees
             if (assigneeId) {
-                if (typeof assigneeId === "string" && assigneeId.includes(",")) {
-                    // Multiple assignees - split and use 'in' operator
-                    where.assigneeId = {
-                        in: assigneeId.split(",").map((id) => id.trim()),
-                    };
-                }
-                else {
-                    // Single assignee
-                    where.assigneeId = assigneeId;
+                if (typeof assigneeId === "string") {
+                    const ids = assigneeId.split(",").map((id) => id.trim());
+                    const hasUnassigned = ids.includes("null") || ids.includes("unassigned") || ids.includes("__unassigned__");
+                    const actualUserIds = ids.filter(id => id !== "null" && id !== "unassigned" && id !== "__unassigned__");
+                    if (hasUnassigned) {
+                        if (actualUserIds.length > 0) {
+                            where.AND = [
+                                ...(where.AND || []),
+                                {
+                                    OR: [
+                                        { assigneeId: { in: actualUserIds } },
+                                        { assigneeId: null }
+                                    ]
+                                }
+                            ];
+                        }
+                        else {
+                            where.assigneeId = null;
+                        }
+                    }
+                    else {
+                        if (actualUserIds.length > 0) {
+                            where.assigneeId = actualUserIds.length === 1 ? actualUserIds[0] : { in: actualUserIds };
+                        }
+                    }
                 }
             }
             if (createdById)
