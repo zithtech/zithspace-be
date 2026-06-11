@@ -387,25 +387,20 @@ class TicketController {
             const maxAttempts = 5;
             while (attempts < maxAttempts) {
                 attempts++;
-                // Find the last ticket number for THIS project specific prefix
-                const lastTicket = await database_1.prisma.ticket.findFirst({
-                    where: {
-                        tenantId: req.tenantId,
-                        ticketNumber: { startsWith: `${project.code || "TKT"}-` }
-                    },
-                    orderBy: { ticketNumber: 'desc' }
-                });
-                let nextTicketNumber = 1;
-                if (lastTicket && lastTicket.ticketNumber) {
-                    const parts = lastTicket.ticketNumber.split('-');
-                    const lastSeq = parseInt(parts[parts.length - 1]);
-                    if (!isNaN(lastSeq)) {
-                        nextTicketNumber = lastSeq + 1;
-                    }
-                }
-                ticketNumber = `${project.code || "TKT"}-${nextTicketNumber
-                    .toString()
-                    .padStart(4, "0")}`;
+                // Find the highest ticket sequence for THIS specific project (by projectId, not just prefix)
+                // Using raw SQL MAX on numeric suffix for reliable numeric ordering
+                const seqResult = await database_1.prisma.$queryRaw `
+          SELECT COALESCE(
+            MAX((regexp_match(ticket_number, '-(\d+)$'))[1]::int),
+            0
+          ) + 1 AS next_seq
+          FROM tickets
+          WHERE tenant_id = ${req.tenantId}
+            AND project_id = ${projectId}
+            AND ticket_number ~ '-\d+$'
+        `;
+                const nextTicketNumber = seqResult[0]?.next_seq ?? 1;
+                ticketNumber = `${project.code || "TKT"}-${String(nextTicketNumber).padStart(4, "0")}`;
                 try {
                     // Prepare metadata for additional fields not in schema
                     const metadata = {
@@ -656,11 +651,31 @@ class TicketController {
                 }
             }
             if (assigneeId) {
-                if (typeof assigneeId === "string" && assigneeId.includes(",")) {
-                    baseWhere.assigneeId = { in: assigneeId.split(",").map((id) => id.trim()) };
-                }
-                else {
-                    baseWhere.assigneeId = assigneeId;
+                if (typeof assigneeId === "string") {
+                    const ids = assigneeId.split(",").map((id) => id.trim());
+                    const hasUnassigned = ids.includes("null") || ids.includes("unassigned") || ids.includes("__unassigned__");
+                    const actualUserIds = ids.filter(id => id !== "null" && id !== "unassigned" && id !== "__unassigned__");
+                    if (hasUnassigned) {
+                        if (actualUserIds.length > 0) {
+                            baseWhere.AND = [
+                                ...(baseWhere.AND || []),
+                                {
+                                    OR: [
+                                        { assigneeId: { in: actualUserIds } },
+                                        { assigneeId: null }
+                                    ]
+                                }
+                            ];
+                        }
+                        else {
+                            baseWhere.assigneeId = null;
+                        }
+                    }
+                    else {
+                        if (actualUserIds.length > 0) {
+                            baseWhere.assigneeId = actualUserIds.length === 1 ? actualUserIds[0] : { in: actualUserIds };
+                        }
+                    }
                 }
             }
             if (search) {
@@ -836,15 +851,31 @@ class TicketController {
                 where.projectId = projectId;
             // Handle single or multiple assignees
             if (assigneeId) {
-                if (typeof assigneeId === "string" && assigneeId.includes(",")) {
-                    // Multiple assignees - split and use 'in' operator
-                    where.assigneeId = {
-                        in: assigneeId.split(",").map((id) => id.trim()),
-                    };
-                }
-                else {
-                    // Single assignee
-                    where.assigneeId = assigneeId;
+                if (typeof assigneeId === "string") {
+                    const ids = assigneeId.split(",").map((id) => id.trim());
+                    const hasUnassigned = ids.includes("null") || ids.includes("unassigned") || ids.includes("__unassigned__");
+                    const actualUserIds = ids.filter(id => id !== "null" && id !== "unassigned" && id !== "__unassigned__");
+                    if (hasUnassigned) {
+                        if (actualUserIds.length > 0) {
+                            where.AND = [
+                                ...(where.AND || []),
+                                {
+                                    OR: [
+                                        { assigneeId: { in: actualUserIds } },
+                                        { assigneeId: null }
+                                    ]
+                                }
+                            ];
+                        }
+                        else {
+                            where.assigneeId = null;
+                        }
+                    }
+                    else {
+                        if (actualUserIds.length > 0) {
+                            where.assigneeId = actualUserIds.length === 1 ? actualUserIds[0] : { in: actualUserIds };
+                        }
+                    }
                 }
             }
             if (createdById)

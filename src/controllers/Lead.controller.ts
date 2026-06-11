@@ -57,6 +57,19 @@ export class LeadController {
         return res.status(400).json({ success: false, error: 'Tenant context required' });
       }
 
+      const clientPhone = req.body.clientPhone;
+      if (clientPhone && typeof clientPhone === 'string' && clientPhone.trim() !== '') {
+        const phoneVal = clientPhone.trim();
+        const digits = phoneVal.replace(/\D/g, '');
+        const phoneRegex = /^\+?[0-9\s\-()]+$/;
+        if (digits.length < 7 || digits.length > 15 || !phoneRegex.test(phoneVal)) {
+          return res.status(400).json({
+            success: false,
+            error: 'Invalid client phone number. It must contain between 7 and 15 digits and can only include digits, spaces, dashes, parentheses, and start with +.'
+          });
+        }
+      }
+
       // Robust date parsing for Postgres compatibility
       const parseDate = (val: any) => {
         if (!val) return null;
@@ -304,6 +317,19 @@ export class LeadController {
       const tenantId = req.tenantId;
       if (!tenantId) {
         return res.status(400).json({ success: false, error: 'Tenant context required' });
+      }
+
+      const clientPhone = req.body.clientPhone;
+      if (clientPhone && typeof clientPhone === 'string' && clientPhone.trim() !== '') {
+        const phoneVal = clientPhone.trim();
+        const digits = phoneVal.replace(/\D/g, '');
+        const phoneRegex = /^\+?[0-9\s\-()]+$/;
+        if (digits.length < 7 || digits.length > 15 || !phoneRegex.test(phoneVal)) {
+          return res.status(400).json({
+            success: false,
+            error: 'Invalid client phone number. It must contain between 7 and 15 digits and can only include digits, spaces, dashes, parentheses, and start with +.'
+          });
+        }
       }
 
       const updateData: any = {};
