@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SettingsController = void 0;
 const database_1 = require("@/config/database");
+const client_model_1 = require("../models/client.model");
 const types_1 = require("@/types");
 const socketService_1 = require("@/services/socketService");
 const transactionHistory_1 = require("@/utils/transactionHistory");
@@ -645,12 +646,7 @@ class SettingsController {
                 database_1.prisma.releasePlan.count({
                     where: { tenantId: req.tenantId }
                 }),
-                database_1.prisma.client.count({
-                    where: {
-                        tenantId: req.tenantId,
-                        isActive: true
-                    }
-                })
+                (0, client_model_1.countActiveClients)(req.tenantId)
             ]);
             const stats = {
                 users: userCount,
@@ -902,25 +898,7 @@ class SettingsController {
                     take: searchLimit
                 }),
                 // Search clients
-                database_1.prisma.client.findMany({
-                    where: {
-                        tenantId: req.tenantId,
-                        isActive: true,
-                        OR: [
-                            { name: { contains: searchTerm, mode: 'insensitive' } },
-                            { email: { contains: searchTerm, mode: 'insensitive' } },
-                            { company: { contains: searchTerm, mode: 'insensitive' } }
-                        ]
-                    },
-                    select: {
-                        id: true,
-                        name: true,
-                        email: true,
-                        company: true,
-                        contactPerson: true
-                    },
-                    take: searchLimit
-                }),
+                (0, client_model_1.searchClients)(req.tenantId, searchTerm, searchLimit),
                 // Search release plans
                 database_1.prisma.releasePlan.findMany({
                     where: {
