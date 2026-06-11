@@ -1030,6 +1030,47 @@ class ClientV2Controller {
             res.status(500).json({ success: false, error: 'Failed to update contact' });
         }
     }
+    static async deleteContact(req, res) {
+        try {
+            if (!req.tenantId) {
+                res.status(400).json({ success: false, error: 'Tenant context required' });
+                return;
+            }
+            const { contactId } = req.params;
+            const existingRes = await dbpool_1.default.query(`SELECT * FROM client_contacts_v2 WHERE id = $1 AND tenant_id = $2`, [contactId, req.tenantId]);
+            if (existingRes.rows.length === 0) {
+                res.status(404).json({ success: false, error: 'Contact not found' });
+                return;
+            }
+            const existing = mapRowToContact(existingRes.rows[0]);
+            await dbpool_1.default.query(`DELETE FROM client_contacts_v2 WHERE id = $1 AND tenant_id = $2`, [contactId, req.tenantId]);
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.ADMIN,
+                module: transactionHistory_1.Module.CLIENTS_V2,
+                page: transactionHistory_1.Page.CLIENT_DETAIL,
+                action: transactionHistory_1.Action.DELETE,
+                actionLabel: `Client contact deleted: ${existing.firstName} ${existing.lastName}`,
+                entityType: transactionHistory_1.EntityType.CLIENT_CONTACT,
+                entityId: contactId,
+                entityLabel: `${existing.firstName} ${existing.lastName}`,
+                parentEntityType: transactionHistory_1.EntityType.CLIENT,
+                parentEntityId: existing.clientId,
+                beforeData: {
+                    firstName: existing.firstName,
+                    lastName: existing.lastName,
+                    officialEmail: existing.officialEmail,
+                    isPrimary: existing.isPrimary,
+                },
+                statusCode: 200
+            });
+            res.status(200).json({ success: true, message: 'Contact deleted successfully' });
+        }
+        catch (error) {
+            console.error('Delete contact error:', error);
+            res.status(500).json({ success: false, error: 'Failed to delete contact' });
+        }
+    }
     // ==============================================
     // DOCUMENTS
     // ==============================================
