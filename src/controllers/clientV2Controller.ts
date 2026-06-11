@@ -26,6 +26,7 @@ import {
 } from '@/utils/transactionHistory';
 import { randomUUID } from 'crypto';
 
+
 // =============================================================================
 // DATABASE LAYER LEGEND — ClientV2Controller
 // =============================================================================
@@ -715,91 +716,114 @@ export class ClientV2Controller {
                 return;
             }
 
-            const clientCode = await generateClientCode(req.tenantId);
+            const MAX_CODE_RETRIES = 5;
+            let newClient: any = null;
 
-            // Check if client with client code already exists tenant-wise
-            const codeCheck = await pool.query(
-                `SELECT 1 FROM clients_v2 WHERE tenant_id = $1 AND client_code = $2 LIMIT 1`,
-                [req.tenantId, clientCode]
-            );
-            if (codeCheck.rows.length > 0) {
-                res.status(409).json({ success: false, error: 'A client with this client code already exists' } as ApiResponse);
-                return;
+            for (let attempt = 0; attempt < MAX_CODE_RETRIES; attempt++) {
+                const clientCode = await generateClientCode(req.tenantId);
+                try {
+                    // Check if client with client code already exists tenant-wise
+                    const codeCheck = await pool.query(
+                        `SELECT 1 FROM clients_v2 WHERE tenant_id = $1 AND client_code = $2 LIMIT 1`,
+                        [req.tenantId, clientCode]
+                    );
+                    if (codeCheck.rows.length > 0) {
+                        if (attempt < MAX_CODE_RETRIES - 1) {
+                            console.warn(`[createClient] client_code collision on attempt ${attempt + 1}, retrying...`);
+                            continue;
+                        }
+                        res.status(409).json({ success: false, error: 'A client with this client code already exists' } as ApiResponse);
+                        return;
+                    }
+
+                    // INSERT all 43 fields; is_active defaults to true
+                    const r = await pool.query(
+                        `INSERT INTO clients_v2 (
+                            id, tenant_id, client_code, company_name, legal_name, client_type,
+                            parent_id, company_size, industry, contract_value, year_of_incorporation,
+                            duration, gst_vat_tax_id, registration_number, country, website,
+                            default_currency, billing_address, risk_level, status, pan, vat_number,
+                            duns_number, msme_registration, payment_terms, credit_limit,
+                            billing_contact_email, accounts_payable_name, tds_applicable,
+                            reverse_charge_applicable, account_manager_id, sales_owner_id,
+                            delivery_owner_id, client_segment, contract_start_date, contract_end_date,
+                            renewal_type, sla_level, bank_name, bank_account_number, ifsc_swift,
+                            currency_of_payment, preferred_payment_mode, is_active, created_by_id, updated_at
+                        ) VALUES (
+                            gen_random_uuid()::text, $1, $2, $3, $4, $5,
+                            $6, $7, $8, $9, $10,
+                            $11, $12, $13, $14, $15,
+                            $16, $17, $18, $19, $20, $21,
+                            $22, $23, $24, $25,
+                            $26, $27, $28,
+                            $29, $30, $31,
+                            $32, $33, $34, $35,
+                            $36, $37, $38, $39, $40,
+                            $41, $42, true, $43, NOW()
+                        ) RETURNING *`,
+                        [
+                            req.tenantId,                                                        // $1
+                            clientCode,                                                          // $2
+                            clientData.companyName,                                              // $3
+                            clientData.legalName || null,                                        // $4
+                            clientData.clientType,                                               // $5
+                            clientData.parentId || null,                                         // $6
+                            clientData.companySize || null,                                      // $7
+                            clientData.industry || null,                                         // $8
+                            clientData.contractValue || null,                                    // $9
+                            clientData.yearOfIncorporation || null,                              // $10
+                            clientData.duration || null,                                         // $11
+                            clientData.gstVatTaxId || null,                                     // $12
+                            clientData.registrationNumber || null,                               // $13
+                            clientData.country || null,                                          // $14
+                            clientData.website || null,                                          // $15
+                            clientData.defaultCurrency || 'USD',                                 // $16
+                            clientData.billingAddress || null,                                   // $17
+                            clientData.riskLevel || null,                                        // $18
+                            (clientData as any).status || 'Prospect',                            // $19
+                            clientData.pan || null,                                              // $20
+                            clientData.vatNumber || null,                                        // $21
+                            clientData.dunsNumber || null,                                       // $22
+                            clientData.msmeRegistration || null,                                 // $23
+                            clientData.paymentTerms || null,                                     // $24
+                            clientData.creditLimit || null,                                      // $25
+                            clientData.billingContactEmail || null,                              // $26
+                            clientData.accountsPayableName || null,                              // $27
+                            clientData.tdsApplicable ?? false,                                   // $28
+                            clientData.reverseCharge ?? false,                                   // $29
+                            clientData.accountManagerId || null,                                 // $30
+                            clientData.salesOwnerId || null,                                     // $31
+                            clientData.deliveryOwnerId || null,                                  // $32
+                            clientData.clientSegment || null,                                    // $33
+                            clientData.contractStartDate ? new Date(clientData.contractStartDate) : null, // $34
+                            clientData.contractEndDate   ? new Date(clientData.contractEndDate)   : null, // $35
+                            clientData.renewalType || null,                                      // $36
+                            clientData.slaLevel || null,                                         // $37
+                            clientData.bankName || null,                                         // $38
+                            clientData.bankAccountNumber || null,                                // $39
+                            clientData.ifscSwift || null,                                        // $40
+                            clientData.currencyOfPayment || null,                                // $41
+                            clientData.preferredPaymentMode || null,                             // $42
+                            req.user!.id,                                                        // $43
+                        ]
+                    );
+
+                    newClient = mapRowToClientV2(r.rows[0]);
+                    break; // success — exit retry loop
+                } catch (err: any) {
+                    const isCodeCollision = err?.code === '23505' && err?.detail?.includes('client_code');
+                    if (isCodeCollision && attempt < MAX_CODE_RETRIES - 1) {
+                        console.warn(`[createClient] client_code collision on attempt ${attempt + 1}, retrying...`);
+                        continue;
+                    }
+                    throw err; // re-throw for non-collision errors or exhausted retries
+                }
             }
 
-            // INSERT all 43 fields; is_active defaults to true
-            const r = await pool.query(
-                `INSERT INTO clients_v2 (
-                    id, tenant_id, client_code, company_name, legal_name, client_type,
-                    parent_id, company_size, industry, contract_value, year_of_incorporation,
-                    duration, gst_vat_tax_id, registration_number, country, website,
-                    default_currency, billing_address, risk_level, status, pan, vat_number,
-                    duns_number, msme_registration, payment_terms, credit_limit,
-                    billing_contact_email, accounts_payable_name, tds_applicable,
-                    reverse_charge_applicable, account_manager_id, sales_owner_id,
-                    delivery_owner_id, client_segment, contract_start_date, contract_end_date,
-                    renewal_type, sla_level, bank_name, bank_account_number, ifsc_swift,
-                    currency_of_payment, preferred_payment_mode, is_active, created_by_id, updated_at
-                ) VALUES (
-                    gen_random_uuid()::text, $1, $2, $3, $4, $5,
-                    $6, $7, $8, $9, $10,
-                    $11, $12, $13, $14, $15,
-                    $16, $17, $18, $19, $20, $21,
-                    $22, $23, $24, $25,
-                    $26, $27, $28,
-                    $29, $30, $31,
-                    $32, $33, $34, $35,
-                    $36, $37, $38, $39, $40,
-                    $41, $42, true, $43, NOW()
-                ) RETURNING *`,
-                [
-                    req.tenantId,                                                        // $1
-                    clientCode,                                                          // $2
-                    clientData.companyName,                                              // $3
-                    clientData.legalName || null,                                        // $4
-                    clientData.clientType,                                               // $5
-                    clientData.parentId || null,                                         // $6
-                    clientData.companySize || null,                                      // $7
-                    clientData.industry || null,                                         // $8
-                    clientData.contractValue || null,                                    // $9
-                    clientData.yearOfIncorporation || null,                              // $10
-                    clientData.duration || null,                                         // $11
-                    clientData.gstVatTaxId || null,                                     // $12
-                    clientData.registrationNumber || null,                               // $13
-                    clientData.country || null,                                          // $14
-                    clientData.website || null,                                          // $15
-                    clientData.defaultCurrency || 'USD',                                 // $16
-                    clientData.billingAddress || null,                                   // $17
-                    clientData.riskLevel || null,                                        // $18
-                    (clientData as any).status || 'Prospect',                            // $19
-                    clientData.pan || null,                                              // $20
-                    clientData.vatNumber || null,                                        // $21
-                    clientData.dunsNumber || null,                                       // $22
-                    clientData.msmeRegistration || null,                                 // $23
-                    clientData.paymentTerms || null,                                     // $24
-                    clientData.creditLimit || null,                                      // $25
-                    clientData.billingContactEmail || null,                              // $26
-                    clientData.accountsPayableName || null,                              // $27
-                    clientData.tdsApplicable ?? false,                                   // $28
-                    clientData.reverseCharge ?? false,                                   // $29
-                    clientData.accountManagerId || null,                                 // $30
-                    clientData.salesOwnerId || null,                                     // $31
-                    clientData.deliveryOwnerId || null,                                  // $32
-                    clientData.clientSegment || null,                                    // $33
-                    clientData.contractStartDate ? new Date(clientData.contractStartDate) : null, // $34
-                    clientData.contractEndDate   ? new Date(clientData.contractEndDate)   : null, // $35
-                    clientData.renewalType || null,                                      // $36
-                    clientData.slaLevel || null,                                         // $37
-                    clientData.bankName || null,                                         // $38
-                    clientData.bankAccountNumber || null,                                // $39
-                    clientData.ifscSwift || null,                                        // $40
-                    clientData.currencyOfPayment || null,                                // $41
-                    clientData.preferredPaymentMode || null,                             // $42
-                    req.user!.id,                                                        // $43
-                ]
-            );
-
-            const newClient = mapRowToClientV2(r.rows[0]);
+            if (!newClient) {
+                res.status(500).json({ success: false, error: 'Failed to generate a unique client code after multiple attempts' } as ApiResponse);
+                return;
+            }
 
             recordTransaction({
                 req,

@@ -244,21 +244,36 @@ export class UserController {
       }
 
       // Check if user already exists within tenant
+      // Only include non-null/non-empty values in OR to avoid false matches on null across tenants
+      const duplicateChecks: any[] = [
+        { workEmail: userData.workEmail.toLowerCase() },
+      ];
+      if (userData.personalEmail) {
+        duplicateChecks.push({ personalEmail: userData.personalEmail.toLowerCase() });
+      }
+      if (userData.phone) {
+        duplicateChecks.push({ phone: userData.phone });
+      }
+
       const existingUser = await prisma.user.findFirst({
         where: {
           tenantId: req.tenantId,
-          OR: [
-            { workEmail: userData.workEmail.toLowerCase() },
-            { personalEmail: userData.personalEmail?.toLowerCase() },
-            { phone: userData.phone },
-          ],
+          OR: duplicateChecks,
         },
       });
 
       if (existingUser) {
-        throw new ValidationError(
-          "User with this email or phone already exists in this tenant",
-        );
+        // Identify which field conflicts to give a precise error
+        if (existingUser.workEmail === userData.workEmail.toLowerCase()) {
+          throw new ValidationError("A member with this work email already exists in this organization");
+        }
+        if (userData.personalEmail && existingUser.personalEmail === userData.personalEmail.toLowerCase()) {
+          throw new ValidationError("A member with this personal email already exists in this organization");
+        }
+        if (userData.phone && existingUser.phone === userData.phone) {
+          throw new ValidationError("A member with this phone number already exists in this organization");
+        }
+        throw new ValidationError("A member with these details already exists in this organization");
       }
 
       // Validate reports to user if provided
@@ -1011,9 +1026,15 @@ export class UserController {
       console.error("Update user profile error:", error);
 
       if (error.code === "P2002") {
+        // P2002 is a unique constraint violation — scoped to tenant by schema
+        const target = error.meta?.target as string[] | undefined;
+        let fieldMsg = "Email or phone";
+        if (target?.includes("work_email")) fieldMsg = "Work email";
+        else if (target?.includes("personal_email")) fieldMsg = "Personal email";
+        else if (target?.includes("phone")) fieldMsg = "Phone number";
         res.status(409).json({
           success: false,
-          error: "Email or phone already exists",
+          error: `${fieldMsg} already exists in this organization`,
         } as ApiResponse);
         return;
       }
