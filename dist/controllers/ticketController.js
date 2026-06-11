@@ -391,13 +391,13 @@ class TicketController {
                 // Using raw SQL MAX on numeric suffix for reliable numeric ordering
                 const seqResult = await database_1.prisma.$queryRaw `
           SELECT COALESCE(
-            MAX((regexp_match(ticket_number, '-(\d+)$'))[1]::int),
+            MAX((regexp_match(ticket_number, '-(\\d+)$'))[1]::int),
             0
           ) + 1 AS next_seq
           FROM tickets
           WHERE tenant_id = ${req.tenantId}
             AND project_id = ${projectId}
-            AND ticket_number ~ '-\d+$'
+            AND ticket_number ~ '-\\d+$'
         `;
                 const nextTicketNumber = seqResult[0]?.next_seq ?? 1;
                 ticketNumber = `${project.code || "TKT"}-${String(nextTicketNumber).padStart(4, "0")}`;
