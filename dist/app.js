@@ -103,6 +103,7 @@ const subDepartmentRoutes_1 = __importDefault(require("@/routes/subDepartmentRou
 const positionRoutes_1 = __importDefault(require("@/routes/positionRoutes"));
 const calendar_1 = __importDefault(require("@/routes/calendar"));
 const mail_1 = __importDefault(require("@/routes/mail"));
+const notifications_1 = __importDefault(require("@/routes/notifications")); // Web push notification routes
 const employeeExit_routes_1 = __importDefault(require("@/routes/employeeExit.routes"));
 const leaveOriginRoutes_1 = __importDefault(require("@/routes/leaveOriginRoutes"));
 const emailHistoryRoutes_1 = __importDefault(require("@/routes/emailHistoryRoutes"));
@@ -222,7 +223,45 @@ app.get("/health", (req, res) => {
         version: "2.0.0",
     });
 });
-// app.use("/api", optionalTenantContext);
+// Middleware to strip tenant prefix from project codes in JSON responses
+function stripTenantPrefix(obj, tenantId) {
+    if (typeof obj === "string") {
+        const globalPrefix = new RegExp(`${tenantId}_`, "g");
+        return obj.replace(globalPrefix, "");
+    }
+    if (Array.isArray(obj)) {
+        return obj.map((item) => stripTenantPrefix(item, tenantId));
+    }
+    if (obj !== null && typeof obj === "object") {
+        if (obj instanceof Date || obj instanceof RegExp) {
+            return obj;
+        }
+        if (Buffer.isBuffer(obj)) {
+            return obj;
+        }
+        const newObj = {};
+        for (const key of Object.keys(obj)) {
+            newObj[key] = stripTenantPrefix(obj[key], tenantId);
+        }
+        return newObj;
+    }
+    return obj;
+}
+app.use((req, res, next) => {
+    const originalJson = res.json;
+    res.json = function (body) {
+        if (req.tenantId && body) {
+            try {
+                body = stripTenantPrefix(body, req.tenantId);
+            }
+            catch (err) {
+                console.error("Error cleaning tenant prefix from response:", err);
+            }
+        }
+        return originalJson.call(this, body);
+    };
+    next();
+});
 // API routes
 app.use("/api/leave-adjustments", leaveAdjustmentRoutes_1.default);
 app.use("/api/company-government-holidays", companyGovernmentHoliday_routes_1.default);
@@ -312,6 +351,7 @@ app.use("/api/timesheets", timesheet_1.default);
 app.use("/api/zoho", calendar_1.default);
 app.get("/api/mail/attachments/download", MailController_1.MailController.downloadAttachment);
 app.use("/api/mail", mail_1.default);
+app.use("/api/notifications", notifications_1.default);
 // app.use("/api/mail-configuration", mailConfigurationRoutes);
 app.use("/api/leave-allocation", leaveAllocationRoutes_1.default);
 app.use("/api/leave-request", leaveRequestRoutes_1.default);
@@ -472,6 +512,8 @@ const startServer = async () => {
         // Initialize Tables
         const { BidIQModel } = require("./models/BidIQ.model");
         await BidIQModel.initTable();
+        const { WebPushSubscriptionModel } = require("./models/WebPushSubscription.model");
+        await WebPushSubscriptionModel.initTable();
         // Connect RabbitMQ & Start Workers
         try {
             await RabbitMQService_1.rabbitMQService.connect();

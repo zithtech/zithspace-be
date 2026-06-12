@@ -10,6 +10,7 @@ const tenantLogger_1 = __importDefault(require("@/utils/tenantLogger"));
 const dbpool_1 = __importDefault(require("@/config/dbpool"));
 const types_1 = require("@/types");
 const r2Client_1 = require("@/utils/r2Client");
+const transactionHistory_1 = require("@/utils/transactionHistory");
 class TenantController {
     /**
      * Register a new tenant with admin user (public endpoint)
@@ -385,7 +386,7 @@ class TenantController {
             // Handle logo uploads (original, cropped, or setting final)
             const currentTenant = await rawClient.tenant.findUnique({
                 where: { id: req.tenantId },
-                select: { settings: true }
+                select: { name: true, settings: true }
             });
             const currentSettings = currentTenant?.settings || {};
             const logoVersions = Array.isArray(currentSettings.logoVersions) ? [...currentSettings.logoVersions] : [];
@@ -442,6 +443,33 @@ class TenantController {
                 where: { id: req.tenantId },
                 data: updateData,
             });
+            // Log General Settings transaction if changed
+            const beforeSnap = {
+                name: currentTenant?.name,
+                settings: currentSettings,
+            };
+            const afterSnap = {
+                name: updatedTenant.name,
+                settings: updatedTenant.settings,
+            };
+            const { changedFields, before, after } = (0, transactionHistory_1.diffShallow)(beforeSnap, afterSnap);
+            if (changedFields.length > 0) {
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.ADMIN,
+                    module: transactionHistory_1.Module.GENERAL_SETTINGS,
+                    page: transactionHistory_1.Page.GENERAL_SETTINGS_VIEW,
+                    action: transactionHistory_1.Action.UPDATE,
+                    actionLabel: `Tenant settings updated (${changedFields.join(', ')})`,
+                    entityType: transactionHistory_1.EntityType.TENANT_SETTINGS,
+                    entityId: req.tenantId,
+                    entityLabel: 'General Settings',
+                    beforeData: before,
+                    afterData: after,
+                    changedFields,
+                    statusCode: 200
+                });
+            }
             res.status(200).json({
                 success: true,
                 data: {

@@ -105,6 +105,7 @@ import subDepartmentRoutes from "@/routes/subDepartmentRoutes";
 import positionRoutes from "@/routes/positionRoutes";
 import calendarRoutes from "@/routes/calendar";
 import mailRoutes from "@/routes/mail";
+import notificationRoutes from "@/routes/notifications"; // Web push notification routes
 import mailConfigurationRoutes from "@/routes/mailConfigurationRoutes";
 import employeeExitRoutes from "@/routes/employeeExit.routes";
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
@@ -251,7 +252,45 @@ app.get("/health", (req, res) => {
   });
 });
 
-// app.use("/api", optionalTenantContext);
+// Middleware to strip tenant prefix from project codes in JSON responses
+function stripTenantPrefix(obj: any, tenantId: string): any {
+  if (typeof obj === "string") {
+    const globalPrefix = new RegExp(`${tenantId}_`, "g");
+    return obj.replace(globalPrefix, "");
+  }
+  if (Array.isArray(obj)) {
+    return obj.map((item) => stripTenantPrefix(item, tenantId));
+  }
+  if (obj !== null && typeof obj === "object") {
+    if (obj instanceof Date || obj instanceof RegExp) {
+      return obj;
+    }
+    if (Buffer.isBuffer(obj)) {
+      return obj;
+    }
+    const newObj: any = {};
+    for (const key of Object.keys(obj)) {
+      newObj[key] = stripTenantPrefix(obj[key], tenantId);
+    }
+    return newObj;
+  }
+  return obj;
+}
+
+app.use((req: any, res: any, next: any) => {
+  const originalJson = res.json;
+  res.json = function (body: any) {
+    if (req.tenantId && body) {
+      try {
+        body = stripTenantPrefix(body, req.tenantId);
+      } catch (err) {
+        console.error("Error cleaning tenant prefix from response:", err);
+      }
+    }
+    return originalJson.call(this, body);
+  };
+  next();
+});
 
 // API routes
 app.use("/api/leave-adjustments", leaveAdjustmentRoutes);
@@ -346,6 +385,7 @@ app.use("/api/timesheets", timesheetRoutes);
 app.use("/api/zoho", calendarRoutes);
 app.get("/api/mail/attachments/download", MailController.downloadAttachment);
 app.use("/api/mail", mailRoutes);
+app.use("/api/notifications", notificationRoutes);
 // app.use("/api/mail-configuration", mailConfigurationRoutes);
 app.use("/api/leave-allocation", leaveAllocationRoutes);
 app.use("/api/leave-request", leaveRequestRoutes);
@@ -534,6 +574,8 @@ const startServer = async () => {
     // Initialize Tables
     const { BidIQModel } = require("./models/BidIQ.model");
     await BidIQModel.initTable();
+    const { WebPushSubscriptionModel } = require("./models/WebPushSubscription.model");
+    await WebPushSubscriptionModel.initTable();
 
     // Connect RabbitMQ & Start Workers
     try {

@@ -90,26 +90,50 @@ export class WebInquiryController {
 
     const tenantId = tenant.id;
 
-    // ── 3. Read body fields — using the website's NATIVE field names ─────────
-    // Zukvo ContactSales sends: firstName, lastName, email, company,
-    //                            size, useCase, phoneNumber, description
-    const {
-      firstName   = '',
-      lastName    = '',
-      email       = '',
-      company     = '',
-      size        = '',   // "team size" select — kept as the form sends it
-      useCase     = '',
-      phoneNumber = '',
-      description = '',
-    } = req.body as Record<string, string>;
+    // ── 3. Read body fields using flexible field extraction and multi-alias fallbacks ──
+    const body = (req.body || {}) as Record<string, any>;
+
+    const extractField = (aliases: string[]): any => {
+      for (const alias of aliases) {
+        if (body[alias] !== undefined && body[alias] !== null) {
+          return body[alias];
+        }
+      }
+      return undefined;
+    };
+
+    const emailVal = String(extractField(['email', 'email_address', 'contactEmail', 'companyEmail']) || '').trim();
+    const phoneNumberVal = String(extractField(['phoneNumber', 'phone', 'mobile', 'contact_phone']) || '').trim();
+    const companyVal = String(extractField(['company', 'organisation', 'organization', 'business_name', 'companyName']) || '').trim();
+
+    let clientName = '';
+    const fName = String(extractField(['firstName']) || '').trim();
+    const lName = String(extractField(['lastName']) || '').trim();
+    if (fName || lName) {
+      clientName = `${fName} ${lName}`.trim();
+    } else {
+      clientName = String(extractField(['name', 'full_name', 'fullName', 'contact_name', 'companyName']) || '').trim();
+    }
+
+    // Collate all remaining body fields into form_data
+    const identityKeys = new Set([
+      'firstName', 'lastName', 'name', 'full_name', 'fullName', 'contact_name', 'companyName',
+      'email', 'email_address', 'contactEmail', 'companyEmail',
+      'phoneNumber', 'phone', 'mobile', 'contact_phone',
+      'company', 'organisation', 'organization', 'business_name'
+    ]);
+
+    const form_data: Record<string, any> = {};
+    for (const [key, value] of Object.entries(body)) {
+      if (!identityKeys.has(key)) {
+        form_data[key] = value;
+      }
+    }
 
     // ── 4. Validate required fields ─────────────────────────────────────────
     const missing: string[] = [];
-    if (!firstName.trim()) missing.push('firstName');
-    if (!lastName.trim())  missing.push('lastName');
-    if (!email.trim())     missing.push('email');
-    if (!company.trim())   missing.push('company');
+    if (!clientName) missing.push('name');
+    if (!emailVal) missing.push('email');
 
     if (missing.length) {
       res.status(422).json({
@@ -119,7 +143,7 @@ export class WebInquiryController {
       return;
     }
 
-    if (!EMAIL_RE.test(email.trim())) {
+    if (!EMAIL_RE.test(emailVal)) {
       res.status(422).json({ success: false, message: 'Invalid email address.' });
       return;
     }
@@ -158,28 +182,38 @@ export class WebInquiryController {
 
     // ── 7. Build inquiry message from the extra form fields ─────────────────
     const inquiryParts: string[] = [];
-    if (size)        inquiryParts.push(`Team size: ${size}`);
-    if (useCase)     inquiryParts.push(`Use case: ${useCase}`);
-    if (description) inquiryParts.push(description.trim());
+    const sizeVal = extractField(['size']);
+    if (sizeVal !== undefined && String(sizeVal).trim() !== '') {
+      inquiryParts.push(`Team size: ${sizeVal}`);
+    }
+    const useCaseVal = extractField(['useCase']);
+    if (useCaseVal !== undefined && String(useCaseVal).trim() !== '') {
+      inquiryParts.push(`Use case: ${useCaseVal}`);
+    }
+    const msgVal = extractField(['description', 'message', 'inquiry']);
+    if (msgVal !== undefined && String(msgVal).trim() !== '') {
+      inquiryParts.push(String(msgVal).trim());
+    }
     const inquiryMessage = inquiryParts.join('\n\n');
 
     // ── 8. Create the lead ───────────────────────────────────────────────────
     try {
       const lead = await LeadModel.create({
         tenant_id:        tenantId,
-        title:            `Website enquiry — ${company.trim()}`,
-        client_name:      `${firstName.trim()} ${lastName.trim()}`,
-        client_mail:      email.trim().toLowerCase(),
-        client_phone:     phoneNumber.trim() || null,
-        company:          company.trim(),
+        title:            `Website enquiry — ${companyVal ? companyVal : platformName}`,
+        client_name:      clientName,
+        client_mail:      emailVal.toLowerCase(),
+        client_phone:     phoneNumberVal || null,
+        company:          companyVal || null,
         status,
         platform:         platformName,
         lead_source_kind: 'website',
         website_source:   tenantSlug,          // raw slug stored for filtering
         inquiry_message:  inquiryMessage || null,
         posted_on:        new Date(),
+        form_data:        Object.keys(form_data).length > 0 ? form_data : null,
         summary: inquiryMessage
-          || `Enquiry from ${firstName.trim()} at ${company.trim()} via ${platformName}`,
+          || `Enquiry from ${clientName}${companyVal ? ` at ${companyVal}` : ''} via ${platformName}`,
       });
 
       console.log(`[WebInquiry] Created lead ${lead.id} for tenant ${tenantId} from ${platformName}`);
