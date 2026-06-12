@@ -1169,7 +1169,10 @@ export class ClientV2Controller {
                         project: {
                             include: {
                                 projectManager: {
-                                    select: { id: true, name: true }
+                                    select: { id: true, name: true, avatarUrl: true }
+                                },
+                                _count: {
+                                    select: { members: true, tickets: { where: { isDeleted: false } } }
                                 }
                             }
                         }
