@@ -132,8 +132,9 @@ export class MailService {
         );
 
         for (const threadIdData of threads) { // Renamed loop variable to avoid confusion with thread object
+            const dbThreadId = `${account.id}_${threadIdData.id}`;
             const existingThread = await prisma.mail_threads.findUnique({
-                where: { id: threadIdData.id }
+                where: { id: dbThreadId }
             });
 
             const mergedLabels = Array.from(new Set([
@@ -142,9 +143,9 @@ export class MailService {
             ]));
 
             await prisma.mail_threads.upsert({
-                where: { id: threadIdData.id },
+                where: { id: dbThreadId },
                 create: {
-                    id: threadIdData.id,
+                    id: dbThreadId,
                     account_id: account.id,
                     tenant_id: tenantId,
                     external_thread_id: threadIdData.id,
@@ -180,10 +181,12 @@ export class MailService {
                 const isSentByMe = fromEmail.includes(`<${userEmail}>`) || fromEmail === userEmail;
                 const isSentFolder = msg.labels && msg.labels.includes("SENT");
 
+                const dbMsgId = `${account.id}_${msg.id}`;
+
                 // Prepare message data for Prisma
                 const messageData: any = {
-                    id: msg.id,
-                    thread_id: threadIdData.id,
+                    id: dbMsgId,
+                    thread_id: dbThreadId,
                     account_id: account.id,
                     tenant_id: tenantId,
                     external_id: msg.id,
@@ -221,8 +224,8 @@ export class MailService {
                             subject: sanitizeString(msg.subject), // same subject
                             received_at: { gte: tenMinutesAgo },   // sent recently
                             OR: [
-                                { thread_id: threadIdData.id },    // thread-matched
-                                { thread_id: null }                 // null threadId (MS case)
+                                { thread_id: dbThreadId },    // thread-matched
+                                { thread_id: null }           // null threadId (MS case)
                             ]
                         } as any
                     }) as any;
@@ -232,7 +235,7 @@ export class MailService {
                 if (existingMessage) {
                     // Update existing by real provider ID
                     const updateData: any = {
-                        thread_id: threadIdData.id,
+                        thread_id: dbThreadId,
                         subject: sanitizeString(msg.subject),
                         from_email: sanitizeString(msg.from),
                         to_emails: msg.to as any,
@@ -262,7 +265,7 @@ export class MailService {
                     syncLogger.info(`[MailService] Linking local sent message ${localSentDuplicate.id} to real external_id ${msg.id}`);
                     const updateData: any = {
                         external_id: msg.id,
-                        thread_id: threadIdData.id,
+                        thread_id: dbThreadId,
                         labels: msg.labels || ["SENT"],
                         is_read: msg.isRead ?? false,
                         has_attachments: (localSentDuplicate.has_attachments || msg.hasAttachments) ? true : false
@@ -338,25 +341,25 @@ export class MailService {
             // Also check if ANY message OR any stored attachment in the thread
             // marks it as having attachments — this is the source of truth.
             const latestMessage = await prisma.mail_messages.findFirst({
-                where: { thread_id: threadIdData.id },
+                where: { thread_id: dbThreadId },
                 orderBy: { received_at: 'desc' }
             });
 
             if (latestMessage) {
                 // Fetch existing thread to merge labels
                 const existingThread = await prisma.mail_threads.findUnique({
-                    where: { id: threadIdData.id }
+                    where: { id: dbThreadId }
                 });
 
                 // A thread 'has attachments' if:
                 //   (a) any of its messages has has_attachments=true, OR
                 //   (b) there are actual mail_attachments rows stored for it
                 const msgWithAttachment = await prisma.mail_messages.findFirst({
-                    where: { thread_id: threadIdData.id, has_attachments: true } as any
+                    where: { thread_id: dbThreadId, has_attachments: true } as any
                 });
 
                 const storedAttachment = await prisma.mail_attachments.findFirst({
-                    where: { mail_messages: { thread_id: threadIdData.id } } as any
+                    where: { mail_messages: { thread_id: dbThreadId } } as any
                 });
 
                 const resolvedHasAttachments = !!(msgWithAttachment || storedAttachment);
@@ -368,7 +371,7 @@ export class MailService {
                 ]));
 
                 await prisma.mail_threads.update({
-                    where: { id: threadIdData.id },
+                    where: { id: dbThreadId },
                     data: {
                         from_address: latestMessage.from_email,
                         to_emails: latestMessage.to_emails as any,
@@ -401,14 +404,18 @@ export class MailService {
         // Check if thread is already in TRASH in local DB
         const thread = await prisma.mail_threads.findUnique({
             where: { id: threadId },
-            select: { labels: true }
+            select: { labels: true, external_thread_id: true }
         });
 
-        const isTrashed = thread?.labels.includes('TRASH');
+        if (!thread) {
+            throw new Error("Thread not found");
+        }
+
+        const isTrashed = thread.labels.includes('TRASH');
 
         if (isTrashed) {
             // Permanent delete from provider
-            await provider.deleteThread(accessToken, threadId);
+            await provider.deleteThread(accessToken, thread.external_thread_id);
 
             // Delete from local DB - delete messages first to avoid FK violation
             await prisma.mail_messages.deleteMany({ where: { thread_id: threadId } });
@@ -428,7 +435,7 @@ export class MailService {
         });
 
         // 2. Perform provider trash operation
-        await provider.trashThread(accessToken, threadId);
+        await provider.trashThread(accessToken, thread.external_thread_id);
     }
 
     /**
@@ -450,11 +457,18 @@ export class MailService {
             data: { labels: { set: ['TRASH'] } }
         });
 
+        // Get external thread IDs for the provider calls
+        const threads = await prisma.mail_threads.findMany({
+            where: { id: { in: threadIds }, account_id: account.id },
+            select: { external_thread_id: true }
+        });
+        const externalThreadIds = threads.map(t => t.external_thread_id);
+
         // 2. Perform provider trash operations
         if (provider.bulkTrashThreads) {
-            await provider.bulkTrashThreads(accessToken, threadIds);
+            await provider.bulkTrashThreads(accessToken, externalThreadIds);
         } else {
-            await Promise.all(threadIds.map(id => provider.trashThread(accessToken, id)));
+            await Promise.all(externalThreadIds.map(id => provider.trashThread(accessToken, id)));
         }
     }
 
@@ -502,8 +516,12 @@ export class MailService {
             include: { mail_messages: { orderBy: { received_at: 'desc' }, take: 1 } }
         } as any); // Type cast if relation is missing or misnamed
 
+        if (!thread) {
+            throw new Error("Thread not found");
+        }
+
         // If from_address is the user's email, it belongs in SENT
-        const fromMe = thread?.from_address?.toLowerCase().includes(email.toLowerCase());
+        const fromMe = thread.from_address?.toLowerCase().includes(email.toLowerCase());
         const targetLabel = fromMe ? 'SENT' : 'INBOX';
 
         // 1. Update local DB: remove TRASH, add targetLabel (Immediate UI feedback)
@@ -518,7 +536,7 @@ export class MailService {
         });
 
         // 2. Update Provider
-        await provider.restoreThread(accessToken, threadId);
+        await provider.restoreThread(accessToken, thread.external_thread_id);
     }
 
     /**
@@ -909,7 +927,8 @@ export class MailService {
                 await prisma.mail_messages.delete({ where: { id: existing.id } });
 
                 // If the thread ID also changed, cleanup the old thread if it has no other messages
-                if (oldThreadId && oldThreadId !== threadId) {
+                const resolvedNewThreadId = threadId ? (threadId.startsWith(account.id) ? threadId : `${account.id}_${threadId}`) : null;
+                if (oldThreadId && oldThreadId !== resolvedNewThreadId) {
                     const otherMessages = await prisma.mail_messages.count({
                         where: { thread_id: oldThreadId }
                     });
@@ -924,16 +943,18 @@ export class MailService {
 
         // Save to local DB immediately for better UX
         try {
+            const dbThreadId = threadId ? (threadId.startsWith(account.id) ? threadId : `${account.id}_${threadId}`) : null;
 
             if (threadId) {
+                const externalThreadId = threadId.startsWith(account.id) ? threadId.split(`${account.id}_`)[1] : threadId;
                 // Ensure thread exists
                 await prisma.mail_threads.upsert({
-                    where: { id: threadId },
+                    where: { id: dbThreadId! },
                     create: {
-                        id: threadId,
+                        id: dbThreadId!,
                         account_id: account.id,
                         tenant_id: tenantId,
-                        external_thread_id: threadId,
+                        external_thread_id: externalThreadId,
                         subject: sanitizeString(draftData.subject || "(No Subject)"),
                         last_message_at: new Date(),
                         message_count: 1,
@@ -961,7 +982,7 @@ export class MailService {
                     id: `msg_${Date.now()}_${Math.random().toString(36).substring(7)}`,
                     account_id: account.id,
                     tenant_id: tenantId,
-                    thread_id: threadId,
+                    thread_id: dbThreadId,
                     external_id: messageExternalId,
                     subject: sanitizeString(draftData.subject || "(No Subject)"),
                     from_email: sanitizeString(account.email),
@@ -1107,6 +1128,16 @@ export class MailService {
         const accessToken = await UnifiedAuthService.getValidAccessToken(userId, account.provider as any);
         const provider = MailProviderFactory.getProvider(account.provider);
 
+        // Get external thread ID for the provider call
+        const thread = await prisma.mail_threads.findUnique({
+            where: { id: threadId },
+            select: { external_thread_id: true }
+        });
+
+        if (!thread) {
+            throw new Error("Thread not found");
+        }
+
         // 1. Update Local DB first
         await prisma.mail_threads.update({
             where: { id: threadId },
@@ -1120,7 +1151,7 @@ export class MailService {
         });
 
         // 2. Update Provider
-        await provider.markAsRead(accessToken, threadId);
+        await provider.markAsRead(accessToken, thread.external_thread_id);
     }
 
     private static async getAccount(userId: string, tenantId: string, email: string): Promise<mail_accounts> {
@@ -1156,7 +1187,7 @@ export class MailService {
                 const accessToken = await UnifiedAuthService.getValidAccessToken(account.user_id, account.provider as any);
                 const provider = MailProviderFactory.getProvider(account.provider);
 
-                await provider.deleteThread(accessToken, thread.id);
+                await provider.deleteThread(accessToken, thread.external_thread_id);
 
                 await prisma.mail_messages.deleteMany({ where: { thread_id: thread.id } });
                 await prisma.mail_threads.delete({ where: { id: thread.id } });
@@ -1222,6 +1253,16 @@ export class MailService {
         const accessToken = await UnifiedAuthService.getValidAccessToken(userId, account.provider as any);
         const provider = MailProviderFactory.getProvider(account.provider);
 
+        // Get external thread ID for the provider call
+        const thread = await prisma.mail_threads.findUnique({
+            where: { id: threadId },
+            select: { external_thread_id: true }
+        });
+
+        if (!thread) {
+            throw new Error("Thread not found");
+        }
+
         // 1. Update local DB: remove current labels, add ARCHIVE (Immediate UI feedback)
         await prisma.mail_threads.update({
             where: { id: threadId },
@@ -1234,7 +1275,7 @@ export class MailService {
         });
 
         // 2. Update Provider
-        await provider.archiveThread(accessToken, threadId);
+        await provider.archiveThread(accessToken, thread.external_thread_id);
     }
 
     /**
@@ -1244,6 +1285,13 @@ export class MailService {
         const account = await this.getAccount(userId, tenantId, email);
         const accessToken = await UnifiedAuthService.getValidAccessToken(userId, account.provider as any);
         const provider = MailProviderFactory.getProvider(account.provider);
+
+        // Get external thread IDs for the provider calls
+        const threads = await prisma.mail_threads.findMany({
+            where: { id: { in: threadIds }, account_id: account.id },
+            select: { external_thread_id: true }
+        });
+        const externalThreadIds = threads.map(t => t.external_thread_id);
 
         // 1. Update local DB (Immediate UI feedback)
         await prisma.mail_threads.updateMany({
@@ -1257,7 +1305,7 @@ export class MailService {
         });
 
         // 2. Parallelize provider operations
-        await Promise.all(threadIds.map(id => provider.archiveThread(accessToken, id)));
+        await Promise.all(externalThreadIds.map(id => provider.archiveThread(accessToken, id)));
     }
 
     /**
@@ -1267,6 +1315,13 @@ export class MailService {
         const account = await this.getAccount(userId, tenantId, email);
         const accessToken = await UnifiedAuthService.getValidAccessToken(userId, account.provider as any);
         const provider = MailProviderFactory.getProvider(account.provider);
+
+        // Get external thread IDs for the provider calls
+        const threads = await prisma.mail_threads.findMany({
+            where: { id: { in: threadIds }, account_id: account.id },
+            select: { external_thread_id: true }
+        });
+        const externalThreadIds = threads.map(t => t.external_thread_id);
 
         // 1. Update local DB (Immediate UI feedback)
         // We'll restore to INBOX for simplicity in bulk
@@ -1283,13 +1338,13 @@ export class MailService {
         // 2. Perform provider operations
         if ((provider as any).bulkRestoreThreads) {
             // Priority is a dedicated bulkRestore
-            await (provider as any).bulkRestoreThreads(accessToken, threadIds);
+            await (provider as any).bulkRestoreThreads(accessToken, externalThreadIds);
         } else if (provider.bulkMoveThreads) {
             const folderMap = await (provider as any).getFolderMap(accessToken, (provider as any).accountIdCache || "");
             const inboxId = Object.keys(folderMap).find(id => folderMap[id] === 'INBOX') || '1';
-            await provider.bulkMoveThreads(accessToken, threadIds, inboxId);
+            await provider.bulkMoveThreads(accessToken, externalThreadIds, inboxId);
         } else {
-            await Promise.all(threadIds.map(id => provider.restoreThread(accessToken, id)));
+            await Promise.all(externalThreadIds.map(id => provider.restoreThread(accessToken, id)));
         }
     }
 
@@ -1300,6 +1355,13 @@ export class MailService {
         const account = await this.getAccount(userId, tenantId, email);
         const accessToken = await UnifiedAuthService.getValidAccessToken(userId, account.provider as any);
         const provider = MailProviderFactory.getProvider(account.provider);
+
+        // Get external thread IDs for the provider calls before deleting them from local DB
+        const threads = await prisma.mail_threads.findMany({
+            where: { id: { in: threadIds }, account_id: account.id },
+            select: { external_thread_id: true }
+        });
+        const externalThreadIds = threads.map(t => t.external_thread_id);
 
         // 1. Delete from local DB first (Immediate UI feedback)
         await prisma.mail_messages.deleteMany({
@@ -1312,11 +1374,11 @@ export class MailService {
 
         // 2. Perform provider delete operations
         if (provider.bulkDeleteThreads) {
-            await provider.bulkDeleteThreads(accessToken, threadIds);
+            await provider.bulkDeleteThreads(accessToken, externalThreadIds);
         } else {
             // Parallelizing is fine if we chunk it, but let's try to be efficient
             // Move to trash first or just delete in parallel
-            await Promise.all(threadIds.map(id => provider.deleteThread(accessToken, id)));
+            await Promise.all(externalThreadIds.map(id => provider.deleteThread(accessToken, id)));
         }
     }
 }

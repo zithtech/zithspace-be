@@ -7,9 +7,9 @@ export declare class CalendarController {
      */
     static getStatus(req: AuthRequest, res: Response): Promise<void>;
     /**
- * GET /api/calendar/:provider/connect
- * Initiates the OAuth flow for a provider.
- */
+  * GET /api/calendar/:provider/connect
+  * Initiates the OAuth flow for a provider.
+  */
     static connect(req: AuthRequest, res: Response): Promise<void>;
     /**
      * GET /api/calendar/:provider/callback

@@ -84,16 +84,14 @@ export class MailController {
     }
 
     /**
-     * Get unique contacts from system users and calendar attendees
+     * Get unique contacts from system users and employees (members) of the active tenant
      */
     static async getContacts(req: AuthRequest, res: Response) {
         try {
-            const userId = req.user!.id;
             const tenantId = req.tenantId!;
-
             const contactsMap = new Map<string, { name: string; email: string }>();
 
-            // 1. Fetch system users
+            // 1. Fetch system users for this tenant
             const users = await prisma.user.findMany({
                 where: { tenantId, isActive: true },
                 select: { name: true, workEmail: true, personalEmail: true }
@@ -108,34 +106,19 @@ export class MailController {
                 }
             }
 
-            // 2. Fetch unique attendees from calendar events
-            const events = await prisma.calendarEvent.findMany({
-                where: { tenantId, userId, isDeleted: false },
-                select: { attendees: true, organizerEmail: true }
+            // 2. Fetch employees (members) for this tenant
+            const employees = await prisma.employee.findMany({
+                where: { tenantId, status: true },
+                select: { first_name: true, last_name: true, work_email: true, personal_email: true }
             });
 
-            for (const event of events) {
-                if (event.organizerEmail && !contactsMap.has(event.organizerEmail.toLowerCase())) {
-                    contactsMap.set(event.organizerEmail.toLowerCase(), { name: event.organizerEmail, email: event.organizerEmail });
+            for (const emp of employees) {
+                const fullName = `${emp.first_name || ""} ${emp.last_name || ""}`.trim();
+                if (emp.work_email) {
+                    contactsMap.set(emp.work_email.toLowerCase(), { name: fullName || emp.work_email, email: emp.work_email });
                 }
-
-                if (event.attendees && Array.isArray(event.attendees)) {
-                    for (const attendee of event.attendees as any[]) {
-                        let email = '';
-                        let name = '';
-
-                        if (typeof attendee === 'string') {
-                            email = attendee;
-                            name = attendee;
-                        } else if (typeof attendee === 'object' && attendee !== null) {
-                            email = attendee.email || attendee.emailAddress?.address || attendee.address || '';
-                            name = attendee.displayName || attendee.name || attendee.emailAddress?.name || email;
-                        }
-
-                        if (email && email.includes('@') && !contactsMap.has(email.toLowerCase())) {
-                            contactsMap.set(email.toLowerCase(), { name: name || email, email });
-                        }
-                    }
+                if (emp.personal_email) {
+                    contactsMap.set(emp.personal_email.toLowerCase(), { name: fullName || emp.personal_email, email: emp.personal_email });
                 }
             }
 
