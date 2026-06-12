@@ -53,7 +53,7 @@ export class BucketController {
         where,
         include: {
           createdBy: {
-            select: { id: true, name: true, workEmail: true },
+            select: { id: true, name: true, workEmail: true, avatarUrl: true },
           },
           project: {
             select: { id: true, name: true, code: true },
@@ -61,7 +61,7 @@ export class BucketController {
           members: {
             include: {
               user: {
-                select: { id: true, name: true, workEmail: true },
+                select: { id: true, name: true, workEmail: true, avatarUrl: true },
               },
             },
           },
@@ -171,7 +171,7 @@ export class BucketController {
             type: true,
             storyPoint: true,
             assignee: {
-              select: { id: true, name: true, workEmail: true },
+              select: { id: true, name: true, workEmail: true, avatarUrl: true },
             },
             project: {
               select: { id: true, name: true, code: true },
@@ -239,7 +239,7 @@ export class BucketController {
         },
         include: {
           createdBy: {
-            select: { id: true, name: true, workEmail: true },
+            select: { id: true, name: true, workEmail: true, avatarUrl: true },
           },
           project: {
             select: { id: true, name: true, code: true, description: true },
@@ -269,7 +269,7 @@ export class BucketController {
               type: true,
               storyPoint: true,
               assignee: {
-                select: { id: true, name: true, workEmail: true },
+                select: { id: true, name: true, workEmail: true, avatarUrl: true },
               },
               project: {
                 select: { id: true, name: true, code: true },
