@@ -147,11 +147,12 @@ function mapRowToProjectListing(row) {
         startDate: row.start_date,
         endDate: row.end_date || null,
         projectManagerId: row.project_manager_id,
-        projectManager: row.pm_id ? { id: row.pm_id, name: row.pm_name } : null,
+        projectManager: row.pm_id ? { id: row.pm_id, name: row.pm_name, avatarUrl: row.pm_avatar_url } : null,
         defaultPriority: row.default_priority,
         createdById: row.created_by_id,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
+        _count: { tickets: row.tickets_count ?? 0, members: row.members_count ?? 0 },
     };
 }
 function mapRowToProject(row) {
@@ -1473,7 +1474,9 @@ class ClientV2Controller {
             const { clientId } = req.params;
             const r = await dbpool_1.default.query(`SELECT cp.id AS mapping_id, cp.billing_type, cp.budget,
                         p.*,
-                        u.id AS pm_id, u.name AS pm_name
+                        u.id AS pm_id, u.name AS pm_name, u.avatar_url AS pm_avatar_url,
+                        (SELECT COUNT(*)::int FROM tickets t WHERE t.project_id = p.id AND t.is_deleted = false) AS tickets_count,
+                        (SELECT COUNT(*)::int FROM project_members pm WHERE pm.project_id = p.id) AS members_count
                  FROM client_projects cp
                  JOIN  projects p ON p.id = cp.project_id
                  LEFT JOIN users u ON u.id = p.project_manager_id
