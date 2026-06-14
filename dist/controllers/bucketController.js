@@ -4,6 +4,8 @@ exports.BucketController = void 0;
 const database_1 = require("@/config/database");
 const types_1 = require("@/types");
 const socketService_1 = require("@/services/socketService");
+const transactionHistory_1 = require("@/utils/transactionHistory");
+const crypto_1 = require("crypto");
 class BucketController {
     /**
      * Get all buckets for a tenant/project (tenant-aware)
@@ -36,7 +38,7 @@ class BucketController {
                 where,
                 include: {
                     createdBy: {
-                        select: { id: true, name: true, workEmail: true },
+                        select: { id: true, name: true, workEmail: true, avatarUrl: true },
                     },
                     project: {
                         select: { id: true, name: true, code: true },
@@ -44,7 +46,7 @@ class BucketController {
                     members: {
                         include: {
                             user: {
-                                select: { id: true, name: true, workEmail: true },
+                                select: { id: true, name: true, workEmail: true, avatarUrl: true },
                             },
                         },
                     },
@@ -141,7 +143,7 @@ class BucketController {
                         type: true,
                         storyPoint: true,
                         assignee: {
-                            select: { id: true, name: true, workEmail: true },
+                            select: { id: true, name: true, workEmail: true, avatarUrl: true },
                         },
                         project: {
                             select: { id: true, name: true, code: true },
@@ -205,7 +207,7 @@ class BucketController {
                 },
                 include: {
                     createdBy: {
-                        select: { id: true, name: true, workEmail: true },
+                        select: { id: true, name: true, workEmail: true, avatarUrl: true },
                     },
                     project: {
                         select: { id: true, name: true, code: true, description: true },
@@ -235,7 +237,7 @@ class BucketController {
                             type: true,
                             storyPoint: true,
                             assignee: {
-                                select: { id: true, name: true, workEmail: true },
+                                select: { id: true, name: true, workEmail: true, avatarUrl: true },
                             },
                             project: {
                                 select: { id: true, name: true, code: true },
@@ -349,6 +351,27 @@ class BucketController {
             });
             // Emit socket event
             socketService_1.socketService.emitToTenant(req.tenantId, "bucket:created", bucket);
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.BUCKETS,
+                page: transactionHistory_1.Page.BUCKET_LIST,
+                action: transactionHistory_1.Action.CREATE,
+                actionLabel: "Bucket created",
+                entityType: transactionHistory_1.EntityType.BUCKET,
+                entityId: bucket.id,
+                entityLabel: bucket.name,
+                parentEntityType: bucket.projectId ? transactionHistory_1.EntityType.PROJECT : null,
+                parentEntityId: bucket.projectId ?? null,
+                afterData: {
+                    name: bucket.name,
+                    description: bucket.description,
+                    color: bucket.color,
+                    isShared: bucket.isShared,
+                    projectId: bucket.projectId,
+                },
+                statusCode: 201,
+            });
             res.status(201).json({
                 success: true,
                 data: bucket,
@@ -443,6 +466,40 @@ class BucketController {
             });
             // Emit socket event
             socketService_1.socketService.emitToTenant(req.tenantId, "bucket:updated", bucket);
+            {
+                const before = {
+                    name: existingBucket.name,
+                    description: existingBucket.description,
+                    color: existingBucket.color,
+                    isShared: existingBucket.isShared,
+                };
+                const after = {
+                    name: bucket.name,
+                    description: bucket.description,
+                    color: bucket.color,
+                    isShared: bucket.isShared,
+                };
+                const { changedFields, before: b, after: a } = (0, transactionHistory_1.diffShallow)(before, after);
+                if (changedFields.length > 0) {
+                    (0, transactionHistory_1.recordTransaction)({
+                        req,
+                        section: transactionHistory_1.Section.WORK,
+                        module: transactionHistory_1.Module.BUCKETS,
+                        page: transactionHistory_1.Page.BUCKET_DETAIL,
+                        action: transactionHistory_1.Action.UPDATE,
+                        actionLabel: `Bucket updated (${changedFields.join(", ")})`,
+                        entityType: transactionHistory_1.EntityType.BUCKET,
+                        entityId: id,
+                        entityLabel: bucket.name,
+                        parentEntityType: bucket.projectId ? transactionHistory_1.EntityType.PROJECT : null,
+                        parentEntityId: bucket.projectId ?? null,
+                        beforeData: b,
+                        afterData: a,
+                        changedFields,
+                        statusCode: 200,
+                    });
+                }
+            }
             res.status(200).json({
                 success: true,
                 data: bucket,
@@ -490,9 +547,9 @@ class BucketController {
             }
             // Anyone can delete the bucket (owner restriction removed)
             // Use transaction to ensure data consistency
-            await database_1.prisma.$transaction(async (tx) => {
+            const ticketsUnassigned = await database_1.prisma.$transaction(async (tx) => {
                 // Unassign all tickets from this bucket
-                await tx.ticket.updateMany({
+                const unassign = await tx.ticket.updateMany({
                     where: { bucketId: id },
                     data: { bucketId: null },
                 });
@@ -500,9 +557,25 @@ class BucketController {
                 await tx.bucket.delete({
                     where: { id },
                 });
+                return unassign.count;
             });
             // Emit socket event
             socketService_1.socketService.emitToTenant(req.tenantId, "bucket:deleted", { id });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.BUCKETS,
+                page: transactionHistory_1.Page.BUCKET_LIST,
+                action: transactionHistory_1.Action.DELETE,
+                actionLabel: "Bucket deleted",
+                entityType: transactionHistory_1.EntityType.BUCKET,
+                entityId: id,
+                entityLabel: bucket.name,
+                parentEntityType: bucket.projectId ? transactionHistory_1.EntityType.PROJECT : null,
+                parentEntityId: bucket.projectId ?? null,
+                statusCode: 200,
+                metadata: { hardDelete: true, ticketsUnassigned },
+            });
             res.status(200).json({
                 success: true,
                 message: "Bucket deleted successfully",
@@ -608,6 +681,21 @@ class BucketController {
                     },
                 },
             });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.BUCKETS,
+                page: transactionHistory_1.Page.BUCKET_DETAIL,
+                action: transactionHistory_1.Action.CREATE,
+                actionLabel: "Bucket member added",
+                entityType: transactionHistory_1.EntityType.BUCKET_MEMBER,
+                entityId: member.id,
+                entityLabel: user.name ?? user.workEmail ?? userId,
+                parentEntityType: transactionHistory_1.EntityType.BUCKET,
+                parentEntityId: id,
+                afterData: { userId, role },
+                statusCode: 201,
+            });
             res.status(201).json({
                 success: true,
                 data: member,
@@ -674,6 +762,20 @@ class BucketController {
             await database_1.prisma.bucketMember.delete({
                 where: { id: memberId },
             });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.BUCKETS,
+                page: transactionHistory_1.Page.BUCKET_DETAIL,
+                action: transactionHistory_1.Action.DELETE,
+                actionLabel: "Bucket member removed",
+                entityType: transactionHistory_1.EntityType.BUCKET_MEMBER,
+                entityId: memberId,
+                parentEntityType: transactionHistory_1.EntityType.BUCKET,
+                parentEntityId: id,
+                beforeData: { userId: member.userId, role: member.role },
+                statusCode: 200,
+            });
             res.status(200).json({
                 success: true,
                 message: "Member removed successfully",
@@ -736,6 +838,24 @@ class BucketController {
                     bucketId: id,
                     updatedAt: new Date(),
                 },
+            });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.BUCKETS,
+                page: transactionHistory_1.Page.BUCKET_DETAIL,
+                action: transactionHistory_1.Action.BULK_ASSIGN,
+                actionLabel: `Tickets assigned to bucket (${result.count})`,
+                entityType: transactionHistory_1.EntityType.BUCKET,
+                entityId: id,
+                entityLabel: bucket.name,
+                correlationId: (0, crypto_1.randomUUID)(),
+                metadata: {
+                    targetTicketIds: ticketIds,
+                    requested: ticketIds.length,
+                    assigned: result.count,
+                },
+                statusCode: 200,
             });
             res.status(200).json({
                 success: true,
@@ -855,6 +975,25 @@ class BucketController {
                     updatedAt: new Date(),
                 },
             });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.BUCKETS,
+                page: transactionHistory_1.Page.BUCKET_DETAIL,
+                action: transactionHistory_1.Action.MOVE,
+                actionLabel: `Bucket emptied to sprint (${result.count})`,
+                entityType: transactionHistory_1.EntityType.BUCKET,
+                entityId: id,
+                entityLabel: bucket.name,
+                correlationId: (0, crypto_1.randomUUID)(),
+                metadata: {
+                    destination: "sprint",
+                    destinationSprintId: sprintId,
+                    destinationSprintVersion: sprint.version,
+                    ticketsMoved: result.count,
+                },
+                statusCode: 200,
+            });
             res.status(200).json({
                 success: true,
                 data: { movedCount: result.count },
@@ -910,6 +1049,20 @@ class BucketController {
                     bucketId: null, // Clear bucket assignment so they show in main views
                     updatedAt: new Date(),
                 },
+            });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.BUCKETS,
+                page: transactionHistory_1.Page.BUCKET_DETAIL,
+                action: transactionHistory_1.Action.MOVE,
+                actionLabel: `Bucket emptied to backlog (${result.count})`,
+                entityType: transactionHistory_1.EntityType.BUCKET,
+                entityId: id,
+                entityLabel: bucket.name,
+                correlationId: (0, crypto_1.randomUUID)(),
+                metadata: { destination: "backlog", ticketsMoved: result.count },
+                statusCode: 200,
             });
             res.status(200).json({
                 success: true,

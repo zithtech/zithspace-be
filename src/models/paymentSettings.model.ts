@@ -12,6 +12,9 @@ export interface PaymentSetting {
   updatedBy?: string;
   createdAt: Date;
   updatedAt: Date;
+  upiId?: string | null;
+  merchantName?: string | null;
+  bankHandle?: string | null;
 }
 
 export interface CreatePaymentSettingData {
@@ -22,6 +25,9 @@ export interface CreatePaymentSettingData {
   branchName: string;
   qrCode?: string;
   createdBy: string;
+  upiId?: string | null;
+  merchantName?: string | null;
+  bankHandle?: string | null;
 }
 
 export interface UpdatePaymentSettingData {
@@ -31,6 +37,9 @@ export interface UpdatePaymentSettingData {
   branchName?: string;
   qrCode?: string;
   updatedBy: string;
+  upiId?: string | null;
+  merchantName?: string | null;
+  bankHandle?: string | null;
 }
 
 /**
@@ -49,6 +58,9 @@ function mapRowToPaymentSetting(row: any): PaymentSetting {
     updatedBy: row.updated_by,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    upiId: row.upi_id,
+    merchantName: row.merchant_name,
+    bankHandle: row.bank_handle,
   };
 }
 
@@ -64,9 +76,12 @@ export async function createPaymentSetting(data: CreatePaymentSettingData): Prom
       ifsc_code, 
       branch_name, 
       qr_code, 
-      created_by
+      created_by,
+      upi_id,
+      merchant_name,
+      bank_handle
     ) 
-    VALUES ($1, $2, $3, $4, $5, $6, $7)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     RETURNING *
   `;
   
@@ -77,7 +92,10 @@ export async function createPaymentSetting(data: CreatePaymentSettingData): Prom
     data.ifscCode,
     data.branchName,
     data.qrCode || null,
-    data.createdBy
+    data.createdBy,
+    data.upiId || null,
+    data.merchantName || null,
+    data.bankHandle || null
   ];
 
   const result = await pool.query(query, values);
@@ -143,6 +161,18 @@ export async function updatePaymentSetting(
   if (data.qrCode !== undefined) {
     setClause.push(`qr_code = $${paramIndex++}`);
     values.push(data.qrCode);
+  }
+  if (data.upiId !== undefined) {
+    setClause.push(`upi_id = $${paramIndex++}`);
+    values.push(data.upiId);
+  }
+  if (data.merchantName !== undefined) {
+    setClause.push(`merchant_name = $${paramIndex++}`);
+    values.push(data.merchantName);
+  }
+  if (data.bankHandle !== undefined) {
+    setClause.push(`bank_handle = $${paramIndex++}`);
+    values.push(data.bankHandle);
   }
 
   setClause.push(`updated_by = $${paramIndex++}`);

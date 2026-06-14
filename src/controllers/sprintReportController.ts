@@ -6,6 +6,14 @@ import {
   SprintAiContext,
   AiNarrative,
 } from "@/services/sprintReportAiService";
+import {
+  recordTransaction,
+  Section,
+  Module,
+  Page,
+  Action,
+  EntityType,
+} from "@/utils/transactionHistory";
 
 const DONE_STATUSES = ["completed", "live"];
 const QA_STATUSES = ["in_testing", "in_review"];
@@ -1655,6 +1663,21 @@ export class SprintReportController {
           req.user.id,
         ]
       );
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.SPRINTS,
+        page: Page.SPRINT_REPORT,
+        action: Action.GENERATE_AI,
+        actionLabel: "AI narrative generated",
+        entityType: EntityType.SPRINT_AI_NARRATIVE,
+        entityId: sprintId,
+        parentEntityType: EntityType.RELEASE_PLAN,
+        parentEntityId: sprintId,
+        statusCode: 200,
+        metadata: { model: "gemini-flash-latest" },
+      });
 
       res.json({
         success: true,

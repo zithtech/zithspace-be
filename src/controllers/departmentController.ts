@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { prisma } from "@/config/database";
 import { AuthRequest, ApiResponse } from "@/types";
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from "../utils/transactionHistory";
 
 export class DepartmentController {
   // Create a new Department
@@ -63,6 +64,27 @@ export class DepartmentController {
       });
 
       res.status(201).json({ success: true, data: newDepartment, message: "Department created successfully" } as ApiResponse);
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.ORG_STRUCTURE,
+        page: Page.ORG_STRUCTURE_DEPARTMENTS,
+        action: Action.CREATE,
+        actionLabel: `Created department "${newDepartment.name}"`,
+        entityType: EntityType.ORG_DEPARTMENT,
+        entityId: newDepartment.id,
+        entityLabel: newDepartment.name,
+        afterData: {
+          name: newDepartment.name,
+          code: newDepartment.code,
+          employmentType: newDepartment.employmentType,
+          description: newDepartment.description,
+          headId: newDepartment.headId,
+          isActive: newDepartment.isActive,
+        },
+      });
     } catch (error: any) {
       console.error("Error creating department:", error);
       res.status(500).json({ success: false, error: "Failed to create department" } as ApiResponse);
@@ -178,6 +200,42 @@ export class DepartmentController {
       });
 
       res.status(200).json({ success: true, data: updatedDepartment, message: "Department updated successfully" } as ApiResponse);
+
+      // ─── Activity log ───────────────────────────────────────────────
+      if (existing) {
+        const beforeSnap = {
+          name: existing.name,
+          code: existing.code,
+          employmentType: existing.employmentType,
+          description: existing.description,
+          headId: existing.headId,
+          isActive: existing.isActive,
+        };
+        const afterSnap = {
+          name: updatedDepartment.name,
+          code: updatedDepartment.code,
+          employmentType: updatedDepartment.employmentType,
+          description: updatedDepartment.description,
+          headId: updatedDepartment.headId,
+          isActive: updatedDepartment.isActive,
+        };
+        const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.ORG_STRUCTURE,
+          page: Page.ORG_STRUCTURE_DEPARTMENTS,
+          action: Action.UPDATE,
+          actionLabel: `Updated department "${updatedDepartment.name}"`,
+          entityType: EntityType.ORG_DEPARTMENT,
+          entityId: id,
+          entityLabel: updatedDepartment.name,
+          beforeData: before,
+          afterData: after,
+          changedFields,
+        });
+      }
     } catch (error: any) {
       console.error("Error updating department:", error);
       res.status(500).json({ success: false, error: "Failed to update department" } as ApiResponse);
@@ -205,6 +263,21 @@ export class DepartmentController {
       await prisma.department.delete({ where: { id } });
 
       res.status(200).json({ success: true, message: "Department deleted successfully" } as ApiResponse);
+
+      // ─── Activity log ───────────────────────────────────────────────
+      if (existing) {
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.ORG_STRUCTURE,
+          page: Page.ORG_STRUCTURE_DEPARTMENTS,
+          action: Action.DELETE,
+          actionLabel: `Deleted department "${existing.name}"`,
+          entityType: EntityType.ORG_DEPARTMENT,
+          entityId: id,
+          entityLabel: existing.name,
+        });
+      }
     } catch (error: any) {
       console.error("Error deleting department:", error);
       if (error.code === 'P2003') {

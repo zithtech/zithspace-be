@@ -27,6 +27,7 @@ interface PurgeStats {
     activityLogsDeleted: number;
     duration: number;
     leadsDeleted?: number;
+    escalationsDeleted?: number;
 }
 interface PurgeSummary {
     startTime: Date;
@@ -39,6 +40,7 @@ interface PurgeSummary {
     totalLinksDeleted: number;
     totalActivityLogsDeleted: number;
     totalLeadsDeleted: number;
+    totalEscalationsDeleted: number;
     errors: Array<{
         tenantId: string;
         error: string;

@@ -12,6 +12,16 @@ import {
 } from "@/types";
 import { RBACService } from '@/modules/rbac/rbac.service';
 import { Permissions } from '@/types/permissions';
+import {
+  recordTransaction,
+  diffShallow,
+  Section,
+  Module,
+  Page,
+  Action,
+  EntityType,
+} from "@/utils/transactionHistory";
+import { randomUUID } from "crypto";
 
 export class ProjectController {
   /**
@@ -265,9 +275,12 @@ export class ProjectController {
 
       let maxNum = 0;
       for (const p of projects) {
-        if (p.code && /^\d{3}$/.test(p.code)) {
-          const num = parseInt(p.code, 10);
-          if (num > maxNum) maxNum = num;
+        if (p.code) {
+          const displayCode = p.code.replace(`${req.tenantId}_`, '');
+          if (/^\d{3}$/.test(displayCode)) {
+            const num = parseInt(displayCode, 10);
+            if (num > maxNum) maxNum = num;
+          }
         }
       }
       const nextCode = String(maxNum + 1).padStart(3, '0');
@@ -332,13 +345,18 @@ export class ProjectController {
         
         let maxNum = 0;
         for (const p of existingProjects) {
-          if (p.code && /^\d{3}$/.test(p.code)) {
-            const num = parseInt(p.code, 10);
-            if (num > maxNum) maxNum = num;
+          if (p.code) {
+            const displayCode = p.code.replace(`${req.tenantId}_`, '');
+            if (/^\d{3}$/.test(displayCode)) {
+              const num = parseInt(displayCode, 10);
+              if (num > maxNum) maxNum = num;
+            }
           }
         }
         projectCode = String(maxNum + 1).padStart(3, '0');
       }
+
+      const dbProjectCode = `${req.tenantId}_${projectCode.toUpperCase()}`;
 
       // Validate project manager exists and belongs to tenant
       const manager = await prisma.user.findFirst({
@@ -374,7 +392,7 @@ export class ProjectController {
       if (projectCode) {
         const existingProject = await prisma.project.findFirst({
           where: {
-            code: projectCode.toUpperCase(),
+            code: dbProjectCode,
             tenantId: req.tenantId,
           },
         });
@@ -391,7 +409,7 @@ export class ProjectController {
         data: {
           tenantId: req.tenantId,
           name,
-          code: projectCode?.toUpperCase(),
+          code: dbProjectCode,
           description,
           status,
           startDate: new Date(startDate),
@@ -428,6 +446,29 @@ export class ProjectController {
             select: { id: true, name: true, workEmail: true },
           },
         },
+      });
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.PROJECTS,
+        page: Page.PROJECT_LIST,
+        action: Action.CREATE,
+        actionLabel: "Project created",
+        entityType: EntityType.PROJECT,
+        entityId: project.id,
+        entityLabel: `${project.code ?? ""}${project.code ? " — " : ""}${project.name}`,
+        afterData: {
+          name: project.name,
+          code: project.code,
+          status: project.status,
+          startDate: project.startDate,
+          endDate: project.endDate,
+          projectManagerId: project.projectManagerId,
+          defaultPriority: project.defaultPriority,
+          teamMemberCount: teamMemberIds.length,
+        },
+        statusCode: 201,
       });
 
       res.status(201).json({
@@ -482,11 +523,20 @@ export class ProjectController {
       delete updates.createdAt;
       delete updates.tenantId;
 
-      // Check if project exists and belongs to tenant
+      // Check if project exists and belongs to tenant.
+      // Include members so the audit log can show team-change details below.
       const existingProject = await prisma.project.findFirst({
         where: {
           id,
           tenantId: req.tenantId,
+        },
+        include: {
+          members: {
+            select: {
+              userId: true,
+              user: { select: { id: true, name: true, workEmail: true } },
+            },
+          },
         },
       });
 
@@ -510,21 +560,27 @@ export class ProjectController {
       }
 
       // Check if project code already exists (if code is being updated)
-      if (updates.code && updates.code !== existingProject.code) {
-        const duplicateProject = await prisma.project.findFirst({
-          where: {
-            code: updates.code.toUpperCase(),
-            tenantId: req.tenantId,
-            id: { not: id },
-          },
-        });
+      if (updates.code) {
+        const dbProjectCode = `${req.tenantId}_${updates.code.toUpperCase()}`;
+        const existingCleanCode = existingProject.code ? existingProject.code.replace(`${req.tenantId}_`, '') : '';
+        if (updates.code.toUpperCase() !== existingCleanCode.toUpperCase()) {
+          const duplicateProject = await prisma.project.findFirst({
+            where: {
+              code: dbProjectCode,
+              tenantId: req.tenantId,
+              id: { not: id },
+            },
+          });
 
-        if (duplicateProject) {
-          throw new ValidationError(
-            "Project code already exists in this tenant",
-          );
+          if (duplicateProject) {
+            throw new ValidationError(
+              "Project code already exists in this tenant",
+            );
+          }
+          updates.code = dbProjectCode;
+        } else {
+          updates.code = existingProject.code;
         }
-        updates.code = updates.code.toUpperCase();
       }
 
       // Convert date strings to Date objects
@@ -599,6 +655,90 @@ export class ProjectController {
         },
       });
 
+      {
+        const trackedKeys = [
+          "name",
+          "code",
+          "description",
+          "status",
+          "startDate",
+          "endDate",
+          "projectManagerId",
+          "defaultPriority",
+        ] as const;
+        const beforeSnap: Record<string, any> = {};
+        const afterSnap: Record<string, any> = {};
+        for (const k of trackedKeys) {
+          if ((updates as any)[k] !== undefined) {
+            beforeSnap[k] = (existingProject as any)[k];
+            afterSnap[k] = (project as any)[k];
+          }
+        }
+
+        // Team-member changes — compute who was added / removed but DO NOT
+        // include the full list as a tracked field. The added/removed names go
+        // into the action label + metadata; the row reads "Members +Charlie"
+        // rather than echoing the entire roster before and after.
+        let addedNames: string[] = [];
+        let removedNames: string[] = [];
+        if (updates.teamMemberIds !== undefined) {
+          const oldMembers = (existingProject as any).members ?? [];
+          const oldIds = new Set<string>(
+            oldMembers.map((m: any) => m.userId as string)
+          );
+          const oldNameById = new Map<string, string>(
+            oldMembers.map((m: any) => [
+              m.userId as string,
+              (m.user?.name as string) ?? (m.user?.workEmail as string) ?? (m.userId as string),
+            ])
+          );
+
+          const newMembers = (project as any).members ?? [];
+          const newIds = new Set<string>(
+            newMembers.map((m: any) => m.user.id as string)
+          );
+          const newNameById = new Map<string, string>(
+            newMembers.map((m: any) => [
+              m.user.id as string,
+              (m.user.name as string) ?? (m.user.workEmail as string) ?? (m.user.id as string),
+            ])
+          );
+
+          for (const uid of newIds) if (!oldIds.has(uid)) addedNames.push(newNameById.get(uid)!);
+          for (const uid of oldIds) if (!newIds.has(uid)) removedNames.push(oldNameById.get(uid)!);
+        }
+
+        const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+        const membersChanged = addedNames.length > 0 || removedNames.length > 0;
+        if (changedFields.length > 0 || membersChanged) {
+          const labelParts: string[] = ["Project updated"];
+          if (changedFields.length > 0) labelParts.push(`(${changedFields.join(", ")})`);
+          if (membersChanged) {
+            const memberParts: string[] = [];
+            if (addedNames.length > 0) memberParts.push(`+${addedNames.join(", ")}`);
+            if (removedNames.length > 0) memberParts.push(`-${removedNames.join(", ")}`);
+            labelParts.push(`· Members ${memberParts.join(" ")}`);
+          }
+
+          recordTransaction({
+            req,
+            section: Section.WORK,
+            module: Module.PROJECTS,
+            page: Page.PROJECT_DETAIL,
+            action: Action.UPDATE,
+            actionLabel: labelParts.join(" "),
+            entityType: EntityType.PROJECT,
+            entityId: id,
+            entityLabel: `${existingProject.code ?? ""}${existingProject.code ? " — " : ""}${existingProject.name}`,
+            beforeData: before,
+            afterData: after,
+            changedFields,
+            statusCode: 200,
+            metadata: membersChanged ? { added: addedNames, removed: removedNames } : null,
+          });
+        }
+      }
+
       res.status(200).json({
         success: true,
         data: project,
@@ -659,10 +799,27 @@ export class ProjectController {
       // Instead of hard delete, set status to DELETED
       await prisma.project.update({
         where: { id },
-        data: { 
+        data: {
           status: "DELETED",
           updatedAt: new Date()
         },
+      });
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.PROJECTS,
+        page: Page.PROJECT_LIST,
+        action: Action.DELETE,
+        actionLabel: "Project moved to trash",
+        entityType: EntityType.PROJECT,
+        entityId: id,
+        entityLabel: `${project.code ?? ""}${project.code ? " — " : ""}${project.name}`,
+        beforeData: { status: project.status },
+        afterData: { status: "DELETED" },
+        changedFields: ["status"],
+        statusCode: 200,
+        metadata: { softDelete: true },
       });
 
       res.status(200).json({
@@ -716,10 +873,26 @@ export class ProjectController {
 
       await prisma.project.update({
         where: { id },
-        data: { 
+        data: {
           status: "ACTIVE",
           updatedAt: new Date()
         },
+      });
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.PROJECTS,
+        page: Page.PROJECT_TRASH,
+        action: Action.RESTORE,
+        actionLabel: "Project restored",
+        entityType: EntityType.PROJECT,
+        entityId: id,
+        entityLabel: `${project.code ?? ""}${project.code ? " — " : ""}${project.name}`,
+        beforeData: { status: "DELETED" },
+        afterData: { status: "ACTIVE" },
+        changedFields: ["status"],
+        statusCode: 200,
       });
 
       res.status(200).json({
@@ -767,6 +940,19 @@ export class ProjectController {
         where: { id },
       });
 
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.PROJECTS,
+        page: Page.PROJECT_TRASH,
+        action: Action.PERMANENT_DELETE,
+        actionLabel: "Project permanently deleted",
+        entityType: EntityType.PROJECT,
+        entityId: id,
+        entityLabel: `${project.code ?? ""}${project.code ? " — " : ""}${project.name}`,
+        statusCode: 200,
+      });
+
       res.status(200).json({
         success: true,
         message: "Project permanently deleted",
@@ -798,6 +984,19 @@ export class ProjectController {
           tenantId: req.tenantId,
           status: "DELETED"
         },
+      });
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.PROJECTS,
+        page: Page.PROJECT_TRASH,
+        action: Action.BULK_PERMANENT_DELETE,
+        actionLabel: `Trash emptied (${count} projects)`,
+        entityType: EntityType.PROJECT,
+        correlationId: randomUUID(),
+        metadata: { deleted: count, source: "empty_trash" },
+        statusCode: 200,
       });
 
       res.status(200).json({
@@ -842,10 +1041,25 @@ export class ProjectController {
           tenantId: req.tenantId,
           status: "DELETED"
         },
-        data: { 
+        data: {
           status: "ACTIVE",
           updatedAt: new Date()
         },
+      });
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.PROJECTS,
+        page: Page.PROJECT_TRASH,
+        action: Action.BULK_RESTORE,
+        actionLabel: `Projects restored (${count})`,
+        entityType: EntityType.PROJECT,
+        afterData: { status: "ACTIVE" },
+        changedFields: ["status"],
+        correlationId: randomUUID(),
+        metadata: { targetIds: ids, requested: ids.length, restored: count },
+        statusCode: 200,
       });
 
       res.status(200).json({
@@ -890,6 +1104,19 @@ export class ProjectController {
           tenantId: req.tenantId,
           status: "DELETED"
         },
+      });
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.PROJECTS,
+        page: Page.PROJECT_TRASH,
+        action: Action.BULK_PERMANENT_DELETE,
+        actionLabel: `Projects permanently deleted (${count})`,
+        entityType: EntityType.PROJECT,
+        correlationId: randomUUID(),
+        metadata: { targetIds: ids, requested: ids.length, deleted: count },
+        statusCode: 200,
       });
 
       res.status(200).json({
@@ -1460,6 +1687,22 @@ export class ProjectController {
         },
       });
 
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.PROJECTS,
+        page: Page.PROJECT_DETAIL,
+        action: Action.CREATE,
+        actionLabel: "Team member added",
+        entityType: EntityType.PROJECT_MEMBER,
+        entityId: userId,
+        entityLabel: user.name ?? user.workEmail ?? userId,
+        parentEntityType: EntityType.PROJECT,
+        parentEntityId: id,
+        afterData: { userId, role: "member" },
+        statusCode: 200,
+      });
+
       res.status(200).json({
         success: true,
         data: updatedProject,
@@ -1618,6 +1861,7 @@ export class ProjectController {
           projectId: id,
           tenantId: req.tenantId,
           assigneeId: req.user!.id,
+          isDeleted: false,
         },
         select: {
           id: true,
@@ -1699,6 +1943,7 @@ export class ProjectController {
         where: {
           projectId: id,
           tenantId: req.tenantId,
+          isDeleted: false,
         },
         select: {
           id: true,
@@ -1800,6 +2045,21 @@ export class ProjectController {
             },
           },
         },
+      });
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.PROJECTS,
+        page: Page.PROJECT_DETAIL,
+        action: Action.DELETE,
+        actionLabel: "Team member removed",
+        entityType: EntityType.PROJECT_MEMBER,
+        entityId: userId,
+        parentEntityType: EntityType.PROJECT,
+        parentEntityId: id,
+        beforeData: { userId, role: "member" },
+        statusCode: 200,
       });
 
       res.status(200).json({

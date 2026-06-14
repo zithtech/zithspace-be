@@ -7,6 +7,15 @@ import {
   deleteBugAttachmentFromR2,
 } from "@/utils/r2Client";
 import { BugListAiService } from "@/services/bugListAiService";
+import {
+  recordTransaction,
+  diffShallow,
+  Section,
+  Module,
+  Page,
+  Action,
+  EntityType,
+} from "@/utils/transactionHistory";
 
 // ============================================================================
 // Helpers
@@ -374,6 +383,27 @@ export class BugListController {
         ],
       );
       const row = result.rows[0];
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_FOLDER_LIST,
+        action: Action.CREATE,
+        actionLabel: "Folder created",
+        entityType: EntityType.BUG_FOLDER,
+        entityId: row.id,
+        entityLabel: row.name,
+        parentEntityType: row.project_id ? "project" : null,
+        parentEntityId: row.project_id ?? null,
+        afterData: {
+          name: row.name,
+          description: row.description,
+          projectId: row.project_id,
+          clientId: row.client_id,
+          color: row.color,
+        },
+        statusCode: 201,
+      });
       res.status(201).json({
         success: true,
         data: {
@@ -402,6 +432,11 @@ export class BugListController {
     const { id } = req.params;
     const { name, description, color } = req.body;
     try {
+      const beforeRes = await pool.query(
+        `SELECT name, description, color FROM bug_folders WHERE id = $1 AND tenant_id = $2`,
+        [id, req.tenantId],
+      );
+      const beforeRow = beforeRes.rows[0];
       const result = await pool.query(
         `UPDATE bug_folders
             SET name        = COALESCE($1, name),
@@ -416,6 +451,27 @@ export class BugListController {
         return;
       }
       const row = result.rows[0];
+      {
+        const after = { name: row.name, description: row.description, color: row.color };
+        const { changedFields, before, after: afterDiff } = diffShallow(beforeRow ?? {}, after);
+        if (changedFields.length > 0) {
+          recordTransaction({
+            req,
+            section: Section.WORK,
+            module: Module.BUG_LIST,
+            page: Page.BUG_FOLDER_LIST,
+            action: Action.UPDATE,
+            actionLabel: `Folder updated (${changedFields.join(", ")})`,
+            entityType: EntityType.BUG_FOLDER,
+            entityId: id,
+            entityLabel: row.name,
+            beforeData: before,
+            afterData: afterDiff,
+            changedFields,
+            statusCode: 200,
+          });
+        }
+      }
       res.json({
         success: true,
         data: {
@@ -464,16 +520,36 @@ export class BugListController {
       }
 
       // Recursively trash sheets and bugs
-      await pool.query(
+      const sheetsRes = await pool.query(
         `UPDATE bug_sheets SET status = 'trash', original_status = status, updated_at = NOW()
           WHERE folder_id = $1 AND tenant_id = $2 AND status != 'trash'`,
         [id, req.tenantId]
       );
-      await pool.query(
+      const bugsRes = await pool.query(
         `UPDATE bugs SET status = 'trash', original_status = status, updated_at = NOW()
           WHERE folder_id = $1 AND tenant_id = $2 AND status != 'trash'`,
         [id, req.tenantId]
       );
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_FOLDER_LIST,
+        action: Action.DELETE,
+        actionLabel: "Folder moved to trash",
+        entityType: EntityType.BUG_FOLDER,
+        entityId: id,
+        beforeData: { status: currentStatus },
+        afterData: { status: "trash" },
+        changedFields: ["status"],
+        statusCode: 200,
+        metadata: {
+          softDelete: true,
+          cascadedSheets: sheetsRes.rowCount,
+          cascadedBugs: bugsRes.rowCount,
+        },
+      });
 
       res.json({ success: true });
     } catch (err: any) {
@@ -488,13 +564,27 @@ export class BugListController {
     try {
       const r = await pool.query(
         `UPDATE bug_folders SET status = 'archived', updated_at = NOW()
-          WHERE id = $1 AND tenant_id = $2 RETURNING id`,
+          WHERE id = $1 AND tenant_id = $2 RETURNING id, name`,
         [id, req.tenantId],
       );
       if (r.rowCount === 0) {
         bad(res, 404, "Folder not found");
         return;
       }
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_FOLDER_LIST,
+        action: Action.ARCHIVE,
+        actionLabel: "Folder archived",
+        entityType: EntityType.BUG_FOLDER,
+        entityId: id,
+        entityLabel: r.rows[0]?.name ?? null,
+        afterData: { status: "archived" },
+        changedFields: ["status"],
+        statusCode: 200,
+      });
       res.json({ success: true });
     } catch (err: any) {
       console.error("archiveFolder error:", err);
@@ -600,16 +690,34 @@ export class BugListController {
       );
 
       // Recursively restore sheets and bugs
-      await pool.query(
+      const sheetsRes = await pool.query(
         `UPDATE bug_sheets SET status = COALESCE(original_status, 'active'), original_status = NULL, updated_at = NOW()
           WHERE folder_id = $1 AND tenant_id = $2 AND status IN ('trash', 'archived')`,
         [id, req.tenantId]
       );
-      await pool.query(
+      const bugsRes = await pool.query(
         `UPDATE bugs SET status = COALESCE(original_status, 'new'), original_status = NULL, updated_at = NOW()
           WHERE folder_id = $1 AND tenant_id = $2 AND status IN ('trash', 'archived')`,
         [id, req.tenantId]
       );
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_TRASH,
+        action: Action.RESTORE,
+        actionLabel: "Folder restored",
+        entityType: EntityType.BUG_FOLDER,
+        entityId: id,
+        afterData: { status: originalStatus },
+        changedFields: ["status"],
+        statusCode: 200,
+        metadata: {
+          cascadedSheets: sheetsRes.rowCount,
+          cascadedBugs: bugsRes.rowCount,
+        },
+      });
 
       res.json({ success: true });
     } catch (err: any) {
@@ -650,8 +758,20 @@ export class BugListController {
         bad(res, 404, "Trashed folder not found");
         return;
       }
-      
+
       await client.query("COMMIT");
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_TRASH,
+        action: Action.PERMANENT_DELETE,
+        actionLabel: "Folder permanently deleted",
+        entityType: EntityType.BUG_FOLDER,
+        entityId: id,
+        statusCode: 200,
+        metadata: { attachmentsCleaned: attachments.rowCount },
+      });
       res.json({ success: true });
     } catch (err: any) {
       await client.query("ROLLBACK").catch(() => {});
@@ -814,6 +934,21 @@ export class BugListController {
         [req.tenantId, folderId, name.trim(), description || null, req.user!.id],
       );
       const row = result.rows[0];
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_SHEET_LIST,
+        action: Action.CREATE,
+        actionLabel: "Sheet created",
+        entityType: EntityType.BUG_SHEET,
+        entityId: row.id,
+        entityLabel: row.name,
+        parentEntityType: EntityType.BUG_FOLDER,
+        parentEntityId: folderId,
+        afterData: { name: row.name, description: row.description, folderId },
+        statusCode: 201,
+      });
       res.status(201).json({
         success: true,
         data: {
@@ -841,6 +976,12 @@ export class BugListController {
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
+
+      const beforeRes = await client.query(
+        `SELECT name, description, folder_id FROM bug_sheets WHERE id = $1 AND tenant_id = $2`,
+        [id, req.tenantId],
+      );
+      const beforeRow = beforeRes.rows[0];
 
       // 1. Update the sheet
       const result = await client.query(
@@ -870,6 +1011,34 @@ export class BugListController {
       await client.query("COMMIT");
 
       const row = result.rows[0];
+      {
+        const after = { name: row.name, description: row.description, folderId: row.folder_id };
+        const before = {
+          name: beforeRow?.name,
+          description: beforeRow?.description,
+          folderId: beforeRow?.folder_id,
+        };
+        const { changedFields, before: b, after: a } = diffShallow(before, after);
+        if (changedFields.length > 0) {
+          recordTransaction({
+            req,
+            section: Section.WORK,
+            module: Module.BUG_LIST,
+            page: Page.BUG_SHEET_LIST,
+            action: Action.UPDATE,
+            actionLabel: `Sheet updated (${changedFields.join(", ")})`,
+            entityType: EntityType.BUG_SHEET,
+            entityId: id,
+            entityLabel: row.name,
+            parentEntityType: EntityType.BUG_FOLDER,
+            parentEntityId: row.folder_id,
+            beforeData: b,
+            afterData: a,
+            changedFields,
+            statusCode: 200,
+          });
+        }
+      }
       res.json({
         success: true,
         data: {
@@ -935,7 +1104,9 @@ export class BugListController {
       if (status === "archived") {
         await client.query(
           `UPDATE bugs
-              SET status = 'archived', updated_at = NOW()
+              SET status = 'archived',
+                  original_status = COALESCE(original_status, status),
+                  updated_at = NOW()
             WHERE sheet_id = $1 AND tenant_id = $2 AND status NOT IN ('archived', 'deleted')`,
           [id, req.tenantId]
         );
@@ -943,7 +1114,9 @@ export class BugListController {
         // When restoring sheet, restore bugs that were archived when sheet was archived
         await client.query(
           `UPDATE bugs
-              SET status = 'new', updated_at = NOW()
+              SET status = COALESCE(original_status, 'new'),
+                  original_status = NULL,
+                  updated_at = NOW()
             WHERE sheet_id = $1 AND tenant_id = $2 AND status = 'archived'`,
           [id, req.tenantId]
         );
@@ -951,6 +1124,22 @@ export class BugListController {
       
       await client.query("COMMIT");
       const row = updated.rows[0];
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_SHEET_LIST,
+        action: Action.STATUS_CHANGE,
+        actionLabel: `Sheet status -> ${status}`,
+        entityType: EntityType.BUG_SHEET,
+        entityId: id,
+        entityLabel: row.name,
+        parentEntityType: EntityType.BUG_FOLDER,
+        parentEntityId: row.folder_id,
+        afterData: { status },
+        changedFields: ["status"],
+        statusCode: 200,
+      });
       res.json({
         success: true,
         data: {
@@ -1015,11 +1204,27 @@ export class BugListController {
       }
 
       // Recursively trash bugs
-      await pool.query(
+      const bugsRes = await pool.query(
         `UPDATE bugs SET status = 'trash', original_status = status, updated_at = NOW()
           WHERE sheet_id = $1 AND tenant_id = $2 AND status != 'trash'`,
         [id, req.tenantId]
       );
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_SHEET_LIST,
+        action: Action.DELETE,
+        actionLabel: "Sheet moved to trash",
+        entityType: EntityType.BUG_SHEET,
+        entityId: id,
+        beforeData: { status: currentStatus },
+        afterData: { status: "trash" },
+        changedFields: ["status"],
+        statusCode: 200,
+        metadata: { softDelete: true, cascadedBugs: bugsRes.rowCount },
+      });
 
       res.json({ success: true });
     } catch (err: any) {
@@ -1115,11 +1320,26 @@ export class BugListController {
       }
 
       // Recursively restore bugs
-      await pool.query(
+      const bugsRes = await pool.query(
         `UPDATE bugs SET status = COALESCE(original_status, 'new'), original_status = NULL, updated_at = NOW()
           WHERE sheet_id = $1 AND tenant_id = $2 AND status IN ('trash', 'archived')`,
         [id, req.tenantId]
       );
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_TRASH,
+        action: Action.RESTORE,
+        actionLabel: "Sheet restored",
+        entityType: EntityType.BUG_SHEET,
+        entityId: id,
+        afterData: { status: originalStatus },
+        changedFields: ["status"],
+        statusCode: 200,
+        metadata: { cascadedBugs: bugsRes.rowCount },
+      });
 
       res.json({ success: true });
     } catch (err: any) {
@@ -1161,8 +1381,20 @@ export class BugListController {
         bad(res, 404, "Trashed sheet not found");
         return;
       }
-      
+
       await client.query("COMMIT");
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_TRASH,
+        action: Action.PERMANENT_DELETE,
+        actionLabel: "Sheet permanently deleted",
+        entityType: EntityType.BUG_SHEET,
+        entityId: id,
+        statusCode: 200,
+        metadata: { attachmentsCleaned: attachments.rowCount },
+      });
       res.json({ success: true });
     } catch (err: any) {
       await client.query("ROLLBACK").catch(() => {});
@@ -1186,6 +1418,7 @@ export class BugListController {
       module,
       severity,
       status,
+      bugStatus,
       bugType,
       createdById,
       assigneeId,
@@ -1215,6 +1448,13 @@ export class BugListController {
       if (module) push("b.module = $$", module);
       if (severity) push("b.severity = $$", severity);
       if (status && ALLOWED_STATUS.has(status)) push("b.status = $$", status);
+      if (bugStatus && ALLOWED_BUG_STATUS.has(bugStatus)) {
+        if (bugStatus === "not started") {
+          push("(b.bug_status = $$ OR b.bug_status IS NULL)", "not started");
+        } else {
+          push("b.bug_status = $$", bugStatus);
+        }
+      }
       if (bugType) push("b.bug_type = $$", bugType);
       if (createdById) push("b.created_by_id = $$", createdById);
       if (assigneeId) push("(b.assignee_id = $$ OR (b.assignee_id IS NULL AND t.assignee_id = $$))", assigneeId);
@@ -1477,6 +1717,36 @@ export class BugListController {
       await persistExternalLinks(bugId, externalLinks);
 
       const bug = await loadBugWithChildren(bugId, req.tenantId!);
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_LIST,
+        action: Action.CREATE,
+        actionLabel: "Bug created",
+        entityType: EntityType.BUG,
+        entityId: bugId,
+        entityLabel: `${bugNumber}${title ? ` — ${title}` : ""}`,
+        parentEntityType: EntityType.BUG_SHEET,
+        parentEntityId: sheetId,
+        afterData: {
+          bugNumber,
+          title,
+          module,
+          bugType,
+          severity,
+          bugStatus: bugStatus || "not started",
+          tags: Array.isArray(tags) ? tags : [],
+          assigneeId,
+          folderId,
+          sheetId,
+        },
+        statusCode: 201,
+        metadata: {
+          attachments: Array.isArray(attachments) ? attachments.length : 0,
+          externalLinks: Array.isArray(externalLinks) ? externalLinks.length : 0,
+        },
+      });
       res.status(201).json({ success: true, data: bug });
     } catch (err: any) {
       console.error("createBug error:", err);
@@ -1527,14 +1797,17 @@ export class BugListController {
 
     try {
       const existing = await pool.query(
-        `SELECT folder_id, sheet_id FROM bugs WHERE id = $1 AND tenant_id = $2`,
+        `SELECT folder_id, sheet_id, bug_number, title, description, module,
+                bug_type, severity, status, bug_status, tags, assignee_id, comments
+           FROM bugs WHERE id = $1 AND tenant_id = $2`,
         [id, req.tenantId],
       );
       if (existing.rows.length === 0) {
         bad(res, 404, "Bug not found");
         return;
       }
-      const { folder_id, sheet_id } = existing.rows[0];
+      const existingRow = existing.rows[0];
+      const { folder_id, sheet_id } = existingRow;
 
       // Build dynamic update list. `undefined` means "leave as-is", `null` means "clear".
       const sets: string[] = [];
@@ -1578,6 +1851,57 @@ export class BugListController {
       }
 
       const bug = await loadBugWithChildren(id, req.tenantId!);
+      {
+        const beforeSnap: Record<string, any> = {
+          title: existingRow.title,
+          description: existingRow.description,
+          module: existingRow.module,
+          bugType: existingRow.bug_type,
+          severity: existingRow.severity,
+          status: existingRow.status,
+          bugStatus: existingRow.bug_status,
+          tags: existingRow.tags,
+          assigneeId: existingRow.assignee_id,
+          comments: existingRow.comments,
+        };
+        const afterSnap: Record<string, any> = {};
+        if (title !== undefined) afterSnap.title = title;
+        if (description !== undefined) afterSnap.description = description;
+        if (module !== undefined) afterSnap.module = module;
+        if (bugType !== undefined) afterSnap.bugType = bugType;
+        if (severity !== undefined) afterSnap.severity = severity;
+        if (status !== undefined) afterSnap.status = status;
+        if (bugStatus !== undefined) afterSnap.bugStatus = bugStatus;
+        if (tags !== undefined) afterSnap.tags = Array.isArray(tags) ? tags : [];
+        if (assigneeId !== undefined) afterSnap.assigneeId = assigneeId;
+        if (comments !== undefined) afterSnap.comments = comments;
+        const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+        const attachmentsChanged = attachments !== undefined;
+        const linksChanged = externalLinks !== undefined;
+        if (changedFields.length > 0 || attachmentsChanged || linksChanged) {
+          recordTransaction({
+            req,
+            section: Section.WORK,
+            module: Module.BUG_LIST,
+            page: Page.BUG_LIST,
+            action: Action.UPDATE,
+            actionLabel: `Bug updated${changedFields.length ? ` (${changedFields.join(", ")})` : ""}`,
+            entityType: EntityType.BUG,
+            entityId: id,
+            entityLabel: `${existingRow.bug_number}${existingRow.title ? ` — ${existingRow.title}` : ""}`,
+            parentEntityType: EntityType.BUG_SHEET,
+            parentEntityId: sheet_id,
+            beforeData: before,
+            afterData: after,
+            changedFields,
+            statusCode: 200,
+            metadata: {
+              attachmentsReplaced: attachmentsChanged,
+              externalLinksReplaced: linksChanged,
+            },
+          });
+        }
+      }
       res.json({ success: true, data: bug });
     } catch (err: any) {
       console.error("updateBug error:", err);
@@ -1591,7 +1915,7 @@ export class BugListController {
     try {
       // First get current status to preserve it before moving to trash
       const bugResult = await pool.query(
-        `SELECT status FROM bugs WHERE id = $1 AND tenant_id = $2`,
+        `SELECT status, original_status FROM bugs WHERE id = $1 AND tenant_id = $2`,
         [id, req.tenantId],
       );
       
@@ -1600,9 +1924,10 @@ export class BugListController {
         return;
       }
       
-      const currentStatus = bugResult.rows[0].status;
-      // Only preserve status if it's not already trash
-      const originalStatus = currentStatus === 'trash' ? null : currentStatus;
+      const bugRow = bugResult.rows[0];
+      const currentStatus = bugRow.status;
+      // Only preserve status if it's not already trash, using COALESCE logic
+      const originalStatus = currentStatus === 'trash' ? bugRow.original_status : (bugRow.original_status || currentStatus);
       
       const r = await pool.query(
         `UPDATE bugs SET status = 'trash', original_status = $1, updated_at = NOW()
@@ -1613,6 +1938,21 @@ export class BugListController {
         bad(res, 404, "Bug not found");
         return;
       }
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_LIST,
+        action: Action.DELETE,
+        actionLabel: "Bug moved to trash",
+        entityType: EntityType.BUG,
+        entityId: id,
+        beforeData: { status: currentStatus },
+        afterData: { status: "trash" },
+        changedFields: ["status"],
+        statusCode: 200,
+        metadata: { softDelete: true },
+      });
       res.json({ success: true });
     } catch (err: any) {
       console.error("deleteBug error:", err);
@@ -1643,6 +1983,18 @@ export class BugListController {
         bad(res, 404, "Bug not found");
         return;
       }
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_TRASH,
+        action: Action.PERMANENT_DELETE,
+        actionLabel: "Bug permanently deleted",
+        entityType: EntityType.BUG,
+        entityId: id,
+        statusCode: 200,
+        metadata: { attachmentsCleaned: attachments.rowCount },
+      });
       res.json({ success: true });
     } catch (err: any) {
       console.error("permanentDeleteBug error:", err);
@@ -1670,7 +2022,7 @@ export class BugListController {
       const restoredStatus = bug.original_status || 'new';
       
       const r = await pool.query(
-        `UPDATE bugs SET status = $1, updated_at = NOW()
+        `UPDATE bugs SET status = $1, original_status = NULL, updated_at = NOW()
           WHERE id = $2 AND tenant_id = $3 RETURNING id`,
         [restoredStatus, id, req.tenantId],
       );
@@ -1678,6 +2030,19 @@ export class BugListController {
         bad(res, 404, "Bug not found");
         return;
       }
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_TRASH,
+        action: Action.RESTORE,
+        actionLabel: "Bug restored",
+        entityType: EntityType.BUG,
+        entityId: id,
+        afterData: { status: restoredStatus },
+        changedFields: ["status"],
+        statusCode: 200,
+      });
       res.json({ success: true });
     } catch (err: any) {
       console.error("restoreBug error:", err);
@@ -1701,10 +2066,31 @@ export class BugListController {
     }
     try {
       const r = await pool.query(
-        `UPDATE bugs SET status = $1, updated_at = NOW()
-           WHERE id = ANY($2::text[]) AND tenant_id = $3`,
+        `UPDATE bugs
+           SET status = $1,
+               original_status = CASE 
+                 WHEN $1 = 'archived' THEN (CASE WHEN status = 'archived' THEN original_status ELSE status END)
+                 WHEN $1 = 'trash' THEN (CASE WHEN status = 'trash' THEN original_status ELSE status END)
+                 ELSE NULL
+               END,
+               updated_at = NOW()
+         WHERE id = ANY($2::text[]) AND tenant_id = $3`,
         [status, bugIds, req.tenantId],
       );
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_LIST,
+        action: Action.BULK_UPDATE_STATUS,
+        actionLabel: `Bug bulk status -> ${status} (${r.rowCount})`,
+        entityType: EntityType.BUG,
+        afterData: { status },
+        changedFields: ["status"],
+        correlationId: randomUUID(),
+        metadata: { targetIds: bugIds, requested: bugIds.length, updated: r.rowCount },
+        statusCode: 200,
+      });
       res.json({ success: true, data: { updated: r.rowCount } });
     } catch (err: any) {
       console.error("bulkUpdateStatus error:", err);
@@ -1722,13 +2108,27 @@ export class BugListController {
     try {
       // Update all bugs to preserve their original status before moving to trash
       const r = await pool.query(
-        `UPDATE bugs 
-           SET status = 'trash', 
-               original_status = CASE WHEN status = 'trash' THEN NULL ELSE status END,
+        `UPDATE bugs
+           SET status = 'trash',
+               original_status = CASE WHEN status = 'trash' THEN original_status ELSE COALESCE(original_status, status) END,
                updated_at = NOW()
          WHERE id = ANY($1::text[]) AND tenant_id = $2`,
         [bugIds, req.tenantId],
       );
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_LIST,
+        action: Action.BULK_DELETE,
+        actionLabel: `Bugs bulk moved to trash (${r.rowCount})`,
+        entityType: EntityType.BUG,
+        afterData: { status: "trash" },
+        changedFields: ["status"],
+        correlationId: randomUUID(),
+        metadata: { targetIds: bugIds, requested: bugIds.length, updated: r.rowCount, softDelete: true },
+        statusCode: 200,
+      });
       res.json({ success: true, data: { movedToTrash: r.rowCount } });
     } catch (err: any) {
       console.error("bulkDelete error:", err);
@@ -1759,6 +2159,23 @@ export class BugListController {
           console.error("R2 cleanup failed:", e);
         }
       }
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_TRASH,
+        action: Action.BULK_PERMANENT_DELETE,
+        actionLabel: `Bugs permanently deleted (${r.rowCount})`,
+        entityType: EntityType.BUG,
+        correlationId: randomUUID(),
+        metadata: {
+          targetIds: bugIds,
+          requested: bugIds.length,
+          deleted: r.rowCount,
+          attachmentsCleaned: att.rowCount,
+        },
+        statusCode: 200,
+      });
       res.json({ success: true, data: { deleted: r.rowCount } });
     } catch (err: any) {
       console.error("bulkPermanentDelete error:", err);
@@ -1782,11 +2199,23 @@ export class BugListController {
       
       // Update each bug with its original status, defaulting to 'new' if no original status
       const r = await pool.query(
-        `UPDATE bugs 
-           SET status = COALESCE(original_status, 'new'), updated_at = NOW()
+        `UPDATE bugs
+           SET status = COALESCE(original_status, 'new'), original_status = NULL, updated_at = NOW()
          WHERE id = ANY($1::text[]) AND tenant_id = $2`,
         [bugIds, req.tenantId],
       );
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_TRASH,
+        action: Action.BULK_RESTORE,
+        actionLabel: `Bugs restored (${r.rowCount})`,
+        entityType: EntityType.BUG,
+        correlationId: randomUUID(),
+        metadata: { targetIds: bugIds, requested: bugIds.length, restored: r.rowCount },
+        statusCode: 200,
+      });
       res.json({ success: true, data: { restored: r.rowCount } });
     } catch (err: any) {
       console.error("bulkRestore error:", err);
@@ -1832,6 +2261,18 @@ export class BugListController {
       }
 
       await client.query("COMMIT");
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_TRASH,
+        action: Action.BULK_RESTORE,
+        actionLabel: `Folders restored (${folders.rowCount})`,
+        entityType: EntityType.BUG_FOLDER,
+        correlationId: randomUUID(),
+        metadata: { targetIds: folderIds, requested: folderIds.length, restored: folders.rowCount },
+        statusCode: 200,
+      });
       res.json({ success: true, data: { restored: folders.rowCount } });
     } catch (err: any) {
       await client.query("ROLLBACK").catch(() => {});
@@ -1872,8 +2313,25 @@ export class BugListController {
         `DELETE FROM bug_folders WHERE id = ANY($1::text[]) AND tenant_id = $2 AND status = 'trash'`,
         [folderIds, req.tenantId],
       );
-      
+
       await client.query("COMMIT");
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_TRASH,
+        action: Action.BULK_PERMANENT_DELETE,
+        actionLabel: `Folders permanently deleted (${r.rowCount})`,
+        entityType: EntityType.BUG_FOLDER,
+        correlationId: randomUUID(),
+        metadata: {
+          targetIds: folderIds,
+          requested: folderIds.length,
+          deleted: r.rowCount,
+          attachmentsCleaned: attachments.rowCount,
+        },
+        statusCode: 200,
+      });
       res.json({ success: true, data: { deleted: r.rowCount } });
     } catch (err: any) {
       await client.query("ROLLBACK").catch(() => {});
@@ -1916,6 +2374,18 @@ export class BugListController {
       }
 
       await client.query("COMMIT");
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_TRASH,
+        action: Action.BULK_RESTORE,
+        actionLabel: `Sheets restored (${sheets.rowCount})`,
+        entityType: EntityType.BUG_SHEET,
+        correlationId: randomUUID(),
+        metadata: { targetIds: sheetIds, requested: sheetIds.length, restored: sheets.rowCount },
+        statusCode: 200,
+      });
       res.json({ success: true, data: { restored: sheets.rowCount } });
     } catch (err: any) {
       await client.query("ROLLBACK").catch(() => {});
@@ -1956,8 +2426,25 @@ export class BugListController {
         `DELETE FROM bug_sheets WHERE id = ANY($1::text[]) AND tenant_id = $2 AND status = 'trash'`,
         [sheetIds, req.tenantId],
       );
-      
+
       await client.query("COMMIT");
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_TRASH,
+        action: Action.BULK_PERMANENT_DELETE,
+        actionLabel: `Sheets permanently deleted (${r.rowCount})`,
+        entityType: EntityType.BUG_SHEET,
+        correlationId: randomUUID(),
+        metadata: {
+          targetIds: sheetIds,
+          requested: sheetIds.length,
+          deleted: r.rowCount,
+          attachmentsCleaned: attachments.rowCount,
+        },
+        statusCode: 200,
+      });
       res.json({ success: true, data: { deleted: r.rowCount } });
     } catch (err: any) {
       await client.query("ROLLBACK").catch(() => {});
@@ -1994,6 +2481,26 @@ export class BugListController {
            WHERE id = ANY($3::text[]) AND tenant_id = $4`,
         [targetSheetId, folderId, bugIds, req.tenantId],
       );
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_LIST,
+        action: Action.BULK_MOVE,
+        actionLabel: `Bugs moved to sheet ${targetSheetId} (${r.rowCount})`,
+        entityType: EntityType.BUG,
+        afterData: { sheetId: targetSheetId, folderId },
+        changedFields: ["sheetId", "folderId"],
+        correlationId: randomUUID(),
+        metadata: {
+          targetIds: bugIds,
+          requested: bugIds.length,
+          moved: r.rowCount,
+          targetSheetId,
+          targetFolderId: folderId,
+        },
+        statusCode: 200,
+      });
       res.json({ success: true, data: { moved: r.rowCount } });
     } catch (err: any) {
       console.error("bulkMove error:", err);
@@ -2243,7 +2750,8 @@ export class BugListController {
           `SELECT code FROM projects WHERE id = $1 AND tenant_id = $2`,
           [projectId, req.tenantId],
         );
-        const projectCode = projectRes.rows[0]?.code || "TKT";
+        const rawCode = projectRes.rows[0]?.code;
+        const projectCode = rawCode ? rawCode.replace(`${req.tenantId}_`, '') : "TKT";
 
         // Sequence is per-project: pull MAX(numeric tail) for tickets sharing
         // this project's prefix. Doing this inside the open transaction means
@@ -2263,8 +2771,10 @@ export class BugListController {
         const nextSeq: number = seqRes.rows[0]?.next_seq ?? 1;
         const ticketNumber = `${projectCode}-${String(nextSeq).padStart(4, "0")}`;
 
+        // `description` is now sent as HTML from the frontend, so append
+        // acceptanceCriteria as HTML as well to keep the viewer rendering correctly.
         const finalDescription = acceptanceCriteria
-          ? `${description}\n\n**Acceptance Criteria**\n${acceptanceCriteria}`
+          ? `${description}<hr><p><strong>Acceptance Criteria</strong></p><p>${acceptanceCriteria.replace(/\n/g, "<br>")}</p>`
           : description;
 
         const newTicketId = randomUUID();
@@ -2381,6 +2891,29 @@ export class BugListController {
       }
 
       await client.query("COMMIT");
+      const totalBugs = created.reduce((n, g) => n + g.bugIds.length, 0);
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_LIST,
+        action: Action.BULK_CONVERT,
+        actionLabel: `Bugs converted to ${created.length} ticket(s) (${totalBugs} bugs)`,
+        entityType: EntityType.BUG,
+        afterData: { status: "converted" },
+        changedFields: ["status", "ticketId"],
+        correlationId: randomUUID(),
+        metadata: {
+          groupsCreated: created.length,
+          totalBugsConverted: totalBugs,
+          tickets: created.map((g) => ({
+            ticketId: g.ticketId,
+            ticketNumber: g.ticketNumber,
+            bugCount: g.bugIds.length,
+          })),
+        },
+        statusCode: 200,
+      });
       res.json({ success: true, data: created });
     } catch (err: any) {
       await client.query("ROLLBACK");
@@ -2408,6 +2941,19 @@ export class BugListController {
         return;
       }
       const bug = await loadBugWithChildren(req.params.id, req.tenantId!);
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_LIST,
+        action: Action.VERIFY,
+        actionLabel: "Bug verified",
+        entityType: EntityType.BUG,
+        entityId: req.params.id,
+        afterData: { status: "verified" },
+        changedFields: ["status"],
+        statusCode: 200,
+      });
       res.json({ success: true, data: bug });
     } catch (err: any) {
       console.error("verifyBug error:", err);
@@ -2428,6 +2974,19 @@ export class BugListController {
         return;
       }
       const bug = await loadBugWithChildren(req.params.id, req.tenantId!);
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_LIST,
+        action: Action.REOPEN,
+        actionLabel: "Bug reopened",
+        entityType: EntityType.BUG,
+        entityId: req.params.id,
+        afterData: { status: "reopened" },
+        changedFields: ["status"],
+        statusCode: 200,
+      });
       res.json({ success: true, data: bug });
     } catch (err: any) {
       console.error("reopenBug error:", err);
@@ -2512,6 +3071,25 @@ export class BugListController {
           [req.tenantId, r.rows[0].id],
         );
       }
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_SETTINGS,
+        action: Action.CREATE,
+        actionLabel: "Severity option created",
+        entityType: EntityType.BUG_SEVERITY_OPTION,
+        entityId: r.rows[0].id,
+        entityLabel: r.rows[0].label,
+        afterData: {
+          key: r.rows[0].key,
+          label: r.rows[0].label,
+          color: r.rows[0].color,
+          isDefault: r.rows[0].is_default,
+          sortOrder: r.rows[0].sort_order,
+        },
+        statusCode: 201,
+      });
       res.status(201).json({ success: true, data: shapeOption(r.rows[0]) });
     } catch (err: any) {
       if (err.code === "23505") {
@@ -2531,6 +3109,12 @@ export class BugListController {
     const { id } = req.params;
     const { label, description, color, sortOrder, isDefault, isActive } = req.body;
     try {
+      const beforeRes = await pool.query(
+        `SELECT label, description, color, sort_order, is_default, is_active
+           FROM bug_severity_options WHERE id = $1 AND tenant_id = $2`,
+        [id, req.tenantId],
+      );
+      const beforeRow = beforeRes.rows[0];
       const r = await pool.query(
         `UPDATE bug_severity_options SET
            label       = COALESCE($1, label),
@@ -2563,6 +3147,36 @@ export class BugListController {
           [req.tenantId, id],
         );
       }
+      {
+        const updated = r.rows[0];
+        const before = beforeRow ?? {};
+        const after = {
+          label: updated.label,
+          description: updated.description,
+          color: updated.color,
+          sort_order: updated.sort_order,
+          is_default: updated.is_default,
+          is_active: updated.is_active,
+        };
+        const { changedFields, before: b, after: a } = diffShallow(before, after);
+        if (changedFields.length > 0) {
+          recordTransaction({
+            req,
+            section: Section.WORK,
+            module: Module.BUG_LIST,
+            page: Page.BUG_SETTINGS,
+            action: Action.UPDATE,
+            actionLabel: `Severity option updated (${changedFields.join(", ")})`,
+            entityType: EntityType.BUG_SEVERITY_OPTION,
+            entityId: id,
+            entityLabel: updated.label,
+            beforeData: b,
+            afterData: a,
+            changedFields,
+            statusCode: 200,
+          });
+        }
+      }
       res.json({ success: true, data: shapeOption(r.rows[0]) });
     } catch (err: any) {
       console.error("updateSeverityOption error:", err);
@@ -2589,13 +3203,26 @@ export class BugListController {
       }
       const r = await pool.query(
         `DELETE FROM bug_severity_options
-           WHERE id = $1 AND tenant_id = $2`,
+           WHERE id = $1 AND tenant_id = $2
+         RETURNING label`,
         [id, req.tenantId],
       );
       if (r.rowCount === 0) {
         bad(res, 404, "Severity not found");
         return;
       }
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_SETTINGS,
+        action: Action.DELETE,
+        actionLabel: "Severity option deleted",
+        entityType: EntityType.BUG_SEVERITY_OPTION,
+        entityId: id,
+        entityLabel: r.rows[0]?.label ?? null,
+        statusCode: 200,
+      });
       res.json({ success: true });
     } catch (err: any) {
       console.error("deleteSeverityOption error:", err);
@@ -2677,6 +3304,24 @@ export class BugListController {
           [req.tenantId, r.rows[0].id],
         );
       }
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_SETTINGS,
+        action: Action.CREATE,
+        actionLabel: "Bug type option created",
+        entityType: EntityType.BUG_TYPE_OPTION,
+        entityId: r.rows[0].id,
+        entityLabel: r.rows[0].label,
+        afterData: {
+          key: r.rows[0].key,
+          label: r.rows[0].label,
+          isDefault: r.rows[0].is_default,
+          sortOrder: r.rows[0].sort_order,
+        },
+        statusCode: 201,
+      });
       res.status(201).json({ success: true, data: shapeOption(r.rows[0]) });
     } catch (err: any) {
       if (err.code === "23505") {
@@ -2696,6 +3341,12 @@ export class BugListController {
     const { id } = req.params;
     const { label, description, sortOrder, isDefault, isActive } = req.body;
     try {
+      const beforeRes = await pool.query(
+        `SELECT label, description, sort_order, is_default, is_active
+           FROM bug_type_options WHERE id = $1 AND tenant_id = $2`,
+        [id, req.tenantId],
+      );
+      const beforeRow = beforeRes.rows[0];
       const r = await pool.query(
         `UPDATE bug_type_options SET
            label       = COALESCE($1, label),
@@ -2726,6 +3377,35 @@ export class BugListController {
           [req.tenantId, id],
         );
       }
+      {
+        const updated = r.rows[0];
+        const before = beforeRow ?? {};
+        const after = {
+          label: updated.label,
+          description: updated.description,
+          sort_order: updated.sort_order,
+          is_default: updated.is_default,
+          is_active: updated.is_active,
+        };
+        const { changedFields, before: b, after: a } = diffShallow(before, after);
+        if (changedFields.length > 0) {
+          recordTransaction({
+            req,
+            section: Section.WORK,
+            module: Module.BUG_LIST,
+            page: Page.BUG_SETTINGS,
+            action: Action.UPDATE,
+            actionLabel: `Bug type option updated (${changedFields.join(", ")})`,
+            entityType: EntityType.BUG_TYPE_OPTION,
+            entityId: id,
+            entityLabel: updated.label,
+            beforeData: b,
+            afterData: a,
+            changedFields,
+            statusCode: 200,
+          });
+        }
+      }
       res.json({ success: true, data: shapeOption(r.rows[0]) });
     } catch (err: any) {
       console.error("updateTypeOption error:", err);
@@ -2752,13 +3432,26 @@ export class BugListController {
       }
       const r = await pool.query(
         `DELETE FROM bug_type_options
-           WHERE id = $1 AND tenant_id = $2`,
+           WHERE id = $1 AND tenant_id = $2
+         RETURNING label`,
         [id, req.tenantId],
       );
       if (r.rowCount === 0) {
         bad(res, 404, "Type not found");
         return;
       }
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_SETTINGS,
+        action: Action.DELETE,
+        actionLabel: "Bug type option deleted",
+        entityType: EntityType.BUG_TYPE_OPTION,
+        entityId: id,
+        entityLabel: r.rows[0]?.label ?? null,
+        statusCode: 200,
+      });
       res.json({ success: true });
     } catch (err: any) {
       console.error("deleteTypeOption error:", err);

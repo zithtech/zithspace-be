@@ -43,6 +43,18 @@ export interface LeadData {
   internal_notes?: string;
   skill_analysis?: any;
   ai_summary?: string;
+
+  // Lead source kind + shared company block
+  lead_source_kind?: 'platform' | 'website';
+  company?: string;
+  company_domain?: string;
+  company_size?: string;
+  inquiry_message?: string;
+  website_source?: string;
+
+  // Who actually created this lead — recorded at insert time from req.user.id.
+  created_by?: string;
+  form_data?: Record<string, any>;
 }
 
 export class LeadModel {
@@ -59,8 +71,10 @@ export class LeadModel {
         external_job_id, experience_level, job_type, budget, hourly_rate,
         client_rating, client_spend, client_jobs_posted, client_payment_verified,
         client_phone_verified, ai_score, proposal_text, template_used, platform,
-        internal_notes, skill_analysis, ai_summary
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35)
+        internal_notes, skill_analysis, ai_summary,
+        lead_source_kind, company, company_domain, company_size,
+        inquiry_message, website_source, created_by, form_data
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43)
       RETURNING *;
     `;
 
@@ -99,7 +113,15 @@ export class LeadModel {
       data.platform || 'Upwork',
       data.internal_notes,
       data.skill_analysis ? JSON.stringify(data.skill_analysis) : null,
-      data.ai_summary
+      data.ai_summary,
+      data.lead_source_kind || 'platform',
+      data.company,
+      data.company_domain,
+      data.company_size,
+      data.inquiry_message,
+      data.website_source,
+      data.created_by || null,
+      data.form_data ? JSON.stringify(data.form_data) : null,
     ];
 
     try {
@@ -119,15 +141,16 @@ export class LeadModel {
    */
   static async findAll(tenantId: string): Promise<any[]> {
     const query = `
-      SELECT 
-        l.*, 
+      SELECT
+        l.*,
         p.id as proposal_id,
-        lm.last_mail_at
+        lm.last_mail_at,
+        u.name as created_by_name
       FROM leads l
       LEFT JOIN (
-        SELECT DISTINCT ON (lead_id) id, lead_id 
-        FROM proposals 
-        WHERE tenant_id = $1 
+        SELECT DISTINCT ON (lead_id) id, lead_id
+        FROM proposals
+        WHERE tenant_id = $1
         ORDER BY lead_id, created_at DESC
       ) p ON l.id = p.lead_id
       LEFT JOIN (
@@ -136,6 +159,7 @@ export class LeadModel {
         WHERE tenant_id = $1
         GROUP BY lead_id
       ) lm ON l.id = lm.lead_id
+      LEFT JOIN users u ON u.id = l.created_by
       WHERE l.tenant_id = $1 AND l.is_deleted = false
       ORDER BY l.created_at DESC;
     `;
@@ -148,17 +172,19 @@ export class LeadModel {
    */
   static async findById(id: string, tenantId: string): Promise<any> {
     const query = `
-      SELECT 
-        l.*, 
+      SELECT
+        l.*,
         p.id as proposal_id,
-        lm.last_mail_at
+        lm.last_mail_at,
+        u.name as created_by_name
       FROM leads l
       LEFT JOIN (
-        SELECT DISTINCT ON (lead_id) id, lead_id 
-        FROM proposals 
+        SELECT DISTINCT ON (lead_id) id, lead_id
+        FROM proposals
         WHERE lead_id = $1 AND tenant_id = $2
         ORDER BY lead_id, created_at DESC
       ) p ON l.id = p.lead_id
+      LEFT JOIN users u ON u.id = l.created_by
       LEFT JOIN (
         SELECT lead_id, MAX(sent_at) as last_mail_at
         FROM lead_mails

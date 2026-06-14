@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { AuthRequest, ApiResponse } from "@/types";
 import { EscalationPriorityModel } from "@/models/escalationPriorities.model";
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from "../utils/transactionHistory";
 
 /**
  * Create a new escalation priority
@@ -62,6 +63,26 @@ export const createEscalationPriority = async (req: AuthRequest, res: Response):
             message: "Escalation priority created successfully",
             data: priority,
         };
+
+        // ─── Activity log ───────────────────────────────────────────────
+        recordTransaction({
+            req,
+            section: Section.WORK,
+            module: Module.ESCALATIONS,
+            page: Page.ESCALATION_SETTINGS,
+            action: Action.CREATE,
+            actionLabel: `Created escalation priority "${priority.displayname}"`,
+            entityType: EntityType.ESCALATION_PRIORITY,
+            entityId: priority.id,
+            entityLabel: priority.displayname,
+            afterData: {
+                displayName: priority.displayname,
+                priorityWeight: priority.priorityweight,
+                visualColor: priority.visualcolor,
+                status: priority.status,
+            },
+        });
+
         res.status(201).json(response);
     } catch (error: any) {
         console.error("Error in createEscalationPriority:", error.message);
@@ -197,6 +218,8 @@ export const updateEscalationPriority = async (req: AuthRequest, res: Response):
             return;
         }
 
+        const existingPriority = await EscalationPriorityModel.findById(id, tenantId);
+
         const updated = await EscalationPriorityModel.update(
             id,
             tenantId,
@@ -218,6 +241,39 @@ export const updateEscalationPriority = async (req: AuthRequest, res: Response):
             message: "Escalation priority updated successfully",
             data: updated,
         };
+
+        // ─── Activity log ───────────────────────────────────────────────
+        if (existingPriority) {
+            const beforeSnap = {
+                displayName: existingPriority.displayname,
+                priorityWeight: existingPriority.priorityweight,
+                visualColor: existingPriority.visualcolor,
+                status: existingPriority.status,
+            };
+            const afterSnap = {
+                displayName: updated.displayname,
+                priorityWeight: updated.priorityweight,
+                visualColor: updated.visualcolor,
+                status: updated.status,
+            };
+            const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+
+            recordTransaction({
+                req,
+                section: Section.WORK,
+                module: Module.ESCALATIONS,
+                page: Page.ESCALATION_SETTINGS,
+                action: Action.UPDATE,
+                actionLabel: `Updated escalation priority "${updated.displayname}"`,
+                entityType: EntityType.ESCALATION_PRIORITY,
+                entityId: id,
+                entityLabel: updated.displayname,
+                beforeData: before,
+                afterData: after,
+                changedFields,
+            });
+        }
+
         res.status(200).json(response);
     } catch (error: any) {
         console.error("Error in updateEscalationPriority:", error.message);
@@ -264,6 +320,23 @@ export const softDeleteEscalationPriority = async (req: AuthRequest, res: Respon
             message: "Escalation priority deactivated successfully",
             data: result,
         };
+
+        // ─── Activity log ───────────────────────────────────────────────
+        recordTransaction({
+            req,
+            section: Section.WORK,
+            module: Module.ESCALATIONS,
+            page: Page.ESCALATION_SETTINGS,
+            action: Action.STATUS_CHANGE,
+            actionLabel: `Deactivated escalation priority "${result.displayname}"`,
+            entityType: EntityType.ESCALATION_PRIORITY,
+            entityId: id,
+            entityLabel: result.displayname,
+            beforeData: { status: true },
+            afterData: { status: false },
+            changedFields: ["status"],
+        });
+
         res.status(200).json(response);
     } catch (error: any) {
         console.error("Error in softDeleteEscalationPriority:", error.message);
@@ -293,6 +366,9 @@ export const deleteEscalationPriority = async (req: AuthRequest, res: Response):
             return;
         }
 
+        const existingPriority = await EscalationPriorityModel.findById(id, tenantId);
+        const priorityName = existingPriority ? existingPriority.displayname : id;
+
         const deleted = await EscalationPriorityModel.delete(id, tenantId);
 
         if (!deleted) {
@@ -308,6 +384,20 @@ export const deleteEscalationPriority = async (req: AuthRequest, res: Response):
             success: true,
             message: "Escalation priority deleted successfully",
         };
+
+        // ─── Activity log ───────────────────────────────────────────────
+        recordTransaction({
+            req,
+            section: Section.WORK,
+            module: Module.ESCALATIONS,
+            page: Page.ESCALATION_SETTINGS,
+            action: Action.DELETE,
+            actionLabel: `Deleted escalation priority "${priorityName}"`,
+            entityType: EntityType.ESCALATION_PRIORITY,
+            entityId: id,
+            entityLabel: priorityName,
+        });
+
         res.status(200).json(response);
     } catch (error: any) {
         console.error("Error in deleteEscalationPriority:", error.message);

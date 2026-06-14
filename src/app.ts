@@ -39,6 +39,7 @@ import clientV2Routes from "@/routes/clientsV2";
 import memberRoutes from "@/routes/members";
 import shiftRoutes from "@/routes/shifts";
 import transactionRoutes from "@/routes/transactions";
+import transactionHistoryRoutes from "@/routes/transactionHistory";
 import releasePlanRoutes from "@/routes/releasePlans";
 import settingRoutes from "@/routes/settings";
 import userRoutes from "@/routes/user";
@@ -121,6 +122,7 @@ import subDepartmentRoutes from "@/routes/subDepartmentRoutes";
 import positionRoutes from "@/routes/positionRoutes";
 import calendarRoutes from "@/routes/calendar";
 import mailRoutes from "@/routes/mail";
+import notificationRoutes from "@/routes/notifications"; // Web push notification routes
 import mailConfigurationRoutes from "@/routes/mailConfigurationRoutes";
 import employeeExitRoutes from "@/routes/employeeExit.routes";
 import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
@@ -153,7 +155,9 @@ import { MailController } from "@/controllers/MailController";
 
 import leadRoutes from "@/routes/lead.routes";
 import leadSettingsRoutes from "@/routes/leadSettings.routes";
+import webInquiryRoutes from "@/routes/webInquiry.routes";
 import generateRoutes from "@/routes/generate.routes";
+import landingRoutes from "@/routes/landing";
 // import escalationSettingsRoutes from "./routes/escalationSettingsRoutes";
 // import escalationRoutes from "./routes/escalationRoutes";
 import escalationRoutesV2 from "./routes/escalationRoutesV2";
@@ -167,17 +171,21 @@ console.log("📅 Mounting calendar routes at /api/calendar");
 console.log("🤖 DevBot deployment test — 2026-03-22");
 // Create Express application
 const app = express();
+app.set('trust proxy', 1);
 
 
 const allowedOrigins = [
   "http://localhost:3000", // Local development
   "http://localhost:3005", // Local development for internal app
+  /^http:\/\/[^.]+\.localhost(:\d+)?$/, // *.localhost subdomains (dev)
   "https://zithmi.vercel.app", // Vercel production URL
   "https://www.zithtech.com",
   "https://zithspace.com",
   "https://zithmi.zithspace.com",
   /\.zithspace\.com$/,
   /\.zithtech\.com$/, // allow any subdomain like dinesh.zithtech.com
+  "https://zukvo.com",
+  /\.zukvo\.com$/, // allow any tenant subdomain like zithmi.zukvo.com
   /^chrome-extension:\/\/[a-z]{32}$/, // Allow Chrome extensions
 ];
 
@@ -261,7 +269,45 @@ app.get("/health", (req, res) => {
   });
 });
 
-// app.use("/api", optionalTenantContext);
+// Middleware to strip tenant prefix from project codes in JSON responses
+function stripTenantPrefix(obj: any, tenantId: string): any {
+  if (typeof obj === "string") {
+    const globalPrefix = new RegExp(`${tenantId}_`, "g");
+    return obj.replace(globalPrefix, "");
+  }
+  if (Array.isArray(obj)) {
+    return obj.map((item) => stripTenantPrefix(item, tenantId));
+  }
+  if (obj !== null && typeof obj === "object") {
+    if (obj instanceof Date || obj instanceof RegExp) {
+      return obj;
+    }
+    if (Buffer.isBuffer(obj)) {
+      return obj;
+    }
+    const newObj: any = {};
+    for (const key of Object.keys(obj)) {
+      newObj[key] = stripTenantPrefix(obj[key], tenantId);
+    }
+    return newObj;
+  }
+  return obj;
+}
+
+app.use((req: any, res: any, next: any) => {
+  const originalJson = res.json;
+  res.json = function (body: any) {
+    if (req.tenantId && body) {
+      try {
+        body = stripTenantPrefix(body, req.tenantId);
+      } catch (err) {
+        console.error("Error cleaning tenant prefix from response:", err);
+      }
+    }
+    return originalJson.call(this, body);
+  };
+  next();
+});
 
 // API routes
 app.use("/api/leave-adjustments", leaveAdjustmentRoutes);
@@ -278,6 +324,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/generate", generateRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/tenants", tenantRoutes);
+app.use("/api/landing", landingRoutes);
 app.use("/api/calendar", calendarRoutes);
 app.use("/api/squads", squadRoutes);
 app.use("/api/public/tickets", publicTicketRoutes);
@@ -301,6 +348,7 @@ app.use("/api/clients-v2", clientV2Routes);
 app.use("/api/members", memberRoutes);
 app.use("/api/shifts", shiftRoutes);
 app.use("/api/transactions", transactionRoutes);
+app.use("/api/transaction-history", transactionHistoryRoutes);
 app.use("/api/release-plans", releasePlanRoutes);
 app.use("/api/settings", settingRoutes);
 //app.use("/api/escalation-settings", escalationSettingsRoutes);
@@ -353,6 +401,10 @@ app.use("/api/company-locations", companyLocationRoutes);
 app.use("/api/opening-management", openingManagementRoutes);
 app.use("/api/leads", leadRoutes);
 app.use("/api/lead-settings", leadSettingsRoutes);
+
+// ── Public web-inquiry endpoint (no auth, any cross-origin website) ──────────
+app.use("/api/public/web-inquiry", webInquiryRoutes);
+
 app.use("/api", skillExperienceRoutes);
 
 app.use("/api/departments", departmentRoutes);
@@ -367,6 +419,7 @@ app.use("/api/timesheets", timesheetRoutes);
 app.use("/api/zoho", calendarRoutes);
 app.get("/api/mail/attachments/download", MailController.downloadAttachment);
 app.use("/api/mail", mailRoutes);
+app.use("/api/notifications", notificationRoutes);
 // app.use("/api/mail-configuration", mailConfigurationRoutes);
 app.use("/api/leave-allocation", leaveAllocationRoutes);
 app.use("/api/leave-request", leaveRequestRoutes);
@@ -555,15 +608,16 @@ const startServer = async () => {
     // Initialize Tables
     const { BidIQModel } = require("./models/BidIQ.model");
     await BidIQModel.initTable();
+    const { WebPushSubscriptionModel } = require("./models/WebPushSubscription.model");
+    await WebPushSubscriptionModel.initTable();
 
     // Connect RabbitMQ & Start Workers
     try {
-      // await rabbitMQService.connect();
-      // await CalendarSyncWorker.start();
-      // await MailSyncWorker.start();
+      await rabbitMQService.connect();
+      await CalendarSyncWorker.start();
+      await MailSyncWorker.start();
       // await CentralMailWorker.start();
-      // console.log("🚀 RabbitMQ connected, Calendar & Mail Sync Workers started");
-      console.log("🚀 RabbitMQ sync workers disabled (commented out)");
+      console.log("🚀 RabbitMQ connected, Calendar & Mail Sync Workers started");
     } catch (mqError: any) {
       console.error("❌ RabbitMQ initialization failed:", mqError.message);
       // In a SaaS environment, we log and continue, 

@@ -14,6 +14,8 @@ const htmlSanitizer_1 = require("@/utils/htmlSanitizer");
 const socketService_1 = require("@/services/socketService");
 const cacheService_1 = __importDefault(require("@/utils/cacheService"));
 const aiTicketService_1 = require("@/services/aiTicketService");
+const transactionHistory_1 = require("@/utils/transactionHistory");
+const crypto_1 = require("crypto");
 class TicketController {
     /**
      * Upload image to R2 for ticket description
@@ -385,25 +387,20 @@ class TicketController {
             const maxAttempts = 5;
             while (attempts < maxAttempts) {
                 attempts++;
-                // Find the last ticket number for THIS project specific prefix
-                const lastTicket = await database_1.prisma.ticket.findFirst({
-                    where: {
-                        tenantId: req.tenantId,
-                        ticketNumber: { startsWith: `${project.code || "TKT"}-` }
-                    },
-                    orderBy: { ticketNumber: 'desc' }
-                });
-                let nextTicketNumber = 1;
-                if (lastTicket && lastTicket.ticketNumber) {
-                    const parts = lastTicket.ticketNumber.split('-');
-                    const lastSeq = parseInt(parts[parts.length - 1]);
-                    if (!isNaN(lastSeq)) {
-                        nextTicketNumber = lastSeq + 1;
-                    }
-                }
-                ticketNumber = `${project.code || "TKT"}-${nextTicketNumber
-                    .toString()
-                    .padStart(4, "0")}`;
+                // Find the highest ticket sequence for THIS specific project (by projectId, not just prefix)
+                // Using raw SQL MAX on numeric suffix for reliable numeric ordering
+                const seqResult = await database_1.prisma.$queryRaw `
+          SELECT COALESCE(
+            MAX((regexp_match(ticket_number, '-(\\d+)$'))[1]::int),
+            0
+          ) + 1 AS next_seq
+          FROM tickets
+          WHERE tenant_id = ${req.tenantId}
+            AND project_id = ${projectId}
+            AND ticket_number ~ '-\\d+$'
+        `;
+                const nextTicketNumber = seqResult[0]?.next_seq ?? 1;
+                ticketNumber = `${project.code || "TKT"}-${String(nextTicketNumber).padStart(4, "0")}`;
                 try {
                     // Prepare metadata for additional fields not in schema
                     const metadata = {
@@ -483,6 +480,30 @@ class TicketController {
                         status,
                     },
                 },
+            });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.TICKETS,
+                page: transactionHistory_1.Page.TICKET_LIST,
+                action: transactionHistory_1.Action.CREATE,
+                actionLabel: "Ticket created",
+                entityType: transactionHistory_1.EntityType.TICKET,
+                entityId: ticket.id,
+                entityLabel: `${ticketNumber} — ${title}`,
+                parentEntityType: projectId ? "project" : null,
+                parentEntityId: projectId ?? null,
+                afterData: {
+                    ticketNumber,
+                    title,
+                    status,
+                    priority,
+                    type: ticketType,
+                    projectId,
+                    assigneeId,
+                    dueDate,
+                },
+                statusCode: 201,
             });
             if (parentId) {
                 await cacheService_1.default.invalidateTicket(parentId, req.tenantId);
@@ -630,11 +651,31 @@ class TicketController {
                 }
             }
             if (assigneeId) {
-                if (typeof assigneeId === "string" && assigneeId.includes(",")) {
-                    baseWhere.assigneeId = { in: assigneeId.split(",").map((id) => id.trim()) };
-                }
-                else {
-                    baseWhere.assigneeId = assigneeId;
+                if (typeof assigneeId === "string") {
+                    const ids = assigneeId.split(",").map((id) => id.trim());
+                    const hasUnassigned = ids.includes("null") || ids.includes("unassigned") || ids.includes("__unassigned__");
+                    const actualUserIds = ids.filter(id => id !== "null" && id !== "unassigned" && id !== "__unassigned__");
+                    if (hasUnassigned) {
+                        if (actualUserIds.length > 0) {
+                            baseWhere.AND = [
+                                ...(baseWhere.AND || []),
+                                {
+                                    OR: [
+                                        { assigneeId: { in: actualUserIds } },
+                                        { assigneeId: null }
+                                    ]
+                                }
+                            ];
+                        }
+                        else {
+                            baseWhere.assigneeId = null;
+                        }
+                    }
+                    else {
+                        if (actualUserIds.length > 0) {
+                            baseWhere.assigneeId = actualUserIds.length === 1 ? actualUserIds[0] : { in: actualUserIds };
+                        }
+                    }
                 }
             }
             if (search) {
@@ -810,19 +851,48 @@ class TicketController {
                 where.projectId = projectId;
             // Handle single or multiple assignees
             if (assigneeId) {
-                if (typeof assigneeId === "string" && assigneeId.includes(",")) {
-                    // Multiple assignees - split and use 'in' operator
-                    where.assigneeId = {
-                        in: assigneeId.split(",").map((id) => id.trim()),
-                    };
-                }
-                else {
-                    // Single assignee
-                    where.assigneeId = assigneeId;
+                if (typeof assigneeId === "string") {
+                    const ids = assigneeId.split(",").map((id) => id.trim());
+                    const hasUnassigned = ids.includes("null") || ids.includes("unassigned") || ids.includes("__unassigned__");
+                    const actualUserIds = ids.filter(id => id !== "null" && id !== "unassigned" && id !== "__unassigned__");
+                    if (hasUnassigned) {
+                        if (actualUserIds.length > 0) {
+                            where.AND = [
+                                ...(where.AND || []),
+                                {
+                                    OR: [
+                                        { assigneeId: { in: actualUserIds } },
+                                        { assigneeId: null }
+                                    ]
+                                }
+                            ];
+                        }
+                        else {
+                            where.assigneeId = null;
+                        }
+                    }
+                    else {
+                        if (actualUserIds.length > 0) {
+                            where.assigneeId = actualUserIds.length === 1 ? actualUserIds[0] : { in: actualUserIds };
+                        }
+                    }
                 }
             }
             if (createdById)
                 where.createdById = createdById;
+            // Restrict to a specific set of ticket ids (comma-separated). Used by the
+            // sidebar "Show commented tickets" / "Show tickets with attachments" actions.
+            const { ticketIds: ticketIdsParam } = req.query;
+            if (ticketIdsParam && typeof ticketIdsParam === 'string' && ticketIdsParam.trim()) {
+                const ids = ticketIdsParam.split(',').map(s => s.trim()).filter(Boolean);
+                if (ids.length > 0) {
+                    where.id = { in: ids };
+                }
+                else {
+                    // Empty filter list = explicitly match nothing
+                    where.id = { in: [] };
+                }
+            }
             // Filter by tags (comma-separated). Match tickets that have ANY of the given tags.
             const { tags: tagsParam } = req.query;
             if (tagsParam && typeof tagsParam === 'string' && tagsParam.trim()) {
@@ -915,6 +985,10 @@ class TicketController {
                         dueDate: true,
                         createdAt: true,
                         updatedAt: true,
+                        sprintPlanId: true,
+                        releasePlanId: true,
+                        demoPlanId: true,
+                        bucketId: true,
                         // Exclude large fields: description (can be fetched in detail view)
                         createdBy: {
                             select: { id: true, name: true, workEmail: true, avatarUrl: true },
@@ -987,7 +1061,6 @@ class TicketController {
                 where: {
                     id,
                     tenantId: req.tenantId,
-                    isDeleted: false,
                 },
                 select: {
                     // All ticket fields
@@ -1108,6 +1181,197 @@ class TicketController {
             res.status(500).json({
                 success: false,
                 error: "Failed to fetch tags",
+            });
+        }
+    }
+    /**
+     * Recent comments + attachments across a project (tenant-aware).
+     *
+     * When `userId` is provided, results are scoped to activity the user
+     * cares about: comments/attachments authored by them, OR comments/
+     * attachments others made on tickets assigned to them. This is the
+     * relevance model used by the Ticket page sidebar.
+     *
+     * Each ticket appears at most once per stream (latest activity wins)
+     * so a chatty ticket doesn't crowd out everything else.
+     */
+    static async getRecentActivity(req, res) {
+        try {
+            if (!req.tenantId) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context required",
+                });
+                return;
+            }
+            const projectId = typeof req.query.projectId === "string" && req.query.projectId.trim() !== ""
+                ? req.query.projectId.trim()
+                : null;
+            const userId = typeof req.query.userId === "string" && req.query.userId.trim() !== ""
+                ? req.query.userId.trim()
+                : null;
+            const rawLimit = Number(req.query.limit);
+            const limit = Number.isFinite(rawLimit) && rawLimit > 0 && rawLimit <= 50 ? Math.floor(rawLimit) : 5;
+            const commentsSql = `
+        SELECT
+          id,
+          comment,
+          "timestamp",
+          user_id,
+          user_name,
+          user_avatar_url,
+          ticket_id,
+          ticket_number,
+          ticket_title,
+          total
+        FROM (
+          SELECT
+            tc.id,
+            tc.comment,
+            tc.timestamp,
+            tc.user_id,
+            u.name              AS user_name,
+            u.avatar_url        AS user_avatar_url,
+            t.id                AS ticket_id,
+            t.ticket_number     AS ticket_number,
+            t.title             AS ticket_title,
+            ROW_NUMBER() OVER (PARTITION BY tc.ticket_id ORDER BY tc.timestamp DESC) AS rn,
+            COUNT(*) OVER (PARTITION BY tc.ticket_id)                                AS total
+          FROM ticket_comments tc
+          JOIN tickets t ON t.id = tc.ticket_id
+          JOIN users   u ON u.id = tc.user_id
+          WHERE tc.tenant_id = $1
+            AND ($2::text IS NULL OR t.project_id = $2)
+            AND COALESCE(t.is_deleted, false) = false
+            AND ($3::text IS NULL OR tc.user_id = $3 OR t.assignee_id = $3)
+        ) ranked
+        WHERE rn = 1
+        ORDER BY "timestamp" DESC
+        LIMIT $4
+      `;
+            const attachmentsSql = `
+        SELECT
+          id,
+          file_name,
+          file_url,
+          file_type,
+          uploaded_at,
+          uploaded_by_id,
+          uploader_name,
+          uploader_avatar_url,
+          ticket_id,
+          ticket_number,
+          ticket_title,
+          total
+        FROM (
+          SELECT
+            ta.id,
+            ta.file_name,
+            ta.file_url,
+            ta.file_type,
+            ta.uploaded_at,
+            ta.uploaded_by_id,
+            u.name              AS uploader_name,
+            u.avatar_url        AS uploader_avatar_url,
+            t.id                AS ticket_id,
+            t.ticket_number     AS ticket_number,
+            t.title             AS ticket_title,
+            ROW_NUMBER() OVER (PARTITION BY ta.ticket_id ORDER BY ta.uploaded_at DESC) AS rn,
+            COUNT(*) OVER (PARTITION BY ta.ticket_id)                                  AS total
+          FROM ticket_attachments ta
+          JOIN tickets t ON t.id = ta.ticket_id
+          JOIN users   u ON u.id = ta.uploaded_by_id
+          WHERE ta.tenant_id = $1
+            AND ($2::text IS NULL OR t.project_id = $2)
+            AND COALESCE(t.is_deleted, false) = false
+            AND ($3::text IS NULL OR ta.uploaded_by_id = $3 OR t.assignee_id = $3)
+        ) ranked
+        WHERE rn = 1
+        ORDER BY uploaded_at DESC
+        LIMIT $4
+      `;
+            // Overdue tickets — assignee = user, past end_date, not closed/archived.
+            // Used by the sidebar's "Overdue Tickets" section + filtered view union.
+            const overdueSql = `
+        SELECT
+          t.id,
+          t.ticket_number,
+          t.title,
+          t.end_date,
+          t.status,
+          t.priority,
+          GREATEST(0, EXTRACT(DAY FROM (NOW() - t.end_date))::int) AS days_overdue
+        FROM tickets t
+        WHERE t.tenant_id = $1
+          AND ($2::text IS NULL OR t.project_id = $2)
+          AND COALESCE(t.is_deleted, false) = false
+          AND COALESCE(t.is_archived, false) = false
+          AND t.end_date IS NOT NULL
+          AND t.end_date < NOW()
+          AND LOWER(t.status) NOT IN ('completed', 'done', 'closed', 'resolved', 'live')
+          AND ($3::text IS NULL OR t.assignee_id = $3)
+        ORDER BY t.end_date ASC
+        LIMIT $4
+      `;
+            const params = [req.tenantId, projectId, userId, limit];
+            const [commentRes, attachmentRes, overdueRes] = await Promise.all([
+                dbpool_1.default.query(commentsSql, params),
+                dbpool_1.default.query(attachmentsSql, params),
+                dbpool_1.default.query(overdueSql, params),
+            ]);
+            const comments = commentRes.rows.map((r) => ({
+                id: r.id,
+                comment: r.comment,
+                timestamp: r.timestamp,
+                total: Number(r.total) || 1,
+                user: {
+                    id: r.user_id,
+                    name: r.user_name,
+                    avatarUrl: r.user_avatar_url,
+                },
+                ticket: {
+                    id: r.ticket_id,
+                    ticketNumber: r.ticket_number,
+                    title: r.ticket_title,
+                },
+            }));
+            const attachments = attachmentRes.rows.map((r) => ({
+                id: r.id,
+                fileName: r.file_name,
+                fileUrl: r.file_url,
+                fileType: r.file_type,
+                uploadedAt: r.uploaded_at,
+                total: Number(r.total) || 1,
+                uploadedBy: {
+                    id: r.uploaded_by_id,
+                    name: r.uploader_name,
+                    avatarUrl: r.uploader_avatar_url,
+                },
+                ticket: {
+                    id: r.ticket_id,
+                    ticketNumber: r.ticket_number,
+                    title: r.ticket_title,
+                },
+            }));
+            const overdue = overdueRes.rows.map((r) => ({
+                id: r.id,
+                ticketNumber: r.ticket_number,
+                title: r.title,
+                endDate: r.end_date,
+                status: r.status,
+                priority: r.priority,
+                daysOverdue: Number(r.days_overdue) || 0,
+            }));
+            res.status(200).json({
+                success: true,
+                data: { comments, attachments, overdue },
+            });
+        }
+        catch (error) {
+            console.error("Get recent ticket activity error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to fetch recent ticket activity",
             });
         }
     }
@@ -1364,6 +1628,45 @@ class TicketController {
             catch (logError) {
                 console.error("Failed to log ticket update activity:", logError);
             }
+            {
+                const beforeSnap = {
+                    status: existingTicket.status,
+                    priority: existingTicket.priority,
+                    assigneeId: existingTicket.assigneeId,
+                    reportToId: existingTicket.reportToId,
+                    title: existingTicket.title,
+                    dueDate: existingTicket.dueDate,
+                    storyPoint: existingTicket.storyPoint,
+                    isArchived: existingTicket.isArchived,
+                    sprintPlanId: existingTicket.sprintPlanId,
+                    releasePlanId: existingTicket.releasePlanId,
+                };
+                const afterSnap = {};
+                for (const k of Object.keys(beforeSnap)) {
+                    if (k in mappedUpdates)
+                        afterSnap[k] = mappedUpdates[k];
+                }
+                const { changedFields, before, after } = (0, transactionHistory_1.diffShallow)(beforeSnap, afterSnap);
+                if (changedFields.length > 0) {
+                    (0, transactionHistory_1.recordTransaction)({
+                        req,
+                        section: transactionHistory_1.Section.WORK,
+                        module: transactionHistory_1.Module.TICKETS,
+                        page: transactionHistory_1.Page.TICKET_DETAIL,
+                        action: transactionHistory_1.Action.UPDATE,
+                        actionLabel: `Ticket updated (${changedFields.join(", ")})`,
+                        entityType: transactionHistory_1.EntityType.TICKET,
+                        entityId: id,
+                        entityLabel: `${existingTicket.ticketNumber} — ${existingTicket.title}`,
+                        parentEntityType: existingTicket.projectId ? "project" : null,
+                        parentEntityId: existingTicket.projectId ?? null,
+                        beforeData: before,
+                        afterData: after,
+                        changedFields,
+                        statusCode: 200,
+                    });
+                }
+            }
             // Side effects (Cache & Socket)
             try {
                 socketService_1.socketService.emitToTenant(req.tenantId, "ticket:updated", ticket);
@@ -1460,6 +1763,31 @@ class TicketController {
             catch (logError) {
                 console.error("Failed to log ticket deletion activity:", logError);
             }
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.TICKETS,
+                page: transactionHistory_1.Page.TICKET_DETAIL,
+                action: transactionHistory_1.Action.DELETE,
+                actionLabel: "Ticket moved to trash",
+                entityType: transactionHistory_1.EntityType.TICKET,
+                entityId: id,
+                entityLabel: `${ticket.ticketNumber} — ${ticket.title}`,
+                parentEntityType: ticket.projectId ? "project" : null,
+                parentEntityId: ticket.projectId ?? null,
+                beforeData: {
+                    status: ticket.status,
+                    isDeleted: ticket.isDeleted,
+                },
+                afterData: {
+                    status: ticket.status,
+                    isDeleted: true,
+                    deletedAt: new Date().toISOString(),
+                },
+                changedFields: ["isDeleted", "deletedAt"],
+                statusCode: 200,
+                metadata: { softDelete: true },
+            });
             socketService_1.socketService.emitToTenant(req.tenantId, "ticket:deleted", { id, isSoftDelete: true });
             const invalidationPromises = [
                 cacheService_1.default.invalidateTicket(id, req.tenantId)
@@ -1584,6 +1912,20 @@ class TicketController {
                     updatedAt: new Date(),
                 },
             });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.TICKETS,
+                page: transactionHistory_1.Page.TICKET_LIST,
+                action: transactionHistory_1.Action.BULK_UPDATE_STATUS,
+                actionLabel: `Bulk status -> ${status} (${result.count})`,
+                entityType: transactionHistory_1.EntityType.TICKET,
+                afterData: { status },
+                changedFields: ["status"],
+                correlationId: (0, crypto_1.randomUUID)(),
+                metadata: { targetIds: ticketIds, requested: ticketIds.length, updated: result.count },
+                statusCode: 200,
+            });
             res.status(200).json({
                 success: true,
                 data: { updatedCount: result.count },
@@ -1629,6 +1971,20 @@ class TicketController {
                     archivedById: req.user.id,
                     updatedAt: new Date(),
                 },
+            });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.TICKETS,
+                page: transactionHistory_1.Page.TICKET_LIST,
+                action: transactionHistory_1.Action.BULK_ARCHIVE,
+                actionLabel: `Bulk archive (${result.count})`,
+                entityType: transactionHistory_1.EntityType.TICKET,
+                afterData: { isArchived: true },
+                changedFields: ["isArchived"],
+                correlationId: (0, crypto_1.randomUUID)(),
+                metadata: { targetIds: ticketIds, requested: ticketIds.length, updated: result.count },
+                statusCode: 200,
             });
             res.status(200).json({
                 success: true,
@@ -1676,6 +2032,20 @@ class TicketController {
                     updatedAt: new Date(),
                 },
             });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.ARCHIVED,
+                page: transactionHistory_1.Page.ARCHIVED_VIEW,
+                action: transactionHistory_1.Action.BULK_UNARCHIVE,
+                actionLabel: `Tickets restored from archive (${result.count})`,
+                entityType: transactionHistory_1.EntityType.TICKET,
+                afterData: { isArchived: false },
+                changedFields: ["isArchived"],
+                correlationId: (0, crypto_1.randomUUID)(),
+                metadata: { targetIds: ticketIds, requested: ticketIds.length, updated: result.count },
+                statusCode: 200,
+            });
             res.status(200).json({
                 success: true,
                 data: { updatedCount: result.count },
@@ -1721,6 +2091,20 @@ class TicketController {
                     deletedById: req.user.id,
                     updatedAt: new Date(),
                 },
+            });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.TICKETS,
+                page: transactionHistory_1.Page.TICKET_LIST,
+                action: transactionHistory_1.Action.BULK_DELETE,
+                actionLabel: `Bulk move to trash (${result.count})`,
+                entityType: transactionHistory_1.EntityType.TICKET,
+                afterData: { isDeleted: true },
+                changedFields: ["isDeleted", "deletedAt"],
+                correlationId: (0, crypto_1.randomUUID)(),
+                metadata: { targetIds: ticketIds, requested: ticketIds.length, updated: result.count, softDelete: true },
+                statusCode: 200,
             });
             res.status(200).json({
                 success: true,
@@ -1802,7 +2186,6 @@ class TicketController {
                 where: {
                     id,
                     tenantId: req.tenantId,
-                    isDeleted: false,
                 },
             });
             if (!ticket) {
@@ -1970,7 +2353,6 @@ class TicketController {
                 where: {
                     id,
                     tenantId: req.tenantId,
-                    isDeleted: false,
                 },
             });
             if (!ticket) {
@@ -2286,7 +2668,6 @@ class TicketController {
                 where: {
                     id,
                     tenantId: req.tenantId,
-                    isDeleted: false,
                 },
             });
             if (!ticket) {
@@ -2592,7 +2973,6 @@ class TicketController {
                 where: {
                     id,
                     tenantId: req.tenantId,
-                    isDeleted: false,
                 },
             });
             if (!ticket) {
@@ -2846,7 +3226,6 @@ class TicketController {
                 where: {
                     id,
                     tenantId: req.tenantId,
-                    isDeleted: false,
                 },
             });
             if (!ticket) {
@@ -3219,7 +3598,6 @@ class TicketController {
                 where: {
                     id,
                     tenantId: req.tenantId,
-                    isDeleted: false,
                 },
             });
             if (!parentTicket) {

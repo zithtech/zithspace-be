@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { AuthRequest } from '@/types';
 import { LeadModel } from '@/models/Lead.model';
 import { LeadStatusModel } from '@/models/LeadStatus.model';
+import { LeadPlatformModel, deriveCode as derivePlatformCode } from '@/models/LeadPlatform.model';
 import { BidIQModel } from "../models/BidIQ.model";
 import { AIService } from "../services/aiService";
 import pool from '@/config/dbpool';
@@ -11,6 +12,38 @@ import { s3Client, BUCKET_NAME } from '../utils/r2Client';
 import { Readable } from 'stream';
 import { LeadActivityLogModel } from '../models/LeadActivityLog.model';
 import { LeadMailModel } from '../models/LeadMail.model';
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from '../utils/transactionHistory';
+
+/**
+ * Built-in platform metadata. Keys are the lowercase normalised name of the
+ * platform. `icon` must match a key in the frontend PLATFORM_ICON_RESOLVERS
+ * map (stored as "icon:<key>" in the logo_url column). Leave `icon` / `url`
+ * absent for platforms that have no built-in icon — the user can customise
+ * the logo from the Settings page.
+ */
+const KNOWN_PLATFORMS: Record<string, { url: string; icon: string }> = {
+  upwork:        { url: 'https://www.upwork.com',           icon: 'icon:upwork' },
+  freelancer:    { url: 'https://www.freelancer.com',       icon: 'icon:freelancer' },
+  fiverr:        { url: 'https://www.fiverr.com',           icon: 'icon:fiverr' },
+  linkedin:      { url: 'https://www.linkedin.com/jobs',   icon: 'icon:linkedin' },
+  toptal:        { url: 'https://www.toptal.com',           icon: 'icon:toptal' },
+  guru:          { url: 'https://www.guru.com',             icon: 'icon:guru' },
+  peopleperhour: { url: 'https://www.peopleperhour.com',   icon: 'icon:peopleperhour' },
+  hubstaff:      { url: 'https://talent.hubstaff.com',      icon: 'icon:hubstaff' },
+  indeed:        { url: 'https://www.indeed.com',           icon: 'icon:indeed' },
+};
+
+/**
+ * Returns { url, logo_url } for a given platform name, resolving against the
+ * KNOWN_PLATFORMS catalogue. Unknown platforms get empty strings so the admin
+ * can supply a custom logo from the Settings page.
+ */
+function resolvePlatformMeta(name: string): { url: string; logo_url: string } {
+  const key = (name || '').toLowerCase().replace(/[^a-z]/g, '');
+  const meta = KNOWN_PLATFORMS[key];
+  if (meta) return { url: meta.url, logo_url: meta.icon };
+  return { url: '', logo_url: '' };
+}
 
 export class LeadController {
 
@@ -22,6 +55,19 @@ export class LeadController {
       const tenantId = req.tenantId;
       if (!tenantId) {
         return res.status(400).json({ success: false, error: 'Tenant context required' });
+      }
+
+      const clientPhone = req.body.clientPhone;
+      if (clientPhone && typeof clientPhone === 'string' && clientPhone.trim() !== '') {
+        const phoneVal = clientPhone.trim();
+        const digits = phoneVal.replace(/\D/g, '');
+        const phoneRegex = /^\+?[0-9\s\-()]+$/;
+        if (digits.length < 7 || digits.length > 15 || !phoneRegex.test(phoneVal)) {
+          return res.status(400).json({
+            success: false,
+            error: 'Invalid client phone number. It must contain between 7 and 15 digits and can only include digits, spaces, dashes, parentheses, and start with +.'
+          });
+        }
       }
 
       // Robust date parsing for Postgres compatibility
@@ -89,7 +135,19 @@ export class LeadController {
         internal_notes: req.body.internalNotes,
         skill_analysis: req.body.skillAnalysis,
         ai_summary: req.body.ai_summary || req.body.aiSummary,
-        documents: req.body.attachments || req.body.documents
+        documents: req.body.attachments || req.body.documents,
+
+        // Lead source kind + shared company block
+        lead_source_kind: req.body.leadSourceKind,
+        company: req.body.company,
+        company_domain: req.body.companyDomain,
+        company_size: req.body.companySize,
+        inquiry_message: req.body.inquiryMessage,
+        website_source: req.body.websiteSource,
+
+        // Real owner — captured here so we never have to fall back to the
+        // currently-signed-in user on render.
+        created_by: req.user?.id,
       };
 
       console.log('Mapped LeadData:', JSON.stringify(leadData, null, 2));
@@ -97,6 +155,34 @@ export class LeadController {
       // Process and upload documents if they are Base64
       if (leadData.documents && Array.isArray(leadData.documents)) {
         leadData.documents = await LeadController.processLeadDocuments(tenantId, leadData.documents);
+      }
+
+      // Ensure the platform setting exists, otherwise auto-create it
+      if (leadData.platform) {
+        try {
+          const platformCode = derivePlatformCode(leadData.platform);
+          const platformCheck = await pool.query(
+            'SELECT id FROM lead_platforms WHERE tenant_id = $1 AND code = $2 LIMIT 1',
+            [tenantId, platformCode]
+          );
+          if (platformCheck.rows.length === 0) {
+            const { url: platUrl, logo_url: platLogoUrl } = resolvePlatformMeta(leadData.platform);
+            console.log(`Auto-creating lead platform setting: ${leadData.platform} (${platformCode}), icon=${platLogoUrl || 'none'}`);
+            await LeadPlatformModel.create({
+              tenant_id: tenantId,
+              name: leadData.platform,
+              code: platformCode,
+              type: 'online',
+              is_active: true,
+              order: 0,
+              url: platUrl || undefined,
+              logo_url: platLogoUrl || undefined,
+              description: `Automatically created from ${leadData.platform}`,
+            });
+          }
+        } catch (err) {
+          console.error('[LeadController.createLead] Failed to auto-create platform setting:', err);
+        }
       }
 
       const lead = await LeadModel.create(leadData);
@@ -110,6 +196,26 @@ export class LeadController {
           performedBy: req.user.id,
         }).catch(() => {});
       }
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.LEADS,
+        page: Page.LEADS_LIST,
+        action: Action.CREATE,
+        actionLabel: `Created lead "${lead.title}"`,
+        entityType: EntityType.LEAD,
+        entityId: lead.id,
+        entityLabel: lead.title,
+        afterData: {
+          clientName: lead.client_name,
+          clientMail: lead.client_mail,
+          title: lead.title,
+          status: lead.status,
+          budget: lead.budget,
+        },
+      });
 
       return res.status(201).json({
         success: true,
@@ -213,6 +319,19 @@ export class LeadController {
         return res.status(400).json({ success: false, error: 'Tenant context required' });
       }
 
+      const clientPhone = req.body.clientPhone;
+      if (clientPhone && typeof clientPhone === 'string' && clientPhone.trim() !== '') {
+        const phoneVal = clientPhone.trim();
+        const digits = phoneVal.replace(/\D/g, '');
+        const phoneRegex = /^\+?[0-9\s\-()]+$/;
+        if (digits.length < 7 || digits.length > 15 || !phoneRegex.test(phoneVal)) {
+          return res.status(400).json({
+            success: false,
+            error: 'Invalid client phone number. It must contain between 7 and 15 digits and can only include digits, spaces, dashes, parentheses, and start with +.'
+          });
+        }
+      }
+
       const updateData: any = {};
       const mapping: { [key: string]: string } = {
         clientName: 'client_name',
@@ -254,7 +373,15 @@ export class LeadController {
         skillAnalysis: 'skill_analysis',
         aiSummary: 'ai_summary',
         ai_summary: 'ai_summary',
-        attachments: 'documents'
+        attachments: 'documents',
+
+        // Lead source kind + shared company block
+        leadSourceKind: 'lead_source_kind',
+        company: 'company',
+        companyDomain: 'company_domain',
+        companySize: 'company_size',
+        inquiryMessage: 'inquiry_message',
+        websiteSource: 'website_source',
       };
 
       const parseDate = (val: any) => {
@@ -284,6 +411,35 @@ export class LeadController {
       console.log('--- UPDATE LEAD REQUEST ---');
       console.log('ID:', id);
 
+      // Ensure the platform setting exists, otherwise auto-create it
+      if (updateData.platform) {
+        try {
+          const platformCode = derivePlatformCode(updateData.platform);
+          const platformCheck = await pool.query(
+            'SELECT id FROM lead_platforms WHERE tenant_id = $1 AND code = $2 LIMIT 1',
+            [tenantId, platformCode]
+          );
+          if (platformCheck.rows.length === 0) {
+            const { url: platUrl, logo_url: platLogoUrl } = resolvePlatformMeta(updateData.platform);
+            console.log(`Auto-creating lead platform setting on update: ${updateData.platform} (${platformCode}), icon=${platLogoUrl || 'none'}`);
+            await LeadPlatformModel.create({
+              tenant_id: tenantId,
+              name: updateData.platform,
+              code: platformCode,
+              type: 'online',
+              is_active: true,
+              order: 0,
+              url: platUrl || undefined,
+              logo_url: platLogoUrl || undefined,
+              description: `Automatically created from ${updateData.platform}`,
+            });
+          }
+        } catch (err) {
+          console.error('[LeadController.updateLead] Failed to auto-create platform setting:', err);
+        }
+      }
+
+      const existingLead = await LeadModel.findById(id, tenantId);
       const lead = await LeadModel.update(id, tenantId, updateData);
 
       if (!lead) {
@@ -297,6 +453,40 @@ export class LeadController {
         action: 'UPDATED_LEAD',
         performedBy: req.user!.id,
       }).catch(() => {});
+
+      // ─── Activity log ───────────────────────────────────────────────
+      if (existingLead) {
+        const beforeSnap = {
+          clientName: existingLead.client_name,
+          clientMail: existingLead.client_mail,
+          title: existingLead.title,
+          status: existingLead.status,
+          budget: existingLead.budget,
+        };
+        const afterSnap = {
+          clientName: lead.client_name,
+          clientMail: lead.client_mail,
+          title: lead.title,
+          status: lead.status,
+          budget: lead.budget,
+        };
+        const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
+
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.LEADS,
+          page: Page.LEAD_DETAIL,
+          action: Action.UPDATE,
+          actionLabel: `Updated lead "${lead.title}"`,
+          entityType: EntityType.LEAD,
+          entityId: id,
+          entityLabel: lead.title,
+          beforeData: before,
+          afterData: after,
+          changedFields,
+        });
+      }
 
       return res.status(200).json({
         success: true,
@@ -331,11 +521,27 @@ export class LeadController {
         return res.status(400).json({ success: false, error: 'Tenant context required' });
       }
 
+      const lead = await LeadModel.findById(id, tenantId);
+      const leadName = lead ? lead.title : id;
+
       const success = await LeadModel.delete(id, tenantId);
 
       if (!success) {
         return res.status(404).json({ success: false, error: 'Lead not found' });
       }
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.LEADS,
+        page: Page.LEADS_LIST,
+        action: Action.DELETE,
+        actionLabel: `Deleted lead "${leadName}" (Moved to Trash)`,
+        entityType: EntityType.LEAD,
+        entityId: id,
+        entityLabel: leadName,
+      });
 
       return res.status(200).json({
         success: true,
@@ -387,11 +593,27 @@ export class LeadController {
         return res.status(400).json({ success: false, error: 'Tenant context required' });
       }
 
+      const lead = await LeadModel.findById(id, tenantId);
+      const leadName = lead ? lead.title : id;
+
       const success = await LeadModel.restore(id, tenantId);
 
       if (!success) {
         return res.status(404).json({ success: false, error: 'Lead not found in Trash' });
       }
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.LEADS,
+        page: Page.LEADS_TRASH,
+        action: Action.RESTORE,
+        actionLabel: `Restored lead "${leadName}" from Trash`,
+        entityType: EntityType.LEAD,
+        entityId: id,
+        entityLabel: leadName,
+      });
 
       return res.status(200).json({
         success: true,
@@ -417,11 +639,27 @@ export class LeadController {
         return res.status(400).json({ success: false, error: 'Tenant context required' });
       }
 
+      const leadResult = await pool.query('SELECT title FROM leads WHERE id = $1 AND tenant_id = $2', [id, tenantId]);
+      const leadName = leadResult.rows[0]?.title || id;
+
       const success = await LeadModel.permanentDelete(id, tenantId);
 
       if (!success) {
         return res.status(404).json({ success: false, error: 'Lead not found in Trash' });
       }
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.LEADS,
+        page: Page.LEADS_TRASH,
+        action: Action.PERMANENT_DELETE,
+        actionLabel: `Permanently deleted lead "${leadName}"`,
+        entityType: EntityType.LEAD,
+        entityId: id,
+        entityLabel: leadName,
+      });
 
       return res.status(200).json({
         success: true,
@@ -535,6 +773,20 @@ export class LeadController {
         metadata: { projectId: project.id, projectName: projectTitle }
       });
 
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.LEADS,
+        page: Page.LEAD_DETAIL,
+        action: Action.CONVERT,
+        actionLabel: `Onboarded lead "${lead.title}" to project "${projectTitle}"`,
+        entityType: EntityType.LEAD,
+        entityId: id,
+        entityLabel: lead.title,
+        metadata: { projectId: project.id, clientId },
+      });
+
       return res.status(200).json({
         success: true,
         message: 'Lead successfully onboarded: Client and Project created.',
@@ -565,6 +817,17 @@ export class LeadController {
 
       const count = await LeadModel.emptyTrash(tenantId);
 
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.LEADS,
+        page: Page.LEADS_TRASH,
+        action: Action.EMPTY_TRASH,
+        actionLabel: `Emptied trash: permanently deleted all trashed leads`,
+        entityType: EntityType.LEAD,
+      });
+
       return res.status(200).json({
         success: true,
         message: `Trash emptied: ${count} leads permanently deleted`,
@@ -592,6 +855,18 @@ export class LeadController {
 
       const count = await LeadModel.bulkRestore(ids, tenantId);
 
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.LEADS,
+        page: Page.LEADS_TRASH,
+        action: Action.BULK_RESTORE,
+        actionLabel: `Bulk restored ${count} leads from Trash`,
+        entityType: EntityType.LEAD,
+        metadata: { ids },
+      });
+
       return res.status(200).json({
         success: true,
         message: `${count} leads restored successfully`,
@@ -618,6 +893,18 @@ export class LeadController {
       }
 
       const count = await LeadModel.bulkPermanentDelete(ids, tenantId);
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.LEADS,
+        page: Page.LEADS_TRASH,
+        action: Action.BULK_PERMANENT_DELETE,
+        actionLabel: `Bulk permanently deleted ${count} leads`,
+        entityType: EntityType.LEAD,
+        metadata: { ids },
+      });
 
       return res.status(200).json({
         success: true,
@@ -683,6 +970,19 @@ export class LeadController {
           console.error("[LeadController] Failed to store mail in lead_mails:", err);
         }
       }
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.LEADS,
+        page: Page.LEAD_DETAIL,
+        action: Action.EMAIL_SENT,
+        actionLabel: `Sent email to lead at ${Array.isArray(to) ? to.join(', ') : to}`,
+        entityType: EntityType.LEAD,
+        entityId: leadId,
+        metadata: { subject },
+      });
 
       return res.json({
         success: true,

@@ -40,6 +40,7 @@ const clientsV2_1 = __importDefault(require("@/routes/clientsV2"));
 const members_1 = __importDefault(require("@/routes/members"));
 const shifts_1 = __importDefault(require("@/routes/shifts"));
 const transactions_1 = __importDefault(require("@/routes/transactions"));
+const transactionHistory_1 = __importDefault(require("@/routes/transactionHistory"));
 const releasePlans_1 = __importDefault(require("@/routes/releasePlans"));
 const settings_1 = __importDefault(require("@/routes/settings"));
 const user_1 = __importDefault(require("@/routes/user"));
@@ -102,6 +103,7 @@ const subDepartmentRoutes_1 = __importDefault(require("@/routes/subDepartmentRou
 const positionRoutes_1 = __importDefault(require("@/routes/positionRoutes"));
 const calendar_1 = __importDefault(require("@/routes/calendar"));
 const mail_1 = __importDefault(require("@/routes/mail"));
+const notifications_1 = __importDefault(require("@/routes/notifications")); // Web push notification routes
 const employeeExit_routes_1 = __importDefault(require("@/routes/employeeExit.routes"));
 const leaveOriginRoutes_1 = __importDefault(require("@/routes/leaveOriginRoutes"));
 const emailHistoryRoutes_1 = __importDefault(require("@/routes/emailHistoryRoutes"));
@@ -124,11 +126,15 @@ const candidateRoutes_1 = __importDefault(require("@/routes/candidateRoutes"));
 const companyLocationRoutes_1 = __importDefault(require("@/routes/companyLocationRoutes"));
 const openingManagementRoutes_1 = __importDefault(require("@/routes/openingManagementRoutes"));
 const RabbitMQService_1 = require("@/utils/RabbitMQService");
+const CalendarSyncWorker_1 = require("@/workers/CalendarSyncWorker");
+const MailSyncWorker_1 = require("@/workers/MailSyncWorker");
 //import { CentralMailWorker } from "@/workers/CentralMailWorker";
 const MailController_1 = require("@/controllers/MailController");
 const lead_routes_1 = __importDefault(require("@/routes/lead.routes"));
 const leadSettings_routes_1 = __importDefault(require("@/routes/leadSettings.routes"));
+const webInquiry_routes_1 = __importDefault(require("@/routes/webInquiry.routes"));
 const generate_routes_1 = __importDefault(require("@/routes/generate.routes"));
+const landing_1 = __importDefault(require("@/routes/landing"));
 // import escalationSettingsRoutes from "./routes/escalationSettingsRoutes";
 // import escalationRoutes from "./routes/escalationRoutes";
 const escalationRoutesV2_1 = __importDefault(require("./routes/escalationRoutesV2"));
@@ -142,15 +148,19 @@ console.log("📅 Mounting calendar routes at /api/calendar");
 console.log("🤖 DevBot deployment test — 2026-03-22");
 // Create Express application
 const app = (0, express_1.default)();
+app.set('trust proxy', 1);
 const allowedOrigins = [
     "http://localhost:3000", // Local development
     "http://localhost:3005", // Local development for internal app
+    /^http:\/\/[^.]+\.localhost(:\d+)?$/, // *.localhost subdomains (dev)
     "https://zithmi.vercel.app", // Vercel production URL
     "https://www.zithtech.com",
     "https://zithspace.com",
     "https://zithmi.zithspace.com",
     /\.zithspace\.com$/,
     /\.zithtech\.com$/, // allow any subdomain like dinesh.zithtech.com
+    "https://zukvo.com",
+    /\.zukvo\.com$/, // allow any tenant subdomain like zithmi.zukvo.com
     /^chrome-extension:\/\/[a-z]{32}$/, // Allow Chrome extensions
 ];
 app.use((0, cors_1.default)({
@@ -213,7 +223,45 @@ app.get("/health", (req, res) => {
         version: "2.0.0",
     });
 });
-// app.use("/api", optionalTenantContext);
+// Middleware to strip tenant prefix from project codes in JSON responses
+function stripTenantPrefix(obj, tenantId) {
+    if (typeof obj === "string") {
+        const globalPrefix = new RegExp(`${tenantId}_`, "g");
+        return obj.replace(globalPrefix, "");
+    }
+    if (Array.isArray(obj)) {
+        return obj.map((item) => stripTenantPrefix(item, tenantId));
+    }
+    if (obj !== null && typeof obj === "object") {
+        if (obj instanceof Date || obj instanceof RegExp) {
+            return obj;
+        }
+        if (Buffer.isBuffer(obj)) {
+            return obj;
+        }
+        const newObj = {};
+        for (const key of Object.keys(obj)) {
+            newObj[key] = stripTenantPrefix(obj[key], tenantId);
+        }
+        return newObj;
+    }
+    return obj;
+}
+app.use((req, res, next) => {
+    const originalJson = res.json;
+    res.json = function (body) {
+        if (req.tenantId && body) {
+            try {
+                body = stripTenantPrefix(body, req.tenantId);
+            }
+            catch (err) {
+                console.error("Error cleaning tenant prefix from response:", err);
+            }
+        }
+        return originalJson.call(this, body);
+    };
+    next();
+});
 // API routes
 app.use("/api/leave-adjustments", leaveAdjustmentRoutes_1.default);
 app.use("/api/company-government-holidays", companyGovernmentHoliday_routes_1.default);
@@ -228,6 +276,7 @@ app.use("/api/auth", auth_1.default);
 app.use("/api/generate", generate_routes_1.default);
 app.use("/api/projects", projects_1.default);
 app.use("/api/tenants", tenants_1.default);
+app.use("/api/landing", landing_1.default);
 app.use("/api/calendar", calendar_1.default);
 app.use("/api/squads", squad_1.default);
 app.use("/api/public/tickets", publicTickets_1.default);
@@ -251,6 +300,7 @@ app.use("/api/clients-v2", clientsV2_1.default);
 app.use("/api/members", members_1.default);
 app.use("/api/shifts", shifts_1.default);
 app.use("/api/transactions", transactions_1.default);
+app.use("/api/transaction-history", transactionHistory_1.default);
 app.use("/api/release-plans", releasePlans_1.default);
 app.use("/api/settings", settings_1.default);
 //app.use("/api/escalation-settings", escalationSettingsRoutes);
@@ -286,6 +336,8 @@ app.use("/api/company-locations", companyLocationRoutes_1.default);
 app.use("/api/opening-management", openingManagementRoutes_1.default);
 app.use("/api/leads", lead_routes_1.default);
 app.use("/api/lead-settings", leadSettings_routes_1.default);
+// ── Public web-inquiry endpoint (no auth, any cross-origin website) ──────────
+app.use("/api/public/web-inquiry", webInquiry_routes_1.default);
 app.use("/api", skillExperience_routes_1.default);
 app.use("/api/departments", departmentRoutes_1.default);
 app.use("/api/sub-departments", subDepartmentRoutes_1.default);
@@ -299,6 +351,7 @@ app.use("/api/timesheets", timesheet_1.default);
 app.use("/api/zoho", calendar_1.default);
 app.get("/api/mail/attachments/download", MailController_1.MailController.downloadAttachment);
 app.use("/api/mail", mail_1.default);
+app.use("/api/notifications", notifications_1.default);
 // app.use("/api/mail-configuration", mailConfigurationRoutes);
 app.use("/api/leave-allocation", leaveAllocationRoutes_1.default);
 app.use("/api/leave-request", leaveRequestRoutes_1.default);
@@ -459,14 +512,15 @@ const startServer = async () => {
         // Initialize Tables
         const { BidIQModel } = require("./models/BidIQ.model");
         await BidIQModel.initTable();
+        const { WebPushSubscriptionModel } = require("./models/WebPushSubscription.model");
+        await WebPushSubscriptionModel.initTable();
         // Connect RabbitMQ & Start Workers
         try {
-            // await rabbitMQService.connect();
-            // await CalendarSyncWorker.start();
-            // await MailSyncWorker.start();
+            await RabbitMQService_1.rabbitMQService.connect();
+            await CalendarSyncWorker_1.CalendarSyncWorker.start();
+            await MailSyncWorker_1.MailSyncWorker.start();
             // await CentralMailWorker.start();
-            // console.log("🚀 RabbitMQ connected, Calendar & Mail Sync Workers started");
-            console.log("🚀 RabbitMQ sync workers disabled (commented out)");
+            console.log("🚀 RabbitMQ connected, Calendar & Mail Sync Workers started");
         }
         catch (mqError) {
             console.error("❌ RabbitMQ initialization failed:", mqError.message);

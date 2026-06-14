@@ -9,6 +9,7 @@ export declare class TenantController {
      * Resolve tenant by subdomain (public endpoint for frontend)
      */
     static resolve(req: AuthRequest, res: Response): Promise<void>;
+    static completeSetup(req: AuthRequest, res: Response): Promise<void>;
     /**
      * Get current tenant profile (tenant-aware)
      */

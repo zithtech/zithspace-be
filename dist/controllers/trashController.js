@@ -7,6 +7,8 @@ exports.TrashController = void 0;
 const database_1 = require("@/config/database");
 const socketService_1 = require("@/services/socketService");
 const cacheService_1 = __importDefault(require("@/utils/cacheService"));
+const transactionHistory_1 = require("@/utils/transactionHistory");
+const crypto_1 = require("crypto");
 class TrashController {
     /**
      * Get all deleted tickets (trash) for a tenant/project (tenant-aware)
@@ -21,7 +23,7 @@ class TrashController {
                 });
                 return;
             }
-            const { page = 1, limit = 20, projectId, search, sortBy = "deletedAt", sortOrder = "desc", } = req.query;
+            const { page = 1, limit = 20, projectId, search, status, deletedBy, startDate, endDate, sortBy = "deletedAt", sortOrder = "desc", } = req.query;
             // Calculate 7 days ago
             const sevenDaysAgo = new Date();
             sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
@@ -35,6 +37,18 @@ class TrashController {
             };
             if (projectId)
                 where.projectId = projectId;
+            if (status)
+                where.status = status;
+            if (deletedBy)
+                where.deletedById = deletedBy;
+            if (startDate || endDate) {
+                const start = startDate ? new Date(startDate) : sevenDaysAgo;
+                const end = endDate ? new Date(endDate) : undefined;
+                where.deletedAt = {
+                    gte: start > sevenDaysAgo ? start : sevenDaysAgo,
+                    ...(end ? { lte: end } : {}),
+                };
+            }
             if (search) {
                 where.OR = [
                     { title: { contains: search, mode: "insensitive" } },
@@ -172,6 +186,26 @@ class TrashController {
                     isSoftDelete: true,
                 });
             });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.TRASH,
+                page: transactionHistory_1.Page.TRASH_VIEW,
+                action: transactionHistory_1.Action.BULK_DELETE,
+                actionLabel: `Tickets moved to trash (${result.count})`,
+                entityType: transactionHistory_1.EntityType.TICKET,
+                beforeData: { isDeleted: false },
+                afterData: { isDeleted: true },
+                changedFields: ["isDeleted"],
+                correlationId: (0, crypto_1.randomUUID)(),
+                metadata: {
+                    targetIds: tickets.map((t) => t.id),
+                    requested: ticketIds.length,
+                    movedToTrash: result.count,
+                    softDelete: true,
+                },
+                statusCode: 200,
+            });
             res.status(200).json({
                 success: true,
                 data: { deletedCount: result.count },
@@ -247,6 +281,25 @@ class TrashController {
                 socketService_1.socketService.emitToTenant(req.tenantId, "ticket:restored", {
                     id: ticket.id,
                 });
+            });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.TRASH,
+                page: transactionHistory_1.Page.TRASH_VIEW,
+                action: transactionHistory_1.Action.BULK_RESTORE,
+                actionLabel: `Tickets restored from trash (${result.count})`,
+                entityType: transactionHistory_1.EntityType.TICKET,
+                beforeData: { isDeleted: true },
+                afterData: { isDeleted: false },
+                changedFields: ["isDeleted"],
+                correlationId: (0, crypto_1.randomUUID)(),
+                metadata: {
+                    targetIds: tickets.map((t) => t.id),
+                    requested: ticketIds.length,
+                    restored: result.count,
+                },
+                statusCode: 200,
             });
             res.status(200).json({
                 success: true,
@@ -349,6 +402,22 @@ class TrashController {
                     id: ticket.id,
                 });
             });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.TRASH,
+                page: transactionHistory_1.Page.TRASH_VIEW,
+                action: transactionHistory_1.Action.BULK_PERMANENT_DELETE,
+                actionLabel: `Tickets permanently deleted (${tickets.length})`,
+                entityType: transactionHistory_1.EntityType.TICKET,
+                correlationId: (0, crypto_1.randomUUID)(),
+                metadata: {
+                    targetIds: tickets.map((t) => t.id),
+                    requested: ticketIds.length,
+                    deleted: tickets.length,
+                },
+                statusCode: 200,
+            });
             res.status(200).json({
                 success: true,
                 data: { deletedCount: tickets.length },
@@ -440,6 +509,22 @@ class TrashController {
             // Invalidate caches
             const cachePromises = tickets.map((ticket) => cacheService_1.default.invalidateTicket(ticket.id, req.tenantId));
             await Promise.allSettled(cachePromises);
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.TRASH,
+                page: transactionHistory_1.Page.TRASH_VIEW,
+                action: transactionHistory_1.Action.EMPTY_TRASH,
+                actionLabel: `Trash emptied (${tickets.length} ticket${tickets.length === 1 ? "" : "s"})`,
+                entityType: transactionHistory_1.EntityType.TICKET,
+                correlationId: (0, crypto_1.randomUUID)(),
+                metadata: {
+                    deleted: tickets.length,
+                    force,
+                    projectId: projectId ?? null,
+                },
+                statusCode: 200,
+            });
             res.status(200).json({
                 success: true,
                 data: { deletedCount: tickets.length },
@@ -514,6 +599,19 @@ class TrashController {
                 });
             });
             console.log(`Auto-purge completed for tenant ${req.tenantId}: ${tickets.length} tickets deleted`);
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.WORK,
+                module: transactionHistory_1.Module.TRASH,
+                page: transactionHistory_1.Page.TRASH_VIEW,
+                action: transactionHistory_1.Action.AUTO_PURGE,
+                actionLabel: `Auto-purge (${tickets.length} ticket${tickets.length === 1 ? "" : "s"} older than 7 days)`,
+                entityType: transactionHistory_1.EntityType.TICKET,
+                correlationId: (0, crypto_1.randomUUID)(),
+                actorType: "system",
+                metadata: { purged: tickets.length, cutoffDays: 7 },
+                statusCode: 200,
+            });
             res.status(200).json({
                 success: true,
                 data: { purgedCount: tickets.length },

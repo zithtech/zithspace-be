@@ -7,6 +7,16 @@ import {
   ValidationError,
 } from "@/types";
 import { socketService } from "@/services/socketService";
+import {
+  recordTransaction,
+  diffShallow,
+  Section,
+  Module,
+  Page,
+  Action,
+  EntityType,
+} from "@/utils/transactionHistory";
+import { randomUUID } from "crypto";
 
 export class BucketController {
   /**
@@ -43,7 +53,7 @@ export class BucketController {
         where,
         include: {
           createdBy: {
-            select: { id: true, name: true, workEmail: true },
+            select: { id: true, name: true, workEmail: true, avatarUrl: true },
           },
           project: {
             select: { id: true, name: true, code: true },
@@ -51,7 +61,7 @@ export class BucketController {
           members: {
             include: {
               user: {
-                select: { id: true, name: true, workEmail: true },
+                select: { id: true, name: true, workEmail: true, avatarUrl: true },
               },
             },
           },
@@ -161,7 +171,7 @@ export class BucketController {
             type: true,
             storyPoint: true,
             assignee: {
-              select: { id: true, name: true, workEmail: true },
+              select: { id: true, name: true, workEmail: true, avatarUrl: true },
             },
             project: {
               select: { id: true, name: true, code: true },
@@ -229,7 +239,7 @@ export class BucketController {
         },
         include: {
           createdBy: {
-            select: { id: true, name: true, workEmail: true },
+            select: { id: true, name: true, workEmail: true, avatarUrl: true },
           },
           project: {
             select: { id: true, name: true, code: true, description: true },
@@ -259,7 +269,7 @@ export class BucketController {
               type: true,
               storyPoint: true,
               assignee: {
-                select: { id: true, name: true, workEmail: true },
+                select: { id: true, name: true, workEmail: true, avatarUrl: true },
               },
               project: {
                 select: { id: true, name: true, code: true },
@@ -395,6 +405,28 @@ export class BucketController {
       // Emit socket event
       socketService.emitToTenant(req.tenantId, "bucket:created", bucket);
 
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUCKETS,
+        page: Page.BUCKET_LIST,
+        action: Action.CREATE,
+        actionLabel: "Bucket created",
+        entityType: EntityType.BUCKET,
+        entityId: bucket.id,
+        entityLabel: bucket.name,
+        parentEntityType: bucket.projectId ? EntityType.PROJECT : null,
+        parentEntityId: bucket.projectId ?? null,
+        afterData: {
+          name: bucket.name,
+          description: bucket.description,
+          color: bucket.color,
+          isShared: bucket.isShared,
+          projectId: bucket.projectId,
+        },
+        statusCode: 201,
+      });
+
       res.status(201).json({
         success: true,
         data: bucket,
@@ -502,6 +534,41 @@ export class BucketController {
       // Emit socket event
       socketService.emitToTenant(req.tenantId, "bucket:updated", bucket);
 
+      {
+        const before = {
+          name: existingBucket.name,
+          description: existingBucket.description,
+          color: existingBucket.color,
+          isShared: existingBucket.isShared,
+        };
+        const after = {
+          name: bucket.name,
+          description: bucket.description,
+          color: bucket.color,
+          isShared: bucket.isShared,
+        };
+        const { changedFields, before: b, after: a } = diffShallow(before, after);
+        if (changedFields.length > 0) {
+          recordTransaction({
+            req,
+            section: Section.WORK,
+            module: Module.BUCKETS,
+            page: Page.BUCKET_DETAIL,
+            action: Action.UPDATE,
+            actionLabel: `Bucket updated (${changedFields.join(", ")})`,
+            entityType: EntityType.BUCKET,
+            entityId: id,
+            entityLabel: bucket.name,
+            parentEntityType: bucket.projectId ? EntityType.PROJECT : null,
+            parentEntityId: bucket.projectId ?? null,
+            beforeData: b,
+            afterData: a,
+            changedFields,
+            statusCode: 200,
+          });
+        }
+      }
+
       res.status(200).json({
         success: true,
         data: bucket,
@@ -556,9 +623,9 @@ export class BucketController {
       // Anyone can delete the bucket (owner restriction removed)
 
       // Use transaction to ensure data consistency
-      await prisma.$transaction(async (tx) => {
+      const ticketsUnassigned = await prisma.$transaction(async (tx) => {
         // Unassign all tickets from this bucket
-        await tx.ticket.updateMany({
+        const unassign = await tx.ticket.updateMany({
           where: { bucketId: id },
           data: { bucketId: null },
         });
@@ -567,10 +634,28 @@ export class BucketController {
         await tx.bucket.delete({
           where: { id },
         });
+
+        return unassign.count;
       });
 
       // Emit socket event
       socketService.emitToTenant(req.tenantId, "bucket:deleted", { id });
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUCKETS,
+        page: Page.BUCKET_LIST,
+        action: Action.DELETE,
+        actionLabel: "Bucket deleted",
+        entityType: EntityType.BUCKET,
+        entityId: id,
+        entityLabel: bucket.name,
+        parentEntityType: bucket.projectId ? EntityType.PROJECT : null,
+        parentEntityId: bucket.projectId ?? null,
+        statusCode: 200,
+        metadata: { hardDelete: true, ticketsUnassigned },
+      });
 
       res.status(200).json({
         success: true,
@@ -691,6 +776,22 @@ export class BucketController {
         },
       });
 
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUCKETS,
+        page: Page.BUCKET_DETAIL,
+        action: Action.CREATE,
+        actionLabel: "Bucket member added",
+        entityType: EntityType.BUCKET_MEMBER,
+        entityId: member.id,
+        entityLabel: user.name ?? user.workEmail ?? userId,
+        parentEntityType: EntityType.BUCKET,
+        parentEntityId: id,
+        afterData: { userId, role },
+        statusCode: 201,
+      });
+
       res.status(201).json({
         success: true,
         data: member,
@@ -770,6 +871,21 @@ export class BucketController {
         where: { id: memberId },
       });
 
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUCKETS,
+        page: Page.BUCKET_DETAIL,
+        action: Action.DELETE,
+        actionLabel: "Bucket member removed",
+        entityType: EntityType.BUCKET_MEMBER,
+        entityId: memberId,
+        parentEntityType: EntityType.BUCKET,
+        parentEntityId: id,
+        beforeData: { userId: member.userId, role: member.role },
+        statusCode: 200,
+      });
+
       res.status(200).json({
         success: true,
         message: "Member removed successfully",
@@ -842,6 +958,25 @@ export class BucketController {
           bucketId: id,
           updatedAt: new Date(),
         },
+      });
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUCKETS,
+        page: Page.BUCKET_DETAIL,
+        action: Action.BULK_ASSIGN,
+        actionLabel: `Tickets assigned to bucket (${result.count})`,
+        entityType: EntityType.BUCKET,
+        entityId: id,
+        entityLabel: bucket.name,
+        correlationId: randomUUID(),
+        metadata: {
+          targetTicketIds: ticketIds,
+          requested: ticketIds.length,
+          assigned: result.count,
+        },
+        statusCode: 200,
       });
 
       res.status(200).json({
@@ -982,6 +1117,26 @@ export class BucketController {
         },
       });
 
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUCKETS,
+        page: Page.BUCKET_DETAIL,
+        action: Action.MOVE,
+        actionLabel: `Bucket emptied to sprint (${result.count})`,
+        entityType: EntityType.BUCKET,
+        entityId: id,
+        entityLabel: bucket.name,
+        correlationId: randomUUID(),
+        metadata: {
+          destination: "sprint",
+          destinationSprintId: sprintId,
+          destinationSprintVersion: sprint.version,
+          ticketsMoved: result.count,
+        },
+        statusCode: 200,
+      });
+
       res.status(200).json({
         success: true,
         data: { movedCount: result.count },
@@ -1044,6 +1199,21 @@ export class BucketController {
           bucketId: null, // Clear bucket assignment so they show in main views
           updatedAt: new Date(),
         },
+      });
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUCKETS,
+        page: Page.BUCKET_DETAIL,
+        action: Action.MOVE,
+        actionLabel: `Bucket emptied to backlog (${result.count})`,
+        entityType: EntityType.BUCKET,
+        entityId: id,
+        entityLabel: bucket.name,
+        correlationId: randomUUID(),
+        metadata: { destination: "backlog", ticketsMoved: result.count },
+        statusCode: 200,
       });
 
       res.status(200).json({

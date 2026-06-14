@@ -104,6 +104,9 @@ function mapRowToSettingsProfile(row: any): SettingsProfile {
       updatedBy: row.payment_updated_by,
       createdAt: row.payment_created_at,
       updatedAt: row.payment_updated_at,
+      upiId: row.payment_upi_id,
+      merchantName: row.payment_merchant_name,
+      bankHandle: row.payment_bank_handle,
     } : undefined),
   };
 }
@@ -183,7 +186,10 @@ export async function getSettingsProfileById(id: string, tenantId: string): Prom
       ps.created_by as payment_created_by,
       ps.updated_by as payment_updated_by,
       ps.created_at as payment_created_at,
-      ps.updated_at as payment_updated_at
+      ps.updated_at as payment_updated_at,
+      ps.upi_id as payment_upi_id,
+      ps.merchant_name as payment_merchant_name,
+      ps.bank_handle as payment_bank_handle
     FROM settings_profiles sp
     LEFT JOIN general_settings gs ON sp.general_id = gs.id
     LEFT JOIN invoice_settings inv ON sp.invoice_id = inv.id
@@ -241,6 +247,9 @@ export async function getSettingsProfileById(id: string, tenantId: string): Prom
       updatedBy: row.payment_updated_by,
       createdAt: row.payment_created_at,
       updatedAt: row.payment_updated_at,
+      upiId: row.payment_upi_id,
+      merchantName: row.payment_merchant_name,
+      bankHandle: row.payment_bank_handle,
     } : null,
   };
 
@@ -335,7 +344,10 @@ export async function getSettingsProfiles(
       ps.created_by as payment_created_by,
       ps.updated_by as payment_updated_by,
       ps.created_at as payment_created_at,
-      ps.updated_at as payment_updated_at
+      ps.updated_at as payment_updated_at,
+      ps.upi_id as payment_upi_id,
+      ps.merchant_name as payment_merchant_name,
+      ps.bank_handle as payment_bank_handle
     FROM settings_profiles sp
     LEFT JOIN general_settings gs ON sp.general_id = gs.id
     LEFT JOIN invoice_settings inv ON sp.invoice_id = inv.id
@@ -524,7 +536,10 @@ export async function getActiveSettingsProfile(tenantId: string): Promise<Settin
       ps.created_by as payment_created_by,
       ps.updated_by as payment_updated_by,
       ps.created_at as payment_created_at,
-      ps.updated_at as payment_updated_at
+      ps.updated_at as payment_updated_at,
+      ps.upi_id as payment_upi_id,
+      ps.merchant_name as payment_merchant_name,
+      ps.bank_handle as payment_bank_handle
     FROM settings_profiles sp
     LEFT JOIN general_settings gs ON sp.general_id = gs.id
     LEFT JOIN invoice_settings inv ON sp.invoice_id = inv.id
@@ -582,6 +597,9 @@ export async function getActiveSettingsProfile(tenantId: string): Promise<Settin
       updatedBy: row.payment_updated_by,
       createdAt: row.payment_created_at,
       updatedAt: row.payment_updated_at,
+      upiId: row.payment_upi_id,
+      merchantName: row.payment_merchant_name,
+      bankHandle: row.payment_bank_handle,
     } : null,
   };
 
@@ -631,7 +649,10 @@ export async function getAllActiveSettingsProfiles(tenantId: string): Promise<Se
       ps.created_by as payment_created_by,
       ps.updated_by as payment_updated_by,
       ps.created_at as payment_created_at,
-      ps.updated_at as payment_updated_at
+      ps.updated_at as payment_updated_at,
+      ps.upi_id as payment_upi_id,
+      ps.merchant_name as payment_merchant_name,
+      ps.bank_handle as payment_bank_handle
     FROM settings_profiles sp
     LEFT JOIN general_settings gs ON sp.general_id = gs.id
     LEFT JOIN invoice_settings inv ON sp.invoice_id = inv.id
@@ -687,6 +708,9 @@ export async function getAllActiveSettingsProfiles(tenantId: string): Promise<Se
         updatedBy: row.payment_updated_by,
         createdAt: row.payment_created_at,
         updatedAt: row.payment_updated_at,
+        upiId: row.payment_upi_id,
+        merchantName: row.payment_merchant_name,
+        bankHandle: row.payment_bank_handle,
       } : null,
     };
 

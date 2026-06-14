@@ -7,6 +7,7 @@ import { MailService } from "@/services/mail/MailService";
 import { UnifiedAuthService } from "@/services/UnifiedAuthService";
 import { CalendarSyncProducer } from '../services/calendar/CalendarSyncProducer';
 import { MailSyncProducer } from '../services/mail/MailSyncProducer';
+import { PushNotificationService } from '@/services/pushNotificationService';
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 
@@ -41,6 +42,7 @@ export class CalendarController {
                     connected: !!integration,
                     provider,
                     lastSync: integration?.updatedAt || null,
+                    isSyncing: (integration as any)?.isSyncing || false,
                 },
             } as ApiResponse);
         } catch (error) {
@@ -124,7 +126,6 @@ export class CalendarController {
                 user.tenantId
             );
 
-            /*
             // Sync BOTH Calendar and Mail immediately after connection (Triggered via RabbitMQ)
             const integration = await prisma.calendarIntegration.findFirst({
                 where: { userId, provider: provider.toUpperCase() as CalendarProvider }
@@ -147,7 +148,6 @@ export class CalendarController {
                     email: mailAccount.email
                 }).catch(err => console.error("Initial mail enqueue failed:", err));
             }
-            */
 
             res.redirect(`${FRONTEND_URL}/calendar?connected=true&provider=${provider}`);
         } catch (error) {
@@ -353,6 +353,58 @@ export class CalendarController {
             );
 
             console.log("🟣 Event(s) created successfully");
+
+            // Extract attendee emails and send system-level notifications asynchronously
+            if (eventData.attendees && Array.isArray(eventData.attendees)) {
+                const attendeeEmails: string[] = [];
+                for (const attendee of eventData.attendees) {
+                    let email = '';
+                    if (typeof attendee === 'string') {
+                        email = attendee;
+                    } else if (typeof attendee === 'object' && attendee !== null) {
+                        email = attendee.email || attendee.emailAddress?.address || attendee.address || '';
+                    }
+                    if (email && email.includes('@')) {
+                        attendeeEmails.push(email.trim().toLowerCase());
+                    }
+                }
+
+                // Filter out the organizer/creator's own email so they do not receive a notification for their own meeting
+                const creatorEmail = req.user?.email ? req.user.email.trim().toLowerCase() : '';
+                const filteredEmails = attendeeEmails.filter(email => email !== creatorEmail);
+
+                if (filteredEmails.length > 0) {
+                    const managerName = req.user.name || "A manager";
+                    const meetingTitle = eventData.title || eventData.subject || "New Meeting";
+
+                    PushNotificationService.sendNotificationToEmails(filteredEmails, {
+                        title: 'New Meeting Scheduled',
+                        body: `${managerName} has scheduled a meeting: "${meetingTitle}"`,
+                        url: '/calendar'
+                    }).catch(err => {
+                        console.error("[CalendarController] Push notification failed:", err.message);
+                    });
+                }
+            }
+
+            // Emit Socket.io real-time event
+            try {
+                const { socketService } = require("@/services/socketService");
+                const managerName = req.user.name || "A manager";
+                const meetingTitle = eventData.title || eventData.subject || "New Meeting";
+
+                socketService.emitToTenant(req.user.tenantId!, "meeting-created", {
+                    title: 'New Meeting Scheduled',
+                    body: `${managerName} has scheduled a meeting: "${meetingTitle}"`,
+                    meetingTitle,
+                    managerName,
+                    event
+                });
+                console.log("Meeting created event sent");
+            } catch (socketErr: any) {
+                console.error("Failed to emit meeting-created socket event:", socketErr.message);
+            }
+
             console.log("🟣🟣🟣 BACKEND CONTROLLER - CREATE EVENT END 🟣🟣🟣");
 
             res.status(201).json({
@@ -535,8 +587,13 @@ export class CalendarController {
                 return;
             }
 
-            // Dispatch sync jobs to RabbitMQ for background processing
+            // Dispatch sync jobs directly in the background & attempt RabbitMQ enqueue
             for (const integ of integrations) {
+                // Trigger incremental sync directly in background process to guarantee execution
+                CalendarService.processIncrementalSync(integ.id).catch(err => {
+                    console.error(`[CalendarController] Background sync failed for ${integ.id}:`, err.message);
+                });
+
                 try {
                     await CalendarSyncProducer.enqueueSync({
                         integrationId: integ.id,
@@ -546,11 +603,7 @@ export class CalendarController {
                         forceSync: true
                     });
                 } catch (enqueueError: any) {
-                    console.error(`[CalendarController] Failed to enqueue RabbitMQ sync for ${integ.id}:`, enqueueError.message);
-                    // Fallback to direct process if MQ is down (optional, but safer for SaaS uptime)
-                    CalendarService.processIncrementalSync(integ.id).catch(err => {
-                        console.error(`[CalendarController] Emergency fallback sync failed for ${integ.id}:`, err.message);
-                    });
+                    console.warn(`[CalendarController] Optional RabbitMQ enqueue failed for ${integ.id}:`, enqueueError.message);
                 }
             }
 

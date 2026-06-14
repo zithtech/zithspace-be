@@ -102,6 +102,7 @@ export class CalendarService {
         let whereCondition: any = {
             userId,
             tenantId,
+            isDeleted: false,
         };
 
         if (startDate || endDate) {
@@ -1524,10 +1525,18 @@ export class CalendarService {
             let hasMore = true;
             let currentToken = token;
             let totalEvents = 0;
+            const syncedExternalIds = new Set<string>();
 
             while (hasMore) {
                 const result = await providerImpl.getIncrementalChanges(accessToken, calendarId || "primary", currentToken);
                 await this.handleSyncResult(integration.userId, integration.tenantId, integration.provider, result.events);
+
+                if (integration.provider === CalendarProvider.ZOHO) {
+                    for (const rawEvent of result.events) {
+                        const mapped = this.mapToCalendarEvent(rawEvent, integration.provider, integration.userId, integration.tenantId);
+                        syncedExternalIds.add(mapped.externalId);
+                    }
+                }
 
                 currentToken = result.nextToken;
                 hasMore = result.hasMore;
@@ -1537,6 +1546,55 @@ export class CalendarService {
                 if (totalEvents > 5000) {
                     syncLogger.warn('Hit 5000 event limit during sync cycle, breaking loop', { integrationId });
                     break;
+                }
+            }
+
+            // Perform diff-based deletion for Zoho since Zoho does not return deleted events in API responses.
+            if (integration.provider === CalendarProvider.ZOHO) {
+                const localEvents = await prisma.calendarEvent.findMany({
+                    where: {
+                        userId: integration.userId,
+                        tenantId: integration.tenantId,
+                        provider: CalendarProvider.ZOHO,
+                        isDeleted: false
+                    },
+                    select: { externalId: true, startTime: true }
+                });
+
+                const syncStart = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // 30 days ago
+                const syncEnd = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);     // 90 days ahead
+
+                if (syncedExternalIds.size > 0) {
+                    const missingExternalIds = localEvents
+                        .filter(le => {
+                            const leTime = new Date(le.startTime).getTime();
+                            return leTime >= syncStart.getTime() && leTime <= syncEnd.getTime() && !syncedExternalIds.has(le.externalId);
+                        })
+                        .map(le => le.externalId);
+
+                    if (missingExternalIds.length > 0) {
+                        syncLogger.info(`[processIncrementalSync] Marking ${missingExternalIds.length} Zoho events as deleted due to absence in Zoho API response`, { missingExternalIds });
+                        await prisma.calendarEvent.updateMany({
+                            where: {
+                                userId: integration.userId,
+                                tenantId: integration.tenantId,
+                                provider: CalendarProvider.ZOHO,
+                                externalId: { in: missingExternalIds }
+                            },
+                            data: { isDeleted: true } as any
+                        });
+                    }
+                } else {
+                    syncLogger.info(`[processIncrementalSync] Marking all Zoho events in sync window as deleted since Zoho API returned 0 events`);
+                    await prisma.calendarEvent.updateMany({
+                        where: {
+                            userId: integration.userId,
+                            tenantId: integration.tenantId,
+                            provider: CalendarProvider.ZOHO,
+                            startTime: { gte: syncStart, lte: syncEnd }
+                        },
+                        data: { isDeleted: true } as any
+                    });
                 }
             }
 

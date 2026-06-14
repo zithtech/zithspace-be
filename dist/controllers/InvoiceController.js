@@ -7,6 +7,7 @@ exports.InvoiceController = void 0;
 const invoice_model_1 = require("../models/invoice.model");
 const emailService_1 = require("../utils/emailService");
 const MailService_1 = require("../services/mail/MailService");
+const transactionHistory_1 = require("../utils/transactionHistory");
 const invoicePayment_model_1 = require("../models/invoicePayment.model");
 const transaction_model_1 = require("../models/transaction.model");
 const types_1 = require("../types");
@@ -442,6 +443,24 @@ class InvoiceController {
                 console.error('PDF Generation Error (non-critical):', pdfError);
             }
             console.log('CREATE INVOICE COMPLETE ====================');
+            // ─── Activity log ───────────────────────────────────────────────
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.FINANCE,
+                module: transactionHistory_1.Module.INVOICES,
+                page: transactionHistory_1.Page.INVOICE_LIST,
+                action: transactionHistory_1.Action.CREATE,
+                actionLabel: `Created invoice ${createdInvoice.invoiceNumber}`,
+                entityType: transactionHistory_1.EntityType.INVOICE,
+                entityId: createdInvoice.id,
+                entityLabel: createdInvoice.invoiceNumber,
+                afterData: {
+                    invoiceNumber: createdInvoice.invoiceNumber,
+                    status: createdInvoice.status,
+                    grandTotal: createdInvoice.grandTotal,
+                    currency: createdInvoice.currency,
+                },
+            });
             res.status(201).json({
                 success: true,
                 data: createdInvoice,
@@ -843,6 +862,23 @@ class InvoiceController {
                 dueDate: updatedInvoice.dueDate,
                 grandTotal: updatedInvoice.grandTotal
             });
+            // ─── Activity log ───────────────────────────────────────────────
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.FINANCE,
+                module: transactionHistory_1.Module.INVOICES,
+                page: transactionHistory_1.Page.INVOICE_LIST,
+                action: transactionHistory_1.Action.UPDATE,
+                actionLabel: `Updated invoice ${updatedInvoice.invoiceNumber}`,
+                entityType: transactionHistory_1.EntityType.INVOICE,
+                entityId: updatedInvoice.id,
+                entityLabel: updatedInvoice.invoiceNumber,
+                afterData: {
+                    invoiceNumber: updatedInvoice.invoiceNumber,
+                    status: updatedInvoice.status,
+                    grandTotal: updatedInvoice.grandTotal,
+                },
+            });
             res.status(200).json({
                 success: true,
                 data: updatedInvoice,
@@ -1039,6 +1075,23 @@ class InvoiceController {
                     total: existingInvoice.grandTotal
                 }
             });
+            // ─── Activity log ───────────────────────────────────────────────
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.FINANCE,
+                module: transactionHistory_1.Module.INVOICES,
+                page: transactionHistory_1.Page.INVOICE_LIST,
+                action: transactionHistory_1.Action.DELETE,
+                actionLabel: `Moved invoice ${existingInvoice.invoiceNumber} to trash`,
+                entityType: transactionHistory_1.EntityType.INVOICE,
+                entityId: id,
+                entityLabel: existingInvoice.invoiceNumber,
+                beforeData: {
+                    invoiceNumber: existingInvoice.invoiceNumber,
+                    status: existingInvoice.status,
+                    grandTotal: existingInvoice.grandTotal,
+                },
+            });
             console.log(`Invoice ${id} soft deleted successfully`);
             res.status(200).json({
                 success: true,
@@ -1064,6 +1117,8 @@ class InvoiceController {
             }
             const { id } = req.params;
             console.log(`RESTORE INVOICE - ID: ${id}`);
+            // Fetch invoice details for the log label BEFORE restoring
+            const invoiceToRestore = await (0, invoice_model_1.getInvoiceById)(id, req.tenantId).catch(() => null);
             // Restore the invoice
             const restored = await (0, invoice_model_2.restoreInvoice)(id, req.tenantId, req.user.id);
             if (!restored) {
@@ -1077,6 +1132,18 @@ class InvoiceController {
                 metadata: {
                     restoredAt: new Date()
                 }
+            });
+            // ─── Activity log ───────────────────────────────────────────────
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.FINANCE,
+                module: transactionHistory_1.Module.INVOICES,
+                page: transactionHistory_1.Page.INVOICE_LIST,
+                action: transactionHistory_1.Action.RESTORE,
+                actionLabel: `Restored invoice ${invoiceToRestore?.invoiceNumber ?? id}`,
+                entityType: transactionHistory_1.EntityType.INVOICE,
+                entityId: id,
+                entityLabel: invoiceToRestore?.invoiceNumber ?? id,
             });
             console.log(`Invoice ${id} restored successfully`);
             res.status(200).json({
@@ -1145,6 +1212,23 @@ class InvoiceController {
                     invoiceNumber: invoiceForLog?.invoiceNumber || 'Unknown',
                     total: invoiceForLog?.grandTotal || 0
                 }
+            });
+            // ─── Activity log ───────────────────────────────────────────────
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.FINANCE,
+                module: transactionHistory_1.Module.INVOICES,
+                page: transactionHistory_1.Page.INVOICE_LIST,
+                action: transactionHistory_1.Action.PERMANENT_DELETE,
+                actionLabel: `Permanently deleted invoice ${invoiceForLog?.invoiceNumber || id}`,
+                entityType: transactionHistory_1.EntityType.INVOICE,
+                entityId: id,
+                entityLabel: invoiceForLog?.invoiceNumber || id,
+                beforeData: {
+                    invoiceNumber: invoiceForLog?.invoiceNumber,
+                    status: invoiceForLog?.status,
+                    grandTotal: invoiceForLog?.grandTotal,
+                },
             });
             console.log(`Invoice ${id} permanently deleted successfully`);
             res.status(200).json({
@@ -1520,6 +1604,24 @@ class InvoiceController {
                         invoiceNumber: invoice.invoiceNumber
                     }
                 });
+                // ─── Activity log ───────────────────────────────────────────────
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.FINANCE,
+                    module: transactionHistory_1.Module.INVOICES,
+                    page: transactionHistory_1.Page.INVOICE_LIST,
+                    action: transactionHistory_1.Action.EMAIL_SENT,
+                    actionLabel: `Email sent for invoice ${invoice.invoiceNumber} to ${recipientEmail}`,
+                    entityType: transactionHistory_1.EntityType.INVOICE,
+                    entityId: id,
+                    entityLabel: invoice.invoiceNumber,
+                    afterData: {
+                        recipientEmail,
+                        customerName,
+                        invoiceNumber: invoice.invoiceNumber,
+                        subject: subject || `Invoice ${invoice.invoiceNumber}`,
+                    },
+                });
             }
             else {
                 console.error(`❌ Failed to send email to ${recipientEmail}`);
@@ -1700,6 +1802,21 @@ class InvoiceController {
                     updatedBy: req.user.id
                 }
             });
+            // ─── Activity log ───────────────────────────────────────────────
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.FINANCE,
+                module: transactionHistory_1.Module.INVOICES,
+                page: transactionHistory_1.Page.INVOICE_LIST,
+                action: transactionHistory_1.Action.STATUS_CHANGE,
+                actionLabel: `Invoice ${existingInvoice.invoiceNumber} status changed to ${normalizedStatus}`,
+                entityType: transactionHistory_1.EntityType.INVOICE,
+                entityId: id,
+                entityLabel: existingInvoice.invoiceNumber,
+                beforeData: { status: existingInvoice.status },
+                afterData: { status: normalizedStatus },
+                changedFields: ['status'],
+            });
             console.log(`Invoice ${id} status updated to ${status}`);
             res.status(200).json({
                 success: true,
@@ -1786,6 +1903,19 @@ class InvoiceController {
                     pdfUrl,
                     downloadedAt: new Date()
                 }
+            });
+            // ─── Activity log ───────────────────────────────────────────────
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.FINANCE,
+                module: transactionHistory_1.Module.INVOICES,
+                page: transactionHistory_1.Page.INVOICE_LIST,
+                action: transactionHistory_1.Action.DOWNLOAD,
+                actionLabel: `Downloaded PDF for invoice ${invoice.invoiceNumber}`,
+                entityType: transactionHistory_1.EntityType.INVOICE,
+                entityId: id,
+                entityLabel: invoice.invoiceNumber,
+                afterData: { pdfUrl, invoiceNumber: invoice.invoiceNumber },
             });
             console.log(`Invoice ${id} PDF downloaded successfully`);
         }

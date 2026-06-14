@@ -10,6 +10,7 @@ import { s3Client } from "../utils/r2Client";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Readable } from "stream";
+import { PushNotificationService } from "../services/pushNotificationService";
 
 export class MailController {
     /**
@@ -109,7 +110,7 @@ export class MailController {
 
             // 2. Fetch unique attendees from calendar events
             const events = await prisma.calendarEvent.findMany({
-                where: { tenantId, userId },
+                where: { tenantId, userId, isDeleted: false },
                 select: { attendees: true, organizerEmail: true }
             });
 
@@ -389,6 +390,43 @@ export class MailController {
                 threadId,
                 attachments: mappedAttachments
             });
+
+            // Collect recipient emails and trigger push notifications asynchronously
+            const recipientEmails: string[] = [];
+            const collectEmails = (field: any) => {
+                if (!field) return;
+                const list = Array.isArray(field) ? field : [field];
+                for (const item of list) {
+                    if (typeof item === 'string') {
+                        recipientEmails.push(item.trim().toLowerCase());
+                    } else if (typeof item === 'object' && item !== null && item.email) {
+                        recipientEmails.push(item.email.trim().toLowerCase());
+                    }
+                }
+            };
+
+            collectEmails(to);
+            collectEmails(cc);
+            collectEmails(bcc);
+
+            // Filter out the sender's own emails so they do not receive a notification for sending an email
+            const senderEmails = new Set<string>();
+            if (account.email) senderEmails.add(account.email.trim().toLowerCase());
+            if (req.user?.email) senderEmails.add(req.user.email.trim().toLowerCase());
+
+            const filteredRecipients = recipientEmails.filter(email => !senderEmails.has(email));
+
+            if (filteredRecipients.length > 0) {
+                const senderName = req.user!.name || account.email;
+
+                PushNotificationService.sendNotificationToEmails(filteredRecipients, {
+                    title: 'New Email Received',
+                    body: `You have received a new email from ${senderName}`,
+                    url: '/mail'
+                }).catch(err => {
+                    console.error("[MailController] Push notification failed:", err.message);
+                });
+            }
 
             // Trigger background sync (Commented out as requested)
             /*

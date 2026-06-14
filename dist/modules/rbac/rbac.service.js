@@ -200,6 +200,7 @@ exports.ADMIN_DEFAULT_PERMISSIONS = [
     'notification.create', 'notification.read', 'notification.update', 'notification.delete',
     'bookmark.create', 'bookmark.read', 'bookmark.update', 'bookmark.delete',
     'time_tracking.create', 'time_tracking.read', 'time_tracking.delete', 'time_tracking.team.read', 'time_tracking.manage_time',
+    'activity_log.read', 'activity_log.read_all',
 ];
 exports.USER_DEFAULT_PERMISSIONS = [
     'dashboard.read',
@@ -235,5 +236,6 @@ exports.USER_DEFAULT_PERMISSIONS = [
     'notification.create', 'notification.read', 'notification.update', 'notification.delete',
     'bookmark.create', 'bookmark.read', 'bookmark.update', 'bookmark.delete',
     'time_tracking.create', 'time_tracking.read', 'time_tracking.delete',
+    'activity_log.read',
 ];
 //# sourceMappingURL=rbac.service.js.map
