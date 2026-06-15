@@ -33,5 +33,9 @@ export declare class AuthController {
      * Google User login with tenant context
      */
     static googleLogin(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Microsoft User login with tenant context
+     */
+    static microsoftLogin(req: AuthRequest, res: Response): Promise<void>;
 }
 export default AuthController;
