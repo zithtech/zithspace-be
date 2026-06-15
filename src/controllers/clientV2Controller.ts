@@ -170,11 +170,12 @@ function mapRowToProjectListing(row: any): any {
         startDate: row.start_date,
         endDate: row.end_date || null,
         projectManagerId: row.project_manager_id,
-        projectManager: row.pm_id ? { id: row.pm_id, name: row.pm_name } : null,
+        projectManager: row.pm_id ? { id: row.pm_id, name: row.pm_name, avatarUrl: row.pm_avatar_url } : null,
         defaultPriority: row.default_priority,
         createdById: row.created_by_id,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
+        _count: { tickets: row.tickets_count ?? 0, members: row.members_count ?? 0 },
     };
 }
 
@@ -598,8 +599,8 @@ export class ClientV2Controller {
             const client: any = {
                 ...mapRowToClientV2(row),
                 accountManager: row.am_id ? { id: row.am_id, first_name: row.am_first_name, last_name: row.am_last_name } : null,
-                salesOwner:     row.so_id ? { id: row.so_id, first_name: row.so_first_name, last_name: row.so_last_name } : null,
-                deliveryOwner:  row.do_id ? { id: row.do_id, first_name: row.do_first_name, last_name: row.do_last_name } : null,
+                salesOwner: row.so_id ? { id: row.so_id, first_name: row.so_first_name, last_name: row.so_last_name } : null,
+                deliveryOwner: row.do_id ? { id: row.do_id, first_name: row.do_first_name, last_name: row.do_last_name } : null,
             };
 
             // 2. Contacts
@@ -796,7 +797,7 @@ export class ClientV2Controller {
                             clientData.deliveryOwnerId || null,                                  // $32
                             clientData.clientSegment || null,                                    // $33
                             clientData.contractStartDate ? new Date(clientData.contractStartDate) : null, // $34
-                            clientData.contractEndDate   ? new Date(clientData.contractEndDate)   : null, // $35
+                            clientData.contractEndDate ? new Date(clientData.contractEndDate) : null, // $35
                             clientData.renewalType || null,                                      // $36
                             clientData.slaLevel || null,                                         // $37
                             clientData.bankName || null,                                         // $38
@@ -1436,7 +1437,7 @@ export class ClientV2Controller {
 
             if (existingDoc) {
                 const beforeSnap = { category: existingDoc.category, documentType: existingDoc.document_type, fileName: existingDoc.file_name };
-                const afterSnap  = { category: row.category,         documentType: row.document_type,         fileName: row.file_name };
+                const afterSnap = { category: row.category, documentType: row.document_type, fileName: row.file_name };
                 const { changedFields, before, after } = diffShallow(beforeSnap, afterSnap);
                 if (changedFields.length > 0) {
                     recordTransaction({
@@ -1516,8 +1517,8 @@ export class ClientV2Controller {
             }
 
             const isR2Url = document.fileUrl.includes('r2.cloudflarestorage.com') ||
-                            document.fileUrl.includes('r2.dev') ||
-                            (process.env.CF_R2_PUBLIC_URL && document.fileUrl.includes(process.env.CF_R2_PUBLIC_URL));
+                document.fileUrl.includes('r2.dev') ||
+                (process.env.CF_R2_PUBLIC_URL && document.fileUrl.includes(process.env.CF_R2_PUBLIC_URL));
 
             if (!isR2Url) { res.redirect(document.fileUrl); return; }
 
@@ -1631,7 +1632,9 @@ export class ClientV2Controller {
             const r = await pool.query(
                 `SELECT cp.id AS mapping_id, cp.billing_type, cp.budget,
                         p.*,
-                        u.id AS pm_id, u.name AS pm_name
+                        u.id AS pm_id, u.name AS pm_name, u.avatar_url AS pm_avatar_url,
+                        (SELECT COUNT(*)::int FROM tickets t WHERE t.project_id = p.id AND t.is_deleted = false) AS tickets_count,
+                        (SELECT COUNT(*)::int FROM project_members pm WHERE pm.project_id = p.id) AS members_count
                  FROM client_projects cp
                  JOIN  projects p ON p.id = cp.project_id
                  LEFT JOIN users u ON u.id = p.project_manager_id
@@ -1996,12 +1999,12 @@ export class ClientV2Controller {
             const projectSets: string[] = [];
             const projectValues: any[] = [];
             let pIdx = 1;
-            if (name)                    { projectSets.push(`name = $${pIdx++}`);                projectValues.push(name); }
-            if (code)                    { projectSets.push(`code = $${pIdx++}`);                projectValues.push(code); }
-            if (status)                  { projectSets.push(`status = $${pIdx++}`);              projectValues.push(status); }
-            if (actualProjectManagerId)  { projectSets.push(`project_manager_id = $${pIdx++}`); projectValues.push(actualProjectManagerId); }
-            if (startDate)               { projectSets.push(`start_date = $${pIdx++}`);          projectValues.push(new Date(startDate)); }
-            if (endDate !== undefined)   { projectSets.push(`end_date = $${pIdx++}`);            projectValues.push(endDate ? new Date(endDate) : null); }
+            if (name) { projectSets.push(`name = $${pIdx++}`); projectValues.push(name); }
+            if (code) { projectSets.push(`code = $${pIdx++}`); projectValues.push(code); }
+            if (status) { projectSets.push(`status = $${pIdx++}`); projectValues.push(status); }
+            if (actualProjectManagerId) { projectSets.push(`project_manager_id = $${pIdx++}`); projectValues.push(actualProjectManagerId); }
+            if (startDate) { projectSets.push(`start_date = $${pIdx++}`); projectValues.push(new Date(startDate)); }
+            if (endDate !== undefined) { projectSets.push(`end_date = $${pIdx++}`); projectValues.push(endDate ? new Date(endDate) : null); }
 
             let project: any = null;
             if (projectSets.length > 0) {
@@ -2031,7 +2034,7 @@ export class ClientV2Controller {
             const mappingValues: any[] = [];
             let mIdx = 1;
             if (billingType !== undefined) { mappingSets.push(`billing_type = $${mIdx++}`); mappingValues.push(billingType); }
-            if (budget !== undefined)      { mappingSets.push(`budget = $${mIdx++}`);       mappingValues.push(budget); }
+            if (budget !== undefined) { mappingSets.push(`budget = $${mIdx++}`); mappingValues.push(budget); }
 
             if (mappingSets.length > 0 && existingMappingRow) {
                 mappingSets.push(`updated_at = NOW()`);
@@ -2156,7 +2159,7 @@ export class ClientV2Controller {
                     (data as any).billingType,
                     (data as any).billAmount ?? 0,
                     (data as any).startDate ? new Date((data as any).startDate) : null,
-                    (data as any).endDate   ? new Date((data as any).endDate)   : null,
+                    (data as any).endDate ? new Date((data as any).endDate) : null,
                     (data as any).status || 'Active',
                 ]
             );
