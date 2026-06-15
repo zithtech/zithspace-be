@@ -253,7 +253,45 @@ app.get("/health", (req, res) => {
   });
 });
 
-// app.use("/api", optionalTenantContext);
+// Middleware to strip tenant prefix from project codes in JSON responses
+function stripTenantPrefix(obj: any, tenantId: string): any {
+  if (typeof obj === "string") {
+    const globalPrefix = new RegExp(`${tenantId}_`, "g");
+    return obj.replace(globalPrefix, "");
+  }
+  if (Array.isArray(obj)) {
+    return obj.map((item) => stripTenantPrefix(item, tenantId));
+  }
+  if (obj !== null && typeof obj === "object") {
+    if (obj instanceof Date || obj instanceof RegExp) {
+      return obj;
+    }
+    if (Buffer.isBuffer(obj)) {
+      return obj;
+    }
+    const newObj: any = {};
+    for (const key of Object.keys(obj)) {
+      newObj[key] = stripTenantPrefix(obj[key], tenantId);
+    }
+    return newObj;
+  }
+  return obj;
+}
+
+app.use((req: any, res: any, next: any) => {
+  const originalJson = res.json;
+  res.json = function (body: any) {
+    if (req.tenantId && body) {
+      try {
+        body = stripTenantPrefix(body, req.tenantId);
+      } catch (err) {
+        console.error("Error cleaning tenant prefix from response:", err);
+      }
+    }
+    return originalJson.call(this, body);
+  };
+  next();
+});
 
 // API routes
 app.use("/api/leave-adjustments", leaveAdjustmentRoutes);
