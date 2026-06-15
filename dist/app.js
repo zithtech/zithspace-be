@@ -139,6 +139,7 @@ const landing_1 = __importDefault(require("@/routes/landing"));
 // import escalationRoutes from "./routes/escalationRoutes";
 const escalationRoutesV2_1 = __importDefault(require("./routes/escalationRoutesV2"));
 const proposals_1 = __importDefault(require("@/routes/proposals"));
+const proposalSections_1 = __importDefault(require("@/routes/proposalSections"));
 const projectOverviewRoutes_1 = __importDefault(require("./routes/projectOverviewRoutes"));
 const socketService_1 = require("@/services/socketService");
 // Load environment
@@ -279,6 +280,7 @@ app.use("/api/customers", customerRoutes_1.default);
 app.use("/api/invoicesetting", invoiceSettingsRoutes_1.default);
 app.use("/api/invoices", invoice_1.default);
 app.use("/api/proposals", proposals_1.default);
+app.use("/api/proposal-sections", proposalSections_1.default);
 app.use("/api/invoice-templates", invoiceTemplate_1.default);
 app.use("/api/categories", categoryRoutes_1.default);
 //app.use("/api/invoice",invoicedownload)

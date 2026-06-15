@@ -35,6 +35,8 @@ const generalAuthRateLimit = (0, express_rate_limit_1.default)({
 });
 // Login route - requires tenant context
 router.post("/login", authRateLimit, tenantContext_1.resolveTenant, authController_1.AuthController.login);
+// Google login route - requires tenant context
+router.post("/google-login", authRateLimit, tenantContext_1.resolveTenant, authController_1.AuthController.googleLogin);
 // Refresh token route - uses optional tenant context from token
 router.post("/refresh", authRateLimit, auth_1.optionalAuth, authController_1.AuthController.refresh);
 // Logout route - requires authentication

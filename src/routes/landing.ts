@@ -21,6 +21,8 @@ const verifyRateLimit = rateLimit({
 });
 
 router.post("/signup", signupRateLimit, LandingSignupController.signup);
+router.post("/signup/google", signupRateLimit, LandingSignupController.googleSignup);
+router.post("/signup/microsoft", signupRateLimit, LandingSignupController.microsoftSignup);
 router.get("/verify-email", verifyRateLimit, LandingSignupController.verifyEmail);
 router.post("/complete-registration", signupRateLimit, LandingSignupController.completeRegistration);
 

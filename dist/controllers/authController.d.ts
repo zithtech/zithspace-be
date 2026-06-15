@@ -29,5 +29,9 @@ export declare class AuthController {
      * Get new profile including employee info
      */
     static getNewProfile(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Google User login with tenant context
+     */
+    static googleLogin(req: AuthRequest, res: Response): Promise<void>;
 }
 export default AuthController;

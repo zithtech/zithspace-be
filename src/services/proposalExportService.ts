@@ -112,20 +112,50 @@ export class ProposalExportService {
       'section': 7
     };
 
-    const blocks = [...rawBlocks].sort((a, b) =>
-      (TYPE_ORDER[a.type] || 99) - (TYPE_ORDER[b.type] || 99)
-    );
+    const filtered = [...rawBlocks];
+    const blocks = filtered.some((b: any) => b?.type === 'component')
+      ? filtered
+      : filtered.sort((a: any, b: any) => (TYPE_ORDER[a.type] || 99) - (TYPE_ORDER[b.type] || 99));
 
     const docSections: any[] = [];
 
+    const getComponentLabel = (kind: string) => {
+      switch (kind) {
+        case 'heading': return 'Heading';
+        case 'phase': return 'Phase / Milestone';
+        case 'twoColumn': return 'Two Columns';
+        case 'table': return 'Table';
+        case 'divider': return 'Divider';
+        case 'spacer': return 'Spacer';
+        case 'paragraph': return 'Paragraph';
+        case 'bullets': return 'Bullet List';
+        case 'scope': return 'Scope of Work';
+        case 'timeline': return 'Timeline & Schedule';
+        case 'deliverable': return 'Deliverable';
+        case 'tasklist': return 'Task List';
+        case 'keyvalue': return 'Highlights';
+        case 'callout': return 'Callout';
+        case 'image': return 'Image';
+        case 'gallery': return 'Gallery';
+        case 'video': return 'Video Embed';
+        case 'pricing': return 'Pricing Table';
+        case 'quote': return 'Testimonial';
+        case 'cta': return 'CTA Button';
+        case 'signature': return 'Signature';
+        default: return kind ? kind.charAt(0).toUpperCase() + kind.slice(1) : 'Component';
+      }
+    };
+
     for (const block of blocks) {
       const data = block.data || {};
+      const props = data.props || {};
 
-      if (block.type !== 'cover') {
+      if (block.type !== 'cover' && block.type !== 'component') {
+        let blockTitle = (data.title || block.type).toUpperCase();
         docSections.push(new Paragraph({
           children: [
             new TextRun({
-              text: (data.title || block.type).toUpperCase(),
+              text: blockTitle,
               bold: true,
               color: '2563EB',
               size: 20,
