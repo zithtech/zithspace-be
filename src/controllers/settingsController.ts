@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import { prisma } from '@/config/database';
+import { countActiveClients, searchClients } from '../models/client.model';
 import {
   AuthRequest,
   ApiResponse,
@@ -716,12 +717,7 @@ export class SettingsController {
         prisma.releasePlan.count({
           where: { tenantId: req.tenantId }
         }),
-        prisma.client.count({
-          where: {
-            tenantId: req.tenantId,
-            isActive: true
-          }
-        })
+        countActiveClients(req.tenantId)
       ]);
 
       const stats = {
@@ -998,25 +994,7 @@ export class SettingsController {
         }),
 
         // Search clients
-        prisma.client.findMany({
-          where: {
-            tenantId: req.tenantId,
-            isActive: true,
-            OR: [
-              { name: { contains: searchTerm, mode: 'insensitive' } },
-              { email: { contains: searchTerm, mode: 'insensitive' } },
-              { company: { contains: searchTerm, mode: 'insensitive' } }
-            ]
-          },
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            company: true,
-            contactPerson: true
-          },
-          take: searchLimit
-        }),
+        searchClients(req.tenantId, searchTerm, searchLimit),
 
         // Search release plans
         prisma.releasePlan.findMany({

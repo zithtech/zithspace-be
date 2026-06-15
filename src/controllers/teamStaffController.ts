@@ -138,6 +138,39 @@ export class TeamStaffController {
       displayName = u.rows[0].name;
     }
 
+    // Check for duplicate: same email already on this client's team
+    if (b.contactEmail) {
+      const emailCheck = await pool.query(
+        `SELECT id FROM portal_team_members
+          WHERE tenant_id = $1 AND client_id = $2
+            AND LOWER(contact_email) = LOWER($3)`,
+        [tenantId, clientId, b.contactEmail.trim()],
+      );
+      if (emailCheck.rowCount && emailCheck.rowCount > 0) {
+        res.status(400).json({
+          success: false,
+          error: "A team member with this email already exists for this client",
+        });
+        return;
+      }
+    }
+
+    // Check for duplicate: same staff user already on this client's team
+    if (b.staffUserId) {
+      const staffCheck = await pool.query(
+        `SELECT id FROM portal_team_members
+          WHERE tenant_id = $1 AND client_id = $2 AND staff_user_id = $3`,
+        [tenantId, clientId, b.staffUserId],
+      );
+      if (staffCheck.rowCount && staffCheck.rowCount > 0) {
+        res.status(400).json({
+          success: false,
+          error: "This staff member has already been added to this client's team",
+        });
+        return;
+      }
+    }
+
     const posR = await pool.query(
       `SELECT COALESCE(MAX(position), -1) + 1 AS next_pos
          FROM portal_team_members
@@ -208,8 +241,29 @@ export class TeamStaffController {
       }
       push("discipline", b.discipline || null);
     }
-    if (b.contactEmail !== undefined)
-      push("contact_email", b.contactEmail || null);
+    if (b.contactEmail !== undefined) {
+      const newEmail = b.contactEmail ? String(b.contactEmail).trim() : null;
+      if (newEmail) {
+        // Ensure no other team member on the same client already uses this email
+        const emailCheck = await pool.query(
+          `SELECT t.id FROM portal_team_members t
+            JOIN portal_team_members self ON self.id = $1
+           WHERE t.tenant_id = $2
+             AND t.client_id = self.client_id
+             AND t.id <> $1
+             AND LOWER(t.contact_email) = LOWER($3)`,
+          [id, tenantId, newEmail],
+        );
+        if (emailCheck.rowCount && emailCheck.rowCount > 0) {
+          res.status(400).json({
+            success: false,
+            error: "A team member with this email already exists for this client",
+          });
+          return;
+        }
+      }
+      push("contact_email", newEmail);
+    }
     if (b.contactPhone !== undefined)
       push("contact_phone", b.contactPhone || null);
     if (b.isPrimaryContact !== undefined)

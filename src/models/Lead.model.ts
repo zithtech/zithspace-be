@@ -54,6 +54,7 @@ export interface LeadData {
 
   // Who actually created this lead — recorded at insert time from req.user.id.
   created_by?: string;
+  form_data?: Record<string, any>;
 }
 
 export class LeadModel {
@@ -72,8 +73,8 @@ export class LeadModel {
         client_phone_verified, ai_score, proposal_text, template_used, platform,
         internal_notes, skill_analysis, ai_summary,
         lead_source_kind, company, company_domain, company_size,
-        inquiry_message, website_source, created_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42)
+        inquiry_message, website_source, created_by, form_data
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43)
       RETURNING *;
     `;
 
@@ -120,6 +121,7 @@ export class LeadModel {
       data.inquiry_message,
       data.website_source,
       data.created_by || null,
+      data.form_data ? JSON.stringify(data.form_data) : null,
     ];
 
     try {
