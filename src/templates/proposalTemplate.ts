@@ -57,14 +57,14 @@ export const generateProposalHtml = (proposal: any) => {
     }
 
     switch (block.type) {
-      case 'text': return 'EXECUTIVE SUMMARY';
-      case 'pricing': return 'INVESTMENT & COSTING';
-      case 'scope': return 'PROJECT SCOPE';
-      case 'timeline': return 'SCHEDULE & TIMELINE';
-      case 'signature': return 'AGREEMENT & SIGN-OFF';
-      case 'cover': return 'COVER';
-      case 'section': return 'ADDITIONAL DETAILS';
-      default: return block.type?.toUpperCase() || 'SECTION';
+      case 'text': return 'Executive Summary';
+      case 'pricing': return 'Investment & Costing';
+      case 'scope': return 'Project Scope';
+      case 'timeline': return 'Schedule & Timeline';
+      case 'signature': return 'Agreement & Sign-Off';
+      case 'cover': return 'Cover';
+      case 'section': return 'Additional Details';
+      default: return block.type ? block.type.charAt(0).toUpperCase() + block.type.slice(1) : 'Section';
     }
   };
 
@@ -74,73 +74,108 @@ export const generateProposalHtml = (proposal: any) => {
     switch (block.type) {
       case 'cover': {
         const logo = data.logoUrl || data.logo;
+
+        const rawTitle = data.title || proposal.title || 'PROJECT PROPOSAL';
+        const titleWords = rawTitle.trim().toUpperCase().split(/\s+/);
+        let titlePart1 = 'PROJECT';
+        let titlePart2 = 'PROPOSAL';
+
+        if (titleWords.length === 1 && titleWords[0] !== '') {
+          titlePart1 = 'PROJECT';
+          titlePart2 = titleWords[0];
+        } else if (titleWords.length > 1) {
+          const mid = Math.ceil(titleWords.length / 2);
+          titlePart1 = titleWords.slice(0, mid).join(' ');
+          titlePart2 = titleWords.slice(mid).join(' ');
+        }
+
+        let titleFontSize = 64;
+        if (rawTitle.length > 40) {
+          titleFontSize = 42;
+        } else if (rawTitle.length > 25) {
+          titleFontSize = 52;
+        }
+
+        const year = data.date ? dayjs(data.date).format('YYYY') : new Date().getFullYear();
+
         return `
-          <div class="cover-page" style="padding-top: 5px; display: flex; flex-direction: column;">
-            <!-- Top Header -->
-            <div class="flex justify-between items-start mb-4">
-              <div class="logo-container">
-                ${logo ? `<img src="${logo}" class="h-16 w-16 object-contain rounded-xl shadow-sm" />` : ''}
+          <div class="cover-page" style="position: relative; height: 297mm; width: 100%; display: flex; flex-direction: column; box-sizing: border-box; background: white; overflow: hidden; margin: 0; padding: 0; font-family: 'Inter', sans-serif;">
+            
+            <!-- Top Left Graphics -->
+            <!-- Light blue chevron -->
+            <div style="position: absolute; top: -350px; left: -350px; width: 700px; height: 700px; transform: rotate(45deg); border: 20px solid #7dd3fc; border-radius: 24px; z-index: 1;"></div>
+            <!-- Bright blue solid -->
+            <div style="position: absolute; top: -300px; left: -300px; width: 600px; height: 600px; transform: rotate(45deg); background: #0ea5e9; border-radius: 24px; z-index: 2;"></div>
+            <!-- Dark blue solid -->
+            <div style="position: absolute; top: -250px; left: -250px; width: 500px; height: 500px; transform: rotate(45deg); background: linear-gradient(135deg, #1e40af, #020617); border-radius: 24px; z-index: 3; box-shadow: 0 10px 30px rgba(0,0,0,0.15);"></div>
+
+            <!-- Bottom Right Graphics -->
+
+            <!-- Bright blue solid -->
+            <div style="position: absolute; bottom: -350px; right: -350px; width: 700px; height: 650px; transform: rotate(45deg); background: #0ea5e9; border-radius: 32px; z-index: 2;"></div>
+            <!-- Dark blue solid -->
+            <div style="position: absolute; bottom: -250px; right: -300px; width: 500px; height: 600px; transform: rotate(45deg); background: linear-gradient(135deg, #0f172a, #1e3a8a); border-radius: 32px; z-index: 3; box-shadow: 0 10px 30px rgba(0,0,0,0.2);"></div>
+
+            <!-- Top Right Dots Pattern -->
+            <div style="position: absolute; top: 180px; right: 100px; width: 120px; height: 220px; background-image: radial-gradient(#94a3b8 2px, transparent 2px); background-size: 24px 24px; opacity: 0.6; z-index: 1;"></div>
+
+            <!-- Center Geometric Diamonds -->
+            <div style="position: absolute; top: 55%; left: 50%; transform: translate(-50%, -50%); width: 300px; height: 300px; z-index: 1; opacity: 0.15; pointer-events: none;">
+              <div style="position: absolute; top: 40px; left: 100px; width: 100px; height: 100px; border: 2px solid #0f172a; transform: rotate(45deg);"></div>
+              <div style="position: absolute; top: 100px; left: 40px; width: 100px; height: 100px; border: 2px solid #0f172a; transform: rotate(45deg);"></div>
+              <div style="position: absolute; top: 100px; left: 160px; width: 100px; height: 100px; border: 2px solid #0f172a; transform: rotate(45deg);"></div>
+              <div style="position: absolute; top: 160px; left: 100px; width: 100px; height: 100px; border: 2px solid #0f172a; transform: rotate(45deg);"></div>
+              <div style="position: absolute; top: 110px; left: 110px; width: 80px; height: 80px; border: 2px solid #0f172a; transform: rotate(45deg);"></div>
+              <div style="position: absolute; top: 70px; left: 70px; width: 60px; height: 60px; border: 2px solid #0f172a; transform: rotate(45deg);"></div>
+              <div style="position: absolute; top: 170px; left: 170px; width: 60px; height: 60px; border: 2px solid #0f172a; transform: rotate(45deg);"></div>
+            </div>
+
+            <!-- Top Right Logo & Company -->
+            <div style="position: absolute; top: 80px; right: 100px; z-index: 5; display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+              <span style="font-size: 18px; font-weight: 700; color: #0f172a; letter-spacing: 0.02em;">${data.senderCompany || 'Salford & Co.'}</span>
+              ${logo ? `<img src="${logo}" style="height: 64px; width: auto; object-fit: contain; border-radius: 4px;" />` : `
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#0c4a6e" stroke-width="2">
+                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+                </svg>
+              `}
+            </div>
+
+            <!-- Main Title -->
+            <div style="position: absolute; top: 280px; left: 100px; z-index: 5;">
+              <div style="font-size: ${titleFontSize}px; font-weight: 900; color: #0c4a6e; line-height: 1.15; letter-spacing: 0.02em; text-transform: uppercase;">
+                ${titlePart1}
               </div>
-              <div class="text-right">
-                ${data.senderCompany ? `<div class="text-[16px] font-black text-slate-900 mb-0.5">${data.senderCompany}</div>` : ''}
-                ${data.senderName ? `<div class="text-[11px] font-bold text-slate-500 mb-1">${data.senderName}</div>` : ''}
-                ${(data.senderEmail || data.senderContact) ? `
-                  <div class="text-[9.5px] text-slate-400 font-medium">
-                    ${data.senderEmail || ''} ${data.senderEmail && data.senderContact ? '<span class="mx-2 text-slate-300">|</span>' : ''} ${data.senderContact || ''}
+              <div style="font-size: ${titleFontSize}px; font-weight: 900; color: #0c4a6e; line-height: 1.15; letter-spacing: 0.02em; text-transform: uppercase;">
+                ${titlePart2}
+              </div>
+
+              <!-- Prepared For -->
+              <div style="margin-top: 50px; font-family: 'Inter', sans-serif;">
+                <div style="font-size: 14px; font-weight: 700; color: #64748b; letter-spacing: 0.05em; margin-bottom: 12px;">PREPARED FOR:</div>
+                <div style="display: flex; flex-direction: column; gap: 4px; border-left: 2px solid #0ea5e9; padding-left: 16px;">
+                  <div style="font-size: 20px; font-weight: 800; color: #0f172a;">
+                    ${data.clientName || data.clientCompany || 'Client Name'}
                   </div>
-                ` : ''}
-                ${data.senderAddress ? `<div class="text-[9.5px] text-slate-400 font-medium mt-0.5">${data.senderAddress.replace(/\n/g, ', ')}</div>` : ''}
+                  ${data.clientCompany && data.clientName !== data.clientCompany ? `<div style="font-size: 15px; font-weight: 600; color: #475569;">${data.clientCompany}</div>` : ''}
+                  ${data.clientEmail ? `<div style="font-size: 14px; color: #475569; margin-top: 4px;">${data.clientEmail}</div>` : ''}
+                  ${data.clientPhone ? `<div style="font-size: 14px; color: #475569;">${data.clientPhone}</div>` : ''}
+                  ${data.clientAddress ? `<div style="font-size: 14px; color: #475569;">${data.clientAddress}</div>` : ''}
+                </div>
               </div>
             </div>
 
-            <!-- Hero Section -->
-            <div class="mb-2">
-              <div class="text-blue-600 text-[8.5px] font-black tracking-[0.15em] uppercase mb-1.5">PROPOSAL FOR</div>
-              <h1 class="text-[28px] font-black text-slate-900 leading-[1.1] tracking-tight mb-2">${data.title || proposal.title || 'Untitled Project'}</h1>
-              ${data.projectSummary ? `
-                <div class="text-[11px] text-slate-500 leading-relaxed font-medium max-w-[700px] mb-2">
-                  ${data.projectSummary}
+            <!-- Bottom Left Prepared By Details -->
+            <div style="position: absolute; bottom: 80px; left: 100px; z-index: 5; font-family: 'Inter', sans-serif;">
+              <div style="font-size: 14px; font-weight: 700; color: #64748b; letter-spacing: 0.05em; margin-bottom: 12px;">PREPARED BY:</div>
+              <div style="display: flex; flex-direction: column; gap: 4px; border-left: 2px solid #0ea5e9; padding-left: 16px;">
+                <div style="font-size: 20px; font-weight: 800; color: #0f172a;">
+                  ${data.senderName || 'Your Name'}
                 </div>
-              ` : ''}
-            </div>
-
-            <div class="mt-1 mb-4">
-              <div class="h-px bg-slate-100 w-full mb-4"></div>
-              
-              <div class="grid grid-cols-12 gap-6">
-                <!-- Client Info -->
-                <div class="col-span-8">
-                  ${(data.clientName || data.clientCompany) ? `
-                    <div class="text-slate-400 text-[8px] font-black tracking-widest uppercase mb-1.5">PREPARED FOR</div>
-                    <div class="text-[14px] font-black text-slate-900 mb-1 leading-none">${data.clientName || data.clientCompany}</div>
-                  ` : ''}
-                  ${data.clientSigner ? `<div class="text-[10px] font-bold text-slate-500 mb-2">${data.clientSigner}</div>` : ''}
-                  
-                  ${(data.clientEmail || data.clientContact) ? `
-                    <div class="flex items-center gap-2 text-[9px] text-slate-400 font-medium mb-0.5">
-                      <span>${data.clientEmail || ''}</span>
-                      ${data.clientEmail && data.clientContact ? '<span class="text-slate-300">|</span>' : ''}
-                      <span>${data.clientContact || ''}</span>
-                    </div>
-                  ` : ''}
-                  ${data.clientAddress ? `<div class="text-[9px] text-slate-400 font-medium">${data.clientAddress.replace(/\n/g, ', ')}</div>` : ''}
-                </div>
-
-                <!-- Dates -->
-                <div class="col-span-4 pl-6 border-l border-slate-50">
-                  ${data.date ? `
-                    <div class="mb-3">
-                      <div class="text-slate-400 text-[8px] font-black tracking-widest uppercase mb-1">DATE</div>
-                      <div class="text-[11.5px] font-black text-slate-900">${dayjs(data.date).format('MMMM DD, YYYY')}</div>
-                    </div>
-                  ` : ''}
-                  ${data.validUntil ? `
-                    <div>
-                      <div class="text-slate-400 text-[8px] font-black tracking-widest uppercase mb-1">VALID UNTIL</div>
-                      <div class="text-[11.5px] font-black text-slate-900">${dayjs(data.validUntil).format('MMMM DD, YYYY')}</div>
-                    </div>
-                  ` : ''}
-                </div>
+                ${(data.senderTitle || data.senderRole || data.senderPosition) ? `<div style="font-size: 15px; font-weight: 600; color: #475569;">${data.senderTitle || data.senderRole || data.senderPosition}</div>` : `<div style="font-size: 15px; font-weight: 600; color: #475569;">Manager</div>`}
+                ${data.senderEmail ? `<div style="font-size: 14px; color: #475569; margin-top: 4px;">${data.senderEmail}</div>` : ''}
+                ${data.senderPhone ? `<div style="font-size: 14px; color: #475569;">${data.senderPhone}</div>` : ''}
+                ${data.senderWebsite ? `<div style="font-size: 14px; color: #475569;">${data.senderWebsite}</div>` : ''}
+                ${data.senderAddress ? `<div style="font-size: 14px; color: #475569;">${data.senderAddress}</div>` : ''}
               </div>
             </div>
           </div>
@@ -288,7 +323,7 @@ export const generateProposalHtml = (proposal: any) => {
 
         const companySigFont = sigFamily(data.companySignatureFont);
         const clientSigFont = sigFamily(data.clientSignatureFont);
-        
+
         const sigDate = data.date ? dayjs(data.date).format('MMM DD, YYYY') : 'Date';
 
         return `
@@ -568,7 +603,8 @@ export const generateProposalHtml = (proposal: any) => {
       padding: 0;
       -webkit-print-color-adjust: exact; 
       color: #1e293b;
-      font-size: 10px;
+      font-size: 16px;
+      line-height: 1.6;
     }
     
     table.master-container { 
@@ -616,31 +652,83 @@ export const generateProposalHtml = (proposal: any) => {
 
     .avoid-break { page-break-inside: avoid; }
     .block-container { 
-      margin-bottom: 10px;
+      margin-bottom: 32px;
       page-break-inside: auto; 
     }
   </style>
 </head>
 <body>
   <div class="page-border"></div>
+
+  <!-- Cover Page (Placed outside the master table for full bleed backgrounds) -->
+  ${(() => {
+      const coverBlock = blocks.find((b: any) => b.type === 'cover');
+      if (!coverBlock) return '';
+      return `
+      <div style="page-break-after: always; height: 297mm; width: 100%; overflow: hidden; position: relative; box-sizing: border-box; margin: 0; padding: 0;">
+        ${renderBlock(coverBlock)}
+      </div>
+    `;
+    })()}
+
+  <!-- Table of Contents Page -->
+  ${(() => {
+      const tocItems = blocks.filter((b: any) => {
+        const title = getBlockTitle(b);
+        if (proposal.title && title && title.trim().toLowerCase() === proposal.title.trim().toLowerCase()) {
+            return false;
+        }
+
+        const data = b.data || {};
+        const hasTitle = b.title || data.title || data.heading;
+        if (hasTitle) return true;
+        const validTypes = ['text', 'pricing', 'scope', 'timeline', 'signature', 'section'];
+        return validTypes.includes(b.type);
+      });
+
+      if (tocItems.length === 0) return '';
+      
+      return `
+      <div style="page-break-after: always; padding: 100px 120px; box-sizing: border-box; height: 297mm; background: white; font-family: 'Inter', sans-serif;">
+        <h2 style="font-size: 48px; font-weight: 900; color: #0c4a6e; margin-bottom: 60px; text-transform: uppercase; letter-spacing: 0.02em;">TABLE OF CONTENTS</h2>
+        <div style="display: flex; flex-direction: column;">
+          ${tocItems.map((block: any, index: number) => {
+             let title = getBlockTitle(block);
+             if (title === title.toUpperCase() && title.length > 3) {
+                 title = title.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+             }
+             return `
+               <div style="display: flex; align-items: center; border-bottom: 1px solid #f1f5f9; padding: 24px 0;">
+                 <div style="font-size: 24px; font-weight: 800; color: #0ea5e9; margin-right: 40px; min-width: 40px;">
+                   ${String(index + 1).padStart(2, '0')}
+                 </div>
+                 <div style="font-size: 20px; font-weight: 600; color: #334155;">
+                   ${title}
+                 </div>
+               </div>
+             `;
+          }).join('')}
+        </div>
+      </div>
+      `;
+  })()}
+
   <table class="master-container">
     <thead><tr><td class="header-space"></td></tr></thead>
     <tbody>
       <tr>
         <td class="px-10">
           <div class="main-wrapper">
-            ${blocks.map((block: any) => {
-              if (block.type === 'cover') return renderBlock(block);
-              
-              const shouldAvoidSplit = ['pricing', 'signature'].includes(block.type);
-              const isComponent = block.type === 'component';
-              
-              return `
+            ${blocks.filter((block: any) => !['cover', 'toc'].includes(block.type)).map((block: any) => {
+      const shouldAvoidSplit = ['pricing', 'signature'].includes(block.type);
+      const isComponent = block.type === 'component';
+
+      return `
                 <div class="block-container ${shouldAvoidSplit ? 'avoid-break' : ''}">
                    ${!isComponent ? `
-                     <div style="page-break-after: avoid; margin-bottom: 10px;">
+                     <div style="page-break-after: avoid; margin-bottom: 20px;">
                         <div class="flex items-center gap-4">
-                           <h2 class="text-[9px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded tracking-widest uppercase">${getBlockTitle(block)}</h2>
+                           <h2 class="text-[12px] font-black text-blue-600 bg-blue-50 px-3 py-1 rounded tracking-widest uppercase">${getBlockTitle(block)}</h2>
                            <div class="flex-1 h-px bg-slate-100"></div>
                         </div>
                      </div>
@@ -648,13 +736,13 @@ export const generateProposalHtml = (proposal: any) => {
                    ${renderBlock(block)}
                 </div>
               `;
-            }).join('')}
+    }).join('')}
 
             <div class="mt-20 mb-10 text-center avoid-break">
               <div class="inline-flex items-center gap-4">
-                <div class="h-px w-10 bg-slate-100"></div>
-                <span class="text-[9px] font-black text-slate-300 uppercase tracking-[0.4em]">End of Proposal</span>
-                <div class="h-px w-10 bg-slate-100"></div>
+                <div class="h-px w-12 bg-slate-200"></div>
+                <span class="text-[12px] font-black text-slate-400 uppercase tracking-[0.4em]">End of Proposal</span>
+                <div class="h-px w-12 bg-slate-200"></div>
               </div>
             </div>
           </div>

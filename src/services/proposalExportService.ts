@@ -243,11 +243,12 @@ export class ProposalExportService {
                     margins: { top: 200, bottom: 200, left: 200, right: 200 },
                     children: [
                       new Paragraph({ children: [new TextRun({ text: "PREPARED BY", bold: true, color: '2563EB', size: 16 })], spacing: { after: 100 } }),
-                      new Paragraph({ children: [new TextRun({ text: data.senderName || '---', bold: true, size: 28 })] }),
+                      new Paragraph({ children: [new TextRun({ text: data.senderName ? (data.senderPosition ? `${data.senderName} (${data.senderPosition})` : data.senderName) : '---', bold: true, size: 28 })] }),
                       new Paragraph({ children: [new TextRun({ text: data.senderCompany || '---', bold: true, color: '64748B' })] }),
                       new Paragraph({ children: [new TextRun({ text: data.senderEmail || '', color: '94A3B8', size: 20 })] }),
                       new Paragraph({ children: [new TextRun({ text: data.senderContact || '', color: '94A3B8', size: 20 })] }),
-                    ]
+                      data.senderWebsite ? new Paragraph({ children: [new TextRun({ text: data.senderWebsite, color: '94A3B8', size: 20 })] }) : null,
+                    ].filter(Boolean) as Paragraph[]
                   }),
                 ]
               })
