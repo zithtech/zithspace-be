@@ -20,10 +20,18 @@ function getAbsoluteReturnUrl(inputUrl: string | undefined, frontendUrl: string,
     try {
         const urlObj = new URL(frontendUrl);
         if (subdomain) {
-            if (urlObj.hostname === "localhost" || urlObj.hostname === "127.0.0.1") {
+            let host = urlObj.hostname;
+            if (host.startsWith('www.')) {
+                host = host.slice(4);
+            }
+            if (host === "localhost" || host === "127.0.0.1") {
                 urlObj.hostname = `${subdomain}.localhost`;
             } else {
-                urlObj.hostname = `${subdomain}.${urlObj.hostname}`;
+                if (!host.startsWith(`${subdomain}.`)) {
+                    urlObj.hostname = `${subdomain}.${host}`;
+                } else {
+                    urlObj.hostname = host;
+                }
             }
         }
         // Ensure path starts with slash

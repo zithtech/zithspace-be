@@ -70,9 +70,28 @@ export class MailController {
 
             const unreadCount = await MailService.getUnreadCount(userId, tenantId, account.email);
 
+            const [inbox, sent, draft, starred, archive, trash] = await Promise.all([
+                prisma.mail_threads.count({ where: { account_id: account.id, tenant_id: tenantId, OR: [{ labels: { has: 'INBOX' } }, { labels: { isEmpty: true } }] } }),
+                prisma.mail_threads.count({ where: { account_id: account.id, tenant_id: tenantId, labels: { has: 'SENT' } } }),
+                prisma.mail_threads.count({ where: { account_id: account.id, tenant_id: tenantId, labels: { has: 'DRAFT' } } }),
+                prisma.mail_threads.count({ where: { account_id: account.id, tenant_id: tenantId, labels: { has: 'STARRED' } } }),
+                prisma.mail_threads.count({ where: { account_id: account.id, tenant_id: tenantId, labels: { has: 'ARCHIVE' } } }),
+                prisma.mail_threads.count({ where: { account_id: account.id, tenant_id: tenantId, labels: { has: 'TRASH' } } }),
+            ]);
+
             return res.json({
                 success: true,
-                data: { unreadCount }
+                data: { 
+                    unreadCount, 
+                    counts: {
+                        INBOX: inbox,
+                        SENT: sent,
+                        DRAFT: draft,
+                        STARRED: starred,
+                        ARCHIVE: archive,
+                        TRASH: trash
+                    } 
+                }
             });
         } catch (error: any) {
             console.error("[MailController] getUnreadCount error:", error);
@@ -89,36 +108,47 @@ export class MailController {
     static async getContacts(req: AuthRequest, res: Response) {
         try {
             const tenantId = req.tenantId!;
+            const userId = req.user!.id;
             const contactsMap = new Map<string, { name: string; email: string }>();
 
-            // 1. Fetch system users for this tenant
-            const users = await prisma.user.findMany({
-                where: { tenantId, isActive: true },
-                select: { name: true, workEmail: true, personalEmail: true }
+            const account = await prisma.mail_accounts.findFirst({
+                where: { user_id: userId, tenant_id: tenantId, is_active: true }
             });
 
-            for (const user of users) {
-                if (user.workEmail) {
-                    contactsMap.set(user.workEmail.toLowerCase(), { name: user.name, email: user.workEmail });
-                }
-                if (user.personalEmail) {
-                    contactsMap.set(user.personalEmail.toLowerCase(), { name: user.name, email: user.personalEmail });
-                }
+            if (!account) {
+                return res.json({ success: true, data: [] });
             }
 
-            // 2. Fetch employees (members) for this tenant
-            const employees = await prisma.employee.findMany({
-                where: { tenantId, status: true },
-                select: { first_name: true, last_name: true, work_email: true, personal_email: true }
-            });
+            const rawEmails: any[] = await prisma.$queryRaw`
+                SELECT DISTINCT "from_address" as email 
+                FROM "mail_threads" 
+                WHERE "tenant_id" = ${tenantId} AND "account_id" = ${account.id} AND "from_address" IS NOT NULL
+                UNION
+                SELECT DISTINCT jsonb_array_elements_text("to_emails") as email 
+                FROM "mail_threads" 
+                WHERE "tenant_id" = ${tenantId} AND "account_id" = ${account.id} AND "to_emails" IS NOT NULL AND jsonb_typeof("to_emails") = 'array'
+            `;
 
-            for (const emp of employees) {
-                const fullName = `${emp.first_name || ""} ${emp.last_name || ""}`.trim();
-                if (emp.work_email) {
-                    contactsMap.set(emp.work_email.toLowerCase(), { name: fullName || emp.work_email, email: emp.work_email });
-                }
-                if (emp.personal_email) {
-                    contactsMap.set(emp.personal_email.toLowerCase(), { name: fullName || emp.personal_email, email: emp.personal_email });
+            for (const row of rawEmails) {
+                if (row.email) {
+                    const emailStr = String(row.email).trim();
+                    if (!emailStr) continue;
+                    
+                    // Simple parser to handle "Name <email>" format if it exists
+                    let name = emailStr;
+                    let email = emailStr;
+                    
+                    const match = emailStr.match(/^(.*?)<(.+?)>$/);
+                    if (match) {
+                        name = match[1].trim() || match[2].trim();
+                        email = match[2].trim().toLowerCase();
+                    } else {
+                        email = email.toLowerCase();
+                    }
+
+                    if (!contactsMap.has(email)) {
+                        contactsMap.set(email, { name, email });
+                    }
                 }
             }
 
@@ -143,7 +173,7 @@ export class MailController {
         try {
             const userId = req.user!.id;
             const tenantId = req.tenantId!;
-            const { label, filter, search } = req.query;
+            const { label, filter, search, to, from } = req.query;
 
             // 1. Find the connected mail account
             const account = await prisma.mail_accounts.findFirst({
@@ -179,18 +209,40 @@ export class MailController {
                 whereClause.has_attachments = false;
             }
 
+            if (from && typeof from === 'string' && from.trim()) {
+                whereClause.from_address = { contains: from.trim(), mode: 'insensitive' };
+            }
+
+            if (to && typeof to === 'string' && to.trim()) {
+                const toLower = to.trim().toLowerCase();
+                const toThreads = await prisma.$queryRawUnsafe<{id: string}[]>(
+                    `SELECT id FROM mail_threads WHERE tenant_id = $1 AND account_id = $2 AND to_emails::text ILIKE $3`,
+                    tenantId, account.id, `%${toLower}%`
+                );
+                whereClause.id = { in: toThreads.map(t => t.id) };
+            }
+
             // Search filter
             if (search && typeof search === 'string' && search.trim()) {
-                const searchLower = search.trim();
-                const searchFilter = {
+                const searchLower = search.trim().toLowerCase();
+                
+                const searchToThreads = await prisma.$queryRawUnsafe<{id: string}[]>(
+                    `SELECT id FROM mail_threads WHERE tenant_id = $1 AND account_id = $2 AND to_emails::text ILIKE $3`,
+                    tenantId, account.id, `%${searchLower}%`
+                );
+                const toEmailIds = searchToThreads.map(t => t.id);
+
+                const searchFilter: any = {
                     OR: [
                         { subject: { contains: searchLower, mode: 'insensitive' } },
                         { from_address: { contains: searchLower, mode: 'insensitive' } },
-                        { snippet: { contains: searchLower, mode: 'insensitive' } },
-                        // Standard Prisma JSON array search
-                        { to_emails: { array_contains: searchLower } }
+                        { snippet: { contains: searchLower, mode: 'insensitive' } }
                     ]
                 };
+
+                if (toEmailIds.length > 0) {
+                    searchFilter.OR.push({ id: { in: toEmailIds } });
+                }
 
                 // Combine with existing whereClause
                 if (whereClause.OR) {
