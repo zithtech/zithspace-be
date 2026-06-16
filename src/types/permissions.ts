@@ -17,6 +17,9 @@ export const Permissions = {
   USER_UPDATE: 'user.update',
   USER_DELETE: 'user.delete',
   USER_MANAGE: 'user.manage',   // activate/deactivate, reset password, assign shift
+  USER_TRASH_READ: 'user.trash.read',
+  USER_TRASH_RESTORE: 'user.trash.restore',
+  USER_TRASH_DELETE: 'user.trash.delete',
 
   // ─── Projects ────────────────────────────────────────────────────
   PROJECT_CREATE: 'project.create',
@@ -416,7 +419,7 @@ export type Permission = (typeof Permissions)[keyof typeof Permissions];
 export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
   dashboard: [Permissions.DASHBOARD_READ],
   integration: [Permissions.INTEGRATION_READ, Permissions.INTEGRATION_MANAGE],
-  user: [Permissions.USER_CREATE, Permissions.USER_READ, Permissions.USER_UPDATE, Permissions.USER_DELETE, Permissions.USER_MANAGE],
+  user: [Permissions.USER_CREATE, Permissions.USER_READ, Permissions.USER_UPDATE, Permissions.USER_DELETE, Permissions.USER_MANAGE, Permissions.USER_TRASH_READ, Permissions.USER_TRASH_RESTORE, Permissions.USER_TRASH_DELETE],
   project: [
     Permissions.PROJECT_CREATE,
     Permissions.PROJECT_READ,
