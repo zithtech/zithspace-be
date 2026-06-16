@@ -4,7 +4,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UserController = void 0;
-const database_1 = require("@/config/database");
+const dbpool_1 = __importDefault(require("@/config/dbpool"));
+const user_model_1 = require("@/models/user.model");
 const types_1 = require("@/types");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const r2Client_1 = require("@/utils/r2Client");
@@ -24,67 +25,139 @@ class UserController {
                 return;
             }
             const { page = 1, limit = 20, role, position, reportsToId, isActive = "true", search, sortBy = "createdAt", sortOrder = "desc", } = req.query;
-            // Build filter query
-            const where = {
-                tenantId: req.tenantId,
-            };
-            if (role)
-                where.role = role;
-            if (position)
-                where.position = { title: position }; // Filter by position title if string passed
-            if (reportsToId)
-                where.reportsToId = reportsToId;
-            if (isActive !== "all")
-                where.isActive = isActive === "true";
-            if (search) {
-                where.OR = [
-                    { name: { contains: search, mode: "insensitive" } },
-                    { workEmail: { contains: search, mode: "insensitive" } },
-                    {
-                        personalEmail: { contains: search, mode: "insensitive" },
-                    },
-                ];
+            // Build dynamic SQL filters
+            const whereClauses = ['u.tenant_id = $1'];
+            const values = [req.tenantId];
+            let paramCount = 1;
+            if (role) {
+                paramCount++;
+                if (typeof role === 'string' && role.includes(',')) {
+                    const rolesList = role.split(',');
+                    whereClauses.push(`u.role = ANY($${paramCount}::text[])`);
+                    values.push(rolesList);
+                }
+                else {
+                    whereClauses.push(`u.role = $${paramCount}`);
+                    values.push(role);
+                }
             }
-            // Build sort object
-            const orderBy = {};
-            orderBy[sortBy] = sortOrder === "desc" ? "desc" : "asc";
-            // Execute query with pagination
+            if (position) {
+                paramCount++;
+                whereClauses.push(`EXISTS (
+          SELECT 1 FROM positions p 
+          WHERE p.id = u.position_id AND p.title = $${paramCount}
+        )`);
+                values.push(position);
+            }
+            if (reportsToId) {
+                paramCount++;
+                whereClauses.push(`u.reports_to_id = $${paramCount}`);
+                values.push(reportsToId);
+            }
+            if (isActive !== "all") {
+                paramCount++;
+                whereClauses.push(`u.is_active = $${paramCount}`);
+                values.push(isActive === "true");
+            }
+            if (search) {
+                paramCount++;
+                whereClauses.push(`(
+          u.name ILIKE $${paramCount} OR 
+          u.work_email ILIKE $${paramCount} OR 
+          u.personal_email ILIKE $${paramCount}
+        )`);
+                values.push(`%${search}%`);
+            }
+            // Build sort options
+            const allowedSortColumns = ["createdAt", "updatedAt", "name", "role"];
+            const sortColumnMap = {
+                createdAt: "u.created_at",
+                updatedAt: "u.updated_at",
+                name: "u.name",
+                role: "u.role",
+            };
+            const sortCol = allowedSortColumns.includes(sortBy)
+                ? sortColumnMap[sortBy]
+                : "u.created_at";
+            const sortDir = sortOrder === "asc" ? "ASC" : "DESC";
             const skip = (Number(page) - 1) * Number(limit);
-            const [members, total] = await Promise.all([
-                await database_1.prisma.user.findMany({
-                    where,
-                    select: {
-                        id: true,
-                        name: true,
-                        workEmail: true,
-                        personalEmail: true,
-                        phone: true,
-                        role: true,
-                        avatarUrl: true,
-                        position: { select: { id: true, title: true } },
-                        isActive: true,
-                        lastLoginAt: true,
-                        createdAt: true,
-                        updatedAt: true,
-                        reportsTo: {
-                            select: {
-                                id: true,
-                                name: true,
-                                position: { select: { title: true } },
-                            },
-                        },
-                        userRoles: {
-                            select: {
-                                role: { select: { name: true, slug: true } }
-                            }
-                        }
-                    },
-                    orderBy,
-                    skip,
-                    take: Number(limit),
-                }),
-                await database_1.prisma.user.count({ where }),
+            const limitVal = Number(limit);
+            const countValues = [...values];
+            paramCount++;
+            const limitParamIndex = paramCount;
+            values.push(limitVal);
+            paramCount++;
+            const offsetParamIndex = paramCount;
+            values.push(skip);
+            const queryList = `
+        SELECT 
+          u.id,
+          u.name,
+          u.work_email as "workEmail",
+          u.personal_email as "personalEmail",
+          u.phone,
+          u.role,
+          u.avatar_url as "avatarUrl",
+          u.min_working_hours as "minWorkingHours",
+          u.is_active as "isActive",
+          u.last_login_at as "lastLoginAt",
+          u.created_at as "createdAt",
+          u.updated_at as "updatedAt",
+          u.updated_at as "deletedAt",
+          (
+            SELECT th.actor_name 
+            FROM transaction_history th 
+            WHERE th.entity_type = 'user' 
+              AND th.entity_id = u.id 
+              AND (th.action = 'delete' OR (th.action = 'update' AND 'isActive' = ANY(th.changed_fields)))
+              AND th.tenant_id = u.tenant_id
+            ORDER BY th.created_at DESC 
+            LIMIT 1
+          ) AS "deletedBy",
+          (
+            SELECT json_build_object('id', p.id, 'title', p.title) 
+            FROM positions p 
+            WHERE p.id = u.position_id
+          ) as position,
+          (
+            SELECT json_build_object(
+              'id', r.id, 
+              'name', r.name,
+              'avatarUrl', r.avatar_url,
+              'position', (SELECT json_build_object('title', rp.title) FROM positions rp WHERE rp.id = r.position_id)
+            )
+            FROM users r
+            WHERE r.id = u.reports_to_id
+          ) as "reportsTo",
+          (
+            SELECT COALESCE(
+              json_agg(
+                json_build_object(
+                  'role', json_build_object('name', ro.name, 'slug', ro.slug)
+                )
+              ),
+              '[]'::json
+            )
+            FROM user_roles ur
+            JOIN roles ro ON ur.role_id = ro.id
+            WHERE ur.user_id = u.id
+          ) as "userRoles"
+        FROM users u
+        WHERE ${whereClauses.join(' AND ')}
+        ORDER BY ${sortCol} ${sortDir}
+        LIMIT $${limitParamIndex} OFFSET $${offsetParamIndex}
+      `;
+            const queryCount = `
+        SELECT COUNT(*)::integer as count
+        FROM users u
+        WHERE ${whereClauses.join(' AND ')}
+      `;
+            const [membersResult, countResult] = await Promise.all([
+                dbpool_1.default.query(queryList, values),
+                dbpool_1.default.query(queryCount, countValues),
             ]);
+            const members = membersResult.rows;
+            const total = countResult.rows[0]?.count || 0;
             const totalPages = Math.ceil(total / Number(limit));
             res.status(200).json({
                 success: true,
@@ -120,36 +193,7 @@ class UserController {
                 return;
             }
             const { id } = req.params;
-            const member = await database_1.prisma.user.findFirst({
-                where: {
-                    id,
-                    tenantId: req.tenantId,
-                },
-                select: {
-                    id: true,
-                    name: true,
-                    workEmail: true,
-                    personalEmail: true,
-                    phone: true,
-                    role: true,
-                    avatarUrl: true,
-                    position: { select: { id: true, title: true } },
-                    reportsToId: true,
-                    dateOfBirth: true,
-                    workDays: true,
-                    isActive: true,
-                    lastLoginAt: true,
-                    createdAt: true,
-                    updatedAt: true,
-                    reportsTo: {
-                        select: {
-                            id: true,
-                            name: true,
-                            position: { select: { title: true } },
-                        },
-                    },
-                },
-            });
+            const member = await user_model_1.UserModel.findById(id, req.tenantId);
             if (!member) {
                 res.status(404).json({
                     success: false,
@@ -206,22 +250,7 @@ class UserController {
                 }
             }
             // Check if user already exists within tenant
-            // Only include non-null/non-empty values in OR to avoid false matches on null across tenants
-            const duplicateChecks = [
-                { workEmail: userData.workEmail.toLowerCase() },
-            ];
-            if (userData.personalEmail) {
-                duplicateChecks.push({ personalEmail: userData.personalEmail.toLowerCase() });
-            }
-            if (userData.phone) {
-                duplicateChecks.push({ phone: userData.phone });
-            }
-            const existingUser = await database_1.prisma.user.findFirst({
-                where: {
-                    tenantId: req.tenantId,
-                    OR: duplicateChecks,
-                },
-            });
+            const existingUser = await user_model_1.UserModel.findDuplicate(req.tenantId, userData.workEmail, userData.personalEmail, userData.phone);
             if (existingUser) {
                 // Identify which field conflicts to give a precise error
                 if (existingUser.workEmail === userData.workEmail.toLowerCase()) {
@@ -237,14 +266,8 @@ class UserController {
             }
             // Validate reports to user if provided
             if (userData.reportsToId) {
-                const reportsToUser = await database_1.prisma.user.findFirst({
-                    where: {
-                        id: userData.reportsToId,
-                        tenantId: req.tenantId,
-                        isActive: true,
-                    },
-                });
-                if (!reportsToUser) {
+                const isReportsToValid = await user_model_1.UserModel.existsAndActive(userData.reportsToId, req.tenantId);
+                if (!isReportsToValid) {
                     throw new types_1.ValidationError("Reports to user not found in this tenant");
                 }
             }
@@ -257,75 +280,35 @@ class UserController {
             const passwordHash = await bcryptjs_1.default.hash(userData.password, 12);
             // Validate assigned shift if provided
             if (userData.assignedShiftId) {
-                const shift = await database_1.prisma.shift.findFirst({
-                    where: {
-                        id: userData.assignedShiftId,
-                        tenantId: req.tenantId,
-                        isActive: true,
-                    },
-                });
+                const shift = await user_model_1.UserModel.findShiftById(userData.assignedShiftId, req.tenantId);
                 if (!shift) {
                     throw new types_1.ValidationError("Assigned shift not found or inactive in this tenant");
                 }
             }
-            // Create user
-            const newUser = await database_1.prisma.user.create({
-                data: {
-                    tenantId: req.tenantId,
-                    name: userData.name,
-                    workEmail: userData.workEmail.toLowerCase(),
-                    personalEmail: userData.personalEmail?.toLowerCase(),
-                    phone: userData.phone,
-                    passwordHash,
-                    role: userData.role || "user",
-                    positionId: positionId,
-                    reportsToId: userData.reportsToId,
-                    dateOfBirth: userData.dateOfBirth
-                        ? new Date(userData.dateOfBirth)
-                        : null,
-                    workDays: userData.workDays || [1, 2, 3, 4, 5], // Default to weekdays
-                    assignedShiftId: userData.assignedShiftId, // FIXED: Process shift assignment
-                    isActive: userData.isActive !== undefined ? userData.isActive : true, // FIXED: Process isActive
-                },
-                select: {
-                    id: true,
-                    name: true,
-                    workEmail: true,
-                    personalEmail: true,
-                    phone: true,
-                    role: true,
-                    position: { select: { id: true, title: true } },
-                    isActive: true,
-                    avatarUrl: true,
-                    createdAt: true,
-                    reportsTo: {
-                        select: {
-                            id: true,
-                            name: true,
-                            position: { select: { title: true } },
-                        },
-                    },
-                    userRoles: {
-                        select: {
-                            role: { select: { name: true, slug: true } }
-                        }
-                    }
-                },
+            // Create user via UserModel using raw INSERT query
+            const createdRaw = await user_model_1.UserModel.create({
+                tenantId: req.tenantId,
+                name: userData.name,
+                workEmail: userData.workEmail.toLowerCase(),
+                personalEmail: userData.personalEmail?.toLowerCase() || null,
+                phone: userData.phone,
+                passwordHash,
+                role: userData.role || "user",
+                positionId: positionId || null,
+                reportsToId: userData.reportsToId || null,
+                dateOfBirth: userData.dateOfBirth ? new Date(userData.dateOfBirth) : null,
+                workDays: userData.workDays || [1, 2, 3, 4, 5],
+                assignedShiftId: userData.assignedShiftId || null,
+                isActive: userData.isActive !== undefined ? userData.isActive : true,
+                minWorkingHours: userData.minWorkingHours !== undefined ? Number(userData.minWorkingHours) : 6,
             });
+            // Load the newly created member with relation details using raw SELECT query
+            const newUser = await user_model_1.UserModel.findById(createdRaw.id, req.tenantId);
             // RBAC Sync: Assign the role in UserRole table if it's an RBAC role
             if (userData.role) {
-                const rbacRole = await database_1.prisma.role.findFirst({
-                    where: { tenantId: req.tenantId, slug: userData.role }
-                });
+                const rbacRole = await user_model_1.UserModel.findRoleBySlug(userData.role, req.tenantId);
                 if (rbacRole) {
-                    await database_1.prisma.userRole.create({
-                        data: {
-                            userId: newUser.id,
-                            roleId: rbacRole.id,
-                            tenantId: req.tenantId,
-                            assignedById: req.user.id
-                        }
-                    });
+                    await user_model_1.UserModel.addUserRole(newUser.id, rbacRole.id, req.tenantId, req.user.id);
                 }
             }
             // Enqueue welcome email to the newly created member via central queue-ready system
@@ -404,30 +387,22 @@ class UserController {
             }
             const { id } = req.params;
             const updates = req.body;
+            // Extract and remove minWorkingHours from updates to prevent Prisma validation error
+            const minWorkingHoursVal = updates.minWorkingHours;
+            delete updates.minWorkingHours;
             // Remove fields that shouldn't be updated directly
             delete updates.passwordHash;
             delete updates.tenantId;
             delete updates.createdAt;
             // Check if user exists and belongs to tenant
-            const existingUser = await database_1.prisma.user.findFirst({
-                where: {
-                    id,
-                    tenantId: req.tenantId,
-                },
-            });
+            const existingUser = await user_model_1.UserModel.findById(id, req.tenantId);
             if (!existingUser) {
                 throw new types_1.NotFoundError("User not found in this tenant");
             }
             // Check for email conflicts within tenant if email is being updated
             if (updates.workEmail &&
                 updates.workEmail.toLowerCase() !== existingUser.workEmail) {
-                const duplicateUser = await database_1.prisma.user.findFirst({
-                    where: {
-                        workEmail: updates.workEmail.toLowerCase(),
-                        tenantId: req.tenantId,
-                        id: { not: id },
-                    },
-                });
+                const duplicateUser = await user_model_1.UserModel.findByEmailExcluding(updates.workEmail, req.tenantId, id);
                 if (duplicateUser) {
                     throw new types_1.ValidationError("Work email already exists in this tenant");
                 }
@@ -445,26 +420,14 @@ class UserController {
             }
             // Validate reports to user if provided
             if (updates.reportsToId) {
-                const reportsToUser = await database_1.prisma.user.findFirst({
-                    where: {
-                        id: updates.reportsToId,
-                        tenantId: req.tenantId,
-                        isActive: true,
-                    },
-                });
-                if (!reportsToUser) {
+                const isReportsToValid = await user_model_1.UserModel.existsAndActive(updates.reportsToId, req.tenantId);
+                if (!isReportsToValid) {
                     throw new types_1.ValidationError("Reports to user not found in this tenant");
                 }
             }
             // Validate assigned shift if provided
             if (updates.assignedShiftId) {
-                const shift = await database_1.prisma.shift.findFirst({
-                    where: {
-                        id: updates.assignedShiftId,
-                        tenantId: req.tenantId,
-                        isActive: true,
-                    },
-                });
+                const shift = await user_model_1.UserModel.findShiftById(updates.assignedShiftId, req.tenantId);
                 if (!shift) {
                     throw new types_1.ValidationError("Assigned shift not found or inactive in this tenant");
                 }
@@ -492,60 +455,20 @@ class UserController {
                 updateData.shiftAssignedById = req.user.id;
                 updateData.shiftAssignedDate = new Date();
             }
-            const updatedUser = await database_1.prisma.user.update({
-                where: { id },
-                data: updateData,
-                select: {
-                    id: true,
-                    name: true,
-                    workEmail: true,
-                    personalEmail: true,
-                    phone: true,
-                    role: true,
-                    position: { select: { id: true, title: true } },
-                    workDays: true,
-                    isActive: true,
-                    avatarUrl: true,
-                    updatedAt: true,
-                    assignedShift: {
-                        select: {
-                            id: true,
-                            name: true,
-                            startTime: true,
-                            endTime: true,
-                        },
-                    },
-                    reportsTo: {
-                        select: {
-                            id: true,
-                            name: true,
-                            position: { select: { title: true } },
-                        },
-                    },
-                    userRoles: {
-                        select: {
-                            role: { select: { name: true, slug: true } }
-                        }
-                    }
-                },
-            });
+            // Add minWorkingHours to updateData if it was provided
+            if (minWorkingHoursVal !== undefined) {
+                updateData.minWorkingHours = Number(minWorkingHoursVal);
+            }
+            // Update user using UserModel raw SQL update
+            await user_model_1.UserModel.update(id, req.tenantId, updateData);
+            // Reload updated member details with relations using raw SELECT query
+            const updatedUser = await user_model_1.UserModel.findById(id, req.tenantId);
             // RBAC Sync: If role is updated, sync UserRole table
             if (updates.role) {
-                const rbacRole = await database_1.prisma.role.findFirst({
-                    where: { tenantId: req.tenantId, slug: updates.role }
-                });
+                const rbacRole = await user_model_1.UserModel.findRoleBySlug(updates.role, req.tenantId);
                 if (rbacRole) {
-                    await database_1.prisma.userRole.deleteMany({
-                        where: { userId: id, tenantId: req.tenantId }
-                    });
-                    await database_1.prisma.userRole.create({
-                        data: {
-                            userId: id,
-                            roleId: rbacRole.id,
-                            tenantId: req.tenantId,
-                            assignedById: req.user.id
-                        }
-                    });
+                    await user_model_1.UserModel.deleteUserRoles(id, req.tenantId);
+                    await user_model_1.UserModel.addUserRole(id, rbacRole.id, req.tenantId, req.user.id);
                 }
             }
             const cleanExisting = {
@@ -629,30 +552,13 @@ class UserController {
                 return;
             }
             const { id } = req.params;
-            const existingUser = await database_1.prisma.user.findFirst({
-                where: {
-                    id,
-                    tenantId: req.tenantId,
-                },
-            });
+            const existingUser = await user_model_1.UserModel.findById(id, req.tenantId);
             if (!existingUser) {
                 throw new types_1.NotFoundError("User not found in this tenant");
             }
             // Soft delete
-            const updatedUser = await database_1.prisma.user.update({
-                where: { id },
-                data: {
-                    isActive: false,
-                    updatedAt: new Date(),
-                },
-                select: {
-                    id: true,
-                    name: true,
-                    workEmail: true,
-                    isActive: true,
-                    updatedAt: true,
-                },
-            });
+            await user_model_1.UserModel.update(id, req.tenantId, { isActive: false });
+            const updatedUser = await user_model_1.UserModel.findById(id, req.tenantId);
             (0, transactionHistory_1.recordTransaction)({
                 req,
                 section: transactionHistory_1.Section.ADMIN,
@@ -690,6 +596,288 @@ class UserController {
         }
     }
     /**
+     * Get deleted (soft-deleted) members — Trash (tenant-aware)
+     * Returns users where is_active = false, ordered newest first.
+     */
+    static async getDeletedMembers(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({ success: false, error: 'Tenant context and authentication required' });
+                return;
+            }
+            const { search, page = 1, limit = 100 } = req.query;
+            const whereClauses = ['u.tenant_id = $1', 'u.is_active = false'];
+            const values = [req.tenantId];
+            let paramCount = 1;
+            if (search) {
+                paramCount++;
+                whereClauses.push(`(u.name ILIKE $${paramCount} OR u.work_email ILIKE $${paramCount})`);
+                values.push(`%${search}%`);
+            }
+            const skip = (Number(page) - 1) * Number(limit);
+            paramCount++;
+            const limitParam = paramCount;
+            values.push(Number(limit));
+            paramCount++;
+            const offsetParam = paramCount;
+            values.push(skip);
+            const countValues = values.slice(0, values.length - 2);
+            const query = `
+        SELECT
+          u.id,
+          u.name,
+          u.work_email AS "workEmail",
+          u.work_email AS "email",
+          u.personal_email AS "personalEmail",
+          u.phone,
+          u.role,
+          u.avatar_url AS "avatarUrl",
+          u.min_working_hours AS "minWorkingHours",
+          u.is_active AS "isActive",
+          u.updated_at AS "deletedAt",
+          (
+            SELECT th.actor_name 
+            FROM transaction_history th 
+            WHERE th.entity_type = 'user' 
+              AND th.entity_id = u.id 
+              AND (th.action = 'delete' OR (th.action = 'update' AND 'isActive' = ANY(th.changed_fields)))
+              AND th.tenant_id = u.tenant_id
+            ORDER BY th.created_at DESC 
+            LIMIT 1
+          ) AS "deletedBy",
+          (
+            SELECT json_build_object('id', p.id, 'title', p.title)
+            FROM positions p WHERE p.id = u.position_id
+          ) AS position,
+          (
+            SELECT json_build_object(
+              'id', r.id, 
+              'name', r.name,
+              'avatarUrl', r.avatar_url,
+              'position', (SELECT json_build_object('title', rp.title) FROM positions rp WHERE rp.id = r.position_id)
+            )
+            FROM users r
+            WHERE r.id = u.reports_to_id
+          ) as "reportsTo"
+        FROM users u
+        WHERE ${whereClauses.join(' AND ')}
+        ORDER BY u.updated_at DESC
+        LIMIT $${limitParam} OFFSET $${offsetParam}
+      `;
+            const countQuery = `
+        SELECT COUNT(*)::integer AS count
+        FROM users u
+        WHERE ${whereClauses.join(' AND ')}
+      `;
+            const [result, countResult] = await Promise.all([
+                dbpool_1.default.query(query, values),
+                dbpool_1.default.query(countQuery, countValues),
+            ]);
+            const totalCount = countResult.rows[0]?.count ?? 0;
+            const totalPages = Math.ceil(totalCount / Number(limit));
+            res.status(200).json({
+                success: true,
+                data: result.rows,
+                pagination: {
+                    page: Number(page),
+                    limit: Number(limit),
+                    total: totalCount,
+                    pages: totalPages,
+                    hasNext: Number(page) < totalPages,
+                    hasPrev: Number(page) > 1,
+                },
+            });
+        }
+        catch (error) {
+            console.error('Get deleted members error:', error);
+            res.status(500).json({ success: false, error: 'Failed to fetch deleted members' });
+        }
+    }
+    /**
+     * Permanently delete a member from the database (irreversible).
+     * Only works for members that have already been soft-deleted (is_active = false).
+     */
+    static async permanentlyDeleteMember(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({ success: false, error: 'Tenant context and authentication required' });
+                return;
+            }
+            const { id } = req.params;
+            const existingUser = await user_model_1.UserModel.findById(id, req.tenantId);
+            if (!existingUser) {
+                throw new types_1.NotFoundError('Member not found in this tenant');
+            }
+            if (existingUser.isActive) {
+                res.status(400).json({
+                    success: false,
+                    error: 'Only inactive (soft-deleted) members can be permanently deleted. Please deactivate the member first.',
+                });
+                return;
+            }
+            await user_model_1.UserModel.delete(id, req.tenantId);
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.ADMIN,
+                module: transactionHistory_1.Module.MEMBERS,
+                page: transactionHistory_1.Page.MEMBER_LIST,
+                action: transactionHistory_1.Action.DELETE,
+                actionLabel: `Member permanently deleted: ${existingUser.name}`,
+                entityType: transactionHistory_1.EntityType.USER,
+                entityId: id,
+                entityLabel: existingUser.name,
+                beforeData: { name: existingUser.name, workEmail: existingUser.workEmail },
+                afterData: null,
+                statusCode: 200,
+            });
+            res.status(200).json({
+                success: true,
+                message: 'Member permanently deleted',
+            });
+        }
+        catch (error) {
+            console.error('Permanently delete member error:', error);
+            if (error instanceof types_1.NotFoundError) {
+                res.status(404).json({ success: false, error: error.message });
+                return;
+            }
+            res.status(500).json({ success: false, error: 'Failed to permanently delete member' });
+        }
+    }
+    /**
+     * Bulk restore soft-deleted members (tenant-aware)
+     */
+    static async bulkRestoreMembers(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { ids } = req.body;
+            if (!ids || !Array.isArray(ids)) {
+                res.status(400).json({
+                    success: false,
+                    error: "Member IDs array required",
+                });
+                return;
+            }
+            const count = await user_model_1.UserModel.bulkRestore(ids, req.tenantId);
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.ADMIN,
+                module: transactionHistory_1.Module.MEMBERS,
+                page: transactionHistory_1.Page.MEMBER_LIST,
+                action: transactionHistory_1.Action.RESTORE,
+                actionLabel: `Members restored: ${count}`,
+                entityType: transactionHistory_1.EntityType.USER,
+                beforeData: { isActive: false },
+                afterData: { isActive: true },
+                changedFields: ["isActive"],
+                statusCode: 200,
+                metadata: { targetIds: ids, restoredCount: count },
+            });
+            res.status(200).json({
+                success: true,
+                message: `${count} members restored successfully`,
+                data: { restoredCount: count },
+            });
+        }
+        catch (error) {
+            console.error("Bulk restore members error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to restore members",
+            });
+        }
+    }
+    /**
+     * Bulk permanently delete members (tenant-aware)
+     */
+    static async bulkPermanentDeleteMembers(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { ids } = req.body;
+            if (!ids || !Array.isArray(ids)) {
+                res.status(400).json({
+                    success: false,
+                    error: "Member IDs array required",
+                });
+                return;
+            }
+            const count = await user_model_1.UserModel.bulkDelete(ids, req.tenantId);
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.ADMIN,
+                module: transactionHistory_1.Module.MEMBERS,
+                page: transactionHistory_1.Page.MEMBER_LIST,
+                action: transactionHistory_1.Action.DELETE,
+                actionLabel: `Members permanently deleted: ${count}`,
+                entityType: transactionHistory_1.EntityType.USER,
+                statusCode: 200,
+                metadata: { targetIds: ids, deletedCount: count },
+            });
+            res.status(200).json({
+                success: true,
+                message: `${count} members permanently deleted`,
+                data: { deletedCount: count },
+            });
+        }
+        catch (error) {
+            console.error("Bulk permanent delete members error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to permanently delete members",
+            });
+        }
+    }
+    /**
+     * Empty member trash (tenant-aware)
+     */
+    static async emptyTrashMembers(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const count = await user_model_1.UserModel.emptyTrash(req.tenantId);
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.ADMIN,
+                module: transactionHistory_1.Module.MEMBERS,
+                page: transactionHistory_1.Page.MEMBER_LIST,
+                action: transactionHistory_1.Action.DELETE,
+                actionLabel: `Member trash emptied: ${count}`,
+                entityType: transactionHistory_1.EntityType.USER,
+                statusCode: 200,
+                metadata: { deletedCount: count },
+            });
+            res.status(200).json({
+                success: true,
+                message: `Trash emptied: ${count} members permanently deleted`,
+                data: { deletedCount: count },
+            });
+        }
+        catch (error) {
+            console.error("Empty member trash error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to empty trash",
+            });
+        }
+    }
+    /**
      * Activate member (tenant-aware)
      */
     static async activateMember(req, res) {
@@ -702,29 +890,12 @@ class UserController {
                 return;
             }
             const { id } = req.params;
-            const existingUser = await database_1.prisma.user.findFirst({
-                where: {
-                    id,
-                    tenantId: req.tenantId,
-                },
-            });
+            const existingUser = await user_model_1.UserModel.findById(id, req.tenantId);
             if (!existingUser) {
                 throw new types_1.NotFoundError("User not found in this tenant");
             }
-            const updatedUser = await database_1.prisma.user.update({
-                where: { id },
-                data: {
-                    isActive: true,
-                    updatedAt: new Date(),
-                },
-                select: {
-                    id: true,
-                    name: true,
-                    workEmail: true,
-                    isActive: true,
-                    updatedAt: true,
-                },
-            });
+            await user_model_1.UserModel.update(id, req.tenantId, { isActive: true });
+            const updatedUser = await user_model_1.UserModel.findById(id, req.tenantId);
             (0, transactionHistory_1.recordTransaction)({
                 req,
                 section: transactionHistory_1.Section.ADMIN,
@@ -774,41 +945,7 @@ class UserController {
                 return;
             }
             const userId = req.user.id;
-            const user = await database_1.prisma.user.findFirst({
-                where: {
-                    id: userId,
-                    tenantId: req.tenantId,
-                },
-                select: {
-                    id: true,
-                    name: true,
-                    workEmail: true,
-                    personalEmail: true,
-                    phone: true,
-                    role: true,
-                    avatarUrl: true,
-                    position: { select: { id: true, title: true } },
-                    dateOfBirth: true,
-                    workDays: true,
-                    isActive: true,
-                    lastLoginAt: true,
-                    createdAt: true,
-                    updatedAt: true,
-                    employeeId: true,
-                    employee: {
-                        select: {
-                            employee_code: true,
-                        },
-                    },
-                    reportsTo: {
-                        select: {
-                            id: true,
-                            name: true,
-                            position: { select: { title: true } },
-                        },
-                    },
-                },
-            });
+            const user = await user_model_1.UserModel.findById(userId, req.tenantId);
             if (!user) {
                 res.status(404).json({
                     success: false,
@@ -869,32 +1006,8 @@ class UserController {
                     return;
                 }
             }
-            const updatedUser = await database_1.prisma.user.update({
-                where: { id: userId },
-                data: {
-                    ...updateData,
-                    updatedAt: new Date(),
-                },
-                select: {
-                    id: true,
-                    name: true,
-                    workEmail: true,
-                    personalEmail: true,
-                    phone: true,
-                    avatarUrl: true,
-                    position: { select: { id: true, title: true } },
-                    dateOfBirth: true,
-                    workDays: true,
-                    updatedAt: true,
-                    reportsTo: {
-                        select: {
-                            id: true,
-                            name: true,
-                            position: { select: { title: true } },
-                        },
-                    },
-                },
-            });
+            await user_model_1.UserModel.update(userId, req.tenantId, updateData);
+            const updatedUser = await user_model_1.UserModel.findById(userId, req.tenantId);
             res.status(200).json({
                 success: true,
                 data: updatedUser,
@@ -962,12 +1075,7 @@ class UserController {
                 return;
             }
             // Get user with password
-            const user = await database_1.prisma.user.findFirst({
-                where: {
-                    id: userId,
-                    tenantId: req.tenantId,
-                },
-            });
+            const user = await user_model_1.UserModel.findById(userId, req.tenantId);
             if (!user) {
                 throw new types_1.NotFoundError("User not found");
             }
@@ -979,12 +1087,8 @@ class UserController {
             // Hash new password
             const newPasswordHash = await bcryptjs_1.default.hash(newPassword, 12);
             // Update password
-            await database_1.prisma.user.update({
-                where: { id: userId },
-                data: {
-                    passwordHash: newPasswordHash,
-                    updatedAt: new Date(),
-                },
+            await user_model_1.UserModel.update(userId, req.tenantId, {
+                passwordHash: newPasswordHash,
             });
             res.status(200).json({
                 success: true,
@@ -1027,24 +1131,15 @@ class UserController {
                 });
                 return;
             }
-            const user = await database_1.prisma.user.findFirst({
-                where: {
-                    id: userId,
-                    tenantId: req.tenantId,
-                },
-            });
+            const user = await user_model_1.UserModel.findById(userId, req.tenantId);
             if (!user) {
                 throw new types_1.NotFoundError("User not found in this tenant");
             }
             // Hash new password
             const newPasswordHash = await bcryptjs_1.default.hash(newPassword, 12);
             // Update password
-            await database_1.prisma.user.update({
-                where: { id: userId },
-                data: {
-                    passwordHash: newPasswordHash,
-                    updatedAt: new Date(),
-                },
+            await user_model_1.UserModel.update(userId, req.tenantId, {
+                passwordHash: newPasswordHash,
             });
             res.status(200).json({
                 success: true,
@@ -1079,35 +1174,58 @@ class UserController {
                 return;
             }
             const { role, position } = req.query;
-            const where = {
-                tenantId: req.tenantId,
-                isActive: true,
-            };
-            if (role)
-                where.role = role;
-            if (position)
-                where.position = { title: position };
-            const members = await database_1.prisma.user.findMany({
-                where,
-                select: {
-                    id: true,
-                    employeeId: true,
-                    name: true,
-                    workEmail: true,
-                    position: { select: { id: true, title: true } },
-                    role: true,
-                    avatarUrl: true,
-                },
-                orderBy: { name: "asc" },
-            });
+            const whereClauses = ['u.tenant_id = $1', 'u.is_active = true'];
+            const values = [req.tenantId];
+            let paramCount = 1;
+            if (role) {
+                paramCount++;
+                if (typeof role === 'string' && role.includes(',')) {
+                    const rolesList = role.split(',');
+                    whereClauses.push(`u.role = ANY($${paramCount}::text[])`);
+                    values.push(rolesList);
+                }
+                else {
+                    whereClauses.push(`u.role = $${paramCount}`);
+                    values.push(role);
+                }
+            }
+            if (position) {
+                paramCount++;
+                whereClauses.push(`EXISTS (
+          SELECT 1 FROM positions p 
+          WHERE p.id = u.position_id AND p.title = $${paramCount}
+        )`);
+                values.push(position);
+            }
+            const query = `
+        SELECT 
+          u.id,
+          u.employee_id as "employeeId",
+          u.name,
+          u.work_email as "workEmail",
+          u.role,
+          u.avatar_url as "avatarUrl",
+          u.min_working_hours as "minWorkingHours",
+          (
+            SELECT p.title 
+            FROM positions p 
+            WHERE p.id = u.position_id
+          ) as "positionTitle"
+        FROM users u
+        WHERE ${whereClauses.join(' AND ')}
+        ORDER BY u.name ASC
+      `;
+            const result = await dbpool_1.default.query(query, values);
+            const members = result.rows;
             const formattedMembers = members.map((member) => ({
                 value: member.id,
                 employeeId: member.employeeId,
                 label: member.name,
                 email: member.workEmail,
-                position: member.position?.title,
+                position: member.positionTitle,
                 role: member.role,
                 avatarUrl: member.avatarUrl,
+                minWorkingHours: member.minWorkingHours ?? 6,
             }));
             res.status(200).json({
                 success: true,
@@ -1144,69 +1262,22 @@ class UserController {
                 return;
             }
             // Verify member exists and belongs to tenant
-            const member = await database_1.prisma.user.findFirst({
-                where: {
-                    id,
-                    tenantId: req.tenantId,
-                },
-            });
+            const member = await user_model_1.UserModel.findById(id, req.tenantId);
             if (!member) {
                 throw new types_1.NotFoundError("Member not found in this tenant");
             }
             // Verify shift exists and belongs to tenant
-            const shift = await database_1.prisma.shift.findFirst({
-                where: {
-                    id: shiftId,
-                    tenantId: req.tenantId,
-                    isActive: true,
-                },
-            });
+            const shift = await user_model_1.UserModel.findShiftById(shiftId, req.tenantId);
             if (!shift) {
                 throw new types_1.ValidationError("Shift not found or inactive in this tenant");
             }
             // Update member with shift assignment
-            const updatedMember = await database_1.prisma.user.update({
-                where: { id },
-                data: {
-                    assignedShiftId: shiftId,
-                    shiftAssignedById: req.user.id,
-                    shiftAssignedDate: new Date(),
-                    updatedAt: new Date(),
-                },
-                select: {
-                    id: true,
-                    name: true,
-                    workEmail: true,
-                    personalEmail: true,
-                    phone: true,
-                    role: true,
-                    position: { select: { id: true, title: true } },
-                    isActive: true,
-                    updatedAt: true,
-                    assignedShift: {
-                        select: {
-                            id: true,
-                            name: true,
-                            startTime: true,
-                            endTime: true,
-                        },
-                    },
-                    shiftAssignedBy: {
-                        select: {
-                            id: true,
-                            name: true,
-                            position: { select: { title: true } },
-                        },
-                    },
-                    reportsTo: {
-                        select: {
-                            id: true,
-                            name: true,
-                            position: { select: { title: true } },
-                        },
-                    },
-                },
+            await user_model_1.UserModel.update(id, req.tenantId, {
+                assignedShiftId: shiftId,
+                shiftAssignedById: req.user.id,
+                shiftAssignedDate: new Date(),
             });
+            const updatedMember = await user_model_1.UserModel.findById(id, req.tenantId);
             (0, transactionHistory_1.recordTransaction)({
                 req,
                 section: transactionHistory_1.Section.ADMIN,
@@ -1256,94 +1327,64 @@ class UserController {
     static async getOrCreateCustomPosition(tenantId, userId, positionTitle) {
         const title = positionTitle.trim();
         // Check if position already exists in tenant (case-insensitive title match)
-        const existingPos = await database_1.prisma.position.findFirst({
-            where: {
-                tenantId,
-                title: { equals: title, mode: "insensitive" }
-            }
-        });
+        const existingPos = await user_model_1.UserModel.findPositionByTitle(title, tenantId);
         if (existingPos) {
             return existingPos.id;
         }
         // Find or create default "Uncategorized" department
-        let defaultDept = await database_1.prisma.department.findFirst({
-            where: {
-                tenantId,
-                code: "DEPT-UNCATEGORIZED"
-            }
-        });
+        let defaultDept = await user_model_1.UserModel.findDepartmentByCode("DEPT-UNCATEGORIZED", tenantId);
         if (!defaultDept) {
-            defaultDept = await database_1.prisma.department.create({
-                data: {
-                    tenantId,
-                    code: "DEPT-UNCATEGORIZED",
-                    name: "Uncategorized",
-                    createdById: userId,
-                    isActive: true
-                }
+            defaultDept = await user_model_1.UserModel.createDepartment({
+                id: user_model_1.UserModel.generateUuid(),
+                tenantId,
+                code: "DEPT-UNCATEGORIZED",
+                name: "Uncategorized",
+                createdById: userId,
+                isActive: true
             });
         }
         // Find or create default "General" sub-department under "Uncategorized" department
-        let defaultSubDept = await database_1.prisma.subDepartment.findFirst({
-            where: {
-                tenantId,
-                code: "SUB-GENERAL"
-            }
-        });
+        let defaultSubDept = await user_model_1.UserModel.findSubDepartmentByCode("SUB-GENERAL", tenantId);
         if (!defaultSubDept) {
-            defaultSubDept = await database_1.prisma.subDepartment.create({
-                data: {
-                    tenantId,
-                    parentDepartmentId: defaultDept.id,
-                    code: "SUB-GENERAL",
-                    name: "General",
-                    createdById: userId,
-                    isActive: true
-                }
+            defaultSubDept = await user_model_1.UserModel.createSubDepartment({
+                id: user_model_1.UserModel.generateUuid(),
+                tenantId,
+                parentDepartmentId: defaultDept.id,
+                code: "SUB-GENERAL",
+                name: "General",
+                createdById: userId,
+                isActive: true
             });
         }
         // Find or create default "General" grade
-        let defaultGrade = await database_1.prisma.grade.findFirst({
-            where: {
-                tenantId,
-                OR: [
-                    { code: "G" },
-                    { code: "GRADE-GENERAL" }
-                ]
-            }
-        });
+        let defaultGrade = await user_model_1.UserModel.findGradeByCodes(["G", "GRADE-GENERAL"], tenantId);
         if (!defaultGrade) {
-            defaultGrade = await database_1.prisma.grade.create({
-                data: {
-                    tenantId,
-                    code: "G",
-                    name: "General",
-                    levelOrder: 999, // default lowest or general level
-                    createdById: userId,
-                    isActive: true
-                }
+            defaultGrade = await user_model_1.UserModel.createGrade({
+                id: user_model_1.UserModel.generateUuid(),
+                tenantId,
+                code: "G",
+                name: "General",
+                levelOrder: 999, // default lowest or general level
+                createdById: userId,
+                isActive: true
             });
         }
         else if (defaultGrade.code === "GRADE-GENERAL") {
-            defaultGrade = await database_1.prisma.grade.update({
-                where: { id: defaultGrade.id },
-                data: { code: "G" }
-            });
+            defaultGrade = await user_model_1.UserModel.updateGradeCode(defaultGrade.id, "G");
         }
         // Generate unique code for custom position
         const code = `POS-${title.replace(/[^a-zA-Z0-9]/g, "").substring(0, 10).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`;
-        const newPos = await database_1.prisma.position.create({
-            data: {
-                tenantId,
-                code,
-                title,
-                departmentId: defaultDept.id,
-                subDepartmentId: defaultSubDept.id,
-                gradeId: defaultGrade.id,
-                createdById: userId,
-                updatedById: userId,
-                isActive: true
-            }
+        const newPos = await user_model_1.UserModel.createPosition({
+            id: user_model_1.UserModel.generateUuid(),
+            tenantId,
+            code,
+            title,
+            departmentId: defaultDept.id,
+            subDepartmentId: defaultSubDept.id,
+            gradeId: defaultGrade.id,
+            createdById: userId,
+            updatedById: userId,
+            isActive: true
         });
         return newPos.id;
     }
