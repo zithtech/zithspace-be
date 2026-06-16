@@ -112,20 +112,50 @@ export class ProposalExportService {
       'section': 7
     };
 
-    const blocks = [...rawBlocks].sort((a, b) =>
-      (TYPE_ORDER[a.type] || 99) - (TYPE_ORDER[b.type] || 99)
-    );
+    const filtered = [...rawBlocks];
+    const blocks = filtered.some((b: any) => b?.type === 'component')
+      ? filtered
+      : filtered.sort((a: any, b: any) => (TYPE_ORDER[a.type] || 99) - (TYPE_ORDER[b.type] || 99));
 
     const docSections: any[] = [];
 
+    const getComponentLabel = (kind: string) => {
+      switch (kind) {
+        case 'heading': return 'Heading';
+        case 'phase': return 'Phase / Milestone';
+        case 'twoColumn': return 'Two Columns';
+        case 'table': return 'Table';
+        case 'divider': return 'Divider';
+        case 'spacer': return 'Spacer';
+        case 'paragraph': return 'Paragraph';
+        case 'bullets': return 'Bullet List';
+        case 'scope': return 'Scope of Work';
+        case 'timeline': return 'Timeline & Schedule';
+        case 'deliverable': return 'Deliverable';
+        case 'tasklist': return 'Task List';
+        case 'keyvalue': return 'Highlights';
+        case 'callout': return 'Callout';
+        case 'image': return 'Image';
+        case 'gallery': return 'Gallery';
+        case 'video': return 'Video Embed';
+        case 'pricing': return 'Pricing Table';
+        case 'quote': return 'Testimonial';
+        case 'cta': return 'CTA Button';
+        case 'signature': return 'Signature';
+        default: return kind ? kind.charAt(0).toUpperCase() + kind.slice(1) : 'Component';
+      }
+    };
+
     for (const block of blocks) {
       const data = block.data || {};
+      const props = data.props || {};
 
-      if (block.type !== 'cover') {
+      if (block.type !== 'cover' && block.type !== 'component') {
+        let blockTitle = (data.title || block.type).toUpperCase();
         docSections.push(new Paragraph({
           children: [
             new TextRun({
-              text: (data.title || block.type).toUpperCase(),
+              text: blockTitle,
               bold: true,
               color: '2563EB',
               size: 20,
@@ -213,11 +243,12 @@ export class ProposalExportService {
                     margins: { top: 200, bottom: 200, left: 200, right: 200 },
                     children: [
                       new Paragraph({ children: [new TextRun({ text: "PREPARED BY", bold: true, color: '2563EB', size: 16 })], spacing: { after: 100 } }),
-                      new Paragraph({ children: [new TextRun({ text: data.senderName || '---', bold: true, size: 28 })] }),
+                      new Paragraph({ children: [new TextRun({ text: data.senderName ? (data.senderPosition ? `${data.senderName} (${data.senderPosition})` : data.senderName) : '---', bold: true, size: 28 })] }),
                       new Paragraph({ children: [new TextRun({ text: data.senderCompany || '---', bold: true, color: '64748B' })] }),
                       new Paragraph({ children: [new TextRun({ text: data.senderEmail || '', color: '94A3B8', size: 20 })] }),
                       new Paragraph({ children: [new TextRun({ text: data.senderContact || '', color: '94A3B8', size: 20 })] }),
-                    ]
+                      data.senderWebsite ? new Paragraph({ children: [new TextRun({ text: data.senderWebsite, color: '94A3B8', size: 20 })] }) : null,
+                    ].filter(Boolean) as Paragraph[]
                   }),
                 ]
               })

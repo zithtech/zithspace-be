@@ -73,40 +73,39 @@ export class AIService {
     }
   }
 
-  static async composeProposal(leadData: any) {
+  static async composeProposal(leadData: any, preferences?: any) {
     const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
-    const prompt = `
-      Act as a Professional Solutions Architect. Write a winning project proposal for the following job.
-      
-      Job Title: ${leadData.title}
-      Job Description: ${leadData.summary || leadData.description}
-      Client: ${leadData.client_name}
-      Suggested Total Budget: ${leadData.budget || '$1,000'}
+    const components = preferences?.components || ['cover', 'text', 'scope', 'timeline', 'pricing', 'image', 'gallery', 'video', 'quote', 'callout', 'cta', 'signature'];
+    const customCost = preferences?.cost;
+    const customDuration = preferences?.duration;
 
-      YOUR TASK:
-      Generate a structured JSON of "Proposal Blocks" that auto-fills a proposal builder.
-      Use professional, persuasive, and technically accurate language.
-
-      Return ONLY a STRICT JSON array of blocks:
-      [
-        {
+    const blocksBlueprint: any[] = [];
+    
+    if (components.includes('cover')) {
+      blocksBlueprint.push({
           "id": "cover-auto",
           "type": "cover",
           "data": { 
-            "title": "Proposal for ${leadData.title.replace(/"/g, "'")}", 
-            "clientName": "${leadData.client_name}", 
+            "title": `Proposal for ${leadData.title.replace(/"/g, "'")}`, 
+            "clientName": leadData.client_name, 
             "companyName": "Freelancer Services",
             "projectSummary": "string (Short summary for cover page)",
-            "date": "${new Date().toISOString().split('T')[0]}"
+            "date": new Date().toISOString().split('T')[0]
           }
-        },
-        {
+      });
+    }
+
+    if (components.includes('text')) {
+      blocksBlueprint.push({
           "id": "summary-auto",
           "type": "text",
           "data": { "content": "<h1>Executive Summary</h1><p>Persuasive proposal summary...</p>" }
-        },
-        {
+      });
+    }
+
+    if (components.includes('scope')) {
+      blocksBlueprint.push({
           "id": "scope-auto",
           "type": "scope",
           "data": {
@@ -118,8 +117,11 @@ export class AIService {
               { "id": "t1", "title": "Exclusions", "description": "Materials for print are not included.", "color": "#ef4444" }
             ]
           }
-        },
-        {
+      });
+    }
+
+    if (components.includes('timeline')) {
+      blocksBlueprint.push({
           "id": "timeline-auto",
           "type": "timeline",
           "data": {
@@ -129,8 +131,11 @@ export class AIService {
             ],
             "dependencyNotes": "string (Constraints)"
           }
-        },
-        {
+      });
+    }
+
+    if (components.includes('pricing')) {
+      blocksBlueprint.push({
           "id": "pricing-auto",
           "type": "pricing",
           "data": {
@@ -144,18 +149,131 @@ export class AIService {
             "paymentMethods": "Bank Transfer, Stripe",
             "taxesIncluded": false
           }
-        },
-        {
+      });
+    }
+
+    if (components.includes('image')) {
+      blocksBlueprint.push({
+          "id": "image-auto",
+          "type": "component",
+          "data": {
+            "kind": "image",
+            "title": "Project Context",
+            "props": {
+              "src": "https://placehold.co/600x400/png",
+              "caption": "Project Visualization"
+            }
+          }
+      });
+    }
+
+    if (components.includes('gallery')) {
+      blocksBlueprint.push({
+          "id": "gallery-auto",
+          "type": "component",
+          "data": {
+            "kind": "gallery",
+            "title": "Design Concepts",
+            "props": {
+              "images": [
+                { "src": "https://placehold.co/400x300/png", "caption": "Concept 1" },
+                { "src": "https://placehold.co/400x300/png", "caption": "Concept 2" },
+                { "src": "https://placehold.co/400x300/png", "caption": "Concept 3" }
+              ]
+            }
+          }
+      });
+    }
+
+    if (components.includes('video')) {
+      blocksBlueprint.push({
+          "id": "video-auto",
+          "type": "component",
+          "data": {
+            "kind": "video",
+            "title": "Project Overview Video",
+            "props": {
+              "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+            }
+          }
+      });
+    }
+
+    if (components.includes('quote')) {
+      blocksBlueprint.push({
+          "id": "quote-auto",
+          "type": "component",
+          "data": {
+            "kind": "quote",
+            "title": "Client Testimonial",
+            "props": {
+              "text": "They delivered exactly what we needed, ahead of schedule.",
+              "author": "Previous Client"
+            }
+          }
+      });
+    }
+
+    if (components.includes('callout')) {
+      blocksBlueprint.push({
+          "id": "callout-auto",
+          "type": "component",
+          "data": {
+            "kind": "callout",
+            "title": "Important Note",
+            "props": {
+              "title": "Key Dependency",
+              "text": "This timeline assumes access to the existing codebase by Day 1.",
+              "variant": "info"
+            }
+          }
+      });
+    }
+
+    if (components.includes('cta')) {
+      blocksBlueprint.push({
+          "id": "cta-auto",
+          "type": "component",
+          "data": {
+            "kind": "cta",
+            "title": "Next Steps",
+            "props": {
+              "label": "Approve Proposal",
+              "url": "#"
+            }
+          }
+      });
+    }
+
+    if (components.includes('signature')) {
+      blocksBlueprint.push({
           "id": "sig-auto",
           "type": "signature",
           "data": { 
             "title": "Terms and Conditions",
             "companyName": "Freelancer Services",
-            "clientName": "${leadData.client_name}",
+            "clientName": leadData.client_name,
             "companySigner": "Freelancer Name"
           }
-        }
-      ]
+      });
+    }
+
+    const prompt = `
+      Act as a Professional Solutions Architect. Write a winning project proposal for the following job.
+      
+      Job Title: ${leadData.title}
+      Job Description: ${leadData.summary || leadData.description}
+      Client: ${leadData.client_name}
+      Suggested Total Budget: ${leadData.budget || '$1,000'}
+
+      YOUR TASK:
+      Generate a structured JSON of "Proposal Blocks" that auto-fills a proposal builder.
+      Use professional, persuasive, and technically accurate language.
+      ${customCost ? `\nCRITICAL CONSTRAINTS:\n- Ensure the total cost in the pricing block accurately reflects: ${customCost}` : ''}
+      ${customDuration ? `\n- Ensure the timeline milestones fit within the total duration of: ${customDuration}` : ''}
+
+      Return ONLY a STRICT JSON array of blocks exactly matching the structure below:
+      ${JSON.stringify(blocksBlueprint, null, 2)}
     `;
 
     try {

@@ -35,6 +35,12 @@ const generalAuthRateLimit = rateLimit({
 // Login route - requires tenant context
 router.post("/login", authRateLimit, resolveTenant, AuthController.login);
 
+// Google login route - requires tenant context
+router.post("/google-login", authRateLimit, resolveTenant, AuthController.googleLogin);
+
+// Microsoft login route - requires tenant context
+router.post("/microsoft-login", authRateLimit, resolveTenant, AuthController.microsoftLogin);
+
 // Refresh token route - uses optional tenant context from token
 router.post("/refresh", authRateLimit, optionalAuth, AuthController.refresh);
 

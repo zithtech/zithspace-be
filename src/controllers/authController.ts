@@ -1,5 +1,6 @@
 import { Response } from "express";
 import bcrypt from "bcryptjs";
+import axios from "axios";
 import { tenantAwarePrisma } from "@/config/database";
 import { JWTUtils } from "@/utils/jwt";
 import {
@@ -709,6 +710,394 @@ export class AuthController {
       res.status(500).json({
         success: false,
         error: "Failed to get profile",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Google User login with tenant context
+   */
+  static async googleLogin(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const { token } = req.body;
+
+      if (!token) {
+        res.status(400).json({
+          success: false,
+          error: "Google access token is required",
+        } as ApiResponse);
+        return;
+      }
+
+      // Ensure we have tenant context for login
+      if (!req.tenantId || !req.tenant) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context is required for login",
+        } as ApiResponse);
+        return;
+      }
+
+      // Fetch user info from Google using access token
+      let googleUser;
+      try {
+        const response = await axios.get("https://www.googleapis.com/oauth2/v3/userinfo", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        googleUser = response.data;
+      } catch (err) {
+        console.error("Failed to verify Google access token:", err);
+        res.status(400).json({
+          success: false,
+          error: "Invalid Google token",
+        } as ApiResponse);
+        return;
+      }
+
+      if (!googleUser || !googleUser.email) {
+        res.status(400).json({
+          success: false,
+          error: "Failed to retrieve email from Google",
+        } as ApiResponse);
+        return;
+      }
+
+      const email = googleUser.email.toLowerCase().trim();
+
+      // Find user by email within the tenant
+      const user = await tenantAwarePrisma.withTenant(
+        req.tenantId,
+        async (client) => {
+          return await client.user.findFirst({
+            where: {
+              OR: [
+                { workEmail: email },
+                { personalEmail: email },
+              ],
+              tenantId: req.tenantId,
+              isActive: true,
+            },
+            include: {
+              tenant: true,
+              employee: true,
+              position: {
+                select: {
+                  id: true,
+                  title: true,
+                  code: true,
+                },
+              },
+            },
+          });
+        },
+      );
+
+      if (!user) {
+        res.status(401).json({
+          success: false,
+          error: "No account found matching this email in this tenant",
+        } as ApiResponse);
+        return;
+      }
+
+      // Check if tenant is active
+      if (!user.tenant.isActive) {
+        res.status(403).json({
+          success: false,
+          error: "Account suspended",
+        } as ApiResponse);
+        return;
+      }
+
+      // Create auth user object for token generation
+      const authUser = {
+        id: user.id,
+        tenantId: user.tenantId,
+        email: user.workEmail,
+        role: user.role as any,
+        position: user.position?.title || null,
+        name: user.name,
+      };
+
+      // Generate token pair
+      const { accessToken, refreshToken } =
+        JWTUtils.generateTokenPair(authUser);
+
+      // Store refresh token in database
+      await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+        await client.refreshToken.create({
+          data: {
+            token: refreshToken,
+            userId: user.id,
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+          },
+        });
+      });
+
+      // Set refresh token cookie
+      res.cookie("refreshToken", refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        path: "/", // Ensure cookie is available for all paths
+      });
+
+      // Load permissions
+      const permSet = await RBACService.getUserPermissions(
+        user.id,
+        user.tenantId,
+        user.role
+      );
+
+      // Return user data and access token
+      const loginResponse: LoginResponse = {
+        success: true,
+        accessToken,
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.workEmail,
+          workEmail: user.workEmail,
+          personalEmail: user.personalEmail,
+          role: user.role as any,
+          position: user.position ? { id: user.position.id, title: user.position.title } : null as any,
+          tenantId: user.tenantId,
+          tenantName: user.tenant.name,
+          tenantLogo: (user.tenant.settings as any)?.logoUrl || null,
+          avatarUrl: user.avatarUrl,
+          isActive: user.isActive,
+          permissions: Array.from(permSet),
+        },
+        message: "Login successful",
+      };
+
+      // Populate req.user temporarily for transaction history logging
+      req.user = {
+        id: user.id,
+        email: user.workEmail,
+        name: user.name,
+        tenantId: user.tenantId,
+        role: user.role as any,
+        position: user.position?.title || null,
+      };
+
+      recordTransaction({
+        req,
+        section: Section.ADMIN,
+        module: Module.AUTH,
+        page: Page.LOGIN,
+        action: Action.LOGIN,
+        actionLabel: `User ${user.name || user.workEmail} logged in with Google SSO`,
+        entityType: EntityType.SESSION,
+        entityId: user.id,
+        entityLabel: user.workEmail,
+        metadata: {
+          ip: req.ip ?? req.socket?.remoteAddress ?? null,
+          userAgent: req.headers["user-agent"] ?? null,
+        },
+      });
+
+      res.status(200).json(loginResponse);
+    } catch (error) {
+      console.error("Google login error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Google login failed",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Microsoft User login with tenant context
+   */
+  static async microsoftLogin(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const { token } = req.body;
+
+      if (!token) {
+        res.status(400).json({
+          success: false,
+          error: "Microsoft access token is required",
+        } as ApiResponse);
+        return;
+      }
+
+      // Ensure we have tenant context for login
+      if (!req.tenantId || !req.tenant) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context is required for login",
+        } as ApiResponse);
+        return;
+      }
+
+      // Fetch user info from Microsoft using access token
+      let msUser;
+      try {
+        const response = await axios.get("https://graph.microsoft.com/v1.0/me", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        msUser = response.data;
+      } catch (err) {
+        console.error("Failed to verify Microsoft access token:", err);
+        res.status(400).json({
+          success: false,
+          error: "Invalid Microsoft token",
+        } as ApiResponse);
+        return;
+      }
+
+      if (!msUser || !(msUser.mail || msUser.userPrincipalName)) {
+        res.status(400).json({
+          success: false,
+          error: "Failed to retrieve email from Microsoft",
+        } as ApiResponse);
+        return;
+      }
+
+      const email = (msUser.mail || msUser.userPrincipalName).toLowerCase().trim();
+
+      // Find user by email within the tenant
+      const user = await tenantAwarePrisma.withTenant(
+        req.tenantId,
+        async (client) => {
+          return await client.user.findFirst({
+            where: {
+              OR: [
+                { workEmail: email },
+                { personalEmail: email },
+              ],
+              tenantId: req.tenantId,
+              isActive: true,
+            },
+            include: {
+              tenant: true,
+              employee: true,
+              position: {
+                select: {
+                  id: true,
+                  title: true,
+                  code: true,
+                },
+              },
+            },
+          });
+        },
+      );
+
+      if (!user) {
+        res.status(401).json({
+          success: false,
+          error: "No account found matching this email in this tenant",
+        } as ApiResponse);
+        return;
+      }
+
+      // Check if tenant is active
+      if (!user.tenant.isActive) {
+        res.status(403).json({
+          success: false,
+          error: "Account suspended",
+        } as ApiResponse);
+        return;
+      }
+
+      // Create auth user object for token generation
+      const authUser = {
+        id: user.id,
+        tenantId: user.tenantId,
+        email: user.workEmail,
+        role: user.role as any,
+        position: user.position?.title || null,
+        name: user.name,
+      };
+
+      // Generate token pair
+      const { accessToken, refreshToken } =
+        JWTUtils.generateTokenPair(authUser);
+
+      // Store refresh token in database
+      await tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+        await client.refreshToken.create({
+          data: {
+            token: refreshToken,
+            userId: user.id,
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+          },
+        });
+      });
+
+      // Set refresh token cookie
+      res.cookie("refreshToken", refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        path: "/", // Ensure cookie is available for all paths
+      });
+
+      // Load permissions
+      const permSet = await RBACService.getUserPermissions(
+        user.id,
+        user.tenantId,
+        user.role
+      );
+
+      // Return user data and access token
+      const loginResponse: LoginResponse = {
+        success: true,
+        accessToken,
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.workEmail,
+          workEmail: user.workEmail,
+          personalEmail: user.personalEmail,
+          role: user.role as any,
+          position: user.position ? { id: user.position.id, title: user.position.title } : null as any,
+          tenantId: user.tenantId,
+          tenantName: user.tenant.name,
+          tenantLogo: (user.tenant.settings as any)?.logoUrl || null,
+          avatarUrl: user.avatarUrl,
+          isActive: user.isActive,
+          permissions: Array.from(permSet),
+        },
+        message: "Login successful",
+      };
+
+      // Populate req.user temporarily for transaction history logging
+      req.user = {
+        id: user.id,
+        email: user.workEmail,
+        name: user.name,
+        tenantId: user.tenantId,
+        role: user.role as any,
+        position: user.position?.title || null,
+      };
+
+      recordTransaction({
+        req,
+        section: Section.ADMIN,
+        module: Module.AUTH,
+        page: Page.LOGIN,
+        action: Action.LOGIN,
+        actionLabel: `User ${user.name || user.workEmail} logged in with Microsoft SSO`,
+        entityType: EntityType.SESSION,
+        entityId: user.id,
+        entityLabel: user.workEmail,
+        metadata: {
+          ip: req.ip ?? req.socket?.remoteAddress ?? null,
+          userAgent: req.headers["user-agent"] ?? null,
+        },
+      });
+
+      res.status(200).json(loginResponse);
+    } catch (error) {
+      console.error("Microsoft login error:", error);
+      res.status(500).json({
+        success: false,
+        error: "Microsoft login failed",
       } as ApiResponse);
     }
   }
