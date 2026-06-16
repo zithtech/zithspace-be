@@ -12,6 +12,7 @@ import {
   CreateUserData,
 } from "@/types";
 import { RBACService } from "@/modules/rbac/rbac.service";
+import { AccessService } from "@/services/access/AccessService";
 import { recordTransaction, Section, Module, Page, Action, EntityType } from "../utils/transactionHistory";
 
 export class AuthController {
@@ -437,6 +438,9 @@ export class AuthController {
         user.role
       );
 
+      // Resolve the tenant's plan-based access (modules/functionalities the plan includes).
+      const planAccess = await AccessService.getTenantPlanAccess(user.tenantId, user.role);
+
       res.status(200).json({
         success: true,
         data: {
@@ -454,7 +458,7 @@ export class AuthController {
           isActive: user.isActive,
           reportsTo: user.reportsTo,
           employeeId: user.employeeId,
-          employee: user.employee || {}, 
+          employee: user.employee || {},
           tenant: {
             id: user.tenant.id,
             name: user.tenant.name,
@@ -464,6 +468,12 @@ export class AuthController {
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
           permissions: Array.from(permSet),
+          planAccess: {
+            full: planAccess.full,
+            resources: planAccess.resources,
+            permissions: planAccess.permissions,
+            credits: planAccess.credits,
+          },
         },
       } as ApiResponse);
     } catch (error) {
