@@ -214,18 +214,25 @@ class CalendarController {
             // Establish row-level isolation context
             await database_1.tenantAwarePrisma.setTenantContext(tenantId);
             const mailAccount = await UnifiedAuthService_1.UnifiedAuthService.handleCallback(provider.toUpperCase(), code, state, userId, tenantId);
-            // Sync BOTH Calendar and Mail immediately after connection (Triggered via RabbitMQ)
+            // Sync Calendar immediately after connection.
+            // Strategy: Fire a direct full syncEvents() in background FIRST (guaranteed, no RabbitMQ dependency),
+            // then ALSO enqueue via RabbitMQ for resilience.
+            // This mirrors CalendarController.syncEvents which always does both.
             const integration = await database_1.prisma.calendarIntegration.findFirst({
                 where: { userId, provider: provider.toUpperCase() }
             });
             if (integration) {
-                await CalendarSyncProducer_1.CalendarSyncProducer.enqueueSync({
+                // DIRECT background sync — fires immediately, no queue dependency.
+                // Uses full /events API (not delta) so all fields (subject, etc.) are always present.
+                CalendarService_1.CalendarService.syncEvents(integration.userId, integration.tenantId, integration.provider).catch(err => console.error("[CalendarController] Direct initial syncEvents failed:", err.message));
+                // ALSO enqueue via RabbitMQ for incremental sync setup (deltaLink initialization)
+                CalendarSyncProducer_1.CalendarSyncProducer.enqueueSync({
                     integrationId: integration.id,
                     userId: integration.userId,
                     tenantId: integration.tenantId,
                     provider: integration.provider,
                     forceSync: true
-                }).catch(err => console.error("Initial calendar enqueue failed:", err));
+                }).catch(err => console.warn("[CalendarController] RabbitMQ enqueue failed (direct sync already running):", err.message));
             }
             if (mailAccount && mailAccount.email) {
                 await MailSyncProducer_1.MailSyncProducer.enqueueSync({
@@ -316,6 +323,7 @@ class CalendarController {
             const integrations = await database_1.prisma.calendarIntegration.findMany({
                 where: {
                     userId: req.user.id,
+                    tenantId: req.user.tenantId,
                 },
                 select: {
                     provider: true,
@@ -497,12 +505,13 @@ class CalendarController {
             }
             const { id } = req.params;
             const eventData = req.body;
+            const tenantId = req.user.tenantId;
             const { action, occurrenceDate, ...restEventData } = eventData;
             const parsedAction = action !== undefined ? parseInt(action) : undefined;
             console.log(`[ZohoProvider] updateEvent called. action=${action}, type=${typeof action}, action===2: ${action === 2}`);
-            // 1. Try finding the literal record (works for masters OR forked exceptions)
-            let existingEvent = await database_1.prisma.calendarEvent.findUnique({
-                where: { id },
+            // 1. Try finding the literal record scoped to this user AND tenant (prevents cross-tenant access)
+            let existingEvent = await database_1.prisma.calendarEvent.findFirst({
+                where: { id, userId: req.user.id, tenantId },
             });
             let optimisticSuffix = "";
             let lookupId = id;
@@ -510,11 +519,11 @@ class CalendarController {
             if (!existingEvent && id.includes('_occ_')) {
                 lookupId = id.split('_occ_')[0];
                 optimisticSuffix = "_occ_" + id.split('_occ_')[1];
-                existingEvent = await database_1.prisma.calendarEvent.findUnique({
-                    where: { id: lookupId },
+                existingEvent = await database_1.prisma.calendarEvent.findFirst({
+                    where: { id: lookupId, userId: req.user.id, tenantId },
                 });
             }
-            if (!existingEvent || existingEvent.userId !== req.user.id) {
+            if (!existingEvent) {
                 res.status(404).json({ success: false, error: "Event not found" });
                 return;
             }
@@ -548,10 +557,11 @@ class CalendarController {
             const { id } = req.params;
             const { action, occurrenceDate } = req.query;
             const parsedAction = action !== undefined ? parseInt(action) : undefined;
+            const tenantId = req.user.tenantId;
             console.log(`[CalendarController] Delete request - action: ${action}, parsedAction: ${parsedAction}, occurrenceDate: ${occurrenceDate}`);
-            // 1. Try finding the literal record
-            let existingEvent = await database_1.prisma.calendarEvent.findUnique({
-                where: { id },
+            // 1. Try finding the literal record scoped to this user AND tenant (prevents cross-tenant access)
+            let existingEvent = await database_1.prisma.calendarEvent.findFirst({
+                where: { id, userId: req.user.id, tenantId },
             });
             let lookupId = id;
             let optimisticSuffix = "";
@@ -559,11 +569,11 @@ class CalendarController {
             if (!existingEvent && id.includes('_occ_')) {
                 lookupId = id.split('_occ_')[0];
                 optimisticSuffix = "_occ_" + id.split('_occ_')[1];
-                existingEvent = await database_1.prisma.calendarEvent.findUnique({
-                    where: { id: lookupId },
+                existingEvent = await database_1.prisma.calendarEvent.findFirst({
+                    where: { id: lookupId, userId: req.user.id, tenantId },
                 });
             }
-            if (!existingEvent || existingEvent.userId !== req.user.id) {
+            if (!existingEvent) {
                 res.status(404).json({ success: false, error: "Event not found" });
                 return;
             }
@@ -598,7 +608,8 @@ class CalendarController {
                 return;
             }
             const { provider } = req.body;
-            const query = { userId: req.user.id };
+            // Always scope by BOTH userId and tenantId to prevent cross-tenant sync triggers
+            const query = { userId: req.user.id, tenantId: req.user.tenantId };
             if (provider) {
                 query.provider = provider.toUpperCase();
             }
