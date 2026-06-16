@@ -367,7 +367,8 @@ export class ProposalController {
         return;
       }
 
-      const blocks = await AIService.composeProposal(lead);
+      const preferences = req.body;
+      const blocks = await AIService.composeProposal(lead, preferences);
 
       res.status(200).json({
         success: true,

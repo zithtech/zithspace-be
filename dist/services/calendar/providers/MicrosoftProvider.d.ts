@@ -1,6 +1,6 @@
 import { ICalendarProvider, CalendarEventData, ProviderAuthResult, ProviderTokenResult, IncrementalSyncResult } from "../ICalendarProvider";
 export declare class MicrosoftProvider implements ICalendarProvider {
-    getAuthUrl(userId: string): string;
+    getAuthUrl(state: string): string;
     handleCallback(code: string, state: string): Promise<ProviderAuthResult>;
     private getCalendarBaseUrl;
     getEvents(accessToken: string, calendarId?: string, startDate?: Date, endDate?: Date): Promise<any[]>;

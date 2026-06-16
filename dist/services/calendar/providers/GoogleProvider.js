@@ -12,7 +12,7 @@ const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_CALENDAR_API = "https://www.googleapis.com/calendar/v3";
 class GoogleProvider {
-    getAuthUrl(userId) {
+    getAuthUrl(state) {
         const params = new URLSearchParams({
             client_id: GOOGLE_CLIENT_ID,
             redirect_uri: GOOGLE_REDIRECT_URI,
@@ -20,7 +20,7 @@ class GoogleProvider {
             scope: "https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events",
             access_type: "offline",
             prompt: "consent",
-            state: userId,
+            state: state,
         });
         return `${GOOGLE_AUTH_URL}?${params.toString()}`;
     }

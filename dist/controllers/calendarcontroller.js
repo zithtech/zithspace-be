@@ -1,4 +1,7 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CalendarController = void 0;
 const database_1 = require("@/config/database");
@@ -7,7 +10,32 @@ const UnifiedAuthService_1 = require("@/services/UnifiedAuthService");
 const CalendarSyncProducer_1 = require("../services/calendar/CalendarSyncProducer");
 const MailSyncProducer_1 = require("../services/mail/MailSyncProducer");
 const pushNotificationService_1 = require("@/services/pushNotificationService");
+const crypto_1 = __importDefault(require("crypto"));
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
+function getAbsoluteReturnUrl(inputUrl, frontendUrl, subdomain) {
+    let target = inputUrl || "/calendar";
+    if (target.startsWith("http://") || target.startsWith("https://")) {
+        return target;
+    }
+    try {
+        const urlObj = new URL(frontendUrl);
+        if (subdomain) {
+            if (urlObj.hostname === "localhost" || urlObj.hostname === "127.0.0.1") {
+                urlObj.hostname = `${subdomain}.localhost`;
+            }
+            else {
+                urlObj.hostname = `${subdomain}.${urlObj.hostname}`;
+            }
+        }
+        // Ensure path starts with slash
+        const path = target.startsWith("/") ? target : `/${target}`;
+        urlObj.pathname = path;
+        return urlObj.toString();
+    }
+    catch {
+        return `${frontendUrl}/calendar`;
+    }
+}
 class CalendarController {
     /**
      * GET /api/calendar/:provider/status
@@ -50,11 +78,12 @@ class CalendarController {
         }
     }
     /**
- * GET /api/calendar/:provider/connect
- * Initiates the OAuth flow for a provider.
- */
+  * GET /api/calendar/:provider/connect
+  * Initiates the OAuth flow for a provider.
+  */
     static async connect(req, res) {
         const { provider } = req.params;
+        const { returnUrl } = req.query;
         try {
             if (!req.user) {
                 res.status(401).json({ success: false, error: "Authentication required" });
@@ -68,7 +97,17 @@ class CalendarController {
             await database_1.prisma.calendarEvent.deleteMany({
                 where: { userId: req.user.id }
             });
-            const authUrl = UnifiedAuthService_1.UnifiedAuthService.getAuthUrl(provider.toUpperCase(), req.user.id);
+            // Encode and sign the multi-tenant state parameter
+            const targetReturnUrl = getAbsoluteReturnUrl(returnUrl, FRONTEND_URL, req.tenant?.subdomain);
+            const statePayload = JSON.stringify({
+                tenantId: req.tenantId || req.user.tenantId,
+                userId: req.user.id,
+                returnUrl: targetReturnUrl
+            });
+            const secret = process.env.JWT_SECRET || "your-secret-key-change-in-production";
+            const signature = crypto_1.default.createHmac("sha256", secret).update(statePayload).digest("hex");
+            const state = Buffer.from(JSON.stringify({ payload: statePayload, signature })).toString("base64url");
+            const authUrl = UnifiedAuthService_1.UnifiedAuthService.getAuthUrl(provider.toUpperCase(), state);
             res.status(200).json({
                 success: true,
                 data: { authUrl },
@@ -87,48 +126,149 @@ class CalendarController {
      * Handles the OAuth callback from a provider.
      */
     static async callback(req, res) {
+        let returnUrl = `${FRONTEND_URL}/calendar`;
         try {
             const { provider } = req.params;
             const { code, state, error: oauthError } = req.query;
+            // Try to extract returnUrl from state as early as possible to handle error redirects correctly
+            if (state) {
+                try {
+                    const decodedStateStr = Buffer.from(state, "base64url").toString("utf8");
+                    const decodedState = JSON.parse(decodedStateStr);
+                    if (decodedState.payload) {
+                        const payloadObj = JSON.parse(decodedState.payload);
+                        returnUrl = payloadObj.returnUrl || returnUrl;
+                    }
+                    else if (decodedState.returnUrl) {
+                        returnUrl = decodedState.returnUrl;
+                    }
+                }
+                catch (e) {
+                    console.warn("[CalendarController] Early state decode failed:", e.message);
+                }
+            }
             if (oauthError) {
                 console.error(`${provider} OAuth error:`, oauthError);
-                return res.redirect(`${FRONTEND_URL}/calendar?error=${provider}_denied`);
+                let errorRedirectUrl;
+                try {
+                    const urlObj = new URL(returnUrl);
+                    urlObj.searchParams.set("error", `${provider}_denied`);
+                    errorRedirectUrl = urlObj.toString();
+                }
+                catch {
+                    const connector = returnUrl.includes("?") ? "&" : "?";
+                    errorRedirectUrl = `${returnUrl}${connector}error=${provider}_denied`;
+                }
+                return res.redirect(errorRedirectUrl);
             }
             if (!code || !state) {
-                return res.redirect(`${FRONTEND_URL}/calendar?error=missing_params`);
+                let errorRedirectUrl;
+                try {
+                    const urlObj = new URL(returnUrl);
+                    urlObj.searchParams.set("error", "missing_params");
+                    errorRedirectUrl = urlObj.toString();
+                }
+                catch {
+                    const connector = returnUrl.includes("?") ? "&" : "?";
+                    errorRedirectUrl = `${returnUrl}${connector}error=missing_params`;
+                }
+                return res.redirect(errorRedirectUrl);
             }
-            // In our implementation, state is the userId
-            const userId = state;
-            // For now, we assume userId is sufficient to find the tenant or we'd need a more complex state
-            const user = await database_1.prisma.user.findUnique({ where: { id: userId } });
-            if (!user)
-                throw new Error("User not found");
-            const mailAccount = await UnifiedAuthService_1.UnifiedAuthService.handleCallback(provider.toUpperCase(), code, state, userId, user.tenantId);
-            // Sync BOTH Calendar and Mail immediately after connection (Triggered via RabbitMQ)
+            // Decode state parameter
+            let tenantId = "";
+            let userId = "";
+            try {
+                const decodedStateStr = Buffer.from(state, "base64url").toString("utf8");
+                const decodedState = JSON.parse(decodedStateStr);
+                if (decodedState.payload && decodedState.signature) {
+                    // Signed multi-tenant state
+                    const secret = process.env.JWT_SECRET || "your-secret-key-change-in-production";
+                    const expectedSignature = crypto_1.default.createHmac("sha256", secret).update(decodedState.payload).digest("hex");
+                    if (decodedState.signature !== expectedSignature) {
+                        throw new Error("Invalid state signature (tampered payload or CSRF attempt)");
+                    }
+                    const payloadObj = JSON.parse(decodedState.payload);
+                    tenantId = payloadObj.tenantId;
+                    userId = payloadObj.userId;
+                    returnUrl = payloadObj.returnUrl;
+                }
+                else if (decodedState.userId && decodedState.tenantId) {
+                    // Unsigned JSON state fallback
+                    tenantId = decodedState.tenantId;
+                    userId = decodedState.userId;
+                    returnUrl = decodedState.returnUrl || returnUrl;
+                }
+                else {
+                    throw new Error("Unknown state payload structure");
+                }
+            }
+            catch (err) {
+                console.warn("[CalendarController] State decode failed, trying fallback to legacy state (plain userId):", err.message);
+                // Fallback to legacy state (plain userId)
+                userId = state;
+                const user = await database_1.prisma.user.findUnique({ where: { id: userId } });
+                if (!user)
+                    throw new Error(`User not found and state parsing failed: ${err.message}`);
+                tenantId = user.tenantId;
+            }
+            // Establish row-level isolation context
+            await database_1.tenantAwarePrisma.setTenantContext(tenantId);
+            const mailAccount = await UnifiedAuthService_1.UnifiedAuthService.handleCallback(provider.toUpperCase(), code, state, userId, tenantId);
+            // Sync Calendar immediately after connection.
+            // Strategy: Fire a direct full syncEvents() in background FIRST (guaranteed, no RabbitMQ dependency),
+            // then ALSO enqueue via RabbitMQ for resilience.
+            // This mirrors CalendarController.syncEvents which always does both.
             const integration = await database_1.prisma.calendarIntegration.findFirst({
                 where: { userId, provider: provider.toUpperCase() }
             });
             if (integration) {
-                await CalendarSyncProducer_1.CalendarSyncProducer.enqueueSync({
+                // DIRECT background sync — fires immediately, no queue dependency.
+                // Uses full /events API (not delta) so all fields (subject, etc.) are always present.
+                CalendarService_1.CalendarService.syncEvents(integration.userId, integration.tenantId, integration.provider).catch(err => console.error("[CalendarController] Direct initial syncEvents failed:", err.message));
+                // ALSO enqueue via RabbitMQ for incremental sync setup (deltaLink initialization)
+                CalendarSyncProducer_1.CalendarSyncProducer.enqueueSync({
                     integrationId: integration.id,
                     userId: integration.userId,
                     tenantId: integration.tenantId,
                     provider: integration.provider,
                     forceSync: true
-                }).catch(err => console.error("Initial calendar enqueue failed:", err));
+                }).catch(err => console.warn("[CalendarController] RabbitMQ enqueue failed (direct sync already running):", err.message));
             }
             if (mailAccount && mailAccount.email) {
                 await MailSyncProducer_1.MailSyncProducer.enqueueSync({
                     userId,
-                    tenantId: user.tenantId,
+                    tenantId: tenantId,
                     email: mailAccount.email
                 }).catch(err => console.error("Initial mail enqueue failed:", err));
             }
-            res.redirect(`${FRONTEND_URL}/calendar?connected=true&provider=${provider}`);
+            // Safely redirect back to returnUrl with connection status parameters
+            let redirectUrl;
+            try {
+                const urlObj = new URL(returnUrl);
+                urlObj.searchParams.set("connected", "true");
+                urlObj.searchParams.set("provider", provider);
+                redirectUrl = urlObj.toString();
+            }
+            catch {
+                const connector = returnUrl.includes("?") ? "&" : "?";
+                redirectUrl = `${returnUrl}${connector}connected=true&provider=${provider}`;
+            }
+            res.redirect(redirectUrl);
         }
         catch (error) {
             console.error("Calendar callback error:", error);
-            res.redirect(`${FRONTEND_URL}/calendar?error=callback_failed`);
+            // Safely redirect back with error status parameters
+            let errorRedirectUrl;
+            try {
+                const urlObj = new URL(returnUrl);
+                urlObj.searchParams.set("error", "callback_failed");
+                errorRedirectUrl = urlObj.toString();
+            }
+            catch {
+                const connector = returnUrl.includes("?") ? "&" : "?";
+                errorRedirectUrl = `${returnUrl}${connector}error=callback_failed`;
+            }
+            res.redirect(errorRedirectUrl);
         }
     }
     /**
@@ -183,6 +323,7 @@ class CalendarController {
             const integrations = await database_1.prisma.calendarIntegration.findMany({
                 where: {
                     userId: req.user.id,
+                    tenantId: req.user.tenantId,
                 },
                 select: {
                     provider: true,
@@ -364,12 +505,13 @@ class CalendarController {
             }
             const { id } = req.params;
             const eventData = req.body;
+            const tenantId = req.user.tenantId;
             const { action, occurrenceDate, ...restEventData } = eventData;
             const parsedAction = action !== undefined ? parseInt(action) : undefined;
             console.log(`[ZohoProvider] updateEvent called. action=${action}, type=${typeof action}, action===2: ${action === 2}`);
-            // 1. Try finding the literal record (works for masters OR forked exceptions)
-            let existingEvent = await database_1.prisma.calendarEvent.findUnique({
-                where: { id },
+            // 1. Try finding the literal record scoped to this user AND tenant (prevents cross-tenant access)
+            let existingEvent = await database_1.prisma.calendarEvent.findFirst({
+                where: { id, userId: req.user.id, tenantId },
             });
             let optimisticSuffix = "";
             let lookupId = id;
@@ -377,11 +519,11 @@ class CalendarController {
             if (!existingEvent && id.includes('_occ_')) {
                 lookupId = id.split('_occ_')[0];
                 optimisticSuffix = "_occ_" + id.split('_occ_')[1];
-                existingEvent = await database_1.prisma.calendarEvent.findUnique({
-                    where: { id: lookupId },
+                existingEvent = await database_1.prisma.calendarEvent.findFirst({
+                    where: { id: lookupId, userId: req.user.id, tenantId },
                 });
             }
-            if (!existingEvent || existingEvent.userId !== req.user.id) {
+            if (!existingEvent) {
                 res.status(404).json({ success: false, error: "Event not found" });
                 return;
             }
@@ -415,10 +557,11 @@ class CalendarController {
             const { id } = req.params;
             const { action, occurrenceDate } = req.query;
             const parsedAction = action !== undefined ? parseInt(action) : undefined;
+            const tenantId = req.user.tenantId;
             console.log(`[CalendarController] Delete request - action: ${action}, parsedAction: ${parsedAction}, occurrenceDate: ${occurrenceDate}`);
-            // 1. Try finding the literal record
-            let existingEvent = await database_1.prisma.calendarEvent.findUnique({
-                where: { id },
+            // 1. Try finding the literal record scoped to this user AND tenant (prevents cross-tenant access)
+            let existingEvent = await database_1.prisma.calendarEvent.findFirst({
+                where: { id, userId: req.user.id, tenantId },
             });
             let lookupId = id;
             let optimisticSuffix = "";
@@ -426,11 +569,11 @@ class CalendarController {
             if (!existingEvent && id.includes('_occ_')) {
                 lookupId = id.split('_occ_')[0];
                 optimisticSuffix = "_occ_" + id.split('_occ_')[1];
-                existingEvent = await database_1.prisma.calendarEvent.findUnique({
-                    where: { id: lookupId },
+                existingEvent = await database_1.prisma.calendarEvent.findFirst({
+                    where: { id: lookupId, userId: req.user.id, tenantId },
                 });
             }
-            if (!existingEvent || existingEvent.userId !== req.user.id) {
+            if (!existingEvent) {
                 res.status(404).json({ success: false, error: "Event not found" });
                 return;
             }
@@ -465,7 +608,8 @@ class CalendarController {
                 return;
             }
             const { provider } = req.body;
-            const query = { userId: req.user.id };
+            // Always scope by BOTH userId and tenantId to prevent cross-tenant sync triggers
+            const query = { userId: req.user.id, tenantId: req.user.tenantId };
             if (provider) {
                 query.provider = provider.toUpperCase();
             }

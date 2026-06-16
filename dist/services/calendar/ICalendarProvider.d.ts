@@ -30,7 +30,7 @@ export interface IncrementalSyncResult {
     hasMore: boolean;
 }
 export interface ICalendarProvider {
-    getAuthUrl(userId: string): string;
+    getAuthUrl(state: string): string;
     handleCallback(code: string, state: string): Promise<ProviderAuthResult>;
     getEvents(accessToken: string, calendarId?: string, startDate?: Date, endDate?: Date): Promise<any[]>;
     getIncrementalChanges(accessToken: string, calendarId: string, token?: string): Promise<IncrementalSyncResult>;

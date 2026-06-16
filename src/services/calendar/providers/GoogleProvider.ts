@@ -9,7 +9,7 @@ const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_CALENDAR_API = "https://www.googleapis.com/calendar/v3";
 
 export class GoogleProvider implements ICalendarProvider {
-    getAuthUrl(userId: string): string {
+    getAuthUrl(state: string): string {
         const params = new URLSearchParams({
             client_id: GOOGLE_CLIENT_ID,
             redirect_uri: GOOGLE_REDIRECT_URI,
@@ -17,7 +17,7 @@ export class GoogleProvider implements ICalendarProvider {
             scope: "https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events",
             access_type: "offline",
             prompt: "consent",
-            state: userId,
+            state: state,
         });
         return `${GOOGLE_AUTH_URL}?${params.toString()}`;
     }

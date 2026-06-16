@@ -12,14 +12,14 @@ const MS_AUTH_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/author
 const MS_TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
 const MS_GRAPH_API = "https://graph.microsoft.com/v1.0";
 class MicrosoftProvider {
-    getAuthUrl(userId) {
+    getAuthUrl(state) {
         const params = new URLSearchParams({
             client_id: MICROSOFT_CLIENT_ID,
             response_type: "code",
             redirect_uri: MICROSOFT_REDIRECT_URI,
             response_mode: "query",
             scope: "offline_access Calendars.ReadWrite User.Read OnlineMeetings.ReadWrite",
-            state: userId,
+            state: state,
             prompt: "consent",
         });
         return `${MS_AUTH_URL}?${params.toString()}`;
