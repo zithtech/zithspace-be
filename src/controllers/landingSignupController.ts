@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import bcrypt from "bcryptjs";
+import axios from "axios";
 import { JWTUtils } from "@/utils/jwt";
 import { EmailService } from "@/utils/emailService";
 import pool from "@/config/dbpool";
@@ -307,6 +308,248 @@ export class LandingSignupController {
       });
     } catch (error) {
       console.error("Complete registration error:", error);
+      res.status(500).json({ success: false, error: "Something went wrong. Please try again." });
+    }
+  }
+
+  static async googleSignup(req: Request, res: Response): Promise<void> {
+    try {
+      const { token, type, companyName, planConfig } = req.body;
+
+      if (!token) {
+        res.status(400).json({ success: false, error: "Google access token is required" });
+        return;
+      }
+
+      let googleUser;
+      try {
+        const response = await axios.get("https://www.googleapis.com/oauth2/v3/userinfo", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        googleUser = response.data;
+      } catch (err) {
+        console.error("Failed to verify Google access token:", err);
+        res.status(400).json({ success: false, error: "Invalid Google token" });
+        return;
+      }
+
+      if (!googleUser || !googleUser.email) {
+        res.status(400).json({ success: false, error: "Failed to retrieve email from Google" });
+        return;
+      }
+
+      const email = googleUser.email.toLowerCase().trim();
+      const name = googleUser.name || "Google User";
+
+      // Check if user already exists
+      const existingUser = await pool.query(
+        "SELECT id FROM users WHERE work_email = $1 OR personal_email = $1 LIMIT 1",
+        [email]
+      );
+      if (existingUser.rows.length > 0) {
+        res.status(409).json({ success: false, error: "An account with this email already exists" });
+        return;
+      }
+
+      const accountType = type === "team" ? "team" : "freelancer";
+      if (accountType === "team" && !companyName?.trim()) {
+        res.status(400).json({ success: false, error: "Company name is required for team accounts" });
+        return;
+      }
+
+      const baseSlug = accountType === "team" ? slugify(companyName || name) : slugify(name);
+      const subdomain = await uniqueSubdomain(baseSlug || "workspace");
+      const tenantName = accountType === "team" ? (companyName || name) : name;
+      const planType = planConfig?.tier || "basic";
+
+      const safePlanConfig = {
+        tier: planConfig?.tier ?? null,
+        sets: Array.isArray(planConfig?.sets) ? planConfig.sets : [],
+        ai: Array.isArray(planConfig?.ai) ? planConfig.ai : [],
+        billing: planConfig?.billing ?? "yearly",
+        currency: planConfig?.currency ?? "USD",
+      };
+
+      const dummyPasswordHash = await bcrypt.hash(Math.random().toString(36), 12);
+      const verificationToken = JWTUtils.createTemporaryToken({ email }, "24h");
+      const verificationExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+      const dbClient = await pool.connect();
+      try {
+        await dbClient.query("BEGIN");
+
+        // Insert pending registration (already completed & verified)
+        await dbClient.query(
+          `INSERT INTO pending_registrations
+             (email, name, password_hash, verification_token, verification_expires_at, is_verified, is_completed, plan_config, type, company_name, updated_at)
+           VALUES ($1, $2, $3, $4, $5, true, true, $6, $7, $8, now())
+           ON CONFLICT (email) DO UPDATE SET
+             name = EXCLUDED.name,
+             password_hash = EXCLUDED.password_hash,
+             verification_token = EXCLUDED.verification_token,
+             verification_expires_at = EXCLUDED.verification_expires_at,
+             is_verified = true,
+             is_completed = true,
+             plan_config = EXCLUDED.plan_config,
+             type = EXCLUDED.type,
+             company_name = EXCLUDED.company_name,
+             updated_at = now()`,
+          [email, name.trim(), dummyPasswordHash, verificationToken, verificationExpiresAt, JSON.stringify(safePlanConfig), accountType, tenantName]
+        );
+
+        // Create Tenant
+        const tenantResult = await dbClient.query(
+          `INSERT INTO tenants (id, name, subdomain, plan_type, max_users, is_active, is_setup_complete, settings, created_at, updated_at)
+           VALUES (gen_random_uuid(), $1, $2, $3, 10, true, false, '{}', now(), now())
+           RETURNING id`,
+          [tenantName, subdomain, planType]
+        );
+        const tenantId = tenantResult.rows[0].id;
+
+        // Create User
+        await dbClient.query(
+          `INSERT INTO users (id, tenant_id, name, work_email, personal_email, phone, password_hash, role, is_active, work_days, created_at, updated_at)
+           VALUES (gen_random_uuid(), $1, $2, $3, $3, '', $4, 'super_admin', true, '{1,2,3,4,5}', now(), now())`,
+          [tenantId, name.trim(), email, dummyPasswordHash]
+        );
+
+        await dbClient.query("COMMIT");
+      } catch (txError) {
+        await dbClient.query("ROLLBACK");
+        throw txError;
+      } finally {
+        dbClient.release();
+      }
+
+      res.status(200).json({
+        success: true,
+        tenantSubdomain: subdomain,
+        email: email,
+        name: name,
+      });
+    } catch (error) {
+      console.error("Google signup error:", error);
+      res.status(500).json({ success: false, error: "Something went wrong. Please try again." });
+    }
+  }
+
+  static async microsoftSignup(req: Request, res: Response): Promise<void> {
+    try {
+      const { token, type, companyName, planConfig } = req.body;
+
+      if (!token) {
+        res.status(400).json({ success: false, error: "Microsoft access token is required" });
+        return;
+      }
+
+      let msUser;
+      try {
+        const response = await axios.get("https://graph.microsoft.com/v1.0/me", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        msUser = response.data;
+      } catch (err) {
+        console.error("Failed to verify Microsoft access token:", err);
+        res.status(400).json({ success: false, error: "Invalid Microsoft token" });
+        return;
+      }
+
+      if (!msUser || !(msUser.mail || msUser.userPrincipalName)) {
+        res.status(400).json({ success: false, error: "Failed to retrieve email from Microsoft" });
+        return;
+      }
+
+      const email = (msUser.mail || msUser.userPrincipalName).toLowerCase().trim();
+      const name = msUser.displayName || msUser.givenName || "Microsoft User";
+
+      // Check if user already exists
+      const existingUser = await pool.query(
+        "SELECT id FROM users WHERE work_email = $1 OR personal_email = $1 LIMIT 1",
+        [email]
+      );
+      if (existingUser.rows.length > 0) {
+        res.status(409).json({ success: false, error: "An account with this email already exists" });
+        return;
+      }
+
+      const accountType = type === "team" ? "team" : "freelancer";
+      if (accountType === "team" && !companyName?.trim()) {
+        res.status(400).json({ success: false, error: "Company name is required for team accounts" });
+        return;
+      }
+
+      const baseSlug = accountType === "team" ? slugify(companyName || name) : slugify(name);
+      const subdomain = await uniqueSubdomain(baseSlug || "workspace");
+      const tenantName = accountType === "team" ? (companyName || name) : name;
+      const planType = planConfig?.tier || "basic";
+
+      const safePlanConfig = {
+        tier: planConfig?.tier ?? null,
+        sets: Array.isArray(planConfig?.sets) ? planConfig.sets : [],
+        ai: Array.isArray(planConfig?.ai) ? planConfig.ai : [],
+        billing: planConfig?.billing ?? "yearly",
+        currency: planConfig?.currency ?? "USD",
+      };
+
+      const dummyPasswordHash = await bcrypt.hash(Math.random().toString(36), 12);
+      const verificationToken = JWTUtils.createTemporaryToken({ email }, "24h");
+      const verificationExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+      const dbClient = await pool.connect();
+      try {
+        await dbClient.query("BEGIN");
+
+        // Insert pending registration (already completed & verified)
+        await dbClient.query(
+          `INSERT INTO pending_registrations
+             (email, name, password_hash, verification_token, verification_expires_at, is_verified, is_completed, plan_config, type, company_name, updated_at)
+           VALUES ($1, $2, $3, $4, $5, true, true, $6, $7, $8, now())
+           ON CONFLICT (email) DO UPDATE SET
+             name = EXCLUDED.name,
+             password_hash = EXCLUDED.password_hash,
+             verification_token = EXCLUDED.verification_token,
+             verification_expires_at = EXCLUDED.verification_expires_at,
+             is_verified = true,
+             is_completed = true,
+             plan_config = EXCLUDED.plan_config,
+             type = EXCLUDED.type,
+             company_name = EXCLUDED.company_name,
+             updated_at = now()`,
+          [email, name.trim(), dummyPasswordHash, verificationToken, verificationExpiresAt, JSON.stringify(safePlanConfig), accountType, tenantName]
+        );
+
+        // Create Tenant
+        const tenantResult = await dbClient.query(
+          `INSERT INTO tenants (id, name, subdomain, plan_type, max_users, is_active, is_setup_complete, settings, created_at, updated_at)
+           VALUES (gen_random_uuid(), $1, $2, $3, 10, true, false, '{}', now(), now())
+           RETURNING id`,
+          [tenantName, subdomain, planType]
+        );
+        const tenantId = tenantResult.rows[0].id;
+
+        // Create User
+        await dbClient.query(
+          `INSERT INTO users (id, tenant_id, name, work_email, personal_email, phone, password_hash, role, is_active, work_days, created_at, updated_at)
+           VALUES (gen_random_uuid(), $1, $2, $3, $3, '', $4, 'super_admin', true, '{1,2,3,4,5}', now(), now())`,
+          [tenantId, name.trim(), email, dummyPasswordHash]
+        );
+
+        await dbClient.query("COMMIT");
+      } catch (txError) {
+        await dbClient.query("ROLLBACK");
+        throw txError;
+      } finally {
+        dbClient.release();
+      }
+
+      res.status(200).json({
+        success: true,
+        tenantSubdomain: subdomain,
+        email: email,
+        name: name,
+      });
+    } catch (error) {
+      console.error("Microsoft signup error:", error);
       res.status(500).json({ success: false, error: "Something went wrong. Please try again." });
     }
   }

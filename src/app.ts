@@ -145,6 +145,7 @@ import landingRoutes from "@/routes/landing";
 // import escalationRoutes from "./routes/escalationRoutes";
 import escalationRoutesV2 from "./routes/escalationRoutesV2";
 import proposalRoutes from "@/routes/proposals";
+import proposalSectionRoutes from "@/routes/proposalSections";
 import projectOverviewRoutes from "./routes/projectOverviewRoutes";
 import { socketService } from "@/services/socketService";
 // Load environment
@@ -348,6 +349,7 @@ app.use("/api/customers", customerRoutes);
 app.use("/api/invoicesetting", invoiceSettingRoutes);
 app.use("/api/invoices", invoice);
 app.use("/api/proposals", proposalRoutes);
+app.use("/api/proposal-sections", proposalSectionRoutes);
 app.use("/api/invoice-templates", invoiceTemplate);
 app.use("/api/categories", categoryRoutes);
 //app.use("/api/invoice",invoicedownload)

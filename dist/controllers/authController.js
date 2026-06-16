@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthController = void 0;
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
+const axios_1 = __importDefault(require("axios"));
 const database_1 = require("@/config/database");
 const jwt_1 = require("@/utils/jwt");
 const rbac_service_1 = require("@/modules/rbac/rbac.service");
@@ -623,6 +624,346 @@ class AuthController {
             res.status(500).json({
                 success: false,
                 error: "Failed to get profile",
+            });
+        }
+    }
+    /**
+     * Google User login with tenant context
+     */
+    static async googleLogin(req, res) {
+        try {
+            const { token } = req.body;
+            if (!token) {
+                res.status(400).json({
+                    success: false,
+                    error: "Google access token is required",
+                });
+                return;
+            }
+            // Ensure we have tenant context for login
+            if (!req.tenantId || !req.tenant) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context is required for login",
+                });
+                return;
+            }
+            // Fetch user info from Google using access token
+            let googleUser;
+            try {
+                const response = await axios_1.default.get("https://www.googleapis.com/oauth2/v3/userinfo", {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                googleUser = response.data;
+            }
+            catch (err) {
+                console.error("Failed to verify Google access token:", err);
+                res.status(400).json({
+                    success: false,
+                    error: "Invalid Google token",
+                });
+                return;
+            }
+            if (!googleUser || !googleUser.email) {
+                res.status(400).json({
+                    success: false,
+                    error: "Failed to retrieve email from Google",
+                });
+                return;
+            }
+            const email = googleUser.email.toLowerCase().trim();
+            // Find user by email within the tenant
+            const user = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+                return await client.user.findFirst({
+                    where: {
+                        OR: [
+                            { workEmail: email },
+                            { personalEmail: email },
+                        ],
+                        tenantId: req.tenantId,
+                        isActive: true,
+                    },
+                    include: {
+                        tenant: true,
+                        employee: true,
+                        position: {
+                            select: {
+                                id: true,
+                                title: true,
+                                code: true,
+                            },
+                        },
+                    },
+                });
+            });
+            if (!user) {
+                res.status(401).json({
+                    success: false,
+                    error: "No account found matching this email in this tenant",
+                });
+                return;
+            }
+            // Check if tenant is active
+            if (!user.tenant.isActive) {
+                res.status(403).json({
+                    success: false,
+                    error: "Account suspended",
+                });
+                return;
+            }
+            // Create auth user object for token generation
+            const authUser = {
+                id: user.id,
+                tenantId: user.tenantId,
+                email: user.workEmail,
+                role: user.role,
+                position: user.position?.title || null,
+                name: user.name,
+            };
+            // Generate token pair
+            const { accessToken, refreshToken } = jwt_1.JWTUtils.generateTokenPair(authUser);
+            // Store refresh token in database
+            await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+                await client.refreshToken.create({
+                    data: {
+                        token: refreshToken,
+                        userId: user.id,
+                        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+                    },
+                });
+            });
+            // Set refresh token cookie
+            res.cookie("refreshToken", refreshToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === "production",
+                sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+                maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+                path: "/", // Ensure cookie is available for all paths
+            });
+            // Load permissions
+            const permSet = await rbac_service_1.RBACService.getUserPermissions(user.id, user.tenantId, user.role);
+            // Return user data and access token
+            const loginResponse = {
+                success: true,
+                accessToken,
+                user: {
+                    id: user.id,
+                    name: user.name,
+                    email: user.workEmail,
+                    workEmail: user.workEmail,
+                    personalEmail: user.personalEmail,
+                    role: user.role,
+                    position: user.position ? { id: user.position.id, title: user.position.title } : null,
+                    tenantId: user.tenantId,
+                    tenantName: user.tenant.name,
+                    tenantLogo: user.tenant.settings?.logoUrl || null,
+                    avatarUrl: user.avatarUrl,
+                    isActive: user.isActive,
+                    permissions: Array.from(permSet),
+                },
+                message: "Login successful",
+            };
+            // Populate req.user temporarily for transaction history logging
+            req.user = {
+                id: user.id,
+                email: user.workEmail,
+                name: user.name,
+                tenantId: user.tenantId,
+                role: user.role,
+                position: user.position?.title || null,
+            };
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.ADMIN,
+                module: transactionHistory_1.Module.AUTH,
+                page: transactionHistory_1.Page.LOGIN,
+                action: transactionHistory_1.Action.LOGIN,
+                actionLabel: `User ${user.name || user.workEmail} logged in with Google SSO`,
+                entityType: transactionHistory_1.EntityType.SESSION,
+                entityId: user.id,
+                entityLabel: user.workEmail,
+                metadata: {
+                    ip: req.ip ?? req.socket?.remoteAddress ?? null,
+                    userAgent: req.headers["user-agent"] ?? null,
+                },
+            });
+            res.status(200).json(loginResponse);
+        }
+        catch (error) {
+            console.error("Google login error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Google login failed",
+            });
+        }
+    }
+    /**
+     * Microsoft User login with tenant context
+     */
+    static async microsoftLogin(req, res) {
+        try {
+            const { token } = req.body;
+            if (!token) {
+                res.status(400).json({
+                    success: false,
+                    error: "Microsoft access token is required",
+                });
+                return;
+            }
+            // Ensure we have tenant context for login
+            if (!req.tenantId || !req.tenant) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context is required for login",
+                });
+                return;
+            }
+            // Fetch user info from Microsoft using access token
+            let msUser;
+            try {
+                const response = await axios_1.default.get("https://graph.microsoft.com/v1.0/me", {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                msUser = response.data;
+            }
+            catch (err) {
+                console.error("Failed to verify Microsoft access token:", err);
+                res.status(400).json({
+                    success: false,
+                    error: "Invalid Microsoft token",
+                });
+                return;
+            }
+            if (!msUser || !(msUser.mail || msUser.userPrincipalName)) {
+                res.status(400).json({
+                    success: false,
+                    error: "Failed to retrieve email from Microsoft",
+                });
+                return;
+            }
+            const email = (msUser.mail || msUser.userPrincipalName).toLowerCase().trim();
+            // Find user by email within the tenant
+            const user = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+                return await client.user.findFirst({
+                    where: {
+                        OR: [
+                            { workEmail: email },
+                            { personalEmail: email },
+                        ],
+                        tenantId: req.tenantId,
+                        isActive: true,
+                    },
+                    include: {
+                        tenant: true,
+                        employee: true,
+                        position: {
+                            select: {
+                                id: true,
+                                title: true,
+                                code: true,
+                            },
+                        },
+                    },
+                });
+            });
+            if (!user) {
+                res.status(401).json({
+                    success: false,
+                    error: "No account found matching this email in this tenant",
+                });
+                return;
+            }
+            // Check if tenant is active
+            if (!user.tenant.isActive) {
+                res.status(403).json({
+                    success: false,
+                    error: "Account suspended",
+                });
+                return;
+            }
+            // Create auth user object for token generation
+            const authUser = {
+                id: user.id,
+                tenantId: user.tenantId,
+                email: user.workEmail,
+                role: user.role,
+                position: user.position?.title || null,
+                name: user.name,
+            };
+            // Generate token pair
+            const { accessToken, refreshToken } = jwt_1.JWTUtils.generateTokenPair(authUser);
+            // Store refresh token in database
+            await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
+                await client.refreshToken.create({
+                    data: {
+                        token: refreshToken,
+                        userId: user.id,
+                        expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+                    },
+                });
+            });
+            // Set refresh token cookie
+            res.cookie("refreshToken", refreshToken, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === "production",
+                sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+                maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+                path: "/", // Ensure cookie is available for all paths
+            });
+            // Load permissions
+            const permSet = await rbac_service_1.RBACService.getUserPermissions(user.id, user.tenantId, user.role);
+            // Return user data and access token
+            const loginResponse = {
+                success: true,
+                accessToken,
+                user: {
+                    id: user.id,
+                    name: user.name,
+                    email: user.workEmail,
+                    workEmail: user.workEmail,
+                    personalEmail: user.personalEmail,
+                    role: user.role,
+                    position: user.position ? { id: user.position.id, title: user.position.title } : null,
+                    tenantId: user.tenantId,
+                    tenantName: user.tenant.name,
+                    tenantLogo: user.tenant.settings?.logoUrl || null,
+                    avatarUrl: user.avatarUrl,
+                    isActive: user.isActive,
+                    permissions: Array.from(permSet),
+                },
+                message: "Login successful",
+            };
+            // Populate req.user temporarily for transaction history logging
+            req.user = {
+                id: user.id,
+                email: user.workEmail,
+                name: user.name,
+                tenantId: user.tenantId,
+                role: user.role,
+                position: user.position?.title || null,
+            };
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.ADMIN,
+                module: transactionHistory_1.Module.AUTH,
+                page: transactionHistory_1.Page.LOGIN,
+                action: transactionHistory_1.Action.LOGIN,
+                actionLabel: `User ${user.name || user.workEmail} logged in with Microsoft SSO`,
+                entityType: transactionHistory_1.EntityType.SESSION,
+                entityId: user.id,
+                entityLabel: user.workEmail,
+                metadata: {
+                    ip: req.ip ?? req.socket?.remoteAddress ?? null,
+                    userAgent: req.headers["user-agent"] ?? null,
+                },
+            });
+            res.status(200).json(loginResponse);
+        }
+        catch (error) {
+            console.error("Microsoft login error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Microsoft login failed",
             });
         }
     }
