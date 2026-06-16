@@ -70,13 +70,13 @@ export class CalendarService {
 
         const expiry = new Date(Date.now() + result.expiresIn * 1000);
 
-        // FIRST, DELETE ANY EXISTING INTEGRATIONS AND EVENTS FOR THIS USER
+        // FIRST, DELETE ANY EXISTING INTEGRATIONS AND EVENTS FOR THIS USER (scoped to tenantId)
         await prisma.calendarIntegration.deleteMany({
-            where: { userId }
+            where: { userId, tenantId }
         });
 
         await prisma.calendarEvent.deleteMany({
-            where: { userId }
+            where: { userId, tenantId }
         });
 
         // THEN CREATE THE NEW ONE
@@ -297,14 +297,25 @@ export class CalendarService {
 
     /**
      * Get a valid access token for a user and provider, refreshing if necessary.
+     * Requires tenantId to prevent cross-tenant token leakage.
      */
-    static async getValidAccessToken(userId: string, provider: CalendarProvider): Promise<{ accessToken: string, calendarId?: string }> {
+    static async getValidAccessToken(userId: string, provider: CalendarProvider, tenantId?: string): Promise<{ accessToken: string, calendarId?: string }> {
+        // Build lookup condition — always prefer the fully-scoped (userId + tenantId) query
+        const whereCondition: any = tenantId
+            ? { userId_provider: { userId, provider } }
+            : { userId_provider: { userId, provider } };
+
         const integration = await prisma.calendarIntegration.findUnique({
-            where: { userId_provider: { userId, provider } },
+            where: whereCondition,
         });
 
+        // Extra guard: if tenantId is supplied, reject tokens that belong to a different tenant
         if (!integration || !integration.accessToken) {
             throw new Error(`${provider} integration not found`);
+        }
+
+        if (tenantId && integration.tenantId !== tenantId) {
+            throw new Error(`Cross-tenant token access denied for provider ${provider}`);
         }
 
         const fiveMinutes = 5 * 60 * 1000;
@@ -337,7 +348,7 @@ export class CalendarService {
      * Always uses a date-range window to ensure cancelled/deleted occurrences are omitted.
      */
     static async syncEvents(userId: string, tenantId: string, provider: CalendarProvider, startDate?: Date, endDate?: Date) {
-        const { accessToken, calendarId } = await this.getValidAccessToken(userId, provider);
+        const { accessToken, calendarId } = await this.getValidAccessToken(userId, provider, tenantId);
         const providerImpl = CalendarProviderFactory.getProvider(provider);
 
         // Fetch events within the window (providers now return series masters + exceptions)
@@ -356,7 +367,7 @@ export class CalendarService {
         console.log(`[CalendarService] Syncing ${externalEvents.length} external events for ${provider}`);
 
         // 1. Identify valid external IDs for cleanup (using the RAW ID that matches our local 'externalId' column)
-        const externalIds = externalEvents.map((e: any) => e.externalId).filter((id: any) => id != null);
+        const externalIds = externalEvents.map((e: any) => `${e.externalId}_${userId}`).filter((id: any) => id != null);
         const sideSyncBuffer = new Date(Date.now() - 5 * 60 * 1000);
 
         // 2. CLEANUP: Delete stale local events in this window.
@@ -506,7 +517,15 @@ export class CalendarService {
                 const finalCalendar = existingEvent ? (existingEvent.calendar || mapped.calendar) : (mapped.calendar || "Personal Calendar");
                 const finalSourceType = existingEvent ? (existingEvent.sourceType || mapped.sourceType) : (mapped.sourceType || "Manual");
 
-                const upsertData = { ...mapped, calendar: finalCalendar, sourceType: finalSourceType };
+                // For Microsoft: if the mapped title is null (subject was absent in delta/full sync response),
+                // preserve the existing DB title to prevent overwriting with null or "Untitled".
+                // Fall back to "Untitled" only when there is genuinely no existing record either.
+                let finalTitle = mapped.title;
+                if (provider === CalendarProvider.MICROSOFT && (finalTitle === null || finalTitle === undefined)) {
+                    finalTitle = existingEvent?.title || "Untitled";
+                }
+
+                const upsertData = { ...mapped, title: finalTitle, calendar: finalCalendar, sourceType: finalSourceType };
 
                 await prisma.calendarEvent.upsert({
                     where: { provider_externalId_tenantId: { provider, externalId: mapped.externalId, tenantId } },
@@ -575,7 +594,7 @@ export class CalendarService {
 
     //     const mapped = this.mapToCalendarEvent(externalEvent, provider, userId, tenantId);
     //     return await prisma.calendarEvent.upsert({
-    //         where: { provider_externalId_tenantId: { provider, externalId: mapped.externalId, tenantId } },
+    //         where: { provider_externalId_userId_tenantId: { provider, externalId: mapped.externalId, userId, tenantId } },
     //         create: mapped,
     //         update: mapped,
     //     });
@@ -627,7 +646,7 @@ export class CalendarService {
         console.log("🟡 eventData:", JSON.stringify(eventData, null, 2));
         console.log("🟡 generateMeeting:", eventData.generateMeeting);
 
-        const { accessToken, calendarId } = await this.getValidAccessToken(userId, provider);
+        const { accessToken, calendarId } = await this.getValidAccessToken(userId, provider, tenantId);
         if (!calendarId) throw new Error(`Primary calendar ID not found for ${provider}`);
 
         if (provider === "MICROSOFT") {
@@ -809,7 +828,7 @@ export class CalendarService {
             throw new Error(`STRICT_OVERLAP_CONFLICT: ${overlaps.length} existing event(s) overlap with this time slot. Double-booking is not allowed.`);
         }
 
-        const { accessToken, calendarId } = await this.getValidAccessToken(userId, provider);
+        const { accessToken, calendarId } = await this.getValidAccessToken(userId, provider, tenantId);
         if (!calendarId) throw new Error(`Primary calendar ID not found for ${provider}`);
 
         // 1. Resolve master ID
@@ -850,9 +869,10 @@ export class CalendarService {
         // because the provider implementation uses the master ID to list instances and find the correct one.
         // If we target a forked ID directly, the /instances call will 404.
         let targetExternalId = (isOptimistic || isForked || action === 0 || action === 1 || action === 2) ? masterExternalId : externalId;
+        const cleanTargetId = targetExternalId.endsWith(`_${userId}`) ? targetExternalId.slice(0, -`_${userId}`.length) : targetExternalId;
 
         const providerImpl = CalendarProviderFactory.getProvider(provider);
-        const externalEvent = await providerImpl.updateEvent(accessToken, calendarId, targetExternalId, { ...eventData, existingMeetingLink: localEvent.meetingLink }, action, occurrenceDate);
+        const externalEvent = await providerImpl.updateEvent(accessToken, calendarId, cleanTargetId, { ...eventData, existingMeetingLink: localEvent.meetingLink }, action, occurrenceDate);
 
         const masterRrule = this.extractTrueRrule(localEvent?.rrule || null);
         const mapped = this.mapToCalendarEvent(externalEvent, provider, userId, tenantId, masterRrule);
@@ -978,7 +998,7 @@ export class CalendarService {
      * Delete an event from the external provider and local database.
      */
     static async deleteEvent(userId: string, tenantId: string, provider: CalendarProvider, externalId: string, action?: number, occurrenceDate?: string, userEmail?: string) {
-        const { accessToken, calendarId } = await this.getValidAccessToken(userId, provider);
+        const { accessToken, calendarId } = await this.getValidAccessToken(userId, provider, tenantId);
         if (!calendarId) throw new Error(`Primary calendar ID not found for ${provider}`);
 
         const providerImpl = CalendarProviderFactory.getProvider(provider);
@@ -1007,18 +1027,29 @@ export class CalendarService {
         }
 
         // 3. Ownership Check: Only the host (organizer) should be allowed to delete the event.
-        if (userEmail && localEvent.organizerEmail && localEvent.organizerEmail.toLowerCase() !== userEmail.toLowerCase()) {
-            console.warn(`[CalendarService] User ${userEmail} attempted to delete event hosted by ${localEvent.organizerEmail}`);
-            throw new Error("Only the host can delete this event");
+        // We check BOTH userId (app identity) AND organizerEmail (provider identity) because
+        // a user's app login email (e.g. Zoho work mail) may differ from their connected
+        // calendar account email (e.g. Outlook/Microsoft account). Ownership passes if EITHER matches.
+        console.log(`[CalendarService] Delete ownership check: userId=${userId}, localEvent.userId=${localEvent.userId}, userEmail=${userEmail}, organizerEmail=${localEvent.organizerEmail}`);
+        if (userEmail && localEvent.organizerEmail) {
+            const isSameUser = localEvent.userId === userId;
+            const isSameEmail = localEvent.organizerEmail.toLowerCase() === userEmail.toLowerCase();
+
+            if (!isSameUser && !isSameEmail) {
+                console.warn(`[CalendarService] Delete ownership check FAILED: User ${userEmail} (${userId}) attempted to delete event hosted by ${localEvent.organizerEmail} (${localEvent.userId})`);
+                throw new Error("Only the host can delete this event");
+            }
+            console.log(`[CalendarService] Delete ownership check passed: isSameUser=${isSameUser}, isSameEmail=${isSameEmail}`);
         }
 
         // 4. Determine the target for the provider deletion
         // Always target the master ID if we're working with an optimistic/forked occurrence
         // or if explicitly deleting the whole series or a single day.
         let targetExternalId = (isOptimistic || isForked || action === 0 || action === 1 || action === 2) ? masterExternalId : externalId;
+        const cleanTargetId = targetExternalId.endsWith(`_${userId}`) ? targetExternalId.slice(0, -`_${userId}`.length) : targetExternalId;
 
         // 4. Delete on the external provider (handle all actions including single occurrences)
-        await providerImpl.deleteEvent(accessToken, calendarId, targetExternalId, action, occurrenceDate);
+        await providerImpl.deleteEvent(accessToken, calendarId, cleanTargetId, action, occurrenceDate);
 
         // 5. Local database cleanup
         
@@ -1231,7 +1262,7 @@ export class CalendarService {
             const externalId = (isOccurrence && rid) ? `${uid}_RID${rid}` : uid;
 
             return {
-                id: `${provider}_${externalId}_${tenantId}`,
+                id: `${provider}_${externalId}_${userId}_${tenantId}`,
                 provider,
                 externalId: externalId,
                 tenantId,
@@ -1260,7 +1291,7 @@ export class CalendarService {
             const isRecurringEvent = isMaster || isOccurrence;
 
             return {
-                id: `${provider}_${externalEvent.id}_${tenantId}`,
+                id: `${provider}_${externalEvent.id}_${userId}_${tenantId}`,
                 provider,
                 externalId: externalEvent.id,
                 tenantId,
@@ -1316,17 +1347,23 @@ export class CalendarService {
                 rruleStr = JSON.stringify({ originalRrule: masterRrule });
             }
 
-            // If it's a delta update and subject is strictly undefined, we'll let handleSyncResult preserve the old one.
-            // But if it's explicitly null or empty, it gets "Untitled".
-            let rawTitle = externalEvent.subject;
-            if (rawTitle === null || rawTitle === "") {
+            // If subject is explicitly empty string or null → use "Untitled".
+            // If subject is undefined (field omitted in delta response) → use null as a sentinel
+            // so that callers (handleSyncResult / syncEvents) can preserve the existing title from DB.
+            // Only use "Deleted Event" / "Untitled" as a last resort when there is genuinely no DB record.
+            let rawTitle: string | null;
+            if (externalEvent['@removed']) {
+                rawTitle = "Deleted Event";
+            } else if (externalEvent.subject === null || externalEvent.subject === "") {
                 rawTitle = "Untitled";
-            } else if (rawTitle === undefined) {
-                rawTitle = externalEvent['@removed'] ? "Deleted Event" : "Untitled"; // Fallback if handleSyncResult has no old title
+            } else if (externalEvent.subject === undefined) {
+                rawTitle = null; // sentinel: subject was absent in delta, let caller decide
+            } else {
+                rawTitle = externalEvent.subject;
             }
 
             return {
-                id: `${provider}_${externalEvent.id}_${tenantId}`,
+                id: `${provider}_${externalEvent.id}_${userId}_${tenantId}`,
                 provider,
                 externalId: externalEvent.id,
                 tenantId,
@@ -1514,7 +1551,7 @@ export class CalendarService {
         try {
             syncLogger.info('Incremental sync started', { integrationId, provider, userId });
 
-            const { accessToken, calendarId } = await this.getValidAccessToken(integration.userId, integration.provider);
+            const { accessToken, calendarId } = await this.getValidAccessToken(integration.userId, integration.provider, integration.tenantId);
             const providerImpl = CalendarProviderFactory.getProvider(integration.provider);
 
             let token = "";
@@ -1729,8 +1766,10 @@ export class CalendarService {
                     let finalIsRecurring = isRecurring;
 
                     if (provider === CalendarProvider.MICROSOFT && existingEvent) {
-                        // If subject was genuinely missing (not just empty string), preserve existing
-                        if (rawEvent.subject === undefined && existingEvent.title) {
+                        // If subject was genuinely missing (undefined or null sentinel) in the delta response,
+                        // preserve the existing DB title instead of overwriting with null or "Untitled".
+                        // null is used as a sentinel by mapToCalendarEvent when subject was omitted by MS Graph.
+                        if ((rawEvent.subject === undefined || rawEvent.subject === null || mapped.title === null) && existingEvent.title) {
                             finalTitle = existingEvent.title;
                         }
                         if (rawEvent.body === undefined && existingEvent.description) {
@@ -1782,7 +1821,7 @@ export class CalendarService {
 
         if (masterExternalId && originalDate) {
             originalDate.setUTCHours(0, 0, 0, 0);
-            const master = await this.findMaster(provider, masterExternalId, tenantId);
+            const master = await this.findMaster(provider, masterExternalId, tenantId, userId);
             if (master) {
                 await prisma.calendarEventException.upsert({
                     where: { eventId_originalDate: { eventId: master.id, originalDate } },
@@ -1810,7 +1849,7 @@ export class CalendarService {
 
         if (masterExternalId && originalDate) {
             originalDate.setUTCHours(0, 0, 0, 0);
-            const master = await this.findMaster(provider, masterExternalId, tenantId);
+            const master = await this.findMaster(provider, masterExternalId, tenantId, userId);
             if (master) {
                 const exData = {
                     eventId: master.id,
@@ -1854,9 +1893,10 @@ export class CalendarService {
         });
     }
 
-    private static async findMaster(provider: CalendarProvider, externalId: string, tenantId: string) {
+    private static async findMaster(provider: CalendarProvider, externalId: string, tenantId: string, userId: string) {
+        const dbExternalId = externalId.endsWith(`_${userId}`) ? externalId : `${externalId}_${userId}`;
         return prisma.calendarEvent.findFirst({
-            where: { provider, externalId, tenantId }
+            where: { provider, externalId: dbExternalId, tenantId, userId }
         });
     }
 

@@ -9,7 +9,7 @@ const ZOHO_TOKEN_URL = "https://accounts.zoho.in/oauth/v2/token";
 const ZOHO_CALENDAR_API = "https://calendar.zoho.in/api/v1";
 
 export class ZohoProvider implements ICalendarProvider {
-    getAuthUrl(userId: string): string {
+    getAuthUrl(state: string): string {
         const params = new URLSearchParams({
             response_type: "code",
             client_id: ZOHO_CLIENT_ID,
@@ -17,7 +17,7 @@ export class ZohoProvider implements ICalendarProvider {
             scope: "ZohoCalendar.calendar.all,ZohoCalendar.event.all,ZohoMeeting.meeting.ALL",
             access_type: "offline",
             prompt: "consent",
-            state: userId,
+            state: state,
         });
         return `${ZOHO_AUTH_URL}?${params.toString()}`;
     }

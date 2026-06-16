@@ -48,8 +48,9 @@ export declare class CalendarService {
     static getEvents(userId: string, tenantId: string, startDate?: Date, endDate?: Date): Promise<any[]>;
     /**
      * Get a valid access token for a user and provider, refreshing if necessary.
+     * Requires tenantId to prevent cross-tenant token leakage.
      */
-    static getValidAccessToken(userId: string, provider: CalendarProvider): Promise<{
+    static getValidAccessToken(userId: string, provider: CalendarProvider, tenantId?: string): Promise<{
         accessToken: string;
         calendarId?: string;
     }>;

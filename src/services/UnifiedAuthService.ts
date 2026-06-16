@@ -7,9 +7,9 @@ export class UnifiedAuthService {
     /**
      * Get combined OAuth URL for both Calendar and Mail
      */
-    static getAuthUrl(provider: CalendarProvider, userId: string): string {
+    static getAuthUrl(provider: CalendarProvider, state: string): string {
         const calendarProvider = CalendarProviderFactory.getProvider(provider);
-        const originalUrl = calendarProvider.getAuthUrl(userId);
+        const originalUrl = calendarProvider.getAuthUrl(state);
         const url = new URL(originalUrl);
 
         // Add Mail scopes to the existing ones
