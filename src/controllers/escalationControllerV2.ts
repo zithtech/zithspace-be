@@ -269,11 +269,35 @@ export const updateEscalation = async (req: AuthRequest, res: Response): Promise
         }
 
         const {
-            subject, description, categoryId, priorityId, statusId, projectId
+            subject, description, categoryId, priorityId, statusId, projectId, attachments, existingUrls
         } = req.body;
 
+        let documentUrl: string | undefined = undefined;
+        let uploadedUrls: string[] = existingUrls && Array.isArray(existingUrls) ? [...existingUrls] : [];
+
+        if (attachments && Array.isArray(attachments) && attachments.length > 0) {
+            for (const file of attachments) {
+                if (file.fileBase64 && file.fileName) {
+                    const url = await uploadEscalationDocumentToR2(
+                        file.fileBase64,
+                        file.fileName,
+                        tenantId,
+                        id
+                    );
+                    uploadedUrls.push(url);
+                }
+            }
+        }
+
+        if (uploadedUrls.length > 0) {
+            documentUrl = JSON.stringify(uploadedUrls);
+        } else if (existingEscalation.document_url) {
+            // They deleted all existing files and didn't upload new ones
+            documentUrl = "[]"; 
+        }
+
         const payload: EscalationDb.UpdateEscalationData = {
-            subject, description, categoryId, priorityId, statusId, projectId
+            subject, description, categoryId, priorityId, statusId, projectId, documentUrl
         };
 
         const updatedRaw = await EscalationDb.updateEscalation(id, tenantId, payload, updatedById);

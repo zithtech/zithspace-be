@@ -815,7 +815,7 @@ export async function uploadEscalationDocumentToR2(
       Body: buffer,
       ContentType: contentType,
       CacheControl: "public, max-age=31536000",
-      ContentDisposition: `attachment; filename="${sanitizedFileName}"`
+      ContentDisposition: `inline; filename="${sanitizedFileName}"`
     };
 
     await s3Client.send(new PutObjectCommand(params));

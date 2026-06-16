@@ -62,7 +62,7 @@ export class ProjectController {
       }
 
       if (status) {
-        where.status = status;
+        where.status = { equals: status as string, mode: "insensitive" };
       } else {
         where.status = { not: "DELETED" };
       }
