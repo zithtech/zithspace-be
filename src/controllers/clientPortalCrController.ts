@@ -90,6 +90,7 @@ export class ClientPortalCrController {
     const status = ((req.query.status as string) || "").toLowerCase();
     const search = ((req.query.search as string) || "").trim();
     const projectFilter = ((req.query.projectId as string) || "").trim();
+    const priority = ((req.query.priority as string) || "").toLowerCase();
     const fromRaw = ((req.query.from as string) || "").trim();
     const toRaw = ((req.query.to as string) || "").trim();
     const isoDate = /^\d{4}-\d{2}-\d{2}$/;
@@ -108,6 +109,10 @@ export class ClientPortalCrController {
     if (status && status !== "all") {
       params.push(status);
       where += ` AND cr.status = $${params.length}`;
+    }
+    if (priority && VALID_PRIORITIES.has(priority)) {
+      params.push(priority);
+      where += ` AND cr.priority = $${params.length}`;
     }
     if (projectFilter) {
       params.push(projectFilter);
