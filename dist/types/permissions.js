@@ -19,6 +19,9 @@ exports.Permissions = {
     USER_UPDATE: 'user.update',
     USER_DELETE: 'user.delete',
     USER_MANAGE: 'user.manage', // activate/deactivate, reset password, assign shift
+    USER_TRASH_READ: 'user.trash.read',
+    USER_TRASH_RESTORE: 'user.trash.restore',
+    USER_TRASH_DELETE: 'user.trash.delete',
     // ─── Projects ────────────────────────────────────────────────────
     PROJECT_CREATE: 'project.create',
     PROJECT_READ: 'project.read',
@@ -377,7 +380,7 @@ exports.Permissions = {
 exports.PERMISSIONS_BY_RESOURCE = {
     dashboard: [exports.Permissions.DASHBOARD_READ],
     integration: [exports.Permissions.INTEGRATION_READ, exports.Permissions.INTEGRATION_MANAGE],
-    user: [exports.Permissions.USER_CREATE, exports.Permissions.USER_READ, exports.Permissions.USER_UPDATE, exports.Permissions.USER_DELETE, exports.Permissions.USER_MANAGE],
+    user: [exports.Permissions.USER_CREATE, exports.Permissions.USER_READ, exports.Permissions.USER_UPDATE, exports.Permissions.USER_DELETE, exports.Permissions.USER_MANAGE, exports.Permissions.USER_TRASH_READ, exports.Permissions.USER_TRASH_RESTORE, exports.Permissions.USER_TRASH_DELETE],
     project: [
         exports.Permissions.PROJECT_CREATE,
         exports.Permissions.PROJECT_READ,

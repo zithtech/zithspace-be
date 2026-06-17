@@ -38,7 +38,7 @@ class ProjectController {
                 ];
             }
             if (status) {
-                where.status = status;
+                where.status = { equals: status, mode: "insensitive" };
             }
             else {
                 where.status = { not: "DELETED" };

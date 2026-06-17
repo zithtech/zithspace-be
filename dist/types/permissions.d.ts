@@ -14,6 +14,9 @@ export declare const Permissions: {
     readonly USER_UPDATE: "user.update";
     readonly USER_DELETE: "user.delete";
     readonly USER_MANAGE: "user.manage";
+    readonly USER_TRASH_READ: "user.trash.read";
+    readonly USER_TRASH_RESTORE: "user.trash.restore";
+    readonly USER_TRASH_DELETE: "user.trash.delete";
     readonly PROJECT_CREATE: "project.create";
     readonly PROJECT_READ: "project.read";
     readonly PROJECT_UPDATE: "project.update";
