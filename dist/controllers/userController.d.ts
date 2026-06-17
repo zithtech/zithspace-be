@@ -22,6 +22,28 @@ export declare class UserController {
      */
     static deleteMember(req: AuthRequest, res: Response): Promise<void>;
     /**
+     * Get deleted (soft-deleted) members — Trash (tenant-aware)
+     * Returns users where is_active = false, ordered newest first.
+     */
+    static getDeletedMembers(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Permanently delete a member from the database (irreversible).
+     * Only works for members that have already been soft-deleted (is_active = false).
+     */
+    static permanentlyDeleteMember(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Bulk restore soft-deleted members (tenant-aware)
+     */
+    static bulkRestoreMembers(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Bulk permanently delete members (tenant-aware)
+     */
+    static bulkPermanentDeleteMembers(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Empty member trash (tenant-aware)
+     */
+    static emptyTrashMembers(req: AuthRequest, res: Response): Promise<void>;
+    /**
      * Activate member (tenant-aware)
      */
     static activateMember(req: AuthRequest, res: Response): Promise<void>;

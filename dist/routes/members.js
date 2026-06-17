@@ -21,6 +21,44 @@ router.get('/select', (0, permission_1.requireAnyPermission)(permissions_1.Permi
  */
 router.get('/', (0, permission_1.requireAnyPermission)(permissions_1.Permissions.USER_READ, permissions_1.Permissions.PROJECT_READ, permissions_1.Permissions.TICKET_READ, permissions_1.Permissions.ATTENDANCE_READ, permissions_1.Permissions.ATTENDANCE_CREATE, permissions_1.Permissions.ATTENDANCE_UPDATE, permissions_1.Permissions.ATTENDANCE_DELETE, permissions_1.Permissions.SQUAD_READ, permissions_1.Permissions.SQUAD_CREATE, permissions_1.Permissions.LEAVE_POLICY_READ, permissions_1.Permissions.LEAVE_POLICY_CREATE, permissions_1.Permissions.LEAVE_MANAGE), userController_1.UserController.getMembers);
 /**
+ * @route   GET /api/members/trash
+ * @desc    Get soft-deleted (inactive) members — Member Trash page
+ * @access  Private (admin only)
+ */
+router.get('/trash', (0, permission_1.requirePermission)(permissions_1.Permissions.USER_TRASH_READ), userController_1.UserController.getDeletedMembers);
+/**
+ * @route   POST /api/members/trash/bulk-restore
+ * @desc    Bulk restore soft-deleted members (tenant-aware)
+ * @access  Private (admin only)
+ */
+router.post('/trash/bulk-restore', (0, permission_1.requirePermission)(permissions_1.Permissions.USER_TRASH_RESTORE), userController_1.UserController.bulkRestoreMembers);
+/**
+ * @route   POST /api/members/trash/bulk-permanent-delete
+ * @desc    Bulk permanently delete members (tenant-aware)
+ * @access  Private (admin only)
+ */
+router.post('/trash/bulk-permanent-delete', (0, permission_1.requirePermission)(permissions_1.Permissions.USER_TRASH_DELETE), userController_1.UserController.bulkPermanentDeleteMembers);
+/**
+ * @route   DELETE /api/members/trash/empty
+ * @desc    Empty member trash (tenant-aware)
+ * @access  Private (admin only)
+ */
+router.delete('/trash/empty', (0, permission_1.requirePermission)(permissions_1.Permissions.USER_TRASH_DELETE), userController_1.UserController.emptyTrashMembers);
+/**
+ * @route   PATCH /api/members/:id/restore
+ * @desc    Restore soft-deleted member (tenant-aware)
+ * @access  Private (admin only)
+ * @param   id - Member ID
+ */
+router.patch('/:id/restore', (0, permission_1.requirePermission)(permissions_1.Permissions.USER_TRASH_RESTORE), userController_1.UserController.activateMember);
+/**
+ * @route   DELETE /api/members/:id/permanent
+ * @desc    Permanently delete member (tenant-aware)
+ * @access  Private (admin only)
+ * @param   id - Member ID
+ */
+router.delete('/:id/permanent', (0, permission_1.requirePermission)(permissions_1.Permissions.USER_TRASH_DELETE), userController_1.UserController.permanentlyDeleteMember);
+/**
  * @route   GET /api/members/:id
  * @desc    Get member/user by ID (tenant-aware)
  * @access  Private (authenticated users within tenant)

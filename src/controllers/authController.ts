@@ -52,7 +52,6 @@ export class AuthController {
                 { personalEmail: email.toLowerCase() },
               ],
               tenantId: req.tenantId,
-              isActive: true,
             },
             include: {
               tenant: true,
@@ -73,6 +72,15 @@ export class AuthController {
         res.status(401).json({
           success: false,
           error: "Invalid credentials",
+        } as ApiResponse);
+        return;
+      }
+
+      // Check if user is active
+      if (!user.isActive) {
+        res.status(403).json({
+          success: false,
+          error: "Your account is deactivated. Please contact your administrator.",
         } as ApiResponse);
         return;
       }
