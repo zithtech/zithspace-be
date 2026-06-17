@@ -644,7 +644,7 @@ async function uploadEscalationDocumentToR2(base64File, fileName, tenantId, esca
             Body: buffer,
             ContentType: contentType,
             CacheControl: "public, max-age=31536000",
-            ContentDisposition: `attachment; filename="${sanitizedFileName}"`
+            ContentDisposition: `inline; filename="${sanitizedFileName}"`
         };
         await exports.s3Client.send(new client_s3_1.PutObjectCommand(params));
         const baseUrl = PUBLIC_URL || "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
