@@ -40,6 +40,18 @@ export interface ProjectOverviewData {
     progress: number;
     ticketCount: number;
     completedCount: number;
+    tickets: Array<{
+      id: string;
+      ticketNumber: string;
+      title: string;
+      status: string;
+      priority: string | null;
+      assigneeName: string | null;
+      assigneeAvatar: string | null;
+      startDate: Date | null;
+      endDate: Date | null;
+      dueDate: Date | null;
+    }>;
   }>;
   team: Array<{
     id: string;
@@ -60,6 +72,22 @@ export interface ProjectOverviewData {
     timestamp: Date;
   }>;
   insights: string[];
+}
+
+export interface TimelineTicket {
+  id: string;
+  ticketNumber: string;
+  title: string;
+  status: string;
+  priority: string | null;
+  assigneeName: string | null;
+  assigneeAvatar: string | null;
+  startDate: Date | null;
+  endDate: Date | null;
+  dueDate: Date | null;
+  sprintName: string | null;
+  estimateHours: number;
+  trackedSeconds: number;
 }
 
 export class ProjectOverviewModel {
@@ -138,8 +166,44 @@ export class ProjectOverviewModel {
         status: row.status.toLowerCase(),
         ticketCount: parseInt(row.ticket_count),
         completedCount: parseInt(row.completed_count),
-        progress: row.ticket_count > 0 ? Math.round((row.completed_count / row.ticket_count) * 100) : 0
+        progress: row.ticket_count > 0 ? Math.round((row.completed_count / row.ticket_count) * 100) : 0,
+        tickets: [] as ProjectOverviewData["sprints"][number]["tickets"]
       }));
+
+      // 5b. Tickets nested under each sprint (for the sprint calendar + child table)
+      if (sprints.length > 0) {
+        const sprintIds = sprints.map(s => s.id);
+        const sprintTicketsRes = await client.query(
+          `SELECT t.id, t.ticket_number, t.title, t.status, t.priority, t.release_plan_id,
+                  t.start_date, t.end_date, t.due_date,
+                  u.name AS assignee_name, u.avatar_url AS assignee_avatar
+           FROM tickets t
+           LEFT JOIN users u ON t.assignee_id = u.id
+           WHERE t.release_plan_id = ANY($1::text[]) AND t.tenant_id = $2 AND t.is_deleted = false
+           ORDER BY t.ticket_number ASC`,
+          [sprintIds, tenantId]
+        );
+        const ticketsBySprint = new Map<string, ProjectOverviewData["sprints"][number]["tickets"]>();
+        sprintTicketsRes.rows.forEach(row => {
+          const list = ticketsBySprint.get(row.release_plan_id) || [];
+          list.push({
+            id: row.id,
+            ticketNumber: row.ticket_number,
+            title: row.title,
+            status: row.status,
+            priority: row.priority,
+            assigneeName: row.assignee_name,
+            assigneeAvatar: row.assignee_avatar,
+            startDate: row.start_date,
+            endDate: row.end_date,
+            dueDate: row.due_date
+          });
+          ticketsBySprint.set(row.release_plan_id, list);
+        });
+        sprints.forEach(s => {
+          s.tickets = ticketsBySprint.get(s.id) || [];
+        });
+      }
 
       // 6. Team Progress
       const teamRes = await client.query(
@@ -244,6 +308,42 @@ export class ProjectOverviewModel {
     } finally {
       client.release();
     }
+  }
+
+  /**
+   * All project tickets for the timeline view. Loaded on demand (separate from
+   * the overview payload) so the heavier per-ticket query only runs when the
+   * Timeline tab is opened.
+   */
+  static async getTimelineTickets(projectId: string, tenantId: string): Promise<TimelineTicket[]> {
+    const res = await pool.query(
+      `SELECT t.id, t.ticket_number, t.title, t.status, t.priority,
+              t.start_date, t.end_date, t.due_date, t.estimate_hours,
+              u.name AS assignee_name, u.avatar_url AS assignee_avatar,
+              rp.version AS sprint_name,
+              COALESCE((SELECT SUM(tte.duration) FROM time_tracking_entries tte WHERE tte.ticket_id = t.id), 0) AS tracked_seconds
+       FROM tickets t
+       LEFT JOIN users u ON t.assignee_id = u.id
+       LEFT JOIN release_plans rp ON t.release_plan_id = rp.id
+       WHERE t.project_id = $1 AND t.tenant_id = $2 AND t.is_deleted = false
+       ORDER BY t.start_date ASC NULLS LAST, t.ticket_number ASC`,
+      [projectId, tenantId]
+    );
+    return res.rows.map(row => ({
+      id: row.id,
+      ticketNumber: row.ticket_number,
+      title: row.title,
+      status: row.status,
+      priority: row.priority,
+      assigneeName: row.assignee_name,
+      assigneeAvatar: row.assignee_avatar,
+      startDate: row.start_date,
+      endDate: row.end_date,
+      dueDate: row.due_date,
+      sprintName: row.sprint_name,
+      estimateHours: parseFloat(row.estimate_hours) || 0,
+      trackedSeconds: parseInt(row.tracked_seconds) || 0
+    }));
   }
 
   static async update(id: string, tenantId: string, data: any): Promise<any> {
