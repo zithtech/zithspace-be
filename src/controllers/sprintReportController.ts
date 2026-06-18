@@ -15,9 +15,23 @@ import {
   EntityType,
 } from "@/utils/transactionHistory";
 
-const DONE_STATUSES = ["completed", "live"];
-const QA_STATUSES = ["in_testing", "in_review"];
-const BLOCKED_STATUSES = ["blocked"];
+// Status sets are matched case-insensitively against the real (per-tenant)
+// workflow statuses, which vary widely. Keep these broad so delay/QA/blocked
+// signals populate across the different status vocabularies teams use.
+const DONE_STATUSES = ["completed", "live", "done", "closed", "shipped"];
+const QA_STATUSES = [
+  "in_testing",
+  "in_review",
+  "dev_testing",
+  "devtesting",
+  "live_testing",
+  "qa",
+  "testing",
+  "review",
+  "code_review",
+  "uat",
+];
+const BLOCKED_STATUSES = ["blocked", "pause", "paused", "on_hold", "hold", "stalled"];
 
 type SprintRow = {
   id: string;
@@ -46,6 +60,20 @@ function pct(num: number, denom: number): number {
   return Math.round((num / denom) * 1000) / 10;
 }
 
+/** Fractional days between two timestamps (rounded to 1 decimal), or null. */
+function cycleDaysBetween(
+  start: Date | string | null,
+  end: Date | string | null
+): number | null {
+  if (!start || !end) return null;
+  const s = start instanceof Date ? start.getTime() : new Date(start).getTime();
+  const e = end instanceof Date ? end.getTime() : new Date(end).getTime();
+  if (Number.isNaN(s) || Number.isNaN(e)) return null;
+  const days = (e - s) / 86_400_000;
+  if (days < 0) return 0;
+  return Math.round(days * 10) / 10;
+}
+
 function computeHealthScore(input: {
   completionPct: number;
   spilloverPct: number;
@@ -70,6 +98,34 @@ function computeHealthScore(input: {
 
 export class SprintReportController {
   /**
+   * Returns the stored snapshot section for a completed sprint, or `undefined`
+   * when no snapshot exists (callers should then compute the section live).
+   * Each report handler short-circuits to this so completed sprints serve a
+   * frozen report. The snapshot generator bypasses it via `req.bypassSnapshot`.
+   */
+  private static async _getSnapshotSection(
+    tenantId: string,
+    sprintId: string,
+    key: string
+  ): Promise<any | undefined> {
+    try {
+      const r = await pool.query(
+        `SELECT report_data -> $3::text AS section
+           FROM sprint_reports
+          WHERE tenant_id = $1 AND sprint_id = $2
+          LIMIT 1`,
+        [tenantId, sprintId, key]
+      );
+      if (r.rowCount === 0) return undefined;
+      const section = r.rows[0].section;
+      return section == null ? undefined : section;
+    } catch {
+      // Missing table or any read error → fall back to live computation.
+      return undefined;
+    }
+  }
+
+  /**
    * GET /api/sprint-report/:sprintId
    * Returns Phase 1 sections: overview, ticket distribution, contribution.
    */
@@ -85,6 +141,14 @@ export class SprintReportController {
 
       const { sprintId } = req.params;
       const tenantId = req.tenantId;
+
+      if (!(req as any).bypassSnapshot) {
+        const snapshot = await SprintReportController._getSnapshotSection(tenantId, sprintId, "main");
+        if (snapshot !== undefined) {
+          res.json({ success: true, data: snapshot } as ApiResponse);
+          return;
+        }
+      }
 
       const sprintResult = await pool.query<SprintRow>(
         `SELECT rp.id, rp.version, rp.goal, rp.status,
@@ -353,6 +417,14 @@ export class SprintReportController {
       const { sprintId } = req.params;
       const tenantId = req.tenantId;
 
+      if (!(req as any).bypassSnapshot) {
+        const snapshot = await SprintReportController._getSnapshotSection(tenantId, sprintId, "timeline");
+        if (snapshot !== undefined) {
+          res.json({ success: true, data: snapshot } as ApiResponse);
+          return;
+        }
+      }
+
       const sprintResult = await pool.query<SprintRow>(
         `SELECT id, version, started_at, start_date, completed_at, end_date
            FROM release_plans
@@ -449,9 +521,45 @@ export class SprintReportController {
         reopenCount: Number(r.reopen_count ?? 0),
         delayDays:
           r.delay_days == null ? null : Math.round(Number(r.delay_days) * 10) / 10,
+        // Cycle time = first "in progress" (or creation) → first "done" transition.
+        // Derived from the activity log so it works even when due_date /
+        // completed_at columns are empty.
+        cycleDays: cycleDaysBetween(
+          r.first_started_at ?? r.created_at,
+          r.first_done_at ?? r.completed_at
+        ),
       }));
 
       const delayedTickets = tickets.filter((t) => (t.delayDays ?? 0) > 0);
+      const completedCycleTickets = tickets.filter((t) => t.cycleDays != null);
+      const avgCycleDays =
+        completedCycleTickets.length === 0
+          ? 0
+          : Math.round(
+              (completedCycleTickets.reduce((s, t) => s + (t.cycleDays ?? 0), 0) /
+                completedCycleTickets.length) *
+                10
+            ) / 10;
+      const longestCycleTicket = completedCycleTickets.reduce<typeof tickets[number] | null>(
+        (acc, t) => (acc == null || (t.cycleDays ?? 0) > (acc.cycleDays ?? 0) ? t : acc),
+        null
+      );
+      const cycleByAssigneeMap = new Map<
+        string,
+        { assigneeId: string | null; assigneeName: string; total: number; count: number }
+      >();
+      for (const t of completedCycleTickets) {
+        const key = t.assigneeId ?? "unassigned";
+        const bucket = cycleByAssigneeMap.get(key) ?? {
+          assigneeId: t.assigneeId,
+          assigneeName: t.assigneeName ?? "Unassigned",
+          total: 0,
+          count: 0,
+        };
+        bucket.total += t.cycleDays ?? 0;
+        bucket.count += 1;
+        cycleByAssigneeMap.set(key, bucket);
+      }
       const avgDelay =
         delayedTickets.length === 0
           ? 0
@@ -509,6 +617,25 @@ export class SprintReportController {
             totalTickets: tickets.length,
             delayedCount: delayedTickets.length,
             avgDelayDays: avgDelay,
+            completedCount: completedCycleTickets.length,
+            avgCycleDays,
+            longestCycle:
+              longestCycleTicket && (longestCycleTicket.cycleDays ?? 0) > 0
+                ? {
+                    ticketId: longestCycleTicket.ticketId,
+                    ticketNumber: longestCycleTicket.ticketNumber,
+                    title: longestCycleTicket.title,
+                    cycleDays: longestCycleTicket.cycleDays,
+                  }
+                : null,
+            cycleByAssignee: Array.from(cycleByAssigneeMap.values())
+              .map((b) => ({
+                assigneeId: b.assigneeId,
+                assigneeName: b.assigneeName,
+                avgCycle: Math.round((b.total / b.count) * 10) / 10,
+                count: b.count,
+              }))
+              .sort((a, b) => b.avgCycle - a.avgCycle),
             longestDelay: longestDelay && (longestDelay.delayDays ?? 0) > 0
               ? {
                   ticketId: longestDelay.ticketId,
@@ -562,6 +689,14 @@ export class SprintReportController {
 
       const { sprintId } = req.params;
       const tenantId = req.tenantId;
+
+      if (!(req as any).bypassSnapshot) {
+        const snapshot = await SprintReportController._getSnapshotSection(tenantId, sprintId, "scope");
+        if (snapshot !== undefined) {
+          res.json({ success: true, data: snapshot } as ApiResponse);
+          return;
+        }
+      }
 
       const sprintResult = await pool.query<SprintRow>(
         `SELECT id, started_at, start_date, completed_at, end_date
@@ -753,6 +888,14 @@ export class SprintReportController {
       const { sprintId } = req.params;
       const tenantId = req.tenantId;
 
+      if (!(req as any).bypassSnapshot) {
+        const snapshot = await SprintReportController._getSnapshotSection(tenantId, sprintId, "velocity");
+        if (snapshot !== undefined) {
+          res.json({ success: true, data: snapshot } as ApiResponse);
+          return;
+        }
+      }
+
       const sprintResult = await pool.query<SprintRow>(
         `SELECT id, version, started_at, start_date, completed_at, end_date
            FROM release_plans
@@ -930,6 +1073,14 @@ export class SprintReportController {
       }
       const { sprintId } = req.params;
       const tenantId = req.tenantId;
+
+      if (!(req as any).bypassSnapshot) {
+        const snapshot = await SprintReportController._getSnapshotSection(tenantId, sprintId, "quality");
+        if (snapshot !== undefined) {
+          res.json({ success: true, data: snapshot } as ApiResponse);
+          return;
+        }
+      }
 
       const sprintCheck = await pool.query(
         `SELECT id FROM release_plans WHERE id = $1 AND tenant_id = $2 AND type = 'sprint_plan' LIMIT 1`,
@@ -1132,6 +1283,14 @@ export class SprintReportController {
       const { sprintId } = req.params;
       const tenantId = req.tenantId;
 
+      if (!(req as any).bypassSnapshot) {
+        const snapshot = await SprintReportController._getSnapshotSection(tenantId, sprintId, "hotspots");
+        if (snapshot !== undefined) {
+          res.json({ success: true, data: snapshot } as ApiResponse);
+          return;
+        }
+      }
+
       const sprintCheck = await pool.query(
         `SELECT id FROM release_plans WHERE id = $1 AND tenant_id = $2 AND type = 'sprint_plan' LIMIT 1`,
         [sprintId, tenantId]
@@ -1141,7 +1300,7 @@ export class SprintReportController {
         return;
       }
 
-      const [epicRows, tagRows] = await Promise.all([
+      const [epicRows, tagRows, moduleRows] = await Promise.all([
         pool.query(
           `WITH sprint_tix AS (
               SELECT t.id, t.epic_id, t.assignee_id, t.priority, t.story_point, t.status
@@ -1237,6 +1396,42 @@ export class SprintReportController {
            LIMIT 15`,
           [sprintId, tenantId]
         ),
+        // Work-type "modules" — always available even without epics/tags.
+        pool.query(
+          `WITH sprint_tix AS (
+              SELECT t.id, t.type, t.assignee_id, t.priority, t.story_point, t.status
+                FROM tickets t
+               WHERE t.sprint_plan_id = $1 AND t.tenant_id = $2 AND t.is_deleted = false
+           ),
+           log_per_ticket AS (
+              SELECT
+                tal.ticket_id,
+                COUNT(*) FILTER (WHERE tal.action = 'Comment Added')::int AS comments,
+                COUNT(*) FILTER (
+                  WHERE tal.action = 'Ticket Updated' AND tal.details->>'newStatus' IS NOT NULL
+                )::int AS transitions
+              FROM ticket_activity_log tal
+              WHERE tal.tenant_id = $2 AND tal.ticket_id IN (SELECT id FROM sprint_tix)
+              GROUP BY tal.ticket_id
+           )
+           SELECT
+             COALESCE(NULLIF(TRIM(st.type), ''), 'Unknown') AS module,
+             COUNT(DISTINCT st.id)::int AS ticket_count,
+             COUNT(DISTINCT st.assignee_id) FILTER (WHERE st.assignee_id IS NOT NULL)::int AS unique_assignees,
+             COUNT(*) FILTER (
+               WHERE LOWER(COALESCE(st.priority, '')) ~ 'critical|high|p0|p1'
+             )::int AS urgent_count,
+             COUNT(*) FILTER (WHERE LOWER(st.status) = ANY($3))::int AS done_count,
+             COALESCE(SUM(lpt.comments), 0)::int AS total_comments,
+             COALESCE(SUM(lpt.transitions), 0)::int AS total_transitions,
+             COALESCE(SUM(st.story_point), 0)::int AS total_points
+           FROM sprint_tix st
+           LEFT JOIN log_per_ticket lpt ON lpt.ticket_id = st.id
+           GROUP BY 1
+           ORDER BY ticket_count DESC, total_transitions DESC
+           LIMIT 15`,
+          [sprintId, tenantId, DONE_STATUSES]
+        ),
       ]);
 
       const epics = epicRows.rows.map((r: any) => {
@@ -1268,6 +1463,33 @@ export class SprintReportController {
           hotScore: Math.round(score * 10) / 10,
         };
       }).sort((a, b) => b.hotScore - a.hotScore);
+
+      const modules = moduleRows.rows
+        .map((r: any) => {
+          const ticketCount = Number(r.ticket_count ?? 0);
+          const uniqueAssignees = Number(r.unique_assignees ?? 0);
+          const urgentCount = Number(r.urgent_count ?? 0);
+          const totalComments = Number(r.total_comments ?? 0);
+          const totalTransitions = Number(r.total_transitions ?? 0);
+          const score =
+            ticketCount * 1 +
+            uniqueAssignees * 2 +
+            totalComments * 0.5 +
+            totalTransitions * 0.3 +
+            urgentCount * 4;
+          return {
+            module: r.module,
+            ticketCount,
+            uniqueAssignees,
+            urgentCount,
+            doneCount: Number(r.done_count ?? 0),
+            totalComments,
+            totalTransitions,
+            totalPoints: Number(r.total_points ?? 0),
+            hotScore: Math.round(score * 10) / 10,
+          };
+        })
+        .sort((a, b) => b.hotScore - a.hotScore);
 
       const tags = tagRows.rows.map((r: any) => {
         const ticketCount = Number(r.ticket_count ?? 0);
@@ -1316,9 +1538,24 @@ export class SprintReportController {
         );
       }
 
+      // When there are no epics, surface the busiest work type instead so the
+      // section is never empty for teams that don't use epics/tags.
+      if (epics.length === 0 && modules.length > 0) {
+        const topModule = modules[0];
+        if (topModule.ticketCount >= 2) {
+          insights.push(
+            `"${topModule.module}" was the busiest work type — ${topModule.ticketCount} ticket${
+              topModule.ticketCount === 1 ? "" : "s"
+            }, ${topModule.uniqueAssignees} contributor${
+              topModule.uniqueAssignees === 1 ? "" : "s"
+            }${topModule.urgentCount > 0 ? `, ${topModule.urgentCount} urgent` : ""}.`
+          );
+        }
+      }
+
       res.json({
         success: true,
-        data: { epics, tags, insights },
+        data: { epics, tags, modules, insights },
       } as ApiResponse);
     } catch (err) {
       console.error("[SprintReportController] getSprintHotspots error:", err);
@@ -1344,6 +1581,14 @@ export class SprintReportController {
       }
       const { sprintId } = req.params;
       const tenantId = req.tenantId;
+
+      if (!(req as any).bypassSnapshot) {
+        const snapshot = await SprintReportController._getSnapshotSection(tenantId, sprintId, "bottlenecks");
+        if (snapshot !== undefined) {
+          res.json({ success: true, data: snapshot } as ApiResponse);
+          return;
+        }
+      }
 
       const sprintCheck = await pool.query(
         `SELECT id FROM release_plans WHERE id = $1 AND tenant_id = $2 AND type = 'sprint_plan' LIMIT 1`,
