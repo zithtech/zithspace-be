@@ -128,10 +128,17 @@ export class LeadController {
         ai_score: req.body.aiScore,
         proposal_text: req.body.proposalText,
         template_used: req.body.templateUsed,
-        platform: req.body.platform || (req.body.jobLink?.toLowerCase().includes('upwork.com') ? 'Upwork' :
-          req.body.jobLink?.toLowerCase().includes('freelancer.com') ? 'Freelancer' :
-            req.body.jobLink?.toLowerCase().includes('fiverr.com') ? 'Fiverr' :
-              req.body.jobLink?.toLowerCase().includes('linkedin.com') ? 'LinkedIn' : 'Upwork'),
+        platform: req.body.platform || (
+          req.body.jobLink?.toLowerCase().includes('upwork.com') ? 'Upwork' :
+            req.body.jobLink?.toLowerCase().includes('freelancer.com') ? 'Freelancer' :
+              req.body.jobLink?.toLowerCase().includes('fiverr.com') ? 'Fiverr' :
+                req.body.jobLink?.toLowerCase().includes('linkedin.com') ? 'LinkedIn' :
+                  req.body.jobLink?.toLowerCase().includes('toptal.com') ? 'Toptal' :
+                    req.body.jobLink?.toLowerCase().includes('guru.com') ? 'Guru' :
+                      req.body.jobLink?.toLowerCase().includes('peopleperhour.com') ? 'PeoplePerHour' :
+                        req.body.jobLink?.toLowerCase().includes('hubstaff.com') ? 'Hubstaff' :
+                          req.body.jobLink?.toLowerCase().includes('indeed.com') ? 'Indeed' : 'Upwork'
+        ),
         internal_notes: req.body.internalNotes,
         skill_analysis: req.body.skillAnalysis,
         ai_summary: req.body.ai_summary || req.body.aiSummary,
