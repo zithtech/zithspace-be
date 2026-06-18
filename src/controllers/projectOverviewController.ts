@@ -35,6 +35,37 @@ export class ProjectOverviewController {
   }
 
   /**
+   * Get all project tickets for the timeline view (loaded on demand)
+   */
+  static async getTimeline(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const { projectId } = req.params;
+      const tenantId = req.tenantId;
+
+      if (!tenantId) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context required",
+        } as ApiResponse);
+        return;
+      }
+
+      const tickets = await ProjectOverviewModel.getTimelineTickets(projectId, tenantId);
+
+      res.status(200).json({
+        success: true,
+        data: tickets,
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Get project timeline error:", error);
+      res.status(500).json({
+        success: false,
+        error: error.message || "Failed to fetch project timeline",
+      } as ApiResponse);
+    }
+  }
+
+  /**
    * Update project basic details
    */
   static async updateProject(req: AuthRequest, res: Response): Promise<void> {
