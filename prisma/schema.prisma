@@ -1381,7 +1381,7 @@ model DocumentHub {
   deletedAt   DateTime?      @map("deleted_at") @db.Timestamptz(6)
   deletedById String?        @map("deleted_by_id")
   isDeleted   Boolean?       @default(false) @map("is_deleted")
-  visibility  String?        @default("private") @db.VarChar(255)
+  visibility  String?        @default("public") @db.VarChar(255)
   shareToken  String?        @unique @map("share_token") @db.VarChar(255)
   createdBy   User           @relation("DocumentHubCreator", fields: [createdById], references: [id])
   deletedBy   User?          @relation("DocumentHubDeleter", fields: [deletedById], references: [id])
