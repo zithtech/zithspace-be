@@ -1,6 +1,7 @@
 import { Response } from "express";
 import pool from "@/config/dbpool";
 import { UserModel } from "@/models/user.model";
+import { DeletedMemberModel } from "../models/deletedMember.model";
 import {
   AuthRequest,
   ApiResponse,
@@ -49,8 +50,11 @@ export class UserController {
         sortOrder = "desc",
       } = req.query;
 
+      // Ensure deleted_members lookup table exists (lazy init)
+      await DeletedMemberModel.ensureTable();
+
       // Build dynamic SQL filters
-      const whereClauses: string[] = ['u.tenant_id = $1'];
+      const whereClauses: string[] = ['u.tenant_id = $1', 'u.id NOT IN (SELECT user_id FROM deleted_members)'];
       const values: any[] = [req.tenantId];
       let paramCount = 1;
 
@@ -150,6 +154,26 @@ export class UserController {
             ORDER BY th.created_at DESC 
             LIMIT 1
           ) AS "deletedBy",
+          (
+            SELECT th.actor_name 
+            FROM transaction_history th 
+            WHERE th.entity_type = 'user' 
+              AND th.entity_id = u.id 
+              AND th.action = 'create'
+              AND th.tenant_id = u.tenant_id
+            ORDER BY th.created_at ASC 
+            LIMIT 1
+          ) AS "createdBy",
+          (
+            SELECT th.actor_name 
+            FROM transaction_history th 
+            WHERE th.entity_type = 'user' 
+              AND th.entity_id = u.id 
+              AND th.action = 'update'
+              AND th.tenant_id = u.tenant_id
+            ORDER BY th.created_at DESC 
+            LIMIT 1
+          ) AS "updatedBy",
           (
             SELECT json_build_object('id', p.id, 'title', p.title) 
             FROM positions p 
@@ -673,8 +697,16 @@ export class UserController {
         throw new NotFoundError("User not found in this tenant");
       }
 
+      // Ensure deleted_members lookup table exists (lazy init)
+      await DeletedMemberModel.ensureTable();
+
       // Soft delete
       await UserModel.update(id, req.tenantId, { isActive: false });
+      await pool.query(`
+        INSERT INTO deleted_members (user_id, deleted_at, is_permanent)
+        VALUES ($1, NOW(), false)
+        ON CONFLICT (user_id) DO UPDATE SET is_permanent = false, deleted_at = NOW();
+      `, [id]);
       const updatedUser = await UserModel.findById(id, req.tenantId);
 
       recordTransaction({
@@ -716,10 +748,6 @@ export class UserController {
     }
   }
 
-  /**
-   * Get deleted (soft-deleted) members — Trash (tenant-aware)
-   * Returns users where is_active = false, ordered newest first.
-   */
   static async getDeletedMembers(req: AuthRequest, res: Response): Promise<void> {
     try {
       if (!req.tenantId || !req.user) {
@@ -727,9 +755,12 @@ export class UserController {
         return;
       }
 
+      // Ensure deleted_members lookup table exists (lazy init)
+      await DeletedMemberModel.ensureTable();
+
       const { search, page = 1, limit = 100 } = req.query;
 
-      const whereClauses: string[] = ['u.tenant_id = $1', 'u.is_active = false'];
+      const whereClauses: string[] = ['u.tenant_id = $1', 'u.is_active = false', 'u.id IN (SELECT user_id FROM deleted_members)'];
       const values: any[] = [req.tenantId];
       let paramCount = 1;
 
@@ -762,7 +793,7 @@ export class UserController {
           u.avatar_url AS "avatarUrl",
           u.min_working_hours AS "minWorkingHours",
           u.is_active AS "isActive",
-          u.updated_at AS "deletedAt",
+          (SELECT dm.deleted_at FROM deleted_members dm WHERE dm.user_id = u.id) as "deletedAt",
           (
             SELECT th.actor_name 
             FROM transaction_history th 
@@ -773,6 +804,16 @@ export class UserController {
             ORDER BY th.created_at DESC 
             LIMIT 1
           ) AS "deletedBy",
+          (
+            SELECT th.actor_name 
+            FROM transaction_history th 
+            WHERE th.entity_type = 'user' 
+              AND th.entity_id = u.id 
+              AND th.action = 'create'
+              AND th.tenant_id = u.tenant_id
+            ORDER BY th.created_at ASC 
+            LIMIT 1
+          ) AS "createdBy",
           (
             SELECT json_build_object('id', p.id, 'title', p.title)
             FROM positions p WHERE p.id = u.position_id
@@ -826,6 +867,51 @@ export class UserController {
   }
 
   /**
+   * Dynamically resolves all FK constraints referencing users(id),
+   * nullifies nullable columns and deletes rows with non-nullable columns,
+   * then physically deletes the user record(s).
+   */
+  private static async hardDeleteUsers(ids: string[], client: any): Promise<void> {
+    // Find every FK column pointing to users.id using pg_catalog for high performance and clean identifier names
+    const fkResult = await client.query(`
+      SELECT
+        rel.relname AS ref_table,
+        a.attname AS ref_col,
+        CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END AS is_nullable
+      FROM pg_constraint c
+      JOIN pg_class rel ON rel.oid = c.conrelid
+      JOIN pg_attribute a 
+        ON a.attnum = ANY(c.conkey) AND a.attrelid = c.conrelid
+      WHERE c.confrelid = 'users'::regclass 
+        AND c.contype = 'f'
+        AND rel.relname != 'deleted_members';
+    `);
+
+    for (const fk of fkResult.rows) {
+      const { ref_table, ref_col, is_nullable } = fk;
+      if (is_nullable === 'YES') {
+        // Nullify the reference so the parent row survives
+        await client.query(
+          `UPDATE "${ref_table}" SET "${ref_col}" = NULL WHERE "${ref_col}" = ANY($1::text[])`,
+          [ids]
+        );
+      } else {
+        // Non-nullable — delete child rows entirely
+        await client.query(
+          `DELETE FROM "${ref_table}" WHERE "${ref_col}" = ANY($1::text[])`,
+          [ids]
+        );
+      }
+    }
+
+    // Now physically delete users (deleted_members cascade-deletes automatically)
+    await client.query(
+      `DELETE FROM users WHERE id = ANY($1::text[])`,
+      [ids]
+    );
+  }
+
+  /**
    * Permanently delete a member from the database (irreversible).
    * Only works for members that have already been soft-deleted (is_active = false).
    */
@@ -852,7 +938,18 @@ export class UserController {
         return;
       }
 
-      await UserModel.delete(id, req.tenantId);
+      // Hard delete inside a transaction — resolves all FK constraints dynamically
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await UserController.hardDeleteUsers([id], client);
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
 
       recordTransaction({
         req,
@@ -905,7 +1002,12 @@ export class UserController {
         return;
       }
 
+      await DeletedMemberModel.ensureTable();
       const count = await UserModel.bulkRestore(ids, req.tenantId);
+      await pool.query(`
+        DELETE FROM deleted_members
+        WHERE user_id = ANY($1::text[]);
+      `, [ids]);
 
       recordTransaction({
         req,
@@ -958,7 +1060,20 @@ export class UserController {
         return;
       }
 
-      const count = await UserModel.bulkDelete(ids, req.tenantId);
+      await DeletedMemberModel.ensureTable();
+
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        await UserController.hardDeleteUsers(ids, client);
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+      const count = ids.length;
 
       recordTransaction({
         req,
@@ -999,7 +1114,30 @@ export class UserController {
         return;
       }
 
-      const count = await UserModel.emptyTrash(req.tenantId);
+      await DeletedMemberModel.ensureTable();
+
+      const client = await pool.connect();
+      let count = 0;
+      try {
+        await client.query('BEGIN');
+        // Fetch all inactive users for this tenant to hard delete them
+        const inactiveUsersResult = await client.query(
+          `SELECT id FROM users WHERE tenant_id = $1 AND is_active = false`,
+          [req.tenantId]
+        );
+        const ids = inactiveUsersResult.rows.map((row: any) => row.id);
+        count = ids.length;
+
+        if (count > 0) {
+          await UserController.hardDeleteUsers(ids, client);
+        }
+        await client.query('COMMIT');
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
 
       recordTransaction({
         req,
@@ -1048,7 +1186,11 @@ export class UserController {
         throw new NotFoundError("User not found in this tenant");
       }
 
+      await DeletedMemberModel.ensureTable();
       await UserModel.update(id, req.tenantId, { isActive: true });
+      await pool.query(`
+        DELETE FROM deleted_members WHERE user_id = $1;
+      `, [id]);
       const updatedUser = await UserModel.findById(id, req.tenantId);
 
       recordTransaction({
@@ -1159,7 +1301,7 @@ export class UserController {
         updateData.dateOfBirth = new Date(updateData.dateOfBirth);
       if (updateData.personalEmail)
         updateData.personalEmail = updateData.personalEmail.toLowerCase();
-      
+
       // Handle avatar upload if provided as base64
       if (updateData.avatarUrl && updateData.avatarUrl.startsWith('data:image')) {
         try {
