@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { prisma } from '@/config/database';
 import { AuthRequest, ApiResponse } from '@/types';
 import { RBACService } from './rbac.service';
+import { AccessService } from '@/services/access/AccessService';
 import { PERMISSIONS_BY_RESOURCE } from '@/types/permissions';
 import {
   recordTransaction,
@@ -22,9 +23,23 @@ export class RBACController {
    */
   static async listPermissions(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const permissions = await prisma.permission.findMany({
+      const allPermissions = await prisma.permission.findMany({
         orderBy: [{ resource: 'asc' }, { action: 'asc' }],
       });
+
+      // Gate 1: the RBAC catalog is limited to the tenant's plan modules — only
+      // plan-allowed modules/permissions may be assigned to roles. Tenant-scoped
+      // (no role arg) so the universe is identical for every viewer, including
+      // super_admin. Fail-open: a tenant with no/full plan sees the full catalog.
+      const plan = await AccessService.getTenantPlanAccess(req.user!.tenantId);
+      let permissions = allPermissions;
+      if (!plan.full) {
+        const permSet = new Set(plan.permissions);
+        const resSet = new Set(plan.resources);
+        permissions = allPermissions.filter(
+          (p) => permSet.has(p.name) || resSet.has(p.resource),
+        );
+      }
 
       // Group by resource
       const grouped: Record<string, typeof permissions> = {};

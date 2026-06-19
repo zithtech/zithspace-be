@@ -33,10 +33,11 @@ const TTL_MS = 60_000;
 export class AccessService {
   static async getTenantPlanAccess(
     tenantId: string,
-    role?: string
+    role?: string // eslint-disable-line @typescript-eslint/no-unused-vars
   ): Promise<TenantPlanAccess> {
-    // super_admin always gets everything.
-    if (role === "super_admin") return { ...FULL };
+    // Gate 1 (plan) binds everyone — there is intentionally NO super_admin bypass
+    // here. super_admin's RBAC bypass (Gate 2) lives in RBACService.getUserPermissions.
+    // `role` is kept only for caller/signature compatibility.
     if (!tenantId) return { ...FULL };
 
     const cached = cache.get(tenantId);

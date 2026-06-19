@@ -23,6 +23,8 @@ import {
   Action,
   EntityType,
 } from "@/utils/transactionHistory";
+import { SystemRoles } from "@/types/permissions";
+import { RBACService } from "@/modules/rbac/rbac.service";
 
 export class TenantController {
   /**
@@ -186,7 +188,9 @@ export class TenantController {
             personalEmail: tenantData.adminUser.email.toLowerCase(),
             phone: tenantData.adminUser.phone,
             passwordHash,
-            role: "admin",
+            // Master/owner user is the tenant's super_admin: bypasses RBAC (Gate 2)
+            // but remains bound by the tenant's plan (Gate 1).
+            role: SystemRoles.SUPER_ADMIN,
             // Position will be assigned later after positions are set up
             workDays: [1, 2, 3, 4, 5], // Monday to Friday
           },
@@ -204,8 +208,50 @@ export class TenantController {
           }
         });
 
+        // Provision the tenant's super_admin role and assign the master (owner) user to
+        // it. super_admin holds every permission (Gate 2 bypass) but remains bound by the
+        // tenant's plan (Gate 1). Even before the global Permission catalog is seeded, the
+        // owner still resolves full access via the getUserPermissions super_admin shortcut.
+        const allPerms = await tx.permission.findMany({ select: { id: true } });
+        const superAdminRole = await tx.role.create({
+          data: {
+            tenantId: tenant.id,
+            name: "Super Admin",
+            slug: SystemRoles.SUPER_ADMIN,
+            description: "System administrator — full access to all features",
+            isSystem: true,
+            rolePermissions: {
+              create: allPerms.map((p) => ({ permissionId: p.id })),
+            },
+          },
+        });
+
+        await tx.userRole.create({
+          data: {
+            userId: adminUser.id,
+            roleId: superAdminRole.id,
+            tenantId: tenant.id,
+            assignedById: adminUser.id,
+          },
+        });
+
+        TenantLogger.info('Super admin role provisioned for tenant', {
+          operation: 'TENANT_REGISTRATION',
+          step: 'SUPER_ADMIN_ROLE_CREATED',
+          tenantId: tenant.id,
+          userId: adminUser.id,
+          metadata: {
+            roleId: superAdminRole.id,
+            permissionCount: allPerms.length,
+          },
+        });
+
         return { tenant, adminUser };
       });
+
+      // Defensive/consistency: the new owner has no cached permissions yet, but clear
+      // any stale entry so the first login resolves the freshly-created super_admin role.
+      RBACService.invalidateUser(result.adminUser.id, result.tenant.id);
 
       TenantLogger.info('Tenant registration completed successfully', {
         operation: 'TENANT_REGISTRATION',
