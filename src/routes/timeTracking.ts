@@ -13,6 +13,7 @@ router.use(authenticateToken);
 router.use(requireAuth);
 
 router.get("/", requireAnyPermission(Permissions.TIME_TRACKING_READ, Permissions.TIME_TRACKING_TEAM_READ), TimeTrackingController.getEntries);
+router.get("/performance", requirePermission(Permissions.TIME_TRACKING_TEAM_READ), TimeTrackingController.getPerformance);
 router.post("/start", requirePermission(Permissions.TIME_TRACKING_CREATE), TimeTrackingController.startTimer);
 router.post("/manual", requirePermission(Permissions.TIME_TRACKING_CREATE), TimeTrackingController.createManualEntry);
 router.post("/:id/pause", requirePermission(Permissions.TIME_TRACKING_CREATE), TimeTrackingController.pauseTimer);
