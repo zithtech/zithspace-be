@@ -340,6 +340,16 @@ export class SprintReportController {
           sprint.started_at ?? sprint.start_date,
           sprint.completed_at ?? sprint.end_date
         ),
+        // Planned vs actual dates, kept separate for the header. `delayDays` is how
+        // far the sprint ran past its planned end (uses completion date when the
+        // sprint is closed, otherwise "now" for an in-flight sprint). 0 = on time.
+        plannedStartDate: sprint.start_date,
+        plannedEndDate: sprint.end_date,
+        actualStartDate: sprint.started_at,
+        actualEndDate: sprint.completed_at,
+        delayDays: sprint.end_date
+          ? daysBetween(sprint.end_date, sprint.completed_at ?? new Date())
+          : null,
         teamSize,
         totalTickets,
         plannedStoryPoints: plannedPoints,
