@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.UserController = void 0;
 const dbpool_1 = __importDefault(require("@/config/dbpool"));
 const user_model_1 = require("@/models/user.model");
+const deletedMember_model_1 = require("../models/deletedMember.model");
 const types_1 = require("@/types");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const r2Client_1 = require("@/utils/r2Client");
@@ -25,8 +26,10 @@ class UserController {
                 return;
             }
             const { page = 1, limit = 20, role, position, reportsToId, isActive = "true", search, sortBy = "createdAt", sortOrder = "desc", } = req.query;
+            // Ensure deleted_members lookup table exists (lazy init)
+            await deletedMember_model_1.DeletedMemberModel.ensureTable();
             // Build dynamic SQL filters
-            const whereClauses = ['u.tenant_id = $1'];
+            const whereClauses = ['u.tenant_id = $1', 'u.id NOT IN (SELECT user_id FROM deleted_members)'];
             const values = [req.tenantId];
             let paramCount = 1;
             if (role) {
@@ -114,6 +117,26 @@ class UserController {
             ORDER BY th.created_at DESC 
             LIMIT 1
           ) AS "deletedBy",
+          (
+            SELECT th.actor_name 
+            FROM transaction_history th 
+            WHERE th.entity_type = 'user' 
+              AND th.entity_id = u.id 
+              AND th.action = 'create'
+              AND th.tenant_id = u.tenant_id
+            ORDER BY th.created_at ASC 
+            LIMIT 1
+          ) AS "createdBy",
+          (
+            SELECT th.actor_name 
+            FROM transaction_history th 
+            WHERE th.entity_type = 'user' 
+              AND th.entity_id = u.id 
+              AND th.action = 'update'
+              AND th.tenant_id = u.tenant_id
+            ORDER BY th.created_at DESC 
+            LIMIT 1
+          ) AS "updatedBy",
           (
             SELECT json_build_object('id', p.id, 'title', p.title) 
             FROM positions p 
@@ -556,8 +579,15 @@ class UserController {
             if (!existingUser) {
                 throw new types_1.NotFoundError("User not found in this tenant");
             }
+            // Ensure deleted_members lookup table exists (lazy init)
+            await deletedMember_model_1.DeletedMemberModel.ensureTable();
             // Soft delete
             await user_model_1.UserModel.update(id, req.tenantId, { isActive: false });
+            await dbpool_1.default.query(`
+        INSERT INTO deleted_members (user_id, deleted_at, is_permanent)
+        VALUES ($1, NOW(), false)
+        ON CONFLICT (user_id) DO UPDATE SET is_permanent = false, deleted_at = NOW();
+      `, [id]);
             const updatedUser = await user_model_1.UserModel.findById(id, req.tenantId);
             (0, transactionHistory_1.recordTransaction)({
                 req,
@@ -595,18 +625,16 @@ class UserController {
             });
         }
     }
-    /**
-     * Get deleted (soft-deleted) members — Trash (tenant-aware)
-     * Returns users where is_active = false, ordered newest first.
-     */
     static async getDeletedMembers(req, res) {
         try {
             if (!req.tenantId || !req.user) {
                 res.status(400).json({ success: false, error: 'Tenant context and authentication required' });
                 return;
             }
+            // Ensure deleted_members lookup table exists (lazy init)
+            await deletedMember_model_1.DeletedMemberModel.ensureTable();
             const { search, page = 1, limit = 100 } = req.query;
-            const whereClauses = ['u.tenant_id = $1', 'u.is_active = false'];
+            const whereClauses = ['u.tenant_id = $1', 'u.is_active = false', 'u.id IN (SELECT user_id FROM deleted_members)'];
             const values = [req.tenantId];
             let paramCount = 1;
             if (search) {
@@ -634,7 +662,7 @@ class UserController {
           u.avatar_url AS "avatarUrl",
           u.min_working_hours AS "minWorkingHours",
           u.is_active AS "isActive",
-          u.updated_at AS "deletedAt",
+          (SELECT dm.deleted_at FROM deleted_members dm WHERE dm.user_id = u.id) as "deletedAt",
           (
             SELECT th.actor_name 
             FROM transaction_history th 
@@ -645,6 +673,16 @@ class UserController {
             ORDER BY th.created_at DESC 
             LIMIT 1
           ) AS "deletedBy",
+          (
+            SELECT th.actor_name 
+            FROM transaction_history th 
+            WHERE th.entity_type = 'user' 
+              AND th.entity_id = u.id 
+              AND th.action = 'create'
+              AND th.tenant_id = u.tenant_id
+            ORDER BY th.created_at ASC 
+            LIMIT 1
+          ) AS "createdBy",
           (
             SELECT json_build_object('id', p.id, 'title', p.title)
             FROM positions p WHERE p.id = u.position_id
@@ -694,6 +732,40 @@ class UserController {
         }
     }
     /**
+     * Dynamically resolves all FK constraints referencing users(id),
+     * nullifies nullable columns and deletes rows with non-nullable columns,
+     * then physically deletes the user record(s).
+     */
+    static async hardDeleteUsers(ids, client) {
+        // Find every FK column pointing to users.id using pg_catalog for high performance and clean identifier names
+        const fkResult = await client.query(`
+      SELECT
+        rel.relname AS ref_table,
+        a.attname AS ref_col,
+        CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END AS is_nullable
+      FROM pg_constraint c
+      JOIN pg_class rel ON rel.oid = c.conrelid
+      JOIN pg_attribute a 
+        ON a.attnum = ANY(c.conkey) AND a.attrelid = c.conrelid
+      WHERE c.confrelid = 'users'::regclass 
+        AND c.contype = 'f'
+        AND rel.relname != 'deleted_members';
+    `);
+        for (const fk of fkResult.rows) {
+            const { ref_table, ref_col, is_nullable } = fk;
+            if (is_nullable === 'YES') {
+                // Nullify the reference so the parent row survives
+                await client.query(`UPDATE "${ref_table}" SET "${ref_col}" = NULL WHERE "${ref_col}" = ANY($1::text[])`, [ids]);
+            }
+            else {
+                // Non-nullable — delete child rows entirely
+                await client.query(`DELETE FROM "${ref_table}" WHERE "${ref_col}" = ANY($1::text[])`, [ids]);
+            }
+        }
+        // Now physically delete users (deleted_members cascade-deletes automatically)
+        await client.query(`DELETE FROM users WHERE id = ANY($1::text[])`, [ids]);
+    }
+    /**
      * Permanently delete a member from the database (irreversible).
      * Only works for members that have already been soft-deleted (is_active = false).
      */
@@ -715,7 +787,20 @@ class UserController {
                 });
                 return;
             }
-            await user_model_1.UserModel.delete(id, req.tenantId);
+            // Hard delete inside a transaction — resolves all FK constraints dynamically
+            const client = await dbpool_1.default.connect();
+            try {
+                await client.query('BEGIN');
+                await UserController.hardDeleteUsers([id], client);
+                await client.query('COMMIT');
+            }
+            catch (err) {
+                await client.query('ROLLBACK');
+                throw err;
+            }
+            finally {
+                client.release();
+            }
             (0, transactionHistory_1.recordTransaction)({
                 req,
                 section: transactionHistory_1.Section.ADMIN,
@@ -764,7 +849,12 @@ class UserController {
                 });
                 return;
             }
+            await deletedMember_model_1.DeletedMemberModel.ensureTable();
             const count = await user_model_1.UserModel.bulkRestore(ids, req.tenantId);
+            await dbpool_1.default.query(`
+        DELETE FROM deleted_members
+        WHERE user_id = ANY($1::text[]);
+      `, [ids]);
             (0, transactionHistory_1.recordTransaction)({
                 req,
                 section: transactionHistory_1.Section.ADMIN,
@@ -813,7 +903,21 @@ class UserController {
                 });
                 return;
             }
-            const count = await user_model_1.UserModel.bulkDelete(ids, req.tenantId);
+            await deletedMember_model_1.DeletedMemberModel.ensureTable();
+            const client = await dbpool_1.default.connect();
+            try {
+                await client.query('BEGIN');
+                await UserController.hardDeleteUsers(ids, client);
+                await client.query('COMMIT');
+            }
+            catch (err) {
+                await client.query('ROLLBACK');
+                throw err;
+            }
+            finally {
+                client.release();
+            }
+            const count = ids.length;
             (0, transactionHistory_1.recordTransaction)({
                 req,
                 section: transactionHistory_1.Section.ADMIN,
@@ -851,7 +955,27 @@ class UserController {
                 });
                 return;
             }
-            const count = await user_model_1.UserModel.emptyTrash(req.tenantId);
+            await deletedMember_model_1.DeletedMemberModel.ensureTable();
+            const client = await dbpool_1.default.connect();
+            let count = 0;
+            try {
+                await client.query('BEGIN');
+                // Fetch all inactive users for this tenant to hard delete them
+                const inactiveUsersResult = await client.query(`SELECT id FROM users WHERE tenant_id = $1 AND is_active = false`, [req.tenantId]);
+                const ids = inactiveUsersResult.rows.map((row) => row.id);
+                count = ids.length;
+                if (count > 0) {
+                    await UserController.hardDeleteUsers(ids, client);
+                }
+                await client.query('COMMIT');
+            }
+            catch (err) {
+                await client.query('ROLLBACK');
+                throw err;
+            }
+            finally {
+                client.release();
+            }
             (0, transactionHistory_1.recordTransaction)({
                 req,
                 section: transactionHistory_1.Section.ADMIN,
@@ -894,7 +1018,11 @@ class UserController {
             if (!existingUser) {
                 throw new types_1.NotFoundError("User not found in this tenant");
             }
+            await deletedMember_model_1.DeletedMemberModel.ensureTable();
             await user_model_1.UserModel.update(id, req.tenantId, { isActive: true });
+            await dbpool_1.default.query(`
+        DELETE FROM deleted_members WHERE user_id = $1;
+      `, [id]);
             const updatedUser = await user_model_1.UserModel.findById(id, req.tenantId);
             (0, transactionHistory_1.recordTransaction)({
                 req,
