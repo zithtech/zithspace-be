@@ -1328,15 +1328,21 @@ class ProjectController {
                 return;
             }
             const userId = req.user.id;
+            const userRole = req.user.role;
+            const tenantId = req.tenantId;
+            const hasManagePermission = await rbac_service_1.RBACService.hasPermission(userId, tenantId, permissions_1.Permissions.PROJECT_MANAGE, userRole);
+            const whereClause = {
+                tenantId,
+                status: { notIn: ["ARCHIVED", "DELETED", "archived", "deleted"] },
+            };
+            if (!hasManagePermission) {
+                whereClause.OR = [
+                    { projectManagerId: userId },
+                    { members: { some: { userId } } },
+                ];
+            }
             const projects = await database_1.prisma.project.findMany({
-                where: {
-                    tenantId: req.tenantId,
-                    status: { notIn: ["ARCHIVED", "DELETED", "archived", "deleted"] },
-                    OR: [
-                        { projectManagerId: userId },
-                        { members: { some: { userId: userId } } },
-                    ],
-                },
+                where: whereClause,
                 select: {
                     id: true,
                     name: true,
@@ -1377,15 +1383,21 @@ class ProjectController {
                 return;
             }
             const userId = req.user.id;
+            const userRole = req.user.role;
+            const tenantId = req.tenantId;
+            const hasManagePermission = await rbac_service_1.RBACService.hasPermission(userId, tenantId, permissions_1.Permissions.PROJECT_MANAGE, userRole);
+            const whereClause = {
+                tenantId,
+                status: { notIn: ["ARCHIVED", "DELETED", "archived", "deleted"] },
+            };
+            if (!hasManagePermission) {
+                whereClause.OR = [
+                    { projectManagerId: userId },
+                    { members: { some: { userId } } },
+                ];
+            }
             const projects = await database_1.prisma.project.findMany({
-                where: {
-                    tenantId: req.tenantId,
-                    status: { notIn: ["ARCHIVED", "DELETED", "archived", "deleted"] },
-                    OR: [
-                        { projectManagerId: userId },
-                        { members: { some: { userId: userId } } },
-                    ],
-                },
+                where: whereClause,
                 select: {
                     id: true,
                     name: true,
