@@ -10,6 +10,7 @@ const socketService_1 = require("@/services/socketService");
 const cacheService_1 = __importDefault(require("@/utils/cacheService"));
 const transactionHistory_1 = require("@/utils/transactionHistory");
 const crypto_1 = require("crypto");
+const sprintReportSnapshotService_1 = require("@/services/sprintReportSnapshotService");
 class SprintCompletionController {
     /**
      * Get sprint completion summary (tenant-aware)
@@ -581,6 +582,21 @@ class SprintCompletionController {
                 sprintId,
                 sprint: updatedSprint,
             });
+            // Generate the frozen report snapshot (Sprint Reports v2). Best-effort:
+            // never let report generation block or fail sprint completion.
+            try {
+                const summary = await (0, sprintReportSnapshotService_1.generateSprintReportSnapshot)(sprintId, req.tenantId, req.user.id);
+                if (summary) {
+                    socketService_1.socketService.emitToTenant(req.tenantId, "sprint:report_generated", {
+                        sprintId,
+                        projectId: summary.projectId,
+                        report: summary,
+                    });
+                }
+            }
+            catch (snapshotErr) {
+                console.error("[SprintCompletion] Failed to generate sprint report snapshot:", snapshotErr);
+            }
             (0, transactionHistory_1.recordTransaction)({
                 req,
                 section: transactionHistory_1.Section.WORK,

@@ -24,8 +24,8 @@ const PERFORMANCE_TIERS: { label: string; min: number; max: number | null }[] = 
 
 /** Special status applied when a member tracks any time on a weekend day. */
 const WEEKEND_STATUS: Record<string, string> = {
-  Saturday: "Weekend Warrior (Sat)",
-  Sunday: "Weekend Warrior (Sun)",
+  Saturday: "Weekend Warrior",
+  Sunday: "Weekend Warrior",
 };
 
 /**

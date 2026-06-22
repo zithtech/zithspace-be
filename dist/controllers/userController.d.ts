@@ -21,11 +21,13 @@ export declare class UserController {
      * Delete member (soft delete - tenant-aware)
      */
     static deleteMember(req: AuthRequest, res: Response): Promise<void>;
-    /**
-     * Get deleted (soft-deleted) members — Trash (tenant-aware)
-     * Returns users where is_active = false, ordered newest first.
-     */
     static getDeletedMembers(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Dynamically resolves all FK constraints referencing users(id),
+     * nullifies nullable columns and deletes rows with non-nullable columns,
+     * then physically deletes the user record(s).
+     */
+    private static hardDeleteUsers;
     /**
      * Permanently delete a member from the database (irreversible).
      * Only works for members that have already been soft-deleted (is_active = false).
