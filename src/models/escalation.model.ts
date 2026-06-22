@@ -92,10 +92,12 @@ export async function createEscalation(data: CreateEscalationData): Promise<any>
 }
 
 /**
- * Get all active escalations for a tenant (non-deleted)
+ * Get all active escalations for a tenant (non-deleted).
+ * If userId is provided and isAdmin is false, only escalations where the user
+ * is the creator or a target team member are returned.
  */
-export async function getEscalations(tenantId: string): Promise<any[]> {
-    const query = `
+export async function getEscalations(tenantId: string, userId?: string, isAdmin?: boolean): Promise<any[]> {
+    let query = `
         SELECT e.*, 
                ec.displayname as category_name, ec.visualcolor as category_color,
                ep.displayname as priority_name, ep.visualcolor as priority_color, ep.priorityweight as priority_weight,
@@ -123,17 +125,31 @@ export async function getEscalations(tenantId: string): Promise<any[]> {
         LEFT JOIN escalation_priorities ep ON e.escalation_priority_id = ep.id
         LEFT JOIN escalation_status es ON e.initial_status_id = es.id
         WHERE e.tenant_id = $1 AND e.is_deleted = FALSE
-        ORDER BY e.created_at DESC;
     `;
-    const result = await pool.query(query, [tenantId]);
+
+    const values: any[] = [tenantId];
+
+    if (userId && !isAdmin) {
+        query += ` AND (e.created_by_id = $2 OR EXISTS (
+            SELECT 1 FROM escalation_team_members etm 
+            WHERE etm.escalation_id = e.id AND etm.user_id = $2
+        ))`;
+        values.push(userId);
+    }
+
+    query += ` ORDER BY e.created_at DESC;`;
+
+    const result = await pool.query(query, values);
     return result.rows;
 }
 
 /**
- * Get all trashed escalations for a tenant
+ * Get all trashed escalations for a tenant.
+ * If userId is provided and isAdmin is false, only escalations where the user
+ * is the creator or a target team member are returned.
  */
-export async function getTrashEscalations(tenantId: string): Promise<any[]> {
-    const query = `
+export async function getTrashEscalations(tenantId: string, userId?: string, isAdmin?: boolean): Promise<any[]> {
+    let query = `
         SELECT e.*, 
                ec.displayname as category_name, ec.visualcolor as category_color,
                ep.displayname as priority_name, ep.visualcolor as priority_color, ep.priorityweight as priority_weight,
@@ -161,17 +177,31 @@ export async function getTrashEscalations(tenantId: string): Promise<any[]> {
         LEFT JOIN escalation_priorities ep ON e.escalation_priority_id = ep.id
         LEFT JOIN escalation_status es ON e.initial_status_id = es.id
         WHERE e.tenant_id = $1 AND e.is_deleted = TRUE
-        ORDER BY e.deleted_at DESC;
     `;
-    const result = await pool.query(query, [tenantId]);
+
+    const values: any[] = [tenantId];
+
+    if (userId && !isAdmin) {
+        query += ` AND (e.created_by_id = $2 OR EXISTS (
+            SELECT 1 FROM escalation_team_members etm 
+            WHERE etm.escalation_id = e.id AND etm.user_id = $2
+        ))`;
+        values.push(userId);
+    }
+
+    query += ` ORDER BY e.deleted_at DESC;`;
+
+    const result = await pool.query(query, values);
     return result.rows;
 }
 
 /**
- * Get an escalation by ID for a specific tenant (non-deleted)
+ * Get an escalation by ID for a specific tenant.
+ * If userId is provided and isAdmin is false, returns null if the user is
+ * neither the creator nor a target team member.
  */
-export async function getEscalationById(id: string, tenantId: string): Promise<any> {
-    const query = `
+export async function getEscalationById(id: string, tenantId: string, userId?: string, isAdmin?: boolean): Promise<any> {
+    let query = `
         SELECT e.*, 
                ec.displayname as category_name, ec.visualcolor as category_color,
                ep.displayname as priority_name, ep.visualcolor as priority_color, ep.priorityweight as priority_weight,
@@ -198,9 +228,20 @@ export async function getEscalationById(id: string, tenantId: string): Promise<a
         LEFT JOIN escalationcategories ec ON e.escalation_category_id = ec.id
         LEFT JOIN escalation_priorities ep ON e.escalation_priority_id = ep.id
         LEFT JOIN escalation_status es ON e.initial_status_id = es.id
-        WHERE e.id = $1 AND e.tenant_id = $2 AND e.is_deleted = FALSE;
+        WHERE e.id = $1 AND e.tenant_id = $2 AND e.is_deleted = FALSE
     `;
-    const result = await pool.query(query, [id, tenantId]);
+
+    const values: any[] = [id, tenantId];
+
+    if (userId && !isAdmin) {
+        query += ` AND (e.created_by_id = $3 OR EXISTS (
+            SELECT 1 FROM escalation_team_members etm 
+            WHERE etm.escalation_id = e.id AND etm.user_id = $3
+        ))`;
+        values.push(userId);
+    }
+
+    const result = await pool.query(query, values);
     const escalation = result.rows[0];
 
     if (!escalation) return null;
@@ -300,16 +341,16 @@ export async function permanentDeleteEscalation(id: string, tenantId: string): P
     const client = await pool.connect();
     try {
         await client.query("BEGIN");
-        
+
         // 1. Delete tickets
         await client.query(`DELETE FROM escalation_tickets WHERE escalation_id = $1`, [id]);
-        
+
         // 2. Delete team members
         await client.query(`DELETE FROM escalation_team_members WHERE escalation_id = $1`, [id]);
-        
+
         // 3. Delete escalation
         const result = await client.query(`DELETE FROM escalation WHERE id = $1 AND tenant_id = $2 AND is_deleted = TRUE`, [id, tenantId]);
-        
+
         await client.query("COMMIT");
         return (result.rowCount ?? 0) > 0;
     } catch (error) {
@@ -327,25 +368,25 @@ export async function emptyEscalationTrash(tenantId: string): Promise<number> {
     const client = await pool.connect();
     try {
         await client.query("BEGIN");
-        
+
         // Get all trashed escalation IDs for this tenant
         const idsRes = await client.query(`SELECT id FROM escalation WHERE tenant_id = $1 AND is_deleted = TRUE`, [tenantId]);
         const ids = idsRes.rows.map((row: any) => row.id);
-        
+
         if (ids.length > 0) {
             // Delete tickets
             await client.query(`DELETE FROM escalation_tickets WHERE escalation_id = ANY($1::uuid[])`, [ids]);
-            
+
             // Delete team members
             await client.query(`DELETE FROM escalation_team_members WHERE escalation_id = ANY($1::uuid[])`, [ids]);
-            
+
             // Delete escalations
             const result = await client.query(`DELETE FROM escalation WHERE tenant_id = $1 AND is_deleted = TRUE`, [tenantId]);
-            
+
             await client.query("COMMIT");
             return result.rowCount ?? 0;
         }
-        
+
         await client.query("COMMIT");
         return 0;
     } catch (error) {
@@ -376,16 +417,16 @@ export async function bulkPermanentDeleteEscalations(ids: string[], tenantId: st
     const client = await pool.connect();
     try {
         await client.query("BEGIN");
-        
+
         // Delete tickets
         await client.query(`DELETE FROM escalation_tickets WHERE escalation_id = ANY($1::uuid[])`, [ids]);
-        
+
         // Delete team members
         await client.query(`DELETE FROM escalation_team_members WHERE escalation_id = ANY($1::uuid[])`, [ids]);
-        
+
         // Delete escalations
         const result = await client.query(`DELETE FROM escalation WHERE tenant_id = $2 AND id = ANY($1::uuid[]) AND is_deleted = TRUE`, [ids, tenantId]);
-        
+
         await client.query("COMMIT");
         return result.rowCount ?? 0;
     } catch (error) {
