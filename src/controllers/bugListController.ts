@@ -229,7 +229,7 @@ async function loadBugWithChildren(
   tenantId: string,
 ): Promise<any | null> {
   const bugRes = await pool.query(
-    `SELECT b.*, t.ticket_number AS ticket_number,
+    `SELECT b.*, t.ticket_number AS ticket_number, t.status AS ticket_status,
             u.id AS creator_id, u.name AS creator_name, u.work_email AS creator_email,
             a.id AS assignee_uid, a.name AS assignee_name, a.work_email AS assignee_email, a.avatar_url AS assignee_avatar
        FROM bugs b
@@ -275,6 +275,7 @@ function shapeBug(row: any, attachments: any[], externalLinks: any[]) {
     comments: row.comments,
     ticketId: row.ticket_id,
     ticketNumber: row.ticket_number,
+    ticketStatus: row.ticket_status,
     assigneeId: row.assignee_id,
     assignee: row.assignee_uid
       ? {
@@ -1428,6 +1429,7 @@ export class BugListController {
       createdTo,
       updatedFrom,
       updatedTo,
+      ticketStatus,
       page = "1",
       limit = "50",
       sortBy = "created_at",
@@ -1458,6 +1460,7 @@ export class BugListController {
       if (bugType) push("b.bug_type = $$", bugType);
       if (createdById) push("b.created_by_id = $$", createdById);
       if (assigneeId) push("(b.assignee_id = $$ OR (b.assignee_id IS NULL AND t.assignee_id = $$))", assigneeId);
+      if (ticketStatus) push("t.status = $$", ticketStatus);
       if (projectId && projectId !== 'all') {
         conditions.push(`b.folder_id IN (SELECT id FROM bug_folders WHERE project_id = $${values.length + 1})`);
         values.push(projectId);
@@ -1531,7 +1534,7 @@ export class BugListController {
       const total = totalRes.rows[0].total as number;
 
       const listSql = `
-        SELECT b.*, t.ticket_number AS ticket_number,
+        SELECT b.*, t.ticket_number AS ticket_number, t.status AS ticket_status,
                u.id AS creator_id, u.name AS creator_name, u.work_email AS creator_email,
                a.id AS assignee_uid, a.name AS assignee_name, a.work_email AS assignee_email, a.avatar_url AS assignee_avatar
           FROM bugs b
@@ -2919,6 +2922,130 @@ export class BugListController {
       await client.query("ROLLBACK");
       console.error("bulkConvertToTickets error:", err);
       bad(res, 500, err.message || "Failed to convert bugs");
+    } finally {
+      client.release();
+    }
+  }
+
+  static async bulkMapToTicket(
+    req: AuthRequest,
+    res: Response,
+  ): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    const { ticketId, bugIds } = req.body;
+    if (!ticketId || !Array.isArray(bugIds) || bugIds.length === 0) {
+      bad(res, 400, "ticketId and non-empty bugIds array are required");
+      return;
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      // Verify ticket exists
+      const ticketRes = await client.query(
+        `SELECT id, ticket_number, description FROM tickets WHERE id = $1 AND tenant_id = $2`,
+        [ticketId, req.tenantId],
+      );
+      if (ticketRes.rows.length === 0) {
+        throw new Error("Ticket not found");
+      }
+      const ticket = ticketRes.rows[0];
+
+      // Update the bugs to status 'converted' and set ticket_id
+      await client.query(
+        `UPDATE bugs
+            SET ticket_id = $1, status = 'converted', updated_at = NOW()
+          WHERE id = ANY($2::text[]) AND tenant_id = $3`,
+        [ticketId, bugIds, req.tenantId],
+      );
+
+      // Fetch mapped bugs' descriptions and bug numbers
+      const bugsRes = await client.query(
+        `SELECT id, bug_number, title, description FROM bugs WHERE id = ANY($1::text[]) AND tenant_id = $2`,
+        [bugIds, req.tenantId],
+      );
+
+      let currentDescription = ticket.description || "";
+      const bugsToMap = bugsRes.rows;
+      let appendHtml = "";
+      for (const bug of bugsToMap) {
+        const bugNum = bug.bug_number || `BUG-${bug.id.slice(-3).toUpperCase()}`;
+        const bugTitle = bug.title || "Untitled Bug";
+        const bugDesc = bug.description || "";
+        
+        if (appendHtml) {
+          appendHtml += `<hr />`;
+        }
+        appendHtml += `<div><strong>Mapped Bug ${bugNum}: ${bugTitle}</strong><br />${bugDesc || "No description provided."}</div>`;
+      }
+
+      if (appendHtml) {
+        if (currentDescription) {
+          currentDescription += `<hr />` + appendHtml;
+        } else {
+          currentDescription = appendHtml;
+        }
+      }
+
+      // Update ticket description
+      await client.query(
+        `UPDATE tickets SET description = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3`,
+        [currentDescription, ticketId, req.tenantId],
+      );
+
+      // Copy bug attachments to ticket_attachments
+      const attachmentsRes = await client.query(
+        `SELECT file_name, file_url, file_size, file_type FROM bug_attachments WHERE bug_id = ANY($1::text[])`,
+        [bugIds]
+      );
+
+      if (attachmentsRes.rows.length > 0) {
+        const insertQuery = `
+          INSERT INTO ticket_attachments 
+          (id, tenant_id, ticket_id, uploaded_by_id, file_name, file_url, file_size, file_type, uploaded_at, created_at, updated_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        `;
+        const currentTimestamp = new Date().toISOString();
+        for (const attachment of attachmentsRes.rows) {
+          const attachmentId = randomUUID();
+          await client.query(insertQuery, [
+            attachmentId,
+            req.tenantId,
+            ticketId,
+            req.user!.id,
+            attachment.file_name,
+            attachment.file_url,
+            Number(attachment.file_size) || 0,
+            attachment.file_type || '',
+            currentTimestamp,
+            currentTimestamp,
+            currentTimestamp,
+          ]);
+        }
+      }
+
+      // Record transaction
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_LIST,
+        action: Action.BULK_CONVERT,
+        actionLabel: `Bugs mapped to ticket ${ticket.ticket_number}`,
+        entityType: EntityType.BUG,
+        entityId: bugIds[0],
+        afterData: { ticketId, status: "converted", mappedBugCount: bugIds.length },
+        changedFields: ["ticketId", "status"],
+        statusCode: 200,
+      });
+
+      await client.query("COMMIT");
+      res.json({ success: true, data: { ticketId, ticketNumber: ticket.ticket_number, bugIds } });
+    } catch (err: any) {
+      await client.query("ROLLBACK");
+      console.error("bulkMapToTicket error:", err);
+      bad(res, 500, err.message || "Failed to map bugs to ticket");
     } finally {
       client.release();
     }
