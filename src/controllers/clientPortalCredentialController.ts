@@ -42,10 +42,12 @@ export class ClientPortalCredentialController {
     const r = await pool.query(
       `SELECT u.id, u.username, u.email, u.display_name, u.status,
               u.must_change_password, u.last_login_at, u.created_at,
-              u.contact_id,
-              ct.first_name, ct.last_name, ct.designation
+              u.contact_id, u.created_by,
+              ct.first_name, ct.last_name, ct.designation,
+              uc.name AS creator_name, uc.avatar_url AS creator_avatar_url
          FROM client_portal_users u
          LEFT JOIN client_contacts_v2 ct ON ct.id = u.contact_id
+         LEFT JOIN users uc ON uc.id = u.created_by
         WHERE u.tenant_id = $1 AND u.client_id = $2
         ORDER BY u.created_at DESC`,
       [tenantId, clientId],
@@ -67,6 +69,11 @@ export class ClientPortalCredentialController {
         mustChangePassword: row.must_change_password,
         lastLoginAt: row.last_login_at,
         createdAt: row.created_at,
+        createdBy: row.created_by ? {
+          id: row.created_by,
+          name: row.creator_name || '—',
+          avatarUrl: row.creator_avatar_url || null,
+        } : null,
       })),
     });
   }

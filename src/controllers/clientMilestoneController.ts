@@ -27,6 +27,7 @@ function shapeMilestone(row: any, items: any[]) {
     position: row.position,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    createdByName: row.created_by_name || null,
     itemsTotal: total,
     itemsDone: done,
     progress: total > 0 ? Math.round((done / total) * 100) : 0,
@@ -111,9 +112,10 @@ export class ClientMilestoneController {
     const tenantId = req.tenantId!;
     const { clientId } = req.params;
     const ms = await pool.query(
-      `SELECT m.*, p.name AS project_name
+      `SELECT m.*, p.name AS project_name, u.name AS created_by_name
          FROM client_milestones m
          LEFT JOIN projects p ON p.id = m.project_id
+         LEFT JOIN users u ON u.id = m.created_by_id
         WHERE m.tenant_id = $1 AND m.client_id = $2
         ORDER BY m.position ASC, m.created_at ASC`,
       [tenantId, clientId],
@@ -238,9 +240,10 @@ export class ClientMilestoneController {
 
     // Return shaped row
     const row = await pool.query(
-      `SELECT m.*, p.name AS project_name
+      `SELECT m.*, p.name AS project_name, u.name AS created_by_name
          FROM client_milestones m
          LEFT JOIN projects p ON p.id = m.project_id
+         LEFT JOIN users u ON u.id = m.created_by_id
         WHERE m.id = $1`,
       [milestoneId],
     );
