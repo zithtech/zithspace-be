@@ -483,6 +483,21 @@ function validateWebsite(url?: string | null): string | null {
     return null;
 }
 
+function validateMobileNumber(num?: string | null): string | null {
+    if (!num) return null;
+    const val = num.trim();
+    if (val === '') return null;
+    const digitCount = (val.match(/\d/g) || []).length;
+    if (digitCount < 7 || digitCount > 15) {
+        return 'Phone number must contain between 7 and 15 digits.';
+    }
+    const phoneRegex = /^[+]?[(]?[0-9]{1,4}[)]?[-\s./0-9]*$/;
+    if (!phoneRegex.test(val)) {
+        return 'Invalid phone number format.';
+    }
+    return null;
+}
+
 // ===========================================================================
 // CONTROLLER CLASS
 // ===========================================================================
@@ -1043,6 +1058,9 @@ export class ClientV2Controller {
             const { clientId } = req.params;
             const data: CreateClientContactV2Data = req.body;
 
+            const mobileError = validateMobileNumber((data as any).mobileNumber);
+            if (mobileError) { res.status(400).json({ success: false, error: mobileError } as ApiResponse); return; }
+
             const r = await pool.query(
                 `INSERT INTO client_contacts_v2 (
                     id, tenant_id, client_id, first_name, last_name, display_name,
@@ -1120,6 +1138,11 @@ export class ClientV2Controller {
             if (!req.tenantId) return;
             const { contactId } = req.params;
             const data: UpdateClientContactV2Data = req.body;
+
+            if ('mobileNumber' in data) {
+                const mobileError = validateMobileNumber((data as any).mobileNumber);
+                if (mobileError) { res.status(400).json({ success: false, error: mobileError } as ApiResponse); return; }
+            }
 
             // Fetch existing for validation and diff
             const existingRes = await pool.query(
