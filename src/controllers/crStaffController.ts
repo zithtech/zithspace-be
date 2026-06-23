@@ -36,6 +36,8 @@ export class CrStaffController {
               cr.linked_invoice_id, i.invoice_number AS linked_invoice_number,
               cr.linked_sprint_id, rp.version AS linked_sprint_version,
               cr.created_by_portal_user_id, cr.created_by_staff_user_id,
+              cpu.display_name AS created_by_portal_name,
+              su.name          AS created_by_staff_name,
               cr.assigned_staff_user_id, u.name AS assigned_staff_name,
               (SELECT COUNT(*)::int FROM portal_cr_messages m
                 WHERE m.cr_id = cr.id) AS message_count
@@ -44,6 +46,8 @@ export class CrStaffController {
          LEFT JOIN invoices i ON i.id = cr.linked_invoice_id
          LEFT JOIN release_plans rp ON rp.id = cr.linked_sprint_id
          LEFT JOIN users u ON u.id = cr.assigned_staff_user_id
+         LEFT JOIN client_portal_users cpu ON cpu.id = cr.created_by_portal_user_id
+         LEFT JOIN users su ON su.id = cr.created_by_staff_user_id
         WHERE cr.tenant_id = $1 AND cr.client_id = $2
         ORDER BY cr.last_activity_at DESC`,
       [tenantId, clientId],
@@ -72,6 +76,8 @@ export class CrStaffController {
         linkedSprintVersion: row.linked_sprint_version,
         createdByPortalUserId: row.created_by_portal_user_id,
         createdByStaffUserId: row.created_by_staff_user_id,
+        createdByPortalName: row.created_by_portal_name,
+        createdByStaffName: row.created_by_staff_name,
         assignedStaffUserId: row.assigned_staff_user_id,
         assignedStaffName: row.assigned_staff_name,
         messageCount: row.message_count || 0,
