@@ -16,6 +16,7 @@ function shapeRelease(row: any) {
     description: row.description,
     releaseDate: row.release_date,
     createdById: row.created_by_id,
+    createdByName: row.created_by_name || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -30,10 +31,12 @@ export class ClientProjectReleaseController {
       `SELECT r.*,
               p.name AS project_name,
               m.name AS milestone_name,
-              m.status AS milestone_status
+              m.status AS milestone_status,
+              u.name AS created_by_name
          FROM client_project_releases r
          LEFT JOIN projects p ON p.id = r.project_id
          LEFT JOIN client_milestones m ON m.id = r.milestone_id
+         LEFT JOIN users u ON u.id = r.created_by_id
         WHERE r.tenant_id = $1 AND r.client_id = $2
         ORDER BY r.release_date DESC NULLS LAST, r.created_at DESC`,
       [tenantId, clientId],
@@ -140,10 +143,12 @@ export class ClientProjectReleaseController {
       `SELECT r.*,
               p.name AS project_name,
               m.name AS milestone_name,
-              m.status AS milestone_status
+              m.status AS milestone_status,
+              u.name AS created_by_name
          FROM client_project_releases r
          LEFT JOIN projects p ON p.id = r.project_id
          LEFT JOIN client_milestones m ON m.id = r.milestone_id
+         LEFT JOIN users u ON u.id = r.created_by_id
         WHERE r.id = $1`,
       [ins.rows[0].id],
     );

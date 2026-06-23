@@ -6,6 +6,25 @@ import { uploadEscalationDocumentToR2 } from "../utils/r2Client";
 import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from '../utils/transactionHistory';
 import { nanoid } from "nanoid";
 import { emailService } from "@/utils/emailService";
+import { RBACService } from "@/modules/rbac/rbac.service";
+import { Permissions } from "@/types/permissions";
+
+/**
+ * Determine if the requesting user is an admin (super_admin / admin role or
+ * has the escalation.manage permission). Admins bypass per-user visibility.
+ */
+const checkIsAdmin = async (
+    userId: string,
+    tenantId: string,
+    role?: string
+): Promise<boolean> => {
+    if (role === 'super_admin' || role === 'admin') return true;
+    try {
+        return await RBACService.hasPermission(userId, tenantId, Permissions.ESCALATION_MANAGE, role);
+    } catch {
+        return false;
+    }
+};
 
 
 /**
@@ -161,22 +180,26 @@ export const createEscalation = async (req: AuthRequest, res: Response): Promise
 };
 
 /**
- * Get all escalations
+ * Get all escalations — filtered to only those the requesting user
+ * created or is a target member of (admins see everything).
  */
 export const getAllEscalations = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const tenantId = req.user?.tenantId;
+        const userId   = req.user?.id;
+        const userRole = req.user?.role;
 
-        if (!tenantId) {
+        if (!tenantId || !userId) {
             const response: ApiResponse = {
                 success: false,
-                message: "Unauthorized: Missing tenant info",
+                message: "Unauthorized: Missing tenant or user info",
             };
             res.status(401).json(response);
             return;
         }
 
-        const escalations = await EscalationDb.getEscalations(tenantId);
+        const isAdmin = await checkIsAdmin(userId, tenantId, userRole);
+        const escalations = await EscalationDb.getEscalations(tenantId, userId, isAdmin);
 
         const response: ApiResponse = {
             success: true,
@@ -196,14 +219,17 @@ export const getAllEscalations = async (req: AuthRequest, res: Response): Promis
 };
 
 /**
- * Get single escalation by ID
+ * Get single escalation by ID — returns 404 if user is not the creator
+ * or a target member (admins bypass this check).
  */
 export const getEscalationById = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const tenantId = req.user?.tenantId;
+        const userId   = req.user?.id;
+        const userRole = req.user?.role;
         const { id } = req.params;
 
-        if (!tenantId) {
+        if (!tenantId || !userId) {
             const response: ApiResponse = {
                 success: false,
                 message: "Unauthorized",
@@ -212,7 +238,8 @@ export const getEscalationById = async (req: AuthRequest, res: Response): Promis
             return;
         }
 
-        const escalation = await EscalationDb.getEscalationById(id, tenantId);
+        const isAdmin = await checkIsAdmin(userId, tenantId, userRole);
+        const escalation = await EscalationDb.getEscalationById(id, tenantId, userId, isAdmin);
 
         if (!escalation) {
             const response: ApiResponse = {
@@ -241,12 +268,14 @@ export const getEscalationById = async (req: AuthRequest, res: Response): Promis
 };
 
 /**
- * Update an escalation
+ * Update an escalation — only allowed if the requesting user is the creator
+ * or a target member (admins bypass this check).
  */
 export const updateEscalation = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
-        const tenantId = req.user?.tenantId;
+        const tenantId   = req.user?.tenantId;
         const updatedById = req.user?.id;
+        const userRole    = req.user?.role;
         const { id } = req.params;
 
         if (!tenantId || !updatedById) {
@@ -258,7 +287,8 @@ export const updateEscalation = async (req: AuthRequest, res: Response): Promise
             return;
         }
 
-        const existingEscalation = await EscalationDb.getEscalationById(id, tenantId);
+        const isAdmin = await checkIsAdmin(updatedById, tenantId, userRole);
+        const existingEscalation = await EscalationDb.getEscalationById(id, tenantId, updatedById, isAdmin);
         if (!existingEscalation) {
             const response: ApiResponse = {
                 success: false,
@@ -311,7 +341,7 @@ export const updateEscalation = async (req: AuthRequest, res: Response): Promise
             return;
         }
 
-        const updated = await EscalationDb.getEscalationById(id, tenantId);
+        const updated = await EscalationDb.getEscalationById(id, tenantId, updatedById, isAdmin);
 
         const response: ApiResponse = {
             success: true,
@@ -366,14 +396,17 @@ export const updateEscalation = async (req: AuthRequest, res: Response): Promise
 };
 
 /**
- * Hard delete an escalation
+ * Soft delete (move to trash) — only allowed if the requesting user is the
+ * creator or a target member (admins bypass this check).
  */
 export const deleteEscalation = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const tenantId = req.user?.tenantId;
+        const userId   = req.user?.id;
+        const userRole  = req.user?.role;
         const { id } = req.params;
 
-        if (!tenantId) {
+        if (!tenantId || !userId) {
             const response: ApiResponse = {
                 success: false,
                 message: "Unauthorized",
@@ -382,7 +415,8 @@ export const deleteEscalation = async (req: AuthRequest, res: Response): Promise
             return;
         }
 
-        const escalation = await EscalationDb.getEscalationById(id, tenantId);
+        const isAdmin = await checkIsAdmin(userId, tenantId, userRole);
+        const escalation = await EscalationDb.getEscalationById(id, tenantId, userId, isAdmin);
         if (!escalation) {
             const response: ApiResponse = {
                 success: false,
@@ -434,12 +468,15 @@ export const deleteEscalation = async (req: AuthRequest, res: Response): Promise
 };
 
 /**
- * Get all trashed escalations
+ * Get all trashed escalations — filtered to only those the requesting user
+ * created or is a target member of (admins see everything).
  */
 export const getTrashEscalations = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const tenantId = req.user?.tenantId;
-        if (!tenantId) {
+        const userId   = req.user?.id;
+        const userRole  = req.user?.role;
+        if (!tenantId || !userId) {
             const response: ApiResponse = {
                 success: false,
                 message: "Unauthorized",
@@ -447,7 +484,8 @@ export const getTrashEscalations = async (req: AuthRequest, res: Response): Prom
             res.status(401).json(response);
             return;
         }
-        const escalations = await EscalationDb.getTrashEscalations(tenantId);
+        const isAdmin = await checkIsAdmin(userId, tenantId, userRole);
+        const escalations = await EscalationDb.getTrashEscalations(tenantId, userId, isAdmin);
         const response: ApiResponse = {
             success: true,
             message: "Trash escalations fetched successfully",
@@ -466,18 +504,33 @@ export const getTrashEscalations = async (req: AuthRequest, res: Response): Prom
 };
 
 /**
- * Restore a single escalation from trash
+ * Restore a single escalation from trash — only the creator or a target
+ * member (or admin) may restore it.
  */
 export const restoreEscalation = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const tenantId = req.user?.tenantId;
+        const userId   = req.user?.id;
+        const userRole  = req.user?.role;
         const { id } = req.params;
-        if (!tenantId) {
+        if (!tenantId || !userId) {
             const response: ApiResponse = {
                 success: false,
                 message: "Unauthorized",
             };
             res.status(401).json(response);
+            return;
+        }
+        // Verify the user is allowed to see this trashed escalation
+        const isAdmin = await checkIsAdmin(userId, tenantId, userRole);
+        const allowed = await EscalationDb.getTrashEscalations(tenantId, userId, isAdmin);
+        const canAccess = allowed.some((e: any) => e.id === id);
+        if (!canAccess) {
+            const response: ApiResponse = {
+                success: false,
+                message: "Escalation not found in trash",
+            };
+            res.status(404).json(response);
             return;
         }
         const restored = await EscalationDb.restoreEscalation(id, tenantId);
@@ -506,18 +559,33 @@ export const restoreEscalation = async (req: AuthRequest, res: Response): Promis
 };
 
 /**
- * Permanently delete a single escalation
+ * Permanently delete a single escalation — only the creator or a target
+ * member (or admin) may permanently delete it.
  */
 export const permanentDeleteEscalation = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const tenantId = req.user?.tenantId;
+        const userId   = req.user?.id;
+        const userRole  = req.user?.role;
         const { id } = req.params;
-        if (!tenantId) {
+        if (!tenantId || !userId) {
             const response: ApiResponse = {
                 success: false,
                 message: "Unauthorized",
             };
             res.status(401).json(response);
+            return;
+        }
+        // Verify the user is allowed to see this trashed escalation
+        const isAdmin = await checkIsAdmin(userId, tenantId, userRole);
+        const allowed = await EscalationDb.getTrashEscalations(tenantId, userId, isAdmin);
+        const canAccess = allowed.some((e: any) => e.id === id);
+        if (!canAccess) {
+            const response: ApiResponse = {
+                success: false,
+                message: "Escalation not found in trash",
+            };
+            res.status(404).json(response);
             return;
         }
         const deleted = await EscalationDb.permanentDeleteEscalation(id, tenantId);
@@ -578,13 +646,16 @@ export const emptyTrash = async (req: AuthRequest, res: Response): Promise<void>
 };
 
 /**
- * Bulk restore escalations from trash
+ * Bulk restore escalations from trash — only restores the subset that
+ * the requesting user is authorised to access.
  */
 export const bulkRestoreEscalations = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const tenantId = req.user?.tenantId;
+        const userId   = req.user?.id;
+        const userRole  = req.user?.role;
         const { ids } = req.body;
-        if (!tenantId) {
+        if (!tenantId || !userId) {
             const response: ApiResponse = {
                 success: false,
                 message: "Unauthorized",
@@ -600,7 +671,20 @@ export const bulkRestoreEscalations = async (req: AuthRequest, res: Response): P
             res.status(400).json(response);
             return;
         }
-        const count = await EscalationDb.bulkRestoreEscalations(ids, tenantId);
+        // Filter incoming IDs to only those the user may access
+        const isAdmin = await checkIsAdmin(userId, tenantId, userRole);
+        const allowed = await EscalationDb.getTrashEscalations(tenantId, userId, isAdmin);
+        const allowedIds = allowed.map((e: any) => e.id);
+        const filteredIds = ids.filter((id: string) => allowedIds.includes(id));
+        if (filteredIds.length === 0) {
+            const response: ApiResponse = {
+                success: false,
+                message: "No accessible escalations found for restore",
+            };
+            res.status(404).json(response);
+            return;
+        }
+        const count = await EscalationDb.bulkRestoreEscalations(filteredIds, tenantId);
         const response: ApiResponse = {
             success: true,
             message: `${count} escalations restored successfully`,
@@ -619,13 +703,16 @@ export const bulkRestoreEscalations = async (req: AuthRequest, res: Response): P
 };
 
 /**
- * Bulk permanently delete escalations
+ * Bulk permanently delete escalations — only deletes the subset that
+ * the requesting user is authorised to access.
  */
 export const bulkPermanentDeleteEscalations = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const tenantId = req.user?.tenantId;
+        const userId   = req.user?.id;
+        const userRole  = req.user?.role;
         const { ids } = req.body;
-        if (!tenantId) {
+        if (!tenantId || !userId) {
             const response: ApiResponse = {
                 success: false,
                 message: "Unauthorized",
@@ -641,7 +728,20 @@ export const bulkPermanentDeleteEscalations = async (req: AuthRequest, res: Resp
             res.status(400).json(response);
             return;
         }
-        const count = await EscalationDb.bulkPermanentDeleteEscalations(ids, tenantId);
+        // Filter incoming IDs to only those the user may access
+        const isAdmin = await checkIsAdmin(userId, tenantId, userRole);
+        const allowed = await EscalationDb.getTrashEscalations(tenantId, userId, isAdmin);
+        const allowedIds = allowed.map((e: any) => e.id);
+        const filteredIds = ids.filter((id: string) => allowedIds.includes(id));
+        if (filteredIds.length === 0) {
+            const response: ApiResponse = {
+                success: false,
+                message: "No accessible escalations found for deletion",
+            };
+            res.status(404).json(response);
+            return;
+        }
+        const count = await EscalationDb.bulkPermanentDeleteEscalations(filteredIds, tenantId);
         const response: ApiResponse = {
             success: true,
             message: `${count} escalations permanently deleted`,
