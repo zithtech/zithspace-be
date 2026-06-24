@@ -442,6 +442,22 @@ function validateWebsite(url) {
     }
     return null;
 }
+function validateMobileNumber(num) {
+    if (!num)
+        return null;
+    const val = num.trim();
+    if (val === '')
+        return null;
+    const digitCount = (val.match(/\d/g) || []).length;
+    if (digitCount < 7 || digitCount > 15) {
+        return 'Phone number must contain between 7 and 15 digits.';
+    }
+    const phoneRegex = /^[+]?[(]?[0-9]{1,4}[)]?[-\s./0-9]*$/;
+    if (!phoneRegex.test(val)) {
+        return 'Invalid phone number format.';
+    }
+    return null;
+}
 // ===========================================================================
 // CONTROLLER CLASS
 // ===========================================================================
@@ -946,6 +962,11 @@ class ClientV2Controller {
             }
             const { clientId } = req.params;
             const data = req.body;
+            const mobileError = validateMobileNumber(data.mobileNumber);
+            if (mobileError) {
+                res.status(400).json({ success: false, error: mobileError });
+                return;
+            }
             const r = await dbpool_1.default.query(`INSERT INTO client_contacts_v2 (
                     id, tenant_id, client_id, first_name, last_name, display_name,
                     designation, department, contact_type, is_primary, official_email,
@@ -1015,6 +1036,13 @@ class ClientV2Controller {
                 return;
             const { contactId } = req.params;
             const data = req.body;
+            if ('mobileNumber' in data) {
+                const mobileError = validateMobileNumber(data.mobileNumber);
+                if (mobileError) {
+                    res.status(400).json({ success: false, error: mobileError });
+                    return;
+                }
+            }
             // Fetch existing for validation and diff
             const existingRes = await dbpool_1.default.query(`SELECT * FROM client_contacts_v2 WHERE id = $1`, [contactId]);
             if (existingRes.rows.length === 0) {
