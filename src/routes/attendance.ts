@@ -127,6 +127,42 @@ router.post(
 );
 
 /**
+ * @route   POST /api/attendance/pause
+ * @desc    Pause the day — close the current open work session (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @body    { userId?: string }
+ */
+router.post(
+  "/pause",
+  requirePermission(Permissions.ATTENDANCE_CLOCK_IN_OUT),
+  AttendanceController.pause,
+);
+
+/**
+ * @route   POST /api/attendance/resume
+ * @desc    Resume the day — open a new work session after a break (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @body    { userId?: string }
+ */
+router.post(
+  "/resume",
+  requirePermission(Permissions.ATTENDANCE_CLOCK_IN_OUT),
+  AttendanceController.resume,
+);
+
+/**
+ * @route   POST /api/attendance/complete
+ * @desc    Complete the day — close any open session and finalize totals (tenant-aware)
+ * @access  Private (authenticated users within tenant)
+ * @body    { userId?: string }
+ */
+router.post(
+  "/complete",
+  requirePermission(Permissions.ATTENDANCE_CLOCK_IN_OUT),
+  AttendanceController.complete,
+);
+
+/**
  * @route   POST /api/attendance
  * @desc    Create manual attendance entry (tenant-aware)
  * @access  Private (admin only)

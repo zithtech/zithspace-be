@@ -1,41 +1,42 @@
 import { AuthRequest } from "@/types";
+import { TenantClient } from "@/db/onboardingPool";
 export declare function encrypt(text: string): string;
 export declare function decrypt(text: string): string;
-export declare function createBankPayrollDetails(req: AuthRequest, employeeId: string, tx?: any): Promise<{
+export declare function createBankPayrollDetails(req: AuthRequest, employeeId: string, client?: TenantClient): Promise<{
     success: boolean;
     message: string;
 }>;
 export declare function getBankPayrollDetails(req: AuthRequest, employeeId: string): Promise<{
-    bankName: string;
-    branchName: string;
-    accountHolderName: string;
+    bankName: any;
+    branchName: any;
+    accountHolderName: any;
     accountNumber: string;
-    accountType: string;
+    accountType: any;
     ifscCode: string;
     uanNumber: string;
     pfNumber: string;
     esiNumber: string;
-    taxRegime: string;
-    paymentType: string;
+    taxRegime: any;
+    paymentType: any;
 }>;
 export declare function getAllBankPayrollDetails(req: AuthRequest): Promise<{
-    id: string;
-    employeeCode: string;
-    firstName: string;
-    lastName: string;
-    bankName: string;
-    branchName: string;
-    accountHolderName: string;
+    id: any;
+    employeeCode: any;
+    firstName: any;
+    lastName: any;
+    bankName: any;
+    branchName: any;
+    accountHolderName: any;
     accountNumber: string;
-    accountType: string;
+    accountType: any;
     ifscCode: string;
     uanNumber: string;
     pfNumber: string;
     esiNumber: string;
-    taxRegime: string;
-    paymentType: string;
+    taxRegime: any;
+    paymentType: any;
 }[]>;
-export declare function updateBankPayrollDetails(req: AuthRequest, employeeId: string, tx?: any): Promise<{
+export declare function updateBankPayrollDetails(req: AuthRequest, employeeId: string, client?: TenantClient): Promise<{
     success: boolean;
     message: string;
     data: string;

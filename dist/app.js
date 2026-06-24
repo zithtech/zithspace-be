@@ -72,6 +72,7 @@ const escalationStatus_RoutesV2_1 = __importDefault(require("@/routes/escalation
 const escalationPriorities_Routes_1 = __importDefault(require("@/routes/escalationPriorities.Routes"));
 // main
 const onboardingRoutes_1 = __importDefault(require("@/routes/onboardingRoutes"));
+const publicOnboarding_routes_1 = __importDefault(require("@/routes/publicOnboarding.routes"));
 const auth_2 = __importDefault(require("@/routes/auth"));
 const publicTickets_1 = __importDefault(require("@/routes/publicTickets"));
 const publicDocuments_1 = __importDefault(require("@/routes/publicDocuments"));
@@ -110,6 +111,7 @@ const leaveOriginRoutes_1 = __importDefault(require("@/routes/leaveOriginRoutes"
 const emailHistoryRoutes_1 = __importDefault(require("@/routes/emailHistoryRoutes"));
 const leaveRequestRoutes_1 = __importDefault(require("@/routes/leaveRequestRoutes"));
 const leaveBalanceRoutes_1 = __importDefault(require("@/routes/leaveBalanceRoutes"));
+const routes_1 = __importDefault(require("@/modules/leave-v2/routes"));
 const payroll_1 = __importDefault(require("@/routes/payroll"));
 const reimbursementConfig_1 = __importDefault(require("@/routes/reimbursementConfig"));
 const reimbursementsettingsRoutes_1 = __importDefault(require("@/routes/reimbursementsettingsRoutes"));
@@ -127,8 +129,6 @@ const candidateRoutes_1 = __importDefault(require("@/routes/candidateRoutes"));
 const companyLocationRoutes_1 = __importDefault(require("@/routes/companyLocationRoutes"));
 const openingManagementRoutes_1 = __importDefault(require("@/routes/openingManagementRoutes"));
 const RabbitMQService_1 = require("@/utils/RabbitMQService");
-const CalendarSyncWorker_1 = require("@/workers/CalendarSyncWorker");
-const MailSyncWorker_1 = require("@/workers/MailSyncWorker");
 //import { CentralMailWorker } from "@/workers/CentralMailWorker";
 const MailController_1 = require("@/controllers/MailController");
 const lead_routes_1 = __importDefault(require("@/routes/lead.routes"));
@@ -143,6 +143,7 @@ const proposals_1 = __importDefault(require("@/routes/proposals"));
 const proposalSections_1 = __importDefault(require("@/routes/proposalSections"));
 const projectOverviewRoutes_1 = __importDefault(require("./routes/projectOverviewRoutes"));
 const socketService_1 = require("@/services/socketService");
+const attendancePool_1 = require("@/db/attendancePool");
 // Load environment
 dotenv_1.default.config();
 console.log("🚀 API Starting up...");
@@ -283,6 +284,7 @@ app.use("/api/calendar", calendar_1.default);
 app.use("/api/squads", squad_1.default);
 app.use("/api/public/tickets", publicTickets_1.default);
 app.use("/api/public/document", publicDocuments_1.default);
+app.use("/api/public/onboarding", publicOnboarding_routes_1.default);
 app.use("/api/client-portal", clientPortal_1.default);
 app.use("/api/portal-tickets", portalTickets_1.default);
 app.use("/api/moms", moms_1.default);
@@ -360,6 +362,7 @@ app.use("/api/notifications", notifications_1.default);
 app.use("/api/leave-allocation", leaveAllocationRoutes_1.default);
 app.use("/api/leave-request", leaveRequestRoutes_1.default);
 app.use("/api/leave-balances", leaveBalanceRoutes_1.default);
+app.use("/api/v2/leave", routes_1.default);
 //Escalation
 app.use("/api/escalation-categories", escalationCategoryV2_routes_1.default);
 app.use("/api/escalation-statuses", escalationStatus_RoutesV2_1.default);
@@ -518,19 +521,25 @@ const startServer = async () => {
         await BidIQModel.initTable();
         const { WebPushSubscriptionModel } = require("./models/WebPushSubscription.model");
         await WebPushSubscriptionModel.initTable();
+        // Employee onboarding invite table (raw-SQL module, idempotent)
+        const { ensureOnboardingSchema } = require("@/db/onboardingSchema");
+        await ensureOnboardingSchema();
         // Connect RabbitMQ & Start Workers
         try {
-            await RabbitMQService_1.rabbitMQService.connect();
-            await CalendarSyncWorker_1.CalendarSyncWorker.start();
-            await MailSyncWorker_1.MailSyncWorker.start();
+            // await rabbitMQService.connect();
+            // await CalendarSyncWorker.start();
+            // await MailSyncWorker.start();
             // await CentralMailWorker.start();
             console.log("🚀 RabbitMQ connected, Calendar & Mail Sync Workers started");
         }
         catch (mqError) {
             console.error("❌ RabbitMQ initialization failed:", mqError.message);
-            // In a SaaS environment, we log and continue, 
+            // In a SaaS environment, we log and continue,
             // as the app might still handle HTTP requests while MQ recovers.
         }
+        // Leave 2.0 accrual scheduler + worker (no-op unless LEAVE_ACCRUAL_ENABLED=true)
+        const { initLeaveAccrual } = require("@/modules/leave-v2/jobs");
+        await initLeaveAccrual();
         const PORT = parseInt(process.env.PORT || "5000");
         server = app.listen(PORT, () => {
             // console.log(`Zithmi Backend running on port ${PORT}`);
@@ -563,6 +572,7 @@ const gracefulShutdown = async (signal) => {
         try {
             await (0, database_1.disconnectDatabase)();
             await RabbitMQService_1.rabbitMQService.close();
+            await (0, attendancePool_1.closeAttendancePool)();
             console.log("Database and RabbitMQ connections closed");
         }
         catch (error) {

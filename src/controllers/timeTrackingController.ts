@@ -573,6 +573,8 @@ export class TimeTrackingController {
         data: {
           status: "PAUSED",
           duration: totalDuration,
+          pauseSource: "manual",
+          pausedAt: pauseTime,
           logs: {
             create: { action: "PAUSED", tenantId: req.tenantId }
           }
@@ -637,6 +639,8 @@ export class TimeTrackingController {
         where: { id },
         data: {
           status: "RUNNING",
+          pauseSource: null,
+          pausedAt: null,
           logs: {
             create: { action: "RESUMED", tenantId: req.tenantId }
           }
