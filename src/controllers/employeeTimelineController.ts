@@ -1,5 +1,5 @@
 import { Response } from "express";
-import { prisma } from "@/config/database";
+import { withTenant } from "@/db/onboardingPool";
 import { AuthRequest, ApiResponse } from "@/types";
 
 export class EmployeeTimelineController {
@@ -24,44 +24,55 @@ export class EmployeeTimelineController {
         return;
       }
 
-      // 🔎 check employee exists
-      const employee = await prisma.employee.findUnique({
-        where: { id: employeeId },
+      const timeline = await withTenant(req.tenantId as string, async (db) => {
+        // 🔎 check employee exists
+        const employeeRes = await db.query(
+          `SELECT id FROM employees WHERE id = $1`,
+          [employeeId],
+        );
+
+        if (!employeeRes.rows[0]) {
+          return { error: "Employee not found" as const };
+        }
+
+        // 🔁 one timeline per employee check (optional but recommended)
+        const existingRes = await db.query(
+          `SELECT id FROM employee_timelines WHERE employee_id = $1 LIMIT 1`,
+          [employeeId],
+        );
+
+        if (existingRes.rows[0]) {
+          return { error: "Employee timeline already exists" as const };
+        }
+
+        const insertRes = await db.query(
+          `INSERT INTO employee_timelines
+             (employee_id, joining_date, training_completion_date, created_by_id)
+           VALUES ($1, $2, $3, $4)
+           RETURNING *`,
+          [
+            employeeId,
+            joiningDate ? new Date(joiningDate) : null,
+            trainingCompletionDate ? new Date(trainingCompletionDate) : null,
+            req.user!.id,
+          ],
+        );
+
+        return { row: insertRes.rows[0] };
       });
 
-      if (!employee) {
-        res.status(404).json({
+      if ("error" in timeline) {
+        const status = timeline.error === "Employee not found" ? 404 : 400;
+        res.status(status).json({
           success: false,
-          error: "Employee not found",
+          error: timeline.error,
         } as ApiResponse);
         return;
       }
-
-      // 🔁 one timeline per employee check (optional but recommended)
-      const existingTimeline = await prisma.employeeTimeline.findFirst({
-        where: { employeeId },
-      });
-
-      if (existingTimeline) {
-        res.status(400).json({
-          success: false,
-          error: "Employee timeline already exists",
-        } as ApiResponse);
-        return;
-      }
-
-      const timeline = await prisma.employeeTimeline.create({
-        data: {
-          employeeId,
-          joiningDate: new Date(joiningDate),
-          trainingCompletionDate: new Date(trainingCompletionDate),
-          createdById: req.user.id,
-        },
-      });
 
       res.status(201).json({
         success: true,
-        data: timeline,
+        data: timeline.row,
         message: "Employee timeline created successfully",
       } as ApiResponse);
     } catch (error) {
@@ -81,8 +92,12 @@ export class EmployeeTimelineController {
     try {
       const { employeeId } = req.params;
 
-      const timeline = await prisma.employeeTimeline.findFirst({
-        where: { employeeId },
+      const timeline = await withTenant(req.tenantId as string, async (db) => {
+        const result = await db.query(
+          `SELECT * FROM employee_timelines WHERE employee_id = $1 LIMIT 1`,
+          [employeeId],
+        );
+        return result.rows[0];
       });
 
       if (!timeline) {
@@ -111,8 +126,12 @@ export class EmployeeTimelineController {
     try {
       const { id } = req.params;
 
-      const timeline = await prisma.employeeTimeline.findUnique({
-        where: { id },
+      const timeline = await withTenant(req.tenantId as string, async (db) => {
+        const result = await db.query(
+          `SELECT * FROM employee_timelines WHERE id = $1`,
+          [id],
+        );
+        return result.rows[0];
       });
 
       if (!timeline) {
@@ -149,34 +168,59 @@ export class EmployeeTimelineController {
 
       const { id } = req.params;
 
-      const existing = await prisma.employeeTimeline.findUnique({
-        where: { id },
+      const result = await withTenant(req.tenantId as string, async (db) => {
+        const existingRes = await db.query(
+          `SELECT id FROM employee_timelines WHERE id = $1`,
+          [id],
+        );
+
+        if (!existingRes.rows[0]) {
+          return { error: "Employee timeline not found" as const };
+        }
+
+        // Build dynamic update mirroring the previous `undefined` skip semantics.
+        const sets: string[] = [];
+        const params: any[] = [];
+        const push = (col: string, val: any) => {
+          params.push(val);
+          sets.push(`${col} = $${params.length}`);
+        };
+
+        if (req.body.joiningDate) {
+          push("joining_date", new Date(req.body.joiningDate));
+        }
+        if (req.body.trainingCompletionDate) {
+          push(
+            "training_completion_date",
+            new Date(req.body.trainingCompletionDate),
+          );
+        }
+
+        push("updated_by_id", req.user!.id);
+
+        params.push(id);
+        const updateRes = await db.query(
+          `UPDATE employee_timelines
+              SET ${sets.join(", ")}, updated_at = now()
+            WHERE id = $${params.length}
+          RETURNING *`,
+          params,
+        );
+
+        return { row: updateRes.rows[0] };
       });
 
-      if (!existing) {
+      if ("error" in result) {
         res.status(404).json({
           success: false,
-          error: "Employee timeline not found",
+          error: result.error,
         } as ApiResponse);
         return;
       }
 
-      const updated = await prisma.employeeTimeline.update({
-        where: { id },
-        data: {
-          joiningDate: req.body.joiningDate
-            ? new Date(req.body.joiningDate)
-            : undefined,
-          trainingCompletionDate: req.body.trainingCompletionDate
-            ? new Date(req.body.trainingCompletionDate)
-            : undefined,
-          updatedById: req.user.id,
-        },
-      });
-
       res.status(200).json({
         success: true,
-        data: updated,
+        data: result.row,
         message: "Employee timeline updated successfully",
       } as ApiResponse);
     } catch (error) {
@@ -193,21 +237,27 @@ export class EmployeeTimelineController {
     try {
       const { id } = req.params;
 
-      const existing = await prisma.employeeTimeline.findUnique({
-        where: { id },
+      const notFound = await withTenant(req.tenantId as string, async (db) => {
+        const existingRes = await db.query(
+          `SELECT id FROM employee_timelines WHERE id = $1`,
+          [id],
+        );
+
+        if (!existingRes.rows[0]) {
+          return true;
+        }
+
+        await db.query(`DELETE FROM employee_timelines WHERE id = $1`, [id]);
+        return false;
       });
 
-      if (!existing) {
+      if (notFound) {
         res.status(404).json({
           success: false,
           error: "Employee timeline not found",
         } as ApiResponse);
         return;
       }
-
-      await prisma.employeeTimeline.delete({
-        where: { id },
-      });
 
       res.status(200).json({
         success: true,

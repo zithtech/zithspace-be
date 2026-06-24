@@ -1,7 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.EmployeeOnboardingController = void 0;
-const database_1 = require("@/config/database");
+const onboardingPool_1 = require("@/db/onboardingPool");
 const createEmployeeDetailes_1 = require("./createEmployeeDetailes");
 const employeeEmployementDetailes_1 = require("./employeeEmployementDetailes");
 const bankAndPayrolllController_1 = require("./bankAndPayrolllController");
@@ -12,36 +12,38 @@ class EmployeeOnboardingController {
     static async create(req, res) {
         try {
             const { personal, employment, bank, history, assets } = req.body;
-            const result = await database_1.prisma.$transaction(async (tx) => {
+            if (!req.tenantId)
+                throw new Error("Unauthorized");
+            const result = await (0, onboardingPool_1.withTenant)(req.tenantId, async (client) => {
                 let employee = null;
                 // 1️⃣ Personal Details (Mandatory)
                 if (personal) {
                     employee = await (0, createEmployeeDetailes_1.createPersonalDetails)({
                         ...req,
                         body: { personal },
-                    }, undefined, tx);
+                    }, undefined, client);
                 }
                 else {
                     throw new Error("Personal details are required to create employee");
                 }
                 // 2️⃣ Employment Details (Optional)
                 if (employment) {
-                    await (0, employeeEmployementDetailes_1.createEmploymentDetails)({ ...req, body: { employment } }, employee.id, tx);
+                    await (0, employeeEmployementDetailes_1.createEmploymentDetails)({ ...req, body: { employment } }, employee.id, client);
                 }
                 // 3️⃣ Bank & Payroll (Optional)
                 if (bank) {
-                    await (0, bankAndPayrolllController_1.createBankPayrollDetails)({ ...req, body: { bank } }, employee.id, tx);
+                    await (0, bankAndPayrolllController_1.createBankPayrollDetails)({ ...req, body: { bank } }, employee.id, client);
                 }
                 // 4️⃣ Employee History (Optional)
                 if (history?.length) {
-                    await (0, employeeHistoryController_1.createEmployeeHistory)({ ...req, body: { history } }, employee.id, tx);
+                    await (0, employeeHistoryController_1.createEmployeeHistory)({ ...req, body: { history } }, employee.id, client);
                 }
                 // 5️⃣ Assets (Optional)
                 if (assets?.length) {
-                    await (0, employeeAssets_1.createEmployeeAssets)({ ...req, body: { assets } }, employee.id, tx);
+                    await (0, employeeAssets_1.createEmployeeAssets)({ ...req, body: { assets } }, employee.id, client);
                 }
                 return employee;
-            }, { timeout: 30000 });
+            });
             res.status(201).json({
                 success: true,
                 data: result,
@@ -138,36 +140,38 @@ class EmployeeOnboardingController {
                 });
             }
             const { personal, employment, bank, history, assets } = req.body;
-            const result = await database_1.prisma.$transaction(async (tx) => {
+            if (!req.tenantId)
+                throw new Error("Unauthorized");
+            const result = await (0, onboardingPool_1.withTenant)(req.tenantId, async (client) => {
                 let employee = null;
                 // 1️⃣ Update Personal Details
                 if (personal) {
-                    employee = await (0, createEmployeeDetailes_1.updatePersonalDetails)({ ...req, body: { personal } }, employeeId, tx);
+                    employee = await (0, createEmployeeDetailes_1.updatePersonalDetails)({ ...req, body: { personal } }, employeeId, client);
                 }
                 // 2️⃣ Update Employment Details
                 if (employment) {
-                    await (0, employeeEmployementDetailes_1.updateEmploymentDetails)({ ...req, body: { employment } }, employeeId, tx);
+                    await (0, employeeEmployementDetailes_1.updateEmploymentDetails)({ ...req, body: { employment } }, employeeId, client);
                 }
                 // 3️⃣ Update Bank & Payroll
                 if (bank) {
-                    await (0, bankAndPayrolllController_1.updateBankPayrollDetails)({ ...req, body: { bank } }, employeeId, tx);
+                    await (0, bankAndPayrolllController_1.updateBankPayrollDetails)({ ...req, body: { bank } }, employeeId, client);
                 }
                 // 4️⃣ Update History (Delete All & Re-create)
                 if (history) {
-                    await (0, employeeHistoryController_1.deleteAllEmployeeHistory)(req, employeeId, tx);
+                    await (0, employeeHistoryController_1.deleteAllEmployeeHistory)(req, employeeId, client);
                     if (history.length > 0) {
-                        await (0, employeeHistoryController_1.createEmployeeHistory)({ ...req, body: { history } }, employeeId, tx);
+                        await (0, employeeHistoryController_1.createEmployeeHistory)({ ...req, body: { history } }, employeeId, client);
                     }
                 }
                 // 5️⃣ Update Assets (Delete All & Re-create)
                 if (assets) {
-                    await (0, employeeAssets_1.deleteAllEmployeeAssets)(req, employeeId, tx);
+                    await (0, employeeAssets_1.deleteAllEmployeeAssets)(req, employeeId, client);
                     if (assets.length > 0) {
-                        await (0, employeeAssets_1.createEmployeeAssets)({ ...req, body: { assets } }, employeeId, tx);
+                        await (0, employeeAssets_1.createEmployeeAssets)({ ...req, body: { assets } }, employeeId, client);
                     }
                 }
                 return employee;
-            }, { timeout: 30000 });
+            });
             res.status(200).json({
                 success: true,
                 data: result || { id: employeeId },
