@@ -1558,7 +1558,7 @@ Sign in here: ${portalUrlWithParams}
 
 You'll be asked to choose a new password on first sign-in. Any previous active sessions have been signed out. If you did not request this reset, contact your account administrator immediately.`;
 
-    return this.sendEmail({ to: data.to, subject, html, text }, tenantId);
+    return this.sendCentralizedMail({ to: data.to, tenantId, subject, html, text });
   }
 
   async sendPayslipEmail(data: {

@@ -17,6 +17,7 @@ import {
   EntityType,
 } from "@/utils/transactionHistory";
 import { randomUUID } from "crypto";
+import { generateSprintReportSnapshot } from "@/services/sprintReportSnapshotService";
 
 interface BulkResolveAction {
   ticketId: string;
@@ -690,6 +691,28 @@ export class SprintCompletionController {
         sprintId,
         sprint: updatedSprint,
       });
+
+      // Generate the frozen report snapshot (Sprint Reports v2). Best-effort:
+      // never let report generation block or fail sprint completion.
+      try {
+        const summary = await generateSprintReportSnapshot(
+          sprintId,
+          req.tenantId,
+          req.user.id
+        );
+        if (summary) {
+          socketService.emitToTenant(req.tenantId, "sprint:report_generated", {
+            sprintId,
+            projectId: summary.projectId,
+            report: summary,
+          });
+        }
+      } catch (snapshotErr) {
+        console.error(
+          "[SprintCompletion] Failed to generate sprint report snapshot:",
+          snapshotErr
+        );
+      }
 
       recordTransaction({
         req,

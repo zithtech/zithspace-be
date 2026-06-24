@@ -114,6 +114,12 @@ function mapRowToContact(row: any): any {
         status: row.status,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
+        createdById: row.created_by_id || null,
+        createdBy: row.created_by_id ? {
+            id: row.created_by_id,
+            name: row.created_by_name || '—',
+            avatarUrl: row.created_by_avatar_url || null,
+        } : null,
     };
 }
 
@@ -175,6 +181,11 @@ function mapRowToProjectListing(row: any): any {
         createdById: row.created_by_id,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
+        createdBy: row.created_by_id ? {
+            id: row.created_by_id,
+            name: row.creator_name || '—',
+            avatarUrl: row.creator_avatar_url || null,
+        } : null,
         _count: { tickets: row.tickets_count ?? 0, members: row.members_count ?? 0 },
     };
 }
@@ -472,6 +483,21 @@ function validateWebsite(url?: string | null): string | null {
     return null;
 }
 
+function validateMobileNumber(num?: string | null): string | null {
+    if (!num) return null;
+    const val = num.trim();
+    if (val === '') return null;
+    const digitCount = (val.match(/\d/g) || []).length;
+    if (digitCount < 7 || digitCount > 15) {
+        return 'Phone number must contain between 7 and 15 digits.';
+    }
+    const phoneRegex = /^[+]?[(]?[0-9]{1,4}[)]?[-\s./0-9]*$/;
+    if (!phoneRegex.test(val)) {
+        return 'Invalid phone number format.';
+    }
+    return null;
+}
+
 // ===========================================================================
 // CONTROLLER CLASS
 // ===========================================================================
@@ -605,7 +631,10 @@ export class ClientV2Controller {
 
             // 2. Contacts
             const contactsRes = await pool.query(
-                `SELECT * FROM client_contacts_v2 WHERE client_id = $1 AND tenant_id = $2`,
+                `SELECT cc.*, u.name as created_by_name, u.avatar_url as created_by_avatar_url
+                 FROM client_contacts_v2 cc
+                 LEFT JOIN users u ON u.id = cc.created_by_id
+                 WHERE cc.client_id = $1 AND cc.tenant_id = $2`,
                 [id, req.tenantId]
             );
             client.contacts = contactsRes.rows.map(mapRowToContact);
@@ -1022,21 +1051,27 @@ export class ClientV2Controller {
     // [RAW QUERY] — INSERT INTO client_contacts_v2
     static async addContact(req: AuthRequest, res: Response): Promise<void> {
         try {
-            if (!req.tenantId) return;
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({ success: false, error: 'Tenant and user context required' } as ApiResponse);
+                return;
+            }
             const { clientId } = req.params;
             const data: CreateClientContactV2Data = req.body;
+
+            const mobileError = validateMobileNumber((data as any).mobileNumber);
+            if (mobileError) { res.status(400).json({ success: false, error: mobileError } as ApiResponse); return; }
 
             const r = await pool.query(
                 `INSERT INTO client_contacts_v2 (
                     id, tenant_id, client_id, first_name, last_name, display_name,
                     designation, department, contact_type, is_primary, official_email,
                     secondary_email, mobile_number, alternate_phone, office_landline,
-                    extension_number, preferred_communication_mode, status, updated_at
+                    extension_number, preferred_communication_mode, status, updated_at, created_by_id
                 ) VALUES (
                     gen_random_uuid()::text, $1, $2, $3, $4, $5,
                     $6, $7, $8, $9, $10,
                     $11, $12, $13, $14,
-                    $15, $16, $17, NOW()
+                    $15, $16, $17, NOW(), $18
                 ) RETURNING *`,
                 [
                     req.tenantId,
@@ -1056,10 +1091,19 @@ export class ClientV2Controller {
                     (data as any).extensionNumber || null,
                     (data as any).preferredComm || null,
                     (data as any).status || 'Active',
+                    req.user.id,
                 ]
             );
 
-            const contact = mapRowToContact(r.rows[0]);
+            const contactId = r.rows[0].id;
+            const fullContactRes = await pool.query(
+                `SELECT cc.*, u.name as created_by_name, u.avatar_url as created_by_avatar_url
+                 FROM client_contacts_v2 cc
+                 LEFT JOIN users u ON u.id = cc.created_by_id
+                 WHERE cc.id = $1`,
+                [contactId]
+            );
+            const contact = mapRowToContact(fullContactRes.rows[0]);
 
             recordTransaction({
                 req,
@@ -1094,6 +1138,11 @@ export class ClientV2Controller {
             if (!req.tenantId) return;
             const { contactId } = req.params;
             const data: UpdateClientContactV2Data = req.body;
+
+            if ('mobileNumber' in data) {
+                const mobileError = validateMobileNumber((data as any).mobileNumber);
+                if (mobileError) { res.status(400).json({ success: false, error: mobileError } as ApiResponse); return; }
+            }
 
             // Fetch existing for validation and diff
             const existingRes = await pool.query(
@@ -1132,7 +1181,15 @@ export class ClientV2Controller {
                  RETURNING *`,
                 values
             );
-            const contact = mapRowToContact(updatedRes.rows[0]);
+            
+            const fullContactRes = await pool.query(
+                `SELECT cc.*, u.name as created_by_name, u.avatar_url as created_by_avatar_url
+                 FROM client_contacts_v2 cc
+                 LEFT JOIN users u ON u.id = cc.created_by_id
+                 WHERE cc.id = $1`,
+                [contactId]
+            );
+            const contact = mapRowToContact(fullContactRes.rows[0]);
 
             // Audit diff
             const beforeSnap: Record<string, any> = {};
@@ -1633,11 +1690,13 @@ export class ClientV2Controller {
                 `SELECT cp.id AS mapping_id, cp.billing_type, cp.budget,
                         p.*,
                         u.id AS pm_id, u.name AS pm_name, u.avatar_url AS pm_avatar_url,
+                        uc.name AS creator_name, uc.avatar_url AS creator_avatar_url,
                         (SELECT COUNT(*)::int FROM tickets t WHERE t.project_id = p.id AND t.is_deleted = false) AS tickets_count,
                         (SELECT COUNT(*)::int FROM project_members pm WHERE pm.project_id = p.id) AS members_count
                  FROM client_projects cp
                  JOIN  projects p ON p.id = cp.project_id
                  LEFT JOIN users u ON u.id = p.project_manager_id
+                 LEFT JOIN users uc ON uc.id = p.created_by_id
                  WHERE cp.client_id = $1 AND cp.tenant_id = $2
                  ORDER BY cp.created_at DESC`,
                 [clientId, req.tenantId]

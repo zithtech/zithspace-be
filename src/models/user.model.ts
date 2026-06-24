@@ -97,6 +97,16 @@ export class UserModel {
         u.avatar_url as "avatarUrl",
         u.employee_id as "employeeId",
         (
+          SELECT th.actor_name 
+          FROM transaction_history th 
+          WHERE th.entity_type = 'user' 
+            AND th.entity_id = u.id 
+            AND th.action = 'create'
+            AND th.tenant_id = u.tenant_id
+          ORDER BY th.created_at ASC 
+          LIMIT 1
+        ) AS "createdBy",
+        (
           SELECT json_build_object('id', p.id, 'title', p.title) 
           FROM positions p 
           WHERE p.id = u.position_id

@@ -10,6 +10,7 @@ router.use(authenticateToken);
 router.use(requireAuth);
 
 router.get("/:id", ApprovalsStaffController.detail);
+router.delete("/:id", ApprovalsStaffController.deleteApproval);
 router.patch("/:id/cancel", ApprovalsStaffController.cancel);
 router.post("/:id/approvers", ApprovalsStaffController.addApprover);
 router.delete(
