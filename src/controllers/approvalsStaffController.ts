@@ -247,6 +247,24 @@ export class ApprovalsStaffController {
     res.json({ success: true, data });
   }
 
+  /** DELETE /api/approvals/:id */
+  static async deleteApproval(req: AuthRequest, res: Response): Promise<void> {
+    const tenantId = req.tenantId!;
+    const { id } = req.params;
+
+    const result = await pool.query(
+      `DELETE FROM portal_approval_requests WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId]
+    );
+
+    if (result.rowCount === 0) {
+      res.status(404).json({ success: false, error: "Approval not found" });
+      return;
+    }
+
+    res.json({ success: true });
+  }
+
   /** PATCH /api/approvals/:id/cancel */
   static async cancel(req: AuthRequest, res: Response): Promise<void> {
     const tenantId = req.tenantId!;

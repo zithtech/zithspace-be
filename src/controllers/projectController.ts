@@ -1514,16 +1514,25 @@ export class ProjectController {
       }
 
       const userId = req.user.id;
+      const userRole = req.user.role;
+      const tenantId = req.tenantId;
+
+      const hasManagePermission = await RBACService.hasPermission(userId, tenantId, Permissions.PROJECT_MANAGE, userRole);
+
+      const whereClause: any = {
+        tenantId,
+        status: { notIn: ["ARCHIVED", "DELETED", "archived", "deleted"] },
+      };
+
+      if (!hasManagePermission) {
+        whereClause.OR = [
+          { projectManagerId: userId },
+          { members: { some: { userId } } },
+        ];
+      }
 
       const projects = await prisma.project.findMany({
-        where: {
-          tenantId: req.tenantId,
-          status: { notIn: ["ARCHIVED", "DELETED", "archived", "deleted"] },
-          OR: [
-            { projectManagerId: userId },
-            { members: { some: { userId: userId } } },
-          ],
-        },
+        where: whereClause,
         select: {
           id: true,
           name: true,
@@ -1570,16 +1579,25 @@ export class ProjectController {
       }
 
       const userId = req.user.id;
+      const userRole = req.user.role;
+      const tenantId = req.tenantId;
+
+      const hasManagePermission = await RBACService.hasPermission(userId, tenantId, Permissions.PROJECT_MANAGE, userRole);
+
+      const whereClause: any = {
+        tenantId,
+        status: { notIn: ["ARCHIVED", "DELETED", "archived", "deleted"] },
+      };
+
+      if (!hasManagePermission) {
+        whereClause.OR = [
+          { projectManagerId: userId },
+          { members: { some: { userId } } },
+        ];
+      }
 
       const projects = await prisma.project.findMany({
-        where: {
-          tenantId: req.tenantId,
-          status: { notIn: ["ARCHIVED", "DELETED", "archived", "deleted"] },
-          OR: [
-            { projectManagerId: userId },
-            { members: { some: { userId: userId } } },
-          ],
-        },
+        where: whereClause,
         select: {
           id: true,
           name: true,

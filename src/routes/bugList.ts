@@ -50,6 +50,7 @@ router.post("/bugs/bulk-permanent-delete", requirePermission(Permissions.BUG_DEL
 router.post("/bugs/bulk-restore", requirePermission(Permissions.BUG_UPDATE), BugListController.bulkRestore);
 router.post("/bugs/bulk-move", requirePermission(Permissions.BUG_UPDATE), BugListController.bulkMove);
 router.post("/bugs/bulk-convert", requirePermission(Permissions.BUG_MANAGE), BugListController.bulkConvertToTickets);
+router.post("/bugs/bulk-map", requirePermission(Permissions.BUG_MANAGE), BugListController.bulkMapToTicket);
 
 router.get("/bugs/:id", requirePermission(Permissions.BUG_READ), BugListController.getBug);
 router.put("/bugs/:id", requirePermission(Permissions.BUG_UPDATE), BugListController.updateBug);

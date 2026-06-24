@@ -128,10 +128,17 @@ export class LeadController {
         ai_score: req.body.aiScore,
         proposal_text: req.body.proposalText,
         template_used: req.body.templateUsed,
-        platform: req.body.platform || (req.body.jobLink?.toLowerCase().includes('upwork.com') ? 'Upwork' :
-          req.body.jobLink?.toLowerCase().includes('freelancer.com') ? 'Freelancer' :
-            req.body.jobLink?.toLowerCase().includes('fiverr.com') ? 'Fiverr' :
-              req.body.jobLink?.toLowerCase().includes('linkedin.com') ? 'LinkedIn' : 'Upwork'),
+        platform: req.body.platform || (
+          req.body.jobLink?.toLowerCase().includes('upwork.com') ? 'Upwork' :
+            req.body.jobLink?.toLowerCase().includes('freelancer.com') ? 'Freelancer' :
+              req.body.jobLink?.toLowerCase().includes('fiverr.com') ? 'Fiverr' :
+                req.body.jobLink?.toLowerCase().includes('linkedin.com') ? 'LinkedIn' :
+                  req.body.jobLink?.toLowerCase().includes('toptal.com') ? 'Toptal' :
+                    req.body.jobLink?.toLowerCase().includes('guru.com') ? 'Guru' :
+                      req.body.jobLink?.toLowerCase().includes('peopleperhour.com') ? 'PeoplePerHour' :
+                        req.body.jobLink?.toLowerCase().includes('hubstaff.com') ? 'Hubstaff' :
+                          req.body.jobLink?.toLowerCase().includes('indeed.com') ? 'Indeed' : 'Upwork'
+        ),
         internal_notes: req.body.internalNotes,
         skill_analysis: req.body.skillAnalysis,
         ai_summary: req.body.ai_summary || req.body.aiSummary,
@@ -930,7 +937,7 @@ export class LeadController {
         return res.status(400).json({ success: false, error: 'Tenant context required' });
       }
 
-      const { to, subject, body, htmlBody, attachments, leadId } = req.body;
+      const { to, subject, body, htmlBody, attachments, leadId, proposalId } = req.body;
 
       const mailResponse = await MailService.sendInvoiceViaIntegratedMail(tenantId, {
         to: Array.isArray(to) ? to : [to],
@@ -940,7 +947,7 @@ export class LeadController {
         attachments: attachments || []
       }, req.user?.id);
 
-      // Log mail sent activity
+      // Log mail sent activity and update lead
       if (leadId && req.user?.id) {
         // 1. Create activity log
         try {
@@ -969,6 +976,27 @@ export class LeadController {
         } catch (err) {
           console.error("[LeadController] Failed to store mail in lead_mails:", err);
         }
+
+        // 3. Update the lead status to 'sent'
+        try {
+          await LeadModel.update(leadId, tenantId, {
+            status: 'sent'
+          });
+        } catch (err) {
+          console.error("[LeadController] Failed to update lead status to sent:", err);
+        }
+      }
+
+      // 4. If this mail was triggered from a Proposal, update the proposal status
+      if (proposalId) {
+        try {
+          await pool.query(
+            'UPDATE proposals SET status = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3',
+            ['sent', proposalId, tenantId]
+          );
+        } catch (err) {
+          console.error("[LeadController] Failed to update proposal status:", err);
+        }
       }
 
       // ─── Activity log ───────────────────────────────────────────────
@@ -978,9 +1006,9 @@ export class LeadController {
         module: Module.LEADS,
         page: Page.LEAD_DETAIL,
         action: Action.EMAIL_SENT,
-        actionLabel: `Sent email to lead at ${Array.isArray(to) ? to.join(', ') : to}`,
+        actionLabel: `Sent email to ${Array.isArray(to) ? to.join(', ') : to}`,
         entityType: EntityType.LEAD,
-        entityId: leadId,
+        entityId: leadId || proposalId,
         metadata: { subject },
       });
 
