@@ -22,6 +22,11 @@ export const apply = handle(async (req: AuthRequest, res: Response) => {
   ok(res, await service.applyLeave(actorOf(req), input), 201);
 });
 
+export const update = handle(async (req: AuthRequest, res: Response) => {
+  const input = applyLeaveSchema.parse(req.body);
+  ok(res, await service.updateMyRequest(actorOf(req), req.params.id, input));
+});
+
 export const cancel = handle(async (req: AuthRequest, res: Response) => {
   await service.cancelMyRequest(actorOf(req), req.params.id);
   ok(res, { id: req.params.id, cancelled: true });
