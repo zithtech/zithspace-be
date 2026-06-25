@@ -162,6 +162,7 @@ app.set('trust proxy', 1);
 const allowedOrigins = [
   "http://localhost:3000", // Local development
   "http://localhost:3005", // Local development for internal app
+  /^http:\/\/localhost:\d+$/, // Allow any localhost port (e.g. Vite 5173)
   /^http:\/\/[^.]+\.localhost(:\d+)?$/, // *.localhost subdomains (dev)
   "https://zithmi.vercel.app", // Vercel production URL
   "https://www.zithtech.com",
