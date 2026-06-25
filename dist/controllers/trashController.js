@@ -60,7 +60,7 @@ class TrashController {
             orderBy[sortBy] = sortOrder === "desc" ? "desc" : "asc";
             // Execute query with pagination
             const skip = (Number(page) - 1) * Number(limit);
-            const [tickets, total] = await Promise.all([
+            const [tickets, total, projectCountsRaw] = await Promise.all([
                 database_1.prisma.ticket.findMany({
                     where,
                     select: {
@@ -84,7 +84,27 @@ class TrashController {
                     take: Number(limit),
                 }),
                 database_1.prisma.ticket.count({ where }),
+                database_1.prisma.ticket.groupBy({
+                    by: ["projectId"],
+                    where: {
+                        tenantId: req.tenantId,
+                        isDeleted: true,
+                        deletedAt: {
+                            gte: sevenDaysAgo,
+                        },
+                    },
+                    _count: {
+                        id: true,
+                    },
+                }),
             ]);
+            const projectCounts = projectCountsRaw
+                .filter((pc) => pc.projectId !== null)
+                .map((pc) => ({
+                projectId: pc.projectId,
+                count: pc._count.id,
+            }));
+            const totalAllTrash = projectCountsRaw.reduce((acc, pc) => acc + pc._count.id, 0);
             const totalPages = Math.ceil(total / Number(limit));
             // Calculate expiring soon count (< 2 days until auto-purge)
             const twoDaysFromNow = new Date();
@@ -111,6 +131,8 @@ class TrashController {
                     summary: {
                         total,
                         expiringSoon,
+                        projectCounts,
+                        totalAllTrash,
                     },
                 },
             });
