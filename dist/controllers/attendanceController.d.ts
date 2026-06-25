@@ -10,13 +10,32 @@ export declare class AttendanceController {
      */
     static getAttendanceById(req: AuthRequest, res: Response): Promise<void>;
     /**
-     * Clock in (tenant-aware)
+     * Clock in (tenant-aware) — opens a new work session.
      */
     static clockIn(req: AuthRequest, res: Response): Promise<void>;
     /**
-     * Clock out (tenant-aware)
+     * Clock out (tenant-aware) — finalizes the day.
      */
     static clockOut(req: AuthRequest, res: Response): Promise<void>;
+    /** Pause the day — closes the currently open work session (a break begins). */
+    static pause(req: AuthRequest, res: Response): Promise<void>;
+    /** Resume the day — opens a new work session after a break. */
+    static resume(req: AuthRequest, res: Response): Promise<void>;
+    /** Complete the day — closes any open session and finalizes totals. */
+    static complete(req: AuthRequest, res: Response): Promise<void>;
+    /** Shared driver for the pause / resume / complete session actions. */
+    private static runSessionAction;
+    /**
+     * Returns the currently open session for a day, backfilling one from a legacy
+     * `clockIn` when no session rows exist yet (normalizes old records).
+     */
+    private static getOpenSession;
+    /** Closes a session, stores its worked minutes and an optional break. */
+    private static closeSession;
+    /** Recomputes day totals from closed sessions (effective / break / span). */
+    private static recompute;
+    /** Closes any open session and marks the day complete. */
+    private static finalizeDay;
     /**
      * Get today's attendance for current user (tenant-aware)
      */
@@ -50,8 +69,9 @@ export declare class AttendanceController {
      */
     static createAttendance(req: AuthRequest, res: Response): Promise<void>;
     /**
-     * Helper to get formatted today's attendance data for a user
-     * Consistent response format for clock-in, clock-out, and today status
+     * Helper to get formatted today's attendance data for a user.
+     * Consistent response format for clock-in, clock-out, pause/resume/complete
+     * and the today status endpoint. Includes the day's work sessions + state.
      */
     private static getFormattedTodayAttendance;
 }

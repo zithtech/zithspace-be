@@ -8,108 +8,110 @@ exports.deleteEmployeeExperience = deleteEmployeeExperience;
 exports.deleteAllEmployeeHistory = deleteAllEmployeeHistory;
 exports.deleteEmployeeDocument = deleteEmployeeDocument;
 exports.deleteEmployeeContact = deleteEmployeeContact;
-const database_1 = require("@/config/database");
 const r2Client_1 = require("@/utils/r2Client");
+const onboardingPool_1 = require("@/db/onboardingPool");
+/**
+ * Run `fn` against the supplied tenant-scoped client when the orchestrator is
+ * driving a shared transaction, otherwise open a standalone tenant transaction.
+ * Mirrors the old `tx: any = prisma` default — a no-client call used to run on
+ * the default (non-transactional) Prisma client.
+ */
+async function withClient(req, client, fn) {
+    if (client)
+        return fn(client);
+    return (0, onboardingPool_1.withTenant)(req.tenantId, fn);
+}
 // ✅ CREATE Employee History
-async function createEmployeeHistory(req, employeeId, tx = database_1.prisma) {
+async function createEmployeeHistory(req, employeeId, client) {
     try {
         const { history } = req.body;
         // Ensure history is an array before iterating
         if (!Array.isArray(history)) {
             return; // Or throw an error if history is mandatory but malformed
         }
-        for (const h of history) {
-            const exp = await tx.employeeExperience.create({
-                data: {
+        return await withClient(req, client, async (db) => {
+            for (const h of history) {
+                const expRes = await db.query(`INSERT INTO employee_experience
+             (employee_id, company_name, designation, employment_type, industry,
+              location, company_address, joining_date, last_working_date,
+              created_by_id, updated_by_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+           RETURNING id`, [
                     employeeId,
-                    companyName: h.companyName || null,
-                    designation: h.designation || null,
-                    employmentType: h.employmentType || null,
-                    industry: h.industry || null,
-                    location: h.location || null,
-                    companyAddress: h.address || null,
-                    joiningDate: new Date(h.doj) || null,
-                    lastWorkingDate: new Date(h.lwd) || null,
-                    createdById: employeeId || null,
-                    updatedById: employeeId || null,
-                },
-            });
-            // Handle Single Documents
-            const singleDocFields = [
-                "experienceLetter",
-                "offerLetter",
-                "serviceLetter",
-                "relievingLetter",
-            ];
-            for (const docType of singleDocFields) {
-                const fileData = h[docType];
-                if (fileData) {
+                    h.companyName || null,
+                    h.designation || null,
+                    h.employmentType || null,
+                    h.industry || null,
+                    h.location || null,
+                    h.address || null,
+                    h.doj ? new Date(h.doj) : null,
+                    h.lwd ? new Date(h.lwd) : null,
+                    employeeId || null,
+                    employeeId || null,
+                ]);
+                const experienceId = expRes.rows[0]?.id ?? null;
+                // Upload a base64 file (or accept an existing url), then record the doc
+                // against THIS experience row. `fileData` = { base64?, url?, fileName? }.
+                const recordDoc = async (docType, fileData) => {
+                    if (!fileData)
+                        return;
                     let url = null;
                     if (fileData.base64) {
-                        url = await (0, r2Client_1.uploadEmployeeDocumentToR2)(fileData.base64, fileData.fileName, req.tenantId, employeeId, docType);
+                        url = await (0, r2Client_1.uploadEmployeeDocumentToR2)(fileData.base64, fileData.fileName || `${docType}`, req.tenantId, employeeId, docType);
                     }
                     else if (fileData.url) {
                         url = fileData.url;
                     }
-                    if (url) {
-                        await tx.employeeDocument.create({
-                            data: {
-                                employeeId,
-                                documentType: docType,
-                                documentUrl: url,
-                                createdById: employeeId,
-                                updatedById: employeeId,
-                            },
-                        });
+                    if (!url)
+                        return;
+                    await db.query(`INSERT INTO employee_documents
+               (employee_id, experience_id, document_type, document_url, created_by_id, updated_by_id)
+             VALUES ($1, $2, $3, $4, $5, $5)`, [employeeId, experienceId, docType, url, employeeId]);
+                };
+                // Legacy fixed single-doc fields
+                for (const docType of ["experienceLetter", "offerLetter", "serviceLetter", "relievingLetter"]) {
+                    await recordDoc(docType, h[docType]);
+                }
+                // Legacy fixed array-doc fields (Form 16, Payslips)
+                for (const docType of ["form16", "payslips"]) {
+                    const files = h[docType];
+                    if (Array.isArray(files)) {
+                        for (const f of files)
+                            await recordDoc(docType, f);
                     }
                 }
-            }
-            // Handle Array Documents (Form 16, Payslips)
-            const listDocFields = ["form16", "payslips"];
-            for (const docType of listDocFields) {
-                const files = h[docType];
-                if (Array.isArray(files)) {
-                    for (const fileData of files) {
-                        if (fileData) {
-                            let url = null;
-                            if (fileData.base64) {
-                                url = await (0, r2Client_1.uploadEmployeeDocumentToR2)(fileData.base64, fileData.fileName, req.tenantId, employeeId, docType);
-                            }
-                            else if (fileData.url) {
-                                url = fileData.url;
-                            }
-                            if (url) {
-                                await tx.employeeDocument.create({
-                                    data: {
-                                        employeeId,
-                                        documentType: docType,
-                                        documentUrl: url,
-                                        createdById: employeeId,
-                                        updatedById: employeeId,
-                                    },
-                                });
-                            }
-                        }
+                // Dynamic, tenant-configured / custom documents from the public form:
+                //   documents: [{ documentType, files: [{ base64|url, fileName }] }]
+                if (Array.isArray(h.documents)) {
+                    for (const doc of h.documents) {
+                        const docType = String(doc?.documentType || doc?.type || doc?.name || "Document");
+                        const files = Array.isArray(doc?.files) ? doc.files : doc?.file ? [doc.file] : [];
+                        for (const f of files)
+                            await recordDoc(docType, f);
                     }
                 }
-            }
-            if (Array.isArray(h.contacts)) {
-                for (const c of h.contacts) {
-                    await tx.employeeContact.create({
-                        data: {
+                if (Array.isArray(h.contacts)) {
+                    for (const c of h.contacts) {
+                        await db.query(`INSERT INTO employee_contacts
+                 (employee_id, contact_person_type, name, mobile, email,
+                  created_by_id, updated_by_id)
+               VALUES ($1, $2, $3, $4, $5, $6, $7)`, [
                             employeeId,
-                            contactPersonType: c.contactRole || null,
-                            name: c.contactName || null,
-                            mobile: c.contactNumber,
-                            email: c.contactEmail || null, // SAFE FIX
-                            createdById: employeeId || null,
-                            updatedById: employeeId || null,
-                        },
-                    });
+                            c.contactRole || null,
+                            c.contactName || null,
+                            c.contactNumber,
+                            c.contactEmail || null, // SAFE FIX
+                            employeeId || null,
+                            employeeId || null,
+                        ]);
+                    }
                 }
             }
-        }
-        return { success: true, message: "Employee history created successfully" };
+            return {
+                success: true,
+                message: "Employee history created successfully",
+            };
+        });
     }
     catch (error) {
         console.error("Error in createEmployeeHistory:", error);
@@ -121,77 +123,84 @@ async function getEmployeeHistory(req, employeeId) {
     try {
         if (!req.user?.id || !req.tenantId)
             throw new Error("Unauthorized");
-        // Verify employee exists and belongs to tenant
-        const employee = await database_1.prisma.employee.findFirst({
-            where: {
-                id: employeeId,
-                tenantId: req.tenantId,
-            },
+        return await (0, onboardingPool_1.withTenant)(req.tenantId, async (db) => {
+            // Verify employee exists and belongs to tenant
+            const employeeRes = await db.query(`SELECT id FROM employees WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [employeeId, req.tenantId]);
+            if (!employeeRes.rows[0]) {
+                throw new Error("Employee not found");
+            }
+            const experiencesRes = await db.query(`SELECT * FROM employee_experience
+          WHERE employee_id = $1
+          ORDER BY joining_date DESC`, [employeeId]);
+            const experiences = experiencesRes.rows;
+            const history = await Promise.all(experiences.map(async (exp) => {
+                var _a;
+                // Fetch documents linked to THIS experience. Legacy rows with a NULL
+                // experience_id (created before per-history linking) are still shown.
+                const documentsRes = await db.query(`SELECT * FROM employee_documents
+              WHERE employee_id = $1 AND (experience_id = $2 OR experience_id IS NULL)`, [employeeId, exp.id]);
+                const documents = documentsRes.rows;
+                // Fetch contacts related to this employee
+                const contactsRes = await db.query(`SELECT * FROM employee_contacts WHERE employee_id = $1`, [employeeId]);
+                const contacts = contactsRes.rows;
+                // Group single documents
+                const experienceLetter = documents.find((d) => d.document_type === "experienceLetter");
+                const offerLetter = documents.find((d) => d.document_type === "offerLetter");
+                const serviceLetter = documents.find((d) => d.document_type === "serviceLetter");
+                const relievingLetter = documents.find((d) => d.document_type === "relievingLetter");
+                // Group array documents
+                const form16 = documents
+                    .filter((d) => d.document_type === "form16")
+                    .map((d) => ({ url: d.document_url, id: d.id }));
+                const payslips = documents
+                    .filter((d) => d.document_type === "payslips")
+                    .map((d) => ({ url: d.document_url, id: d.id }));
+                // Generic, type-grouped list — covers tenant-configured / custom doc
+                // types so the detail view can render every uploaded document.
+                const grouped = {};
+                for (const d of documents) {
+                    (grouped[_a = d.document_type] || (grouped[_a] = [])).push({ url: d.document_url, id: d.id });
+                }
+                const documentsList = Object.entries(grouped).map(([documentType, files]) => ({
+                    documentType,
+                    files,
+                }));
+                return {
+                    id: exp.id,
+                    companyName: exp.company_name,
+                    designation: exp.designation,
+                    employmentType: exp.employment_type,
+                    industry: exp.industry,
+                    location: exp.location,
+                    address: exp.company_address,
+                    doj: exp.joining_date,
+                    lwd: exp.last_working_date,
+                    experienceLetter: experienceLetter
+                        ? { url: experienceLetter.document_url, id: experienceLetter.id }
+                        : null,
+                    offerLetter: offerLetter
+                        ? { url: offerLetter.document_url, id: offerLetter.id }
+                        : null,
+                    serviceLetter: serviceLetter
+                        ? { url: serviceLetter.document_url, id: serviceLetter.id }
+                        : null,
+                    relievingLetter: relievingLetter
+                        ? { url: relievingLetter.document_url, id: relievingLetter.id }
+                        : null,
+                    form16,
+                    payslips,
+                    documents: documentsList,
+                    contacts: contacts.map((c) => ({
+                        id: c.id,
+                        contactRole: c.contact_person_type,
+                        contactName: c.name,
+                        contactNumber: c.mobile,
+                        contactEmail: c.email,
+                    })),
+                };
+            }));
+            return history;
         });
-        if (!employee) {
-            throw new Error("Employee not found");
-        }
-        const experiences = await database_1.prisma.employeeExperience.findMany({
-            where: { employeeId },
-            orderBy: { joiningDate: "desc" },
-        });
-        const history = await Promise.all(experiences.map(async (exp) => {
-            // Fetch documents related to this experience
-            const documents = await database_1.prisma.employeeDocument.findMany({
-                where: {
-                    employeeId,
-                },
-            });
-            // Fetch contacts related to this employee
-            const contacts = await database_1.prisma.employeeContact.findMany({
-                where: { employeeId },
-            });
-            // Group single documents
-            const experienceLetter = documents.find((d) => d.documentType === "experienceLetter");
-            const offerLetter = documents.find((d) => d.documentType === "offerLetter");
-            const serviceLetter = documents.find((d) => d.documentType === "serviceLetter");
-            const relievingLetter = documents.find((d) => d.documentType === "relievingLetter");
-            // Group array documents
-            const form16 = documents
-                .filter((d) => d.documentType === "form16")
-                .map((d) => ({ url: d.documentUrl, id: d.id }));
-            const payslips = documents
-                .filter((d) => d.documentType === "payslips")
-                .map((d) => ({ url: d.documentUrl, id: d.id }));
-            return {
-                id: exp.id,
-                companyName: exp.companyName,
-                designation: exp.designation,
-                employmentType: exp.employmentType,
-                industry: exp.industry,
-                location: exp.location,
-                address: exp.companyAddress,
-                doj: exp.joiningDate,
-                lwd: exp.lastWorkingDate,
-                experienceLetter: experienceLetter
-                    ? { url: experienceLetter.documentUrl, id: experienceLetter.id }
-                    : null,
-                offerLetter: offerLetter
-                    ? { url: offerLetter.documentUrl, id: offerLetter.id }
-                    : null,
-                serviceLetter: serviceLetter
-                    ? { url: serviceLetter.documentUrl, id: serviceLetter.id }
-                    : null,
-                relievingLetter: relievingLetter
-                    ? { url: relievingLetter.documentUrl, id: relievingLetter.id }
-                    : null,
-                form16,
-                payslips,
-                contacts: contacts.map((c) => ({
-                    id: c.id,
-                    contactRole: c.contactPersonType,
-                    contactName: c.name,
-                    contactNumber: c.mobile,
-                    contactEmail: c.email,
-                })),
-            };
-        }));
-        return history;
     }
     catch (error) {
         console.error("Error in getEmployeeHistory:", error);
@@ -203,65 +212,63 @@ async function getSingleExperience(req, employeeId, experienceId) {
     try {
         if (!req.user?.id || !req.tenantId)
             throw new Error("Unauthorized");
-        const experience = await database_1.prisma.employeeExperience.findFirst({
-            where: {
-                id: experienceId,
-                employeeId,
-            },
+        return await (0, onboardingPool_1.withTenant)(req.tenantId, async (db) => {
+            const experienceRes = await db.query(`SELECT * FROM employee_experience
+          WHERE id = $1 AND employee_id = $2
+          LIMIT 1`, [experienceId, employeeId]);
+            const experience = experienceRes.rows[0];
+            if (!experience) {
+                throw new Error("Experience record not found");
+            }
+            // Fetch related documents
+            const documentsRes = await db.query(`SELECT * FROM employee_documents WHERE employee_id = $1`, [employeeId]);
+            const documents = documentsRes.rows;
+            // Fetch related contacts
+            const contactsRes = await db.query(`SELECT * FROM employee_contacts WHERE employee_id = $1`, [employeeId]);
+            const contacts = contactsRes.rows;
+            const experienceLetter = documents.find((d) => d.document_type === "experienceLetter");
+            const offerLetter = documents.find((d) => d.document_type === "offerLetter");
+            const serviceLetter = documents.find((d) => d.document_type === "serviceLetter");
+            const relievingLetter = documents.find((d) => d.document_type === "relievingLetter");
+            const form16 = documents
+                .filter((d) => d.document_type === "form16")
+                .map((d) => ({ url: d.document_url, id: d.id }));
+            const payslips = documents
+                .filter((d) => d.document_type === "payslips")
+                .map((d) => ({ url: d.document_url, id: d.id }));
+            return {
+                id: experience.id,
+                companyName: experience.company_name,
+                designation: experience.designation,
+                employmentType: experience.employment_type,
+                industry: experience.industry,
+                location: experience.location,
+                address: experience.company_address,
+                doj: experience.joining_date,
+                lwd: experience.last_working_date,
+                experienceLetter: experienceLetter
+                    ? { url: experienceLetter.document_url, id: experienceLetter.id }
+                    : null,
+                offerLetter: offerLetter
+                    ? { url: offerLetter.document_url, id: offerLetter.id }
+                    : null,
+                serviceLetter: serviceLetter
+                    ? { url: serviceLetter.document_url, id: serviceLetter.id }
+                    : null,
+                relievingLetter: relievingLetter
+                    ? { url: relievingLetter.document_url, id: relievingLetter.id }
+                    : null,
+                form16,
+                payslips,
+                contacts: contacts.map((c) => ({
+                    id: c.id,
+                    contactRole: c.contact_person_type,
+                    contactName: c.name,
+                    contactNumber: c.mobile,
+                    contactEmail: c.email,
+                })),
+            };
         });
-        if (!experience) {
-            throw new Error("Experience record not found");
-        }
-        // Fetch related documents
-        const documents = await database_1.prisma.employeeDocument.findMany({
-            where: { employeeId },
-        });
-        // Fetch related contacts
-        const contacts = await database_1.prisma.employeeContact.findMany({
-            where: { employeeId },
-        });
-        const experienceLetter = documents.find((d) => d.documentType === "experienceLetter");
-        const offerLetter = documents.find((d) => d.documentType === "offerLetter");
-        const serviceLetter = documents.find((d) => d.documentType === "serviceLetter");
-        const relievingLetter = documents.find((d) => d.documentType === "relievingLetter");
-        const form16 = documents
-            .filter((d) => d.documentType === "form16")
-            .map((d) => ({ url: d.documentUrl, id: d.id }));
-        const payslips = documents
-            .filter((d) => d.documentType === "payslips")
-            .map((d) => ({ url: d.documentUrl, id: d.id }));
-        return {
-            id: experience.id,
-            companyName: experience.companyName,
-            designation: experience.designation,
-            employmentType: experience.employmentType,
-            industry: experience.industry,
-            location: experience.location,
-            address: experience.companyAddress,
-            doj: experience.joiningDate,
-            lwd: experience.lastWorkingDate,
-            experienceLetter: experienceLetter
-                ? { url: experienceLetter.documentUrl, id: experienceLetter.id }
-                : null,
-            offerLetter: offerLetter
-                ? { url: offerLetter.documentUrl, id: offerLetter.id }
-                : null,
-            serviceLetter: serviceLetter
-                ? { url: serviceLetter.documentUrl, id: serviceLetter.id }
-                : null,
-            relievingLetter: relievingLetter
-                ? { url: relievingLetter.documentUrl, id: relievingLetter.id }
-                : null,
-            form16,
-            payslips,
-            contacts: contacts.map((c) => ({
-                id: c.id,
-                contactRole: c.contactPersonType,
-                contactName: c.name,
-                contactNumber: c.mobile,
-                contactEmail: c.email,
-            })),
-        };
     }
     catch (error) {
         console.error("Error in getSingleExperience:", error);
@@ -277,115 +284,101 @@ async function updateEmployeeHistory(req, employeeId, experienceId) {
         if (!history) {
             throw new Error("History data is missing from the request body");
         }
-        // Verify employee exists and belongs to tenant
-        const employee = await database_1.prisma.employee.findFirst({
-            where: {
-                id: employeeId,
-                tenantId: req.tenantId,
-            },
-        });
-        if (!employee) {
-            throw new Error("Employee not found");
-        }
-        // Verify experience exists
-        const existingExperience = await database_1.prisma.employeeExperience.findFirst({
-            where: {
-                id: experienceId,
-                employeeId,
-            },
-        });
-        if (!existingExperience) {
-            throw new Error("Experience record not found");
-        }
-        // Update experience record
-        await database_1.prisma.employeeExperience.update({
-            where: { id: experienceId },
-            data: {
-                companyName: history.companyName,
-                designation: history.designation,
-                employmentType: history.employmentType,
-                industry: history.industry,
-                location: history.location,
-                companyAddress: history.address,
-                joiningDate: new Date(history.doj),
-                lastWorkingDate: new Date(history.lwd),
-                updatedById: employeeId,
-            },
-        });
-        // Handle Single Documents - Update if provided
-        const singleDocFields = [
-            "experienceLetter",
-            "offerLetter",
-            "serviceLetter",
-            "relievingLetter",
-        ];
-        for (const docType of singleDocFields) {
-            const fileData = history[docType];
-            if (fileData && fileData.base64) {
-                // Delete existing document of this type
-                await database_1.prisma.employeeDocument.deleteMany({
-                    where: {
-                        employeeId,
-                        documentType: docType,
-                    },
-                });
-                // Upload and create new document
-                const url = await (0, r2Client_1.uploadEmployeeDocumentToR2)(fileData.base64, fileData.fileName, req.tenantId, employeeId, docType);
-                await database_1.prisma.employeeDocument.create({
-                    data: {
-                        employeeId,
-                        documentType: docType,
-                        documentUrl: url,
-                        createdById: employeeId,
-                        updatedById: employeeId,
-                    },
-                });
+        return await (0, onboardingPool_1.withTenant)(req.tenantId, async (db) => {
+            // Verify employee exists and belongs to tenant
+            const employeeRes = await db.query(`SELECT id FROM employees WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [employeeId, req.tenantId]);
+            if (!employeeRes.rows[0]) {
+                throw new Error("Employee not found");
             }
-        }
-        // Handle Array Documents (Form 16, Payslips) - Add new ones
-        const listDocFields = ["form16", "payslips"];
-        for (const docType of listDocFields) {
-            const files = history[docType];
-            if (Array.isArray(files)) {
-                for (const fileData of files) {
-                    if (fileData && fileData.base64) {
-                        const url = await (0, r2Client_1.uploadEmployeeDocumentToR2)(fileData.base64, fileData.fileName, req.tenantId, employeeId, docType);
-                        await database_1.prisma.employeeDocument.create({
-                            data: {
-                                employeeId,
-                                documentType: docType,
-                                documentUrl: url,
-                                createdById: employeeId,
-                                updatedById: employeeId,
-                            },
-                        });
+            // Verify experience exists
+            const existingRes = await db.query(`SELECT id FROM employee_experience
+          WHERE id = $1 AND employee_id = $2
+          LIMIT 1`, [experienceId, employeeId]);
+            if (!existingRes.rows[0]) {
+                throw new Error("Experience record not found");
+            }
+            // Update experience record
+            await db.query(`UPDATE employee_experience
+            SET company_name = $1,
+                designation = $2,
+                employment_type = $3,
+                industry = $4,
+                location = $5,
+                company_address = $6,
+                joining_date = $7,
+                last_working_date = $8,
+                updated_by_id = $9,
+                updated_at = now()
+          WHERE id = $10`, [
+                history.companyName,
+                history.designation,
+                history.employmentType,
+                history.industry,
+                history.location,
+                history.address,
+                history.doj ? new Date(history.doj) : null,
+                history.lwd ? new Date(history.lwd) : null,
+                employeeId,
+                experienceId,
+            ]);
+            // Handle Single Documents - Update if provided
+            const singleDocFields = [
+                "experienceLetter",
+                "offerLetter",
+                "serviceLetter",
+                "relievingLetter",
+            ];
+            for (const docType of singleDocFields) {
+                const fileData = history[docType];
+                if (fileData && fileData.base64) {
+                    // Delete existing document of this type
+                    await db.query(`DELETE FROM employee_documents
+              WHERE employee_id = $1 AND document_type = $2`, [employeeId, docType]);
+                    // Upload and create new document
+                    const url = await (0, r2Client_1.uploadEmployeeDocumentToR2)(fileData.base64, fileData.fileName, req.tenantId, employeeId, docType);
+                    await db.query(`INSERT INTO employee_documents
+               (employee_id, document_type, document_url, created_by_id, updated_by_id)
+             VALUES ($1, $2, $3, $4, $5)`, [employeeId, docType, url, employeeId, employeeId]);
+                }
+            }
+            // Handle Array Documents (Form 16, Payslips) - Add new ones
+            const listDocFields = ["form16", "payslips"];
+            for (const docType of listDocFields) {
+                const files = history[docType];
+                if (Array.isArray(files)) {
+                    for (const fileData of files) {
+                        if (fileData && fileData.base64) {
+                            const url = await (0, r2Client_1.uploadEmployeeDocumentToR2)(fileData.base64, fileData.fileName, req.tenantId, employeeId, docType);
+                            await db.query(`INSERT INTO employee_documents
+                   (employee_id, document_type, document_url, created_by_id, updated_by_id)
+                 VALUES ($1, $2, $3, $4, $5)`, [employeeId, docType, url, employeeId, employeeId]);
+                        }
                     }
                 }
             }
-        }
-        // Update contacts - Delete old and create new
-        if (history.contacts && Array.isArray(history.contacts)) {
-            await database_1.prisma.employeeContact.deleteMany({
-                where: { employeeId },
-            });
-            for (const c of history.contacts) {
-                await database_1.prisma.employeeContact.create({
-                    data: {
+            // Update contacts - Delete old and create new
+            if (history.contacts && Array.isArray(history.contacts)) {
+                await db.query(`DELETE FROM employee_contacts WHERE employee_id = $1`, [employeeId]);
+                for (const c of history.contacts) {
+                    await db.query(`INSERT INTO employee_contacts
+               (employee_id, contact_person_type, name, mobile, email,
+                created_by_id, updated_by_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`, [
                         employeeId,
-                        contactPersonType: c.contactRole,
-                        name: c.contactName,
-                        mobile: c.contactNumber,
-                        email: c.contactEmail,
-                        createdById: employeeId,
-                        updatedById: employeeId,
-                    },
-                });
+                        c.contactRole,
+                        c.contactName,
+                        c.contactNumber,
+                        c.contactEmail,
+                        employeeId,
+                        employeeId,
+                    ]);
+                }
             }
-        }
-        return {
-            success: true,
-            message: "Employee history updated successfully",
-        };
+            return {
+                success: true,
+                message: "Employee history updated successfully",
+            };
+        });
     }
     catch (error) {
         console.error("Error in updateEmployeeHistory:", error);
@@ -397,34 +390,28 @@ async function deleteEmployeeExperience(req, employeeId, experienceId) {
     try {
         if (!req.user?.id || !req.tenantId)
             throw new Error("Unauthorized");
-        // Verify employee exists and belongs to tenant
-        const employee = await database_1.prisma.employee.findFirst({
-            where: {
-                id: employeeId,
-                tenantId: req.tenantId,
-            },
+        return await (0, onboardingPool_1.withTenant)(req.tenantId, async (db) => {
+            // Verify employee exists and belongs to tenant
+            const employeeRes = await db.query(`SELECT id FROM employees WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [employeeId, req.tenantId]);
+            if (!employeeRes.rows[0]) {
+                throw new Error("Employee not found");
+            }
+            // Verify experience exists
+            const existingRes = await db.query(`SELECT id FROM employee_experience
+          WHERE id = $1 AND employee_id = $2
+          LIMIT 1`, [experienceId, employeeId]);
+            if (!existingRes.rows[0]) {
+                throw new Error("Experience record not found");
+            }
+            // Delete the experience record
+            await db.query(`DELETE FROM employee_experience WHERE id = $1`, [
+                experienceId,
+            ]);
+            return {
+                success: true,
+                message: "Experience record deleted successfully",
+            };
         });
-        if (!employee) {
-            throw new Error("Employee not found");
-        }
-        // Verify experience exists
-        const existingExperience = await database_1.prisma.employeeExperience.findFirst({
-            where: {
-                id: experienceId,
-                employeeId,
-            },
-        });
-        if (!existingExperience) {
-            throw new Error("Experience record not found");
-        }
-        // Delete the experience record
-        await database_1.prisma.employeeExperience.delete({
-            where: { id: experienceId },
-        });
-        return {
-            success: true,
-            message: "Experience record deleted successfully",
-        };
     }
     catch (error) {
         console.error("Error in deleteEmployeeExperience:", error);
@@ -432,36 +419,33 @@ async function deleteEmployeeExperience(req, employeeId, experienceId) {
     }
 }
 // ✅ DELETE All Employee History
-async function deleteAllEmployeeHistory(req, employeeId, tx = database_1.prisma) {
+async function deleteAllEmployeeHistory(req, employeeId, client) {
     try {
         if (!req.user?.id || !req.tenantId)
             throw new Error("Unauthorized");
-        // Verify employee exists and belongs to tenant
-        const employee = await tx.employee.findFirst({
-            where: {
-                id: employeeId,
-                tenantId: req.tenantId,
-            },
+        return await withClient(req, client, async (db) => {
+            // Verify employee exists and belongs to tenant
+            const employeeRes = await db.query(`SELECT id FROM employees WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [employeeId, req.tenantId]);
+            if (!employeeRes.rows[0]) {
+                throw new Error("Employee not found");
+            }
+            // Delete all experiences
+            await db.query(`DELETE FROM employee_experience WHERE employee_id = $1`, [
+                employeeId,
+            ]);
+            // Delete all documents
+            await db.query(`DELETE FROM employee_documents WHERE employee_id = $1`, [
+                employeeId,
+            ]);
+            // Delete all contacts
+            await db.query(`DELETE FROM employee_contacts WHERE employee_id = $1`, [
+                employeeId,
+            ]);
+            return {
+                success: true,
+                message: "All employee history deleted successfully",
+            };
         });
-        if (!employee) {
-            throw new Error("Employee not found");
-        }
-        // Delete all experiences
-        await tx.employeeExperience.deleteMany({
-            where: { employeeId },
-        });
-        // Delete all documents
-        await tx.employeeDocument.deleteMany({
-            where: { employeeId },
-        });
-        // Delete all contacts
-        await tx.employeeContact.deleteMany({
-            where: { employeeId },
-        });
-        return {
-            success: true,
-            message: "All employee history deleted successfully",
-        };
     }
     catch (error) {
         console.error("Error in deleteAllEmployeeHistory:", error);
@@ -473,36 +457,30 @@ async function deleteEmployeeDocument(req, employeeId, documentId) {
     try {
         if (!req.user?.id || !req.tenantId)
             throw new Error("Unauthorized");
-        // Verify employee exists and belongs to tenant
-        const employee = await database_1.prisma.employee.findFirst({
-            where: {
-                id: employeeId,
-                tenantId: req.tenantId,
-            },
+        return await (0, onboardingPool_1.withTenant)(req.tenantId, async (db) => {
+            // Verify employee exists and belongs to tenant
+            const employeeRes = await db.query(`SELECT id FROM employees WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [employeeId, req.tenantId]);
+            if (!employeeRes.rows[0]) {
+                throw new Error("Employee not found");
+            }
+            // Verify document exists
+            const documentRes = await db.query(`SELECT id FROM employee_documents
+          WHERE id = $1 AND employee_id = $2
+          LIMIT 1`, [documentId, employeeId]);
+            if (!documentRes.rows[0]) {
+                throw new Error("Document not found");
+            }
+            // Delete the document
+            await db.query(`DELETE FROM employee_documents WHERE id = $1`, [
+                documentId,
+            ]);
+            // Note: You may want to also delete the file from R2 storage here
+            // using a deleteFromR2 utility function if you have one
+            return {
+                success: true,
+                message: "Document deleted successfully",
+            };
         });
-        if (!employee) {
-            throw new Error("Employee not found");
-        }
-        // Verify document exists
-        const document = await database_1.prisma.employeeDocument.findFirst({
-            where: {
-                id: documentId,
-                employeeId,
-            },
-        });
-        if (!document) {
-            throw new Error("Document not found");
-        }
-        // Delete the document
-        await database_1.prisma.employeeDocument.delete({
-            where: { id: documentId },
-        });
-        // Note: You may want to also delete the file from R2 storage here
-        // using a deleteFromR2 utility function if you have one
-        return {
-            success: true,
-            message: "Document deleted successfully",
-        };
     }
     catch (error) {
         console.error("Error in deleteEmployeeDocument:", error);
@@ -514,34 +492,26 @@ async function deleteEmployeeContact(req, employeeId, contactId) {
     try {
         if (!req.user?.id || !req.tenantId)
             throw new Error("Unauthorized");
-        // Verify employee exists and belongs to tenant
-        const employee = await database_1.prisma.employee.findFirst({
-            where: {
-                id: employeeId,
-                tenantId: req.tenantId,
-            },
+        return await (0, onboardingPool_1.withTenant)(req.tenantId, async (db) => {
+            // Verify employee exists and belongs to tenant
+            const employeeRes = await db.query(`SELECT id FROM employees WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [employeeId, req.tenantId]);
+            if (!employeeRes.rows[0]) {
+                throw new Error("Employee not found");
+            }
+            // Verify contact exists
+            const contactRes = await db.query(`SELECT id FROM employee_contacts
+          WHERE id = $1 AND employee_id = $2
+          LIMIT 1`, [contactId, employeeId]);
+            if (!contactRes.rows[0]) {
+                throw new Error("Contact not found");
+            }
+            // Delete the contact
+            await db.query(`DELETE FROM employee_contacts WHERE id = $1`, [contactId]);
+            return {
+                success: true,
+                message: "Contact deleted successfully",
+            };
         });
-        if (!employee) {
-            throw new Error("Employee not found");
-        }
-        // Verify contact exists
-        const contact = await database_1.prisma.employeeContact.findFirst({
-            where: {
-                id: contactId,
-                employeeId,
-            },
-        });
-        if (!contact) {
-            throw new Error("Contact not found");
-        }
-        // Delete the contact
-        await database_1.prisma.employeeContact.delete({
-            where: { id: contactId },
-        });
-        return {
-            success: true,
-            message: "Contact deleted successfully",
-        };
     }
     catch (error) {
         console.error("Error in deleteEmployeeContact:", error);

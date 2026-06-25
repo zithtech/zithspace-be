@@ -1,4 +1,4 @@
-import { prisma } from "@/config/database";
+import { withTenant } from "@/db/onboardingPool";
 import { AuthRequest } from "@/types";
 
 // Helper to map DB fields to API response format
@@ -6,7 +6,7 @@ const mapResponse = (settings: any) => {
   if (!settings) return null;
   return {
     ...settings,
-    employeeCodePrefix: settings.employeePrefix, // Map DB 'employeePrefix' to frontend 'employeeCodePrefix'
+    employeeCodePrefix: settings.employee_prefix, // Map DB 'employee_prefix' to frontend 'employeeCodePrefix'
   };
 };
 
@@ -18,31 +18,34 @@ export const createEmployeeSettings = async (req: AuthRequest, res: any) => {
 
     const { employeeCodePrefix } = req.body;
 
-    // Check if already exists for tenant
-    const existing = await prisma.employeeSetting.findFirst({
-      where: { tenantId: req.tenantId },
-    });
+    return await withTenant(req.tenantId, async (db) => {
+      // Check if already exists for tenant
+      const existingRes = await db.query(
+        `SELECT * FROM employee_settings WHERE tenant_id = $1 LIMIT 1`,
+        [req.tenantId],
+      );
+      const existing = existingRes.rows[0];
 
-    if (existing) {
-      return res.status(400).json({
-        message: "Employee settings already exist for this tenant",
+      if (existing) {
+        return res.status(400).json({
+          message: "Employee settings already exist for this tenant",
+        });
+      }
+      console.log("Creating Employee Settings with prefix:", employeeCodePrefix);
+
+      const insertRes = await db.query(
+        `INSERT INTO employee_settings (tenant_id, employee_prefix)
+         VALUES ($1, $2)
+         RETURNING *`,
+        [req.tenantId, employeeCodePrefix || "EMP"],
+      );
+      const settings = insertRes.rows[0];
+
+      return res.status(201).json({
+        success: true,
+        message: "Employee settings created successfully",
+        data: mapResponse(settings),
       });
-    }
-    console.log("Creating Employee Settings with prefix:", employeeCodePrefix);
-
-    const settings = await prisma.employeeSetting.create({
-      data: {
-        tenantId: req.tenantId,
-        // createdById: req.user.id,
-        // updatedById: req.user.id,
-        employeePrefix: employeeCodePrefix || "EMP",
-      },
-    });
-
-    return res.status(201).json({
-      success: true,
-      message: "Employee settings created successfully",
-      data: mapResponse(settings),
     });
   } catch (error) {
     console.error("Create Employee Settings Error:", error);
@@ -56,25 +59,30 @@ export const getEmployeeSettings = async (req: AuthRequest, res: any) => {
     if (!req.user?.id || !req.tenantId)
       return res.status(401).json({ message: "Unauthorized" });
 
-    let settings = await prisma.employeeSetting.findFirst({
-      where: { tenantId: req.tenantId },
-    });
+    return await withTenant(req.tenantId, async (db) => {
+      const settingsRes = await db.query(
+        `SELECT * FROM employee_settings WHERE tenant_id = $1 LIMIT 1`,
+        [req.tenantId],
+      );
+      let settings = settingsRes.rows[0];
 
-    if (!settings) {
-      // If settings don't exist, create default "EMP" record
-      // This ensures there is always one record and we don't need explicit create logic in frontend
-      settings = await prisma.employeeSetting.create({
-        data: {
-          tenantId: req.tenantId,
-          employeePrefix: "EMP",
-        },
+      if (!settings) {
+        // If settings don't exist, create default "EMP" record
+        // This ensures there is always one record and we don't need explicit create logic in frontend
+        const insertRes = await db.query(
+          `INSERT INTO employee_settings (tenant_id, employee_prefix)
+           VALUES ($1, $2)
+           RETURNING *`,
+          [req.tenantId, "EMP"],
+        );
+        settings = insertRes.rows[0];
+      }
+
+      // Standardized response format
+      return res.status(200).json({
+        success: true,
+        data: mapResponse(settings),
       });
-    }
-
-    // Standardized response format
-    return res.status(200).json({
-      success: true,
-      data: mapResponse(settings),
     });
   } catch (error) {
     console.error("Get Employee Settings Error:", error);
@@ -90,28 +98,33 @@ export const updateEmployeeSettings = async (req: AuthRequest, res: any) => {
 
     const { employeeCodePrefix } = req.body;
 
-    const existing = await prisma.employeeSetting.findFirst({
-      where: { tenantId: req.tenantId },
-    });
+    return await withTenant(req.tenantId, async (db) => {
+      const existingRes = await db.query(
+        `SELECT * FROM employee_settings WHERE tenant_id = $1 LIMIT 1`,
+        [req.tenantId],
+      );
+      const existing = existingRes.rows[0];
 
-    if (!existing) {
-      return res.status(404).json({
-        message: "Employee settings not found",
+      if (!existing) {
+        return res.status(404).json({
+          message: "Employee settings not found",
+        });
+      }
+
+      const updateRes = await db.query(
+        `UPDATE employee_settings
+            SET employee_prefix = $1, updated_at = now()
+          WHERE id = $2
+        RETURNING *`,
+        [employeeCodePrefix || "EMP", existing.id],
+      );
+      const updated = updateRes.rows[0];
+
+      return res.status(200).json({
+        success: true,
+        message: "Employee settings updated successfully",
+        data: mapResponse(updated),
       });
-    }
-
-    const updated = await prisma.employeeSetting.update({
-      where: { id: existing.id },
-      data: {
-        employeePrefix: employeeCodePrefix || "EMP",
-        // updatedById: req.user.id,
-      },
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: "Employee settings updated successfully",
-      data: mapResponse(updated),
     });
   } catch (error) {
     console.error("Update Employee Settings Error:", error);
@@ -125,23 +138,27 @@ export const deleteEmployeeSettings = async (req: AuthRequest, res: any) => {
     if (!req.user?.id || !req.tenantId)
       return res.status(401).json({ message: "Unauthorized" });
 
-    const existing = await prisma.employeeSetting.findFirst({
-      where: { tenantId: req.tenantId },
-    });
+    return await withTenant(req.tenantId, async (db) => {
+      const existingRes = await db.query(
+        `SELECT * FROM employee_settings WHERE tenant_id = $1 LIMIT 1`,
+        [req.tenantId],
+      );
+      const existing = existingRes.rows[0];
 
-    if (!existing) {
-      return res.status(404).json({
-        message: "Employee settings not found",
+      if (!existing) {
+        return res.status(404).json({
+          message: "Employee settings not found",
+        });
+      }
+
+      await db.query(`DELETE FROM employee_settings WHERE id = $1`, [
+        existing.id,
+      ]);
+
+      return res.status(200).json({
+        success: true,
+        message: "Employee settings deleted successfully",
       });
-    }
-
-    await prisma.employeeSetting.delete({
-      where: { id: existing.id },
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: "Employee settings deleted successfully",
     });
   } catch (error) {
     console.error("Delete Employee Settings Error:", error);

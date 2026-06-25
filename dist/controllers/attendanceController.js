@@ -1,10 +1,75 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AttendanceController = void 0;
-const database_1 = require("@/config/database");
+const crypto_1 = require("crypto");
 const types_1 = require("@/types");
 const rbac_service_1 = require("@/modules/rbac/rbac.service");
 const permissions_1 = require("@/types/permissions");
+const socketService_1 = require("@/services/socketService");
+const attendancePool_1 = require("@/db/attendancePool");
+const timeTrackingTimer_service_1 = require("@/services/timeTrackingTimer.service");
+// ─────────────────────────────────────────────────────────────────────────────
+// Raw-SQL helpers
+//
+// Attendance is a pure raw-SQL module (mirrors leave-v2). Every data op runs
+// through `withTenant()` (transaction-local tenant GUC) and every query filters
+// `tenant_id = $1` explicitly. Columns are aliased to camelCase so rows map
+// straight onto the response shapes the frontend already consumes.
+// ─────────────────────────────────────────────────────────────────────────────
+// Core attendance columns (camelCase aliased).
+const A_COLS = `
+  a.id, a.tenant_id AS "tenantId", a.user_id AS "userId", a.date,
+  a.clock_in AS "clockIn", a.clock_out AS "clockOut", a.status,
+  a.shift_id AS "shiftId", a.total_work_minutes AS "totalWorkMinutes",
+  a.total_break_minutes AS "totalBreakMinutes", a.effective_work_minutes AS "effectiveWorkMinutes",
+  a.overtime_minutes AS "overtimeMinutes", a.late_minutes AS "lateMinutes",
+  a.is_manual_entry AS "isManualEntry", a.entered_by_id AS "enteredById",
+  a.notes, a.created_at AS "createdAt", a.updated_at AS "updatedAt"
+`;
+// Member (user + position) columns, prefixed so the mapper can lift them out.
+const MEMBER_COLS = `
+  u.id AS m_id, u.name AS m_name, u.work_email AS m_work_email, u.avatar_url AS m_avatar_url,
+  p.id AS p_id, p.title AS p_title, p.code AS p_code
+`;
+const MEMBER_JOINS = `
+  FROM attendance a
+  LEFT JOIN users u ON u.id = a.user_id
+  LEFT JOIN positions p ON p.id = u.position_id
+`;
+/** Lift the member/position alias columns out of a row into the nested shape. */
+function rowToAttendance(r) {
+    const { m_id, m_name, m_work_email, m_avatar_url, p_id, p_title, p_code, ...rest } = r;
+    return {
+        ...rest,
+        member: m_id
+            ? {
+                id: m_id,
+                name: m_name,
+                workEmail: m_work_email,
+                avatarUrl: m_avatar_url,
+                position: p_id ? { id: p_id, title: p_title, code: p_code } : null,
+            }
+            : null,
+    };
+}
+function mapSession(s) {
+    return {
+        id: s.id,
+        clockIn: s.clock_in,
+        clockOut: s.clock_out || null,
+        workMinutes: s.work_minutes || 0,
+        breakType: s.break_type ?? null,
+        breakReason: s.break_reason ?? null,
+    };
+}
+/** Start/end-of-day bounds for a date. */
+function dayBounds(d) {
+    const start = new Date(d);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(d);
+    end.setHours(23, 59, 59, 999);
+    return [start, end];
+}
 class AttendanceController {
     /**
      * Get all attendance records with filtering and pagination (tenant-aware)
@@ -18,16 +83,9 @@ class AttendanceController {
                 });
                 return;
             }
-            const { page = 1, limit = 20, userId, member, // Alias for userId (used by frontend)
-            date, status, startDate, endDate, search, // Search by member name
-            projectId, sortBy = "date", sortOrder = "desc", } = req.query;
-            // Build filter query
-            const where = {
-                tenantId: req.tenantId,
-            };
-            // Handle userId or member parameter (member is alias for userId)
-            let targetUserId = userId || member;
-            // RBAC: If user only has CLOCK_IN_OUT permission, they can only see their own records
+            const { page = 1, limit = 20, userId, member, date, status, startDate, endDate, search, projectId, sortBy = "date", sortOrder = "desc", } = req.query;
+            let targetUserId = (userId || member);
+            // RBAC: users without a management permission only see their own records.
             const userPerms = await rbac_service_1.RBACService.getUserPermissions(req.user.id, req.tenantId, req.user.role);
             const hasManagementPerm = [
                 permissions_1.Permissions.ATTENDANCE_READ,
@@ -35,89 +93,96 @@ class AttendanceController {
                 permissions_1.Permissions.ATTENDANCE_UPDATE,
                 permissions_1.Permissions.ATTENDANCE_DELETE,
             ].some((p) => userPerms.has(p));
-            // Super admin and managers can see anyone. Regular users only see themselves.
             if (req.user.role !== "super_admin" && !hasManagementPerm) {
                 targetUserId = req.user.id;
             }
-            if (targetUserId)
-                where.userId = targetUserId;
-            if (status)
-                where.status = status;
-            // Handle search by member name and project filter
-            if (search || projectId) {
-                where.user = {};
-                if (search) {
-                    where.user.name = {
-                        contains: search,
-                        mode: "insensitive",
-                    };
-                }
-                if (projectId) {
-                    where.user.projectMemberships = {
-                        some: {
-                            projectId: projectId,
-                        },
-                    };
-                }
+            // Build the WHERE clause incrementally.
+            const where = ["a.tenant_id = $1"];
+            const params = [req.tenantId];
+            let i = 1;
+            if (targetUserId) {
+                params.push(targetUserId);
+                where.push(`a.user_id = $${++i}`);
+            }
+            if (status) {
+                params.push(status);
+                where.push(`a.status = $${++i}`);
             }
             if (date) {
-                const targetDate = new Date(date);
-                const startOfDay = new Date(targetDate);
-                startOfDay.setHours(0, 0, 0, 0);
-                const endOfDay = new Date(targetDate);
-                endOfDay.setHours(23, 59, 59, 999);
-                where.date = {
-                    gte: startOfDay,
-                    lte: endOfDay,
-                };
+                const [s, e] = dayBounds(new Date(date));
+                params.push(s);
+                where.push(`a.date >= $${++i}`);
+                params.push(e);
+                where.push(`a.date <= $${++i}`);
             }
             else if (startDate && endDate) {
-                where.date = {
-                    gte: new Date(startDate),
-                    lte: new Date(endDate),
-                };
+                params.push(new Date(startDate));
+                where.push(`a.date >= $${++i}`);
+                params.push(new Date(endDate));
+                where.push(`a.date <= $${++i}`);
             }
-            // Build sort object
-            const orderBy = {};
-            orderBy[sortBy] = sortOrder === "desc" ? "desc" : "asc";
-            // Execute query with pagination
-            const skip = (Number(page) - 1) * Number(limit);
-            const [attendanceRecords, total] = await Promise.all([
-                database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                    return await client.attendance.findMany({
-                        where,
-                        include: {
-                            user: {
-                                select: {
-                                    id: true,
-                                    name: true,
-                                    workEmail: true,
-                                    position: true,
-                                    avatarUrl: true,
-                                },
+            if (search) {
+                params.push(`%${search}%`);
+                where.push(`u.name ILIKE $${++i}`);
+            }
+            if (projectId) {
+                params.push(projectId);
+                where.push(`EXISTS (SELECT 1 FROM project_members pm WHERE pm.user_id = a.user_id AND pm.project_id = $${++i})`);
+            }
+            const whereSql = where.join(" AND ");
+            // Whitelisted sort column (never interpolate raw user input).
+            const sortCol = { date: "a.date", clockIn: "a.clock_in", status: "a.status", createdAt: "a.created_at" }[sortBy] || "a.date";
+            const dir = sortOrder === "asc" ? "ASC" : "DESC";
+            const lim = Number(limit);
+            const off = (Number(page) - 1) * lim;
+            const { data, total } = await (0, attendancePool_1.withTenant)(req.tenantId, async (db) => {
+                var _a;
+                const listSql = `
+          SELECT ${A_COLS}, ${MEMBER_COLS}
+          ${MEMBER_JOINS}
+          WHERE ${whereSql}
+          ORDER BY ${sortCol} ${dir}, a.created_at DESC
+          LIMIT $${i + 1} OFFSET $${i + 2}
+        `;
+                const { rows } = await db.query(listSql, [...params, lim, off]);
+                const { rows: cntRows } = await db.query(`SELECT COUNT(*)::int AS total ${MEMBER_JOINS} WHERE ${whereSql}`, params);
+                const total = cntRows[0]?.total ?? 0;
+                // Attach each day's work sessions for the expandable child rows.
+                const ids = rows.map((r) => r.id);
+                const sessionsByAttendance = {};
+                if (ids.length) {
+                    const { rows: srows } = await db.query(`SELECT id, attendance_id, clock_in, clock_out, work_minutes, break_type, break_reason
+             FROM attendance_sessions WHERE attendance_id = ANY($1) ORDER BY clock_in ASC`, [ids]);
+                    for (const s of srows) {
+                        (sessionsByAttendance[_a = s.attendance_id] || (sessionsByAttendance[_a] = [])).push(mapSession(s));
+                    }
+                }
+                const data = rows.map((r) => {
+                    const att = rowToAttendance(r);
+                    let sessions = sessionsByAttendance[att.id] || [];
+                    if (sessions.length === 0 && att.clockIn) {
+                        sessions = [
+                            {
+                                id: null,
+                                clockIn: att.clockIn,
+                                clockOut: att.clockOut || null,
+                                workMinutes: att.effectiveWorkMinutes || 0,
+                                breakType: null,
+                                breakReason: null,
                             },
-                        },
-                        orderBy: [orderBy, { createdAt: "desc" }],
-                        skip,
-                        take: Number(limit),
-                    });
-                }),
-                database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                    return await client.attendance.count({ where });
-                }),
-            ]);
-            const attendance = attendanceRecords.map((record) => ({
-                ...record,
-                member: record.user,
-                user: undefined,
-            }));
-            const totalPages = Math.ceil(total / Number(limit));
+                        ];
+                    }
+                    return { ...att, sessions };
+                });
+                return { data, total };
+            });
+            const totalPages = Math.ceil(total / lim);
             res.status(200).json({
                 success: true,
-                data: attendance,
+                data,
                 pagination: {
                     page: Number(page),
-                    limit: Number(limit),
+                    limit: lim,
                     total,
                     pages: totalPages,
                     hasNext: Number(page) < totalPages,
@@ -146,26 +211,11 @@ class AttendanceController {
                 return;
             }
             const { id } = req.params;
-            const attendanceRecord = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                return await client.attendance.findFirst({
-                    where: {
-                        id,
-                        tenantId: req.tenantId,
-                    },
-                    include: {
-                        user: {
-                            select: {
-                                id: true,
-                                name: true,
-                                workEmail: true,
-                                position: true,
-                                avatarUrl: true,
-                            },
-                        },
-                    },
-                });
+            const record = await (0, attendancePool_1.withTenant)(req.tenantId, async (db) => {
+                const { rows } = await db.query(`SELECT ${A_COLS}, ${MEMBER_COLS} ${MEMBER_JOINS} WHERE a.id = $1 AND a.tenant_id = $2 LIMIT 1`, [id, req.tenantId]);
+                return rows[0] ? rowToAttendance(rows[0]) : null;
             });
-            // RBAC: Check ownership if user only has CLOCK_IN_OUT permission
+            // RBAC: ownership check for users without a management permission.
             const userPerms = await rbac_service_1.RBACService.getUserPermissions(req.user.id, req.tenantId, req.user.role);
             const hasManagementPerm = [
                 permissions_1.Permissions.ATTENDANCE_READ,
@@ -174,7 +224,7 @@ class AttendanceController {
                 permissions_1.Permissions.ATTENDANCE_DELETE,
             ].some((p) => userPerms.has(p));
             if (req.user.role !== "super_admin" && !hasManagementPerm) {
-                if (attendanceRecord?.userId !== req.user.id) {
+                if (record?.userId !== req.user.id) {
                     res.status(403).json({
                         success: false,
                         error: "Access denied. You can only view your own records.",
@@ -182,23 +232,14 @@ class AttendanceController {
                     return;
                 }
             }
-            if (!attendanceRecord) {
+            if (!record) {
                 res.status(404).json({
                     success: false,
                     error: "Attendance record not found",
                 });
                 return;
             }
-            // Transform data to use 'member' instead of 'user'
-            const attendance = {
-                ...attendanceRecord,
-                member: attendanceRecord.user,
-                user: undefined,
-            };
-            res.status(200).json({
-                success: true,
-                data: attendance,
-            });
+            res.status(200).json({ success: true, data: record });
         }
         catch (error) {
             console.error("Get attendance by ID error:", error);
@@ -209,7 +250,7 @@ class AttendanceController {
         }
     }
     /**
-     * Clock in (tenant-aware)
+     * Clock in (tenant-aware) — opens a new work session.
      */
     static async clockIn(req, res) {
         try {
@@ -223,94 +264,44 @@ class AttendanceController {
             const { userId: targetUserId } = req.body;
             const userId = targetUserId || req.user.id;
             const today = new Date();
-            const startOfToday = new Date(today);
-            startOfToday.setHours(0, 0, 0, 0);
-            const endOfToday = new Date(today);
-            endOfToday.setHours(23, 59, 59, 999);
-            await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                // Check if already clocked in today
-                const existingAttendance = await client.attendance.findFirst({
-                    where: {
-                        userId,
-                        tenantId: req.tenantId,
-                        date: { gte: startOfToday, lte: endOfToday },
-                    },
-                    include: {
-                        shift: true,
-                        user: {
-                            include: {
-                                assignedShift: true,
-                            },
-                        },
-                    },
-                });
-                if (existingAttendance && existingAttendance.clockIn) {
-                    throw new types_1.ValidationError("Already clocked in today");
+            const [startOfToday, endOfToday] = dayBounds(today);
+            const formatted = await (0, attendancePool_1.withTenant)(req.tenantId, async (db) => {
+                const { rows: exRows } = await db.query(`SELECT id, user_id AS "userId", clock_in AS "clockIn", clock_out AS "clockOut"
+           FROM attendance WHERE user_id = $1 AND tenant_id = $2 AND date >= $3 AND date <= $4 LIMIT 1`, [userId, req.tenantId, startOfToday, endOfToday]);
+                const existing = exRows[0] || null;
+                if (existing?.clockOut) {
+                    throw new types_1.ValidationError("You have already completed today. You can't clock in again.");
                 }
-                // Validate user exists and belongs to tenant
-                const user = await client.user.findFirst({
-                    where: {
-                        id: userId,
-                        tenantId: req.tenantId,
-                        isActive: true,
-                    },
-                });
-                if (!user) {
+                if (existing) {
+                    const open = await AttendanceController.getOpenSession(db, existing);
+                    if (open)
+                        throw new types_1.ValidationError("You're already clocked in.");
+                }
+                const { rows: uRows } = await db.query(`SELECT id FROM users WHERE id = $1 AND tenant_id = $2 AND is_active = true LIMIT 1`, [userId, req.tenantId]);
+                if (!uRows[0])
                     throw new types_1.NotFoundError("User not found in this tenant");
-                }
-                const clockInTime = new Date();
-                let attendanceRecord;
-                if (existingAttendance) {
-                    // Update existing record
-                    attendanceRecord = await client.attendance.update({
-                        where: { id: existingAttendance.id },
-                        data: {
-                            clockIn: clockInTime,
-                            status: "present",
-                        },
-                        include: {
-                            user: {
-                                select: {
-                                    id: true,
-                                    name: true,
-                                    workEmail: true,
-                                    position: true,
-                                    avatarUrl: true,
-                                },
-                            },
-                        },
-                    });
+                const now = new Date();
+                let attendanceId;
+                if (!existing) {
+                    attendanceId = (0, crypto_1.randomUUID)();
+                    await db.query(`INSERT INTO attendance (id, tenant_id, user_id, date, clock_in, status, updated_at)
+             VALUES ($1, $2, $3, $4, $5, 'present', now())`, [attendanceId, req.tenantId, userId, startOfToday, now]);
                 }
                 else {
-                    // Create new attendance record
-                    attendanceRecord = await client.attendance.create({
-                        data: {
-                            tenantId: req.tenantId,
-                            userId,
-                            date: startOfToday,
-                            clockIn: clockInTime,
-                            status: "present",
-                        },
-                        include: {
-                            user: {
-                                select: {
-                                    id: true,
-                                    name: true,
-                                    workEmail: true,
-                                    position: true,
-                                    avatarUrl: true,
-                                },
-                            },
-                        },
-                    });
+                    attendanceId = existing.id;
+                    if (!existing.clockIn) {
+                        await db.query(`UPDATE attendance SET clock_in = $1, status = 'present', updated_at = now() WHERE id = $2`, [now, attendanceId]);
+                    }
                 }
-                // Get formatted today attendance for consistent response
-                const formattedAttendance = await AttendanceController.getFormattedTodayAttendance(client, userId, req.tenantId, today);
-                res.status(200).json({
-                    success: true,
-                    data: formattedAttendance,
-                    message: "Clocked in successfully",
-                });
+                // Open a new work session for this clock-in.
+                await db.query(`INSERT INTO attendance_sessions (attendance_id, clock_in) VALUES ($1, $2)`, [attendanceId, now]);
+                return await AttendanceController.getFormattedTodayAttendance(db, userId, req.tenantId, today);
+            });
+            socketService_1.socketService.emitToTenant(req.tenantId, "attendance:updated", formatted);
+            res.status(200).json({
+                success: true,
+                data: formatted,
+                message: "Clocked in successfully",
             });
         }
         catch (error) {
@@ -322,14 +313,11 @@ class AttendanceController {
                 });
                 return;
             }
-            res.status(500).json({
-                success: false,
-                error: "Failed to clock in",
-            });
+            res.status(500).json({ success: false, error: "Failed to clock in" });
         }
     }
     /**
-     * Clock out (tenant-aware)
+     * Clock out (tenant-aware) — finalizes the day.
      */
     static async clockOut(req, res) {
         try {
@@ -343,50 +331,38 @@ class AttendanceController {
             const { userId: targetUserId } = req.body;
             const userId = targetUserId || req.user.id;
             const today = new Date();
-            const startOfToday = new Date(today);
-            startOfToday.setHours(0, 0, 0, 0);
-            const endOfToday = new Date(today);
-            endOfToday.setHours(23, 59, 59, 999);
-            await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                // Find today's attendance record
-                const attendance = await client.attendance.findFirst({
-                    where: {
-                        userId,
-                        tenantId: req.tenantId,
-                        date: { gte: startOfToday, lte: endOfToday },
-                    },
-                });
+            const [startOfToday, endOfToday] = dayBounds(today);
+            const formatted = await (0, attendancePool_1.withTenant)(req.tenantId, async (db) => {
+                const { rows } = await db.query(`SELECT id, clock_in AS "clockIn", clock_out AS "clockOut"
+           FROM attendance WHERE user_id = $1 AND tenant_id = $2 AND date >= $3 AND date <= $4 LIMIT 1`, [userId, req.tenantId, startOfToday, endOfToday]);
+                const attendance = rows[0] || null;
                 if (!attendance || !attendance.clockIn) {
                     throw new types_1.ValidationError("No clock in record found for today");
                 }
                 if (attendance.clockOut) {
                     throw new types_1.ValidationError("Already clocked out today");
                 }
-                const clockOutTime = new Date();
-                // Calculate work minutes
-                const totalWorkMinutes = Math.floor((clockOutTime.getTime() - attendance.clockIn.getTime()) / 60000);
-                // Calculate effective work minutes (total - breaks)
-                const effectiveWorkMinutes = totalWorkMinutes - attendance.totalBreakMinutes;
-                const attendanceRecord = await client.attendance.update({
-                    where: { id: attendance.id },
-                    data: {
-                        clockOut: clockOutTime,
-                        totalWorkMinutes,
-                        effectiveWorkMinutes,
-                    },
-                    include: {
-                        user: {
-                            select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
-                        },
-                    },
-                });
-                // Get formatted today attendance for consistent response
-                const formattedAttendance = await AttendanceController.getFormattedTodayAttendance(client, userId, req.tenantId, today);
-                res.status(200).json({
-                    success: true,
-                    data: formattedAttendance,
-                    message: "Clocked out successfully",
-                });
+                await AttendanceController.finalizeDay(db, attendance);
+                return await AttendanceController.getFormattedTodayAttendance(db, userId, req.tenantId, today);
+            });
+            // Day over → stop any active timers.
+            try {
+                const stopped = await (0, timeTrackingTimer_service_1.stopActiveTimersForUser)(userId, req.tenantId);
+                if (stopped.length) {
+                    socketService_1.socketService.emitToTenant(req.tenantId, "TIMER_ATTENDANCE_STOPPED", {
+                        userId,
+                        entries: stopped,
+                    });
+                }
+            }
+            catch (timerErr) {
+                console.error("[attendance] timer stop failed:", timerErr);
+            }
+            socketService_1.socketService.emitToTenant(req.tenantId, "attendance:updated", formatted);
+            res.status(200).json({
+                success: true,
+                data: formatted,
+                message: "Clocked out successfully",
             });
         }
         catch (error) {
@@ -398,11 +374,188 @@ class AttendanceController {
                 });
                 return;
             }
-            res.status(500).json({
-                success: false,
-                error: "Failed to clock out",
+            res.status(500).json({ success: false, error: "Failed to clock out" });
+        }
+    }
+    /** Pause the day — closes the currently open work session (a break begins). */
+    static async pause(req, res) {
+        await AttendanceController.runSessionAction(req, res, "pause");
+    }
+    /** Resume the day — opens a new work session after a break. */
+    static async resume(req, res) {
+        await AttendanceController.runSessionAction(req, res, "resume");
+    }
+    /** Complete the day — closes any open session and finalizes totals. */
+    static async complete(req, res) {
+        await AttendanceController.runSessionAction(req, res, "complete");
+    }
+    /** Shared driver for the pause / resume / complete session actions. */
+    static async runSessionAction(req, res, action) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { userId: targetUserId, breakType, reason, resumeTimers } = req.body;
+            const userId = targetUserId || req.user.id;
+            const today = new Date();
+            const [startOfToday, endOfToday] = dayBounds(today);
+            const formatted = await (0, attendancePool_1.withTenant)(req.tenantId, async (db) => {
+                const { rows } = await db.query(`SELECT id, clock_in AS "clockIn", clock_out AS "clockOut"
+           FROM attendance WHERE user_id = $1 AND tenant_id = $2 AND date >= $3 AND date <= $4 LIMIT 1`, [userId, req.tenantId, startOfToday, endOfToday]);
+                const attendance = rows[0] || null;
+                if (!attendance || !attendance.clockIn) {
+                    throw new types_1.ValidationError("You haven't clocked in yet today.");
+                }
+                if (attendance.clockOut) {
+                    throw new types_1.ValidationError("Your day is already complete.");
+                }
+                const now = new Date();
+                if (action === "pause") {
+                    const open = await AttendanceController.getOpenSession(db, attendance);
+                    if (!open)
+                        throw new types_1.ValidationError("There's no active session to pause.");
+                    await AttendanceController.closeSession(db, open, now, {
+                        breakType: breakType || "break",
+                        reason: reason || null,
+                    });
+                    await AttendanceController.recompute(db, attendance.id);
+                }
+                else if (action === "resume") {
+                    const open = await AttendanceController.getOpenSession(db, attendance);
+                    if (open)
+                        throw new types_1.ValidationError("You're already clocked in.");
+                    await db.query(`INSERT INTO attendance_sessions (attendance_id, clock_in) VALUES ($1, $2)`, [attendance.id, now]);
+                }
+                else {
+                    await AttendanceController.finalizeDay(db, attendance);
+                }
+                return await AttendanceController.getFormattedTodayAttendance(db, userId, req.tenantId, today);
+            });
+            // Super-flow: keep the work timer in lock-step with the break. Pausing the
+            // day pauses any running timer (tagged "attendance"); resuming the day
+            // revives only the timers attendance itself paused. Non-fatal on error.
+            try {
+                if (action === "pause") {
+                    const paused = await (0, timeTrackingTimer_service_1.pauseRunningTimersForUser)(userId, req.tenantId);
+                    if (paused.length) {
+                        socketService_1.socketService.emitToTenant(req.tenantId, "TIMER_ATTENDANCE_PAUSED", {
+                            userId,
+                            entries: paused,
+                        });
+                    }
+                }
+                else if (action === "resume") {
+                    // The client decides whether the work timer comes back with the day.
+                    // Default true keeps the original lock-step behaviour; false leaves the
+                    // timer paused (just detaches it so it won't auto-resume later).
+                    if (resumeTimers === false) {
+                        await (0, timeTrackingTimer_service_1.detachAttendancePausedTimers)(userId, req.tenantId);
+                    }
+                    else {
+                        const resumed = await (0, timeTrackingTimer_service_1.resumeAttendancePausedTimers)(userId, req.tenantId);
+                        if (resumed.length) {
+                            socketService_1.socketService.emitToTenant(req.tenantId, "TIMER_ATTENDANCE_RESUMED", {
+                                userId,
+                                entries: resumed,
+                            });
+                        }
+                    }
+                }
+                else if (action === "complete") {
+                    // Day over → stop any active timers.
+                    const stopped = await (0, timeTrackingTimer_service_1.stopActiveTimersForUser)(userId, req.tenantId);
+                    if (stopped.length) {
+                        socketService_1.socketService.emitToTenant(req.tenantId, "TIMER_ATTENDANCE_STOPPED", {
+                            userId,
+                            entries: stopped,
+                        });
+                    }
+                }
+            }
+            catch (timerErr) {
+                console.error("[attendance] timer sync failed:", timerErr);
+            }
+            socketService_1.socketService.emitToTenant(req.tenantId, "attendance:updated", formatted);
+            res.status(200).json({
+                success: true,
+                data: formatted,
+                message: action === "pause" ? "Paused" : action === "resume" ? "Resumed" : "Day completed",
             });
         }
+        catch (error) {
+            console.error(`Attendance ${action} error:`, error);
+            if (error instanceof types_1.ValidationError || error instanceof types_1.NotFoundError) {
+                res.status(error instanceof types_1.NotFoundError ? 404 : 400).json({
+                    success: false,
+                    error: error.message,
+                });
+                return;
+            }
+            res.status(500).json({ success: false, error: `Failed to ${action}` });
+        }
+    }
+    /**
+     * Returns the currently open session for a day, backfilling one from a legacy
+     * `clockIn` when no session rows exist yet (normalizes old records).
+     */
+    static async getOpenSession(db, attendance) {
+        const { rows } = await db.query(`SELECT id, attendance_id, clock_in AS "clockIn", clock_out AS "clockOut"
+       FROM attendance_sessions WHERE attendance_id = $1 AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, [attendance.id]);
+        if (rows[0])
+            return rows[0];
+        const { rows: cnt } = await db.query(`SELECT COUNT(*)::int AS c FROM attendance_sessions WHERE attendance_id = $1`, [attendance.id]);
+        if (cnt[0].c === 0 && attendance.clockIn && !attendance.clockOut) {
+            const { rows: ins } = await db.query(`INSERT INTO attendance_sessions (attendance_id, clock_in) VALUES ($1, $2)
+         RETURNING id, attendance_id, clock_in AS "clockIn", clock_out AS "clockOut"`, [attendance.id, attendance.clockIn]);
+            return ins[0];
+        }
+        return null;
+    }
+    /** Closes a session, stores its worked minutes and an optional break. */
+    static async closeSession(db, session, endTime, breakInfo) {
+        const minutes = Math.max(0, Math.floor((endTime.getTime() - new Date(session.clockIn).getTime()) / 60000));
+        if (breakInfo) {
+            await db.query(`UPDATE attendance_sessions
+         SET clock_out = $1, work_minutes = $2, break_type = $3, break_reason = $4, updated_at = $1
+         WHERE id = $5`, [endTime, minutes, breakInfo.breakType ?? null, breakInfo.reason ?? null, session.id]);
+        }
+        else {
+            await db.query(`UPDATE attendance_sessions SET clock_out = $1, work_minutes = $2, updated_at = $1 WHERE id = $3`, [endTime, minutes, session.id]);
+        }
+        return minutes;
+    }
+    /** Recomputes day totals from closed sessions (effective / break / span). */
+    static async recompute(db, attendanceId) {
+        const { rows: sessions } = await db.query(`SELECT clock_in AS "clockIn", clock_out AS "clockOut", work_minutes AS "workMinutes"
+       FROM attendance_sessions WHERE attendance_id = $1 ORDER BY clock_in ASC`, [attendanceId]);
+        const closed = sessions.filter((s) => s.clockOut);
+        const effective = closed.reduce((a, s) => a + (s.workMinutes || 0), 0);
+        let span = 0;
+        if (closed.length) {
+            const first = new Date(closed[0].clockIn).getTime();
+            const last = new Date(closed[closed.length - 1].clockOut).getTime();
+            span = Math.max(0, Math.floor((last - first) / 60000));
+        }
+        const breaks = Math.max(0, span - effective);
+        await db.query(`UPDATE attendance SET effective_work_minutes = $1, total_break_minutes = $2, total_work_minutes = $3, updated_at = now() WHERE id = $4`, [effective, breaks, span, attendanceId]);
+    }
+    /** Closes any open session and marks the day complete. */
+    static async finalizeDay(db, attendance) {
+        const now = new Date();
+        const open = await AttendanceController.getOpenSession(db, attendance);
+        if (open) {
+            await AttendanceController.closeSession(db, open, now);
+        }
+        await AttendanceController.recompute(db, attendance.id);
+        const { rows: fresh } = await db.query(`SELECT clock_in AS "clockIn", clock_out AS "clockOut"
+       FROM attendance_sessions WHERE attendance_id = $1 ORDER BY clock_in ASC`, [attendance.id]);
+        const firstStart = fresh.length ? fresh[0].clockIn : attendance.clockIn || now;
+        const lastEnd = fresh.length ? fresh[fresh.length - 1].clockOut || now : now;
+        await db.query(`UPDATE attendance SET clock_in = $1, clock_out = $2, updated_at = now() WHERE id = $3`, [firstStart, lastEnd, attendance.id]);
     }
     /**
      * Get today's attendance for current user (tenant-aware)
@@ -418,17 +571,10 @@ class AttendanceController {
             }
             const userId = req.user.id;
             const today = new Date();
-            const startOfToday = new Date(today);
-            startOfToday.setHours(0, 0, 0, 0);
-            const endOfToday = new Date(today);
-            endOfToday.setHours(23, 59, 59, 999);
-            const result = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                return await AttendanceController.getFormattedTodayAttendance(client, userId, req.tenantId, today);
+            const result = await (0, attendancePool_1.withTenant)(req.tenantId, async (db) => {
+                return await AttendanceController.getFormattedTodayAttendance(db, userId, req.tenantId, today);
             });
-            res.status(200).json({
-                success: true,
-                data: result,
-            });
+            res.status(200).json({ success: true, data: result });
         }
         catch (error) {
             console.error("Get today attendance error:", error);
@@ -463,61 +609,37 @@ class AttendanceController {
                 endOfPeriod = new Date(endDate);
                 endOfPeriod.setHours(23, 59, 59, 999);
             }
-            const summary = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                // Get total active members
-                const totalMembers = await client.user.count({
-                    where: {
-                        tenantId: req.tenantId,
-                        isActive: true,
-                    },
-                });
-                // Get today's attendance summary
-                const todaySummary = await client.attendance.groupBy({
-                    by: ["status"],
-                    where: {
-                        tenantId: req.tenantId,
-                        date: { gte: startOfPeriod, lte: endOfPeriod },
-                    },
-                    _count: true,
-                });
-                // Format summary counts
-                const statusCounts = {
-                    present: 0,
-                    absent: 0,
-                    late: 0,
-                    halfDay: 0,
-                    wfh: 0,
-                };
-                todaySummary.forEach((item) => {
-                    const status = item.status.toLowerCase();
-                    switch (status) {
+            const summary = await (0, attendancePool_1.withTenant)(req.tenantId, async (db) => {
+                const { rows: tm } = await db.query(`SELECT COUNT(*)::int AS c FROM users WHERE tenant_id = $1 AND is_active = true`, [req.tenantId]);
+                const totalMembers = tm[0]?.c ?? 0;
+                const { rows: grp } = await db.query(`SELECT status, COUNT(*)::int AS c FROM attendance
+           WHERE tenant_id = $1 AND date >= $2 AND date <= $3 GROUP BY status`, [req.tenantId, startOfPeriod, endOfPeriod]);
+                const statusCounts = { present: 0, absent: 0, late: 0, halfDay: 0, wfh: 0 };
+                for (const item of grp) {
+                    switch ((item.status || "").toLowerCase()) {
                         case "present":
-                            statusCounts.present = item._count;
+                            statusCounts.present = item.c;
                             break;
                         case "absent":
-                            statusCounts.absent = item._count;
+                            statusCounts.absent = item.c;
                             break;
                         case "late":
-                            statusCounts.late = item._count;
+                            statusCounts.late = item.c;
                             break;
                         case "half-day":
-                            statusCounts.halfDay = item._count;
+                            statusCounts.halfDay = item.c;
                             break;
                         case "wfh":
-                            statusCounts.wfh = item._count;
+                            statusCounts.wfh = item.c;
                             break;
                     }
-                });
-                // Calculate number of days in period
+                }
                 const diffTime = Math.abs(endOfPeriod.getTime() - startOfPeriod.getTime());
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
-                // Calculate metrics
                 const presentToday = statusCounts.present + statusCounts.late + statusCounts.wfh;
                 const absentToday = statusCounts.absent;
                 const expectedTotal = totalMembers * diffDays;
-                const attendanceRate = expectedTotal > 0
-                    ? Number(((presentToday / expectedTotal) * 100).toFixed(2))
-                    : 0;
+                const attendanceRate = expectedTotal > 0 ? Number(((presentToday / expectedTotal) * 100).toFixed(2)) : 0;
                 return {
                     totalMembers,
                     expectedToday: expectedTotal,
@@ -528,10 +650,7 @@ class AttendanceController {
                     attendanceRate,
                 };
             });
-            res.status(200).json({
-                success: true,
-                data: summary,
-            });
+            res.status(200).json({ success: true, data: summary });
         }
         catch (error) {
             console.error("Get dashboard summary error:", error);
@@ -566,58 +685,37 @@ class AttendanceController {
                 endOfPeriod = new Date(endDate);
                 endOfPeriod.setHours(23, 59, 59, 999);
             }
-            const presentMembers = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                const records = await client.attendance.findMany({
-                    where: {
-                        tenantId: req.tenantId,
-                        date: { gte: startOfPeriod, lte: endOfPeriod },
-                        status: { in: ["present", "late", "wfh"] },
-                        clockIn: { not: null },
-                    },
-                    include: {
-                        user: {
-                            select: {
-                                id: true,
-                                name: true,
-                                workEmail: true,
-                                position: true,
-                                avatarUrl: true,
-                            },
-                        },
-                        shift: true,
-                    },
-                    orderBy: { clockIn: "asc" },
-                });
-                // Transform to match frontend expectations
-                return records.map((record) => {
-                    // Calculate work hours
-                    const workMinutes = record.clockOut
-                        ? Math.floor((record.clockOut.getTime() - record.clockIn.getTime()) /
-                            60000)
-                        : Math.floor((new Date().getTime() - record.clockIn.getTime()) / 60000);
+            const presentMembers = await (0, attendancePool_1.withTenant)(req.tenantId, async (db) => {
+                const { rows } = await db.query(`SELECT a.status, a.clock_in AS "clockIn", a.clock_out AS "clockOut",
+                  u.id AS u_id, u.name AS u_name, u.avatar_url AS u_avatar,
+                  p.id AS p_id, p.title AS p_title, p.code AS p_code,
+                  s.id AS s_id, s.name AS s_name, s.start_time AS s_start, s.end_time AS s_end
+           FROM attendance a
+           LEFT JOIN users u ON u.id = a.user_id
+           LEFT JOIN positions p ON p.id = u.position_id
+           LEFT JOIN shifts s ON s.id = a.shift_id
+           WHERE a.tenant_id = $1 AND a.date >= $2 AND a.date <= $3
+             AND a.status IN ('present', 'late', 'wfh') AND a.clock_in IS NOT NULL
+           ORDER BY a.clock_in ASC`, [req.tenantId, startOfPeriod, endOfPeriod]);
+                const now = Date.now();
+                return rows.map((r) => {
+                    const workMinutes = r.clockOut
+                        ? Math.floor((new Date(r.clockOut).getTime() - new Date(r.clockIn).getTime()) / 60000)
+                        : Math.floor((now - new Date(r.clockIn).getTime()) / 60000);
                     return {
-                        id: record.user.id,
-                        name: record.user.name,
-                        position: record.user.position,
-                        avatarUrl: record.user.avatarUrl,
-                        status: record.status.toLowerCase(),
-                        clockInTime: record.clockIn,
-                        clockOutTime: record.clockOut,
-                        shift: record.shift
-                            ? {
-                                name: record.shift.name,
-                                startTime: record.shift.startTime,
-                                endTime: record.shift.endTime,
-                            }
-                            : null,
+                        id: r.u_id,
+                        name: r.u_name,
+                        position: r.p_id ? { id: r.p_id, title: r.p_title, code: r.p_code } : null,
+                        avatarUrl: r.u_avatar,
+                        status: (r.status || "").toLowerCase(),
+                        clockInTime: r.clockIn,
+                        clockOutTime: r.clockOut,
+                        shift: r.s_id ? { name: r.s_name, startTime: r.s_start, endTime: r.s_end } : null,
                         workHours: workMinutes,
                     };
                 });
             });
-            res.status(200).json({
-                success: true,
-                data: presentMembers,
-            });
+            res.status(200).json({ success: true, data: presentMembers });
         }
         catch (error) {
             console.error("Get present members error:", error);
@@ -645,25 +743,12 @@ class AttendanceController {
             const startOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1);
             const endOfMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0);
             endOfMonth.setHours(23, 59, 59, 999);
-            const data = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                const attendanceRecords = await client.attendance.findMany({
-                    where: {
-                        userId,
-                        tenantId: req.tenantId,
-                        date: { gte: startOfMonth, lte: endOfMonth },
-                    },
-                    orderBy: { date: "asc" },
-                });
-                // Calculate summary
-                const summary = {
-                    totalDays: attendanceRecords.length,
-                    present: 0,
-                    absent: 0,
-                    late: 0,
-                    halfDay: 0,
-                    wfh: 0,
-                };
-                attendanceRecords.forEach((record) => {
+            const data = await (0, attendancePool_1.withTenant)(req.tenantId, async (db) => {
+                const { rows: records } = await db.query(`SELECT ${A_COLS} FROM attendance a
+           WHERE a.user_id = $1 AND a.tenant_id = $2 AND a.date >= $3 AND a.date <= $4
+           ORDER BY a.date ASC`, [userId, req.tenantId, startOfMonth, endOfMonth]);
+                const summary = { totalDays: records.length, present: 0, absent: 0, late: 0, halfDay: 0, wfh: 0 };
+                for (const record of records) {
                     switch (record.status) {
                         case "PRESENT":
                             summary.present++;
@@ -681,18 +766,15 @@ class AttendanceController {
                             summary.wfh++;
                             break;
                     }
-                });
+                }
                 return {
                     summary,
-                    records: attendanceRecords,
+                    records,
                     month: targetDate.getMonth() + 1,
                     year: targetDate.getFullYear(),
                 };
             });
-            res.status(200).json({
-                success: true,
-                data,
-            });
+            res.status(200).json({ success: true, data });
         }
         catch (error) {
             console.error("Get my attendance summary error:", error);
@@ -715,81 +797,62 @@ class AttendanceController {
                 return;
             }
             const { id } = req.params;
-            const updateData = req.body;
-            // Remove fields that shouldn't be updated directly
-            delete updateData.tenantId;
-            delete updateData.userId;
-            delete updateData.createdAt;
-            await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                // Check if attendance record exists and belongs to tenant
-                const existingRecord = await client.attendance.findFirst({
-                    where: {
-                        id,
-                        tenantId: req.tenantId,
-                    },
-                });
-                if (!existingRecord) {
+            const body = req.body || {};
+            delete body.tenantId;
+            delete body.userId;
+            delete body.createdAt;
+            const attendance = await (0, attendancePool_1.withTenant)(req.tenantId, async (db) => {
+                const { rows: ex } = await db.query(`SELECT id, total_break_minutes AS "totalBreakMinutes", clock_in AS "clockIn", clock_out AS "clockOut"
+           FROM attendance WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [id, req.tenantId]);
+                if (!ex[0])
                     throw new types_1.NotFoundError("Attendance record not found in this tenant");
-                }
-                // Convert date strings if provided
-                if (updateData.clockIn)
-                    updateData.clockIn = new Date(updateData.clockIn);
-                if (updateData.clockOut)
-                    updateData.clockOut = new Date(updateData.clockOut);
-                if (updateData.date)
-                    updateData.date = new Date(updateData.date);
-                const attendanceRecord = await client.attendance.update({
-                    where: { id },
-                    data: {
-                        ...updateData,
-                        updatedAt: new Date(),
-                    },
-                    include: {
-                        user: {
-                            select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
-                        },
-                    },
-                });
-                // Recalculate work minutes if clock-in or clock-out changed
-                if (updateData.clockIn || updateData.clockOut) {
-                    const finalClockIn = updateData.clockIn || attendanceRecord.clockIn;
-                    const finalClockOut = updateData.clockOut || attendanceRecord.clockOut;
-                    if (finalClockIn && finalClockOut) {
-                        const totalWorkMinutes = Math.floor((new Date(finalClockOut).getTime() - new Date(finalClockIn).getTime()) / 60000);
-                        const effectiveWorkMinutes = totalWorkMinutes - (attendanceRecord.totalBreakMinutes || 0);
-                        // Update with calculated minutes
-                        await client.attendance.update({
-                            where: { id: attendanceRecord.id },
-                            data: {
-                                totalWorkMinutes,
-                                effectiveWorkMinutes,
-                            }
-                        });
-                        // Update the record in memory for response
-                        attendanceRecord.totalWorkMinutes = totalWorkMinutes;
-                        attendanceRecord.effectiveWorkMinutes = effectiveWorkMinutes;
+                // Build the SET clause from a whitelist of updatable columns.
+                const colMap = {
+                    clockIn: "clock_in",
+                    clockOut: "clock_out",
+                    date: "date",
+                    status: "status",
+                    notes: "notes",
+                };
+                const sets = [];
+                const params = [];
+                let i = 0;
+                for (const [key, col] of Object.entries(colMap)) {
+                    if (body[key] !== undefined) {
+                        let v = body[key];
+                        if (key === "clockIn" || key === "clockOut" || key === "date") {
+                            v = v ? new Date(v) : null;
+                        }
+                        params.push(v);
+                        sets.push(`${col} = $${++i}`);
                     }
                 }
-                // Transform data to use 'member' instead of 'user'
-                const attendance = {
-                    ...attendanceRecord,
-                    member: attendanceRecord.user,
-                    user: undefined,
-                };
-                res.status(200).json({
-                    success: true,
-                    data: attendance,
-                    message: "Attendance record updated successfully",
-                });
+                sets.push(`updated_at = now()`);
+                params.push(id);
+                await db.query(`UPDATE attendance SET ${sets.join(", ")} WHERE id = $${++i}`, params);
+                // Recalculate work minutes if clock-in or clock-out changed.
+                if (body.clockIn !== undefined || body.clockOut !== undefined) {
+                    const finalIn = body.clockIn !== undefined ? new Date(body.clockIn) : ex[0].clockIn;
+                    const finalOut = body.clockOut !== undefined ? new Date(body.clockOut) : ex[0].clockOut;
+                    if (finalIn && finalOut) {
+                        const totalWorkMinutes = Math.floor((new Date(finalOut).getTime() - new Date(finalIn).getTime()) / 60000);
+                        const effectiveWorkMinutes = totalWorkMinutes - (ex[0].totalBreakMinutes || 0);
+                        await db.query(`UPDATE attendance SET total_work_minutes = $1, effective_work_minutes = $2, updated_at = now() WHERE id = $3`, [totalWorkMinutes, effectiveWorkMinutes, id]);
+                    }
+                }
+                const { rows } = await db.query(`SELECT ${A_COLS}, ${MEMBER_COLS} ${MEMBER_JOINS} WHERE a.id = $1 LIMIT 1`, [id]);
+                return rowToAttendance(rows[0]);
+            });
+            res.status(200).json({
+                success: true,
+                data: attendance,
+                message: "Attendance record updated successfully",
             });
         }
         catch (error) {
             console.error("Update attendance error:", error);
             if (error instanceof types_1.NotFoundError) {
-                res.status(404).json({
-                    success: false,
-                    error: error.message,
-                });
+                res.status(404).json({ success: false, error: error.message });
                 return;
             }
             res.status(500).json({
@@ -811,24 +874,17 @@ class AttendanceController {
                 return;
             }
             const { id } = req.params;
-            await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                // Check if attendance record exists and belongs to tenant
-                const record = await client.attendance.findFirst({
-                    where: {
-                        id,
-                        tenantId: req.tenantId,
-                    },
-                });
-                if (!record) {
+            await (0, attendancePool_1.withTenant)(req.tenantId, async (db) => {
+                const { rows } = await db.query(`SELECT id FROM attendance WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [id, req.tenantId]);
+                if (!rows[0])
                     throw new types_1.NotFoundError("Attendance record not found in this tenant");
-                }
-                await client.attendance.delete({
-                    where: { id },
-                });
-                res.status(200).json({
-                    success: true,
-                    message: "Attendance record deleted successfully",
-                });
+                // Remove child sessions first (no FK cascade on attendance_sessions).
+                await db.query(`DELETE FROM attendance_sessions WHERE attendance_id = $1`, [id]);
+                await db.query(`DELETE FROM attendance WHERE id = $1`, [id]);
+            });
+            res.status(200).json({
+                success: true,
+                message: "Attendance record deleted successfully",
             });
         }
         catch (error) {
@@ -852,26 +908,16 @@ class AttendanceController {
                 return;
             }
             const userId = req.user.id;
-            const result = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                const records = await client.attendance.findMany({
-                    where: {
-                        userId,
-                        tenantId: req.tenantId,
-                        clockIn: { not: null },
-                        clockOut: { not: null }, // only completed days
-                    },
-                    orderBy: { date: "desc" },
-                    take: 5,
-                });
+            const result = await (0, attendancePool_1.withTenant)(req.tenantId, async (db) => {
+                const { rows: records } = await db.query(`SELECT date, clock_in AS "clockIn", clock_out AS "clockOut"
+           FROM attendance
+           WHERE user_id = $1 AND tenant_id = $2 AND clock_in IS NOT NULL AND clock_out IS NOT NULL
+           ORDER BY date DESC LIMIT 5`, [userId, req.tenantId]);
                 if (records.length === 0) {
-                    return {
-                        last5Days: [],
-                        averageMinutes: 0,
-                        averageHours: 0,
-                    };
+                    return { last5Days: [], averageMinutes: 0, averageHours: 0 };
                 }
                 const processedRecords = records.map((record) => {
-                    const minutes = Math.floor((record.clockOut.getTime() - record.clockIn.getTime()) / 60000);
+                    const minutes = Math.floor((new Date(record.clockOut).getTime() - new Date(record.clockIn).getTime()) / 60000);
                     return {
                         date: record.date,
                         clockIn: record.clockIn,
@@ -883,16 +929,9 @@ class AttendanceController {
                 const totalMinutes = processedRecords.reduce((sum, r) => sum + r.minutes, 0);
                 const averageMinutes = Math.floor(totalMinutes / processedRecords.length);
                 const averageHours = Number((averageMinutes / 60).toFixed(2));
-                return {
-                    last5Days: processedRecords,
-                    averageMinutes,
-                    averageHours,
-                };
+                return { last5Days: processedRecords, averageMinutes, averageHours };
             });
-            res.status(200).json({
-                success: true,
-                data: result,
-            });
+            res.status(200).json({ success: true, data: result });
         }
         catch (error) {
             console.error("Last 5 days average error:", error);
@@ -915,7 +954,6 @@ class AttendanceController {
                 return;
             }
             const attendanceData = req.body;
-            // Validate required fields
             if (!attendanceData.userId || !attendanceData.date) {
                 res.status(400).json({
                     success: false,
@@ -923,75 +961,39 @@ class AttendanceController {
                 });
                 return;
             }
-            await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                // Validate user exists and belongs to tenant
-                const user = await client.user.findFirst({
-                    where: {
-                        id: attendanceData.userId,
-                        tenantId: req.tenantId,
-                        isActive: true,
-                    },
-                });
-                if (!user) {
+            const attendance = await (0, attendancePool_1.withTenant)(req.tenantId, async (db) => {
+                const { rows: u } = await db.query(`SELECT id FROM users WHERE id = $1 AND tenant_id = $2 AND is_active = true LIMIT 1`, [attendanceData.userId, req.tenantId]);
+                if (!u[0])
                     throw new types_1.ValidationError("User not found in this tenant");
-                }
-                // Check if attendance already exists for this date
-                const targetDate = new Date(attendanceData.date);
-                const startOfDay = new Date(targetDate);
-                startOfDay.setHours(0, 0, 0, 0);
-                const endOfDay = new Date(targetDate);
-                endOfDay.setHours(23, 59, 59, 999);
-                const existingAttendance = await client.attendance.findFirst({
-                    where: {
-                        userId: attendanceData.userId,
-                        tenantId: req.tenantId,
-                        date: { gte: startOfDay, lte: endOfDay },
-                    },
-                });
-                if (existingAttendance) {
+                const [startOfDay, endOfDay] = dayBounds(new Date(attendanceData.date));
+                const { rows: ex } = await db.query(`SELECT id FROM attendance WHERE user_id = $1 AND tenant_id = $2 AND date >= $3 AND date <= $4 LIMIT 1`, [attendanceData.userId, req.tenantId, startOfDay, endOfDay]);
+                if (ex[0])
                     throw new types_1.ValidationError("Attendance record already exists for this date");
-                }
-                // Create attendance record
-                const attendanceRecord = await client.attendance.create({
-                    data: {
-                        tenantId: req.tenantId,
-                        userId: attendanceData.userId,
-                        date: startOfDay,
-                        clockIn: attendanceData.clockIn
-                            ? new Date(attendanceData.clockIn)
-                            : null,
-                        clockOut: attendanceData.clockOut
-                            ? new Date(attendanceData.clockOut)
-                            : null,
-                        status: attendanceData.status || "present",
-                        notes: attendanceData.notes,
-                    },
-                    include: {
-                        user: {
-                            select: { id: true, name: true, workEmail: true, position: true, avatarUrl: true },
-                        },
-                    },
-                });
-                // Transform data to use 'member' instead of 'user'
-                const attendance = {
-                    ...attendanceRecord,
-                    member: attendanceRecord.user,
-                    user: undefined,
-                };
-                res.status(201).json({
-                    success: true,
-                    data: attendance,
-                    message: "Attendance record created successfully",
-                });
+                const newId = (0, crypto_1.randomUUID)();
+                await db.query(`INSERT INTO attendance (id, tenant_id, user_id, date, clock_in, clock_out, status, notes, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())`, [
+                    newId,
+                    req.tenantId,
+                    attendanceData.userId,
+                    startOfDay,
+                    attendanceData.clockIn ? new Date(attendanceData.clockIn) : null,
+                    attendanceData.clockOut ? new Date(attendanceData.clockOut) : null,
+                    attendanceData.status || "present",
+                    attendanceData.notes ?? null,
+                ]);
+                const { rows } = await db.query(`SELECT ${A_COLS}, ${MEMBER_COLS} ${MEMBER_JOINS} WHERE a.id = $1 LIMIT 1`, [newId]);
+                return rowToAttendance(rows[0]);
+            });
+            res.status(201).json({
+                success: true,
+                data: attendance,
+                message: "Attendance record created successfully",
             });
         }
         catch (error) {
             console.error("Create attendance error:", error);
             if (error instanceof types_1.ValidationError) {
-                res.status(400).json({
-                    success: false,
-                    error: error.message,
-                });
+                res.status(400).json({ success: false, error: error.message });
                 return;
             }
             res.status(500).json({
@@ -1001,66 +1003,117 @@ class AttendanceController {
         }
     }
     /**
-     * Helper to get formatted today's attendance data for a user
-     * Consistent response format for clock-in, clock-out, and today status
+     * Helper to get formatted today's attendance data for a user.
+     * Consistent response format for clock-in, clock-out, pause/resume/complete
+     * and the today status endpoint. Includes the day's work sessions + state.
      */
-    static async getFormattedTodayAttendance(client, userId, tenantId, targetDate) {
-        const startOfToday = new Date(targetDate);
-        startOfToday.setHours(0, 0, 0, 0);
-        const endOfToday = new Date(targetDate);
-        endOfToday.setHours(23, 59, 59, 999);
-        // Get user info with assigned shift
-        const user = await client.user.findUnique({
-            where: { id: userId },
-            include: {
-                assignedShift: true,
-            },
-        });
-        if (!user) {
+    static async getFormattedTodayAttendance(db, userId, tenantId, targetDate) {
+        const [startOfToday, endOfToday] = dayBounds(targetDate);
+        // User + their assigned shift (used as the shift fallback + member info).
+        const { rows: uRows } = await db.query(`SELECT u.id, u.name, u.avatar_url AS "avatarUrl", u.assigned_shift_id AS "assignedShiftId",
+              ash.id AS ash_id, ash.name AS ash_name, ash.start_time AS ash_start, ash.end_time AS ash_end
+       FROM users u LEFT JOIN shifts ash ON ash.id = u.assigned_shift_id WHERE u.id = $1 LIMIT 1`, [userId]);
+        const user = uRows[0];
+        if (!user)
             throw new types_1.NotFoundError("User not found");
+        // Today's attendance + its shift.
+        const { rows: aRows } = await db.query(`SELECT a.id, a.clock_in AS "clockIn", a.clock_out AS "clockOut", a.status,
+              a.effective_work_minutes AS "effectiveWorkMinutes",
+              s.id AS s_id, s.name AS s_name, s.start_time AS s_start, s.end_time AS s_end
+       FROM attendance a LEFT JOIN shifts s ON s.id = a.shift_id
+       WHERE a.user_id = $1 AND a.tenant_id = $2 AND a.date >= $3 AND a.date <= $4 LIMIT 1`, [userId, tenantId, startOfToday, endOfToday]);
+        const attendance = aRows[0] || null;
+        const shift = attendance?.s_id
+            ? { id: attendance.s_id, name: attendance.s_name, startTime: attendance.s_start, endTime: attendance.s_end }
+            : user.ash_id
+                ? { id: user.ash_id, name: user.ash_name, startTime: user.ash_start, endTime: user.ash_end }
+                : null;
+        // Load this day's work sessions (source of truth for multi-session days).
+        const now = new Date();
+        let sessionRows = attendance
+            ? (await db.query(`SELECT id, clock_in AS "clockIn", clock_out AS "clockOut", work_minutes AS "workMinutes",
+                    break_type AS "breakType", break_reason AS "breakReason"
+             FROM attendance_sessions WHERE attendance_id = $1 ORDER BY clock_in ASC`, [attendance.id])).rows
+            : [];
+        // Legacy fallback: a clock-in with no session rows → one virtual session.
+        if (sessionRows.length === 0 && attendance?.clockIn) {
+            sessionRows = [
+                {
+                    id: null,
+                    clockIn: attendance.clockIn,
+                    clockOut: attendance.clockOut || null,
+                    workMinutes: attendance.effectiveWorkMinutes || 0,
+                    breakType: null,
+                    breakReason: null,
+                },
+            ];
         }
-        // Get attendance with shift data
-        const attendance = await client.attendance.findFirst({
-            where: {
-                userId,
-                tenantId,
-                date: { gte: startOfToday, lte: endOfToday },
-            },
-            include: {
-                shift: true,
-            },
-        });
-        // Get shift info (from attendance or user's assigned shift)
-        const shift = attendance?.shift || user.assignedShift;
-        // Calculate work minutes if clocked in
-        let totalWorkMinutes = 0;
-        if (attendance?.clockIn) {
-            const endTime = attendance.clockOut || new Date();
-            totalWorkMinutes = Math.floor((endTime.getTime() - attendance.clockIn.getTime()) / 60000);
+        const openSession = sessionRows.find((s) => !s.clockOut);
+        const totalWorkMinutes = sessionRows.reduce((acc, s) => {
+            const end = s.clockOut ? new Date(s.clockOut) : now;
+            return acc + Math.max(0, Math.floor((end.getTime() - new Date(s.clockIn).getTime()) / 60000));
+        }, 0);
+        let breakMinutes = 0;
+        for (let k = 1; k < sessionRows.length; k++) {
+            const prevEnd = sessionRows[k - 1].clockOut;
+            if (prevEnd) {
+                breakMinutes += Math.max(0, Math.floor((new Date(sessionRows[k].clockIn).getTime() - new Date(prevEnd).getTime()) / 60000));
+            }
         }
-        // Standardized response object
+        let state;
+        if (!attendance || (!attendance.clockIn && sessionRows.length === 0)) {
+            state = "not_started";
+        }
+        else if (attendance.clockOut) {
+            state = "complete";
+        }
+        else if (openSession) {
+            state = "working";
+        }
+        else {
+            state = "paused";
+        }
+        const sessions = sessionRows.map((s) => ({
+            id: s.id,
+            clockIn: s.clockIn,
+            clockOut: s.clockOut || null,
+            workMinutes: s.clockOut
+                ? s.workMinutes || 0
+                : Math.max(0, Math.floor((now.getTime() - new Date(s.clockIn).getTime()) / 60000)),
+            breakType: s.breakType ?? null,
+            breakReason: s.breakReason ?? null,
+            isOpen: !s.clockOut,
+        }));
+        const lastClosed = [...sessionRows].reverse().find((s) => s.clockOut);
+        const currentBreakType = state === "paused" ? lastClosed?.breakType ?? null : null;
+        const currentBreakReason = state === "paused" ? lastClosed?.breakReason ?? null : null;
         return {
             id: attendance?.id || null,
-            userId: userId,
+            userId,
             date: startOfToday,
             clockIn: attendance?.clockIn || null,
             clockOut: attendance?.clockOut || null,
-            status: attendance?.status?.toLowerCase() || "not_clocked_in",
+            status: attendance?.status ? attendance.status.toLowerCase() : "not_clocked_in",
             shift: shift
-                ? {
-                    id: shift.id,
-                    name: shift.name,
-                    startTime: shift.startTime,
-                    endTime: shift.endTime,
-                    isFlexible: false,
-                }
+                ? { id: shift.id, name: shift.name, startTime: shift.startTime, endTime: shift.endTime, isFlexible: false }
                 : null,
             totalWorkMinutes,
+            breakMinutes,
+            state,
+            onBreak: state === "paused",
+            breakType: currentBreakType,
+            breakReason: currentBreakReason,
+            sessionCount: sessions.length,
+            sessions,
+            member: user ? { id: user.id, name: user.name, avatarUrl: user.avatarUrl ?? null } : null,
             isClockIn: !!attendance?.clockIn,
             clockInTime: attendance?.clockIn || null,
             clockOutTime: attendance?.clockOut || null,
-            canClockIn: !attendance?.clockIn,
-            canClockOut: !!attendance?.clockIn && !attendance?.clockOut,
+            canClockIn: state === "not_started",
+            canPause: state === "working",
+            canResume: state === "paused",
+            canComplete: state === "working" || state === "paused",
+            canClockOut: state === "working" || state === "paused",
         };
     }
 }
