@@ -162,6 +162,29 @@ export async function insertRequest(client: TenantClient, d: InsertRequestData):
   return mapReq(rows[0]);
 }
 
+export async function updateRequest(client: TenantClient, id: string, d: InsertRequestData): Promise<LeaveRequestRow> {
+  const decided = d.status === 'approved';
+  const { rows } = await client.query(
+    `WITH upd AS (
+       UPDATE lv2_leave_requests
+          SET leave_type_id = $3, from_date = $4, to_date = $5, day_portion = $6,
+              total_units = $7, paid_units = $8, lop_units = $9, reason = $10,
+              status = $11, approver_id = $12, decided_at = ${decided ? 'now()' : 'NULL'},
+              updated_by = $13, updated_at = now()
+        WHERE tenant_id = $1 AND id = $2 AND status = 'pending'
+        RETURNING *
+     )
+     SELECT ${SELECT_REQ} FROM upd r JOIN lv2_leave_types lt ON lt.id = r.leave_type_id`,
+    [
+      client.tenantId, id, d.leaveTypeId, d.fromDate, d.toDate, d.dayPortion,
+      d.totalUnits, d.paidUnits, d.lopUnits, d.reason ?? null, d.status,
+      decided ? d.approverId ?? d.createdBy : null, d.createdBy,
+    ]
+  );
+  if (rows.length === 0) throw new Error('Update failed');
+  return mapReq(rows[0]);
+}
+
 export async function listForUser(client: TenantClient, userId: string): Promise<LeaveRequestRow[]> {
   const { rows } = await client.query(
     `SELECT ${SELECT_REQ}
