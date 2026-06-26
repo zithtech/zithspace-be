@@ -261,6 +261,22 @@ class UserController {
                 });
                 return;
             }
+            // Validate name and positionTitle text format
+            const textRegex = /^[a-zA-Z\s]*$/;
+            if (userData.name && !textRegex.test(userData.name)) {
+                res.status(400).json({
+                    success: false,
+                    error: "Name can only contain text and spaces",
+                });
+                return;
+            }
+            if (userData.positionTitle && !textRegex.test(userData.positionTitle)) {
+                res.status(400).json({
+                    success: false,
+                    error: "Position title can only contain text and spaces",
+                });
+                return;
+            }
             // Validate phone number — must be exactly 10 digits
             if (userData.phone !== undefined && userData.phone !== null && userData.phone !== "") {
                 const phoneDigits = String(userData.phone).replace(/\D/g, "");
@@ -429,6 +445,22 @@ class UserController {
                 if (duplicateUser) {
                     throw new types_1.ValidationError("Work email already exists in this tenant");
                 }
+            }
+            // Validate name and positionTitle text format
+            const textRegex = /^[a-zA-Z\s]*$/;
+            if (updates.name && !textRegex.test(updates.name)) {
+                res.status(400).json({
+                    success: false,
+                    error: "Name can only contain text and spaces",
+                });
+                return;
+            }
+            if (updates.positionTitle && !textRegex.test(updates.positionTitle)) {
+                res.status(400).json({
+                    success: false,
+                    error: "Position title can only contain text and spaces",
+                });
+                return;
             }
             // Validate phone number — must be exactly 10 digits if provided
             if (updates.phone !== undefined && updates.phone !== null && updates.phone !== "") {
