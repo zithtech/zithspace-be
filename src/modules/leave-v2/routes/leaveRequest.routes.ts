@@ -12,6 +12,7 @@ router.get('/balances', requirePermission(Permissions.LEAVE_READ), ctrl.myBalanc
 router.get('/mine', requirePermission(Permissions.LEAVE_READ), ctrl.myRequests);
 router.get('/holidays', requirePermission(Permissions.LEAVE_READ), ctrl.holidayDates);
 router.post('/', requirePermission(Permissions.LEAVE_CREATE), ctrl.apply);
+router.put('/:id', requirePermission(Permissions.LEAVE_UPDATE), ctrl.update);
 router.post('/:id/cancel', requirePermission(Permissions.LEAVE_READ), ctrl.cancel);
 
 export default router;

@@ -86,6 +86,60 @@ export async function applyLeave(actor: Actor, input: ApplyLeaveInput) {
   });
 }
 
+export async function updateMyRequest(actor: Actor, id: string, input: ApplyLeaveInput) {
+  const userId = actor.userId;
+  return withTenant(actor.tenantId, async (client) => {
+    const req = await repo.findAnyById(client, id);
+    if (!req || req.userId !== userId) throw LeaveV2Error.notFound('Leave request');
+    if (req.status !== 'pending') throw LeaveV2Error.badRequest('Only pending requests can be edited');
+
+    const lt = await leaveTypeRepo.findById(client, input.leaveTypeId);
+    if (!lt || !lt.isActive) throw LeaveV2Error.notFound('Leave type');
+
+    const holidays = await holidayRepo.holidayDatesInRange(client, input.fromDate, input.toDate);
+    const units = computeUnits(input.fromDate, input.toDate, input.dayPortion ?? 'full', holidays);
+    if (units <= 0) throw LeaveV2Error.badRequest('The selected range has no working days (weekends/holidays only)');
+
+    if (await repo.overlapExists(client, userId, input.fromDate, input.toDate, id)) {
+      throw LeaveV2Error.conflict('You already have a leave request overlapping these dates');
+    }
+
+    const balance = await repo.getBalanceFor(client, userId, input.leaveTypeId);
+    const paid = Math.min(units, Math.max(balance, 0));
+    const lop = Number((units - paid).toFixed(2));
+
+    const status: 'pending' | 'approved' = lt.requiresApproval ? 'pending' : 'approved';
+
+    const updated = await repo.updateRequest(client, id, {
+      userId,
+      leaveTypeId: input.leaveTypeId,
+      fromDate: input.fromDate,
+      toDate: input.toDate,
+      dayPortion: input.dayPortion ?? 'full',
+      totalUnits: units,
+      paidUnits: paid,
+      lopUnits: lop,
+      reason: input.reason ?? null,
+      status,
+      approverId: status === 'approved' ? actor.userId : null,
+      createdBy: actor.userId,
+    });
+
+    if (status === 'approved' && paid > 0) {
+      await repo.insertLeaveDebit(client, {
+        userId,
+        leaveTypeId: input.leaveTypeId,
+        units: paid,
+        requestId: updated.id,
+        effectiveDate: input.fromDate,
+        createdBy: actor.userId,
+      });
+    }
+
+    return updated;
+  });
+}
+
 export interface BalanceItem {
   leaveTypeId: string;
   name: string;
