@@ -193,6 +193,8 @@ const PERMISSION_DESCRIPTIONS = {
     'lead.trash.restore': 'Restore leads from trash',
     'lead.trash.delete': 'Permanently delete leads',
     'lead.manage': 'Full lead management including distribution rules',
+    'bidiq.read': 'View BidIq analyses and scores',
+    'bidiq.create': 'Run BidIq analysis on leads',
     'proposal.create': 'Generate new business proposals',
     'proposal.read': 'View sent and drafted proposals',
     'proposal.update': 'Edit existing proposals',

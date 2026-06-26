@@ -90,6 +90,25 @@ export async function addFromCatalog(actor: Actor, catalogIds: string[]) {
   });
 }
 
+/** Remove tenant holidays that match the given catalog entries (by name + date). */
+export async function removeFromCatalog(actor: Actor, catalogIds: string[]) {
+  return withTenant(actor.tenantId, async (client) => {
+    const entries = await catalogRepo.getByIds(client, catalogIds);
+    const existing = await repo.findAll(client, { includeInactive: true });
+    const byKey = new Map(existing.map((h) => [dedupKey(h.name, h.fromDate), h.id] as const));
+
+    let removed = 0;
+    let missing = 0;
+    for (const c of entries) {
+      const holidayId = byKey.get(dedupKey(c.name, c.fromDate));
+      if (!holidayId) { missing++; continue; }
+      const ok = await repo.softDelete(client, holidayId, actor.userId);
+      if (ok) removed++; else missing++;
+    }
+    return { removed, missing };
+  });
+}
+
 // Coverage nests Country → State → District depending on the holiday type:
 //   National/Restricted → states ['ALL'], no districts
 //   State               → picked states, no districts

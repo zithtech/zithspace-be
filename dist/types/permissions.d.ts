@@ -253,6 +253,8 @@ export declare const Permissions: {
     readonly LEAD_TRASH_RESTORE: "lead.trash.restore";
     readonly LEAD_TRASH_DELETE: "lead.trash.delete";
     readonly LEAD_MANAGE: "lead.manage";
+    readonly BIDIQ_READ: "bidiq.read";
+    readonly BIDIQ_CREATE: "bidiq.create";
     readonly PROPOSAL_CREATE: "proposal.create";
     readonly PROPOSAL_READ: "proposal.read";
     readonly PROPOSAL_UPDATE: "proposal.update";

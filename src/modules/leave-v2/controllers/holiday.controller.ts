@@ -21,6 +21,12 @@ export const catalogAdd = handle(async (req: AuthRequest, res: Response) => {
   ok(res, await service.addFromCatalog(actorOf(req), ids), 201);
 });
 
+export const catalogRemove = handle(async (req: AuthRequest, res: Response) => {
+  const ids = req.body?.catalogIds;
+  if (!Array.isArray(ids) || ids.length === 0) throw LeaveV2Error.badRequest('catalogIds is required');
+  ok(res, await service.removeFromCatalog(actorOf(req), ids));
+});
+
 export const list = handle(async (req: AuthRequest, res: Response) => {
   const year = req.query.year ? Number(req.query.year) : undefined;
   const includeInactive = req.query.includeInactive === 'true';
