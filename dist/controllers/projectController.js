@@ -1642,6 +1642,10 @@ class ProjectController {
                     tenantId: req.tenantId,
                     assigneeId: req.user.id,
                     isDeleted: false,
+                    sprintPlan: {
+                        status: "active",
+                        type: "sprint_plan"
+                    },
                 },
                 select: {
                     id: true,
