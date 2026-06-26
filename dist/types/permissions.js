@@ -279,6 +279,9 @@ exports.Permissions = {
     LEAD_TRASH_RESTORE: 'lead.trash.restore',
     LEAD_TRASH_DELETE: 'lead.trash.delete',
     LEAD_MANAGE: 'lead.manage', // lead distribution rules, source tracking, and conversion triggers
+    // ─── BidIq (AI lead intelligence) ────────────────────────────────
+    BIDIQ_READ: 'bidiq.read', // view the BidIq menu and analysis list
+    BIDIQ_CREATE: 'bidiq.create', // run BidIq analysis on a lead
     // ─── Proposals ───────────────────────────────────────────────────
     PROPOSAL_CREATE: 'proposal.create',
     PROPOSAL_READ: 'proposal.read',
@@ -611,6 +614,7 @@ exports.PERMISSIONS_BY_RESOURCE = {
         exports.Permissions.PROPOSAL_UPDATE,
         exports.Permissions.PROPOSAL_DELETE,
     ],
+    bidiq: [exports.Permissions.BIDIQ_READ, exports.Permissions.BIDIQ_CREATE],
     vendor: [exports.Permissions.VENDOR_CREATE, exports.Permissions.VENDOR_READ, exports.Permissions.VENDOR_UPDATE, exports.Permissions.VENDOR_DELETE, exports.Permissions.VENDOR_MANAGE],
     escalation: [exports.Permissions.ESCALATION_CREATE, exports.Permissions.ESCALATION_READ, exports.Permissions.ESCALATION_UPDATE, exports.Permissions.ESCALATION_DELETE, exports.Permissions.ESCALATION_MANAGE],
     pipeline: [

@@ -143,6 +143,7 @@ const landing_1 = __importDefault(require("@/routes/landing"));
 const escalationRoutesV2_1 = __importDefault(require("./routes/escalationRoutesV2"));
 const proposals_1 = __importDefault(require("@/routes/proposals"));
 const proposalSections_1 = __importDefault(require("@/routes/proposalSections"));
+const proposalTemplates_1 = __importDefault(require("@/routes/proposalTemplates"));
 const projectOverviewRoutes_1 = __importDefault(require("./routes/projectOverviewRoutes"));
 const socketService_1 = require("@/services/socketService");
 const attendancePool_1 = require("@/db/attendancePool");
@@ -324,6 +325,7 @@ app.use("/api/invoicesetting", invoiceSettingsRoutes_1.default);
 app.use("/api/invoices", invoice_1.default);
 app.use("/api/proposals", proposals_1.default);
 app.use("/api/proposal-sections", proposalSections_1.default);
+app.use("/api/proposal-templates", proposalTemplates_1.default);
 app.use("/api/invoice-templates", invoiceTemplate_1.default);
 app.use("/api/categories", categoryRoutes_1.default);
 //app.use("/api/invoice",invoicedownload)

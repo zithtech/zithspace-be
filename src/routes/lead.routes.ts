@@ -33,7 +33,7 @@ router.post('/send-mail', LeadController.sendLeadMail);
 // 2. Specific parameterized routes (/:id/*)
 router.get('/:id/timeline', requirePermission(Permissions.LEAD_READ), LeadController.getLeadTimeline);
 router.get('/:id/mails', requirePermission(Permissions.LEAD_READ), LeadController.getLeadMails);
-router.post('/:id/analyze', requirePermission(Permissions.LEAD_MANAGE), BidIQController.analyzeLead);
+router.post('/:id/analyze', requirePermission(Permissions.BIDIQ_CREATE), BidIQController.analyzeLead);
 router.post('/:id/onboard', requirePermission(Permissions.LEAD_MANAGE), LeadController.onboardLead);
 router.post('/:id/restore', requirePermission(Permissions.LEAD_TRASH_RESTORE), LeadController.restoreLead);
 router.delete('/:id/permanent', requirePermission(Permissions.LEAD_TRASH_DELETE), LeadController.permanentlyDeleteLead);

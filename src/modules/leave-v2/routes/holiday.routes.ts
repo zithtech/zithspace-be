@@ -10,6 +10,7 @@ const router = express.Router();
 router.get('/catalog/countries', requirePermission(Permissions.LEAVE_HOLIDAY_READ), ctrl.catalogCountries);
 router.get('/catalog', requirePermission(Permissions.LEAVE_HOLIDAY_READ), ctrl.catalog);
 router.post('/catalog/add', requirePermission(Permissions.LEAVE_HOLIDAY_CREATE), ctrl.catalogAdd);
+router.post('/catalog/remove', requirePermission(Permissions.LEAVE_HOLIDAY_DELETE), ctrl.catalogRemove);
 
 router.get('/', requirePermission(Permissions.LEAVE_HOLIDAY_READ), ctrl.list);
 router.get('/:id', requirePermission(Permissions.LEAVE_HOLIDAY_READ), ctrl.getOne);

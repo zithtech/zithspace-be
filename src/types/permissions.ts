@@ -300,6 +300,10 @@ export const Permissions = {
   LEAD_TRASH_DELETE: 'lead.trash.delete',
   LEAD_MANAGE: 'lead.manage', // lead distribution rules, source tracking, and conversion triggers
 
+  // ─── BidIq (AI lead intelligence) ────────────────────────────────
+  BIDIQ_READ: 'bidiq.read', // view the BidIq menu and analysis list
+  BIDIQ_CREATE: 'bidiq.create', // run BidIq analysis on a lead
+
   // ─── Proposals ───────────────────────────────────────────────────
   PROPOSAL_CREATE: 'proposal.create',
   PROPOSAL_READ: 'proposal.read',
@@ -650,6 +654,7 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.PROPOSAL_UPDATE,
     Permissions.PROPOSAL_DELETE,
   ],
+  bidiq: [Permissions.BIDIQ_READ, Permissions.BIDIQ_CREATE],
   vendor: [Permissions.VENDOR_CREATE, Permissions.VENDOR_READ, Permissions.VENDOR_UPDATE, Permissions.VENDOR_DELETE, Permissions.VENDOR_MANAGE],
   escalation: [Permissions.ESCALATION_CREATE, Permissions.ESCALATION_READ, Permissions.ESCALATION_UPDATE, Permissions.ESCALATION_DELETE, Permissions.ESCALATION_MANAGE],
   pipeline: [

@@ -24,3 +24,7 @@ export const create = handle(async (req: AuthRequest, res: Response) => {
   const input = createAdjustmentSchema.parse(req.body);
   ok(res, await service.createAdjustment(actorOf(req), input), 201);
 });
+
+export const remove = handle(async (req: AuthRequest, res: Response) => {
+  ok(res, await service.deleteAdjustment(actorOf(req), req.params.id));
+});

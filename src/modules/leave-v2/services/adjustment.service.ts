@@ -48,6 +48,16 @@ export async function listAdjustments(actor: Actor) {
   return withTenant(actor.tenantId, (client) => repo.listAdjustments(client));
 }
 
+/** Delete a manual adjustment; the resulting balance is recomputed from the ledger. */
+export async function deleteAdjustment(actor: Actor, id: string) {
+  return withTenant(actor.tenantId, async (client) => {
+    const deleted = await repo.deleteEntry(client, id);
+    if (!deleted) throw LeaveV2Error.notFound('Adjustment');
+    const newBalance = await repo.getBalanceFor(client, deleted.userId, deleted.leaveTypeId);
+    return { id, deleted: true, newBalance };
+  });
+}
+
 export async function getEmployeeOptions(actor: Actor) {
   return withTenant(actor.tenantId, (client) => repo.listEmployees(client));
 }
