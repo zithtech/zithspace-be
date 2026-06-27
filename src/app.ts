@@ -115,6 +115,7 @@ import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
 import leaveRequestRoutes from "@/routes/leaveRequestRoutes";
 import leaveBalanceRoutes from "@/routes/leaveBalanceRoutes";
 import leaveV2Routes from "@/modules/leave-v2/routes";
+import performanceReportRoutes from "@/modules/performance-report/routes";
 import payrollRoutes from "@/routes/payroll";
 import reimbursementConfigurationRoutes from "@/routes/reimbursementConfig";
 import reimbursementsettingsRoutes from "@/routes/reimbursementsettingsRoutes";
@@ -401,6 +402,7 @@ app.use("/api/leave-allocation", leaveAllocationRoutes);
 app.use("/api/leave-request", leaveRequestRoutes);
 app.use("/api/leave-balances", leaveBalanceRoutes);
 app.use("/api/v2/leave", leaveV2Routes);
+app.use("/api/performance-report", performanceReportRoutes);
 
 //Escalation
 app.use("/api/escalation-categories", escalationCategoryRoutes);
@@ -592,10 +594,14 @@ const startServer = async () => {
     const { ensureOnboardingSchema } = require("@/db/onboardingSchema");
     await ensureOnboardingSchema();
 
+    // Performance Report tables (raw-SQL module, idempotent)
+    const { ensurePerformanceReportSchema } = require("@/modules/performance-report/db/schema");
+    await ensurePerformanceReportSchema();
+
     // Connect RabbitMQ & Start Workers
     try {
       await rabbitMQService.connect();
-      await CalendarSyncWorker.start();
+      await CalendarSyncWorker.start(); 
       await MailSyncWorker.start();
       // await CentralMailWorker.start();
       console.log("🚀 RabbitMQ connected, Calendar & Mail Sync Workers started");

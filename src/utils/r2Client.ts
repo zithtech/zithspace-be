@@ -299,6 +299,41 @@ export async function uploadEmployeeDocumentToR2(
 }
 
 /**
+ * Upload a generated performance report (PDF) to Cloudflare R2.
+ * Accepts a base64 data URL; returns the public URL + the object key.
+ */
+export async function uploadGeneratedReportToR2(
+  base64File: string,
+  tenantId: string,
+  userId: string,
+  periodKey: string,
+): Promise<{ url: string; key: string }> {
+  const matches = base64File.match(/^data:([^;]+);base64,(.*)$/);
+  if (!matches) {
+    throw new Error("Invalid file format. Expected base64 encoded PDF.");
+  }
+  const contentType = matches[1] || "application/pdf";
+  const buffer = Buffer.from(matches[2], "base64");
+
+  const key = `${tenantId}/performance-reports/${periodKey}/${userId}_${nanoid(8)}.pdf`;
+
+  await s3Client.send(
+    new PutObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+    }),
+  );
+
+  const baseUrl =
+    (PUBLIC_URL && !PUBLIC_URL.includes("r2.cloudflarestorage.com")
+      ? PUBLIC_URL
+      : "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev").replace(/\/$/, "");
+  return { url: `${baseUrl}/${key}`, key };
+}
+
+/**
  * Upload Client V2 document to Cloudflare R2
  * @param base64File - Base64 encoded file string
  * @param fileName - Original file name

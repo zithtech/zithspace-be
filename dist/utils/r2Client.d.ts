@@ -42,6 +42,14 @@ export declare function uploadRequisitionAttachmentToR2(base64File: string, file
  */
 export declare function uploadEmployeeDocumentToR2(base64File: string, fileName: string, tenantId: string, employeeId: string, documentType: string): Promise<string>;
 /**
+ * Upload a generated performance report (PDF) to Cloudflare R2.
+ * Accepts a base64 data URL; returns the public URL + the object key.
+ */
+export declare function uploadGeneratedReportToR2(base64File: string, tenantId: string, userId: string, periodKey: string): Promise<{
+    url: string;
+    key: string;
+}>;
+/**
  * Upload Client V2 document to Cloudflare R2
  * @param base64File - Base64 encoded file string
  * @param fileName - Original file name
