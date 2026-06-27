@@ -243,6 +243,13 @@ export const Permissions = {
   ONBOARDING_SETTING_READ: 'onboarding.setting.read',
   ONBOARDING_SETTING_UPDATE: 'onboarding.setting.update',
 
+  // ─── Performance Report ──────────────────────────────────────────
+  PERFORMANCE_REPORT_READ: 'performance.report.read',
+  PERFORMANCE_REPORT_SETTING_READ: 'performance.report.setting.read',
+  PERFORMANCE_REPORT_SETTING_UPDATE: 'performance.report.setting.update',
+  PERFORMANCE_REPORT_GENERATED_READ: 'performance.report.generated.read',
+  PERFORMANCE_REPORT_MY_READ: 'performance.report.my.read',
+
   // ─── Timesheet ───────────────────────────────────────────────────
   TIMESHEET_CREATE: 'timesheet.create',
   TIMESHEET_READ: 'timesheet.read',
@@ -606,6 +613,13 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.ONBOARDING_DELETE,
     Permissions.ONBOARDING_SETTING_READ,
     Permissions.ONBOARDING_SETTING_UPDATE,
+  ],
+  performance_report: [
+    Permissions.PERFORMANCE_REPORT_READ,
+    Permissions.PERFORMANCE_REPORT_SETTING_READ,
+    Permissions.PERFORMANCE_REPORT_SETTING_UPDATE,
+    Permissions.PERFORMANCE_REPORT_GENERATED_READ,
+    Permissions.PERFORMANCE_REPORT_MY_READ,
   ],
   timesheet: [Permissions.TIMESHEET_CREATE, Permissions.TIMESHEET_READ, Permissions.TIMESHEET_UPDATE, Permissions.TIMESHEET_DELETE, Permissions.TIMESHEET_APPROVE, Permissions.TIMESHEET_MANAGE],
   org: [

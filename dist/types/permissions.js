@@ -227,6 +227,12 @@ exports.Permissions = {
     ONBOARDING_DELETE: 'onboarding.delete',
     ONBOARDING_SETTING_READ: 'onboarding.setting.read',
     ONBOARDING_SETTING_UPDATE: 'onboarding.setting.update',
+    // ─── Performance Report ──────────────────────────────────────────
+    PERFORMANCE_REPORT_READ: 'performance.report.read',
+    PERFORMANCE_REPORT_SETTING_READ: 'performance.report.setting.read',
+    PERFORMANCE_REPORT_SETTING_UPDATE: 'performance.report.setting.update',
+    PERFORMANCE_REPORT_GENERATED_READ: 'performance.report.generated.read',
+    PERFORMANCE_REPORT_MY_READ: 'performance.report.my.read',
     // ─── Timesheet ───────────────────────────────────────────────────
     TIMESHEET_CREATE: 'timesheet.create',
     TIMESHEET_READ: 'timesheet.read',
@@ -566,6 +572,13 @@ exports.PERMISSIONS_BY_RESOURCE = {
         exports.Permissions.ONBOARDING_DELETE,
         exports.Permissions.ONBOARDING_SETTING_READ,
         exports.Permissions.ONBOARDING_SETTING_UPDATE,
+    ],
+    performance_report: [
+        exports.Permissions.PERFORMANCE_REPORT_READ,
+        exports.Permissions.PERFORMANCE_REPORT_SETTING_READ,
+        exports.Permissions.PERFORMANCE_REPORT_SETTING_UPDATE,
+        exports.Permissions.PERFORMANCE_REPORT_GENERATED_READ,
+        exports.Permissions.PERFORMANCE_REPORT_MY_READ,
     ],
     timesheet: [exports.Permissions.TIMESHEET_CREATE, exports.Permissions.TIMESHEET_READ, exports.Permissions.TIMESHEET_UPDATE, exports.Permissions.TIMESHEET_DELETE, exports.Permissions.TIMESHEET_APPROVE, exports.Permissions.TIMESHEET_MANAGE],
     org: [

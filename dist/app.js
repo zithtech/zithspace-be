@@ -112,6 +112,7 @@ const emailHistoryRoutes_1 = __importDefault(require("@/routes/emailHistoryRoute
 const leaveRequestRoutes_1 = __importDefault(require("@/routes/leaveRequestRoutes"));
 const leaveBalanceRoutes_1 = __importDefault(require("@/routes/leaveBalanceRoutes"));
 const routes_1 = __importDefault(require("@/modules/leave-v2/routes"));
+const routes_2 = __importDefault(require("@/modules/performance-report/routes"));
 const payroll_1 = __importDefault(require("@/routes/payroll"));
 const reimbursementConfig_1 = __importDefault(require("@/routes/reimbursementConfig"));
 const reimbursementsettingsRoutes_1 = __importDefault(require("@/routes/reimbursementsettingsRoutes"));
@@ -367,6 +368,7 @@ app.use("/api/leave-allocation", leaveAllocationRoutes_1.default);
 app.use("/api/leave-request", leaveRequestRoutes_1.default);
 app.use("/api/leave-balances", leaveBalanceRoutes_1.default);
 app.use("/api/v2/leave", routes_1.default);
+app.use("/api/performance-report", routes_2.default);
 //Escalation
 app.use("/api/escalation-categories", escalationCategoryV2_routes_1.default);
 app.use("/api/escalation-statuses", escalationStatus_RoutesV2_1.default);
@@ -528,6 +530,9 @@ const startServer = async () => {
         // Employee onboarding invite table (raw-SQL module, idempotent)
         const { ensureOnboardingSchema } = require("@/db/onboardingSchema");
         await ensureOnboardingSchema();
+        // Performance Report tables (raw-SQL module, idempotent)
+        const { ensurePerformanceReportSchema } = require("@/modules/performance-report/db/schema");
+        await ensurePerformanceReportSchema();
         // Connect RabbitMQ & Start Workers
         try {
             await RabbitMQService_1.rabbitMQService.connect();
