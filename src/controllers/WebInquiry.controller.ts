@@ -67,28 +67,41 @@ export class WebInquiryController {
       return;
     }
 
-    // ── 2. Resolve tenant by slug ───────────────────────────────────────────
-    const { tenantSlug } = req.params;
-    if (!tenantSlug) {
-      res.status(400).json({ success: false, message: 'Tenant slug is required.' });
+    // ── 2. Resolve tenant by secret key ───────────────────────────────────────────
+    const secretKey = req.headers['x-web-inquiry-key'] || req.params.tenantSlug;
+    if (!secretKey) {
+      res.status(400).json({ success: false, message: 'Web inquiry secret key is required.' });
       return;
     }
 
-    const rawClient = tenantAwarePrisma.getRawClient();
-    const tenant = await rawClient.tenant.findFirst({
-      where: {
-        OR: [{ subdomain: tenantSlug.toLowerCase() }, { id: tenantSlug }],
-        isActive: true,
-      },
-      select: { id: true, name: true, subdomain: true, isActive: true },
-    });
+    let tenantId;
+    let tenantSubdomain;
+    let tenantName;
 
-    if (!tenant) {
-      res.status(404).json({ success: false, message: 'Workspace not found.' });
+    try {
+      const result = await pool.query(
+        `SELECT id, name, subdomain, is_active 
+         FROM tenants 
+         WHERE web_inquiry_secret_key = $1 AND is_active = true 
+         LIMIT 1`,
+        [secretKey]
+      );
+
+      const tenant = result.rows[0];
+
+      if (!tenant) {
+        res.status(404).json({ success: false, message: 'Workspace not found or invalid key.' });
+        return;
+      }
+
+      tenantId = tenant.id;
+      tenantSubdomain = tenant.subdomain;
+      tenantName = tenant.name;
+    } catch (err) {
+      console.error('[WebInquiry] Error finding tenant by secret key:', err);
+      res.status(500).json({ success: false, message: 'Internal server error.' });
       return;
     }
-
-    const tenantId = tenant.id;
 
     // ── 3. Read body fields using flexible field extraction and multi-alias fallbacks ──
     const body = (req.body || {}) as Record<string, any>;
@@ -149,7 +162,11 @@ export class WebInquiryController {
     }
 
     // ── 5. Derive platform from URL slug & auto-create if needed ─────────────
-    const platformName = platformNameFromSlug(tenantSlug);
+    let rawSlug = req.params.tenantSlug;
+    if (!rawSlug || rawSlug.toLowerCase() === 'submit') {
+      rawSlug = tenantName || tenantSubdomain;
+    }
+    const platformName = platformNameFromSlug(rawSlug);
     const platformCode = derivePlatformCode(platformName);
 
     try {
@@ -208,7 +225,7 @@ export class WebInquiryController {
         status,
         platform:         platformName,
         lead_source_kind: 'website',
-        website_source:   tenantSlug,          // raw slug stored for filtering
+        website_source:   req.params.tenantSlug || tenantSubdomain,          // raw slug stored for filtering
         inquiry_message:  inquiryMessage || null,
         posted_on:        new Date(),
         form_data:        Object.keys(form_data).length > 0 ? form_data : null,

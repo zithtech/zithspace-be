@@ -5,7 +5,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TenantController = void 0;
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
-const database_1 = require("@/config/database");
 const tenantLogger_1 = __importDefault(require("@/utils/tenantLogger"));
 const dbpool_1 = __importDefault(require("@/config/dbpool"));
 const types_1 = require("@/types");
@@ -53,23 +52,20 @@ class TenantController {
                     adminEmail: tenantData.adminUser.email
                 }
             });
-            const rawClient = database_1.tenantAwarePrisma.getRawClient();
             // Check if subdomain is already taken
             tenantLogger_1.default.debug('Checking subdomain availability', {
                 operation: 'TENANT_REGISTRATION',
                 step: 'SUBDOMAIN_CHECK',
                 metadata: { subdomain: tenantData.subdomain }
             });
-            const existingTenant = await rawClient.tenant.findUnique({
-                where: { subdomain: tenantData.subdomain.toLowerCase() },
-            });
-            if (existingTenant) {
+            const existingTenantResult = await dbpool_1.default.query('SELECT id FROM tenants WHERE subdomain = $1 LIMIT 1', [tenantData.subdomain.toLowerCase()]);
+            if (existingTenantResult.rows.length > 0) {
                 tenantLogger_1.default.warn('Subdomain already exists', {
                     operation: 'TENANT_REGISTRATION',
                     step: 'SUBDOMAIN_CONFLICT',
                     metadata: {
                         subdomain: tenantData.subdomain,
-                        existingTenantId: existingTenant.id
+                        existingTenantId: existingTenantResult.rows[0].id
                     }
                 });
                 res.status(409).json({
@@ -112,17 +108,27 @@ class TenantController {
                     adminEmail: tenantData.adminUser.email
                 }
             });
-            const result = await rawClient.$transaction(async (tx) => {
-                // Create tenant
-                const tenant = await tx.tenant.create({
-                    data: {
-                        name: tenantData.name,
-                        subdomain: tenantData.subdomain.toLowerCase(),
-                        planType: tenantData.planType || "basic",
-                        maxUsers: tenantData.maxUsers || 10,
-                        settings: tenantData.settings || {},
-                    },
-                });
+            const client = await dbpool_1.default.connect();
+            let result;
+            try {
+                await client.query('BEGIN');
+                const crypto = require('crypto');
+                const tenantId = crypto.randomUUID();
+                const secretKey = `${crypto.randomInt(10000, 100000)}/secretkey/${tenantData.subdomain.toLowerCase()}`;
+                const tenantInsertResult = await client.query(`
+          INSERT INTO tenants (id, name, subdomain, plan_type, max_users, settings, web_inquiry_secret_key)
+          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          RETURNING id, name, subdomain, plan_type
+        `, [
+                    tenantId,
+                    tenantData.name,
+                    tenantData.subdomain.toLowerCase(),
+                    tenantData.planType || 'basic',
+                    tenantData.maxUsers || 10,
+                    tenantData.settings || {},
+                    secretKey
+                ]);
+                const tenant = tenantInsertResult.rows[0];
                 tenantLogger_1.default.info('Tenant created successfully', {
                     operation: 'TENANT_REGISTRATION',
                     step: 'TENANT_CREATED',
@@ -130,25 +136,26 @@ class TenantController {
                     metadata: {
                         tenantId: tenant.id,
                         subdomain: tenant.subdomain,
-                        planType: tenant.planType
+                        planType: tenant.plan_type
                     }
                 });
-                // Create admin user
-                const adminUser = await tx.user.create({
-                    data: {
-                        tenant: {
-                            connect: { id: tenant.id }
-                        },
-                        name: tenantData.adminUser.name,
-                        workEmail: tenantData.adminUser.email.toLowerCase(),
-                        personalEmail: tenantData.adminUser.email.toLowerCase(),
-                        phone: tenantData.adminUser.phone,
-                        passwordHash,
-                        role: "admin",
-                        // Position will be assigned later after positions are set up
-                        workDays: [1, 2, 3, 4, 5], // Monday to Friday
-                    },
-                });
+                const userId = crypto.randomUUID();
+                const userInsertResult = await client.query(`
+          INSERT INTO users (id, tenant_id, name, work_email, personal_email, phone, password_hash, role, work_days)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          RETURNING id, name, work_email
+        `, [
+                    userId,
+                    tenant.id,
+                    tenantData.adminUser.name,
+                    tenantData.adminUser.email.toLowerCase(),
+                    tenantData.adminUser.email.toLowerCase(),
+                    tenantData.adminUser.phone,
+                    passwordHash,
+                    'admin',
+                    [1, 2, 3, 4, 5]
+                ]);
+                const adminUser = userInsertResult.rows[0];
                 tenantLogger_1.default.info('Admin user created successfully', {
                     operation: 'TENANT_REGISTRATION',
                     step: 'ADMIN_USER_CREATED',
@@ -157,11 +164,19 @@ class TenantController {
                     metadata: {
                         tenantId: tenant.id,
                         userId: adminUser.id,
-                        adminEmail: adminUser.workEmail
+                        adminEmail: adminUser.work_email
                     }
                 });
-                return { tenant, adminUser };
-            });
+                await client.query('COMMIT');
+                result = { tenant, adminUser };
+            }
+            catch (err) {
+                await client.query('ROLLBACK');
+                throw err;
+            }
+            finally {
+                client.release();
+            }
             tenantLogger_1.default.info('Tenant registration completed successfully', {
                 operation: 'TENANT_REGISTRATION',
                 step: 'REGISTRATION_SUCCESS',
@@ -184,12 +199,12 @@ class TenantController {
                         id: result.tenant.id,
                         name: result.tenant.name,
                         subdomain: result.tenant.subdomain,
-                        planType: result.tenant.planType,
+                        planType: result.tenant.plan_type,
                     },
                     adminUser: {
                         id: result.adminUser.id,
                         name: result.adminUser.name,
-                        email: result.adminUser.workEmail,
+                        email: result.adminUser.work_email,
                     },
                 },
                 message: "Tenant registered successfully",
@@ -198,7 +213,7 @@ class TenantController {
         catch (error) {
             tenantLogger_1.default.logTenantError(error, req, 'TENANT_REGISTRATION');
             timer.end('tenant_registration_failed');
-            if (error.code === "P2002") {
+            if (error.code === "23505") { // Postgres unique violation error code
                 res.status(409).json({
                     success: false,
                     error: "Subdomain or email already exists",
@@ -319,37 +334,33 @@ class TenantController {
                 });
                 return;
             }
-            const rawClient = database_1.tenantAwarePrisma.getRawClient();
-            const tenant = await rawClient.tenant.findUnique({
-                where: { id: req.tenantId },
-                include: {
-                    _count: {
-                        select: {
-                            users: { where: { isActive: true } },
-                            projects: true,
-                        },
-                    },
-                },
-            });
-            if (!tenant) {
+            const tenantResult = await dbpool_1.default.query(`
+        SELECT t.*,
+          (SELECT COUNT(*)::int FROM users u WHERE u.tenant_id = t.id AND u.is_active = true) as active_users,
+          (SELECT COUNT(*)::int FROM projects p WHERE p.tenant_id = t.id) as total_projects
+        FROM tenants t
+        WHERE t.id = $1
+      `, [req.tenantId]);
+            if (tenantResult.rows.length === 0) {
                 throw new types_1.NotFoundError("Tenant not found");
             }
+            const tenant = tenantResult.rows[0];
             res.status(200).json({
                 success: true,
                 data: {
                     id: tenant.id,
                     name: tenant.name,
                     subdomain: tenant.subdomain,
-                    planType: tenant.planType,
-                    maxUsers: tenant.maxUsers,
-                    isActive: tenant.isActive,
+                    planType: tenant.plan_type,
+                    maxUsers: tenant.max_users,
+                    isActive: tenant.is_active,
                     settings: tenant.settings,
                     stats: {
-                        activeUsers: tenant._count.users,
-                        totalProjects: tenant._count.projects,
+                        activeUsers: tenant.active_users,
+                        totalProjects: tenant.total_projects,
                     },
-                    createdAt: tenant.createdAt,
-                    updatedAt: tenant.updatedAt,
+                    createdAt: tenant.created_at,
+                    updatedAt: tenant.updated_at,
                 },
             });
         }
@@ -381,13 +392,10 @@ class TenantController {
                 });
                 return;
             }
-            const rawClient = database_1.tenantAwarePrisma.getRawClient();
             const updateData = { ...req.body };
             // Handle logo uploads (original, cropped, or setting final)
-            const currentTenant = await rawClient.tenant.findUnique({
-                where: { id: req.tenantId },
-                select: { name: true, settings: true }
-            });
+            const currentTenantResult = await dbpool_1.default.query('SELECT name, settings FROM tenants WHERE id = $1', [req.tenantId]);
+            const currentTenant = currentTenantResult.rows[0];
             const currentSettings = currentTenant?.settings || {};
             const logoVersions = Array.isArray(currentSettings.logoVersions) ? [...currentSettings.logoVersions] : [];
             let newLogoUrl = currentSettings.logoUrl;
@@ -439,10 +447,27 @@ class TenantController {
             delete updateData.subdomain; // Subdomain changes require special handling
             delete updateData.createdAt;
             delete updateData.updatedAt;
-            const updatedTenant = await rawClient.tenant.update({
-                where: { id: req.tenantId },
-                data: updateData,
-            });
+            const setClauses = [];
+            const values = [];
+            let paramIdx = 1;
+            for (const [key, value] of Object.entries(updateData)) {
+                const dbKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+                setClauses.push(`${dbKey} = $${paramIdx}`);
+                values.push(value);
+                paramIdx++;
+            }
+            setClauses.push(`updated_at = NOW()`);
+            values.push(req.tenantId);
+            const tenantIdIdx = paramIdx;
+            let updatedTenant;
+            if (setClauses.length > 1) { // more than just updated_at
+                const updatedTenantResult = await dbpool_1.default.query(`UPDATE tenants SET ${setClauses.join(', ')} WHERE id = $${tenantIdIdx} RETURNING *`, values);
+                updatedTenant = updatedTenantResult.rows[0];
+            }
+            else {
+                const updatedTenantResult = await dbpool_1.default.query(`SELECT * FROM tenants WHERE id = $1`, [req.tenantId]);
+                updatedTenant = updatedTenantResult.rows[0];
+            }
             // Log General Settings transaction if changed
             const beforeSnap = {
                 name: currentTenant?.name,
@@ -476,9 +501,9 @@ class TenantController {
                     id: updatedTenant.id,
                     name: updatedTenant.name,
                     subdomain: updatedTenant.subdomain,
-                    planType: updatedTenant.planType,
-                    maxUsers: updatedTenant.maxUsers,
-                    isActive: updatedTenant.isActive,
+                    planType: updatedTenant.plan_type,
+                    maxUsers: updatedTenant.max_users,
+                    isActive: updatedTenant.is_active,
                     settings: updatedTenant.settings,
                 },
                 message: "Tenant profile updated successfully",
@@ -503,11 +528,8 @@ class TenantController {
                 res.status(400).json({ success: false, error: "Logo URL is required" });
                 return;
             }
-            const rawClient = database_1.tenantAwarePrisma.getRawClient();
-            const tenant = await rawClient.tenant.findUnique({
-                where: { id: req.tenantId },
-                select: { settings: true }
-            });
+            const tenantResult = await dbpool_1.default.query('SELECT settings FROM tenants WHERE id = $1', [req.tenantId]);
+            const tenant = tenantResult.rows[0];
             if (!tenant) {
                 res.status(404).json({ success: false, error: "Tenant not found" });
                 return;
@@ -522,16 +544,11 @@ class TenantController {
                 currentLogoUrl = logoVersions.length > 0 ? logoVersions[0] : null;
             }
             // Update tenant settings
-            await rawClient.tenant.update({
-                where: { id: req.tenantId },
-                data: {
-                    settings: {
-                        ...settings,
-                        logoUrl: currentLogoUrl,
-                        logoVersions: logoVersions
-                    }
-                }
-            });
+            await dbpool_1.default.query('UPDATE tenants SET settings = $1, updated_at = NOW() WHERE id = $2', [{
+                    ...settings,
+                    logoUrl: currentLogoUrl,
+                    logoVersions: logoVersions
+                }, req.tenantId]);
             res.status(200).json({
                 success: true,
                 message: "Logo version deleted successfully",
@@ -555,27 +572,21 @@ class TenantController {
                 });
                 return;
             }
-            const stats = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
-                const [totalUsers, activeUsers, totalProjects, activeProjects, totalTickets, openTickets,] = await Promise.all([
-                    client.user.count({ where: { tenantId: req.tenantId } }),
-                    client.user.count({
-                        where: { tenantId: req.tenantId, isActive: true },
-                    }),
-                    client.project.count({ where: { tenantId: req.tenantId } }),
-                    client.project.count({
-                        where: { tenantId: req.tenantId, status: "active" },
-                    }),
-                    client.ticket.count({ where: { tenantId: req.tenantId } }),
-                    client.ticket.count({
-                        where: { tenantId: req.tenantId, status: "open" },
-                    }),
-                ]);
-                return {
-                    users: { total: totalUsers, active: activeUsers },
-                    projects: { total: totalProjects, active: activeProjects },
-                    tickets: { total: totalTickets, open: openTickets },
-                };
-            });
+            const statsResult = await dbpool_1.default.query(`
+        SELECT 
+          (SELECT COUNT(*)::int FROM users WHERE tenant_id = $1) as total_users,
+          (SELECT COUNT(*)::int FROM users WHERE tenant_id = $1 AND is_active = true) as active_users,
+          (SELECT COUNT(*)::int FROM projects WHERE tenant_id = $1) as total_projects,
+          (SELECT COUNT(*)::int FROM projects WHERE tenant_id = $1 AND status = 'active') as active_projects,
+          (SELECT COUNT(*)::int FROM tickets WHERE tenant_id = $1) as total_tickets,
+          (SELECT COUNT(*)::int FROM tickets WHERE tenant_id = $1 AND status = 'open') as open_tickets
+      `, [req.tenantId]);
+            const statsRow = statsResult.rows[0];
+            const stats = {
+                users: { total: statsRow.total_users, active: statsRow.active_users },
+                projects: { total: statsRow.total_projects, active: statsRow.active_projects },
+                tickets: { total: statsRow.total_tickets, open: statsRow.open_tickets },
+            };
             res.status(200).json({
                 success: true,
                 data: stats,
@@ -630,14 +641,11 @@ class TenantController {
                 });
                 return;
             }
-            const rawClient = database_1.tenantAwarePrisma.getRawClient();
-            const existingTenant = await rawClient.tenant.findUnique({
-                where: { subdomain: subdomain.toLowerCase() },
-            });
+            const existingTenantResult = await dbpool_1.default.query('SELECT 1 FROM tenants WHERE subdomain = $1 LIMIT 1', [subdomain.toLowerCase()]);
             res.status(200).json({
                 success: true,
                 data: {
-                    available: !existingTenant,
+                    available: existingTenantResult.rows.length === 0,
                     subdomain: subdomain.toLowerCase(),
                 },
             });
@@ -670,18 +678,15 @@ class TenantController {
                 });
                 return;
             }
-            const rawClient = database_1.tenantAwarePrisma.getRawClient();
-            const updatedTenant = await rawClient.tenant.update({
-                where: { id: tenantId },
-                data: { isActive: false, updatedAt: new Date() },
-            });
+            const updatedTenantResult = await dbpool_1.default.query('UPDATE tenants SET is_active = false, updated_at = NOW() WHERE id = $1 RETURNING id, name, subdomain, is_active', [tenantId]);
+            const updatedTenant = updatedTenantResult.rows[0];
             res.status(200).json({
                 success: true,
                 data: {
                     id: updatedTenant.id,
                     name: updatedTenant.name,
                     subdomain: updatedTenant.subdomain,
-                    isActive: updatedTenant.isActive,
+                    isActive: updatedTenant.is_active,
                 },
                 message: "Tenant deactivated successfully",
             });
@@ -714,18 +719,15 @@ class TenantController {
                 });
                 return;
             }
-            const rawClient = database_1.tenantAwarePrisma.getRawClient();
-            const updatedTenant = await rawClient.tenant.update({
-                where: { id: tenantId },
-                data: { isActive: true, updatedAt: new Date() },
-            });
+            const updatedTenantResult = await dbpool_1.default.query('UPDATE tenants SET is_active = true, updated_at = NOW() WHERE id = $1 RETURNING id, name, subdomain, is_active', [tenantId]);
+            const updatedTenant = updatedTenantResult.rows[0];
             res.status(200).json({
                 success: true,
                 data: {
                     id: updatedTenant.id,
                     name: updatedTenant.name,
                     subdomain: updatedTenant.subdomain,
-                    isActive: updatedTenant.isActive,
+                    isActive: updatedTenant.is_active,
                 },
                 message: "Tenant activated successfully",
             });
@@ -735,6 +737,107 @@ class TenantController {
             res.status(500).json({
                 success: false,
                 error: "Failed to activate tenant",
+            });
+        }
+    }
+    /**
+     * Get all tenants with their web inquiry secret keys
+     * Requires super_admin access
+     */
+    static async getAllTenants(req, res) {
+        try {
+            const tenantsResult = await dbpool_1.default.query('SELECT id, name, subdomain, web_inquiry_secret_key, plan_type, is_active, created_at FROM tenants ORDER BY created_at DESC');
+            res.status(200).json({
+                success: true,
+                data: tenantsResult.rows,
+            });
+        }
+        catch (error) {
+            console.error("Get all tenants error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to fetch tenants",
+            });
+        }
+    }
+    /**
+     * Generate missing secret keys for all tenants
+     * Requires super_admin access
+     */
+    static async generateMissingSecretKeys(req, res) {
+        try {
+            const crypto = require('crypto');
+            const client = await dbpool_1.default.connect();
+            try {
+                await client.query('BEGIN');
+                // Find tenants without a secret key
+                const missingKeysResult = await client.query("SELECT id, subdomain FROM tenants WHERE web_inquiry_secret_key IS NULL OR web_inquiry_secret_key = ''");
+                let generatedCount = 0;
+                for (const tenant of missingKeysResult.rows) {
+                    const secretKey = `${crypto.randomInt(10000, 100000)}/secretkey/${tenant.subdomain}`;
+                    await client.query("UPDATE tenants SET web_inquiry_secret_key = $1, updated_at = NOW() WHERE id = $2", [secretKey, tenant.id]);
+                    generatedCount++;
+                }
+                await client.query('COMMIT');
+                res.status(200).json({
+                    success: true,
+                    message: `Generated secret keys for ${generatedCount} tenants`,
+                    data: { generatedCount }
+                });
+            }
+            catch (txError) {
+                await client.query('ROLLBACK');
+                throw txError;
+            }
+            finally {
+                client.release();
+            }
+        }
+        catch (error) {
+            console.error("Generate missing secret keys error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to generate missing secret keys",
+            });
+        }
+    }
+    /**
+     * Generate secret key for a specific tenant
+     * Requires super_admin access
+     */
+    static async generateSecretKey(req, res) {
+        try {
+            const { tenantId } = req.params;
+            if (!tenantId) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant ID is required",
+                });
+                return;
+            }
+            const tenantResult = await dbpool_1.default.query("SELECT subdomain FROM tenants WHERE id = $1", [tenantId]);
+            if (tenantResult.rows.length === 0) {
+                res.status(404).json({
+                    success: false,
+                    error: "Tenant not found",
+                });
+                return;
+            }
+            const crypto = require('crypto');
+            const subdomain = tenantResult.rows[0].subdomain;
+            const secretKey = `${crypto.randomInt(10000, 100000)}/secretkey/${subdomain}`;
+            const updateResult = await dbpool_1.default.query("UPDATE tenants SET web_inquiry_secret_key = $1, updated_at = NOW() WHERE id = $2 RETURNING id, name, subdomain, web_inquiry_secret_key", [secretKey, tenantId]);
+            res.status(200).json({
+                success: true,
+                message: "Secret key generated successfully",
+                data: updateResult.rows[0]
+            });
+        }
+        catch (error) {
+            console.error("Generate secret key error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to generate secret key",
             });
         }
     }
