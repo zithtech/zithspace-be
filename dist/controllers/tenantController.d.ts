@@ -35,5 +35,20 @@ export declare class TenantController {
      * Activate tenant (super_admin only)
      */
     static activate(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get all tenants with their web inquiry secret keys
+     * Requires super_admin access
+     */
+    static getAllTenants(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Generate missing secret keys for all tenants
+     * Requires super_admin access
+     */
+    static generateMissingSecretKeys(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Generate secret key for a specific tenant
+     * Requires super_admin access
+     */
+    static generateSecretKey(req: AuthRequest, res: Response): Promise<void>;
 }
 export default TenantController;
