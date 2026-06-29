@@ -18,7 +18,7 @@ router.post(
     // Add permissive CORS for cross-origin website calls
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, x-web-inquiry-key');
     next();
   },
   WebInquiryController.submitInquiry,
@@ -28,7 +28,7 @@ router.post(
 router.options('/:tenantSlug', (req: Request, res: Response) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, x-web-inquiry-key');
   res.sendStatus(204);
 });
 
