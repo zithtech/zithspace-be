@@ -101,13 +101,34 @@ router.get('/statistics', tenantRateLimit, resolveTenant, authenticateToken, req
  * Deactivate a tenant (suspend account)
  * Requires super_admin access
  */
-router.post('/:tenantId/deactivate', tenantRateLimit, authenticateToken, requireSuperAdmin, TenantController.deactivate);
+router.post('/:tenantId/deactivate', tenantRateLimit, resolveTenant, authenticateToken, requireSuperAdmin, TenantController.deactivate);
 
 /**
  * POST /api/tenants/:tenantId/activate
  * Activate a tenant (restore account)
  * Requires super_admin access
  */
-router.post('/:tenantId/activate', tenantRateLimit, authenticateToken, requireSuperAdmin, TenantController.activate);
+router.post('/:tenantId/activate', tenantRateLimit, resolveTenant, authenticateToken, requireSuperAdmin, TenantController.activate);
+
+/**
+ * GET /api/tenants
+ * Get all tenants with their web inquiry secret keys
+ * Requires super_admin access
+ */
+router.get('/', tenantRateLimit, resolveTenant, authenticateToken, requireSuperAdmin, TenantController.getAllTenants);
+
+/**
+ * POST /api/tenants/generate-missing-secrets
+ * Generate missing secret keys for all tenants
+ * Requires super_admin access
+ */
+router.post('/generate-missing-secrets', tenantRateLimit, resolveTenant, authenticateToken, requireSuperAdmin, TenantController.generateMissingSecretKeys);
+
+/**
+ * POST /api/tenants/:tenantId/generate-secret
+ * Generate secret key for a specific tenant
+ * Requires super_admin access
+ */
+router.post('/:tenantId/generate-secret', tenantRateLimit, resolveTenant, authenticateToken, requireSuperAdmin, TenantController.generateSecretKey);
 
 export default router;

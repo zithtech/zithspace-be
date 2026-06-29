@@ -4,6 +4,7 @@ import axios from "axios";
 import { JWTUtils } from "@/utils/jwt";
 import { EmailService } from "@/utils/emailService";
 import pool from "@/config/dbpool";
+import crypto from "crypto";
 
 const emailService = new EmailService();
 
@@ -273,10 +274,10 @@ export class LandingSignupController {
         await client.query("BEGIN");
 
         const tenantResult = await client.query(
-          `INSERT INTO tenants (id, name, subdomain, plan_type, max_users, is_active, is_setup_complete, settings, created_at, updated_at)
-           VALUES (gen_random_uuid(), $1, $2, $3, 10, true, false, '{}', now(), now())
+          `INSERT INTO tenants (id, name, subdomain, plan_type, max_users, is_active, is_setup_complete, settings, web_inquiry_secret_key, created_at, updated_at)
+           VALUES (gen_random_uuid(), $1, $2, $3, 10, true, false, '{}', $4, now(), now())
            RETURNING id`,
-          [tenantName, subdomain, planType]
+          [tenantName, subdomain, planType, `${crypto.randomInt(10000, 100000)}/secretkey/${subdomain}`]
         );
 
         const tenantId = tenantResult.rows[0].id;
@@ -399,10 +400,10 @@ export class LandingSignupController {
 
         // Create Tenant
         const tenantResult = await dbClient.query(
-          `INSERT INTO tenants (id, name, subdomain, plan_type, max_users, is_active, is_setup_complete, settings, created_at, updated_at)
-           VALUES (gen_random_uuid(), $1, $2, $3, 10, true, false, '{}', now(), now())
+          `INSERT INTO tenants (id, name, subdomain, plan_type, max_users, is_active, is_setup_complete, settings, web_inquiry_secret_key, created_at, updated_at)
+           VALUES (gen_random_uuid(), $1, $2, $3, 10, true, false, '{}', $4, now(), now())
            RETURNING id`,
-          [tenantName, subdomain, planType]
+          [tenantName, subdomain, planType, `${crypto.randomInt(10000, 100000)}/secretkey/${subdomain}`]
         );
         const tenantId = tenantResult.rows[0].id;
 
@@ -520,10 +521,10 @@ export class LandingSignupController {
 
         // Create Tenant
         const tenantResult = await dbClient.query(
-          `INSERT INTO tenants (id, name, subdomain, plan_type, max_users, is_active, is_setup_complete, settings, created_at, updated_at)
-           VALUES (gen_random_uuid(), $1, $2, $3, 10, true, false, '{}', now(), now())
+          `INSERT INTO tenants (id, name, subdomain, plan_type, max_users, is_active, is_setup_complete, settings, web_inquiry_secret_key, created_at, updated_at)
+           VALUES (gen_random_uuid(), $1, $2, $3, 10, true, false, '{}', $4, now(), now())
            RETURNING id`,
-          [tenantName, subdomain, planType]
+          [tenantName, subdomain, planType, `${crypto.randomInt(10000, 100000)}/secretkey/${subdomain}`]
         );
         const tenantId = tenantResult.rows[0].id;
 
