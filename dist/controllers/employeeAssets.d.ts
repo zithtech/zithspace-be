@@ -1,69 +1,70 @@
 import { AuthRequest } from "@/types";
-export declare function createEmployeeAssets(req: AuthRequest, employeeId: string, tx?: any): Promise<{
+import { TenantClient } from "@/db/onboardingPool";
+export declare function createEmployeeAssets(req: AuthRequest, employeeId: string, client?: TenantClient): Promise<{
     success: boolean;
     message: string;
 }>;
 export declare function getEmployeeAssets(req: AuthRequest, employeeId: string): Promise<{
-    id: string;
-    item: string;
-    brand: string;
-    model: string;
-    modelNumber: string;
-    image: string;
-    returnStatus: string;
-    condition: string;
-    deduction: number;
-    remarks: string;
-    createdAt: Date;
-    updatedAt: Date;
+    id: any;
+    item: any;
+    brand: any;
+    model: any;
+    modelNumber: any;
+    image: any;
+    returnStatus: any;
+    condition: any;
+    deduction: any;
+    remarks: any;
+    createdAt: any;
+    updatedAt: any;
 }[]>;
 export declare function getSingleEmployeeAsset(req: AuthRequest, employeeId: string, assetId: string): Promise<{
-    id: string;
-    item: string;
-    brand: string;
-    model: string;
-    modelNumber: string;
-    image: string;
-    returnStatus: string;
-    condition: string;
-    deduction: number;
-    remarks: string;
-    createdAt: Date;
-    updatedAt: Date;
+    id: any;
+    item: any;
+    brand: any;
+    model: any;
+    modelNumber: any;
+    image: any;
+    returnStatus: any;
+    condition: any;
+    deduction: any;
+    remarks: any;
+    createdAt: any;
+    updatedAt: any;
 }>;
 export declare function getAllEmployeesAssets(req: AuthRequest): Promise<{
-    id: string;
-    employeeCode: string;
-    firstName: string;
-    lastName: string;
+    id: any;
+    employeeCode: any;
+    firstName: any;
+    lastName: any;
     assets: {
-        id: string;
-        item: string;
-        brand: string;
-        model: string;
-        modelNumber: string;
-        image: string;
-        returnStatus: string;
-        condition: string;
-        deduction: number;
-        remarks: string;
-        createdAt: Date;
+        id: any;
+        item: any;
+        brand: any;
+        model: any;
+        modelNumber: any;
+        image: any;
+        returnStatus: any;
+        condition: any;
+        deduction: any;
+        remarks: any;
+        createdAt: any;
     }[];
 }[]>;
 export declare function updateEmployeeAsset(req: AuthRequest, employeeId: string, assetId: string): Promise<{
     success: boolean;
     message: string;
     asset: {
-        id: string;
-        item: string;
-        brand: string;
-        model: string;
-        modelNumber: string;
-        image: string;
-        returnStatus: string;
-        condition: string;
-        deduction: number;
-        remarks: string;
+        id: any;
+        item: any;
+        brand: any;
+        model: any;
+        modelNumber: any;
+        image: any;
+        returnStatus: any;
+        condition: any;
+        deduction: any;
+        remarks: any;
     };
 }>;
 export declare function updateEmployeeAssets(req: AuthRequest, employeeId: string): Promise<{
@@ -74,7 +75,7 @@ export declare function deleteEmployeeAsset(req: AuthRequest, employeeId: string
     success: boolean;
     message: string;
 }>;
-export declare function deleteAllEmployeeAssets(req: AuthRequest, employeeId: string, tx?: any): Promise<{
+export declare function deleteAllEmployeeAssets(req: AuthRequest, employeeId: string, client?: TenantClient): Promise<{
     success: boolean;
     message: string;
 }>;

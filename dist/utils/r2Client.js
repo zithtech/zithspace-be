@@ -5,6 +5,7 @@ exports.uploadImageToR2 = uploadImageToR2;
 exports.uploadFileToR2 = uploadFileToR2;
 exports.uploadRequisitionAttachmentToR2 = uploadRequisitionAttachmentToR2;
 exports.uploadEmployeeDocumentToR2 = uploadEmployeeDocumentToR2;
+exports.uploadGeneratedReportToR2 = uploadGeneratedReportToR2;
 exports.uploadClientDocumentToR2 = uploadClientDocumentToR2;
 exports.uploadEmployeeAssetToR2 = uploadEmployeeAssetToR2;
 exports.uploadCandidateDocumentToR2 = uploadCandidateDocumentToR2;
@@ -248,6 +249,29 @@ async function uploadEmployeeDocumentToR2(base64File, fileName, tenantId, employ
         console.error("R2 upload error:", error);
         throw new Error(`Failed to upload document: ${error.message}`);
     }
+}
+/**
+ * Upload a generated performance report (PDF) to Cloudflare R2.
+ * Accepts a base64 data URL; returns the public URL + the object key.
+ */
+async function uploadGeneratedReportToR2(base64File, tenantId, userId, periodKey) {
+    const matches = base64File.match(/^data:([^;]+);base64,(.*)$/);
+    if (!matches) {
+        throw new Error("Invalid file format. Expected base64 encoded PDF.");
+    }
+    const contentType = matches[1] || "application/pdf";
+    const buffer = Buffer.from(matches[2], "base64");
+    const key = `${tenantId}/performance-reports/${periodKey}/${userId}_${(0, nanoid_1.nanoid)(8)}.pdf`;
+    await exports.s3Client.send(new client_s3_1.PutObjectCommand({
+        Bucket: exports.BUCKET_NAME,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+    }));
+    const baseUrl = (PUBLIC_URL && !PUBLIC_URL.includes("r2.cloudflarestorage.com")
+        ? PUBLIC_URL
+        : "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev").replace(/\/$/, "");
+    return { url: `${baseUrl}/${key}`, key };
 }
 /**
  * Upload Client V2 document to Cloudflare R2

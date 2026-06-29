@@ -206,6 +206,11 @@ export declare const Permissions: {
     readonly ONBOARDING_DELETE: "onboarding.delete";
     readonly ONBOARDING_SETTING_READ: "onboarding.setting.read";
     readonly ONBOARDING_SETTING_UPDATE: "onboarding.setting.update";
+    readonly PERFORMANCE_REPORT_READ: "performance.report.read";
+    readonly PERFORMANCE_REPORT_SETTING_READ: "performance.report.setting.read";
+    readonly PERFORMANCE_REPORT_SETTING_UPDATE: "performance.report.setting.update";
+    readonly PERFORMANCE_REPORT_GENERATED_READ: "performance.report.generated.read";
+    readonly PERFORMANCE_REPORT_MY_READ: "performance.report.my.read";
     readonly TIMESHEET_CREATE: "timesheet.create";
     readonly TIMESHEET_READ: "timesheet.read";
     readonly TIMESHEET_UPDATE: "timesheet.update";
@@ -253,6 +258,8 @@ export declare const Permissions: {
     readonly LEAD_TRASH_RESTORE: "lead.trash.restore";
     readonly LEAD_TRASH_DELETE: "lead.trash.delete";
     readonly LEAD_MANAGE: "lead.manage";
+    readonly BIDIQ_READ: "bidiq.read";
+    readonly BIDIQ_CREATE: "bidiq.create";
     readonly PROPOSAL_CREATE: "proposal.create";
     readonly PROPOSAL_READ: "proposal.read";
     readonly PROPOSAL_UPDATE: "proposal.update";

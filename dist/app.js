@@ -72,6 +72,7 @@ const escalationStatus_RoutesV2_1 = __importDefault(require("@/routes/escalation
 const escalationPriorities_Routes_1 = __importDefault(require("@/routes/escalationPriorities.Routes"));
 // main
 const onboardingRoutes_1 = __importDefault(require("@/routes/onboardingRoutes"));
+const publicOnboarding_routes_1 = __importDefault(require("@/routes/publicOnboarding.routes"));
 const auth_2 = __importDefault(require("@/routes/auth"));
 const publicTickets_1 = __importDefault(require("@/routes/publicTickets"));
 const publicDocuments_1 = __importDefault(require("@/routes/publicDocuments"));
@@ -110,6 +111,8 @@ const leaveOriginRoutes_1 = __importDefault(require("@/routes/leaveOriginRoutes"
 const emailHistoryRoutes_1 = __importDefault(require("@/routes/emailHistoryRoutes"));
 const leaveRequestRoutes_1 = __importDefault(require("@/routes/leaveRequestRoutes"));
 const leaveBalanceRoutes_1 = __importDefault(require("@/routes/leaveBalanceRoutes"));
+const routes_1 = __importDefault(require("@/modules/leave-v2/routes"));
+const routes_2 = __importDefault(require("@/modules/performance-report/routes"));
 const payroll_1 = __importDefault(require("@/routes/payroll"));
 const reimbursementConfig_1 = __importDefault(require("@/routes/reimbursementConfig"));
 const reimbursementsettingsRoutes_1 = __importDefault(require("@/routes/reimbursementsettingsRoutes"));
@@ -141,8 +144,10 @@ const landing_1 = __importDefault(require("@/routes/landing"));
 const escalationRoutesV2_1 = __importDefault(require("./routes/escalationRoutesV2"));
 const proposals_1 = __importDefault(require("@/routes/proposals"));
 const proposalSections_1 = __importDefault(require("@/routes/proposalSections"));
+const proposalTemplates_1 = __importDefault(require("@/routes/proposalTemplates"));
 const projectOverviewRoutes_1 = __importDefault(require("./routes/projectOverviewRoutes"));
 const socketService_1 = require("@/services/socketService");
+const attendancePool_1 = require("@/db/attendancePool");
 // Load environment
 dotenv_1.default.config();
 console.log("🚀 API Starting up...");
@@ -283,6 +288,7 @@ app.use("/api/calendar", calendar_1.default);
 app.use("/api/squads", squad_1.default);
 app.use("/api/public/tickets", publicTickets_1.default);
 app.use("/api/public/document", publicDocuments_1.default);
+app.use("/api/public/onboarding", publicOnboarding_routes_1.default);
 app.use("/api/client-portal", clientPortal_1.default);
 app.use("/api/portal-tickets", portalTickets_1.default);
 app.use("/api/moms", moms_1.default);
@@ -320,6 +326,7 @@ app.use("/api/invoicesetting", invoiceSettingsRoutes_1.default);
 app.use("/api/invoices", invoice_1.default);
 app.use("/api/proposals", proposals_1.default);
 app.use("/api/proposal-sections", proposalSections_1.default);
+app.use("/api/proposal-templates", proposalTemplates_1.default);
 app.use("/api/invoice-templates", invoiceTemplate_1.default);
 app.use("/api/categories", categoryRoutes_1.default);
 //app.use("/api/invoice",invoicedownload)
@@ -360,6 +367,8 @@ app.use("/api/notifications", notifications_1.default);
 app.use("/api/leave-allocation", leaveAllocationRoutes_1.default);
 app.use("/api/leave-request", leaveRequestRoutes_1.default);
 app.use("/api/leave-balances", leaveBalanceRoutes_1.default);
+app.use("/api/v2/leave", routes_1.default);
+app.use("/api/performance-report", routes_2.default);
 //Escalation
 app.use("/api/escalation-categories", escalationCategoryV2_routes_1.default);
 app.use("/api/escalation-statuses", escalationStatus_RoutesV2_1.default);
@@ -518,6 +527,12 @@ const startServer = async () => {
         await BidIQModel.initTable();
         const { WebPushSubscriptionModel } = require("./models/WebPushSubscription.model");
         await WebPushSubscriptionModel.initTable();
+        // Employee onboarding invite table (raw-SQL module, idempotent)
+        const { ensureOnboardingSchema } = require("@/db/onboardingSchema");
+        await ensureOnboardingSchema();
+        // Performance Report tables (raw-SQL module, idempotent)
+        const { ensurePerformanceReportSchema } = require("@/modules/performance-report/db/schema");
+        await ensurePerformanceReportSchema();
         // Connect RabbitMQ & Start Workers
         try {
             await RabbitMQService_1.rabbitMQService.connect();
@@ -528,9 +543,12 @@ const startServer = async () => {
         }
         catch (mqError) {
             console.error("❌ RabbitMQ initialization failed:", mqError.message);
-            // In a SaaS environment, we log and continue, 
+            // In a SaaS environment, we log and continue,
             // as the app might still handle HTTP requests while MQ recovers.
         }
+        // Leave 2.0 accrual scheduler + worker (no-op unless LEAVE_ACCRUAL_ENABLED=true)
+        const { initLeaveAccrual } = require("@/modules/leave-v2/jobs");
+        await initLeaveAccrual();
         const PORT = parseInt(process.env.PORT || "5000");
         server = app.listen(PORT, () => {
             // console.log(`Zithmi Backend running on port ${PORT}`);
@@ -563,6 +581,7 @@ const gracefulShutdown = async (signal) => {
         try {
             await (0, database_1.disconnectDatabase)();
             await RabbitMQService_1.rabbitMQService.close();
+            await (0, attendancePool_1.closeAttendancePool)();
             console.log("Database and RabbitMQ connections closed");
         }
         catch (error) {

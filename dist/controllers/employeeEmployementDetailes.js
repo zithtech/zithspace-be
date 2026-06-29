@@ -6,65 +6,87 @@ exports.getAllEmploymentDetails = getAllEmploymentDetails;
 exports.updateEmploymentDetails = updateEmploymentDetails;
 exports.deleteEmploymentDetails = deleteEmploymentDetails;
 exports.deleteProjectMapping = deleteProjectMapping;
-const database_1 = require("@/config/database");
+const onboardingPool_1 = require("@/db/onboardingPool");
+/**
+ * Run `fn` against the supplied tenant-scoped client when the orchestrator is
+ * driving a shared transaction, otherwise open a standalone tenant transaction.
+ * Mirrors the old `tx: any = prisma` default — a no-client call used to run on
+ * the default (non-transactional) Prisma client.
+ */
+async function withClient(req, client, fn) {
+    if (client)
+        return fn(client);
+    return (0, onboardingPool_1.withTenant)(req.tenantId, fn);
+}
+// Coerce a possibly-falsy/invalid value into a Date or null. Mirrors the old
+// `new Date(x)` behavior but avoids inserting "Invalid Date".
+function toDateOrNull(value) {
+    if (!value)
+        return null;
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? null : d;
+}
 // ✅ CREATE Employment Details
-async function createEmploymentDetails(req, employeeId, tx = database_1.prisma) {
+async function createEmploymentDetails(req, employeeId, client) {
     try {
         const { employment } = req.body;
-        await tx.employeeWorkDetail.create({
-            data: {
+        return await withClient(req, client, async (db) => {
+            await db.query(`INSERT INTO employee_work_details
+           (employee_id, position_id, team, employee_type, work_type,
+            hybrid_mode, fixed_days, total_days, total_hours, notice_period,
+            work_joining_date, work_location, work_shift, created_by_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`, [
                 employeeId,
-                positionId: employment.positionId || null,
-                team: employment.team || null,
-                employeeType: employment.employeeType || null,
-                workType: employment.workType || null,
-                hybridMode: employment.hybridMode || null,
-                fixedDays: employment.fixedDays || [],
-                totalDays: employment.totalDays || null,
-                totalHours: employment.totalHours || null,
-                notice_period: employment.noticePeriod || null,
-                // workJoiningDate: employment.employeeJoiningDate
-                //   ? new Date(employment.employeeJoiningDate)
-                //   : null,
-                workJoiningDate: employment.employeeJoiningDate || "",
-                workLocation: employment.workLocation || null,
-                workShift: employment.workShift || null, // Stores the JSON string from frontend
-                createdById: req.user?.id,
-            },
-        });
-        await tx.employeeAdditionalDetail.create({
-            data: {
+                employment.positionId || null,
+                employment.team || null,
+                employment.employeeType || null,
+                employment.workType || null,
+                employment.hybridMode || null,
+                employment.fixedDays || [],
+                employment.totalDays || null,
+                employment.totalHours || null,
+                employment.noticePeriod || null,
+                employment.employeeJoiningDate || "",
+                employment.workLocation || null,
+                employment.workShift ?? null,
+                req.user?.id,
+            ]);
+            await db.query(`INSERT INTO employee_additional_details
+           (id, employee_id, employee_grade, promotion_status, created_by_id, updated_by_id, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, now())`, [
                 employeeId,
-                employeeGrade: employment.employeeGrade || null,
-                promotionStatus: employment.promotionStatus || null,
-                createdById: employeeId,
-                updatedById: employeeId,
-            },
-        });
-        await tx.employeeTimeline.create({
-            data: {
+                employment.employeeGrade || null,
+                employment.promotionStatus || null,
                 employeeId,
-                joiningDate: new Date(employment.joiningDate) || null,
-                //joiningDate: employment.joiningDate,
-                trainingCompletionDate: new Date(employment.trainingCompletion) || null,
-                //trainingCompletionDate: employment.trainingCompletion,
-                createdById: employeeId,
-                updatedById: employeeId,
-            },
-        });
-        await tx.employeeProjectMapping.createMany({
-            data: employment.projects.map((project) => ({
                 employeeId,
-                projectName: project || null,
-                reportingManager: employment.reportingManager || null,
-                createdById: employeeId,
-                updatedById: employeeId,
-            })),
+            ]);
+            await db.query(`INSERT INTO employee_timelines
+           (employee_id, joining_date, training_completion_date, created_by_id, updated_by_id)
+         VALUES ($1, $2, $3, $4, $5)`, [
+                employeeId,
+                toDateOrNull(employment.joiningDate),
+                toDateOrNull(employment.trainingCompletion),
+                employeeId,
+                employeeId,
+            ]);
+            const projects = employment.projects || [];
+            if (projects.length > 0) {
+                const valuesSql = [];
+                const params = [];
+                for (const project of projects) {
+                    const base = params.length;
+                    valuesSql.push(`($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5})`);
+                    params.push(employeeId, project || null, employment.reportingManager || null, employeeId, employeeId);
+                }
+                await db.query(`INSERT INTO employee_project_mappings
+             (employee_id, project_name, reporting_manager, created_by_id, updated_by_id)
+           VALUES ${valuesSql.join(", ")}`, params);
+            }
+            return {
+                success: true,
+                message: "Employment details created successfully",
+            };
         });
-        return {
-            success: true,
-            message: "Employment details created successfully",
-        };
     }
     catch (error) {
         console.error("Error in createEmploymentDetails:", error);
@@ -76,54 +98,62 @@ async function getEmploymentDetails(req, employeeId) {
     try {
         if (!req.user?.id || !req.tenantId)
             throw new Error("Unauthorized");
-        const workDetails = await database_1.prisma.employeeWorkDetail.findFirst({
-            where: { employeeId },
-        });
-        const additionalDetails = await database_1.prisma.employeeAdditionalDetail.findFirst({
-            where: { employeeId },
-        });
-        const timeline = await database_1.prisma.employeeTimeline.findFirst({
-            where: { employeeId },
-        });
-        const projects = await database_1.prisma.employeeProjectMapping.findMany({
-            where: { employeeId },
-        });
-        if (!workDetails) {
-            throw new Error("Employment details not found");
-        }
-        return {
-            positionId: workDetails.positionId,
-            department: workDetails.department,
-            team: workDetails.team,
-            employeeType: workDetails.employeeType,
-            workLocation: workDetails.workLocation,
-            workShift: workDetails.workShift,
-            workType: workDetails.workType || null,
-            hybridMode: workDetails.hybridMode || null,
-            fixedDays: workDetails.fixedDays || [],
-            totalDays: workDetails.totalDays || null,
-            totalHours: workDetails.totalHours || null,
-            noticePeriod: workDetails.notice_period || null,
-            employeeJoiningDate: workDetails.workJoiningDate || null,
-            employeeGrade: additionalDetails?.employeeGrade || null,
-            promotionStatus: additionalDetails?.promotionStatus || null,
-            joiningDate: timeline?.joiningDate || null,
-            trainingCompletion: timeline?.trainingCompletionDate || null,
-            projects: projects.map((p) => p.projectName),
-            reportingManager: await (async () => {
-                const managerId = projects[0]?.reportingManager;
-                if (!managerId)
-                    return null;
+        return await (0, onboardingPool_1.withTenant)(req.tenantId, async (db) => {
+            const [workRes, additionalRes, timelineRes, projectsRes] = await Promise.all([
+                db.query(`SELECT * FROM employee_work_details
+              WHERE employee_id = $1
+              ORDER BY created_at ASC
+              LIMIT 1`, [employeeId]),
+                db.query(`SELECT * FROM employee_additional_details
+              WHERE employee_id = $1
+              ORDER BY created_at ASC
+              LIMIT 1`, [employeeId]),
+                db.query(`SELECT * FROM employee_timelines
+              WHERE employee_id = $1
+              ORDER BY created_at ASC
+              LIMIT 1`, [employeeId]),
+                db.query(`SELECT * FROM employee_project_mappings WHERE employee_id = $1`, [employeeId]),
+            ]);
+            const workDetails = workRes.rows[0];
+            const additionalDetails = additionalRes.rows[0];
+            const timeline = timelineRes.rows[0];
+            const projects = projectsRes.rows;
+            if (!workDetails) {
+                throw new Error("Employment details not found");
+            }
+            let reportingManager = null;
+            const managerId = projects[0]?.reporting_manager;
+            if (managerId) {
                 if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(managerId)) {
-                    const manager = await database_1.prisma.user.findUnique({
-                        where: { id: managerId },
-                        select: { name: true }
-                    });
-                    return manager?.name || managerId;
+                    const managerRes = await db.query(`SELECT name FROM users WHERE id = $1`, [managerId]);
+                    reportingManager = managerRes.rows[0]?.name || managerId;
                 }
-                return managerId;
-            })(),
-        };
+                else {
+                    reportingManager = managerId;
+                }
+            }
+            return {
+                positionId: workDetails.position_id,
+                department: workDetails.department,
+                team: workDetails.team,
+                employeeType: workDetails.employee_type,
+                workLocation: workDetails.work_location,
+                workShift: workDetails.work_shift,
+                workType: workDetails.work_type || null,
+                hybridMode: workDetails.hybrid_mode || null,
+                fixedDays: workDetails.fixed_days || [],
+                totalDays: workDetails.total_days || null,
+                totalHours: workDetails.total_hours || null,
+                noticePeriod: workDetails.notice_period || null,
+                employeeJoiningDate: workDetails.work_joining_date || null,
+                employeeGrade: additionalDetails?.employee_grade || null,
+                promotionStatus: additionalDetails?.promotion_status || null,
+                joiningDate: timeline?.joining_date || null,
+                trainingCompletion: timeline?.training_completion_date || null,
+                projects: projects.map((p) => p.project_name),
+                reportingManager,
+            };
+        });
     }
     catch (error) {
         console.error("Error in getEmploymentDetails:", error);
@@ -135,46 +165,79 @@ async function getAllEmploymentDetails(req) {
         if (!req.user?.id || !req.tenantId) {
             throw new Error("Unauthorized");
         }
-        const employees = await database_1.prisma.employee.findMany({
-            where: {
-                tenantId: req.tenantId,
-                status: true,
-            },
-            include: {
-                workDetail: true,
-                additionalDetails: true,
-                employeeTimeline: true,
-                projectMappings: true,
-            },
-        });
-        return employees.map((employee) => {
-            const latestWorkDetail = employee.workDetail[0] || null;
-            const latestAdditionalDetail = employee.additionalDetails[0] || null;
-            const latestTimeline = employee.employeeTimeline[0] || null;
-            return {
-                id: employee.id,
-                employeeCode: employee.employee_code,
-                firstName: employee.first_name,
-                lastName: employee.last_name,
-                positionId: latestWorkDetail?.positionId || null,
-                team: latestWorkDetail?.team || null,
-                employeeType: latestWorkDetail?.employeeType || null,
-                workLocation: latestWorkDetail?.workLocation || null,
-                workShift: latestWorkDetail?.workShift || null,
-                employeeJoiningDate: latestWorkDetail?.workJoiningDate || null,
-                noticePeriod: latestWorkDetail?.notice_period || null,
-                workType: latestWorkDetail?.workType || null,
-                hybridMode: latestWorkDetail?.hybridMode || null,
-                fixedDays: latestWorkDetail?.fixedDays || [],
-                totalDays: latestWorkDetail?.totalDays || null,
-                totalHours: latestWorkDetail?.totalHours || null,
-                employeeGrade: latestAdditionalDetail?.employeeGrade || null,
-                promotionStatus: latestAdditionalDetail?.promotionStatus || null,
-                joiningDate: latestTimeline?.joiningDate || null,
-                trainingCompletion: latestTimeline?.trainingCompletionDate || null,
-                projects: employee.projectMappings.map((project) => project.projectName),
-                reportingManager: employee.projectMappings[0]?.reportingManager || null,
-            };
+        return await (0, onboardingPool_1.withTenant)(req.tenantId, async (db) => {
+            const employeesRes = await db.query(`SELECT id, employee_code, first_name, last_name
+           FROM employees
+          WHERE tenant_id = $1 AND status = true`, [req.tenantId]);
+            const employees = employeesRes.rows;
+            if (employees.length === 0)
+                return [];
+            const employeeIds = employees.map((e) => e.id);
+            const [workRes, additionalRes, timelineRes, projectsRes] = await Promise.all([
+                db.query(`SELECT * FROM employee_work_details
+              WHERE employee_id = ANY($1::uuid[])
+              ORDER BY created_at ASC`, [employeeIds]),
+                db.query(`SELECT * FROM employee_additional_details
+              WHERE employee_id = ANY($1::uuid[])
+              ORDER BY created_at ASC`, [employeeIds]),
+                db.query(`SELECT * FROM employee_timelines
+              WHERE employee_id = ANY($1::uuid[])
+              ORDER BY created_at ASC`, [employeeIds]),
+                db.query(`SELECT * FROM employee_project_mappings
+              WHERE employee_id = ANY($1::uuid[])`, [employeeIds]),
+            ]);
+            // First-by-created_at-ASC mirrors the previous `[0]` selection.
+            const workByEmp = new Map();
+            for (const w of workRes.rows) {
+                if (!workByEmp.has(w.employee_id))
+                    workByEmp.set(w.employee_id, w);
+            }
+            const additionalByEmp = new Map();
+            for (const a of additionalRes.rows) {
+                if (!additionalByEmp.has(a.employee_id))
+                    additionalByEmp.set(a.employee_id, a);
+            }
+            const timelineByEmp = new Map();
+            for (const t of timelineRes.rows) {
+                if (!timelineByEmp.has(t.employee_id))
+                    timelineByEmp.set(t.employee_id, t);
+            }
+            const projectsByEmp = new Map();
+            for (const p of projectsRes.rows) {
+                const list = projectsByEmp.get(p.employee_id) || [];
+                list.push(p);
+                projectsByEmp.set(p.employee_id, list);
+            }
+            return employees.map((employee) => {
+                const latestWorkDetail = workByEmp.get(employee.id) || null;
+                const latestAdditionalDetail = additionalByEmp.get(employee.id) || null;
+                const latestTimeline = timelineByEmp.get(employee.id) || null;
+                const projectMappings = projectsByEmp.get(employee.id) || [];
+                return {
+                    id: employee.id,
+                    employeeCode: employee.employee_code,
+                    firstName: employee.first_name,
+                    lastName: employee.last_name,
+                    positionId: latestWorkDetail?.position_id || null,
+                    team: latestWorkDetail?.team || null,
+                    employeeType: latestWorkDetail?.employee_type || null,
+                    workLocation: latestWorkDetail?.work_location || null,
+                    workShift: latestWorkDetail?.work_shift || null,
+                    employeeJoiningDate: latestWorkDetail?.work_joining_date || null,
+                    noticePeriod: latestWorkDetail?.notice_period || null,
+                    workType: latestWorkDetail?.work_type || null,
+                    hybridMode: latestWorkDetail?.hybrid_mode || null,
+                    fixedDays: latestWorkDetail?.fixed_days || [],
+                    totalDays: latestWorkDetail?.total_days || null,
+                    totalHours: latestWorkDetail?.total_hours || null,
+                    employeeGrade: latestAdditionalDetail?.employee_grade || null,
+                    promotionStatus: latestAdditionalDetail?.promotion_status || null,
+                    joiningDate: latestTimeline?.joining_date || null,
+                    trainingCompletion: latestTimeline?.training_completion_date || null,
+                    projects: projectMappings.map((project) => project.project_name),
+                    reportingManager: projectMappings[0]?.reporting_manager || null,
+                };
+            });
         });
     }
     catch (error) {
@@ -183,7 +246,7 @@ async function getAllEmploymentDetails(req) {
     }
 }
 // ✅ UPDATE Employment Details
-async function updateEmploymentDetails(req, employeeId, tx = database_1.prisma) {
+async function updateEmploymentDetails(req, employeeId, client) {
     try {
         if (!req.user?.id || !req.tenantId)
             throw new Error("Unauthorized");
@@ -191,134 +254,156 @@ async function updateEmploymentDetails(req, employeeId, tx = database_1.prisma) 
         if (!employment) {
             throw new Error("Employment details are missing from the request body");
         }
-        // Verify employee exists and belongs to tenant
-        const employee = await tx.employee.findFirst({
-            where: {
-                id: employeeId,
-                tenantId: req.tenantId,
-            },
-        });
-        if (!employee) {
-            throw new Error("Employee not found");
-        }
-        // ✅ Update Work Details
-        const existingWorkDetails = await tx.employeeWorkDetail.findFirst({
-            where: { employeeId },
-        });
-        if (existingWorkDetails) {
-            await tx.employeeWorkDetail.update({
-                where: { id: existingWorkDetails.id },
-                data: {
-                    positionId: employment.positionId,
-                    team: employment.team,
-                    employeeType: employment.employeeType,
-                    workLocation: employment.workLocation,
-                    workShift: employment.workShift, // Stores the JSON string from frontend
-                    workType: employment.workType || null,
-                    hybridMode: employment.hybridMode || null,
-                    fixedDays: employment.fixedDays || [],
-                    totalDays: employment.totalDays || null,
-                    totalHours: employment.totalHours || null,
-                    workJoiningDate: employment.employeeJoiningDate || null,
-                    notice_period: employment.noticePeriod || null,
-                    // workJoiningDate: employment.employeeJoiningDate
-                    //   ? new Date(employment.employeeJoiningDate)
-                    //   : null,
-                    updatedById: req.user.id,
-                },
-            });
-        }
-        else {
-            await tx.employeeWorkDetail.create({
-                data: {
+        return await withClient(req, client, async (db) => {
+            const tenantId = req.tenantId;
+            const userId = req.user.id;
+            // Verify employee exists and belongs to tenant
+            const employeeRes = await db.query(`SELECT id FROM employees WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [employeeId, tenantId]);
+            if (!employeeRes.rows[0]) {
+                throw new Error("Employee not found");
+            }
+            // ✅ Update Work Details
+            const existingWorkRes = await db.query(`SELECT id FROM employee_work_details
+          WHERE employee_id = $1
+          ORDER BY created_at ASC
+          LIMIT 1`, [employeeId]);
+            const existingWorkDetails = existingWorkRes.rows[0];
+            if (existingWorkDetails) {
+                await db.query(`UPDATE employee_work_details
+              SET position_id = $1,
+                  team = $2,
+                  employee_type = $3,
+                  work_location = $4,
+                  work_shift = $5,
+                  work_type = $6,
+                  hybrid_mode = $7,
+                  fixed_days = $8,
+                  total_days = $9,
+                  total_hours = $10,
+                  work_joining_date = $11,
+                  notice_period = $12,
+                  updated_by_id = $13,
+                  updated_at = now()
+            WHERE id = $14`, [
+                    employment.positionId,
+                    employment.team,
+                    employment.employeeType,
+                    employment.workLocation,
+                    employment.workShift ?? null,
+                    employment.workType || null,
+                    employment.hybridMode || null,
+                    employment.fixedDays || [],
+                    employment.totalDays || null,
+                    employment.totalHours || null,
+                    employment.employeeJoiningDate || null,
+                    employment.noticePeriod || null,
+                    userId,
+                    existingWorkDetails.id,
+                ]);
+            }
+            else {
+                await db.query(`INSERT INTO employee_work_details
+             (employee_id, position_id, team, employee_type, work_location,
+              work_shift, work_type, hybrid_mode, fixed_days, total_days,
+              total_hours, notice_period, work_joining_date, created_by_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`, [
                     employeeId,
-                    positionId: employment.positionId || null,
-                    team: employment.team || null,
-                    employeeType: employment.employeeType || null,
-                    workLocation: employment.workLocation || null,
-                    workShift: employment.workShift || null,
-                    workType: employment.workType || null,
-                    hybridMode: employment.hybridMode || null,
-                    fixedDays: employment.fixedDays || [],
-                    totalDays: employment.totalDays || null,
-                    totalHours: employment.totalHours || null,
-                    notice_period: employment.noticePeriod || null,
-                    workJoiningDate: employment.employeeJoiningDate
-                        ? employment?.employeeJoiningDate
+                    employment.positionId || null,
+                    employment.team || null,
+                    employment.employeeType || null,
+                    employment.workLocation || null,
+                    employment.workShift ?? null,
+                    employment.workType || null,
+                    employment.hybridMode || null,
+                    employment.fixedDays || [],
+                    employment.totalDays || null,
+                    employment.totalHours || null,
+                    employment.noticePeriod || null,
+                    employment.employeeJoiningDate
+                        ? employment.employeeJoiningDate
                         : null,
-                    createdById: req.user.id,
-                },
-            });
-        }
-        // ✅ Update Additional Details
-        const existingAdditionalDetails = await tx.employeeAdditionalDetail.findFirst({
-            where: { employeeId },
-        });
-        if (existingAdditionalDetails) {
-            await tx.employeeAdditionalDetail.update({
-                where: { id: existingAdditionalDetails.id },
-                data: {
-                    employeeGrade: employment.employeeGrade,
-                    promotionStatus: employment.promotionStatus,
-                    updatedById: employeeId,
-                },
-            });
-        }
-        else {
-            await tx.employeeAdditionalDetail.create({
-                data: {
+                    userId,
+                ]);
+            }
+            // ✅ Update Additional Details
+            const existingAdditionalRes = await db.query(`SELECT id FROM employee_additional_details
+          WHERE employee_id = $1
+          ORDER BY created_at ASC
+          LIMIT 1`, [employeeId]);
+            const existingAdditionalDetails = existingAdditionalRes.rows[0];
+            if (existingAdditionalDetails) {
+                await db.query(`UPDATE employee_additional_details
+              SET employee_grade = $1,
+                  promotion_status = $2,
+                  updated_by_id = $3,
+                  updated_at = now()
+            WHERE id = $4`, [
+                    employment.employeeGrade,
+                    employment.promotionStatus,
                     employeeId,
-                    employeeGrade: employment.employeeGrade,
-                    promotionStatus: employment.promotionStatus,
-                    createdById: employeeId,
-                    updatedById: employeeId,
-                },
-            });
-        }
-        // ✅ Update Timeline
-        const existingTimeline = await tx.employeeTimeline.findFirst({
-            where: { employeeId },
-        });
-        if (existingTimeline) {
-            await tx.employeeTimeline.update({
-                where: { id: existingTimeline.id },
-                data: {
-                    joiningDate: new Date(employment.joiningDate),
-                    trainingCompletionDate: new Date(employment.trainingCompletion),
-                    updatedById: req.user.id,
-                },
-            });
-        }
-        else {
-            await tx.employeeTimeline.create({
-                data: {
+                    existingAdditionalDetails.id,
+                ]);
+            }
+            else {
+                await db.query(`INSERT INTO employee_additional_details
+             (employee_id, employee_grade, promotion_status, created_by_id, updated_by_id)
+           VALUES ($1, $2, $3, $4, $5)`, [
                     employeeId,
-                    joiningDate: new Date(employment.joiningDate),
-                    trainingCompletionDate: new Date(employment.trainingCompletion),
-                    createdById: req.user.id,
-                    updatedById: req.user.id,
-                },
-            });
-        }
-        // ✅ Update Projects (Delete old and create new)
-        await tx.employeeProjectMapping.deleteMany({
-            where: { employeeId },
-        });
-        if (employment.projects && employment.projects.length > 0) {
-            await tx.employeeProjectMapping.createMany({
-                data: employment.projects.map((project) => ({
+                    employment.employeeGrade,
+                    employment.promotionStatus,
                     employeeId,
-                    projectName: project,
-                    reportingManager: employment.reportingManager || null,
-                    createdById: employeeId,
-                    updatedById: employeeId,
-                })),
-            });
-        }
-        return {
-            success: true,
-            message: "Employment details updated successfully",
-        };
+                    employeeId,
+                ]);
+            }
+            // ✅ Update Timeline
+            const existingTimelineRes = await db.query(`SELECT id FROM employee_timelines
+          WHERE employee_id = $1
+          ORDER BY created_at ASC
+          LIMIT 1`, [employeeId]);
+            const existingTimeline = existingTimelineRes.rows[0];
+            if (existingTimeline) {
+                await db.query(`UPDATE employee_timelines
+              SET joining_date = $1,
+                  training_completion_date = $2,
+                  updated_by_id = $3,
+                  updated_at = now()
+            WHERE id = $4`, [
+                    toDateOrNull(employment.joiningDate),
+                    toDateOrNull(employment.trainingCompletion),
+                    userId,
+                    existingTimeline.id,
+                ]);
+            }
+            else {
+                await db.query(`INSERT INTO employee_timelines
+             (employee_id, joining_date, training_completion_date, created_by_id, updated_by_id)
+           VALUES ($1, $2, $3, $4, $5)`, [
+                    employeeId,
+                    toDateOrNull(employment.joiningDate),
+                    toDateOrNull(employment.trainingCompletion),
+                    userId,
+                    userId,
+                ]);
+            }
+            // ✅ Update Projects (Delete old and create new)
+            await db.query(`DELETE FROM employee_project_mappings WHERE employee_id = $1`, [employeeId]);
+            if (employment.projects && employment.projects.length > 0) {
+                const valuesSql = [];
+                const params = [];
+                for (const project of employment.projects) {
+                    const base = params.length;
+                    valuesSql.push(`($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5})`);
+                    params.push(employeeId, project, employment.reportingManager || null, employeeId, employeeId);
+                }
+                await db.query(`INSERT INTO employee_project_mappings
+             (employee_id, project_name, reporting_manager, created_by_id, updated_by_id)
+           VALUES ${valuesSql.join(", ")}`, params);
+            }
+            return {
+                success: true,
+                message: "Employment details updated successfully",
+            };
+        });
     }
     catch (error) {
         console.error("Error in updateEmploymentDetails:", error);
@@ -330,33 +415,22 @@ async function deleteEmploymentDetails(req, employeeId) {
     try {
         if (!req.user?.id || !req.tenantId)
             throw new Error("Unauthorized");
-        // Verify employee exists and belongs to tenant
-        const employee = await database_1.prisma.employee.findFirst({
-            where: {
-                id: employeeId,
-                tenantId: req.tenantId,
-            },
+        return await (0, onboardingPool_1.withTenant)(req.tenantId, async (db) => {
+            // Verify employee exists and belongs to tenant
+            const employeeRes = await db.query(`SELECT id FROM employees WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [employeeId, req.tenantId]);
+            if (!employeeRes.rows[0]) {
+                throw new Error("Employee not found");
+            }
+            // Delete all employment-related records
+            await db.query(`DELETE FROM employee_work_details WHERE employee_id = $1`, [employeeId]);
+            await db.query(`DELETE FROM employee_additional_details WHERE employee_id = $1`, [employeeId]);
+            await db.query(`DELETE FROM employee_timelines WHERE employee_id = $1`, [employeeId]);
+            await db.query(`DELETE FROM employee_project_mappings WHERE employee_id = $1`, [employeeId]);
+            return {
+                success: true,
+                message: "Employment details deleted successfully",
+            };
         });
-        if (!employee) {
-            throw new Error("Employee not found");
-        }
-        // Delete all employment-related records
-        await database_1.prisma.employeeWorkDetail.deleteMany({
-            where: { employeeId },
-        });
-        await database_1.prisma.employeeAdditionalDetail.deleteMany({
-            where: { employeeId },
-        });
-        await database_1.prisma.employeeTimeline.deleteMany({
-            where: { employeeId },
-        });
-        await database_1.prisma.employeeProjectMapping.deleteMany({
-            where: { employeeId },
-        });
-        return {
-            success: true,
-            message: "Employment details deleted successfully",
-        };
     }
     catch (error) {
         console.error("Error in deleteEmploymentDetails:", error);
@@ -368,26 +442,19 @@ async function deleteProjectMapping(req, employeeId, projectName) {
     try {
         if (!req.user?.id || !req.tenantId)
             throw new Error("Unauthorized");
-        // Verify employee exists and belongs to tenant
-        const employee = await database_1.prisma.employee.findFirst({
-            where: {
-                id: employeeId,
-                tenantId: req.tenantId,
-            },
+        return await (0, onboardingPool_1.withTenant)(req.tenantId, async (db) => {
+            // Verify employee exists and belongs to tenant
+            const employeeRes = await db.query(`SELECT id FROM employees WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [employeeId, req.tenantId]);
+            if (!employeeRes.rows[0]) {
+                throw new Error("Employee not found");
+            }
+            await db.query(`DELETE FROM employee_project_mappings
+          WHERE employee_id = $1 AND project_name = $2`, [employeeId, projectName]);
+            return {
+                success: true,
+                message: "Project mapping deleted successfully",
+            };
         });
-        if (!employee) {
-            throw new Error("Employee not found");
-        }
-        await database_1.prisma.employeeProjectMapping.deleteMany({
-            where: {
-                employeeId,
-                projectName,
-            },
-        });
-        return {
-            success: true,
-            message: "Project mapping deleted successfully",
-        };
     }
     catch (error) {
         console.error("Error in deleteProjectMapping:", error);

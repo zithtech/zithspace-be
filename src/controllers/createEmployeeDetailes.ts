@@ -1,8 +1,8 @@
-import { prisma } from "@/config/database";
 import crypto from "crypto";
 
 import { AuthRequest } from "@/types";
 import { uploadEmployeeAssetToR2, deleteFileFromR2 } from "@/utils/r2Client";
+import { withTenant, TenantClient } from "@/db/onboardingPool";
 
 const algorithm = "aes-256-cbc";
 const secretKey = process.env.SECRET_KEY as string; // 32 chars
@@ -49,10 +49,25 @@ export function decrypt(text: string): string {
   }
 }
 
+/**
+ * Run `fn` against the supplied tenant-scoped client when the orchestrator is
+ * driving a shared transaction, otherwise open a standalone tenant transaction.
+ * Mirrors the old `tx: any = prisma` default — a no-client call used to run on
+ * the default (non-transactional) Prisma client.
+ */
+async function withClient<T>(
+  req: AuthRequest,
+  client: TenantClient | undefined,
+  fn: (db: TenantClient) => Promise<T>,
+): Promise<T> {
+  if (client) return fn(client);
+  return withTenant(req.tenantId as string, fn);
+}
+
 export async function createPersonalDetails(
   req: AuthRequest,
-  employeeId?: string,
-  tx: any = prisma,
+  _employeeId?: string,
+  client?: TenantClient,
 ) {
   try {
     if (!req.user?.id || !req.tenantId) throw new Error("Unauthorized");
@@ -63,167 +78,185 @@ export async function createPersonalDetails(
       throw new Error("Personal details are missing from the request body");
     }
 
-    const setting = await tx.employeeSetting.findFirst({
-      where: { tenantId: req.tenantId },
-    });
+    return await withClient(req, client, async (db) => {
+      const userId = req.user!.id;
+      const tenantId = req.tenantId!;
 
-    const prefix = setting?.employeePrefix || "EMP";
+      // Resolve the employee-code prefix for this tenant.
+      const settingRes = await db.query(
+        `SELECT employee_prefix FROM employee_settings WHERE tenant_id = $1 LIMIT 1`,
+        [tenantId],
+      );
+      const prefix = settingRes.rows[0]?.employee_prefix || "EMP";
 
-    const lastEmployee = await tx.employee.findFirst({
-      where: { tenantId: req.tenantId },
-      orderBy: { created_at: "desc" }, // or id if auto increment
-    });
+      // Derive the next sequential employee code.
+      const lastRes = await db.query(
+        `SELECT employee_code FROM employees
+          WHERE tenant_id = $1
+          ORDER BY created_at DESC
+          LIMIT 1`,
+        [tenantId],
+      );
 
-    let nextNumber = 1;
-
-    if (lastEmployee?.employee_code) {
-      const lastCode = lastEmployee.employee_code;
-      const match = lastCode.match(/(\d+)$/);
-      if (match) {
-        nextNumber = parseInt(match[1], 10) + 1;
+      let nextNumber = 1;
+      const lastCode = lastRes.rows[0]?.employee_code;
+      if (lastCode) {
+        const match = lastCode.match(/(\d+)$/);
+        if (match) {
+          nextNumber = parseInt(match[1], 10) + 1;
+        }
       }
-    }
 
-    const formattedNumber = String(nextNumber).padStart(4, "0");
+      // Tenant employee codes are PREFIX-NNNNNN — a fixed 6-digit, zero-padded
+      // sequence (e.g. EMP-000001). The 6-digit width is mandatory.
+      const formattedNumber = String(nextNumber).padStart(6, "0");
+      const employeeCode = `${prefix}-${formattedNumber}`;
 
-    const employeeCode = `${prefix}-${formattedNumber}`;
+      const insertEmployee = await db.query(
+        `INSERT INTO employees
+           (tenant_id, employee_code, first_name, last_name, gender,
+            date_of_birth, blood_group, mobile, work_email, personal_email,
+            status, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, $11)
+         RETURNING *`,
+        [
+          tenantId,
+          employeeCode,
+          personal.firstName || null,
+          personal.lastName || null,
+          personal.gender || null,
+          personal.dob ? new Date(personal.dob) : null,
+          personal.bloodGroup || null,
+          personal.mobile || null,
+          personal.workEmail || null,
+          personal.personalEmail || null,
+          userId,
+        ],
+      );
+      const employee = insertEmployee.rows[0];
 
-    const employee = await tx.employee.create({
-      data: {
-        tenantId: req.tenantId,
-        employee_code: employeeCode,
-        first_name: personal.firstName || null,
-        last_name: personal.lastName || null,
-        gender: personal.gender || null,
-        date_of_birth: new Date(personal.dob) || null,
-
-        blood_group: personal.bloodGroup || null,
-        mobile: personal.mobile || null,
-        work_email: personal.workEmail || null,
-        personal_email: personal.personalEmail || null,
-        status: true,
-        created_by: req.user.id,
-      },
-    });
-
-    // ✅ Handle profile image upload to R2
-    if (personal.profilePic) {
-      let profilePicUrl: string;
-      if (personal.profilePic.startsWith("http")) {
-        profilePicUrl = personal.profilePic;
-      } else {
-        profilePicUrl = await uploadEmployeeAssetToR2({
-          base64: personal.profilePic,
-          fileName: "profile.png", // A default name for profile pictures
-          tenantId: req.tenantId!,
-          employeeId: employee.id,
-          folder: "profile-pictures",
-        });
+      // ✅ Handle profile image upload to R2
+      if (personal.profilePic) {
+        let profilePicUrl: string;
+        if (personal.profilePic.startsWith("http")) {
+          profilePicUrl = personal.profilePic;
+        } else {
+          profilePicUrl = await uploadEmployeeAssetToR2({
+            base64: personal.profilePic,
+            fileName: "profile.png",
+            tenantId,
+            employeeId: employee.id,
+            folder: "profile-pictures",
+          });
+        }
+        const updated = await db.query(
+          `UPDATE employees SET profile_pic = $1, updated_at = now()
+            WHERE id = $2 AND tenant_id = $3
+          RETURNING *`,
+          [profilePicUrl, employee.id, tenantId],
+        );
+        if (updated.rows[0]) employee.profile_pic = updated.rows[0].profile_pic;
       }
-      // Now update the employee with the URL
-      await tx.employee.update({
-        where: { id: employee.id },
-        data: { profile_pic: profilePicUrl },
-      });
-    }
 
-    // ✅ Create addresses
-    let currentAddr = personal.address?.current;
-    let permAddr = personal.address?.permanent;
+      // ✅ Create addresses
+      let currentAddr = personal.address?.current;
+      let permAddr = personal.address?.permanent;
 
-    // Fallback for flat structure if nested address is missing
-    if (!currentAddr && !permAddr) {
-      currentAddr = {
-        c_flat: personal.c_flat || null,
-        c_area: personal.c_area || null,
-        c_city: personal.c_city || null,
-        c_state: personal.c_state || null,
-        c_country: personal.c_country || null,
-        c_pincode: personal.c_pincode || null,
-      };
-      permAddr = {
-        p_flat: personal.p_flat || null,
-        p_area: personal.p_area || null,
-        p_city: personal.p_city || null,
-        p_state: personal.p_state || null,
-        p_country: personal.p_country || null,
-        p_pincode: personal.p_pincode || null,
-      };
-    }
+      // Fallback for flat structure if nested address is missing
+      if (!currentAddr && !permAddr) {
+        currentAddr = {
+          c_flat: personal.c_flat || null,
+          c_area: personal.c_area || null,
+          c_city: personal.c_city || null,
+          c_state: personal.c_state || null,
+          c_country: personal.c_country || null,
+          c_pincode: personal.c_pincode || null,
+        };
+        permAddr = {
+          p_flat: personal.p_flat || null,
+          p_area: personal.p_area || null,
+          p_city: personal.p_city || null,
+          p_state: personal.p_state || null,
+          p_country: personal.p_country || null,
+          p_pincode: personal.p_pincode || null,
+        };
+      }
 
-    currentAddr = currentAddr || {};
-    permAddr = permAddr || {};
+      currentAddr = currentAddr || {};
+      permAddr = permAddr || {};
 
-    await tx.employeeAddress.createMany({
-      data: [
-        {
-          employeeId: employee.id,
-          tenantId: req.tenantId,
-          addressType: "CURRENT",
-          doorNo: currentAddr.c_flat || null,
-          area: currentAddr.c_area || null,
-          city: currentAddr.c_city || null,
-          state: currentAddr.c_state || null,
-          country: currentAddr.c_country || null,
-          pincode: currentAddr.c_pincode || null,
-          createdById: req.user.id,
-          updatedById: req.user.id,
-        },
-        {
-          employeeId: employee.id,
-          tenantId: req.tenantId,
-          addressType: "PERMANENT",
-          doorNo: permAddr.p_flat || null,
-          area: permAddr.p_area || null,
-          city: permAddr.p_city || null,
-          state: permAddr.p_state || null,
-          country: permAddr.p_country || null,
-          pincode: permAddr.p_pincode || null,
-          createdById: req.user.id,
-          updatedById: req.user.id,
-        },
-      ],
+      await db.query(
+        `INSERT INTO employee_addresses
+           (id, employee_id, tenant_id, address_type, door_no, area, city, state,
+            country, pincode, created_by_id, updated_by_id, updated_at)
+         VALUES
+           (gen_random_uuid(), $1, $2, 'CURRENT', $3, $4, $5, $6, $7, $8, $9, $9, now()),
+           (gen_random_uuid(), $1, $2, 'PERMANENT', $10, $11, $12, $13, $14, $15, $9, $9, now())`,
+        [
+          employee.id,
+          tenantId,
+          currentAddr.c_flat || null,
+          currentAddr.c_area || null,
+          currentAddr.c_city || null,
+          currentAddr.c_state || null,
+          currentAddr.c_country || null,
+          currentAddr.c_pincode || null,
+          userId,
+          permAddr.p_flat || null,
+          permAddr.p_area || null,
+          permAddr.p_city || null,
+          permAddr.p_state || null,
+          permAddr.p_country || null,
+          permAddr.p_pincode || null,
+        ],
+      );
+
+      // ✅ Create emergency contact
+      if (
+        personal.relationship &&
+        personal.relationName &&
+        personal.relationMobile
+      ) {
+        await db.query(
+          `INSERT INTO employee_emergency_contacts
+             (employee_id, relationship, name, mobile, created_by_id)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [
+            employee.id,
+            personal.relationship || null,
+            personal.relationName || null,
+            personal.relationMobile || null,
+            userId,
+          ],
+        );
+      }
+
+      const encryptedPan = personal.pan ? encrypt(personal.pan) : null;
+      const encryptedAadhaar = personal.aadhaar
+        ? encrypt(personal.aadhaar)
+        : null;
+      const encryptedPassport = personal.passport
+        ? encrypt(personal.passport)
+        : null;
+
+      // ✅ Create identity
+      if (encryptedAadhaar || encryptedPan || encryptedPassport) {
+        await db.query(
+          `INSERT INTO employee_identities
+             (employee_id, aadhaar_number, pan_number, passport_number, created_by_id)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [
+            employee.id,
+            encryptedAadhaar || null,
+            encryptedPan || null,
+            encryptedPassport || null,
+            userId,
+          ],
+        );
+      }
+
+      return employee;
     });
-
-    // ✅ Create emergency contact
-    if (
-      personal.relationship &&
-      personal.relationName &&
-      personal.relationMobile
-    ) {
-      await tx.employeeEmergencyContact.create({
-        data: {
-          employeeId: employee.id,
-          relationship: personal.relationship || null,
-          name: personal.relationName || null,
-          mobile: personal.relationMobile || null,
-          createdById: req.user.id,
-        },
-      });
-    }
-
-    const encryptedPan = personal.pan ? encrypt(personal.pan) : null;
-    const encryptedAadhaar = personal.aadhaar
-      ? encrypt(personal.aadhaar)
-      : null;
-    const encryptedPassport = personal.passport
-      ? encrypt(personal.passport)
-      : null;
-
-    // ✅ Create identity
-    if (encryptedAadhaar || encryptedPan || encryptedPassport) {
-      await tx.employeeIdentity.create({
-        data: {
-          employeeId: employee.id,
-          aadhaarNumber: encryptedAadhaar || null,
-          panNumber: encryptedPan || null,
-          passportNumber: encryptedPassport || null,
-          createdById: req.user.id,
-        },
-      });
-    }
-
-    return employee;
   } catch (error: any) {
     console.error("Error in createPersonalDetails:", error);
     throw new Error(`Failed to create personal details: ${error.message}`);
@@ -235,133 +268,44 @@ export async function getPersonalDetails(req: AuthRequest, employeeId: string) {
   try {
     if (!req.user?.id || !req.tenantId) throw new Error("Unauthorized");
 
-    const employee = await prisma.employee.findFirst({
-      where: {
-        id: employeeId,
-        tenantId: req.tenantId,
-      },
-      include: {
-        addresses: true,
-        emergencyContacts: true,
-        employeeIdentity: true,
-      },
-    });
-
-    if (!employee) {
-      throw new Error("Employee not found");
-    }
-
-    // Transform data to match the input format
-    const currentAddress = employee.addresses.find(
-      (addr) => addr.addressType === "CURRENT",
-    );
-    const permanentAddress = employee.addresses.find(
-      (addr) => addr.addressType === "PERMANENT",
-    );
-    const emergencyContact = employee.emergencyContacts[0];
-    const identity = Array.isArray(employee.employeeIdentity)
-      ? employee.employeeIdentity[0]
-      : employee.employeeIdentity;
-
-    const personalDetails = {
-      firstName: employee.first_name,
-      lastName: employee.last_name,
-      gender: employee.gender,
-      dob: employee.date_of_birth,
-      profile_pic: (employee as any).profile_pic,
-      bloodGroup: employee.blood_group,
-      mobile: employee.mobile,
-      workEmail: employee.work_email,
-      personalEmail: employee.personal_email,
-      address: {
-        current: currentAddress
-          ? {
-              c_flat: currentAddress.doorNo,
-              c_area: currentAddress.area,
-              c_city: currentAddress.city,
-              c_state: currentAddress.state,
-              c_country: currentAddress.country,
-              c_pincode: currentAddress.pincode,
-            }
-          : {},
-        permanent: permanentAddress
-          ? {
-              p_flat: permanentAddress.doorNo,
-              p_area: permanentAddress.area,
-              p_city: permanentAddress.city,
-              p_state: permanentAddress.state,
-              p_country: permanentAddress.country,
-              p_pincode: permanentAddress.pincode,
-            }
-          : {},
-      },
-      relationship: emergencyContact?.relationship || null,
-      relationName: emergencyContact?.name || null,
-      relationMobile: emergencyContact?.mobile || null,
-      aadhaar: identity?.aadhaarNumber ? decrypt(identity.aadhaarNumber) : null,
-      pan: identity?.panNumber ? decrypt(identity.panNumber) : null,
-      passport: identity?.passportNumber
-        ? decrypt(identity.passportNumber)
-        : null,
-      employee_code: employee.employee_code,
-      status: employee.status,
-    };
-
-    return personalDetails;
-  } catch (error: any) {
-    console.error("Error in getPersonalDetails:", error);
-    throw new Error(`Failed to fetch personal details: ${error.message}`);
-  }
-}
-
-// ✅ GET All Employees (List)
-export async function getAllEmployees(req: AuthRequest) {
-  try {
-    if (!req.user?.id || !req.tenantId) throw new Error("Unauthorized");
-
-    const employees = await prisma.employee.findMany({
-      where: {
-        tenantId: req.tenantId,
-        status: true,
-      },
-      include: {
-        addresses: true,
-        emergencyContacts: true,
-        employeeIdentity: true,
-        workDetail: {
-          include: {
-            position: {
-              include: {
-                department: true
-              }
-            }
-          }
-        }
-      },
-      orderBy: {
-        created_at: "desc",
-      },
-    });
-
-    return employees.map((employee: any) => {
-      const currentAddress = employee.addresses.find(
-        (addr: any) => addr.addressType === "CURRENT",
+    return await withTenant(req.tenantId, async (db) => {
+      const employeeRes = await db.query(
+        `SELECT * FROM employees WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+        [employeeId, req.tenantId],
       );
-      const permanentAddress = employee.addresses.find(
-        (addr: any) => addr.addressType === "PERMANENT",
-      );
-      const emergencyContact = employee.emergencyContacts[0];
-      const identity = Array.isArray(employee.employeeIdentity)
-        ? employee.employeeIdentity[0]
-        : employee.employeeIdentity;
+      const employee = employeeRes.rows[0];
 
-      const latestWorkDetail = employee.workDetail?.[0];
+      if (!employee) {
+        throw new Error("Employee not found");
+      }
+
+      const [addressesRes, emergencyRes, identityRes] = await Promise.all([
+        db.query(
+          `SELECT * FROM employee_addresses WHERE employee_id = $1`,
+          [employeeId],
+        ),
+        db.query(
+          `SELECT * FROM employee_emergency_contacts WHERE employee_id = $1 LIMIT 1`,
+          [employeeId],
+        ),
+        db.query(
+          `SELECT * FROM employee_identities WHERE employee_id = $1 LIMIT 1`,
+          [employeeId],
+        ),
+      ]);
+
+      const currentAddress = addressesRes.rows.find(
+        (addr: any) => addr.address_type === "CURRENT",
+      );
+      const permanentAddress = addressesRes.rows.find(
+        (addr: any) => addr.address_type === "PERMANENT",
+      );
+      const emergencyContact = emergencyRes.rows[0];
+      const identity = identityRes.rows[0];
 
       return {
-        id: employee.id,
         firstName: employee.first_name,
         lastName: employee.last_name,
-        name: `${employee.first_name} ${employee.last_name}`,
         gender: employee.gender,
         dob: employee.date_of_birth,
         profile_pic: employee.profile_pic,
@@ -369,13 +313,10 @@ export async function getAllEmployees(req: AuthRequest) {
         mobile: employee.mobile,
         workEmail: employee.work_email,
         personalEmail: employee.personal_email,
-        departmentId: latestWorkDetail?.position?.departmentId || null,
-        departmentName: latestWorkDetail?.position?.department?.name || null,
-        positionTitle: latestWorkDetail?.position?.title || null,
         address: {
           current: currentAddress
             ? {
-                c_flat: currentAddress.doorNo,
+                c_flat: currentAddress.door_no,
                 c_area: currentAddress.area,
                 c_city: currentAddress.city,
                 c_state: currentAddress.state,
@@ -385,7 +326,7 @@ export async function getAllEmployees(req: AuthRequest) {
             : {},
           permanent: permanentAddress
             ? {
-                p_flat: permanentAddress.doorNo,
+                p_flat: permanentAddress.door_no,
                 p_area: permanentAddress.area,
                 p_city: permanentAddress.city,
                 p_state: permanentAddress.state,
@@ -397,18 +338,157 @@ export async function getAllEmployees(req: AuthRequest) {
         relationship: emergencyContact?.relationship || null,
         relationName: emergencyContact?.name || null,
         relationMobile: emergencyContact?.mobile || null,
-        aadhaar: identity?.aadhaarNumber
-          ? decrypt(identity.aadhaarNumber)
+        aadhaar: identity?.aadhaar_number
+          ? decrypt(identity.aadhaar_number)
           : null,
-        pan: identity?.panNumber ? decrypt(identity.panNumber) : null,
-        passport: identity?.passportNumber
-          ? decrypt(identity.passportNumber)
+        pan: identity?.pan_number ? decrypt(identity.pan_number) : null,
+        passport: identity?.passport_number
+          ? decrypt(identity.passport_number)
           : null,
-        employeeCode: employee.employee_code,
         employee_code: employee.employee_code,
         status: employee.status,
-        created_at: employee.created_at,
       };
+    });
+  } catch (error: any) {
+    console.error("Error in getPersonalDetails:", error);
+    throw new Error(`Failed to fetch personal details: ${error.message}`);
+  }
+}
+
+// ✅ GET All Employees (List)
+export async function getAllEmployees(req: AuthRequest) {
+  try {
+    if (!req.user?.id || !req.tenantId) throw new Error("Unauthorized");
+
+    return await withTenant(req.tenantId, async (db) => {
+      const employeesRes = await db.query(
+        `SELECT * FROM employees
+          WHERE tenant_id = $1 AND status = true
+          ORDER BY created_at DESC`,
+        [req.tenantId],
+      );
+      const employees = employeesRes.rows;
+
+      if (employees.length === 0) return [];
+
+      const employeeIds = employees.map((e: any) => e.id);
+
+      const [addressesRes, emergencyRes, identityRes, workRes] =
+        await Promise.all([
+          db.query(
+            `SELECT * FROM employee_addresses WHERE employee_id = ANY($1::uuid[])`,
+            [employeeIds],
+          ),
+          db.query(
+            `SELECT * FROM employee_emergency_contacts WHERE employee_id = ANY($1::uuid[])`,
+            [employeeIds],
+          ),
+          db.query(
+            `SELECT * FROM employee_identities WHERE employee_id = ANY($1::uuid[])`,
+            [employeeIds],
+          ),
+          db.query(
+            `SELECT wd.employee_id, wd.position_id, wd.created_at,
+                    p.title AS position_title,
+                    p.department_id,
+                    d.name AS department_name
+               FROM employee_work_details wd
+               LEFT JOIN positions p ON p.id = wd.position_id
+               LEFT JOIN departments d ON d.id = p.department_id
+              WHERE wd.employee_id = ANY($1::uuid[])
+              ORDER BY wd.created_at ASC`,
+            [employeeIds],
+          ),
+        ]);
+
+      // Index related rows by employee_id for O(1) assembly.
+      const addrByEmp = new Map<string, any[]>();
+      for (const a of addressesRes.rows) {
+        const list = addrByEmp.get(a.employee_id) || [];
+        list.push(a);
+        addrByEmp.set(a.employee_id, list);
+      }
+      const emergencyByEmp = new Map<string, any>();
+      for (const c of emergencyRes.rows) {
+        if (!emergencyByEmp.has(c.employee_id))
+          emergencyByEmp.set(c.employee_id, c);
+      }
+      const identityByEmp = new Map<string, any>();
+      for (const i of identityRes.rows) {
+        if (!identityByEmp.has(i.employee_id))
+          identityByEmp.set(i.employee_id, i);
+      }
+      const workByEmp = new Map<string, any>();
+      for (const w of workRes.rows) {
+        // First by created_at ASC mirrors the previous `workDetail[0]`.
+        if (!workByEmp.has(w.employee_id)) workByEmp.set(w.employee_id, w);
+      }
+
+      return employees.map((employee: any) => {
+        const addresses = addrByEmp.get(employee.id) || [];
+        const currentAddress = addresses.find(
+          (addr: any) => addr.address_type === "CURRENT",
+        );
+        const permanentAddress = addresses.find(
+          (addr: any) => addr.address_type === "PERMANENT",
+        );
+        const emergencyContact = emergencyByEmp.get(employee.id);
+        const identity = identityByEmp.get(employee.id);
+        const latestWorkDetail = workByEmp.get(employee.id);
+
+        return {
+          id: employee.id,
+          firstName: employee.first_name,
+          lastName: employee.last_name,
+          name: `${employee.first_name} ${employee.last_name}`,
+          gender: employee.gender,
+          dob: employee.date_of_birth,
+          profile_pic: employee.profile_pic,
+          bloodGroup: employee.blood_group,
+          mobile: employee.mobile,
+          workEmail: employee.work_email,
+          personalEmail: employee.personal_email,
+          departmentId: latestWorkDetail?.department_id || null,
+          departmentName: latestWorkDetail?.department_name || null,
+          positionTitle: latestWorkDetail?.position_title || null,
+          address: {
+            current: currentAddress
+              ? {
+                  c_flat: currentAddress.door_no,
+                  c_area: currentAddress.area,
+                  c_city: currentAddress.city,
+                  c_state: currentAddress.state,
+                  c_country: currentAddress.country,
+                  c_pincode: currentAddress.pincode,
+                }
+              : {},
+            permanent: permanentAddress
+              ? {
+                  p_flat: permanentAddress.door_no,
+                  p_area: permanentAddress.area,
+                  p_city: permanentAddress.city,
+                  p_state: permanentAddress.state,
+                  p_country: permanentAddress.country,
+                  p_pincode: permanentAddress.pincode,
+                }
+              : {},
+          },
+          relationship: emergencyContact?.relationship || null,
+          relationName: emergencyContact?.name || null,
+          relationMobile: emergencyContact?.mobile || null,
+          aadhaar: identity?.aadhaar_number
+            ? decrypt(identity.aadhaar_number)
+            : null,
+          pan: identity?.pan_number ? decrypt(identity.pan_number) : null,
+          passport: identity?.passport_number
+            ? decrypt(identity.passport_number)
+            : null,
+          employeeCode: employee.employee_code,
+          employee_code: employee.employee_code,
+          status: employee.status,
+          created_at: employee.created_at,
+        };
+      });
     });
   } catch (error: any) {
     console.error("Error in getAllEmployees:", error);
@@ -421,17 +501,14 @@ export async function getUpcomingBirthdays(req: AuthRequest) {
   try {
     if (!req.user?.id || !req.tenantId) throw new Error("Unauthorized");
 
-    const employees = await prisma.employee.findMany({
-      where: {
-        tenantId: req.tenantId,
-        status: true,
-      },
-      select: {
-        id: true,
-        first_name: true,
-        last_name: true,
-        date_of_birth: true,
-      },
+    const employees = await withTenant(req.tenantId, async (db) => {
+      const res = await db.query(
+        `SELECT id, first_name, last_name, date_of_birth
+           FROM employees
+          WHERE tenant_id = $1 AND status = true`,
+        [req.tenantId],
+      );
+      return res.rows;
     });
 
     const today = new Date();
@@ -439,19 +516,18 @@ export async function getUpcomingBirthdays(req: AuthRequest) {
     const currentDate = today.getDate();
 
     const upcomingBirthdays = employees
-      .filter((emp) => {
+      .filter((emp: any) => {
         if (!emp.date_of_birth) return false;
         const dob = new Date(emp.date_of_birth);
-        // Check if birthday is in the current month and is today or upcoming
         return dob.getMonth() === currentMonth && dob.getDate() >= currentDate;
       })
-      .map((emp) => ({
+      .map((emp: any) => ({
         id: emp.id,
         firstName: emp.first_name,
         lastName: emp.last_name,
         dateOfBirth: emp.date_of_birth,
       }))
-      .sort((a, b) => {
+      .sort((a: any, b: any) => {
         const dateA = new Date(a.dateOfBirth!).getDate();
         const dateB = new Date(b.dateOfBirth!).getDate();
         return dateA - dateB;
@@ -468,12 +544,12 @@ export async function getUpcomingBirthdays(req: AuthRequest) {
 export async function updatePersonalDetails(
   req: AuthRequest,
   employeeId: string,
-  tx: any = prisma,
+  client?: TenantClient,
 ) {
   try {
     if (!req.user?.id || !req.tenantId) throw new Error("Unauthorized");
 
-    // ✅ Validate employeeId to prevent Prisma error
+    // ✅ Validate employeeId to prevent invalid query
     if (!employeeId || employeeId === "undefined" || employeeId === "null") {
       throw new Error(
         "Invalid Employee ID provided for update (in createEmployeeDetailes)",
@@ -486,193 +562,221 @@ export async function updatePersonalDetails(
       throw new Error("Personal details are missing from the request body");
     }
 
-    // Verify employee exists and belongs to tenant
-    const existingEmployee = await tx.employee.findFirst({
-      where: {
-        id: employeeId,
-        tenantId: req.tenantId,
-      },
-    });
+    return await withClient(req, client, async (db) => {
+      const userId = req.user!.id;
+      const tenantId = req.tenantId!;
 
-    if (!existingEmployee) {
-      throw new Error("Employee not found");
-    }
+      // Verify employee exists and belongs to tenant
+      const existingRes = await db.query(
+        `SELECT * FROM employees WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+        [employeeId, tenantId],
+      );
+      const existingEmployee = existingRes.rows[0];
 
-    // ✅ Update employee basic info
-
-    const updateData: any = {
-      updated_by: req.user.id,
-    };
-
-    if (personal?.firstName) updateData.first_name = personal.firstName;
-
-    if (personal?.lastName) updateData.last_name = personal.lastName;
-
-    if (personal?.gender) updateData.gender = personal.gender;
-
-    if (personal?.bloodGroup) updateData.blood_group = personal.bloodGroup;
-
-    if (personal?.mobile) updateData.mobile = personal.mobile;
-
-    if (personal?.workEmail) updateData.work_email = personal.workEmail;
-
-    if (personal?.personalEmail)
-      updateData.personal_email = personal.personalEmail;
-
-    if (personal?.dob) {
-      const parsedDate = new Date(personal.dob);
-      if (!isNaN(parsedDate.getTime())) {
-        updateData.date_of_birth = parsedDate;
-      }
-    }
-
-    // ✅ Handle profile image upload
-    if (
-      personal.profilePic &&
-      personal.profilePic !== existingEmployee.profile_pic
-    ) {
-      let newProfilePicUrl: string | null = null;
-      // If it's a new base64 string, upload it
-      if (personal.profilePic.startsWith("data:")) {
-        newProfilePicUrl = await uploadEmployeeAssetToR2({
-          base64: personal.profilePic,
-          fileName: "profile.png",
-          tenantId: req.tenantId!,
-          employeeId: employeeId,
-          folder: "profile-pictures",
-        });
-      } else if (personal.profilePic.startsWith("http")) {
-        // If it's a new URL, use it
-        newProfilePicUrl = personal.profilePic;
+      if (!existingEmployee) {
+        throw new Error("Employee not found");
       }
 
-      if (newProfilePicUrl) {
-        updateData.profile_pic = newProfilePicUrl;
-      }
-    }
-
-    const employee = await tx.employee.update({
-      where: { id: employeeId },
-      data: updateData,
-    });
-
-    // ✅ Update addresses
-    let currentAddr = personal.address?.current;
-    let permAddr = personal.address?.permanent;
-
-    // Fallback for flat structure if nested address is missing
-    if (!currentAddr && !permAddr) {
-      currentAddr = {
-        c_flat: personal.c_flat,
-        c_area: personal.c_area,
-        c_city: personal.c_city,
-        c_state: personal.c_state,
-        c_country: personal.c_country,
-        c_pincode: personal.c_pincode,
+      // ✅ Build dynamic update for employee basic info
+      const sets: string[] = [];
+      const params: any[] = [];
+      const push = (col: string, val: any) => {
+        params.push(val);
+        sets.push(`${col} = $${params.length}`);
       };
-      permAddr = {
-        p_flat: personal.p_flat,
-        p_area: personal.p_area,
-        p_city: personal.p_city,
-        p_state: personal.p_state,
-        p_country: personal.p_country,
-        p_pincode: personal.p_pincode,
-      };
-    }
 
-    currentAddr = currentAddr || {};
-    permAddr = permAddr || {};
+      params.push(userId);
+      sets.push(`updated_by = $${params.length}`);
 
-    // Delete existing addresses and create new ones
-    await tx.employeeAddress.deleteMany({
-      where: { employeeId: employeeId },
-    });
+      if (personal?.firstName) push("first_name", personal.firstName);
+      if (personal?.lastName) push("last_name", personal.lastName);
+      if (personal?.gender) push("gender", personal.gender);
+      if (personal?.bloodGroup) push("blood_group", personal.bloodGroup);
+      if (personal?.mobile) push("mobile", personal.mobile);
+      if (personal?.workEmail) push("work_email", personal.workEmail);
+      if (personal?.personalEmail) push("personal_email", personal.personalEmail);
 
-    await tx.employeeAddress.createMany({
-      data: [
-        {
-          employeeId: employee.id,
-          tenantId: req.tenantId,
-          addressType: "CURRENT",
-          doorNo: currentAddr.c_flat,
-          area: currentAddr.c_area,
-          city: currentAddr.c_city,
-          state: currentAddr.c_state,
-          country: currentAddr.c_country,
-          pincode: currentAddr.c_pincode,
-          createdById: req.user.id,
-          updatedById: req.user.id,
-        },
-        {
-          employeeId: employee.id,
-          tenantId: req.tenantId,
-          addressType: "PERMANENT",
-          doorNo: permAddr.p_flat,
-          area: permAddr.p_area,
-          city: permAddr.p_city,
-          state: permAddr.p_state,
-          country: permAddr.p_country,
-          pincode: permAddr.p_pincode,
-          createdById: req.user.id,
-          updatedById: req.user.id,
-        },
-      ],
-    });
-
-    // ✅ Update emergency contact
-    await tx.employeeEmergencyContact.deleteMany({
-      where: { employeeId: employeeId },
-    });
-
-    if (
-      personal.relationship &&
-      personal.relationName &&
-      personal.relationMobile
-    ) {
-      await tx.employeeEmergencyContact.create({
-        data: {
-          employeeId: employee.id,
-          relationship: personal.relationship,
-          name: personal.relationName,
-          mobile: personal.relationMobile,
-          createdById: req.user.id,
-        },
-      });
-    }
-
-    // ✅ Update identity
-    const existingIdentity = await tx.employeeIdentity.findFirst({
-      where: { employeeId: employeeId },
-    });
-
-    if (existingIdentity) {
-      const identityUpdateData: any = {
-        updatedById: req.user.id,
-      };
-      if (personal.aadhaar !== undefined) identityUpdateData.aadhaarNumber = personal.aadhaar ? encrypt(personal.aadhaar) : null;
-      if (personal.pan !== undefined) identityUpdateData.panNumber = personal.pan ? encrypt(personal.pan) : null;
-      if (personal.passport !== undefined) identityUpdateData.passportNumber = personal.passport ? encrypt(personal.passport) : null;
-
-      // Only update if there are fields to update (besides updatedById)
-      if (Object.keys(identityUpdateData).length > 1) {
-        await tx.employeeIdentity.update({
-          where: { id: existingIdentity.id },
-          data: identityUpdateData,
-        });
+      if (personal?.dob) {
+        const parsedDate = new Date(personal.dob);
+        if (!isNaN(parsedDate.getTime())) {
+          push("date_of_birth", parsedDate);
+        }
       }
-    } else if (personal.aadhaar || personal.pan) {
-      await tx.employeeIdentity.create({
-        data: {
-          employeeId: employee.id,
-          aadhaarNumber: personal.aadhaar ? encrypt(personal.aadhaar) : null,
-          panNumber: personal.pan ? encrypt(personal.pan) : null,
-          passportNumber: personal.passport ? encrypt(personal.passport) : null,
-          createdById: req.user.id,
-        },
-      });
-    }
 
-    return employee;
+      // ✅ Handle profile image upload
+      if (
+        personal.profilePic &&
+        personal.profilePic !== existingEmployee.profile_pic
+      ) {
+        let newProfilePicUrl: string | null = null;
+        if (personal.profilePic.startsWith("data:")) {
+          newProfilePicUrl = await uploadEmployeeAssetToR2({
+            base64: personal.profilePic,
+            fileName: "profile.png",
+            tenantId,
+            employeeId,
+            folder: "profile-pictures",
+          });
+        } else if (personal.profilePic.startsWith("http")) {
+          newProfilePicUrl = personal.profilePic;
+        }
+
+        if (newProfilePicUrl) {
+          push("profile_pic", newProfilePicUrl);
+        }
+      }
+
+      params.push(employeeId);
+      params.push(tenantId);
+      const updateRes = await db.query(
+        `UPDATE employees
+            SET ${sets.join(", ")}, updated_at = now()
+          WHERE id = $${params.length - 1} AND tenant_id = $${params.length}
+        RETURNING *`,
+        params,
+      );
+      const employee = updateRes.rows[0] || existingEmployee;
+
+      // ✅ Update addresses
+      let currentAddr = personal.address?.current;
+      let permAddr = personal.address?.permanent;
+
+      if (!currentAddr && !permAddr) {
+        currentAddr = {
+          c_flat: personal.c_flat,
+          c_area: personal.c_area,
+          c_city: personal.c_city,
+          c_state: personal.c_state,
+          c_country: personal.c_country,
+          c_pincode: personal.c_pincode,
+        };
+        permAddr = {
+          p_flat: personal.p_flat,
+          p_area: personal.p_area,
+          p_city: personal.p_city,
+          p_state: personal.p_state,
+          p_country: personal.p_country,
+          p_pincode: personal.p_pincode,
+        };
+      }
+
+      currentAddr = currentAddr || {};
+      permAddr = permAddr || {};
+
+      // Delete existing addresses and create new ones
+      await db.query(`DELETE FROM employee_addresses WHERE employee_id = $1`, [
+        employeeId,
+      ]);
+
+      await db.query(
+        `INSERT INTO employee_addresses
+           (id, employee_id, tenant_id, address_type, door_no, area, city, state,
+            country, pincode, created_by_id, updated_by_id, updated_at)
+         VALUES
+           (gen_random_uuid(), $1, $2, 'CURRENT', $3, $4, $5, $6, $7, $8, $9, $9, now()),
+           (gen_random_uuid(), $1, $2, 'PERMANENT', $10, $11, $12, $13, $14, $15, $9, $9, now())`,
+        [
+          employeeId,
+          tenantId,
+          currentAddr.c_flat ?? null,
+          currentAddr.c_area ?? null,
+          currentAddr.c_city ?? null,
+          currentAddr.c_state ?? null,
+          currentAddr.c_country ?? null,
+          currentAddr.c_pincode ?? null,
+          userId,
+          permAddr.p_flat ?? null,
+          permAddr.p_area ?? null,
+          permAddr.p_city ?? null,
+          permAddr.p_state ?? null,
+          permAddr.p_country ?? null,
+          permAddr.p_pincode ?? null,
+        ],
+      );
+
+      // ✅ Update emergency contact
+      await db.query(
+        `DELETE FROM employee_emergency_contacts WHERE employee_id = $1`,
+        [employeeId],
+      );
+
+      if (
+        personal.relationship &&
+        personal.relationName &&
+        personal.relationMobile
+      ) {
+        await db.query(
+          `INSERT INTO employee_emergency_contacts
+             (employee_id, relationship, name, mobile, created_by_id)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [
+            employeeId,
+            personal.relationship,
+            personal.relationName,
+            personal.relationMobile,
+            userId,
+          ],
+        );
+      }
+
+      // ✅ Update identity
+      const existingIdentityRes = await db.query(
+        `SELECT * FROM employee_identities WHERE employee_id = $1 LIMIT 1`,
+        [employeeId],
+      );
+      const existingIdentity = existingIdentityRes.rows[0];
+
+      if (existingIdentity) {
+        const idSets: string[] = [];
+        const idParams: any[] = [];
+        const idPush = (col: string, val: any) => {
+          idParams.push(val);
+          idSets.push(`${col} = $${idParams.length}`);
+        };
+
+        idParams.push(userId);
+        idSets.push(`updated_by_id = $${idParams.length}`);
+
+        if (personal.aadhaar !== undefined)
+          idPush(
+            "aadhaar_number",
+            personal.aadhaar ? encrypt(personal.aadhaar) : null,
+          );
+        if (personal.pan !== undefined)
+          idPush("pan_number", personal.pan ? encrypt(personal.pan) : null);
+        if (personal.passport !== undefined)
+          idPush(
+            "passport_number",
+            personal.passport ? encrypt(personal.passport) : null,
+          );
+
+        // Only update if there are fields to update (besides updated_by_id)
+        if (idSets.length > 1) {
+          idParams.push(existingIdentity.id);
+          await db.query(
+            `UPDATE employee_identities
+                SET ${idSets.join(", ")}, updated_at = now()
+              WHERE id = $${idParams.length}`,
+            idParams,
+          );
+        }
+      } else if (personal.aadhaar || personal.pan) {
+        await db.query(
+          `INSERT INTO employee_identities
+             (employee_id, aadhaar_number, pan_number, passport_number, created_by_id)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [
+            employeeId,
+            personal.aadhaar ? encrypt(personal.aadhaar) : null,
+            personal.pan ? encrypt(personal.pan) : null,
+            personal.passport ? encrypt(personal.passport) : null,
+            userId,
+          ],
+        );
+      }
+
+      return employee;
+    });
   } catch (error: any) {
     console.error("Error in updatePersonalDetails:", error);
     throw new Error(`Failed to update personal details: ${error.message}`);
@@ -687,32 +791,30 @@ export async function deletePersonalDetails(
   try {
     if (!req.user?.id || !req.tenantId) throw new Error("Unauthorized");
 
-    // Verify employee exists and belongs to tenant
-    const existingEmployee = await prisma.employee.findFirst({
-      where: {
-        id: employeeId,
-        tenantId: req.tenantId,
-      },
+    return await withTenant(req.tenantId, async (db) => {
+      const existingRes = await db.query(
+        `SELECT id FROM employees WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+        [employeeId, req.tenantId],
+      );
+
+      if (!existingRes.rows[0]) {
+        throw new Error("Employee not found");
+      }
+
+      const updated = await db.query(
+        `UPDATE employees
+            SET status = false, updated_by = $1, updated_at = now()
+          WHERE id = $2 AND tenant_id = $3
+        RETURNING *`,
+        [req.user!.id, employeeId, req.tenantId],
+      );
+
+      return {
+        success: true,
+        message: "Employee deleted successfully",
+        employee: updated.rows[0],
+      };
     });
-
-    if (!existingEmployee) {
-      throw new Error("Employee not found");
-    }
-
-    // Soft delete by setting status to false
-    const employee = await prisma.employee.update({
-      where: { id: employeeId },
-      data: {
-        status: false,
-        updated_by: req.user.id,
-      },
-    });
-
-    return {
-      success: true,
-      message: "Employee deleted successfully",
-      employee,
-    };
   } catch (error: any) {
     console.error("Error in deletePersonalDetails:", error);
     throw new Error(`Failed to delete employee: ${error.message}`);
@@ -727,37 +829,38 @@ export async function hardDeletePersonalDetails(
   try {
     if (!req.user?.id || !req.tenantId) throw new Error("Unauthorized");
 
-    // Verify employee exists and belongs to tenant
-    const existingEmployee = await prisma.employee.findFirst({
-      where: {
-        id: employeeId,
-        tenantId: req.tenantId,
-      },
+    return await withTenant(req.tenantId, async (db) => {
+      const existingRes = await db.query(
+        `SELECT id FROM employees WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+        [employeeId, req.tenantId],
+      );
+
+      if (!existingRes.rows[0]) {
+        throw new Error("Employee not found");
+      }
+
+      // Delete related records first (due to foreign key constraints)
+      await db.query(
+        `DELETE FROM employee_addresses WHERE employee_id = $1`,
+        [employeeId],
+      );
+      await db.query(
+        `DELETE FROM employee_emergency_contacts WHERE employee_id = $1`,
+        [employeeId],
+      );
+      await db.query(
+        `DELETE FROM employee_identities WHERE employee_id = $1`,
+        [employeeId],
+      );
+
+      // Finally delete the employee
+      await db.query(
+        `DELETE FROM employees WHERE id = $1 AND tenant_id = $2`,
+        [employeeId, req.tenantId],
+      );
+
+      return { success: true, message: "Employee permanently deleted" };
     });
-
-    if (!existingEmployee) {
-      throw new Error("Employee not found");
-    }
-
-    // Delete related records first (due to foreign key constraints)
-    await prisma.employeeAddress.deleteMany({
-      where: { employeeId: employeeId },
-    });
-
-    await prisma.employeeEmergencyContact.deleteMany({
-      where: { employeeId: employeeId },
-    });
-
-    await prisma.employeeIdentity.deleteMany({
-      where: { employeeId: employeeId },
-    });
-
-    // Finally delete the employee
-    await prisma.employee.delete({
-      where: { id: employeeId },
-    });
-
-    return { success: true, message: "Employee permanently deleted" };
   } catch (error: any) {
     console.error("Error in hardDeletePersonalDetails:", error);
     throw new Error(`Failed to permanently delete employee: ${error.message}`);

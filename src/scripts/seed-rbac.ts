@@ -220,6 +220,9 @@ const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'lead.trash.delete': 'Permanently delete leads',
   'lead.manage': 'Full lead management including distribution rules',
 
+  'bidiq.read': 'View BidIq analyses and scores',
+  'bidiq.create': 'Run BidIq analysis on leads',
+
   'proposal.create': 'Generate new business proposals',
   'proposal.read': 'View sent and drafted proposals',
   'proposal.update': 'Edit existing proposals',
@@ -280,6 +283,11 @@ const PERMISSION_DESCRIPTIONS: Record<string, string> = {
 
   'performance.read': 'View performance reviews and metrics',
   'performance.manage': 'Manage performance review cycles and settings',
+  'performance.report.read': 'View the Performance Report — Reports page',
+  'performance.report.setting.read': 'View Performance Report — Settings page',
+  'performance.report.setting.update': 'Edit settings and generate Performance Reports',
+  'performance.report.generated.read': 'View the Generated Reports archive',
+  'performance.report.my.read': 'View My Reports (own performance reports)',
 
   'opening.create': 'Post new job openings',
   'opening.read': 'View active job openings',

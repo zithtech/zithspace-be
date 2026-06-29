@@ -227,6 +227,12 @@ exports.Permissions = {
     ONBOARDING_DELETE: 'onboarding.delete',
     ONBOARDING_SETTING_READ: 'onboarding.setting.read',
     ONBOARDING_SETTING_UPDATE: 'onboarding.setting.update',
+    // ─── Performance Report ──────────────────────────────────────────
+    PERFORMANCE_REPORT_READ: 'performance.report.read',
+    PERFORMANCE_REPORT_SETTING_READ: 'performance.report.setting.read',
+    PERFORMANCE_REPORT_SETTING_UPDATE: 'performance.report.setting.update',
+    PERFORMANCE_REPORT_GENERATED_READ: 'performance.report.generated.read',
+    PERFORMANCE_REPORT_MY_READ: 'performance.report.my.read',
     // ─── Timesheet ───────────────────────────────────────────────────
     TIMESHEET_CREATE: 'timesheet.create',
     TIMESHEET_READ: 'timesheet.read',
@@ -279,6 +285,9 @@ exports.Permissions = {
     LEAD_TRASH_RESTORE: 'lead.trash.restore',
     LEAD_TRASH_DELETE: 'lead.trash.delete',
     LEAD_MANAGE: 'lead.manage', // lead distribution rules, source tracking, and conversion triggers
+    // ─── BidIq (AI lead intelligence) ────────────────────────────────
+    BIDIQ_READ: 'bidiq.read', // view the BidIq menu and analysis list
+    BIDIQ_CREATE: 'bidiq.create', // run BidIq analysis on a lead
     // ─── Proposals ───────────────────────────────────────────────────
     PROPOSAL_CREATE: 'proposal.create',
     PROPOSAL_READ: 'proposal.read',
@@ -564,6 +573,13 @@ exports.PERMISSIONS_BY_RESOURCE = {
         exports.Permissions.ONBOARDING_SETTING_READ,
         exports.Permissions.ONBOARDING_SETTING_UPDATE,
     ],
+    performance_report: [
+        exports.Permissions.PERFORMANCE_REPORT_READ,
+        exports.Permissions.PERFORMANCE_REPORT_SETTING_READ,
+        exports.Permissions.PERFORMANCE_REPORT_SETTING_UPDATE,
+        exports.Permissions.PERFORMANCE_REPORT_GENERATED_READ,
+        exports.Permissions.PERFORMANCE_REPORT_MY_READ,
+    ],
     timesheet: [exports.Permissions.TIMESHEET_CREATE, exports.Permissions.TIMESHEET_READ, exports.Permissions.TIMESHEET_UPDATE, exports.Permissions.TIMESHEET_DELETE, exports.Permissions.TIMESHEET_APPROVE, exports.Permissions.TIMESHEET_MANAGE],
     org: [
         exports.Permissions.ORG_DASHBOARD_READ,
@@ -611,6 +627,7 @@ exports.PERMISSIONS_BY_RESOURCE = {
         exports.Permissions.PROPOSAL_UPDATE,
         exports.Permissions.PROPOSAL_DELETE,
     ],
+    bidiq: [exports.Permissions.BIDIQ_READ, exports.Permissions.BIDIQ_CREATE],
     vendor: [exports.Permissions.VENDOR_CREATE, exports.Permissions.VENDOR_READ, exports.Permissions.VENDOR_UPDATE, exports.Permissions.VENDOR_DELETE, exports.Permissions.VENDOR_MANAGE],
     escalation: [exports.Permissions.ESCALATION_CREATE, exports.Permissions.ESCALATION_READ, exports.Permissions.ESCALATION_UPDATE, exports.Permissions.ESCALATION_DELETE, exports.Permissions.ESCALATION_MANAGE],
     pipeline: [

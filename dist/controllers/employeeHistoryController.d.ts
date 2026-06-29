@@ -1,90 +1,98 @@
 import { AuthRequest } from "@/types";
-export declare function createEmployeeHistory(req: AuthRequest, employeeId: string, tx?: any): Promise<{
+import { TenantClient } from "@/db/onboardingPool";
+export declare function createEmployeeHistory(req: AuthRequest, employeeId: string, client?: TenantClient): Promise<{
     success: boolean;
     message: string;
 }>;
 export declare function getEmployeeHistory(req: AuthRequest, employeeId: string): Promise<{
-    id: string;
-    companyName: string;
-    designation: string;
-    employmentType: string;
-    industry: string;
-    location: string;
-    address: string;
-    doj: Date;
-    lwd: Date;
+    id: any;
+    companyName: any;
+    designation: any;
+    employmentType: any;
+    industry: any;
+    location: any;
+    address: any;
+    doj: any;
+    lwd: any;
     experienceLetter: {
-        url: string;
-        id: string;
+        url: any;
+        id: any;
     };
     offerLetter: {
-        url: string;
-        id: string;
+        url: any;
+        id: any;
     };
     serviceLetter: {
-        url: string;
-        id: string;
+        url: any;
+        id: any;
     };
     relievingLetter: {
-        url: string;
-        id: string;
+        url: any;
+        id: any;
     };
     form16: {
-        url: string;
-        id: string;
+        url: any;
+        id: any;
     }[];
     payslips: {
-        url: string;
-        id: string;
+        url: any;
+        id: any;
+    }[];
+    documents: {
+        documentType: string;
+        files: {
+            url: string;
+            id: string;
+        }[];
     }[];
     contacts: {
-        id: string;
-        contactRole: string;
-        contactName: string;
-        contactNumber: string;
-        contactEmail: string;
+        id: any;
+        contactRole: any;
+        contactName: any;
+        contactNumber: any;
+        contactEmail: any;
     }[];
 }[]>;
 export declare function getSingleExperience(req: AuthRequest, employeeId: string, experienceId: string): Promise<{
-    id: string;
-    companyName: string;
-    designation: string;
-    employmentType: string;
-    industry: string;
-    location: string;
-    address: string;
-    doj: Date;
-    lwd: Date;
+    id: any;
+    companyName: any;
+    designation: any;
+    employmentType: any;
+    industry: any;
+    location: any;
+    address: any;
+    doj: any;
+    lwd: any;
     experienceLetter: {
-        url: string;
-        id: string;
+        url: any;
+        id: any;
     };
     offerLetter: {
-        url: string;
-        id: string;
+        url: any;
+        id: any;
     };
     serviceLetter: {
-        url: string;
-        id: string;
+        url: any;
+        id: any;
     };
     relievingLetter: {
-        url: string;
-        id: string;
+        url: any;
+        id: any;
     };
     form16: {
-        url: string;
-        id: string;
+        url: any;
+        id: any;
     }[];
     payslips: {
-        url: string;
-        id: string;
+        url: any;
+        id: any;
     }[];
     contacts: {
-        id: string;
-        contactRole: string;
-        contactName: string;
-        contactNumber: string;
-        contactEmail: string;
+        id: any;
+        contactRole: any;
+        contactName: any;
+        contactNumber: any;
+        contactEmail: any;
     }[];
 }>;
 export declare function updateEmployeeHistory(req: AuthRequest, employeeId: string, experienceId: string): Promise<{
@@ -95,7 +103,7 @@ export declare function deleteEmployeeExperience(req: AuthRequest, employeeId: s
     success: boolean;
     message: string;
 }>;
-export declare function deleteAllEmployeeHistory(req: AuthRequest, employeeId: string, tx?: any): Promise<{
+export declare function deleteAllEmployeeHistory(req: AuthRequest, employeeId: string, client?: TenantClient): Promise<{
     success: boolean;
     message: string;
 }>;

@@ -243,6 +243,13 @@ export const Permissions = {
   ONBOARDING_SETTING_READ: 'onboarding.setting.read',
   ONBOARDING_SETTING_UPDATE: 'onboarding.setting.update',
 
+  // ─── Performance Report ──────────────────────────────────────────
+  PERFORMANCE_REPORT_READ: 'performance.report.read',
+  PERFORMANCE_REPORT_SETTING_READ: 'performance.report.setting.read',
+  PERFORMANCE_REPORT_SETTING_UPDATE: 'performance.report.setting.update',
+  PERFORMANCE_REPORT_GENERATED_READ: 'performance.report.generated.read',
+  PERFORMANCE_REPORT_MY_READ: 'performance.report.my.read',
+
   // ─── Timesheet ───────────────────────────────────────────────────
   TIMESHEET_CREATE: 'timesheet.create',
   TIMESHEET_READ: 'timesheet.read',
@@ -299,6 +306,10 @@ export const Permissions = {
   LEAD_TRASH_RESTORE: 'lead.trash.restore',
   LEAD_TRASH_DELETE: 'lead.trash.delete',
   LEAD_MANAGE: 'lead.manage', // lead distribution rules, source tracking, and conversion triggers
+
+  // ─── BidIq (AI lead intelligence) ────────────────────────────────
+  BIDIQ_READ: 'bidiq.read', // view the BidIq menu and analysis list
+  BIDIQ_CREATE: 'bidiq.create', // run BidIq analysis on a lead
 
   // ─── Proposals ───────────────────────────────────────────────────
   PROPOSAL_CREATE: 'proposal.create',
@@ -603,6 +614,13 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.ONBOARDING_SETTING_READ,
     Permissions.ONBOARDING_SETTING_UPDATE,
   ],
+  performance_report: [
+    Permissions.PERFORMANCE_REPORT_READ,
+    Permissions.PERFORMANCE_REPORT_SETTING_READ,
+    Permissions.PERFORMANCE_REPORT_SETTING_UPDATE,
+    Permissions.PERFORMANCE_REPORT_GENERATED_READ,
+    Permissions.PERFORMANCE_REPORT_MY_READ,
+  ],
   timesheet: [Permissions.TIMESHEET_CREATE, Permissions.TIMESHEET_READ, Permissions.TIMESHEET_UPDATE, Permissions.TIMESHEET_DELETE, Permissions.TIMESHEET_APPROVE, Permissions.TIMESHEET_MANAGE],
   org: [
     Permissions.ORG_DASHBOARD_READ,
@@ -650,6 +668,7 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.PROPOSAL_UPDATE,
     Permissions.PROPOSAL_DELETE,
   ],
+  bidiq: [Permissions.BIDIQ_READ, Permissions.BIDIQ_CREATE],
   vendor: [Permissions.VENDOR_CREATE, Permissions.VENDOR_READ, Permissions.VENDOR_UPDATE, Permissions.VENDOR_DELETE, Permissions.VENDOR_MANAGE],
   escalation: [Permissions.ESCALATION_CREATE, Permissions.ESCALATION_READ, Permissions.ESCALATION_UPDATE, Permissions.ESCALATION_DELETE, Permissions.ESCALATION_MANAGE],
   pipeline: [

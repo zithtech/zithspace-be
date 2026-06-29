@@ -1,6 +1,6 @@
 import { Response } from "express";
-import { prisma } from "@/config/database";
 import { AuthRequest, ApiResponse } from "@/types";
+import { withTenant } from "@/db/onboardingPool";
 
 import {
   createPersonalDetails,
@@ -37,64 +37,63 @@ export class EmployeeOnboardingController {
     try {
       const { personal, employment, bank, history, assets } = req.body;
 
-      const result = await prisma.$transaction(
-        async (tx) => {
-          let employee: any = null;
+      if (!req.tenantId) throw new Error("Unauthorized");
 
-          // 1️⃣ Personal Details (Mandatory)
-          if (personal) {
-            employee = await createPersonalDetails(
-              {
-                ...req,
-                body: { personal },
-              } as AuthRequest,
-              undefined,
-              tx,
-            );
-          } else {
-            throw new Error("Personal details are required to create employee");
-          }
+      const result = await withTenant(req.tenantId, async (client) => {
+        let employee: any = null;
 
-          // 2️⃣ Employment Details (Optional)
-          if (employment) {
-            await createEmploymentDetails(
-              { ...req, body: { employment } } as AuthRequest,
-              employee.id,
-              tx,
-            );
-          }
+        // 1️⃣ Personal Details (Mandatory)
+        if (personal) {
+          employee = await createPersonalDetails(
+            {
+              ...req,
+              body: { personal },
+            } as AuthRequest,
+            undefined,
+            client,
+          );
+        } else {
+          throw new Error("Personal details are required to create employee");
+        }
 
-          // 3️⃣ Bank & Payroll (Optional)
-          if (bank) {
-            await createBankPayrollDetails(
-              { ...req, body: { bank } } as AuthRequest,
-              employee.id,
-              tx,
-            );
-          }
+        // 2️⃣ Employment Details (Optional)
+        if (employment) {
+          await createEmploymentDetails(
+            { ...req, body: { employment } } as AuthRequest,
+            employee.id,
+            client,
+          );
+        }
 
-          // 4️⃣ Employee History (Optional)
-          if (history?.length) {
-            await createEmployeeHistory(
-              { ...req, body: { history } } as AuthRequest,
-              employee.id,
-              tx,
-            );
-          }
+        // 3️⃣ Bank & Payroll (Optional)
+        if (bank) {
+          await createBankPayrollDetails(
+            { ...req, body: { bank } } as AuthRequest,
+            employee.id,
+            client,
+          );
+        }
 
-          // 5️⃣ Assets (Optional)
-          if (assets?.length) {
-            await createEmployeeAssets(
-              { ...req, body: { assets } } as AuthRequest,
-              employee.id,
-              tx,
-            );
-          }
+        // 4️⃣ Employee History (Optional)
+        if (history?.length) {
+          await createEmployeeHistory(
+            { ...req, body: { history } } as AuthRequest,
+            employee.id,
+            client,
+          );
+        }
 
-          return employee;
-        },
-        { timeout: 30000 },
-      );
+        // 5️⃣ Assets (Optional)
+        if (assets?.length) {
+          await createEmployeeAssets(
+            { ...req, body: { assets } } as AuthRequest,
+            employee.id,
+            client,
+          );
+        }
+
+        return employee;
+      });
 
       res.status(201).json({
         success: true,
@@ -198,65 +197,64 @@ export class EmployeeOnboardingController {
 
       const { personal, employment, bank, history, assets } = req.body;
 
-      const result = await prisma.$transaction(
-        async (tx) => {
-          let employee: any = null;
+      if (!req.tenantId) throw new Error("Unauthorized");
 
-          // 1️⃣ Update Personal Details
-          if (personal) {
-            employee = await updatePersonalDetails(
-              { ...req, body: { personal } } as AuthRequest,
+      const result = await withTenant(req.tenantId, async (client) => {
+        let employee: any = null;
+
+        // 1️⃣ Update Personal Details
+        if (personal) {
+          employee = await updatePersonalDetails(
+            { ...req, body: { personal } } as AuthRequest,
+            employeeId,
+            client,
+          );
+        }
+
+        // 2️⃣ Update Employment Details
+        if (employment) {
+          await updateEmploymentDetails(
+            { ...req, body: { employment } } as AuthRequest,
+            employeeId,
+            client,
+          );
+        }
+
+        // 3️⃣ Update Bank & Payroll
+        if (bank) {
+          await updateBankPayrollDetails(
+            { ...req, body: { bank } } as AuthRequest,
+            employeeId,
+            client,
+          );
+        }
+
+        // 4️⃣ Update History (Delete All & Re-create)
+        if (history) {
+          await deleteAllEmployeeHistory(req, employeeId, client);
+          if (history.length > 0) {
+            await createEmployeeHistory(
+              { ...req, body: { history } } as AuthRequest,
               employeeId,
-              tx,
+              client,
             );
           }
+        }
 
-          // 2️⃣ Update Employment Details
-          if (employment) {
-            await updateEmploymentDetails(
-              { ...req, body: { employment } } as AuthRequest,
+        // 5️⃣ Update Assets (Delete All & Re-create)
+        if (assets) {
+          await deleteAllEmployeeAssets(req, employeeId, client);
+          if (assets.length > 0) {
+            await createEmployeeAssets(
+              { ...req, body: { assets } } as AuthRequest,
               employeeId,
-              tx,
+              client,
             );
           }
+        }
 
-          // 3️⃣ Update Bank & Payroll
-          if (bank) {
-            await updateBankPayrollDetails(
-              { ...req, body: { bank } } as AuthRequest,
-              employeeId,
-              tx,
-            );
-          }
-
-          // 4️⃣ Update History (Delete All & Re-create)
-          if (history) {
-            await deleteAllEmployeeHistory(req, employeeId, tx);
-            if (history.length > 0) {
-              await createEmployeeHistory(
-                { ...req, body: { history } } as AuthRequest,
-                employeeId,
-                tx,
-              );
-            }
-          }
-
-          // 5️⃣ Update Assets (Delete All & Re-create)
-          if (assets) {
-            await deleteAllEmployeeAssets(req, employeeId, tx);
-            if (assets.length > 0) {
-              await createEmployeeAssets(
-                { ...req, body: { assets } } as AuthRequest,
-                employeeId,
-                tx,
-              );
-            }
-          }
-
-          return employee;
-        },
-        { timeout: 30000 },
-      );
+        return employee;
+      });
 
       res.status(200).json({
         success: true,

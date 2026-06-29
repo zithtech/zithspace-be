@@ -72,6 +72,7 @@ import escalationPriorityRoutes from "@/routes/escalationPriorities.Routes";
 
 // main
 import employeeOnboardingRoutes from "@/routes/onboardingRoutes";
+import publicOnboardingRoutes from "@/routes/publicOnboarding.routes";
 import newProfileRoutes from "@/routes/auth";
 import publicTicketRoutes from "@/routes/publicTickets";
 import publicDocumentRoutes from "@/routes/publicDocuments";
@@ -113,6 +114,8 @@ import leaveOriginRoutes from "@/routes/leaveOriginRoutes";
 import emailHistoryRoutes from "@/routes/emailHistoryRoutes";
 import leaveRequestRoutes from "@/routes/leaveRequestRoutes";
 import leaveBalanceRoutes from "@/routes/leaveBalanceRoutes";
+import leaveV2Routes from "@/modules/leave-v2/routes";
+import performanceReportRoutes from "@/modules/performance-report/routes";
 import payrollRoutes from "@/routes/payroll";
 import reimbursementConfigurationRoutes from "@/routes/reimbursementConfig";
 import reimbursementsettingsRoutes from "@/routes/reimbursementsettingsRoutes";
@@ -147,8 +150,10 @@ import landingRoutes from "@/routes/landing";
 import escalationRoutesV2 from "./routes/escalationRoutesV2";
 import proposalRoutes from "@/routes/proposals";
 import proposalSectionRoutes from "@/routes/proposalSections";
+import proposalTemplateRoutes from "@/routes/proposalTemplates";
 import projectOverviewRoutes from "./routes/projectOverviewRoutes";
 import { socketService } from "@/services/socketService";
+import { closeAttendancePool } from "@/db/attendancePool";
 // Load environment
 dotenv.config();
 console.log("🚀 API Starting up...");
@@ -315,6 +320,7 @@ app.use("/api/calendar", calendarRoutes);
 app.use("/api/squads", squadRoutes);
 app.use("/api/public/tickets", publicTicketRoutes);
 app.use("/api/public/document", publicDocumentRoutes);
+app.use("/api/public/onboarding", publicOnboardingRoutes);
 app.use("/api/client-portal", clientPortalRoutes);
 app.use("/api/portal-tickets", portalTicketStaffRoutes);
 app.use("/api/moms", momRoutes);
@@ -352,6 +358,7 @@ app.use("/api/invoicesetting", invoiceSettingRoutes);
 app.use("/api/invoices", invoice);
 app.use("/api/proposals", proposalRoutes);
 app.use("/api/proposal-sections", proposalSectionRoutes);
+app.use("/api/proposal-templates", proposalTemplateRoutes);
 app.use("/api/invoice-templates", invoiceTemplate);
 app.use("/api/categories", categoryRoutes);
 //app.use("/api/invoice",invoicedownload)
@@ -395,6 +402,8 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/leave-allocation", leaveAllocationRoutes);
 app.use("/api/leave-request", leaveRequestRoutes);
 app.use("/api/leave-balances", leaveBalanceRoutes);
+app.use("/api/v2/leave", leaveV2Routes);
+app.use("/api/performance-report", performanceReportRoutes);
 
 //Escalation
 app.use("/api/escalation-categories", escalationCategoryRoutes);
@@ -582,18 +591,30 @@ const startServer = async () => {
     const { WebPushSubscriptionModel } = require("./models/WebPushSubscription.model");
     await WebPushSubscriptionModel.initTable();
 
+    // Employee onboarding invite table (raw-SQL module, idempotent)
+    const { ensureOnboardingSchema } = require("@/db/onboardingSchema");
+    await ensureOnboardingSchema();
+
+    // Performance Report tables (raw-SQL module, idempotent)
+    const { ensurePerformanceReportSchema } = require("@/modules/performance-report/db/schema");
+    await ensurePerformanceReportSchema();
+
     // Connect RabbitMQ & Start Workers
     try {
       await rabbitMQService.connect();
-      await CalendarSyncWorker.start();
+      await CalendarSyncWorker.start(); 
       await MailSyncWorker.start();
       // await CentralMailWorker.start();
       console.log("🚀 RabbitMQ connected, Calendar & Mail Sync Workers started");
     } catch (mqError: any) {
       console.error("❌ RabbitMQ initialization failed:", mqError.message);
-      // In a SaaS environment, we log and continue, 
+      // In a SaaS environment, we log and continue,
       // as the app might still handle HTTP requests while MQ recovers.
     }
+
+    // Leave 2.0 accrual scheduler + worker (no-op unless LEAVE_ACCRUAL_ENABLED=true)
+    const { initLeaveAccrual } = require("@/modules/leave-v2/jobs");
+    await initLeaveAccrual();
     const PORT = parseInt(process.env.PORT || "5000");
 
     server = app.listen(PORT, () => {
@@ -636,6 +657,7 @@ const gracefulShutdown = async (signal: string) => {
     try {
       await disconnectDatabase();
       await rabbitMQService.close();
+      await closeAttendancePool();
       console.log("Database and RabbitMQ connections closed");
     } catch (error) {
       console.error("Error closing connections:", error);
