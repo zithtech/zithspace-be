@@ -296,8 +296,6 @@ export declare const Permissions: {
     readonly EXIT_MANAGE: "exit.manage";
     readonly EXIT_CONFIG_READ: "exit.config.read";
     readonly EXIT_CONFIG_UPDATE: "exit.config.update";
-    readonly PERFORMANCE_READ: "performance.read";
-    readonly PERFORMANCE_MANAGE: "performance.manage";
     readonly OPENING_CREATE: "opening.create";
     readonly OPENING_READ: "opening.read";
     readonly OPENING_UPDATE: "opening.update";

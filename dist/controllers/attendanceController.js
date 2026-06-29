@@ -7,6 +7,7 @@ const rbac_service_1 = require("@/modules/rbac/rbac.service");
 const permissions_1 = require("@/types/permissions");
 const socketService_1 = require("@/services/socketService");
 const attendancePool_1 = require("@/db/attendancePool");
+const geolocation_1 = require("@/utils/geolocation");
 const timeTrackingTimer_service_1 = require("@/services/timeTrackingTimer.service");
 // ─────────────────────────────────────────────────────────────────────────────
 // Raw-SQL helpers
@@ -52,6 +53,17 @@ function rowToAttendance(r) {
             : null,
     };
 }
+/** The geolocation captured at session start, or null when none was recorded. */
+function sessionLocation(s) {
+    if (s.clock_in_latitude == null || s.clock_in_longitude == null)
+        return null;
+    return {
+        latitude: s.clock_in_latitude,
+        longitude: s.clock_in_longitude,
+        accuracy: s.clock_in_accuracy ?? null,
+        address: s.clock_in_address ?? null,
+    };
+}
 function mapSession(s) {
     return {
         id: s.id,
@@ -60,6 +72,7 @@ function mapSession(s) {
         workMinutes: s.work_minutes || 0,
         breakType: s.break_type ?? null,
         breakReason: s.break_reason ?? null,
+        location: sessionLocation(s),
     };
 }
 /** Start/end-of-day bounds for a date. */
@@ -151,7 +164,8 @@ class AttendanceController {
                 const ids = rows.map((r) => r.id);
                 const sessionsByAttendance = {};
                 if (ids.length) {
-                    const { rows: srows } = await db.query(`SELECT id, attendance_id, clock_in, clock_out, work_minutes, break_type, break_reason
+                    const { rows: srows } = await db.query(`SELECT id, attendance_id, clock_in, clock_out, work_minutes, break_type, break_reason,
+                    clock_in_latitude, clock_in_longitude, clock_in_accuracy, clock_in_address
              FROM attendance_sessions WHERE attendance_id = ANY($1) ORDER BY clock_in ASC`, [ids]);
                     for (const s of srows) {
                         (sessionsByAttendance[_a = s.attendance_id] || (sessionsByAttendance[_a] = [])).push(mapSession(s));
@@ -169,6 +183,7 @@ class AttendanceController {
                                 workMinutes: att.effectiveWorkMinutes || 0,
                                 breakType: null,
                                 breakReason: null,
+                                location: null,
                             },
                         ];
                     }
@@ -293,8 +308,11 @@ class AttendanceController {
                         await db.query(`UPDATE attendance SET clock_in = $1, status = 'present', updated_at = now() WHERE id = $2`, [now, attendanceId]);
                     }
                 }
-                // Open a new work session for this clock-in.
-                await db.query(`INSERT INTO attendance_sessions (attendance_id, clock_in) VALUES ($1, $2)`, [attendanceId, now]);
+                // Open a new work session for this clock-in, recording where it started.
+                const loc = await (0, geolocation_1.resolveClockInLocation)(req.body);
+                await db.query(`INSERT INTO attendance_sessions
+             (attendance_id, clock_in, clock_in_latitude, clock_in_longitude, clock_in_accuracy, clock_in_address)
+           VALUES ($1, $2, $3, $4, $5, $6)`, [attendanceId, now, loc.latitude, loc.longitude, loc.accuracy, loc.address]);
                 return await AttendanceController.getFormattedTodayAttendance(db, userId, req.tenantId, today);
             });
             socketService_1.socketService.emitToTenant(req.tenantId, "attendance:updated", formatted);
@@ -428,7 +446,10 @@ class AttendanceController {
                     const open = await AttendanceController.getOpenSession(db, attendance);
                     if (open)
                         throw new types_1.ValidationError("You're already clocked in.");
-                    await db.query(`INSERT INTO attendance_sessions (attendance_id, clock_in) VALUES ($1, $2)`, [attendance.id, now]);
+                    const loc = await (0, geolocation_1.resolveClockInLocation)(req.body);
+                    await db.query(`INSERT INTO attendance_sessions
+               (attendance_id, clock_in, clock_in_latitude, clock_in_longitude, clock_in_accuracy, clock_in_address)
+             VALUES ($1, $2, $3, $4, $5, $6)`, [attendance.id, now, loc.latitude, loc.longitude, loc.accuracy, loc.address]);
                 }
                 else {
                     await AttendanceController.finalizeDay(db, attendance);
@@ -542,6 +563,51 @@ class AttendanceController {
         }
         const breaks = Math.max(0, span - effective);
         await db.query(`UPDATE attendance SET effective_work_minutes = $1, total_break_minutes = $2, total_work_minutes = $3, updated_at = now() WHERE id = $4`, [effective, breaks, span, attendanceId]);
+    }
+    /**
+     * Replaces a day's entire work timeline with the given sessions and recomputes
+     * totals + day bounds. Each session is one WORK interval; `breakType`/`reason`
+     * describe the break that FOLLOWS it (the gap to the next session).
+     */
+    static async writeSessions(db, attendanceId, sessions) {
+        if (!Array.isArray(sessions) || sessions.length === 0) {
+            throw new types_1.ValidationError("At least one work interval is required.");
+        }
+        // Normalize + sort ascending by start.
+        const norm = sessions.map((s) => {
+            const start = new Date(s.clockIn);
+            const end = new Date(s.clockOut);
+            if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+                throw new types_1.ValidationError("Every interval needs a valid start and end time.");
+            }
+            if (end.getTime() <= start.getTime()) {
+                throw new types_1.ValidationError("Each interval's end time must be after its start time.");
+            }
+            return {
+                start,
+                end,
+                breakType: s.breakType ?? null,
+                breakReason: s.breakReason ?? null,
+            };
+        });
+        norm.sort((a, b) => a.start.getTime() - b.start.getTime());
+        // No overlaps — each interval must start at/after the previous one's end.
+        for (let k = 1; k < norm.length; k++) {
+            if (norm[k].start.getTime() < norm[k - 1].end.getTime()) {
+                throw new types_1.ValidationError("Work intervals must not overlap.");
+            }
+        }
+        // Full replace of the day's intervals.
+        await db.query(`DELETE FROM attendance_sessions WHERE attendance_id = $1`, [attendanceId]);
+        for (const s of norm) {
+            const minutes = Math.max(0, Math.floor((s.end.getTime() - s.start.getTime()) / 60000));
+            await db.query(`INSERT INTO attendance_sessions
+           (attendance_id, clock_in, clock_out, work_minutes, break_type, break_reason, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, now())`, [attendanceId, s.start, s.end, minutes, s.breakType, s.breakReason]);
+        }
+        await AttendanceController.recompute(db, attendanceId);
+        // Day bounds: first start → last end (the last end IS the clock-out / complete).
+        await db.query(`UPDATE attendance SET clock_in = $1, clock_out = $2, updated_at = now() WHERE id = $3`, [norm[0].start, norm[norm.length - 1].end, attendanceId]);
     }
     /** Closes any open session and marks the day complete. */
     static async finalizeDay(db, attendance) {
@@ -806,10 +872,12 @@ class AttendanceController {
            FROM attendance WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [id, req.tenantId]);
                 if (!ex[0])
                     throw new types_1.NotFoundError("Attendance record not found in this tenant");
-                // Build the SET clause from a whitelist of updatable columns.
+                const hasSessions = Array.isArray(body.sessions) && body.sessions.length > 0;
+                // Build the SET clause from a whitelist of updatable columns. When a
+                // timeline is supplied, writeSessions owns clock_in/clock_out, so those
+                // columns are skipped here.
                 const colMap = {
-                    clockIn: "clock_in",
-                    clockOut: "clock_out",
+                    ...(hasSessions ? {} : { clockIn: "clock_in", clockOut: "clock_out" }),
                     date: "date",
                     status: "status",
                     notes: "notes",
@@ -830,8 +898,12 @@ class AttendanceController {
                 sets.push(`updated_at = now()`);
                 params.push(id);
                 await db.query(`UPDATE attendance SET ${sets.join(", ")} WHERE id = $${++i}`, params);
+                // A full timeline replaces the day's intervals and recomputes totals + bounds.
+                if (hasSessions) {
+                    await AttendanceController.writeSessions(db, id, body.sessions);
+                }
                 // Recalculate work minutes if clock-in or clock-out changed.
-                if (body.clockIn !== undefined || body.clockOut !== undefined) {
+                if (!hasSessions && (body.clockIn !== undefined || body.clockOut !== undefined)) {
                     const finalIn = body.clockIn !== undefined ? new Date(body.clockIn) : ex[0].clockIn;
                     const finalOut = body.clockOut !== undefined ? new Date(body.clockOut) : ex[0].clockOut;
                     if (finalIn && finalOut) {
@@ -851,8 +923,11 @@ class AttendanceController {
         }
         catch (error) {
             console.error("Update attendance error:", error);
-            if (error instanceof types_1.NotFoundError) {
-                res.status(404).json({ success: false, error: error.message });
+            if (error instanceof types_1.NotFoundError || error instanceof types_1.ValidationError) {
+                res.status(error instanceof types_1.NotFoundError ? 404 : 400).json({
+                    success: false,
+                    error: error.message,
+                });
                 return;
             }
             res.status(500).json({
@@ -893,6 +968,90 @@ class AttendanceController {
                 success: false,
                 error: error.message || "Failed to delete attendance record",
             });
+        }
+    }
+    /**
+     * Reopen an accidentally-completed day (tenant-aware, manager action).
+     *
+     * Clears `clock_out` (the "day closed" flag) and opens a fresh work session at
+     * the manager-supplied `resumeAt` time, so the user's day flips back to
+     * "working" and they can continue + complete it properly. Work timers are NOT
+     * auto-resumed (the prior complete stopped them); the user restarts manually.
+     */
+    static async reopenDay(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { id } = req.params;
+            const { resumeAt } = req.body || {};
+            if (!resumeAt) {
+                res.status(400).json({ success: false, error: "resumeAt is required" });
+                return;
+            }
+            const resumeTime = new Date(resumeAt);
+            if (isNaN(resumeTime.getTime())) {
+                res.status(400).json({ success: false, error: "resumeAt is not a valid time" });
+                return;
+            }
+            const result = await (0, attendancePool_1.withTenant)(req.tenantId, async (db) => {
+                const { rows } = await db.query(`SELECT id, user_id AS "userId", date, clock_in AS "clockIn", clock_out AS "clockOut"
+           FROM attendance WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [id, req.tenantId]);
+                const attendance = rows[0] || null;
+                if (!attendance)
+                    throw new types_1.NotFoundError("Attendance record not found in this tenant");
+                if (!attendance.clockOut) {
+                    throw new types_1.ValidationError("This day is not complete, so there's nothing to reopen.");
+                }
+                // The resume point must be at/after the last recorded activity. Compare at
+                // minute granularity so a picker that drops seconds (defaulting to the
+                // clock-out's HH:mm) isn't rejected for landing a few seconds earlier.
+                const toMinute = (d) => Math.floor(d.getTime() / 60000);
+                const lastEnd = new Date(attendance.clockOut);
+                if (toMinute(resumeTime) < toMinute(lastEnd)) {
+                    throw new types_1.ValidationError("Resume time must be at or after the time the day was completed.");
+                }
+                // Reopen: clear the close flag and open a fresh session.
+                await db.query(`UPDATE attendance SET clock_out = NULL, status = 'present', updated_at = now() WHERE id = $1`, [id]);
+                await db.query(`INSERT INTO attendance_sessions (attendance_id, clock_in) VALUES ($1, $2)`, [id, resumeTime]);
+                await AttendanceController.recompute(db, id);
+                // Today → return the live "today" shape so the clock panel updates.
+                const [startOfToday, endOfToday] = dayBounds(new Date());
+                const day = new Date(attendance.date);
+                const isToday = day >= startOfToday && day <= endOfToday;
+                if (isToday) {
+                    return {
+                        formatted: await AttendanceController.getFormattedTodayAttendance(db, attendance.userId, req.tenantId, new Date()),
+                        userId: attendance.userId,
+                    };
+                }
+                const { rows: fresh } = await db.query(`SELECT ${A_COLS}, ${MEMBER_COLS} ${MEMBER_JOINS} WHERE a.id = $1 LIMIT 1`, [id]);
+                return { formatted: rowToAttendance(fresh[0]), userId: attendance.userId };
+            });
+            // Live-sync clients only when the reopened day is today.
+            if (result.formatted?.state) {
+                socketService_1.socketService.emitToTenant(req.tenantId, "attendance:updated", result.formatted);
+            }
+            res.status(200).json({
+                success: true,
+                data: result.formatted,
+                message: "Day reopened",
+            });
+        }
+        catch (error) {
+            console.error("Reopen day error:", error);
+            if (error instanceof types_1.ValidationError || error instanceof types_1.NotFoundError) {
+                res.status(error instanceof types_1.NotFoundError ? 404 : 400).json({
+                    success: false,
+                    error: error.message,
+                });
+                return;
+            }
+            res.status(500).json({ success: false, error: "Failed to reopen day" });
         }
     }
     /**
@@ -969,18 +1128,25 @@ class AttendanceController {
                 const { rows: ex } = await db.query(`SELECT id FROM attendance WHERE user_id = $1 AND tenant_id = $2 AND date >= $3 AND date <= $4 LIMIT 1`, [attendanceData.userId, req.tenantId, startOfDay, endOfDay]);
                 if (ex[0])
                     throw new types_1.ValidationError("Attendance record already exists for this date");
+                const hasSessions = Array.isArray(attendanceData.sessions) && attendanceData.sessions.length > 0;
                 const newId = (0, crypto_1.randomUUID)();
-                await db.query(`INSERT INTO attendance (id, tenant_id, user_id, date, clock_in, clock_out, status, notes, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())`, [
+                await db.query(`INSERT INTO attendance
+             (id, tenant_id, user_id, date, clock_in, clock_out, status, notes, is_manual_entry, entered_by_id, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, $9, now())`, [
                     newId,
                     req.tenantId,
                     attendanceData.userId,
                     startOfDay,
-                    attendanceData.clockIn ? new Date(attendanceData.clockIn) : null,
-                    attendanceData.clockOut ? new Date(attendanceData.clockOut) : null,
+                    // When a timeline is supplied, writeSessions sets the day bounds.
+                    hasSessions ? null : attendanceData.clockIn ? new Date(attendanceData.clockIn) : null,
+                    hasSessions ? null : attendanceData.clockOut ? new Date(attendanceData.clockOut) : null,
                     attendanceData.status || "present",
                     attendanceData.notes ?? null,
+                    req.user.id,
                 ]);
+                if (hasSessions) {
+                    await AttendanceController.writeSessions(db, newId, attendanceData.sessions);
+                }
                 const { rows } = await db.query(`SELECT ${A_COLS}, ${MEMBER_COLS} ${MEMBER_JOINS} WHERE a.id = $1 LIMIT 1`, [newId]);
                 return rowToAttendance(rows[0]);
             });
@@ -1032,7 +1198,9 @@ class AttendanceController {
         const now = new Date();
         let sessionRows = attendance
             ? (await db.query(`SELECT id, clock_in AS "clockIn", clock_out AS "clockOut", work_minutes AS "workMinutes",
-                    break_type AS "breakType", break_reason AS "breakReason"
+                    break_type AS "breakType", break_reason AS "breakReason",
+                    clock_in_latitude AS "latitude", clock_in_longitude AS "longitude",
+                    clock_in_accuracy AS "accuracy", clock_in_address AS "address"
              FROM attendance_sessions WHERE attendance_id = $1 ORDER BY clock_in ASC`, [attendance.id])).rows
             : [];
         // Legacy fallback: a clock-in with no session rows → one virtual session.
@@ -1045,6 +1213,10 @@ class AttendanceController {
                     workMinutes: attendance.effectiveWorkMinutes || 0,
                     breakType: null,
                     breakReason: null,
+                    latitude: null,
+                    longitude: null,
+                    accuracy: null,
+                    address: null,
                 },
             ];
         }
@@ -1082,6 +1254,14 @@ class AttendanceController {
                 : Math.max(0, Math.floor((now.getTime() - new Date(s.clockIn).getTime()) / 60000)),
             breakType: s.breakType ?? null,
             breakReason: s.breakReason ?? null,
+            location: s.latitude != null && s.longitude != null
+                ? {
+                    latitude: s.latitude,
+                    longitude: s.longitude,
+                    accuracy: s.accuracy ?? null,
+                    address: s.address ?? null,
+                }
+                : null,
             isOpen: !s.clockOut,
         }));
         const lastClosed = [...sessionRows].reverse().find((s) => s.clockOut);

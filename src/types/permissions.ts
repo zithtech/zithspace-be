@@ -357,10 +357,6 @@ export const Permissions = {
   EXIT_CONFIG_READ: 'exit.config.read',
   EXIT_CONFIG_UPDATE: 'exit.config.update',
 
-  // ─── Performance ─────────────────────────────────────────────────
-  PERFORMANCE_READ: 'performance.read',
-  PERFORMANCE_MANAGE: 'performance.manage', // review cycle management, goal settings, and appraisal forms
-
   // ─── Job Openings ───────────────────────────────────────────────
   OPENING_CREATE: 'opening.create',
   OPENING_READ: 'opening.read',
@@ -697,7 +693,6 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.EXIT_CONFIG_READ,
     Permissions.EXIT_CONFIG_UPDATE,
   ],
-  performance: [Permissions.PERFORMANCE_READ, Permissions.PERFORMANCE_MANAGE],
   opening: [Permissions.OPENING_CREATE, Permissions.OPENING_READ, Permissions.OPENING_UPDATE, Permissions.OPENING_DELETE, Permissions.OPENING_MANAGE],
   profile: [Permissions.PROFILE_CREATE, Permissions.PROFILE_READ, Permissions.PROFILE_UPDATE, Permissions.PROFILE_DELETE, Permissions.PROFILE_MANAGE],
   system: [

@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import pool from "@/config/dbpool";
 import ClientPortalJWT from "@/utils/clientPortalJwt";
 import { AuthRequest } from "@/types";
+import { getEnabledModuleKeys } from "./clientPortalModuleSettingsController";
 
 const COOKIE_NAME = "clientPortalRefresh";
 const MAX_FAILED = 8;
@@ -230,6 +231,11 @@ export class ClientPortalAuthController {
       return;
     }
 
+    // Which portal pages this client is allowed to see (opt-out model).
+    const enabledModules = row.client_id
+      ? await getEnabledModuleKeys(ctx.tenantId, row.client_id)
+      : [];
+
     res.json({
       success: true,
       data: {
@@ -246,6 +252,7 @@ export class ClientPortalAuthController {
         designation: row.designation,
         mustChangePassword: row.must_change_password,
         lastLoginAt: row.last_login_at,
+        enabledModules,
         client: row.client_id
           ? {
               id: row.client_id,

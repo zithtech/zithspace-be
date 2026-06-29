@@ -23,7 +23,18 @@ function actorReq(tenantId: string, userId: string, body: any): AuthRequest {
   return { user: { id: userId }, tenantId, params: {}, body } as any;
 }
 
-function frontendBase(): string {
+/**
+ * Per-tenant frontend origin for invite links, e.g. https://acme.zukvo.com.
+ * Each tenant has its own subdomain, so the link must point at the tenant's
+ * own host — not a single hardcoded FRONTEND_URL (which would send every new
+ * hire to one tenant's domain). Falls back to FRONTEND_URL for local dev
+ * where there is no subdomain-based routing.
+ */
+function frontendBase(subdomain?: string | null): string {
+  if (subdomain) {
+    const baseDomain = process.env.TENANT_BASE_DOMAIN || "zukvo.com";
+    return `https://${subdomain}.${baseDomain}`;
+  }
   return process.env.FRONTEND_URL || "http://localhost:3000";
 }
 
@@ -126,7 +137,7 @@ export async function createInvite(req: AuthRequest, res: Response) {
       return { employee, invite: invite.rows[0] };
     });
 
-    const link = `${frontendBase()}/onboard/${token}`;
+    const link = `${frontendBase(req.tenant?.subdomain)}/onboard/${token}`;
 
     // Email the link to the new hire at BOTH their work and personal addresses.
     // Best-effort: a mail failure must not fail invite creation.

@@ -246,8 +246,6 @@ const PERMISSION_DESCRIPTIONS = {
     'squad.update': 'Edit squad details',
     'squad.delete': 'Dissolve squads',
     'squad.manage': 'Full squad management',
-    'performance.read': 'View performance reviews and metrics',
-    'performance.manage': 'Manage performance review cycles and settings',
     'performance.report.read': 'View the Performance Report — Reports page',
     'performance.report.setting.read': 'View Performance Report — Settings page',
     'performance.report.setting.update': 'Edit settings and generate Performance Reports',
