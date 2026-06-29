@@ -34,6 +34,12 @@ export declare class AttendanceController {
     private static closeSession;
     /** Recomputes day totals from closed sessions (effective / break / span). */
     private static recompute;
+    /**
+     * Replaces a day's entire work timeline with the given sessions and recomputes
+     * totals + day bounds. Each session is one WORK interval; `breakType`/`reason`
+     * describe the break that FOLLOWS it (the gap to the next session).
+     */
+    private static writeSessions;
     /** Closes any open session and marks the day complete. */
     private static finalizeDay;
     /**
@@ -60,6 +66,15 @@ export declare class AttendanceController {
      * Delete attendance record (tenant-aware)
      */
     static deleteAttendance(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Reopen an accidentally-completed day (tenant-aware, manager action).
+     *
+     * Clears `clock_out` (the "day closed" flag) and opens a fresh work session at
+     * the manager-supplied `resumeAt` time, so the user's day flips back to
+     * "working" and they can continue + complete it properly. Work timers are NOT
+     * auto-resumed (the prior complete stopped them); the user restarts manually.
+     */
+    static reopenDay(req: AuthRequest, res: Response): Promise<void>;
     /**
      * Get last 5 working days average for current user
      */

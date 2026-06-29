@@ -329,9 +329,6 @@ exports.Permissions = {
     EXIT_MANAGE: 'exit.manage', // exit interview templates, clearing checklists, and separation data
     EXIT_CONFIG_READ: 'exit.config.read',
     EXIT_CONFIG_UPDATE: 'exit.config.update',
-    // ─── Performance ─────────────────────────────────────────────────
-    PERFORMANCE_READ: 'performance.read',
-    PERFORMANCE_MANAGE: 'performance.manage', // review cycle management, goal settings, and appraisal forms
     // ─── Job Openings ───────────────────────────────────────────────
     OPENING_CREATE: 'opening.create',
     OPENING_READ: 'opening.read',
@@ -656,7 +653,6 @@ exports.PERMISSIONS_BY_RESOURCE = {
         exports.Permissions.EXIT_CONFIG_READ,
         exports.Permissions.EXIT_CONFIG_UPDATE,
     ],
-    performance: [exports.Permissions.PERFORMANCE_READ, exports.Permissions.PERFORMANCE_MANAGE],
     opening: [exports.Permissions.OPENING_CREATE, exports.Permissions.OPENING_READ, exports.Permissions.OPENING_UPDATE, exports.Permissions.OPENING_DELETE, exports.Permissions.OPENING_MANAGE],
     profile: [exports.Permissions.PROFILE_CREATE, exports.Permissions.PROFILE_READ, exports.Permissions.PROFILE_UPDATE, exports.Permissions.PROFILE_DELETE, exports.Permissions.PROFILE_MANAGE],
     system: [

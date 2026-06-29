@@ -14,6 +14,7 @@ const environmentsStaffController_1 = __importDefault(require("@/controllers/env
 const teamStaffController_1 = __importDefault(require("@/controllers/teamStaffController"));
 const clientMilestoneController_1 = __importDefault(require("@/controllers/clientMilestoneController"));
 const clientProjectReleaseController_1 = __importDefault(require("@/controllers/clientProjectReleaseController"));
+const clientPortalModuleSettingsController_1 = __importDefault(require("@/controllers/clientPortalModuleSettingsController"));
 const auth_1 = require("@/middleware/auth");
 const tenantContext_1 = require("@/middleware/tenantContext");
 const permission_1 = require("@/middleware/permission");
@@ -220,5 +221,11 @@ router.post('/:clientId/milestones', (0, permission_1.requirePermission)(permiss
 router.get('/:clientId/releases', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_READ), clientProjectReleaseController_1.default.list);
 router.get('/:clientId/releases/milestone-options', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_READ), clientProjectReleaseController_1.default.milestoneOptions);
 router.post('/:clientId/releases', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_UPDATE), clientProjectReleaseController_1.default.create);
+// ==============================================
+// PORTAL MODULE SETTINGS (per-client page visibility)
+// Controls which pages the client sees in their portal.
+// ==============================================
+router.get('/:clientId/portal-modules', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_READ), clientPortalModuleSettingsController_1.default.list);
+router.put('/:clientId/portal-modules', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_MANAGE), clientPortalModuleSettingsController_1.default.update);
 exports.default = router;
 //# sourceMappingURL=clientsV2.js.map

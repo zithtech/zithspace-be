@@ -605,6 +605,18 @@ export interface CreateAttendanceData {
   clockOut?: Date;
   status?: "present" | "absent" | "late" | "half_day";
   notes?: string;
+  /**
+   * Full work timeline for the day. Each entry is one WORK interval, optionally
+   * carrying the break that FOLLOWS it (break_type / break_reason). When present,
+   * this is the source of truth: day clock_in = first.clockIn, clock_out =
+   * last.clockOut, and totals are derived from the sessions.
+   */
+  sessions?: {
+    clockIn: string;
+    clockOut: string;
+    breakType?: string | null;
+    breakReason?: string | null;
+  }[];
 }
 
 export interface AttendanceFilters {

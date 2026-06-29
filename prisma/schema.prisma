@@ -3501,6 +3501,11 @@ model attendance_sessions {
   // Describes the break that FOLLOWS this session (set when the user pauses).
   break_type    String?
   break_reason  String?
+  // Geolocation captured when this session was started (clock-in / resume).
+  clock_in_latitude  Float?  @db.DoublePrecision
+  clock_in_longitude Float?  @db.DoublePrecision
+  clock_in_accuracy  Float?  @db.DoublePrecision
+  clock_in_address   String?
   created_at    DateTime  @default(now()) @db.Timestamp(6)
   updated_at    DateTime  @default(now()) @db.Timestamp(6)
 
