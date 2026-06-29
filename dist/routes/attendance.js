@@ -96,6 +96,14 @@ router.post("/complete", (0, permission_1.requirePermission)(permissions_1.Permi
  */
 router.post("/", (0, permission_1.requirePermission)(permissions_1.Permissions.ATTENDANCE_CREATE), attendanceController_1.AttendanceController.createAttendance);
 /**
+ * @route   POST /api/attendance/:id/reopen
+ * @desc    Reopen an accidentally-completed day (tenant-aware, manager action)
+ * @access  Private (requires ATTENDANCE_UPDATE)
+ * @param   id - Attendance record ID
+ * @body    { resumeAt: string } - ISO time to resume work from
+ */
+router.post("/:id/reopen", (0, permission_1.requirePermission)(permissions_1.Permissions.ATTENDANCE_UPDATE), attendanceController_1.AttendanceController.reopenDay);
+/**
  * @route   PUT /api/attendance/:id
  * @desc    Update attendance record (tenant-aware)
  * @access  Private (admin only)

@@ -9,6 +9,7 @@ import EnvironmentsStaffController from '@/controllers/environmentsStaffControll
 import TeamStaffController from '@/controllers/teamStaffController';
 import ClientMilestoneController from '@/controllers/clientMilestoneController';
 import ClientProjectReleaseController from '@/controllers/clientProjectReleaseController';
+import ClientPortalModuleSettingsController from '@/controllers/clientPortalModuleSettingsController';
 import { authenticateToken, requireAuth } from '@/middleware/auth';
 import { resolveTenant } from '@/middleware/tenantContext';
 import { requirePermission } from '@/middleware/permission';
@@ -400,6 +401,23 @@ router.post(
   '/:clientId/releases',
   requirePermission(Permissions.CLIENT_UPDATE),
   ClientProjectReleaseController.create,
+);
+
+// ==============================================
+// PORTAL MODULE SETTINGS (per-client page visibility)
+// Controls which pages the client sees in their portal.
+// ==============================================
+
+router.get(
+  '/:clientId/portal-modules',
+  requirePermission(Permissions.CLIENT_READ),
+  ClientPortalModuleSettingsController.list,
+);
+
+router.put(
+  '/:clientId/portal-modules',
+  requirePermission(Permissions.CLIENT_MANAGE),
+  ClientPortalModuleSettingsController.update,
 );
 
 export default router;

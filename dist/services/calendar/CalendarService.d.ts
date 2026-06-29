@@ -80,8 +80,8 @@ export declare class CalendarService {
         isDeleted: boolean;
         startTime: Date;
         endTime: Date;
-        attendees: import("@prisma/client/runtime/library").JsonValue | null;
         location: string | null;
+        attendees: import("@prisma/client/runtime/library").JsonValue | null;
         calendarId: string | null;
         isRecurring: boolean | null;
         externalId: string;
