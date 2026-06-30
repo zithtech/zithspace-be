@@ -16,8 +16,20 @@ router.use(resolveTenant);
 // Get all proposals
 router.get('/', requirePermission(Permissions.PROPOSAL_READ), (req, res) => ProposalController.getProposals(req, res));
 
+// Get all trashed proposals
+router.get('/trash', requirePermission(Permissions.PROPOSAL_READ), (req, res) => ProposalController.getTrashedProposals(req, res));
+
+// Empty trash
+router.delete('/trash/empty', requirePermission(Permissions.PROPOSAL_DELETE), (req, res) => ProposalController.emptyTrash(req, res));
+
 // Get single proposal
 router.get('/:id', requirePermission(Permissions.PROPOSAL_READ), (req, res) => ProposalController.getProposalById(req, res));
+
+// Restore trashed proposal
+router.post('/:id/restore', requirePermission(Permissions.PROPOSAL_UPDATE), (req, res) => ProposalController.restoreProposal(req, res));
+
+// Hard delete proposal
+router.delete('/:id/hard', requirePermission(Permissions.PROPOSAL_DELETE), (req, res) => ProposalController.hardDeleteProposal(req, res));
 
 // Create new proposal
 router.post('/', requirePermission(Permissions.PROPOSAL_CREATE), (req, res) => ProposalController.createProposal(req, res));

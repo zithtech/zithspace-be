@@ -253,6 +253,136 @@ export class ProposalController {
   }
 
   /**
+   * Get trashed proposals
+   */
+  static async getTrashedProposals(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const tenantId = req.tenantId;
+      if (!tenantId) throw new ValidationError('Tenant context required');
+
+      let proposals = await ProposalModel.findTrashed(tenantId);
+
+      res.status(200).json({
+        success: true,
+        data: proposals
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error('Error fetching trashed proposals:', error);
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to fetch trashed proposals'
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Restore a trashed proposal
+   */
+  static async restoreProposal(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const tenantId = req.tenantId;
+
+      const success = await ProposalModel.restore(id, tenantId);
+
+      if (!success) {
+        res.status(404).json({ success: false, error: 'Proposal not found' });
+        return;
+      }
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.PROPOSALS,
+        page: Page.PROPOSAL_LIST,
+        action: Action.RESTORE,
+        actionLabel: `Restored proposal from trash`,
+        entityType: EntityType.PROPOSAL,
+        entityId: id,
+        entityLabel: id,
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Proposal restored successfully'
+      } as ApiResponse);
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+
+  /**
+   * Permanently delete a proposal
+   */
+  static async hardDeleteProposal(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const { id } = req.params;
+      const tenantId = req.tenantId;
+
+      const success = await ProposalModel.hardDelete(id, tenantId);
+
+      if (!success) {
+        res.status(404).json({ success: false, error: 'Proposal not found' });
+        return;
+      }
+
+      // ─── Activity log ───────────────────────────────────────────────
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.PROPOSALS,
+        page: Page.PROPOSAL_LIST,
+        action: Action.DELETE,
+        actionLabel: `Permanently deleted proposal`,
+        entityType: EntityType.PROPOSAL,
+        entityId: id,
+        entityLabel: id,
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Proposal permanently deleted'
+      } as ApiResponse);
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+
+  /**
+   * Empty trash
+   */
+  static async emptyTrash(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const tenantId = req.tenantId;
+      if (!tenantId) {
+        res.status(400).json({ success: false, error: 'Tenant ID required' });
+        return;
+      }
+
+      const deletedCount = await ProposalModel.emptyTrash(tenantId);
+      
+      await recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.PROPOSALS,
+        page: Page.PROPOSAL_LIST,
+        action: Action.BULK_PERMANENT_DELETE,
+        actionLabel: 'Emptied trash',
+        entityType: EntityType.PROPOSAL,
+        entityId: 'bulk',
+        entityLabel: 'Bulk delete',
+        afterData: { count: deletedCount }
+      });
+
+      res.status(200).json({ success: true, message: 'Trash emptied successfully', deletedCount });
+    } catch (error: any) {
+      console.error('Empty Trash Error:', error);
+      res.status(500).json({ success: false, error: error.message || 'Failed to empty trash' });
+    }
+  }
+
+  /**
    * Export a proposal
    */
   static async exportProposal(req: AuthRequest, res: Response): Promise<void> {

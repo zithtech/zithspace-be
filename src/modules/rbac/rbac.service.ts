@@ -1,4 +1,5 @@
 import { prisma } from '@/config/database';
+import { SystemRoles, ALL_PERMISSIONS } from '@/types/permissions';
 
 interface CacheEntry {
   permissions: Set<string>;
@@ -175,6 +176,71 @@ export class RBACService {
       permissions,
       expiresAt: Date.now() + RBACService.CACHE_TTL,
     });
+  }
+
+  /**
+   * Initialize default roles and their permissions for a newly created tenant.
+   */
+  static async setupDefaultRolesForTenant(tenantId: string): Promise<void> {
+    const ROLE_PERMISSIONS: Record<string, string[]> = {
+      [SystemRoles.SUPER_ADMIN]: ALL_PERMISSIONS,
+      [SystemRoles.ADMIN]: ADMIN_DEFAULT_PERMISSIONS,
+      [SystemRoles.USER]: USER_DEFAULT_PERMISSIONS,
+    };
+
+    const ROLE_DESCRIPTIONS: Record<string, string> = {
+      [SystemRoles.SUPER_ADMIN]: 'System administrator — full access to all features',
+      [SystemRoles.ADMIN]: 'Tenant administrator — manages users, projects, and settings',
+      [SystemRoles.USER]: 'Regular employee — standard access to daily work features',
+    };
+
+    const ROLE_DISPLAY_NAMES: Record<string, string> = {
+      [SystemRoles.SUPER_ADMIN]: 'Super Admin',
+      [SystemRoles.ADMIN]: 'Admin',
+      [SystemRoles.USER]: 'User',
+    };
+
+    // Load all permissions for mapping
+    const allPermRecords = await prisma.permission.findMany();
+    const permByName = new Map(allPermRecords.map((p) => [p.name, p]));
+
+    for (const slug of [SystemRoles.SUPER_ADMIN, SystemRoles.ADMIN, SystemRoles.USER]) {
+      let role = await prisma.role.findUnique({
+        where: { tenantId_slug: { tenantId, slug } },
+      });
+
+      if (!role) {
+        role = await prisma.role.create({
+          data: {
+            tenantId,
+            name: ROLE_DISPLAY_NAMES[slug],
+            slug,
+            description: ROLE_DESCRIPTIONS[slug],
+            isSystem: true,
+          },
+        });
+      }
+
+      const targetPermNames = ROLE_PERMISSIONS[slug];
+      const targetPermIds = targetPermNames
+        .map(name => permByName.get(name)?.id)
+        .filter((id): id is string => !!id);
+
+      // Connect permissions (ignoring existing ones to simplify)
+      const currentRPs = await prisma.rolePermission.findMany({
+        where: { roleId: role.id },
+        select: { permissionId: true },
+      });
+      const currentPermIds = currentRPs.map(rp => rp.permissionId);
+      const toAdd = targetPermIds.filter(id => !currentPermIds.includes(id));
+
+      if (toAdd.length > 0) {
+        await prisma.rolePermission.createMany({
+          data: toAdd.map(permissionId => ({ roleId: role.id, permissionId })),
+          skipDuplicates: true,
+        });
+      }
+    }
   }
 
   /**

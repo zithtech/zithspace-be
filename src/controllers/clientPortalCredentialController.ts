@@ -154,7 +154,7 @@ export class ClientPortalCredentialController {
       id: row.id,
     });
 
-    const portalUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/portal/login`;
+    const portalUrl = req.body.portalUrl || `${process.env.FRONTEND_URL || "http://localhost:3000"}/portal/login`;
     try {
       await emailService.sendPortalWelcomeEmail(
         {
