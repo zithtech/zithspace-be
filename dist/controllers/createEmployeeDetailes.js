@@ -75,18 +75,22 @@ async function createPersonalDetails(req, _employeeId, client) {
             // Resolve the employee-code prefix for this tenant.
             const settingRes = await db.query(`SELECT employee_prefix FROM employee_settings WHERE tenant_id = $1 LIMIT 1`, [tenantId]);
             const prefix = settingRes.rows[0]?.employee_prefix || "EMP";
-            // Derive the next sequential employee code.
-            const lastRes = await db.query(`SELECT employee_code FROM employees
+            // Derive the next sequential employee code. We look only at codes that
+            // are strictly `PREFIX-NNNNNN` (6-digit zero-padded), taking the highest
+            // sequence number. This deliberately ignores any legacy/timestamp codes
+            // (e.g. `EMP-1772186723978` produced by an older generator) so a stray
+            // legacy row can't poison the sequence and the count restarts at 000001.
+            const expectedLength = prefix.length + 7; // prefix + "-" + 6 digits
+            const lastRes = await db.query(`SELECT MAX((substring(employee_code from '[0-9]+$'))::int) AS max_seq
+           FROM employees
           WHERE tenant_id = $1
-          ORDER BY created_at DESC
-          LIMIT 1`, [tenantId]);
+            AND employee_code LIKE $2
+            AND employee_code ~ '-[0-9]{6}$'
+            AND length(employee_code) = $3`, [tenantId, `${prefix}-%`, expectedLength]);
             let nextNumber = 1;
-            const lastCode = lastRes.rows[0]?.employee_code;
-            if (lastCode) {
-                const match = lastCode.match(/(\d+)$/);
-                if (match) {
-                    nextNumber = parseInt(match[1], 10) + 1;
-                }
+            const maxSeq = lastRes.rows[0]?.max_seq;
+            if (maxSeq != null) {
+                nextNumber = Number(maxSeq) + 1;
             }
             // Tenant employee codes are PREFIX-NNNNNN — a fixed 6-digit, zero-padded
             // sequence (e.g. EMP-000001). The 6-digit width is mandatory.
