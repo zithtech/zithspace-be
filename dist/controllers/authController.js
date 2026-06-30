@@ -12,6 +12,89 @@ const rbac_service_1 = require("@/modules/rbac/rbac.service");
 const transactionHistory_1 = require("../utils/transactionHistory");
 class AuthController {
     /**
+     * Global login for Chrome Extension
+     */
+    static async extensionLogin(req, res) {
+        console.log("extensionLogin hit:", req.body);
+        try {
+            const { email, password } = req.body;
+            if (!email || !password) {
+                res.status(400).json({
+                    success: false,
+                    error: "Email and password are required",
+                });
+                return;
+            }
+            // Global search for user across all tenants
+            const user = await database_1.prisma.user.findFirst({
+                where: {
+                    OR: [
+                        { workEmail: email.toLowerCase() },
+                        { personalEmail: email.toLowerCase() },
+                    ],
+                    isActive: true,
+                },
+                include: {
+                    tenant: true,
+                    employee: true,
+                    position: {
+                        select: {
+                            id: true,
+                            title: true,
+                            code: true,
+                        },
+                    },
+                },
+            });
+            if (!user || !user.tenant.isActive) {
+                res.status(401).json({
+                    success: false,
+                    error: "Invalid credentials",
+                });
+                return;
+            }
+            // Verify password
+            const isPasswordValid = await bcryptjs_1.default.compare(password, user.passwordHash);
+            if (!isPasswordValid) {
+                res.status(401).json({
+                    success: false,
+                    error: "Invalid credentials",
+                });
+                return;
+            }
+            // Create auth user object for token generation
+            const authUser = {
+                id: user.id,
+                tenantId: user.tenantId,
+                email: user.workEmail,
+                role: user.role,
+                position: user.position?.title || null,
+                name: user.name,
+            };
+            // Generate tokens
+            const { accessToken, refreshToken } = jwt_1.JWTUtils.generateTokenPair(authUser);
+            // Prepare user data for response
+            const { passwordHash: _, ...userWithoutPassword } = user;
+            const userData = {
+                ...userWithoutPassword,
+                tenantSlug: user.tenant.subdomain || 'zithmi' // In Zukvov2 it's subdomain
+            };
+            res.status(200).json({
+                success: true,
+                accessToken,
+                refreshToken,
+                user: userData,
+            });
+        }
+        catch (error) {
+            console.error("Extension login error:", error);
+            res.status(500).json({
+                success: false,
+                error: "An unexpected error occurred during login",
+            });
+        }
+    }
+    /**
      * User login with tenant context
      */
     static async login(req, res) {
