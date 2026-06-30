@@ -4,6 +4,7 @@ import { tenantAwarePrisma } from "@/config/database";
 import { JWTUtils } from "@/utils/jwt";
 import TenantLogger from "@/utils/tenantLogger";
 import pool from "@/config/dbpool";
+import { RBACService } from "@/modules/rbac/rbac.service";
 import {
   AuthRequest,
   ApiResponse,
@@ -200,7 +201,7 @@ export class TenantController {
           tenantData.adminUser.email.toLowerCase(),
           tenantData.adminUser.phone,
           passwordHash,
-          'admin',
+          'super_admin',
           [1, 2, 3, 4, 5]
         ]);
 
@@ -219,6 +220,10 @@ export class TenantController {
         });
 
         await client.query('COMMIT');
+        
+        // Setup default roles for the new tenant
+        await RBACService.setupDefaultRolesForTenant(tenant.id);
+
         result = { tenant, adminUser };
       } catch (err) {
         await client.query('ROLLBACK');

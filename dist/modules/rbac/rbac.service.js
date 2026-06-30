@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.USER_DEFAULT_PERMISSIONS = exports.ADMIN_DEFAULT_PERMISSIONS = exports.RBACService = void 0;
 const database_1 = require("@/config/database");
+const permissions_1 = require("@/types/permissions");
 /**
  * RBACService — resolves a user's effective permission set.
  *
@@ -128,6 +129,62 @@ class RBACService {
             permissions,
             expiresAt: Date.now() + RBACService.CACHE_TTL,
         });
+    }
+    /**
+     * Initialize default roles and their permissions for a newly created tenant.
+     */
+    static async setupDefaultRolesForTenant(tenantId) {
+        const ROLE_PERMISSIONS = {
+            [permissions_1.SystemRoles.SUPER_ADMIN]: permissions_1.ALL_PERMISSIONS,
+            [permissions_1.SystemRoles.ADMIN]: exports.ADMIN_DEFAULT_PERMISSIONS,
+            [permissions_1.SystemRoles.USER]: exports.USER_DEFAULT_PERMISSIONS,
+        };
+        const ROLE_DESCRIPTIONS = {
+            [permissions_1.SystemRoles.SUPER_ADMIN]: 'System administrator — full access to all features',
+            [permissions_1.SystemRoles.ADMIN]: 'Tenant administrator — manages users, projects, and settings',
+            [permissions_1.SystemRoles.USER]: 'Regular employee — standard access to daily work features',
+        };
+        const ROLE_DISPLAY_NAMES = {
+            [permissions_1.SystemRoles.SUPER_ADMIN]: 'Super Admin',
+            [permissions_1.SystemRoles.ADMIN]: 'Admin',
+            [permissions_1.SystemRoles.USER]: 'User',
+        };
+        // Load all permissions for mapping
+        const allPermRecords = await database_1.prisma.permission.findMany();
+        const permByName = new Map(allPermRecords.map((p) => [p.name, p]));
+        for (const slug of [permissions_1.SystemRoles.SUPER_ADMIN, permissions_1.SystemRoles.ADMIN, permissions_1.SystemRoles.USER]) {
+            let role = await database_1.prisma.role.findUnique({
+                where: { tenantId_slug: { tenantId, slug } },
+            });
+            if (!role) {
+                role = await database_1.prisma.role.create({
+                    data: {
+                        tenantId,
+                        name: ROLE_DISPLAY_NAMES[slug],
+                        slug,
+                        description: ROLE_DESCRIPTIONS[slug],
+                        isSystem: true,
+                    },
+                });
+            }
+            const targetPermNames = ROLE_PERMISSIONS[slug];
+            const targetPermIds = targetPermNames
+                .map(name => permByName.get(name)?.id)
+                .filter((id) => !!id);
+            // Connect permissions (ignoring existing ones to simplify)
+            const currentRPs = await database_1.prisma.rolePermission.findMany({
+                where: { roleId: role.id },
+                select: { permissionId: true },
+            });
+            const currentPermIds = currentRPs.map(rp => rp.permissionId);
+            const toAdd = targetPermIds.filter(id => !currentPermIds.includes(id));
+            if (toAdd.length > 0) {
+                await database_1.prisma.rolePermission.createMany({
+                    data: toAdd.map(permissionId => ({ roleId: role.id, permissionId })),
+                    skipDuplicates: true,
+                });
+            }
+        }
     }
     /**
      * Legacy fallback permissions for users not yet migrated to UserRole table.
