@@ -116,6 +116,7 @@ import leaveRequestRoutes from "@/routes/leaveRequestRoutes";
 import leaveBalanceRoutes from "@/routes/leaveBalanceRoutes";
 import leaveV2Routes from "@/modules/leave-v2/routes";
 import performanceReportRoutes from "@/modules/performance-report/routes";
+import payrollV2Routes from "@/modules/payroll/routes";
 import payrollRoutes from "@/routes/payroll";
 import reimbursementConfigurationRoutes from "@/routes/reimbursementConfig";
 import reimbursementsettingsRoutes from "@/routes/reimbursementsettingsRoutes";
@@ -404,6 +405,7 @@ app.use("/api/leave-allocation", leaveAllocationRoutes);
 app.use("/api/leave-request", leaveRequestRoutes);
 app.use("/api/leave-balances", leaveBalanceRoutes);
 app.use("/api/v2/leave", leaveV2Routes);
+app.use("/api/v2/payroll", payrollV2Routes);
 app.use("/api/performance-report", performanceReportRoutes);
 
 //Escalation
@@ -600,6 +602,10 @@ const startServer = async () => {
     const { ensurePerformanceReportSchema } = require("@/modules/performance-report/db/schema");
     await ensurePerformanceReportSchema();
 
+    // Payroll 2.0 tables (raw-SQL module, forward-only migrations)
+    const { runPayrollMigrations } = require("@/modules/payroll/db/migrate");
+    await runPayrollMigrations();
+
     // Connect RabbitMQ & Start Workers
     try {
       await rabbitMQService.connect();
@@ -616,6 +622,17 @@ const startServer = async () => {
     // Leave 2.0 accrual scheduler + worker (no-op unless LEAVE_ACCRUAL_ENABLED=true)
     const { initLeaveAccrual } = require("@/modules/leave-v2/jobs");
     await initLeaveAccrual();
+
+    // Payroll 2.0 async payslip worker (no-op unless PAYROLL_ASYNC_PAYSLIPS=true)
+    if (process.env.PAYROLL_ASYNC_PAYSLIPS === "true") {
+      try {
+        const { startPayslipWorker } = require("@/modules/payroll/jobs/payslipWorker");
+        startPayslipWorker();
+        console.log("🧾 Payroll async payslip worker started");
+      } catch (e: any) {
+        console.error("❌ Payslip worker failed to start:", e?.message);
+      }
+    }
     const PORT = parseInt(process.env.PORT || "5000");
 
     server = app.listen(PORT, () => {

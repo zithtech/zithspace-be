@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "nodemon --exec ts-node -r tsconfig-paths/register src/app.ts",
     "start": "node dist/app.js",
-    "build": "tsc",
+    "build": "tsc && node scripts/copy-assets.js",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
@@ -15,6 +15,7 @@
     "db:seed": "tsx src/scripts/seed.ts",
     "db:seed-rbac": "npx ts-node -r tsconfig-paths/register src/scripts/seed-rbac.ts",
     "lv2:migrate": "npx ts-node -r tsconfig-paths/register src/modules/leave-v2/db/migrate.ts",
+    "pay:migrate": "npx ts-node -r tsconfig-paths/register src/modules/payroll/db/migrate.ts",
     "lint": "eslint src --ext .ts",
     "test": "jest",
     "postinstall": "prisma generate"
