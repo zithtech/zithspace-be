@@ -20,10 +20,10 @@ export declare class CalendarService {
         createdById: string | null;
         updatedById: string | null;
         userId: string;
+        accessToken: string | null;
         created_by: string | null;
         updated_by: string | null;
         provider: import(".prisma/client").$Enums.CalendarProvider;
-        accessToken: string | null;
         calendarId: string | null;
         mail_account_id: string | null;
         tokenExpiry: Date | null;
@@ -69,18 +69,18 @@ export declare class CalendarService {
     static createEvent(userId: string, tenantId: string, provider: CalendarProvider, eventData: CalendarEventData): Promise<{
         id: string;
         tenantId: string;
+        description: string | null;
         createdAt: Date | null;
         updatedAt: Date | null;
         createdById: string | null;
         updatedById: string | null;
         userId: string;
         title: string;
-        description: string | null;
-        provider: import(".prisma/client").$Enums.CalendarProvider;
         isDeleted: boolean;
         startTime: Date;
         endTime: Date;
         location: string | null;
+        provider: import(".prisma/client").$Enums.CalendarProvider;
         attendees: import("@prisma/client/runtime/library").JsonValue | null;
         calendarId: string | null;
         isRecurring: boolean | null;
