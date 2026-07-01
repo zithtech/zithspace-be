@@ -148,18 +148,40 @@ async function getEmployeeHistory(req, employeeId) {
                 const offerLetter = documents.find((d) => d.document_type === "offerLetter");
                 const serviceLetter = documents.find((d) => d.document_type === "serviceLetter");
                 const relievingLetter = documents.find((d) => d.document_type === "relievingLetter");
-                // Group array documents
-                const form16 = documents
+                // Generate presigned URLs for single documents
+                const signUrl = async (doc) => doc ? {
+                    url: await (0, r2Client_1.generatePresignedUrl)(doc.document_url, 86400),
+                    downloadUrl: await (0, r2Client_1.generatePresignedUrl)(doc.document_url, 86400, true),
+                    id: doc.id
+                } : null;
+                const signedExperienceLetter = await signUrl(experienceLetter);
+                const signedOfferLetter = await signUrl(offerLetter);
+                const signedServiceLetter = await signUrl(serviceLetter);
+                const signedRelievingLetter = await signUrl(relievingLetter);
+                // Group array documents with presigned URLs
+                const form16 = await Promise.all(documents
                     .filter((d) => d.document_type === "form16")
-                    .map((d) => ({ url: d.document_url, id: d.id }));
-                const payslips = documents
+                    .map(async (d) => ({
+                    url: await (0, r2Client_1.generatePresignedUrl)(d.document_url, 86400),
+                    downloadUrl: await (0, r2Client_1.generatePresignedUrl)(d.document_url, 86400, true),
+                    id: d.id
+                })));
+                const payslips = await Promise.all(documents
                     .filter((d) => d.document_type === "payslips")
-                    .map((d) => ({ url: d.document_url, id: d.id }));
-                // Generic, type-grouped list — covers tenant-configured / custom doc
-                // types so the detail view can render every uploaded document.
+                    .map(async (d) => ({
+                    url: await (0, r2Client_1.generatePresignedUrl)(d.document_url, 86400),
+                    downloadUrl: await (0, r2Client_1.generatePresignedUrl)(d.document_url, 86400, true),
+                    id: d.id
+                })));
+                // Generic, type-grouped list for non-legacy documents
                 const grouped = {};
+                const legacyTypes = ["experienceLetter", "offerLetter", "serviceLetter", "relievingLetter", "form16", "payslips"];
                 for (const d of documents) {
-                    (grouped[_a = d.document_type] || (grouped[_a] = [])).push({ url: d.document_url, id: d.id });
+                    if (legacyTypes.includes(d.document_type))
+                        continue;
+                    const signed = await (0, r2Client_1.generatePresignedUrl)(d.document_url, 86400);
+                    const downloadSigned = await (0, r2Client_1.generatePresignedUrl)(d.document_url, 86400, true);
+                    (grouped[_a = d.document_type] || (grouped[_a] = [])).push({ url: signed, downloadUrl: downloadSigned, id: d.id });
                 }
                 const documentsList = Object.entries(grouped).map(([documentType, files]) => ({
                     documentType,
@@ -175,18 +197,10 @@ async function getEmployeeHistory(req, employeeId) {
                     address: exp.company_address,
                     doj: exp.joining_date,
                     lwd: exp.last_working_date,
-                    experienceLetter: experienceLetter
-                        ? { url: experienceLetter.document_url, id: experienceLetter.id }
-                        : null,
-                    offerLetter: offerLetter
-                        ? { url: offerLetter.document_url, id: offerLetter.id }
-                        : null,
-                    serviceLetter: serviceLetter
-                        ? { url: serviceLetter.document_url, id: serviceLetter.id }
-                        : null,
-                    relievingLetter: relievingLetter
-                        ? { url: relievingLetter.document_url, id: relievingLetter.id }
-                        : null,
+                    experienceLetter: signedExperienceLetter,
+                    offerLetter: signedOfferLetter,
+                    serviceLetter: signedServiceLetter,
+                    relievingLetter: signedRelievingLetter,
                     form16,
                     payslips,
                     documents: documentsList,
@@ -230,12 +244,30 @@ async function getSingleExperience(req, employeeId, experienceId) {
             const offerLetter = documents.find((d) => d.document_type === "offerLetter");
             const serviceLetter = documents.find((d) => d.document_type === "serviceLetter");
             const relievingLetter = documents.find((d) => d.document_type === "relievingLetter");
-            const form16 = documents
+            // Generate presigned URLs for single documents
+            const signUrl = async (doc) => doc ? {
+                url: await (0, r2Client_1.generatePresignedUrl)(doc.document_url, 86400),
+                downloadUrl: await (0, r2Client_1.generatePresignedUrl)(doc.document_url, 86400, true),
+                id: doc.id
+            } : null;
+            const signedExperienceLetter = await signUrl(experienceLetter);
+            const signedOfferLetter = await signUrl(offerLetter);
+            const signedServiceLetter = await signUrl(serviceLetter);
+            const signedRelievingLetter = await signUrl(relievingLetter);
+            const form16 = await Promise.all(documents
                 .filter((d) => d.document_type === "form16")
-                .map((d) => ({ url: d.document_url, id: d.id }));
-            const payslips = documents
+                .map(async (d) => ({
+                url: await (0, r2Client_1.generatePresignedUrl)(d.document_url, 86400),
+                downloadUrl: await (0, r2Client_1.generatePresignedUrl)(d.document_url, 86400, true),
+                id: d.id
+            })));
+            const payslips = await Promise.all(documents
                 .filter((d) => d.document_type === "payslips")
-                .map((d) => ({ url: d.document_url, id: d.id }));
+                .map(async (d) => ({
+                url: await (0, r2Client_1.generatePresignedUrl)(d.document_url, 86400),
+                downloadUrl: await (0, r2Client_1.generatePresignedUrl)(d.document_url, 86400, true),
+                id: d.id
+            })));
             return {
                 id: experience.id,
                 companyName: experience.company_name,
@@ -246,18 +278,10 @@ async function getSingleExperience(req, employeeId, experienceId) {
                 address: experience.company_address,
                 doj: experience.joining_date,
                 lwd: experience.last_working_date,
-                experienceLetter: experienceLetter
-                    ? { url: experienceLetter.document_url, id: experienceLetter.id }
-                    : null,
-                offerLetter: offerLetter
-                    ? { url: offerLetter.document_url, id: offerLetter.id }
-                    : null,
-                serviceLetter: serviceLetter
-                    ? { url: serviceLetter.document_url, id: serviceLetter.id }
-                    : null,
-                relievingLetter: relievingLetter
-                    ? { url: relievingLetter.document_url, id: relievingLetter.id }
-                    : null,
+                experienceLetter: signedExperienceLetter,
+                offerLetter: signedOfferLetter,
+                serviceLetter: signedServiceLetter,
+                relievingLetter: signedRelievingLetter,
                 form16,
                 payslips,
                 contacts: contacts.map((c) => ({

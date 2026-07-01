@@ -6,6 +6,10 @@ const algorithm = "aes-256-cbc";
 const secretKey = process.env.SECRET_KEY as string; // 32 chars
 
 export function encrypt(text: string) {
+  if (!secretKey) {
+    console.warn("SECRET_KEY not found. Encryption skipped.");
+    return text;
+  }
   const iv = crypto.randomBytes(16);
   const cipher = crypto.createCipheriv(algorithm, Buffer.from(secretKey), iv);
   let encrypted = cipher.update(text);
@@ -15,6 +19,10 @@ export function encrypt(text: string) {
 }
 
 export function decrypt(text: string): string {
+  if (!secretKey) {
+    console.warn("SECRET_KEY not found. Decryption skipped.");
+    return text;
+  }
   try {
     const parts = text.split(":");
     if (parts.length !== 2) {
