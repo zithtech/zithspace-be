@@ -32,6 +32,9 @@ const generalAuthRateLimit = rateLimit({
   legacyHeaders: false,
 });
 
+// Extension global login - doesn't require tenant context
+router.post("/extension-login", authRateLimit, AuthController.extensionLogin);
+
 // Login route - requires tenant context
 router.post("/login", authRateLimit, resolveTenant, AuthController.login);
 

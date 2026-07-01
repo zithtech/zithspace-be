@@ -1,7 +1,7 @@
 import { Response } from "express";
 import bcrypt from "bcryptjs";
 import axios from "axios";
-import { tenantAwarePrisma } from "@/config/database";
+import { tenantAwarePrisma, prisma } from "@/config/database";
 import { JWTUtils } from "@/utils/jwt";
 import {
   AuthRequest,
@@ -15,7 +15,101 @@ import {
 import { RBACService } from "@/modules/rbac/rbac.service";
 import { recordTransaction, Section, Module, Page, Action, EntityType } from "../utils/transactionHistory";
 
+import { Request } from "express";
+
 export class AuthController {
+  /**
+   * Global login for Chrome Extension
+   */
+  static async extensionLogin(req: Request, res: Response): Promise<void> {
+    console.log("extensionLogin hit:", req.body);
+    try {
+      const { email, password } = req.body;
+
+      if (!email || !password) {
+        res.status(400).json({
+          success: false,
+          error: "Email and password are required",
+        } as ApiResponse);
+        return;
+      }
+
+      // Global search for user across all tenants
+      const user = await prisma.user.findFirst({
+        where: {
+          OR: [
+            { workEmail: email.toLowerCase() },
+            { personalEmail: email.toLowerCase() },
+          ],
+          isActive: true,
+        },
+        include: {
+          tenant: true,
+          employee: true,
+          position: {
+            select: {
+              id: true,
+              title: true,
+              code: true,
+            },
+          },
+        },
+      });
+
+      if (!user || !user.tenant.isActive) {
+        res.status(401).json({
+          success: false,
+          error: "Invalid credentials",
+        } as ApiResponse);
+        return;
+      }
+
+      // Verify password
+      const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+      if (!isPasswordValid) {
+        res.status(401).json({
+          success: false,
+          error: "Invalid credentials",
+        } as ApiResponse);
+        return;
+      }
+
+      // Create auth user object for token generation
+      const authUser = {
+        id: user.id,
+        tenantId: user.tenantId,
+        email: user.workEmail,
+        role: user.role as any,
+        position: user.position?.title || null,
+        name: user.name,
+      };
+
+      // Generate tokens
+      const { accessToken, refreshToken } = JWTUtils.generateTokenPair(authUser);
+
+      // Prepare user data for response
+      const { passwordHash: _, ...userWithoutPassword } = user;
+      
+      const userData = {
+        ...userWithoutPassword,
+        tenantSlug: user.tenant.subdomain || 'zithmi' // In Zukvov2 it's subdomain
+      };
+
+      res.status(200).json({
+        success: true,
+        accessToken,
+        refreshToken,
+        user: userData,
+      });
+    } catch (error) {
+      console.error("Extension login error:", error);
+      res.status(500).json({
+        success: false,
+        error: "An unexpected error occurred during login",
+      } as ApiResponse);
+    }
+  }
+
   /**
    * User login with tenant context
    */

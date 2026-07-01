@@ -33,6 +33,8 @@ const generalAuthRateLimit = (0, express_rate_limit_1.default)({
     standardHeaders: true,
     legacyHeaders: false,
 });
+// Extension global login - doesn't require tenant context
+router.post("/extension-login", authRateLimit, authController_1.AuthController.extensionLogin);
 // Login route - requires tenant context
 router.post("/login", authRateLimit, tenantContext_1.resolveTenant, authController_1.AuthController.login);
 // Google login route - requires tenant context
