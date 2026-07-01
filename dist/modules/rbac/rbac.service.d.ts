@@ -48,6 +48,10 @@ export declare class RBACService {
     private static getSuperAdminPermissions;
     private static setCache;
     /**
+     * Initialize default roles and their permissions for a newly created tenant.
+     */
+    static setupDefaultRolesForTenant(tenantId: string): Promise<void>;
+    /**
      * Legacy fallback permissions for users not yet migrated to UserRole table.
      * Mirrors the seed script defaults.
      */

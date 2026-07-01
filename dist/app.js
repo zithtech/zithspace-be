@@ -180,7 +180,8 @@ app.use((0, cors_1.default)({
             (o instanceof RegExp && o.test(origin)))) {
             return callback(null, true);
         }
-        return callback(new Error("Not allowed by CORS"));
+        console.warn(`[CORS] Denied origin: ${origin}`);
+        return callback(null, false);
     },
     credentials: true,
 }));

@@ -1,6 +1,11 @@
 import { Response } from "express";
 import { AuthRequest } from "@/types";
+import { Request } from "express";
 export declare class AuthController {
+    /**
+     * Global login for Chrome Extension
+     */
+    static extensionLogin(req: Request, res: Response): Promise<void>;
     /**
      * User login with tenant context
      */

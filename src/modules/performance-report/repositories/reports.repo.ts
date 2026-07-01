@@ -18,6 +18,7 @@ export interface TicketReportRow {
   title: string;
   status: string;
   priority: string | null;
+  type: string | null;
   assigneeName: string | null;
   assigneeAvatar: string | null;
   startDate: Date | null;
@@ -80,6 +81,7 @@ export async function findWorkedTickets(
         t.title,
         t.status,
         t.priority,
+        t.type,
         t.start_date,
         t.end_date,
         t.due_date,
@@ -108,6 +110,7 @@ export async function findWorkedTickets(
     title: row.title,
     status: row.status,
     priority: row.priority,
+    type: row.type,
     assigneeName: row.assignee_name,
     assigneeAvatar: row.assignee_avatar,
     startDate: row.start_date,

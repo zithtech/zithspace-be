@@ -116,19 +116,7 @@ export const generateProposalHtml = (proposal: any) => {
             <!-- Dark blue solid -->
             <div style="position: absolute; bottom: -250px; right: -300px; width: 500px; height: 600px; transform: rotate(45deg); background: linear-gradient(135deg, #0f172a, #1e3a8a); border-radius: 32px; z-index: 3; box-shadow: 0 10px 30px rgba(0,0,0,0.2);"></div>
 
-            <!-- Top Right Dots Pattern -->
-            <div style="position: absolute; top: 180px; right: 100px; width: 120px; height: 220px; background-image: radial-gradient(#94a3b8 2px, transparent 2px); background-size: 24px 24px; opacity: 0.6; z-index: 1;"></div>
 
-            <!-- Center Geometric Diamonds -->
-            <div style="position: absolute; top: 55%; left: 50%; transform: translate(-50%, -50%); width: 300px; height: 300px; z-index: 1; opacity: 0.15; pointer-events: none;">
-              <div style="position: absolute; top: 40px; left: 100px; width: 100px; height: 100px; border: 2px solid #0f172a; transform: rotate(45deg);"></div>
-              <div style="position: absolute; top: 100px; left: 40px; width: 100px; height: 100px; border: 2px solid #0f172a; transform: rotate(45deg);"></div>
-              <div style="position: absolute; top: 100px; left: 160px; width: 100px; height: 100px; border: 2px solid #0f172a; transform: rotate(45deg);"></div>
-              <div style="position: absolute; top: 160px; left: 100px; width: 100px; height: 100px; border: 2px solid #0f172a; transform: rotate(45deg);"></div>
-              <div style="position: absolute; top: 110px; left: 110px; width: 80px; height: 80px; border: 2px solid #0f172a; transform: rotate(45deg);"></div>
-              <div style="position: absolute; top: 70px; left: 70px; width: 60px; height: 60px; border: 2px solid #0f172a; transform: rotate(45deg);"></div>
-              <div style="position: absolute; top: 170px; left: 170px; width: 60px; height: 60px; border: 2px solid #0f172a; transform: rotate(45deg);"></div>
-            </div>
 
             <!-- Top Right Logo & Company -->
             <div style="position: absolute; top: 80px; right: 100px; z-index: 5; display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
@@ -260,9 +248,9 @@ export const generateProposalHtml = (proposal: any) => {
           <div class="space-y-3.5">
             ${(data.milestones || []).filter((m: any) => m.title?.trim() || m.deliverables?.trim()).map((m: any, idx: number) => `
               <div class="avoid-break bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-                <div class="flex items-center gap-2 mb-2.5">
-                   <span style="background: rgba(59, 130, 246, 0.1); color: #2563eb; padding: 2px 7px; border-radius: 20px; font-size: 0.65rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; border: 1px solid rgba(59, 130, 246, 0.22); flex-shrink: 0;">Phase ${idx + 1}</span>
-                   <h3 class="text-[12px] font-extrabold text-slate-900 leading-tight">${m.title || 'Untitled Phase'}</h3>
+                <div class="flex flex-wrap items-start gap-2 mb-2.5">
+                   <span style="background: rgba(59, 130, 246, 0.1); color: #2563eb; padding: 2px 7px; border-radius: 20px; font-size: 0.65rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; border: 1px solid rgba(59, 130, 246, 0.22); flex-shrink: 0; max-width: 100%; white-space: normal;">Phase ${idx + 1}</span>
+                   <h3 class="text-[12px] font-extrabold text-slate-900 leading-tight" style="flex: 1 1 200px; min-width: 0;">${m.title || 'Untitled Phase'}</h3>
                 </div>
                 ${m.deliverables ? `
                   <div style="margin-bottom: 6px; background: rgba(16, 185, 129, 0.05); border-left: 3px solid #10b981; padding: 6px 10px; border-radius: 6px; display: flex; flex-direction: column; gap: 1px;">
@@ -393,9 +381,9 @@ export const generateProposalHtml = (proposal: any) => {
             `;
           case 'phase':
             return `
-              <div class="flex items-center gap-1.5 mb-2 mt-1">
-                <span style="display: inline-flex; align-items: center; font-size: 9px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: #2563eb; background: #eff6ff; border: 1px solid rgba(37,99,235,0.22); padding: 2px 7px; flex-shrink: 0; border-radius: 4px;">${props.badge || 'PHASE 1'}</span>
-                <h3 style="font-size: 13.5px; font-weight: 800; color: #0f172a; margin: 0;">${props.title || 'Phase Title'}</h3>
+              <div class="flex flex-wrap items-start gap-2 mb-2 mt-1">
+                <span style="display: inline-flex; align-items: center; font-size: 9px; font-weight: 800; letter-spacing: 0.07em; text-transform: uppercase; color: #2563eb; background: #eff6ff; border: 1px solid rgba(37,99,235,0.22); padding: 2px 7px; flex-shrink: 0; max-width: 100%; white-space: normal; border-radius: 4px;">${props.badge || 'PHASE 1'}</span>
+                <h3 style="font-size: 13.5px; font-weight: 800; color: #0f172a; margin: 0; flex: 1 1 260px; min-width: 0;">${props.title || 'Phase Title'}</h3>
               </div>
             `;
           case 'deliverable':
@@ -546,14 +534,31 @@ export const generateProposalHtml = (proposal: any) => {
                 `).join('')}
               </div>
             `;
-          case 'video':
+          case 'video': {
+            const videoSrc = props.src || props.url || '';
+            const hasVideo = !!videoSrc;
+            const isBase64 = videoSrc.startsWith('data:');
+            let displayLink = videoSrc;
+            if (isBase64) {
+              displayLink = 'Uploaded Video';
+            }
             return `
-              <div class="mb-2 text-center bg-slate-50 border border-slate-200 rounded-lg p-3">
+              <div class="mb-2 text-center bg-slate-50 border border-slate-200 rounded-lg p-3 avoid-break">
                 <span class="text-blue-500 text-sm mr-1.5">🎥</span>
-                <span class="text-[9px] font-bold text-slate-700">Video Embed:</span>
-                <a href="${props.url || '#'}" target="_blank" class="text-[9px] text-blue-600 underline ml-0.5">${props.url || 'No Link'}</a>
+                <span class="text-[9px] font-bold text-slate-700">Video:</span>
+                ${hasVideo ? (
+                  isBase64 ? `
+                    <span class="text-[9px] text-slate-600 ml-0.5 font-semibold">${displayLink} ${props.caption ? `(${props.caption})` : ''}</span>
+                  ` : `
+                    <a href="${videoSrc}" target="_blank" class="text-[9px] text-blue-600 underline ml-0.5">${displayLink}</a>
+                  `
+                ) : `
+                  <span class="text-[9px] text-slate-400 ml-0.5 font-medium">No Link Provided</span>
+                `}
+                ${props.caption && !isBase64 ? `<div class="text-[8.5px] text-slate-400 font-medium mt-1">${props.caption}</div>` : ''}
               </div>
             `;
+          }
           case 'quote':
             return `
               <blockquote class="border-l-4 border-blue-500 pl-3 py-1 italic my-2 bg-slate-50 rounded-r-lg p-2.5">
@@ -654,6 +659,11 @@ export const generateProposalHtml = (proposal: any) => {
     .block-container { 
       margin-bottom: 32px;
       page-break-inside: auto; 
+    }
+
+    * {
+      word-break: break-word;
+      overflow-wrap: break-word;
     }
   </style>
 </head>

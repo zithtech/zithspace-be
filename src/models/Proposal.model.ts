@@ -70,8 +70,46 @@ export class ProposalModel {
         WHERE tenant_id = $1
         GROUP BY lead_id
       ) lm ON p.lead_id = lm.lead_id
-      WHERE p.tenant_id = $1
+      WHERE p.tenant_id = $1 AND p.deleted_at IS NULL
       ORDER BY p.created_at DESC;
+    `;
+    const result = await pool.query(query, [tenantId]);
+    return result.rows;
+  }
+
+  /**
+   * Find all trashed proposals for a tenant.
+   */
+  static async findTrashed(tenantId: string): Promise<any[]> {
+    const query = `
+      SELECT
+        p.id,
+        p.title,
+        p.client_name,
+        p.status,
+        p.created_at,
+        p.updated_at,
+        p.deleted_at,
+        p.created_by,
+        p.lead_id,
+        l.client_mail,
+        lm.last_mail_at,
+        (COALESCE(l.is_mail_sent, false) OR lm.last_mail_at IS NOT NULL) as is_mail_sent,
+        (
+          SELECT json_build_object('id', u.id, 'name', u.name, 'avatarUrl', u.avatar_url)
+          FROM users u
+          WHERE u.id = p.created_by
+        ) AS "createdBy"
+      FROM proposals p
+      LEFT JOIN leads l ON l.id = p.lead_id
+      LEFT JOIN (
+        SELECT lead_id, MAX(sent_at) as last_mail_at
+        FROM lead_mails
+        WHERE tenant_id = $1
+        GROUP BY lead_id
+      ) lm ON p.lead_id = lm.lead_id
+      WHERE p.tenant_id = $1 AND p.deleted_at IS NOT NULL
+      ORDER BY p.deleted_at DESC;
     `;
     const result = await pool.query(query, [tenantId]);
     return result.rows;
@@ -146,14 +184,52 @@ export class ProposalModel {
   }
 
   /**
-   * Delete a proposal
+   * Soft delete a proposal (move to trash)
    */
   static async delete(id: string, tenantId: string): Promise<boolean> {
+    const query = `
+      UPDATE proposals 
+      SET deleted_at = CURRENT_TIMESTAMP
+      WHERE id = $1 AND tenant_id = $2;
+    `;
+    const result = await pool.query(query, [id, tenantId]);
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  /**
+   * Restore a proposal from trash
+   */
+  static async restore(id: string, tenantId: string): Promise<boolean> {
+    const query = `
+      UPDATE proposals 
+      SET deleted_at = NULL
+      WHERE id = $1 AND tenant_id = $2;
+    `;
+    const result = await pool.query(query, [id, tenantId]);
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  /**
+   * Permanently delete a proposal
+   */
+  static async hardDelete(id: string, tenantId: string): Promise<boolean> {
     const query = `
       DELETE FROM proposals 
       WHERE id = $1 AND tenant_id = $2;
     `;
     const result = await pool.query(query, [id, tenantId]);
     return (result.rowCount ?? 0) > 0;
+  }
+
+  /**
+   * Empty trash (permanently delete all trashed proposals)
+   */
+  static async emptyTrash(tenantId: string): Promise<number> {
+    const query = `
+      DELETE FROM proposals 
+      WHERE tenant_id = $1 AND deleted_at IS NOT NULL;
+    `;
+    const result = await pool.query(query, [tenantId]);
+    return result.rowCount ?? 0;
   }
 }

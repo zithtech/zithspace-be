@@ -7,6 +7,7 @@ exports.TenantController = void 0;
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const tenantLogger_1 = __importDefault(require("@/utils/tenantLogger"));
 const dbpool_1 = __importDefault(require("@/config/dbpool"));
+const rbac_service_1 = require("@/modules/rbac/rbac.service");
 const types_1 = require("@/types");
 const r2Client_1 = require("@/utils/r2Client");
 const transactionHistory_1 = require("@/utils/transactionHistory");
@@ -152,7 +153,7 @@ class TenantController {
                     tenantData.adminUser.email.toLowerCase(),
                     tenantData.adminUser.phone,
                     passwordHash,
-                    'admin',
+                    'super_admin',
                     [1, 2, 3, 4, 5]
                 ]);
                 const adminUser = userInsertResult.rows[0];
@@ -168,6 +169,8 @@ class TenantController {
                     }
                 });
                 await client.query('COMMIT');
+                // Setup default roles for the new tenant
+                await rbac_service_1.RBACService.setupDefaultRolesForTenant(tenant.id);
                 result = { tenant, adminUser };
             }
             catch (err) {
