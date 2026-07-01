@@ -574,8 +574,9 @@ async function cleanupOrphanedImages(oldHtml, newHtml, tenantId) {
  * Generate a presigned URL for a file stored in R2
  * @param fileUrl - The public URL of the file
  * @param expiresIn - Expiration time in seconds (default 24 hours)
+ * @param download - If true, adds ResponseContentDisposition to force download
  */
-async function generatePresignedUrl(fileUrl, expiresIn = 86400) {
+async function generatePresignedUrl(fileUrl, expiresIn = 86400, download = false) {
     try {
         // Extract key from URL
         // URL format: https://pub-xxx.r2.dev/tenantId/employees/abc/payslip.pdf
@@ -592,6 +593,7 @@ async function generatePresignedUrl(fileUrl, expiresIn = 86400) {
         const command = new client_s3_1.GetObjectCommand({
             Bucket: exports.BUCKET_NAME,
             Key: key,
+            ...(download && { ResponseContentDisposition: `attachment; filename="${key.split('/').pop()}"` })
         });
         const signedUrl = await (0, s3_request_presigner_1.getSignedUrl)(exports.s3Client, command, { expiresIn });
         return signedUrl;

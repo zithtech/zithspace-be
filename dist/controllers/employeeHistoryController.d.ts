@@ -15,33 +15,40 @@ export declare function getEmployeeHistory(req: AuthRequest, employeeId: string)
     doj: any;
     lwd: any;
     experienceLetter: {
-        url: any;
+        url: string;
+        downloadUrl: string;
         id: any;
     };
     offerLetter: {
-        url: any;
+        url: string;
+        downloadUrl: string;
         id: any;
     };
     serviceLetter: {
-        url: any;
+        url: string;
+        downloadUrl: string;
         id: any;
     };
     relievingLetter: {
-        url: any;
+        url: string;
+        downloadUrl: string;
         id: any;
     };
     form16: {
-        url: any;
+        url: string;
+        downloadUrl: string;
         id: any;
     }[];
     payslips: {
-        url: any;
+        url: string;
+        downloadUrl: string;
         id: any;
     }[];
     documents: {
         documentType: string;
         files: {
             url: string;
+            downloadUrl: string;
             id: string;
         }[];
     }[];
@@ -64,27 +71,33 @@ export declare function getSingleExperience(req: AuthRequest, employeeId: string
     doj: any;
     lwd: any;
     experienceLetter: {
-        url: any;
+        url: string;
+        downloadUrl: string;
         id: any;
     };
     offerLetter: {
-        url: any;
+        url: string;
+        downloadUrl: string;
         id: any;
     };
     serviceLetter: {
-        url: any;
+        url: string;
+        downloadUrl: string;
         id: any;
     };
     relievingLetter: {
-        url: any;
+        url: string;
+        downloadUrl: string;
         id: any;
     };
     form16: {
-        url: any;
+        url: string;
+        downloadUrl: string;
         id: any;
     }[];
     payslips: {
-        url: any;
+        url: string;
+        downloadUrl: string;
         id: any;
     }[];
     contacts: {
