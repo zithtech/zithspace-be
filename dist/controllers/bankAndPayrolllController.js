@@ -17,6 +17,10 @@ const onboardingPool_1 = require("@/db/onboardingPool");
 const algorithm = "aes-256-cbc";
 const secretKey = process.env.SECRET_KEY; // 32 chars
 function encrypt(text) {
+    if (!secretKey) {
+        console.warn("SECRET_KEY not found. Encryption skipped.");
+        return text;
+    }
     const iv = crypto_1.default.randomBytes(16);
     const cipher = crypto_1.default.createCipheriv(algorithm, Buffer.from(secretKey), iv);
     let encrypted = cipher.update(text);
@@ -24,6 +28,10 @@ function encrypt(text) {
     return iv.toString("base64") + ":" + encrypted.toString("base64");
 }
 function decrypt(text) {
+    if (!secretKey) {
+        console.warn("SECRET_KEY not found. Decryption skipped.");
+        return text;
+    }
     try {
         const parts = text.split(":");
         if (parts.length !== 2) {
