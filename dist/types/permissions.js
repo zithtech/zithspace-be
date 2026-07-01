@@ -211,6 +211,60 @@ exports.Permissions = {
     PAYROLL_TRASH_DELETE: 'payroll.trash.delete',
     PAYROLL_PROCESS: 'payroll.process',
     PAYROLL_MANAGE: 'payroll.manage',
+    // ── Payroll 2.0 — page-based permissions (12 pages) ─────────────────────────
+    // 1. General Settings
+    PAYROLL_SETTINGS_READ: 'payroll.settings.read',
+    PAYROLL_SETTINGS_UPDATE: 'payroll.settings.update',
+    // 2. Salary Components
+    PAYROLL_COMPONENTS_READ: 'payroll.components.read',
+    PAYROLL_COMPONENTS_CREATE: 'payroll.components.create',
+    PAYROLL_COMPONENTS_UPDATE: 'payroll.components.update',
+    PAYROLL_COMPONENTS_DELETE: 'payroll.components.delete',
+    // 3. Salary Structures
+    PAYROLL_STRUCTURES_READ: 'payroll.structures.read',
+    PAYROLL_STRUCTURES_CREATE: 'payroll.structures.create',
+    PAYROLL_STRUCTURES_UPDATE: 'payroll.structures.update',
+    PAYROLL_STRUCTURES_DELETE: 'payroll.structures.delete',
+    // 4. Pay Schedules & Groups
+    PAYROLL_SCHEDULES_READ: 'payroll.schedules.read',
+    PAYROLL_SCHEDULES_CREATE: 'payroll.schedules.create',
+    PAYROLL_SCHEDULES_UPDATE: 'payroll.schedules.update',
+    PAYROLL_SCHEDULES_DELETE: 'payroll.schedules.delete',
+    // 5. Statutory (PF & ESI)
+    PAYROLL_STATUTORY_READ: 'payroll.statutory.read',
+    PAYROLL_STATUTORY_UPDATE: 'payroll.statutory.update',
+    // 6. Professional Tax & LWF
+    PAYROLL_STATE_STATUTORY_READ: 'payroll.state_statutory.read',
+    PAYROLL_STATE_STATUTORY_CREATE: 'payroll.state_statutory.create',
+    PAYROLL_STATE_STATUTORY_UPDATE: 'payroll.state_statutory.update',
+    PAYROLL_STATE_STATUTORY_DELETE: 'payroll.state_statutory.delete',
+    // 7. Approval Workflows
+    PAYROLL_WORKFLOWS_READ: 'payroll.workflows.read',
+    PAYROLL_WORKFLOWS_CREATE: 'payroll.workflows.create',
+    PAYROLL_WORKFLOWS_UPDATE: 'payroll.workflows.update',
+    PAYROLL_WORKFLOWS_DELETE: 'payroll.workflows.delete',
+    // 8. Payslip & Bank
+    PAYROLL_PAYSLIP_BANK_READ: 'payroll.payslip_bank.read',
+    PAYROLL_PAYSLIP_BANK_UPDATE: 'payroll.payslip_bank.update',
+    // 9. Employee Pay Setup
+    PAYROLL_EMPLOYEES_READ: 'payroll.employees.read',
+    PAYROLL_EMPLOYEES_CREATE: 'payroll.employees.create',
+    PAYROLL_EMPLOYEES_UPDATE: 'payroll.employees.update',
+    PAYROLL_EMPLOYEES_DELETE: 'payroll.employees.delete',
+    // 10. Run Payroll
+    PAYROLL_RUN_READ: 'payroll.run.read',
+    PAYROLL_RUN_CREATE: 'payroll.run.create',
+    PAYROLL_RUN_PROCESS: 'payroll.run.process',
+    PAYROLL_RUN_APPROVE: 'payroll.run.approve',
+    PAYROLL_RUN_FINALIZE: 'payroll.run.finalize',
+    PAYROLL_RUN_PAY: 'payroll.run.pay',
+    PAYROLL_RUN_PAYSLIPS: 'payroll.run.payslips',
+    PAYROLL_RUN_DELETE: 'payroll.run.delete',
+    // 11. Reports
+    PAYROLL_REPORTS_READ: 'payroll.reports.read',
+    PAYROLL_REPORTS_EXPORT: 'payroll.reports.export',
+    // 12. My Payslips (self-service)
+    PAYROLL_MY_PAYSLIPS_READ: 'payroll.my_payslips.read',
     SALARY_READ: 'salary.read',
     SALARY_APPROVE: 'salary.approve',
     SALARY_MANAGE: 'salary.manage',
@@ -528,34 +582,62 @@ exports.PERMISSIONS_BY_RESOURCE = {
         exports.Permissions.REIMBURSEMENT_CONFIG_UPDATE,
         exports.Permissions.REIMBURSEMENT_MANAGE,
     ],
+    // Payroll 2.0 — page-based (12 pages). Old flat payroll.* / salary.* keys are
+    // intentionally excluded from the assignable catalog (legacy /salary only).
     payroll: [
-        exports.Permissions.PAYROLL_DASHBOARD_READ,
-        exports.Permissions.PAYROLL_READ,
-        exports.Permissions.PAYROLL_CREATE,
-        exports.Permissions.PAYROLL_UPDATE,
-        exports.Permissions.PAYROLL_DELETE,
-        exports.Permissions.PAYROLL_APPROVE,
-        exports.Permissions.PAYROLL_PAY,
-        exports.Permissions.PAYROLL_PAYSLIP_READ,
-        exports.Permissions.PAYROLL_PAYSLIP_CREATE,
-        exports.Permissions.PAYROLL_PAYSLIP_DELETE,
-        exports.Permissions.PAYROLL_PAYSLIP_SEND,
-        exports.Permissions.PAYROLL_STRUCTURE_READ,
-        exports.Permissions.PAYROLL_STRUCTURE_CREATE,
-        exports.Permissions.PAYROLL_STRUCTURE_UPDATE,
-        exports.Permissions.PAYROLL_STRUCTURE_DELETE,
-        exports.Permissions.PAYROLL_SETTING_READ,
-        exports.Permissions.PAYROLL_SETTING_CREATE,
-        exports.Permissions.PAYROLL_SETTING_UPDATE,
-        exports.Permissions.PAYROLL_SETTING_DELETE,
-        exports.Permissions.PAYROLL_TRASH_READ,
-        exports.Permissions.PAYROLL_TRASH_CREATE,
-        exports.Permissions.PAYROLL_TRASH_UPDATE,
-        exports.Permissions.PAYROLL_TRASH_DELETE,
-        exports.Permissions.PAYROLL_PROCESS,
-        exports.Permissions.PAYROLL_MANAGE,
-        exports.Permissions.SALARY_READ,
-        exports.Permissions.SALARY_MANAGE,
+        // 1. General Settings
+        exports.Permissions.PAYROLL_SETTINGS_READ,
+        exports.Permissions.PAYROLL_SETTINGS_UPDATE,
+        // 2. Salary Components
+        exports.Permissions.PAYROLL_COMPONENTS_READ,
+        exports.Permissions.PAYROLL_COMPONENTS_CREATE,
+        exports.Permissions.PAYROLL_COMPONENTS_UPDATE,
+        exports.Permissions.PAYROLL_COMPONENTS_DELETE,
+        // 3. Salary Structures
+        exports.Permissions.PAYROLL_STRUCTURES_READ,
+        exports.Permissions.PAYROLL_STRUCTURES_CREATE,
+        exports.Permissions.PAYROLL_STRUCTURES_UPDATE,
+        exports.Permissions.PAYROLL_STRUCTURES_DELETE,
+        // 4. Pay Schedules & Groups
+        exports.Permissions.PAYROLL_SCHEDULES_READ,
+        exports.Permissions.PAYROLL_SCHEDULES_CREATE,
+        exports.Permissions.PAYROLL_SCHEDULES_UPDATE,
+        exports.Permissions.PAYROLL_SCHEDULES_DELETE,
+        // 5. Statutory (PF & ESI)
+        exports.Permissions.PAYROLL_STATUTORY_READ,
+        exports.Permissions.PAYROLL_STATUTORY_UPDATE,
+        // 6. Professional Tax & LWF
+        exports.Permissions.PAYROLL_STATE_STATUTORY_READ,
+        exports.Permissions.PAYROLL_STATE_STATUTORY_CREATE,
+        exports.Permissions.PAYROLL_STATE_STATUTORY_UPDATE,
+        exports.Permissions.PAYROLL_STATE_STATUTORY_DELETE,
+        // 7. Approval Workflows
+        exports.Permissions.PAYROLL_WORKFLOWS_READ,
+        exports.Permissions.PAYROLL_WORKFLOWS_CREATE,
+        exports.Permissions.PAYROLL_WORKFLOWS_UPDATE,
+        exports.Permissions.PAYROLL_WORKFLOWS_DELETE,
+        // 8. Payslip & Bank
+        exports.Permissions.PAYROLL_PAYSLIP_BANK_READ,
+        exports.Permissions.PAYROLL_PAYSLIP_BANK_UPDATE,
+        // 9. Employee Pay Setup
+        exports.Permissions.PAYROLL_EMPLOYEES_READ,
+        exports.Permissions.PAYROLL_EMPLOYEES_CREATE,
+        exports.Permissions.PAYROLL_EMPLOYEES_UPDATE,
+        exports.Permissions.PAYROLL_EMPLOYEES_DELETE,
+        // 10. Run Payroll
+        exports.Permissions.PAYROLL_RUN_READ,
+        exports.Permissions.PAYROLL_RUN_CREATE,
+        exports.Permissions.PAYROLL_RUN_PROCESS,
+        exports.Permissions.PAYROLL_RUN_APPROVE,
+        exports.Permissions.PAYROLL_RUN_FINALIZE,
+        exports.Permissions.PAYROLL_RUN_PAY,
+        exports.Permissions.PAYROLL_RUN_PAYSLIPS,
+        exports.Permissions.PAYROLL_RUN_DELETE,
+        // 11. Reports
+        exports.Permissions.PAYROLL_REPORTS_READ,
+        exports.Permissions.PAYROLL_REPORTS_EXPORT,
+        // 12. My Payslips
+        exports.Permissions.PAYROLL_MY_PAYSLIPS_READ,
     ],
     client: [exports.Permissions.CLIENT_CREATE, exports.Permissions.CLIENT_READ, exports.Permissions.CLIENT_UPDATE, exports.Permissions.CLIENT_DELETE, exports.Permissions.CLIENT_MANAGE],
     settings: [exports.Permissions.SETTINGS_READ, exports.Permissions.SETTINGS_UPDATE, exports.Permissions.SETTINGS_DELETE, exports.Permissions.SETTINGS_MANAGE],

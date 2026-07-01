@@ -113,6 +113,7 @@ const leaveRequestRoutes_1 = __importDefault(require("@/routes/leaveRequestRoute
 const leaveBalanceRoutes_1 = __importDefault(require("@/routes/leaveBalanceRoutes"));
 const routes_1 = __importDefault(require("@/modules/leave-v2/routes"));
 const routes_2 = __importDefault(require("@/modules/performance-report/routes"));
+const routes_3 = __importDefault(require("@/modules/payroll/routes"));
 const payroll_1 = __importDefault(require("@/routes/payroll"));
 const reimbursementConfig_1 = __importDefault(require("@/routes/reimbursementConfig"));
 const reimbursementsettingsRoutes_1 = __importDefault(require("@/routes/reimbursementsettingsRoutes"));
@@ -369,6 +370,7 @@ app.use("/api/leave-allocation", leaveAllocationRoutes_1.default);
 app.use("/api/leave-request", leaveRequestRoutes_1.default);
 app.use("/api/leave-balances", leaveBalanceRoutes_1.default);
 app.use("/api/v2/leave", routes_1.default);
+app.use("/api/v2/payroll", routes_3.default);
 app.use("/api/performance-report", routes_2.default);
 //Escalation
 app.use("/api/escalation-categories", escalationCategoryV2_routes_1.default);
@@ -534,6 +536,9 @@ const startServer = async () => {
         // Performance Report tables (raw-SQL module, idempotent)
         const { ensurePerformanceReportSchema } = require("@/modules/performance-report/db/schema");
         await ensurePerformanceReportSchema();
+        // Payroll 2.0 tables (raw-SQL module, forward-only migrations)
+        const { runPayrollMigrations } = require("@/modules/payroll/db/migrate");
+        await runPayrollMigrations();
         // Connect RabbitMQ & Start Workers
         try {
             await RabbitMQService_1.rabbitMQService.connect();
@@ -550,6 +555,17 @@ const startServer = async () => {
         // Leave 2.0 accrual scheduler + worker (no-op unless LEAVE_ACCRUAL_ENABLED=true)
         const { initLeaveAccrual } = require("@/modules/leave-v2/jobs");
         await initLeaveAccrual();
+        // Payroll 2.0 async payslip worker (no-op unless PAYROLL_ASYNC_PAYSLIPS=true)
+        if (process.env.PAYROLL_ASYNC_PAYSLIPS === "true") {
+            try {
+                const { startPayslipWorker } = require("@/modules/payroll/jobs/payslipWorker");
+                startPayslipWorker();
+                console.log("🧾 Payroll async payslip worker started");
+            }
+            catch (e) {
+                console.error("❌ Payslip worker failed to start:", e?.message);
+            }
+        }
         const PORT = parseInt(process.env.PORT || "5000");
         server = app.listen(PORT, () => {
             // console.log(`Zithmi Backend running on port ${PORT}`);

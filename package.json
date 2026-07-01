@@ -15,6 +15,7 @@
     "db:seed": "tsx src/scripts/seed.ts",
     "db:seed-rbac": "npx ts-node -r tsconfig-paths/register src/scripts/seed-rbac.ts",
     "lv2:migrate": "npx ts-node -r tsconfig-paths/register src/modules/leave-v2/db/migrate.ts",
+    "pay:migrate": "npx ts-node -r tsconfig-paths/register src/modules/payroll/db/migrate.ts",
     "lint": "eslint src --ext .ts",
     "test": "jest",
     "postinstall": "prisma generate"
