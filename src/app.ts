@@ -598,9 +598,9 @@ const startServer = async () => {
 
     // Connect RabbitMQ & Start Workers
     try {
-      // await rabbitMQService.connect();
-      // await CalendarSyncWorker.start(); 
-      // await MailSyncWorker.start();
+      await rabbitMQService.connect();
+      await CalendarSyncWorker.start(); 
+      await MailSyncWorker.start();
       // await CentralMailWorker.start();
       console.log("🚀 RabbitMQ connected, Calendar & Mail Sync Workers started");
     } catch (mqError: any) {
