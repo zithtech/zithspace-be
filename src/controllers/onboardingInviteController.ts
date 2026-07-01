@@ -31,11 +31,17 @@ function actorReq(tenantId: string, userId: string, body: any): AuthRequest {
  * where there is no subdomain-based routing.
  */
 function frontendBase(subdomain?: string | null): string {
+  const isDev = !process.env.NODE_ENV || process.env.NODE_ENV === "development";
+  
+  if (isDev) {
+    return process.env.FRONTEND_URL || "http://localhost:3000";
+  }
+
   if (subdomain) {
     const baseDomain = process.env.TENANT_BASE_DOMAIN || "zukvo.com";
     return `https://${subdomain}.${baseDomain}`;
   }
-  return process.env.FRONTEND_URL || "http://localhost:3000";
+  return process.env.FRONTEND_URL || "https://zukvo.com";
 }
 
 /** Branded HTML for the onboarding-invite email. */
@@ -91,6 +97,20 @@ export async function createInvite(req: AuthRequest, res: Response) {
         error: "firstName, lastName and workEmail are required to create an invite",
       });
     }
+
+    const nameRegex = /^[A-Za-z\s]+$/;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const mobileRegex = /^[0-9]{7,15}$/;
+    if (!nameRegex.test(firstName) || !nameRegex.test(lastName)) {
+      return res.status(400).json({ success: false, error: "First and last name must contain only letters and spaces" });
+    }
+    if (!emailRegex.test(workEmail) || (personalEmail && !emailRegex.test(personalEmail))) {
+      return res.status(400).json({ success: false, error: "Invalid email format" });
+    }
+    if (mobile && !mobileRegex.test(mobile)) {
+      return res.status(400).json({ success: false, error: "Mobile must be 7-15 digits" });
+    }
+
 
     const userId = req.user.id;
     const tenantId = req.tenantId;
@@ -262,6 +282,17 @@ export async function updateInviteContact(req: AuthRequest, res: Response) {
     if (!req.user?.id || !req.tenantId) throw new Error("Unauthorized");
     const { employeeId } = req.params;
     const { firstName, lastName, workEmail, personalEmail } = req.body || {};
+
+    const nameRegex = /^[A-Za-z\s]+$/;
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if ((firstName && !nameRegex.test(firstName)) || (lastName && !nameRegex.test(lastName))) {
+      return res.status(400).json({ success: false, error: "First and last name must contain only letters and spaces" });
+    }
+    if ((workEmail && !emailRegex.test(workEmail)) || (personalEmail && !emailRegex.test(personalEmail))) {
+      return res.status(400).json({ success: false, error: "Invalid email format" });
+    }
+
 
     const row = await withTenant(req.tenantId, async (db) => {
       const sets: string[] = [];

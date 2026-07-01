@@ -732,10 +732,12 @@ export async function cleanupOrphanedImages(
  * Generate a presigned URL for a file stored in R2
  * @param fileUrl - The public URL of the file
  * @param expiresIn - Expiration time in seconds (default 24 hours)
+ * @param download - If true, adds ResponseContentDisposition to force download
  */
 export async function generatePresignedUrl(
   fileUrl: string,
   expiresIn: number = 86400,
+  download: boolean = false,
 ): Promise<string> {
   try {
     // Extract key from URL
@@ -757,6 +759,7 @@ export async function generatePresignedUrl(
     const command = new GetObjectCommand({
       Bucket: BUCKET_NAME,
       Key: key,
+      ...(download && { ResponseContentDisposition: `attachment; filename="${key.split('/').pop()}"` })
     });
 
     const signedUrl = await getSignedUrl(s3Client, command, { expiresIn });
