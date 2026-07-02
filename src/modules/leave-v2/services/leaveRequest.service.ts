@@ -185,7 +185,102 @@ export async function getHolidayDates(actor: Actor): Promise<string[]> {
 
 export async function cancelMyRequest(actor: Actor, id: string) {
   return withTenant(actor.tenantId, async (client) => {
+    const existing = await repo.findAnyById(client, id);
     const ok = await repo.cancelOwnPending(client, actor.userId, id, actor.userId);
     if (!ok) throw LeaveV2Error.badRequest('Only your own pending requests can be cancelled');
+    return existing; // pre-cancel snapshot, for activity logging
+  });
+}
+
+// ── Withdrawal of an approved leave (release unused days) ──────────────────────
+
+export interface WithdrawRequestInput {
+  /** Release the whole leave — nothing was taken. */
+  releaseAll?: boolean;
+  /** Shorten the leave to end here (inclusive); the tail after this is released. */
+  newToDate?: string | null;
+  reason?: string | null;
+}
+
+export interface WithdrawalPlan {
+  mode: 'full' | 'shorten';
+  /** Working days actually taken under the plan. */
+  actualUnits: number;
+  newToDate: string | null;
+  /** total_units − actualUnits (working days released). */
+  releasedTotal: number;
+  /** Paid days released — the amount credited back to the ledger. */
+  releasedPaid: number;
+  /** LOP days released — no ledger impact (they were never debited). */
+  releasedLop: number;
+  /** Paid/LOP split of the KEPT portion (the new request figures). */
+  newPaid: number;
+  newLop: number;
+}
+
+/**
+ * Work out what a withdrawal releases. The original debit was only paid_units,
+ * so we release LOP days first (no balance impact) and credit the ledger for the
+ * released PAID days only — never over-crediting a partly-LOP leave.
+ */
+export async function computeWithdrawalPlan(
+  client: any,
+  req: repo.LeaveRequestRow,
+  input: WithdrawRequestInput
+): Promise<WithdrawalPlan> {
+  let mode: 'full' | 'shorten';
+  let actualUnits: number;
+  let newToDate: string | null = null;
+
+  if (input.releaseAll || !input.newToDate) {
+    mode = 'full';
+    actualUnits = 0;
+  } else {
+    if (input.newToDate < req.fromDate || input.newToDate >= req.toDate) {
+      throw LeaveV2Error.badRequest('The new end date must fall within the leave and before its current end date');
+    }
+    const holidays = await holidayRepo.holidayDatesInRange(client, req.fromDate, input.newToDate);
+    actualUnits = computeUnits(req.fromDate, input.newToDate, req.dayPortion, holidays);
+    if (actualUnits <= 0) {
+      // Kept range has no working days → effectively a full release.
+      mode = 'full';
+      actualUnits = 0;
+    } else {
+      mode = 'shorten';
+      newToDate = input.newToDate;
+    }
+  }
+
+  const releasedTotal = Number((req.totalUnits - actualUnits).toFixed(2));
+  if (releasedTotal <= 0) {
+    throw LeaveV2Error.badRequest('This plan releases no days');
+  }
+  const releasedLop = Math.min(releasedTotal, req.lopUnits);
+  const releasedPaid = Number((releasedTotal - releasedLop).toFixed(2));
+  const newPaid = Number((req.paidUnits - releasedPaid).toFixed(2));
+  const newLop = Number((req.lopUnits - releasedLop).toFixed(2));
+
+  return { mode, actualUnits, newToDate, releasedTotal, releasedPaid, releasedLop, newPaid, newLop };
+}
+
+/** Employee submits a withdrawal request on their own approved leave. */
+export async function requestWithdrawal(actor: Actor, id: string, input: WithdrawRequestInput) {
+  return withTenant(actor.tenantId, async (client) => {
+    const req = await repo.findAnyById(client, id);
+    if (!req || req.userId !== actor.userId) throw LeaveV2Error.notFound('Leave request');
+    if (req.status !== 'approved') throw LeaveV2Error.badRequest('Only approved leave can be withdrawn');
+    if (req.withdrawalStatus === 'requested') throw LeaveV2Error.badRequest('A withdrawal request is already awaiting your manager');
+
+    const plan = await computeWithdrawalPlan(client, req, input);
+
+    const updated = await repo.requestWithdrawal(client, actor.userId, id, {
+      requestedUnits: plan.releasedTotal,
+      newToDate: plan.newToDate,
+      reason: input.reason ?? null,
+      actorId: actor.userId,
+    });
+    if (!updated) throw LeaveV2Error.badRequest('This leave can no longer be withdrawn');
+
+    return { before: req, request: updated, plan };
   });
 }

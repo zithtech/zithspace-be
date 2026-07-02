@@ -21,12 +21,19 @@ export interface LeaveRequestRow {
   decidedAt: Date | null;
   decisionNote: string | null;
   createdAt: Date;
+  // withdrawal (release of unused approved days)
+  actualUnits: number | null;
+  withdrawalStatus: string | null;
+  withdrawalRequestedUnits: number | null;
+  withdrawalNewToDate: string | null;
+  withdrawalReason: string | null;
   // joined
   leaveTypeName?: string;
   leaveTypeColor?: string | null;
   userName?: string;
   userEmail?: string;
   reportsToId?: string | null;
+  approverName?: string | null;
 }
 
 const SELECT_REQ = `
@@ -36,11 +43,17 @@ const SELECT_REQ = `
   r.day_portion,
   r.total_units, r.paid_units, r.lop_units, r.reason, r.status,
   r.approver_id, r.decided_at, r.decision_note, r.created_at,
+  r.actual_units, r.withdrawal_status, r.withdrawal_requested_units,
+  to_char(r.withdrawal_new_to_date, 'YYYY-MM-DD') AS withdrawal_new_to_date,
+  r.withdrawal_reason,
   lt.name AS leave_type_name, lt.color AS leave_type_color
 `;
 
-// With requester info (for the approvals view).
-const SELECT_REQ_EMP = `${SELECT_REQ}, u.name AS user_name, u.work_email AS user_email, u.reports_to_id AS reports_to_id`;
+// With requester info (for the approvals view). `ua` is the approver (nullable).
+const SELECT_REQ_EMP = `${SELECT_REQ}, u.name AS user_name, u.work_email AS user_email, u.reports_to_id AS reports_to_id, ua.name AS approver_name`;
+
+// Join used alongside SELECT_REQ_EMP to resolve the approver's name.
+const JOIN_APPROVER = `LEFT JOIN users ua ON ua.id = r.approver_id::text`;
 
 function mapReq(r: any): LeaveRequestRow {
   return {
@@ -59,11 +72,17 @@ function mapReq(r: any): LeaveRequestRow {
     decidedAt: r.decided_at,
     decisionNote: r.decision_note,
     createdAt: r.created_at,
+    actualUnits: r.actual_units == null ? null : Number(r.actual_units),
+    withdrawalStatus: r.withdrawal_status ?? null,
+    withdrawalRequestedUnits: r.withdrawal_requested_units == null ? null : Number(r.withdrawal_requested_units),
+    withdrawalNewToDate: r.withdrawal_new_to_date ?? null,
+    withdrawalReason: r.withdrawal_reason ?? null,
     leaveTypeName: r.leave_type_name,
     leaveTypeColor: r.leave_type_color,
     userName: r.user_name ?? undefined,
     userEmail: r.user_email ?? undefined,
     reportsToId: r.reports_to_id ?? null,
+    approverName: r.approver_name ?? null,
   };
 }
 
@@ -222,6 +241,147 @@ export async function insertLeaveDebit(
   );
 }
 
+/** Write a ledger credit that reverses part of a request's debit (positive units). */
+export async function insertLeaveCredit(
+  client: TenantClient,
+  d: { userId: string; leaveTypeId: string; units: number; requestId: string; effectiveDate: string; note: string; createdBy: string }
+): Promise<void> {
+  if (d.units <= 0) return;
+  await client.query(
+    `INSERT INTO lv2_leave_ledger
+       (tenant_id, user_id, leave_type_id, entry_type, units, source, source_id, note, effective_date, created_by)
+     VALUES ($1, $2, $3, 'credit', $4, 'leave_request', $5, $6, $7, $8)`,
+    [client.tenantId, d.userId, d.leaveTypeId, Math.abs(d.units), d.requestId, d.note, d.effectiveDate, d.createdBy]
+  );
+}
+
+// ── Withdrawal of an approved leave (release unused days) ──────────────────────
+
+/**
+ * Employee submits a withdrawal request on their own APPROVED leave.
+ * No ledger impact yet — just records the ask. Re-requestable after a decline.
+ * Returns the updated row, or null if it wasn't in a withdrawable state.
+ */
+export async function requestWithdrawal(
+  client: TenantClient,
+  userId: string,
+  id: string,
+  d: { requestedUnits: number; newToDate: string | null; reason: string | null; actorId: string }
+): Promise<LeaveRequestRow | null> {
+  const { rows } = await client.query(
+    `WITH upd AS (
+       UPDATE lv2_leave_requests
+          SET withdrawal_status = 'requested',
+              withdrawal_requested_units = $4,
+              withdrawal_new_to_date = $5,
+              withdrawal_reason = $6,
+              withdrawal_decided_by = NULL,
+              withdrawal_decided_at = NULL,
+              updated_by = $7, updated_at = now()
+        WHERE tenant_id = $1 AND user_id = $2 AND id = $3
+          AND status = 'approved'
+          AND (withdrawal_status IS NULL OR withdrawal_status = 'declined')
+        RETURNING *
+     )
+     SELECT ${SELECT_REQ} FROM upd r JOIN lv2_leave_types lt ON lt.id = r.leave_type_id`,
+    [client.tenantId, userId, id, d.requestedUnits, d.newToDate, d.reason, d.actorId]
+  );
+  return rows[0] ? mapReq(rows[0]) : null;
+}
+
+/** Manager declines a pending withdrawal request. Request stays as-is. */
+export async function declineWithdrawal(
+  client: TenantClient,
+  id: string,
+  d: { actorId: string; note?: string | null }
+): Promise<LeaveRequestRow | null> {
+  const { rows } = await client.query(
+    `WITH upd AS (
+       UPDATE lv2_leave_requests
+          SET withdrawal_status = 'declined',
+              withdrawal_decided_by = $3, withdrawal_decided_at = now(),
+              decision_note = COALESCE($4, decision_note),
+              updated_by = $3, updated_at = now()
+        WHERE tenant_id = $1 AND id = $2 AND withdrawal_status = 'requested'
+        RETURNING *
+     )
+     SELECT ${SELECT_REQ_EMP}
+       FROM upd r
+       JOIN lv2_leave_types lt ON lt.id = r.leave_type_id
+       JOIN users u ON u.id = r.user_id::text
+       ${JOIN_APPROVER}`,
+    [client.tenantId, id, d.actorId, d.note ?? null]
+  );
+  return rows[0] ? mapReq(rows[0]) : null;
+}
+
+/**
+ * Manager confirms a PARTIAL withdrawal (shorten): the leave stays approved but
+ * its dates/units shrink to what was actually taken. The caller writes the
+ * reversing ledger credit for the released paid portion.
+ */
+export async function confirmWithdrawalShorten(
+  client: TenantClient,
+  id: string,
+  d: { newToDate: string; totalUnits: number; paidUnits: number; lopUnits: number; requestedUnits: number; actorId: string; note?: string | null }
+): Promise<LeaveRequestRow | null> {
+  const { rows } = await client.query(
+    `WITH upd AS (
+       UPDATE lv2_leave_requests
+          SET to_date = $3,
+              total_units = $4, paid_units = $5, lop_units = $6,
+              actual_units = $4,
+              withdrawal_status = 'confirmed',
+              withdrawal_requested_units = $7,
+              withdrawal_decided_by = $8, withdrawal_decided_at = now(),
+              decision_note = COALESCE($9, decision_note),
+              updated_by = $8, updated_at = now()
+        WHERE tenant_id = $1 AND id = $2 AND withdrawal_status = 'requested'
+        RETURNING *
+     )
+     SELECT ${SELECT_REQ_EMP}
+       FROM upd r
+       JOIN lv2_leave_types lt ON lt.id = r.leave_type_id
+       JOIN users u ON u.id = r.user_id::text
+       ${JOIN_APPROVER}`,
+    [client.tenantId, id, d.newToDate, d.totalUnits, d.paidUnits, d.lopUnits, d.requestedUnits, d.actorId, d.note ?? null]
+  );
+  return rows[0] ? mapReq(rows[0]) : null;
+}
+
+/**
+ * Manager confirms a FULL withdrawal: the leave is released entirely. Status
+ * becomes 'withdrawn' and actual_units = 0. total_units is left intact so the
+ * originally-approved figure is still visible on the record.
+ */
+export async function confirmWithdrawalFull(
+  client: TenantClient,
+  id: string,
+  d: { requestedUnits: number; actorId: string; note?: string | null }
+): Promise<LeaveRequestRow | null> {
+  const { rows } = await client.query(
+    `WITH upd AS (
+       UPDATE lv2_leave_requests
+          SET status = 'withdrawn',
+              actual_units = 0, paid_units = 0, lop_units = 0,
+              withdrawal_status = 'confirmed',
+              withdrawal_requested_units = $3,
+              withdrawal_decided_by = $4, withdrawal_decided_at = now(),
+              decision_note = COALESCE($5, decision_note),
+              updated_by = $4, updated_at = now()
+        WHERE tenant_id = $1 AND id = $2 AND withdrawal_status = 'requested'
+        RETURNING *
+     )
+     SELECT ${SELECT_REQ_EMP}
+       FROM upd r
+       JOIN lv2_leave_types lt ON lt.id = r.leave_type_id
+       JOIN users u ON u.id = r.user_id::text
+       ${JOIN_APPROVER}`,
+    [client.tenantId, id, d.requestedUnits, d.actorId, d.note ?? null]
+  );
+  return rows[0] ? mapReq(rows[0]) : null;
+}
+
 // ── Manager-facing (approvals) ────────────────────────────────────────────────
 /** All requests in the tenant with requester info; pending first. */
 export async function listAll(client: TenantClient): Promise<LeaveRequestRow[]> {
@@ -230,6 +390,7 @@ export async function listAll(client: TenantClient): Promise<LeaveRequestRow[]> 
        FROM lv2_leave_requests r
        JOIN lv2_leave_types lt ON lt.id = r.leave_type_id
        JOIN users u ON u.id = r.user_id::text
+       ${JOIN_APPROVER}
       WHERE r.tenant_id = $1
       ORDER BY (r.status = 'pending') DESC, r.created_at DESC`,
     [client.tenantId]
@@ -244,6 +405,7 @@ export async function listForApprover(client: TenantClient, approverUserId: stri
        FROM lv2_leave_requests r
        JOIN lv2_leave_types lt ON lt.id = r.leave_type_id
        JOIN users u ON u.id = r.user_id::text
+       ${JOIN_APPROVER}
       WHERE r.tenant_id = $1 AND u.reports_to_id = $2
       ORDER BY (r.status = 'pending') DESC, r.created_at DESC`,
     [client.tenantId, approverUserId]
@@ -257,6 +419,7 @@ export async function findAnyById(client: TenantClient, id: string): Promise<Lea
        FROM lv2_leave_requests r
        JOIN lv2_leave_types lt ON lt.id = r.leave_type_id
        JOIN users u ON u.id = r.user_id::text
+       ${JOIN_APPROVER}
       WHERE r.tenant_id = $1 AND r.id = $2`,
     [client.tenantId, id]
   );
@@ -280,7 +443,8 @@ export async function approveRequest(
      SELECT ${SELECT_REQ_EMP}
        FROM upd r
        JOIN lv2_leave_types lt ON lt.id = r.leave_type_id
-       JOIN users u ON u.id = r.user_id::text`,
+       JOIN users u ON u.id = r.user_id::text
+       ${JOIN_APPROVER}`,
     [client.tenantId, id, d.paid, d.lop, d.approverId, d.note ?? null]
   );
   return rows[0] ? mapReq(rows[0]) : null;
@@ -302,7 +466,8 @@ export async function rejectRequest(
      SELECT ${SELECT_REQ_EMP}
        FROM upd r
        JOIN lv2_leave_types lt ON lt.id = r.leave_type_id
-       JOIN users u ON u.id = r.user_id::text`,
+       JOIN users u ON u.id = r.user_id::text
+       ${JOIN_APPROVER}`,
     [client.tenantId, id, d.approverId, d.note ?? null]
   );
   return rows[0] ? mapReq(rows[0]) : null;

@@ -35,6 +35,9 @@ export const Module = {
   DAILY_UPDATES: "DailyUpdates",
   TIME_TRACKING: "TimeTracking",
   ORG_STRUCTURE: "OrgStructure",
+  // HR
+  LEAVES: "Leaves",
+  ONBOARDING: "Onboarding",
   // FINANCE
   ACCOUNTS: "Accounts",
   INVOICES: "Invoices",
@@ -103,6 +106,18 @@ export const Page = {
   ORG_STRUCTURE_DEPARTMENTS: "OrgStructureDepartments",
   ORG_STRUCTURE_SUB_DEPARTMENTS: "OrgStructureSubDepartments",
   ORG_STRUCTURE_POSITIONS: "OrgStructurePositions",
+  // Leaves module pages
+  LEAVE_REQUESTS: "LeaveRequests",
+  LEAVE_APPROVALS: "LeaveApprovals",
+  LEAVE_ADJUSTMENTS: "LeaveAdjustments",
+  LEAVE_TYPES: "LeaveTypes",
+  LEAVE_POLICIES: "LeavePolicies",
+  LEAVE_HOLIDAYS: "LeaveHolidays",
+  LEAVE_ACCRUAL: "LeaveAccrual",
+  // Onboarding module pages
+  ONBOARDING_INVITES: "OnboardingInvites",
+  ONBOARDING_EMPLOYEES: "OnboardingEmployees",
+  ONBOARDING_DOCUMENT_TYPES: "OnboardingDocumentTypes",
   // Admin module pages
   CLIENT_LIST: "ClientList",
   CLIENT_DETAIL: "ClientDetail",
@@ -144,6 +159,14 @@ export const Action = {
   BULK_CONVERT: "bulk_convert",
   START: "start",
   COMPLETE: "complete",
+  APPLY: "apply",
+  APPROVE: "approve",
+  REJECT: "reject",
+  CANCEL: "cancel",
+  RUN: "run",
+  REVOKE: "revoke",
+  ACTIVATE: "activate",
+  SUBMIT: "submit",
   BULK_ASSIGN: "bulk_assign",
   BULK_UNASSIGN: "bulk_unassign",
   BULK_RESOLVE: "bulk_resolve",
@@ -195,6 +218,18 @@ export const EntityType = {
   ORG_DEPARTMENT: "org_department",
   ORG_SUB_DEPARTMENT: "org_sub_department",
   ORG_POSITION: "org_position",
+  // HR entities
+  LEAVE_REQUEST: "leave_request",
+  LEAVE_ADJUSTMENT: "leave_adjustment",
+  LEAVE_TYPE: "leave_type",
+  LEAVE_POLICY: "leave_policy",
+  LEAVE_HOLIDAY: "leave_holiday",
+  LEAVE_ACCRUAL_RUN: "leave_accrual_run",
+  LEAVE_SETTINGS: "leave_settings",
+  // Onboarding entities
+  EMPLOYEE: "employee",
+  ONBOARDING_INVITE: "onboarding_invite",
+  ONBOARDING_DOCUMENT_TYPE: "onboarding_document_type",
   // Admin entities
   CLIENT: "client",
   CLIENT_CONTACT: "client_contact",

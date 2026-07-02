@@ -45,7 +45,7 @@ export interface LeadData {
   ai_summary?: string;
 
   // Lead source kind + shared company block
-  lead_source_kind?: 'platform' | 'website';
+  lead_source_kind?: 'platform' | 'website' | 'intake';
   company?: string;
   company_domain?: string;
   company_size?: string;
