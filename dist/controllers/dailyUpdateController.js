@@ -8,6 +8,8 @@ const database_1 = require("@/config/database");
 const types_1 = require("@/types");
 const dayjs_1 = __importDefault(require("dayjs"));
 const transactionHistory_1 = require("../utils/transactionHistory");
+const rbac_service_1 = require("@/modules/rbac/rbac.service");
+const permissions_1 = require("@/types/permissions");
 class DailyUpdateController {
     /**
      * Create new daily status update
@@ -403,26 +405,12 @@ class DailyUpdateController {
                 if (updateType) {
                     where.updateType = updateType;
                 }
-                // Super Admin - can see all updates
-                if (user.role === "super_admin") {
+                // Check if the user has Manage permission
+                const userPermissions = await rbac_service_1.RBACService.getUserPermissions(req.user.id, req.tenantId, user.role);
+                const hasReadPerm = userPermissions.has(permissions_1.Permissions.DAILY_UPDATE_READ);
+                // Super Admin or users with read permission - can see all updates
+                if (user.role === "super_admin" || hasReadPerm) {
                     // No additional filters needed
-                }
-                // Project Manager - can see updates from their projects
-                else if (user.position?.title === "Project Manager") {
-                    const managedProjects = await client.project.findMany({
-                        where: {
-                            tenantId: req.tenantId,
-                            projectManagerId: req.user.id,
-                        },
-                        select: { id: true },
-                    });
-                    const projectIds = managedProjects.map((p) => p.id);
-                    if (projectIds.length === 0) {
-                        // PM has no projects, return empty
-                        return [];
-                    }
-                    // Filter updates that include these projects
-                    // Note: We'll need to filter in application code since projectUpdates is JSON
                 }
                 // Regular user - can only see own updates
                 else {
