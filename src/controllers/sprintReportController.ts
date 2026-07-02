@@ -6,6 +6,7 @@ import {
   SprintAiContext,
   AiNarrative,
 } from "@/services/sprintReportAiService";
+import { SprintReportExportService } from "@/services/sprintReportExportService";
 import {
   recordTransaction,
   Section,
@@ -2493,5 +2494,50 @@ export class SprintReportController {
     };
 
     return ctx;
+  }
+
+  /**
+   * POST /api/sprint-report/:sprintId/export-pdf
+   * Generates a PDF of the Sprint Report using Puppeteer and streams it back.
+   */
+  static async exportSprintReportPdf(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const sprintId = req.params.sprintId;
+      const { htmlPayload } = req.body;
+
+      if (!htmlPayload) {
+        res.status(400).json({
+          success: false,
+          error: "htmlPayload is required",
+        } as ApiResponse);
+        return;
+      }
+
+      // Generate the PDF buffer directly in memory
+      const pdfBuffer = await SprintReportExportService.generatePDFBuffer(htmlPayload);
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="Sprint-Report-${sprintId}.pdf"`
+      );
+
+      res.send(pdfBuffer);
+
+    } catch (error) {
+      console.error("Error generating Sprint Report PDF:", error);
+      res.status(500).json({
+        success: false,
+        error: "Failed to generate PDF",
+      } as ApiResponse);
+    }
   }
 }
