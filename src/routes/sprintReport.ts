@@ -102,4 +102,14 @@ router.post(
   SprintReportController.postAiNarrative
 );
 
+/**
+ * @route   POST /api/sprint-report/:sprintId/export-pdf
+ * @desc    Export Sprint Report to PDF via Puppeteer
+ */
+router.post(
+  "/:sprintId/export-pdf",
+  requirePermission(Permissions.TICKET_READ),
+  SprintReportController.exportSprintReportPdf
+);
+
 export default router;
