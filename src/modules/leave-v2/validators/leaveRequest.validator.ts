@@ -21,3 +21,31 @@ export const applyLeaveSchema = z
   });
 
 export type ApplyLeaveInput = z.infer<typeof applyLeaveSchema>;
+
+// Employee asks to release unused days of an approved leave: either the whole
+// thing (releaseAll) or shorten it to end on newToDate (the tail is released).
+export const withdrawRequestSchema = z
+  .object({
+    releaseAll: z.boolean().optional(),
+    newToDate: dateStr.optional().nullable(),
+    reason: z.string().trim().max(500).optional().nullable(),
+  })
+  .superRefine((v, ctx) => {
+    if (!v.releaseAll && !v.newToDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Provide newToDate to shorten the leave, or set releaseAll to release it entirely',
+        path: ['newToDate'],
+      });
+    }
+  });
+
+export type WithdrawRequestInput = z.infer<typeof withdrawRequestSchema>;
+
+// Manager's decision on a pending withdrawal request.
+export const withdrawDecisionSchema = z.object({
+  approve: z.boolean(),
+  note: z.string().trim().max(500).optional().nullable(),
+});
+
+export type WithdrawDecisionInput = z.infer<typeof withdrawDecisionSchema>;
