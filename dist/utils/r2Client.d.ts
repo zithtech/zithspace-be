@@ -129,8 +129,9 @@ export declare function cleanupOrphanedImages(oldHtml: string, newHtml: string, 
  * Generate a presigned URL for a file stored in R2
  * @param fileUrl - The public URL of the file
  * @param expiresIn - Expiration time in seconds (default 24 hours)
+ * @param download - If true, adds ResponseContentDisposition to force download
  */
-export declare function generatePresignedUrl(fileUrl: string, expiresIn?: number): Promise<string>;
+export declare function generatePresignedUrl(fileUrl: string, expiresIn?: number, download?: boolean): Promise<string>;
 /**
  * Fetch a file from R2 and return its content as a Buffer
  * Uses the internal S3 client with credentials.

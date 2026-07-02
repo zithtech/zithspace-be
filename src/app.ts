@@ -20,10 +20,6 @@ import bcrypt from "bcryptjs";
 
 // Import configurations
 import { connectDatabase, disconnectDatabase } from "@/config/database";
-import salaryComponentRoutes from "@/routes/salaryComponentRoutes";
-import salaryStructureRoutes from "@/routes/salaryStructureRoutes";
-import salaryApprovalRoutes from "@/routes/salaryApprovalRoutes";
-import salaryAdjustmentRoutes from "@/routes/salaryAdjustmentRoutes";
 import gradeRoutes from "@/routes/gradeRoutes";
 import companyRoutes from "./routes/companyRoutes";
 
@@ -117,7 +113,6 @@ import leaveBalanceRoutes from "@/routes/leaveBalanceRoutes";
 import leaveV2Routes from "@/modules/leave-v2/routes";
 import performanceReportRoutes from "@/modules/performance-report/routes";
 import payrollV2Routes from "@/modules/payroll/routes";
-import payrollRoutes from "@/routes/payroll";
 import reimbursementConfigurationRoutes from "@/routes/reimbursementConfig";
 import reimbursementsettingsRoutes from "@/routes/reimbursementsettingsRoutes";
 import reimbursementRoutes from "@/routes/reimbursementcreateRoutes";
@@ -370,13 +365,8 @@ app.use("/api/bug-list", bugListRoutes);
 app.use("/api/sprint-completion", sprintCompletionRoutes);
 app.use("/api/sprint-report", sprintReportRoutes);
 app.use("/api/sprint-reports", sprintReportsRoutes);
-app.use("/api/salary-components", salaryComponentRoutes);
-app.use("/api/salary-structures", salaryStructureRoutes);
-app.use("/api/salary-approvals", salaryApprovalRoutes);
-app.use("/api/salary-adjustments", salaryAdjustmentRoutes);
 app.use("/api/companies", companyRoutes);
 app.use("/api/grades", gradeRoutes);
-app.use("/api/payroll", payrollRoutes);
 app.use("/api/company-locations", companyLocationRoutes);
 app.use("/api/opening-management", openingManagementRoutes);
 app.use("/api/leads", leadRoutes);
