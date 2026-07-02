@@ -14,5 +14,6 @@ router.get('/holidays', requirePermission(Permissions.LEAVE_READ), ctrl.holidayD
 router.post('/', requirePermission(Permissions.LEAVE_CREATE), ctrl.apply);
 router.put('/:id', requirePermission(Permissions.LEAVE_UPDATE), ctrl.update);
 router.post('/:id/cancel', requirePermission(Permissions.LEAVE_READ), ctrl.cancel);
+router.post('/:id/withdraw-request', requirePermission(Permissions.LEAVE_READ), ctrl.withdrawRequest);
 
 export default router;

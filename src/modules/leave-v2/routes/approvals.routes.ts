@@ -9,5 +9,6 @@ const router = express.Router();
 router.get('/', requirePermission(Permissions.LEAVE_APPROVE), ctrl.list);
 router.post('/:id/approve', requirePermission(Permissions.LEAVE_APPROVE), ctrl.approve);
 router.post('/:id/reject', requirePermission(Permissions.LEAVE_APPROVE), ctrl.reject);
+router.post('/:id/withdraw-decision', requirePermission(Permissions.LEAVE_APPROVE), ctrl.withdrawDecision);
 
 export default router;

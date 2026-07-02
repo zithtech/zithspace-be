@@ -54,7 +54,7 @@ export async function deleteAdjustment(actor: Actor, id: string) {
     const deleted = await repo.deleteEntry(client, id);
     if (!deleted) throw LeaveV2Error.notFound('Adjustment');
     const newBalance = await repo.getBalanceFor(client, deleted.userId, deleted.leaveTypeId);
-    return { id, deleted: true, newBalance };
+    return { id, deleted: true, newBalance, entry: deleted };
   });
 }
 

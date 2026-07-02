@@ -112,15 +112,20 @@ export async function listEmployees(client: TenantClient): Promise<EmployeeOptio
  * debits) can never be removed. Balance is SUM(units), so dropping the row
  * automatically reverses its effect. Returns true if a row was deleted.
  */
-export async function deleteEntry(client: TenantClient, id: string): Promise<{ userId: string; leaveTypeId: string } | null> {
+export async function deleteEntry(client: TenantClient, id: string): Promise<AdjustmentRow | null> {
   const { rows } = await client.query(
-    `DELETE FROM lv2_leave_ledger
-      WHERE tenant_id = $1 AND id = $2 AND source = 'manual_adjustment'
-      RETURNING user_id, leave_type_id`,
+    `WITH del AS (
+       DELETE FROM lv2_leave_ledger
+        WHERE tenant_id = $1 AND id = $2 AND source = 'manual_adjustment'
+        RETURNING *
+     )
+     SELECT ${SELECT_ADJ}
+       FROM del lg
+       JOIN lv2_leave_types lt ON lt.id = lg.leave_type_id
+       JOIN users u ON u.id = lg.user_id::text`,
     [client.tenantId, id]
   );
-  if (!rows[0]) return null;
-  return { userId: rows[0].user_id, leaveTypeId: rows[0].leave_type_id };
+  return rows[0] ? mapAdj(rows[0]) : null;
 }
 
 export async function getBalanceFor(client: TenantClient, userId: string, leaveTypeId: string): Promise<number> {

@@ -308,7 +308,7 @@ export class TransactionHistoryController {
         ),
       ]);
 
-      const predefinedSections = ["WORK", "ADMIN", "FINANCE"];
+      const predefinedSections = ["WORK", "HR", "ADMIN", "FINANCE"];
       const predefinedModules = [
         { section: "WORK", module: "Tickets" },
         { section: "WORK", module: "BugList" },
@@ -326,6 +326,8 @@ export class TransactionHistoryController {
         { section: "WORK", module: "DailyUpdates" },
         { section: "WORK", module: "TimeTracking" },
         { section: "WORK", module: "OrgStructure" },
+        { section: "HR", module: "Leaves" },
+        { section: "HR", module: "Onboarding" },
         { section: "ADMIN", module: "ClientsV2" },
         { section: "ADMIN", module: "GeneralSettings" },
         { section: "ADMIN", module: "Members" },
@@ -377,6 +379,16 @@ export class TransactionHistoryController {
         { module: "OrgStructure", page: "OrgStructureDepartments" },
         { module: "OrgStructure", page: "OrgStructureSubDepartments" },
         { module: "OrgStructure", page: "OrgStructurePositions" },
+        { module: "Leaves", page: "LeaveRequests" },
+        { module: "Leaves", page: "LeaveApprovals" },
+        { module: "Leaves", page: "LeaveAdjustments" },
+        { module: "Leaves", page: "LeaveTypes" },
+        { module: "Leaves", page: "LeavePolicies" },
+        { module: "Leaves", page: "LeaveHolidays" },
+        { module: "Leaves", page: "LeaveAccrual" },
+        { module: "Onboarding", page: "OnboardingInvites" },
+        { module: "Onboarding", page: "OnboardingEmployees" },
+        { module: "Onboarding", page: "OnboardingDocumentTypes" },
         { module: "ClientsV2", page: "ClientList" },
         { module: "ClientsV2", page: "ClientDetail" },
         { module: "GeneralSettings", page: "GeneralSettingsView" },
@@ -397,7 +409,8 @@ export class TransactionHistoryController {
         "move", "convert", "verify", "reopen", "bulk_update_status", "bulk_archive", "bulk_unarchive",
         "bulk_delete", "bulk_restore", "bulk_permanent_delete", "bulk_move", "bulk_convert", "start",
         "complete", "bulk_assign", "bulk_unassign", "bulk_resolve", "generate_ai", "empty_trash",
-        "auto_purge", "reorder", "share", "unshare", "download", "email_sent", "login", "logout"
+        "auto_purge", "reorder", "share", "unshare", "download", "email_sent", "login", "logout",
+        "apply", "approve", "reject", "cancel", "run", "revoke", "activate", "submit"
       ];
       const predefinedEntityTypes = [
         "ticket", "bug", "bug_folder", "bug_sheet", "bug_severity_option", "bug_type_option",
@@ -408,7 +421,10 @@ export class TransactionHistoryController {
         "time_entry", "org_grade", "org_employment_type", "org_department", "org_sub_department", "org_position", "client", "client_contact", "client_document", "client_allocation",
         "tenant_settings", "user", "role", "permission", "role_permission", "user_role",
         "invoice", "account_transaction", "invoice_payment",
-        "invoice_template", "invoice_customer", "invoice_settings_profile", "session"
+        "invoice_template", "invoice_customer", "invoice_settings_profile", "session",
+        "leave_request", "leave_adjustment", "leave_type", "leave_policy",
+        "leave_holiday", "leave_accrual_run", "leave_settings",
+        "employee", "onboarding_invite", "onboarding_document_type"
       ];
 
       // Union distinct db rows with predefined constants

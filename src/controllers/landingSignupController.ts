@@ -5,6 +5,7 @@ import { JWTUtils } from "@/utils/jwt";
 import { EmailService } from "@/utils/emailService";
 import pool from "@/config/dbpool";
 import crypto from "crypto";
+import { RBACService } from "@/modules/rbac/rbac.service";
 
 const emailService = new EmailService();
 
@@ -293,6 +294,8 @@ export class LandingSignupController {
           [record.id]
         );
 
+        await RBACService.setupDefaultRolesForTenant(tenantId);
+
         await client.query("COMMIT");
       } catch (txError) {
         await client.query("ROLLBACK");
@@ -414,6 +417,8 @@ export class LandingSignupController {
           [tenantId, name.trim(), email, dummyPasswordHash]
         );
 
+        await RBACService.setupDefaultRolesForTenant(tenantId);
+
         await dbClient.query("COMMIT");
       } catch (txError) {
         await dbClient.query("ROLLBACK");
@@ -534,6 +539,8 @@ export class LandingSignupController {
            VALUES (gen_random_uuid(), $1, $2, $3, $3, '', $4, 'super_admin', true, '{1,2,3,4,5}', now(), now())`,
           [tenantId, name.trim(), email, dummyPasswordHash]
         );
+
+        await RBACService.setupDefaultRolesForTenant(tenantId);
 
         await dbClient.query("COMMIT");
       } catch (txError) {

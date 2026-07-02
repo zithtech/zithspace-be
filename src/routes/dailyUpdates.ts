@@ -36,7 +36,7 @@ router.get('/my', requirePermission(Permissions.DAILY_UPDATE_READ), DailyUpdateC
  * @access  Private (Project Manager or Super Admin)
  * @query   date?, projectId?, userId?
  */
-router.get('/team', requirePermission(Permissions.DAILY_UPDATE_MANAGE_TIME), DailyUpdateController.getTeamUpdates);
+router.get('/team', requirePermission(Permissions.DAILY_UPDATE_READ), DailyUpdateController.getTeamUpdates);
 
 /**
  * @route   GET /api/daily-updates/today

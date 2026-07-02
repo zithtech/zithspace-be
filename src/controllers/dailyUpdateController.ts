@@ -9,6 +9,8 @@ import {
 } from "@/types";
 import dayjs from "dayjs";
 import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from "../utils/transactionHistory";
+import { RBACService } from "@/modules/rbac/rbac.service";
+import { Permissions } from "@/types/permissions";
 
 export class DailyUpdateController {
   /**
@@ -492,29 +494,17 @@ export class DailyUpdateController {
             where.updateType = updateType;
           }
 
-          // Super Admin - can see all updates
-          if (user.role === "super_admin") {
+          // Check if the user has Manage permission
+          const userPermissions = await RBACService.getUserPermissions(
+            req.user!.id,
+            req.tenantId!,
+            user.role
+          );
+          const hasReadPerm = userPermissions.has(Permissions.DAILY_UPDATE_READ);
+
+          // Super Admin or users with read permission - can see all updates
+          if (user.role === "super_admin" || hasReadPerm) {
             // No additional filters needed
-          }
-          // Project Manager - can see updates from their projects
-          else if (user.position?.title === "Project Manager") {
-            const managedProjects = await client.project.findMany({
-              where: {
-                tenantId: req.tenantId,
-                projectManagerId: req.user!.id,
-              },
-              select: { id: true },
-            });
-
-            const projectIds = managedProjects.map((p) => p.id);
-
-            if (projectIds.length === 0) {
-              // PM has no projects, return empty
-              return [];
-            }
-
-            // Filter updates that include these projects
-            // Note: We'll need to filter in application code since projectUpdates is JSON
           }
           // Regular user - can only see own updates
           else {

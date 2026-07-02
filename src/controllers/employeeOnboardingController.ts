@@ -30,6 +30,11 @@ import {
   getEmployeeAssets,
   deleteAllEmployeeAssets,
 } from "./employeeAssets";
+import { recordTransaction, Section, Module, Page, Action, EntityType } from "@/utils/transactionHistory";
+
+const empName = (r: any) => [r?.first_name, r?.last_name].filter(Boolean).join(" ").trim();
+const empLabel = (r: any) =>
+  `${r?.employee_code ?? ""}${r?.employee_code && empName(r) ? " · " : ""}${empName(r)}`.trim() || "Employee";
 
 export class EmployeeOnboardingController {
   // ✅ CREATE Employee (Full Onboarding)
@@ -93,6 +98,26 @@ export class EmployeeOnboardingController {
         }
 
         return employee;
+      });
+
+      const sections = ["personal", employment && "employment", bank && "bank", history?.length && "history", assets?.length && "assets"].filter(Boolean);
+      recordTransaction({
+        req,
+        section: Section.HR,
+        module: Module.ONBOARDING,
+        page: Page.ONBOARDING_EMPLOYEES,
+        action: Action.CREATE,
+        actionLabel: `Created employee ${empLabel(result)} (sections: ${sections.join(", ")})`,
+        entityType: EntityType.EMPLOYEE,
+        entityId: result?.id,
+        entityLabel: empLabel(result),
+        afterData: {
+          employeeCode: result?.employee_code,
+          firstName: result?.first_name,
+          lastName: result?.last_name,
+          workEmail: result?.work_email,
+          sections,
+        },
       });
 
       res.status(201).json({
@@ -256,6 +281,21 @@ export class EmployeeOnboardingController {
         return employee;
       });
 
+      const sections = [personal && "personal", employment && "employment", bank && "bank", history && "history", assets && "assets"].filter(Boolean);
+      recordTransaction({
+        req,
+        section: Section.HR,
+        module: Module.ONBOARDING,
+        page: Page.ONBOARDING_EMPLOYEES,
+        action: Action.UPDATE,
+        actionLabel: `Updated employee onboarding${result ? ` ${empLabel(result)}` : ""} (sections: ${sections.join(", ")})`,
+        entityType: EntityType.EMPLOYEE,
+        entityId: employeeId,
+        entityLabel: result ? empLabel(result) : `Employee ${employeeId}`,
+        afterData: { updatedSections: sections },
+        metadata: { sections },
+      });
+
       res.status(200).json({
         success: true,
         data: result || { id: employeeId },
@@ -275,6 +315,22 @@ export class EmployeeOnboardingController {
     try {
       const { employeeId } = req.params;
       const result = await deletePersonalDetails(req, employeeId);
+
+      const emp = (result as any)?.employee;
+      recordTransaction({
+        req,
+        section: Section.HR,
+        module: Module.ONBOARDING,
+        page: Page.ONBOARDING_EMPLOYEES,
+        action: Action.DELETE,
+        actionLabel: `Deleted employee ${empLabel(emp)}`,
+        entityType: EntityType.EMPLOYEE,
+        entityId: employeeId,
+        entityLabel: empLabel(emp),
+        beforeData: { status: true },
+        afterData: { status: false },
+        changedFields: ["status"],
+      });
 
       res.status(200).json({
         success: true,

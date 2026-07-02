@@ -7,6 +7,9 @@ const employeeEmployementDetailes_1 = require("./employeeEmployementDetailes");
 const bankAndPayrolllController_1 = require("./bankAndPayrolllController");
 const employeeHistoryController_1 = require("./employeeHistoryController");
 const employeeAssets_1 = require("./employeeAssets");
+const transactionHistory_1 = require("@/utils/transactionHistory");
+const empName = (r) => [r?.first_name, r?.last_name].filter(Boolean).join(" ").trim();
+const empLabel = (r) => `${r?.employee_code ?? ""}${r?.employee_code && empName(r) ? " · " : ""}${empName(r)}`.trim() || "Employee";
 class EmployeeOnboardingController {
     // ✅ CREATE Employee (Full Onboarding)
     static async create(req, res) {
@@ -43,6 +46,25 @@ class EmployeeOnboardingController {
                     await (0, employeeAssets_1.createEmployeeAssets)({ ...req, body: { assets } }, employee.id, client);
                 }
                 return employee;
+            });
+            const sections = ["personal", employment && "employment", bank && "bank", history?.length && "history", assets?.length && "assets"].filter(Boolean);
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.HR,
+                module: transactionHistory_1.Module.ONBOARDING,
+                page: transactionHistory_1.Page.ONBOARDING_EMPLOYEES,
+                action: transactionHistory_1.Action.CREATE,
+                actionLabel: `Created employee ${empLabel(result)} (sections: ${sections.join(", ")})`,
+                entityType: transactionHistory_1.EntityType.EMPLOYEE,
+                entityId: result?.id,
+                entityLabel: empLabel(result),
+                afterData: {
+                    employeeCode: result?.employee_code,
+                    firstName: result?.first_name,
+                    lastName: result?.last_name,
+                    workEmail: result?.work_email,
+                    sections,
+                },
             });
             res.status(201).json({
                 success: true,
@@ -172,6 +194,20 @@ class EmployeeOnboardingController {
                 }
                 return employee;
             });
+            const sections = [personal && "personal", employment && "employment", bank && "bank", history && "history", assets && "assets"].filter(Boolean);
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.HR,
+                module: transactionHistory_1.Module.ONBOARDING,
+                page: transactionHistory_1.Page.ONBOARDING_EMPLOYEES,
+                action: transactionHistory_1.Action.UPDATE,
+                actionLabel: `Updated employee onboarding${result ? ` ${empLabel(result)}` : ""} (sections: ${sections.join(", ")})`,
+                entityType: transactionHistory_1.EntityType.EMPLOYEE,
+                entityId: employeeId,
+                entityLabel: result ? empLabel(result) : `Employee ${employeeId}`,
+                afterData: { updatedSections: sections },
+                metadata: { sections },
+            });
             res.status(200).json({
                 success: true,
                 data: result || { id: employeeId },
@@ -191,6 +227,21 @@ class EmployeeOnboardingController {
         try {
             const { employeeId } = req.params;
             const result = await (0, createEmployeeDetailes_1.deletePersonalDetails)(req, employeeId);
+            const emp = result?.employee;
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.HR,
+                module: transactionHistory_1.Module.ONBOARDING,
+                page: transactionHistory_1.Page.ONBOARDING_EMPLOYEES,
+                action: transactionHistory_1.Action.DELETE,
+                actionLabel: `Deleted employee ${empLabel(emp)}`,
+                entityType: transactionHistory_1.EntityType.EMPLOYEE,
+                entityId: employeeId,
+                entityLabel: empLabel(emp),
+                beforeData: { status: true },
+                afterData: { status: false },
+                changedFields: ["status"],
+            });
             res.status(200).json({
                 success: true,
                 message: "Employee deleted successfully",
