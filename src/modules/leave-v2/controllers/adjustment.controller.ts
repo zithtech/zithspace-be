@@ -5,6 +5,21 @@ import { actorOf, handle, ok } from '../http';
 import { LeaveV2Error } from '../types';
 import * as service from '../services/adjustment.service';
 import { createAdjustmentSchema } from '../validators/adjustment.validator';
+import { recordTransaction, Section, Module, Page, Action, EntityType } from '@/utils/transactionHistory';
+
+const signed = (n: number) => (n > 0 ? `+${n}` : `${n}`);
+
+// Compact snapshot of a manual balance adjustment for the activity feed.
+function adjustmentSnapshot(e: any) {
+  return {
+    employee: e.userName,
+    leaveType: e.leaveTypeName,
+    entryType: e.entryType,
+    units: e.units,
+    effectiveDate: e.effectiveDate,
+    note: e.note ?? null,
+  };
+}
 
 export const list = handle(async (req: AuthRequest, res: Response) => {
   ok(res, await service.listAdjustments(actorOf(req)));
@@ -22,9 +37,39 @@ export const balance = handle(async (req: AuthRequest, res: Response) => {
 
 export const create = handle(async (req: AuthRequest, res: Response) => {
   const input = createAdjustmentSchema.parse(req.body);
-  ok(res, await service.createAdjustment(actorOf(req), input), 201);
+  const result = await service.createAdjustment(actorOf(req), input);
+  const { entry, newBalance } = result;
+  recordTransaction({
+    req,
+    section: Section.HR,
+    module: Module.LEAVES,
+    page: Page.LEAVE_ADJUSTMENTS,
+    action: Action.CREATE,
+    actionLabel: `${entry.note} for ${entry.userName} (${signed(entry.units)} ${entry.leaveTypeName})`,
+    entityType: EntityType.LEAVE_ADJUSTMENT,
+    entityId: entry.id,
+    entityLabel: `${entry.userName} · ${entry.leaveTypeName}`,
+    afterData: adjustmentSnapshot(entry),
+    metadata: { newBalance },
+  });
+  ok(res, result, 201);
 });
 
 export const remove = handle(async (req: AuthRequest, res: Response) => {
-  ok(res, await service.deleteAdjustment(actorOf(req), req.params.id));
+  const result = await service.deleteAdjustment(actorOf(req), req.params.id);
+  const { entry, newBalance } = result;
+  recordTransaction({
+    req,
+    section: Section.HR,
+    module: Module.LEAVES,
+    page: Page.LEAVE_ADJUSTMENTS,
+    action: Action.DELETE,
+    actionLabel: `Reversed ${entry.note} for ${entry.userName} (${signed(entry.units)} ${entry.leaveTypeName})`,
+    entityType: EntityType.LEAVE_ADJUSTMENT,
+    entityId: req.params.id,
+    entityLabel: `${entry.userName} · ${entry.leaveTypeName}`,
+    beforeData: adjustmentSnapshot(entry),
+    metadata: { newBalance },
+  });
+  ok(res, result);
 });

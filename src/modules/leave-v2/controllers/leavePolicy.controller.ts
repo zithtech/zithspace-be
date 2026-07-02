@@ -9,10 +9,38 @@ import {
   createLeavePolicySchema,
   updateLeavePolicySchema,
 } from '../validators/leavePolicy.validator';
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from '@/utils/transactionHistory';
+
+// Header fields + assignment/line counts — enough to audit a policy change
+// without dumping the full nested arrays into every diff.
+function policySnapshot(p: any) {
+  return {
+    name: p.name,
+    code: p.code,
+    description: p.description ?? null,
+    isActive: p.isActive,
+    termCycle: p.termCycle,
+    lopOnExhaustion: p.lopOnExhaustion,
+    assignmentCount: Array.isArray(p.assignments) ? p.assignments.length : undefined,
+    lineCount: Array.isArray(p.lines) ? p.lines.length : undefined,
+  };
+}
 
 export const create = handle(async (req: AuthRequest, res: Response) => {
   const input = createLeavePolicySchema.parse(req.body);
   const policy = await service.createPolicy(actorOf(req), input);
+  recordTransaction({
+    req,
+    section: Section.HR,
+    module: Module.LEAVES,
+    page: Page.LEAVE_POLICIES,
+    action: Action.CREATE,
+    actionLabel: `Created leave policy "${policy.name}" (${policy.code})`,
+    entityType: EntityType.LEAVE_POLICY,
+    entityId: policy.id,
+    entityLabel: policy.name,
+    afterData: policySnapshot(policy),
+  });
   ok(res, policy, 201);
 });
 
@@ -29,11 +57,44 @@ export const getOne = handle(async (req: AuthRequest, res: Response) => {
 
 export const update = handle(async (req: AuthRequest, res: Response) => {
   const input = updateLeavePolicySchema.parse(req.body);
-  const policy = await service.updatePolicy(actorOf(req), req.params.id, input);
+  const actor = actorOf(req);
+  const before = await service.getPolicy(actor, req.params.id);
+  const policy = await service.updatePolicy(actor, req.params.id, input);
+  const { changedFields, before: b, after: a } = diffShallow(policySnapshot(before), policySnapshot(policy));
+  if (changedFields.length > 0) {
+    recordTransaction({
+      req,
+      section: Section.HR,
+      module: Module.LEAVES,
+      page: Page.LEAVE_POLICIES,
+      action: Action.UPDATE,
+      actionLabel: `Updated leave policy "${policy.name}"`,
+      entityType: EntityType.LEAVE_POLICY,
+      entityId: policy.id,
+      entityLabel: policy.name,
+      beforeData: b,
+      afterData: a,
+      changedFields,
+    });
+  }
   ok(res, policy);
 });
 
 export const remove = handle(async (req: AuthRequest, res: Response) => {
-  await service.deletePolicy(actorOf(req), req.params.id);
+  const actor = actorOf(req);
+  const existing = await service.getPolicy(actor, req.params.id);
+  await service.deletePolicy(actor, req.params.id);
+  recordTransaction({
+    req,
+    section: Section.HR,
+    module: Module.LEAVES,
+    page: Page.LEAVE_POLICIES,
+    action: Action.DELETE,
+    actionLabel: `Deleted leave policy "${existing.name}" (${existing.code})`,
+    entityType: EntityType.LEAVE_POLICY,
+    entityId: req.params.id,
+    entityLabel: existing.name,
+    beforeData: policySnapshot(existing),
+  });
   ok(res, { id: req.params.id, deleted: true });
 });

@@ -9,6 +9,7 @@
 
 import { withTenant } from '../db/pool';
 import * as repo from '../repositories/leaveRequest.repo';
+import { computeWithdrawalPlan } from './leaveRequest.service';
 import { Actor, LeaveV2Error } from '../types';
 
 export async function listApprovals(actor: Actor, canManageAll: boolean) {
@@ -65,5 +66,72 @@ export async function reject(actor: Actor, id: string, note: string | null, canM
     const updated = await repo.rejectRequest(client, id, { approverId: actor.userId, note });
     if (!updated) throw LeaveV2Error.badRequest('Request is no longer pending');
     return updated;
+  });
+}
+
+/**
+ * Manager decides on an employee's withdrawal request (release of unused days).
+ * On confirm, the paid portion released is credited back to the ledger; the
+ * request is either shortened (stays approved) or fully released ('withdrawn').
+ */
+export async function decideWithdrawal(
+  actor: Actor,
+  id: string,
+  approve: boolean,
+  note: string | null,
+  canManageAll: boolean
+) {
+  return withTenant(actor.tenantId, async (client) => {
+    const req = await repo.findAnyById(client, id);
+    if (!req) throw LeaveV2Error.notFound('Leave request');
+    if (req.status !== 'approved' || req.withdrawalStatus !== 'requested') {
+      throw LeaveV2Error.badRequest('There is no pending withdrawal request to decide');
+    }
+    assertCanDecide(req, actor, canManageAll);
+
+    if (!approve) {
+      const declined = await repo.declineWithdrawal(client, id, { actorId: actor.userId, note });
+      if (!declined) throw LeaveV2Error.badRequest('The withdrawal request is no longer pending');
+      return { before: req, request: declined, plan: null };
+    }
+
+    // Recompute the release from the stored ask (defends against balance drift).
+    const plan = await computeWithdrawalPlan(client, req, {
+      releaseAll: req.withdrawalNewToDate == null,
+      newToDate: req.withdrawalNewToDate,
+    });
+
+    const updated =
+      plan.mode === 'full'
+        ? await repo.confirmWithdrawalFull(client, id, {
+            requestedUnits: plan.releasedTotal,
+            actorId: actor.userId,
+            note,
+          })
+        : await repo.confirmWithdrawalShorten(client, id, {
+            newToDate: plan.newToDate!,
+            totalUnits: plan.actualUnits,
+            paidUnits: plan.newPaid,
+            lopUnits: plan.newLop,
+            requestedUnits: plan.releasedTotal,
+            actorId: actor.userId,
+            note,
+          });
+    if (!updated) throw LeaveV2Error.badRequest('The withdrawal request is no longer pending');
+
+    // Credit back only the paid days that were released (LOP never debited).
+    if (plan.releasedPaid > 0) {
+      await repo.insertLeaveCredit(client, {
+        userId: req.userId,
+        leaveTypeId: req.leaveTypeId,
+        units: plan.releasedPaid,
+        requestId: id,
+        effectiveDate: req.fromDate,
+        note: 'Leave withdrawal — released unused days',
+        createdBy: actor.userId,
+      });
+    }
+
+    return { before: req, request: updated, plan };
   });
 }

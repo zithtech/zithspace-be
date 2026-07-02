@@ -8,6 +8,10 @@ import { createPersonalDetails, getPersonalDetails, updatePersonalDetails } from
 import { getBankPayrollDetails, updateBankPayrollDetails } from "./bankAndPayrolllController";
 import { getEmployeeHistory, createEmployeeHistory, deleteAllEmployeeHistory } from "./employeeHistoryController";
 import { fetchActiveDocumentTypes } from "./onboardingDocumentTypeController";
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from "@/utils/transactionHistory";
+
+const empName = (r: any) => [r?.first_name, r?.last_name].filter(Boolean).join(" ").trim();
+const empLabel = (r: any) => `${r?.employee_code ?? ""}${r?.employee_code && empName(r) ? " · " : ""}${empName(r)}`.trim() || "Employee";
 
 // Sections an employee is allowed to self-fill via the public link.
 const EMPLOYEE_SECTIONS = ["personal", "bank", "history"] as const;
@@ -179,6 +183,28 @@ export async function createInvite(req: AuthRequest, res: Response) {
       console.error("createInvite: failed to email onboarding link:", mailErr);
     }
 
+    recordTransaction({
+      req,
+      section: Section.HR,
+      module: Module.ONBOARDING,
+      page: Page.ONBOARDING_INVITES,
+      action: Action.CREATE,
+      actionLabel: `Created onboarding invite for ${firstName} ${lastName} (${result.employee.employee_code})`,
+      entityType: EntityType.ONBOARDING_INVITE,
+      entityId: result.invite.id,
+      entityLabel: empLabel(result.employee),
+      afterData: {
+        employeeCode: result.employee.employee_code,
+        firstName,
+        lastName,
+        workEmail,
+        personalEmail: personalEmail || null,
+        status: "invited",
+        sections: EMPLOYEE_SECTIONS,
+        emailed,
+      },
+    });
+
     return res.status(201).json({
       success: true,
       message: "Onboarding invite created",
@@ -252,17 +278,42 @@ export async function revokeInvite(req: AuthRequest, res: Response) {
     if (!req.user?.id || !req.tenantId) throw new Error("Unauthorized");
     const { inviteId } = req.params;
 
-    const ok = await withTenant(req.tenantId, async (db) => {
-      const { rowCount } = await db.query(
-        `UPDATE employee_onboarding_invites
-            SET status = 'revoked', updated_at = now()
-          WHERE id = $1 AND tenant_id = $2 AND status <> 'completed'`,
+    const revoked = await withTenant(req.tenantId, async (db) => {
+      const { rows } = await db.query(
+        `WITH prev AS (
+           SELECT status FROM employee_onboarding_invites WHERE id = $1 AND tenant_id = $2
+         ),
+         upd AS (
+           UPDATE employee_onboarding_invites
+              SET status = 'revoked', updated_at = now()
+            WHERE id = $1 AND tenant_id = $2 AND status <> 'completed'
+            RETURNING employee_id
+         )
+         SELECT u.employee_id, (SELECT status FROM prev) AS prev_status,
+                e.employee_code, e.first_name, e.last_name
+           FROM upd u JOIN employees e ON e.id = u.employee_id`,
         [inviteId, req.tenantId],
       );
-      return (rowCount ?? 0) > 0;
+      return rows[0] || null;
     });
 
-    if (!ok) return res.status(404).json({ success: false, error: "Invite not found or already completed" });
+    if (!revoked) return res.status(404).json({ success: false, error: "Invite not found or already completed" });
+
+    recordTransaction({
+      req,
+      section: Section.HR,
+      module: Module.ONBOARDING,
+      page: Page.ONBOARDING_INVITES,
+      action: Action.REVOKE,
+      actionLabel: `Revoked onboarding invite for ${empLabel(revoked)}`,
+      entityType: EntityType.ONBOARDING_INVITE,
+      entityId: inviteId,
+      entityLabel: empLabel(revoked),
+      beforeData: { status: revoked.prev_status },
+      afterData: { status: "revoked" },
+      changedFields: ["status"],
+    });
+
     return res.status(200).json({ success: true, message: "Invite revoked" });
   } catch (err: any) {
     console.error("revokeInvite error:", err);
@@ -294,7 +345,15 @@ export async function updateInviteContact(req: AuthRequest, res: Response) {
     }
 
 
-    const row = await withTenant(req.tenantId, async (db) => {
+    const result = await withTenant(req.tenantId, async (db) => {
+      const beforeRes = await db.query(
+        `SELECT employee_code, first_name, last_name, work_email, personal_email
+           FROM employees WHERE tenant_id = $1 AND id = $2`,
+        [req.tenantId, employeeId],
+      );
+      const before = beforeRes.rows[0];
+      if (!before) return null;
+
       const sets: string[] = [];
       const params: any[] = [req.tenantId, employeeId];
       const push = (col: string, val: any) => {
@@ -305,19 +364,45 @@ export async function updateInviteContact(req: AuthRequest, res: Response) {
       if (lastName !== undefined) push("last_name", lastName);
       if (workEmail !== undefined) push("work_email", workEmail);
       if (personalEmail !== undefined) push("personal_email", personalEmail || null);
-      if (sets.length === 0) return null;
+      if (sets.length === 0) return { before, after: before };
       push("updated_by", req.user!.id);
       const { rows } = await db.query(
         `UPDATE employees
             SET ${sets.join(", ")}, updated_at = now()
           WHERE tenant_id = $1 AND id = $2
-        RETURNING id, first_name, last_name, work_email, personal_email`,
+        RETURNING id, employee_code, first_name, last_name, work_email, personal_email`,
         params,
       );
-      return rows[0] || null;
+      return { before, after: rows[0] || null };
     });
 
-    if (!row) return res.status(404).json({ success: false, error: "Employee not found" });
+    if (!result || !result.after) return res.status(404).json({ success: false, error: "Employee not found" });
+    const row = result.after;
+
+    const snap = (r: any) => ({
+      firstName: r.first_name,
+      lastName: r.last_name,
+      workEmail: r.work_email,
+      personalEmail: r.personal_email,
+    });
+    const { changedFields, before: b, after: a } = diffShallow(snap(result.before), snap(result.after));
+    if (changedFields.length > 0) {
+      recordTransaction({
+        req,
+        section: Section.HR,
+        module: Module.ONBOARDING,
+        page: Page.ONBOARDING_INVITES,
+        action: Action.UPDATE,
+        actionLabel: `Updated onboarding contact for ${empLabel(result.after)}`,
+        entityType: EntityType.EMPLOYEE,
+        entityId: employeeId,
+        entityLabel: empLabel(result.after),
+        beforeData: b,
+        afterData: a,
+        changedFields,
+      });
+    }
+
     return res.status(200).json({
       success: true,
       data: {
@@ -343,22 +428,40 @@ export async function activateEmployee(req: AuthRequest, res: Response) {
     if (!req.user?.id || !req.tenantId) throw new Error("Unauthorized");
     const { employeeId } = req.params;
 
-    const ok = await withTenant(req.tenantId, async (db) => {
-      const { rowCount } = await db.query(
+    const activated = await withTenant(req.tenantId, async (db) => {
+      const { rows } = await db.query(
         `UPDATE employees SET status = true, updated_by = $1, updated_at = now()
-          WHERE id = $2 AND tenant_id = $3`,
+          WHERE id = $2 AND tenant_id = $3
+        RETURNING employee_code, first_name, last_name`,
         [req.user!.id, employeeId, req.tenantId],
       );
+      if (!rows[0]) return null;
       await db.query(
         `UPDATE employee_onboarding_invites
             SET status = 'completed', completed_at = now(), updated_at = now()
           WHERE employee_id = $1 AND tenant_id = $2 AND status <> 'revoked'`,
         [employeeId, req.tenantId],
       );
-      return (rowCount ?? 0) > 0;
+      return rows[0];
     });
 
-    if (!ok) return res.status(404).json({ success: false, error: "Employee not found" });
+    if (!activated) return res.status(404).json({ success: false, error: "Employee not found" });
+
+    recordTransaction({
+      req,
+      section: Section.HR,
+      module: Module.ONBOARDING,
+      page: Page.ONBOARDING_EMPLOYEES,
+      action: Action.ACTIVATE,
+      actionLabel: `Activated employee ${empLabel(activated)}`,
+      entityType: EntityType.EMPLOYEE,
+      entityId: employeeId,
+      entityLabel: empLabel(activated),
+      beforeData: { status: false, inviteStatus: "employee_submitted" },
+      afterData: { status: true, inviteStatus: "completed" },
+      changedFields: ["status", "inviteStatus"],
+    });
+
     return res.status(200).json({ success: true, message: "Employee activated" });
   } catch (err: any) {
     console.error("activateEmployee error:", err);
@@ -462,7 +565,11 @@ export async function submitPublicInvite(req: AuthRequest, res: Response) {
 
     const actorId = invite.created_by || invite.employee_id;
 
-    await withTenant(invite.tenant_id, async (client) => {
+    const emp = await withTenant(invite.tenant_id, async (client) => {
+      const { rows } = await client.query(
+        `SELECT employee_code, first_name, last_name FROM employees WHERE id = $1 AND tenant_id = $2`,
+        [invite.employee_id, invite.tenant_id],
+      );
       if (personal) {
         await updatePersonalDetails(
           actorReq(invite.tenant_id, actorId, { personal }),
@@ -498,6 +605,29 @@ export async function submitPublicInvite(req: AuthRequest, res: Response) {
           WHERE id = $1`,
         [invite.id],
       );
+
+      return rows[0] || null;
+    });
+
+    // Public route: no auth middleware ran, so synthesize the actor/tenant that
+    // recordTransaction needs. Attributed to the invite owner; actorType "system"
+    // marks it as a non-staff (candidate-driven, via public link) submission.
+    req.user = { id: actorId } as any;
+    req.tenantId = invite.tenant_id;
+    const submitted = [personal && "personal", bank && "bank", history !== undefined && "history"].filter(Boolean);
+    recordTransaction({
+      req,
+      section: Section.HR,
+      module: Module.ONBOARDING,
+      page: Page.ONBOARDING_INVITES,
+      action: Action.SUBMIT,
+      actionLabel: `Onboarding details submitted via public link for ${empLabel(emp)} (${submitted.join(", ")})`,
+      entityType: EntityType.ONBOARDING_INVITE,
+      entityId: invite.id,
+      entityLabel: empLabel(emp),
+      actorType: "system",
+      afterData: { status: "employee_submitted", submittedSections: submitted },
+      metadata: { viaPublicLink: true, employeeId: invite.employee_id },
     });
 
     return res.status(200).json({ success: true, message: "Details submitted successfully" });

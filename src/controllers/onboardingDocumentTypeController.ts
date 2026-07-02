@@ -1,6 +1,13 @@
 import { Response } from "express";
 import { AuthRequest } from "@/types";
 import { withTenant } from "@/db/onboardingPool";
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from "@/utils/transactionHistory";
+
+const docTypeSnapshot = (r: any) => ({
+  name: r.name,
+  description: r.description ?? null,
+  isActive: r.is_active,
+});
 
 // CRUD for the tenant catalog of "documents needed" from a previous employer.
 // Raw SQL on the onboarding pool (onboarding_document_types table).
@@ -69,6 +76,19 @@ export async function createDocumentType(req: AuthRequest, res: Response) {
       return rows[0];
     });
 
+    recordTransaction({
+      req,
+      section: Section.HR,
+      module: Module.ONBOARDING,
+      page: Page.ONBOARDING_DOCUMENT_TYPES,
+      action: Action.CREATE,
+      actionLabel: `Created onboarding document type "${row.name}"`,
+      entityType: EntityType.ONBOARDING_DOCUMENT_TYPE,
+      entityId: row.id,
+      entityLabel: row.name,
+      afterData: docTypeSnapshot(row),
+    });
+
     return res.status(201).json({ success: true, data: mapRow(row) });
   } catch (err: any) {
     if (err.code === "DUPLICATE") return res.status(409).json({ success: false, error: err.message });
@@ -86,7 +106,15 @@ export async function updateDocumentType(req: AuthRequest, res: Response) {
     const description = req.body?.description !== undefined ? (req.body.description || "").trim() || null : undefined;
     const isActive = req.body?.isActive;
 
-    const row = await withTenant(req.tenantId, async (db) => {
+    const result = await withTenant(req.tenantId, async (db) => {
+      const beforeRes = await db.query(
+        `SELECT * FROM onboarding_document_types
+          WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+        [req.tenantId, id],
+      );
+      const before = beforeRes.rows[0];
+      if (!before) return null;
+
       const sets: string[] = [];
       const params: any[] = [req.tenantId, id];
       if (name) {
@@ -101,7 +129,7 @@ export async function updateDocumentType(req: AuthRequest, res: Response) {
         params.push(isActive);
         sets.push(`is_active = $${params.length}`);
       }
-      if (sets.length === 0) return null;
+      if (sets.length === 0) return { before, after: before };
       sets.push("updated_at = now()");
       const { rows } = await db.query(
         `UPDATE onboarding_document_types
@@ -110,10 +138,30 @@ export async function updateDocumentType(req: AuthRequest, res: Response) {
           RETURNING *`,
         params,
       );
-      return rows[0] || null;
+      return { before, after: rows[0] || null };
     });
 
-    if (!row) return res.status(404).json({ success: false, error: "Document type not found" });
+    if (!result || !result.after) return res.status(404).json({ success: false, error: "Document type not found" });
+    const row = result.after;
+
+    const { changedFields, before: b, after: a } = diffShallow(docTypeSnapshot(result.before), docTypeSnapshot(row));
+    if (changedFields.length > 0) {
+      recordTransaction({
+        req,
+        section: Section.HR,
+        module: Module.ONBOARDING,
+        page: Page.ONBOARDING_DOCUMENT_TYPES,
+        action: Action.UPDATE,
+        actionLabel: `Updated onboarding document type "${row.name}"`,
+        entityType: EntityType.ONBOARDING_DOCUMENT_TYPE,
+        entityId: id,
+        entityLabel: row.name,
+        beforeData: b,
+        afterData: a,
+        changedFields,
+      });
+    }
+
     return res.status(200).json({ success: true, data: mapRow(row) });
   } catch (err: any) {
     console.error("updateDocumentType error:", err);
@@ -126,16 +174,31 @@ export async function deleteDocumentType(req: AuthRequest, res: Response) {
   try {
     if (!req.user?.id || !req.tenantId) throw new Error("Unauthorized");
     const { id } = req.params;
-    const ok = await withTenant(req.tenantId, async (db) => {
-      const { rowCount } = await db.query(
+    const deleted = await withTenant(req.tenantId, async (db) => {
+      const { rows } = await db.query(
         `UPDATE onboarding_document_types
             SET deleted_at = now(), updated_at = now()
-          WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+          WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
+          RETURNING *`,
         [req.tenantId, id],
       );
-      return (rowCount ?? 0) > 0;
+      return rows[0] || null;
     });
-    if (!ok) return res.status(404).json({ success: false, error: "Document type not found" });
+    if (!deleted) return res.status(404).json({ success: false, error: "Document type not found" });
+
+    recordTransaction({
+      req,
+      section: Section.HR,
+      module: Module.ONBOARDING,
+      page: Page.ONBOARDING_DOCUMENT_TYPES,
+      action: Action.DELETE,
+      actionLabel: `Deleted onboarding document type "${deleted.name}"`,
+      entityType: EntityType.ONBOARDING_DOCUMENT_TYPE,
+      entityId: id,
+      entityLabel: deleted.name,
+      beforeData: docTypeSnapshot(deleted),
+    });
+
     return res.status(200).json({ success: true, message: "Document type deleted" });
   } catch (err: any) {
     console.error("deleteDocumentType error:", err);
