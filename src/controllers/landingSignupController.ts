@@ -294,9 +294,8 @@ export class LandingSignupController {
           [record.id]
         );
 
-        await RBACService.setupDefaultRolesForTenant(tenantId);
-
         await client.query("COMMIT");
+        await RBACService.setupDefaultRolesForTenant(tenantId);
       } catch (txError) {
         await client.query("ROLLBACK");
         throw txError;
@@ -417,9 +416,8 @@ export class LandingSignupController {
           [tenantId, name.trim(), email, dummyPasswordHash]
         );
 
-        await RBACService.setupDefaultRolesForTenant(tenantId);
-
         await dbClient.query("COMMIT");
+        await RBACService.setupDefaultRolesForTenant(tenantId);
       } catch (txError) {
         await dbClient.query("ROLLBACK");
         throw txError;
@@ -540,9 +538,8 @@ export class LandingSignupController {
           [tenantId, name.trim(), email, dummyPasswordHash]
         );
 
-        await RBACService.setupDefaultRolesForTenant(tenantId);
-
         await dbClient.query("COMMIT");
+        await RBACService.setupDefaultRolesForTenant(tenantId);
       } catch (txError) {
         await dbClient.query("ROLLBACK");
         throw txError;
