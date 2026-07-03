@@ -227,7 +227,7 @@ export class ClientPortalCredentialController {
       [portalUserId],
     );
 
-    const portalUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/portal/login`;
+    const portalUrl = req.body.portalUrl || `${process.env.FRONTEND_URL || "http://localhost:3000"}/portal/login`;
     let emailSent = false;
     try {
       emailSent = await emailService.sendPortalPasswordResetEmail(

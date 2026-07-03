@@ -28,11 +28,19 @@ function getAbsoluteReturnUrl(inputUrl, frontendUrl, subdomain) {
                 urlObj.hostname = `${subdomain}.localhost`;
             }
             else {
-                if (!host.startsWith(`${subdomain}.`)) {
-                    urlObj.hostname = `${subdomain}.${host}`;
+                if (host.startsWith(`${subdomain}.`)) {
+                    urlObj.hostname = host;
                 }
                 else {
-                    urlObj.hostname = host;
+                    const parts = host.split('.');
+                    // If the host seems to already have a subdomain (e.g., zithmi.zukvo.com)
+                    if (parts.length >= 3) {
+                        const rootDomain = parts.slice(1).join('.');
+                        urlObj.hostname = `${subdomain}.${rootDomain}`;
+                    }
+                    else {
+                        urlObj.hostname = `${subdomain}.${host}`;
+                    }
                 }
             }
         }
