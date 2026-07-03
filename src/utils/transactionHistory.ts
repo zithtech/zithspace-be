@@ -38,6 +38,7 @@ export const Module = {
   // HR
   LEAVES: "Leaves",
   ONBOARDING: "Onboarding",
+  REIMBURSEMENT: "Reimbursement",
   // FINANCE
   ACCOUNTS: "Accounts",
   INVOICES: "Invoices",
@@ -114,6 +115,12 @@ export const Page = {
   LEAVE_POLICIES: "LeavePolicies",
   LEAVE_HOLIDAYS: "LeaveHolidays",
   LEAVE_ACCRUAL: "LeaveAccrual",
+  // Reimbursement module pages
+  REIMBURSEMENT_CLAIMS: "ReimbursementClaims",
+  REIMBURSEMENT_APPROVALS: "ReimbursementApprovals",
+  REIMBURSEMENT_FINANCE: "ReimbursementFinance",
+  REIMBURSEMENT_CATEGORIES: "ReimbursementCategories",
+  REIMBURSEMENT_POLICIES: "ReimbursementPolicies",
   // Onboarding module pages
   ONBOARDING_INVITES: "OnboardingInvites",
   ONBOARDING_EMPLOYEES: "OnboardingEmployees",
@@ -226,6 +233,10 @@ export const EntityType = {
   LEAVE_HOLIDAY: "leave_holiday",
   LEAVE_ACCRUAL_RUN: "leave_accrual_run",
   LEAVE_SETTINGS: "leave_settings",
+  // Reimbursement entities
+  REIMBURSEMENT_CLAIM: "reimbursement_claim",
+  REIMBURSEMENT_CATEGORY: "reimbursement_category",
+  REIMBURSEMENT_POLICY: "reimbursement_policy",
   // Onboarding entities
   EMPLOYEE: "employee",
   ONBOARDING_INVITE: "onboarding_invite",
