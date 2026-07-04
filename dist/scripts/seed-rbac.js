@@ -338,6 +338,13 @@ const PERMISSION_DESCRIPTIONS = {
     'time_tracking.manage_time': 'Manage team time logs and settings',
     'activity_log.read': 'View transaction history of a specific entity in detail page drawers',
     'activity_log.read_all': 'View global activity feed and transaction history filters',
+    'my_hub.overview.read': 'Access the My Hub overview page',
+    'my_hub.apply_leave.read': 'Apply for leave from My Hub',
+    'my_hub.attendance.read': 'View own attendance / clock in-out from My Hub',
+    'my_hub.escalation.read': 'View escalations targeting me from My Hub',
+    'my_hub.performance.read': 'View own performance reports from My Hub',
+    'my_hub.payslips.read': 'View own payslips from My Hub',
+    'my_hub.profile.read': 'View own profile from My Hub',
 };
 // ─── Role permission maps ─────────────────────────────────────────────────────
 const ROLE_PERMISSIONS = {
@@ -452,6 +459,34 @@ async function main() {
             }
             if (toAdd.length > 0 || toRemove.length > 0) {
                 console.log(`      🔑 Synced ${ROLE_DISPLAY_NAMES[slug]}: +${toAdd.length}, -${toRemove.length} permissions`);
+            }
+        }
+        // ── 2b-2. My Hub → every role (system + custom) ──────────────────
+        // My Hub is a universal self-service module, so ensure ALL roles in the
+        // tenant (including admin-created custom roles) have every my_hub.* page.
+        // Add-only — never removes, so an admin's other choices are preserved.
+        const myHubPermIds = permissions_1.PERMISSIONS_BY_RESOURCE.my_hub
+            .map((name) => permByName.get(name)?.id)
+            .filter((id) => !!id);
+        if (myHubPermIds.length > 0) {
+            const tenantRoles = await database_1.prisma.role.findMany({
+                where: { tenantId: tenant.id },
+                select: { id: true, name: true },
+            });
+            for (const r of tenantRoles) {
+                const existing = await database_1.prisma.rolePermission.findMany({
+                    where: { roleId: r.id, permissionId: { in: myHubPermIds } },
+                    select: { permissionId: true },
+                });
+                const have = new Set(existing.map((e) => e.permissionId));
+                const toAdd = myHubPermIds.filter((id) => !have.has(id));
+                if (toAdd.length > 0) {
+                    await database_1.prisma.rolePermission.createMany({
+                        data: toAdd.map((permissionId) => ({ roleId: r.id, permissionId })),
+                        skipDuplicates: true,
+                    });
+                    console.log(`      🧭 My Hub → ${r.name}: +${toAdd.length}`);
+                }
             }
         }
         // ── 2c. Migrate existing users into UserRole ───────────────────────────

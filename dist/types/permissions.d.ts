@@ -382,6 +382,13 @@ export declare const Permissions: {
     readonly TIME_TRACKING_MANAGE_TIME: "time_tracking.manage_time";
     readonly ACTIVITY_LOG_READ: "activity_log.read";
     readonly ACTIVITY_LOG_READ_ALL: "activity_log.read_all";
+    readonly MY_HUB_OVERVIEW_READ: "my_hub.overview.read";
+    readonly MY_HUB_APPLY_LEAVE_READ: "my_hub.apply_leave.read";
+    readonly MY_HUB_ATTENDANCE_READ: "my_hub.attendance.read";
+    readonly MY_HUB_ESCALATION_READ: "my_hub.escalation.read";
+    readonly MY_HUB_PERFORMANCE_READ: "my_hub.performance.read";
+    readonly MY_HUB_PAYSLIPS_READ: "my_hub.payslips.read";
+    readonly MY_HUB_PROFILE_READ: "my_hub.profile.read";
 };
 export type Permission = (typeof Permissions)[keyof typeof Permissions];
 /**
