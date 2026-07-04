@@ -471,6 +471,16 @@ export const Permissions = {
   // ─── Transaction History (audit log) ─────────────────────────────
   ACTIVITY_LOG_READ: 'activity_log.read',         // view history of a specific entity (drawer)
   ACTIVITY_LOG_READ_ALL: 'activity_log.read_all', // view global audit log (admin page)
+
+  // ─── My Hub (personal self-service launcher) ─────────────────────
+  // One permission per My Hub page. Granted to every role by default.
+  MY_HUB_OVERVIEW_READ: 'my_hub.overview.read',
+  MY_HUB_APPLY_LEAVE_READ: 'my_hub.apply_leave.read',
+  MY_HUB_ATTENDANCE_READ: 'my_hub.attendance.read',
+  MY_HUB_ESCALATION_READ: 'my_hub.escalation.read',
+  MY_HUB_PERFORMANCE_READ: 'my_hub.performance.read',
+  MY_HUB_PAYSLIPS_READ: 'my_hub.payslips.read',
+  MY_HUB_PROFILE_READ: 'my_hub.profile.read',
 } as const;
 
 export type Permission = (typeof Permissions)[keyof typeof Permissions];
@@ -796,6 +806,15 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
   activity_log: [
     Permissions.ACTIVITY_LOG_READ,
     Permissions.ACTIVITY_LOG_READ_ALL,
+  ],
+  my_hub: [
+    Permissions.MY_HUB_OVERVIEW_READ,
+    Permissions.MY_HUB_APPLY_LEAVE_READ,
+    Permissions.MY_HUB_ATTENDANCE_READ,
+    Permissions.MY_HUB_ESCALATION_READ,
+    Permissions.MY_HUB_PERFORMANCE_READ,
+    Permissions.MY_HUB_PAYSLIPS_READ,
+    Permissions.MY_HUB_PROFILE_READ,
   ],
 };
 
