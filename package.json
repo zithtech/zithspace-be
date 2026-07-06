@@ -14,6 +14,7 @@
     "db:studio": "prisma studio",
     "db:seed": "tsx src/scripts/seed.ts",
     "db:seed-rbac": "npx ts-node -r tsconfig-paths/register src/scripts/seed-rbac.ts",
+    "db:add-my-hub": "npx ts-node -r tsconfig-paths/register src/scripts/add-my-hub-perms.ts",
     "lv2:migrate": "npx ts-node -r tsconfig-paths/register src/modules/leave-v2/db/migrate.ts",
     "pay:migrate": "npx ts-node -r tsconfig-paths/register src/modules/payroll/db/migrate.ts",
     "rb2:migrate": "npx ts-node -r tsconfig-paths/register src/modules/reimbursement-v2/db/migrate.ts",
