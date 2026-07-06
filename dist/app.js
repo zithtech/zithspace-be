@@ -110,6 +110,7 @@ const leaveBalanceRoutes_1 = __importDefault(require("@/routes/leaveBalanceRoute
 const routes_1 = __importDefault(require("@/modules/leave-v2/routes"));
 const routes_2 = __importDefault(require("@/modules/performance-report/routes"));
 const routes_3 = __importDefault(require("@/modules/payroll/routes"));
+const routes_4 = __importDefault(require("@/modules/reimbursement-v2/routes"));
 const reimbursementConfig_1 = __importDefault(require("@/routes/reimbursementConfig"));
 const reimbursementsettingsRoutes_1 = __importDefault(require("@/routes/reimbursementsettingsRoutes"));
 const reimbursementcreateRoutes_1 = __importDefault(require("@/routes/reimbursementcreateRoutes"));
@@ -362,6 +363,7 @@ app.use("/api/leave-request", leaveRequestRoutes_1.default);
 app.use("/api/leave-balances", leaveBalanceRoutes_1.default);
 app.use("/api/v2/leave", routes_1.default);
 app.use("/api/v2/payroll", routes_3.default);
+app.use("/api/v2/reimbursement", routes_4.default);
 app.use("/api/performance-report", routes_2.default);
 //Escalation
 app.use("/api/escalation-categories", escalationCategoryV2_routes_1.default);

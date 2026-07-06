@@ -113,6 +113,7 @@ import leaveBalanceRoutes from "@/routes/leaveBalanceRoutes";
 import leaveV2Routes from "@/modules/leave-v2/routes";
 import performanceReportRoutes from "@/modules/performance-report/routes";
 import payrollV2Routes from "@/modules/payroll/routes";
+import reimbursementV2Routes from "@/modules/reimbursement-v2/routes";
 import reimbursementConfigurationRoutes from "@/routes/reimbursementConfig";
 import reimbursementsettingsRoutes from "@/routes/reimbursementsettingsRoutes";
 import reimbursementRoutes from "@/routes/reimbursementcreateRoutes";
@@ -396,6 +397,7 @@ app.use("/api/leave-request", leaveRequestRoutes);
 app.use("/api/leave-balances", leaveBalanceRoutes);
 app.use("/api/v2/leave", leaveV2Routes);
 app.use("/api/v2/payroll", payrollV2Routes);
+app.use("/api/v2/reimbursement", reimbursementV2Routes);
 app.use("/api/performance-report", performanceReportRoutes);
 
 //Escalation
