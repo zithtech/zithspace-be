@@ -1335,6 +1335,16 @@ export class UserController {
         updateData.dateOfBirth = new Date(updateData.dateOfBirth);
       if (updateData.personalEmail)
         updateData.personalEmail = updateData.personalEmail.toLowerCase();
+        
+      if (updateData.phone !== undefined && updateData.phone !== null) {
+        if (!/^[+0-9\s\-()]*$/.test(updateData.phone)) {
+          res.status(400).json({
+            success: false,
+            error: "Invalid phone number format",
+          } as ApiResponse);
+          return;
+        }
+      }
 
       // Handle avatar upload if provided as base64
       if (updateData.avatarUrl && updateData.avatarUrl.startsWith('data:image')) {

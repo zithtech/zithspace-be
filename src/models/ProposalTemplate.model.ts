@@ -87,6 +87,18 @@ export class ProposalTemplateModel {
     return result.rows[0] || null;
   }
 
+  /** Find a template by name (case insensitive) scoped to the tenant. */
+  static async findByName(name: string, tenantId: string): Promise<any | null> {
+    const query = `
+      SELECT ${COLS}
+      FROM proposal_templates
+      WHERE LOWER(name) = LOWER($1) AND tenant_id = $2
+      LIMIT 1;
+    `;
+    const result = await pool.query(query, [name, tenantId]);
+    return result.rows[0] || null;
+  }
+
   /** Patch a template. Only provided fields are updated. */
   static async update(id: string, tenantId: string, patch: Partial<ProposalTemplateData>): Promise<any | null> {
     const sets: string[] = [];
@@ -149,9 +161,16 @@ export class ProposalTemplateModel {
     const row = src.rows[0];
     if (!row) return null;
 
+    let newName = `${row.name} (Copy)`;
+    let counter = 1;
+    while (await this.findByName(newName, tenantId)) {
+      counter++;
+      newName = `${row.name} (Copy ${counter})`;
+    }
+
     return this.create({
       tenant_id: tenantId,
-      name: `${row.name} (Copy)`,
+      name: newName,
       description: row.description,
       blocks: row.blocks,
       section_ids: row.section_ids,
