@@ -54,9 +54,15 @@ export class ProposalTemplateController {
       if (!name || !String(name).trim()) throw new ValidationError('Template name is required');
       if (blocks !== undefined && !Array.isArray(blocks)) throw new ValidationError('blocks must be an array');
 
+      const trimmedName = String(name).trim();
+      const existing = await ProposalTemplateModel.findByName(trimmedName, tenantId);
+      if (existing) {
+        throw new ValidationError('A template with this name already exists.');
+      }
+
       const template = await ProposalTemplateModel.create({
         tenant_id: tenantId,
-        name: String(name).trim(),
+        name: trimmedName,
         description,
         blocks,
         section_ids: normalizeSectionIds(sectionIds),
@@ -88,8 +94,19 @@ export class ProposalTemplateController {
       const { name, description, blocks, sectionIds, themeId, fontId, archived } = req.body;
       if (blocks !== undefined && !Array.isArray(blocks)) throw new ValidationError('blocks must be an array');
 
+      let newName: string | undefined;
+      if (name !== undefined) {
+        newName = String(name).trim();
+        if (newName.toLowerCase() !== existing.name.toLowerCase()) {
+          const nameConflict = await ProposalTemplateModel.findByName(newName, tenantId);
+          if (nameConflict && nameConflict.id !== req.params.id) {
+            throw new ValidationError('A template with this name already exists.');
+          }
+        }
+      }
+
       const updated = await ProposalTemplateModel.update(req.params.id, tenantId, {
-        name: name !== undefined ? String(name).trim() : undefined,
+        name: newName,
         description,
         blocks,
         section_ids: normalizeSectionIds(sectionIds),
