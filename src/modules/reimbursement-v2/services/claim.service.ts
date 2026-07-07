@@ -162,6 +162,103 @@ export async function createClaim(actor: Actor, input: CreateClaimInput): Promis
   });
 }
 
+
+async function assertClaimLimits(
+  client: TenantClient,
+  userId: string,
+  items: Array<{ categoryId: string; expenseDate: string; amount: number }>,
+  claimId?: string
+) {
+  const policy = await policyRepo.findApplicablePolicy(client, userId);
+  const cats = new Map<string, ExpenseCategory>();
+  const catFor = async (cid: string) => {
+    if (!cats.has(cid)) cats.set(cid, await assertCategory(client, cid));
+    return cats.get(cid)!;
+  };
+  const lims = new Map<string, any>();
+  const limitsFor = async (cat: ExpenseCategory) => {
+    if (!lims.has(cat.id)) {
+      const ov = policy ? await policyRepo.findLineForCategory(client, policy.id, cat.id) : null;
+      lims.set(cat.id, {
+        maxPerClaim: ov?.maxPerClaim ?? cat.maxPerClaim,
+        monthlyLimit: ov?.monthlyLimit ?? cat.monthlyLimit,
+        yearlyLimit: ov?.yearlyLimit ?? cat.yearlyLimit,
+        perDayLimit: ov?.perDayLimit ?? cat.perDayLimit,
+      });
+    }
+    return lims.get(cat.id)!;
+  };
+
+  const dayKeys = new Set<string>();
+  const monthKeys = new Set<string>();
+  const yearKeys = new Set<string>();
+
+  for (const item of items) {
+    const cat = await catFor(item.categoryId);
+    const lim = await limitsFor(cat);
+
+    if (lim.maxPerClaim != null && item.amount > lim.maxPerClaim) {
+      throw ReimbursementV2Error.badRequest(
+        `${cat.name}: ${item.amount} exceeds the per-item limit of ${lim.maxPerClaim}`
+      );
+    }
+
+    if (lim.perDayLimit != null) {
+      const key = `${cat.id}|${item.expenseDate}`;
+      if (!dayKeys.has(key)) {
+        dayKeys.add(key);
+        const dbTotal = await repo.periodSum(client, userId, cat.id, item.expenseDate, item.expenseDate, claimId || null);
+        const reqTotal = claimId ? 0 : items.filter(i => i.categoryId === cat.id && i.expenseDate === item.expenseDate).reduce((s, i) => s + i.amount, 0);
+        if (dbTotal + reqTotal > lim.perDayLimit) {
+          throw ReimbursementV2Error.badRequest(
+            `${cat.name}: ${dbTotal + reqTotal} on ${item.expenseDate} exceeds the daily limit of ${lim.perDayLimit}`
+          );
+        }
+      }
+    }
+    if (lim.monthlyLimit != null) {
+      const { from, to } = monthRange(item.expenseDate);
+      const key = `${cat.id}|${from}`;
+      if (!monthKeys.has(key)) {
+        monthKeys.add(key);
+        const dbTotal = await repo.periodSum(client, userId, cat.id, from, to, claimId || null);
+        const reqTotal = claimId ? 0 : items.filter(i => i.categoryId === cat.id && monthRange(i.expenseDate).from === from).reduce((s, i) => s + i.amount, 0);
+        if (dbTotal + reqTotal > lim.monthlyLimit) {
+          throw ReimbursementV2Error.badRequest(
+            `${cat.name}: ${dbTotal + reqTotal} for ${from.slice(0, 7)} exceeds the monthly limit of ${lim.monthlyLimit}`
+          );
+        }
+      }
+    }
+    if (lim.yearlyLimit != null) {
+      const { from, to } = yearRange(item.expenseDate);
+      const key = `${cat.id}|${from}`;
+      if (!yearKeys.has(key)) {
+        yearKeys.add(key);
+        const dbTotal = await repo.periodSum(client, userId, cat.id, from, to, claimId || null);
+        const reqTotal = claimId ? 0 : items.filter(i => i.categoryId === cat.id && yearRange(i.expenseDate).from === from).reduce((s, i) => s + i.amount, 0);
+        if (dbTotal + reqTotal > lim.yearlyLimit) {
+          throw ReimbursementV2Error.badRequest(
+            `${cat.name}: ${dbTotal + reqTotal} for ${from.slice(0, 4)} exceeds the yearly limit of ${lim.yearlyLimit}`
+          );
+        }
+      }
+    }
+  }
+}
+
+export async function validateClaimLimitsEndpoint(actor: Actor, input: CreateClaimInput) {
+  return withTenant(actor.tenantId, async (client) => {
+    const computed = [];
+    for (const item of input.items) {
+      const cat = await assertCategory(client, item.categoryId);
+      const { amount } = computeAmount(cat, item);
+      computed.push({ categoryId: item.categoryId, expenseDate: item.expenseDate, amount });
+    }
+    await assertClaimLimits(client, actor.userId, computed);
+  });
+}
+
 export async function listMyClaims(
   actor: Actor,
   filter: { status?: ClaimStatus } = {}
@@ -349,15 +446,9 @@ export async function submitClaim(actor: Actor, id: string): Promise<ClaimDetail
       return limitCache.get(cat.id)!;
     };
 
-    // 1) receipt rules + per-claim caps (per item)
+    // 1) receipt rules
     for (const item of items) {
-      const cat = await catFor(item.categoryId);
-      const lim = await limitsFor(cat);
-      if (lim.maxPerClaim != null && item.amount > lim.maxPerClaim) {
-        throw ReimbursementV2Error.badRequest(
-          `${cat.name}: ${item.amount} exceeds the per-item limit of ${lim.maxPerClaim}`
-        );
-      }
+      const cat = await assertCategory(client, item.categoryId);
       const needsReceipt =
         cat.receiptRequired ||
         (cat.receiptRequiredAbove != null && item.amount > cat.receiptRequiredAbove);
@@ -372,52 +463,8 @@ export async function submitClaim(actor: Actor, id: string): Promise<ClaimDetail
       }
     }
 
-    // 2) period limits — check each distinct (category, window) once
-    const dayKeys = new Set<string>();
-    const monthKeys = new Set<string>();
-    const yearKeys = new Set<string>();
-    for (const item of items) {
-      const cat = await catFor(item.categoryId);
-      const lim = await limitsFor(cat);
-      if (lim.perDayLimit != null) {
-        const key = `${cat.id}|${item.expenseDate}`;
-        if (!dayKeys.has(key)) {
-          dayKeys.add(key);
-          const total = await repo.periodSum(client, actor.userId, cat.id, item.expenseDate, item.expenseDate, id);
-          if (total > lim.perDayLimit) {
-            throw ReimbursementV2Error.badRequest(
-              `${cat.name}: ${total} on ${item.expenseDate} exceeds the daily limit of ${lim.perDayLimit}`
-            );
-          }
-        }
-      }
-      if (lim.monthlyLimit != null) {
-        const { from, to } = monthRange(item.expenseDate);
-        const key = `${cat.id}|${from}`;
-        if (!monthKeys.has(key)) {
-          monthKeys.add(key);
-          const total = await repo.periodSum(client, actor.userId, cat.id, from, to, id);
-          if (total > lim.monthlyLimit) {
-            throw ReimbursementV2Error.badRequest(
-              `${cat.name}: ${total} for ${from.slice(0, 7)} exceeds the monthly limit of ${lim.monthlyLimit}`
-            );
-          }
-        }
-      }
-      if (lim.yearlyLimit != null) {
-        const { from, to } = yearRange(item.expenseDate);
-        const key = `${cat.id}|${from}`;
-        if (!yearKeys.has(key)) {
-          yearKeys.add(key);
-          const total = await repo.periodSum(client, actor.userId, cat.id, from, to, id);
-          if (total > lim.yearlyLimit) {
-            throw ReimbursementV2Error.badRequest(
-              `${cat.name}: ${total} for ${from.slice(0, 4)} exceeds the yearly limit of ${lim.yearlyLimit}`
-            );
-          }
-        }
-      }
-    }
+    // 2) period and per-claim limits
+    await assertClaimLimits(client, actor.userId, items, id);
 
     const total = await repo.recomputeTotal(client, id);
 

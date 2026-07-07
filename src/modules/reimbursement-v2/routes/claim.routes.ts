@@ -12,6 +12,7 @@ const router = express.Router();
 const upload = multer({ dest: 'uploads/' });
 
 router.get('/', requirePermission(Permissions.REIMBURSEMENT_READ), ctrl.listMine);
+router.post('/validate', requirePermission(Permissions.REIMBURSEMENT_CREATE), ctrl.validateLimits);
 router.post('/', requirePermission(Permissions.REIMBURSEMENT_CREATE), ctrl.create);
 router.get('/:id', requirePermission(Permissions.REIMBURSEMENT_READ), ctrl.getOne);
 router.put('/:id', requirePermission(Permissions.REIMBURSEMENT_UPDATE), ctrl.update);
