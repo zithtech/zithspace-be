@@ -7,6 +7,7 @@ const employeeEmployementDetailes_1 = require("./employeeEmployementDetailes");
 const bankAndPayrolllController_1 = require("./bankAndPayrolllController");
 const employeeHistoryController_1 = require("./employeeHistoryController");
 const employeeAssets_1 = require("./employeeAssets");
+const employeeDocumentController_1 = require("./employeeDocumentController");
 const transactionHistory_1 = require("@/utils/transactionHistory");
 const empName = (r) => [r?.first_name, r?.last_name].filter(Boolean).join(" ").trim();
 const empLabel = (r) => `${r?.employee_code ?? ""}${r?.employee_code && empName(r) ? " · " : ""}${empName(r)}`.trim() || "Employee";
@@ -14,7 +15,7 @@ class EmployeeOnboardingController {
     // ✅ CREATE Employee (Full Onboarding)
     static async create(req, res) {
         try {
-            const { personal, employment, bank, history, assets } = req.body;
+            const { personal, employment, bank, history, assets, documents } = req.body;
             if (!req.tenantId)
                 throw new Error("Unauthorized");
             const result = await (0, onboardingPool_1.withTenant)(req.tenantId, async (client) => {
@@ -45,9 +46,13 @@ class EmployeeOnboardingController {
                 if (assets?.length) {
                     await (0, employeeAssets_1.createEmployeeAssets)({ ...req, body: { assets } }, employee.id, client);
                 }
+                // 6️⃣ Documents (Optional)
+                if (documents?.length) {
+                    await (0, employeeDocumentController_1.createEmployeeDocumentsBulk)({ ...req, body: { documents } }, employee.id, client);
+                }
                 return employee;
             });
-            const sections = ["personal", employment && "employment", bank && "bank", history?.length && "history", assets?.length && "assets"].filter(Boolean);
+            const sections = ["personal", employment && "employment", bank && "bank", history?.length && "history", assets?.length && "assets", documents?.length && "documents"].filter(Boolean);
             (0, transactionHistory_1.recordTransaction)({
                 req,
                 section: transactionHistory_1.Section.HR,
@@ -119,12 +124,13 @@ class EmployeeOnboardingController {
         try {
             const { employeeId } = req.params;
             // Fetch all details in parallel
-            const [personal, employment, bank, history, assets] = await Promise.all([
+            const [personal, employment, bank, history, assets, documents] = await Promise.all([
                 (0, createEmployeeDetailes_1.getPersonalDetails)(req, employeeId).catch(() => null),
                 (0, employeeEmployementDetailes_1.getEmploymentDetails)(req, employeeId).catch(() => null),
                 (0, bankAndPayrolllController_1.getBankPayrollDetails)(req, employeeId).catch(() => null),
                 (0, employeeHistoryController_1.getEmployeeHistory)(req, employeeId).catch(() => []),
                 (0, employeeAssets_1.getEmployeeAssets)(req, employeeId).catch(() => []),
+                (0, employeeDocumentController_1.getEmployeeDocuments)(req, employeeId).catch(() => []),
             ]);
             if (!personal) {
                 return res.status(404).json({
@@ -140,6 +146,7 @@ class EmployeeOnboardingController {
                     bank,
                     history,
                     assets,
+                    documents,
                 },
             });
         }
@@ -161,7 +168,7 @@ class EmployeeOnboardingController {
                     error: "Invalid or missing Employee ID",
                 });
             }
-            const { personal, employment, bank, history, assets } = req.body;
+            const { personal, employment, bank, history, assets, documents } = req.body;
             if (!req.tenantId)
                 throw new Error("Unauthorized");
             const result = await (0, onboardingPool_1.withTenant)(req.tenantId, async (client) => {
@@ -192,9 +199,13 @@ class EmployeeOnboardingController {
                         await (0, employeeAssets_1.createEmployeeAssets)({ ...req, body: { assets } }, employeeId, client);
                     }
                 }
+                // 6️⃣ Documents (Append Only)
+                if (documents && documents.length > 0) {
+                    await (0, employeeDocumentController_1.createEmployeeDocumentsBulk)({ ...req, body: { documents } }, employeeId, client);
+                }
                 return employee;
             });
-            const sections = [personal && "personal", employment && "employment", bank && "bank", history && "history", assets && "assets"].filter(Boolean);
+            const sections = [personal && "personal", employment && "employment", bank && "bank", history && "history", assets && "assets", documents && "documents"].filter(Boolean);
             (0, transactionHistory_1.recordTransaction)({
                 req,
                 section: transactionHistory_1.Section.HR,
