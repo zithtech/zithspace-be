@@ -31,8 +31,8 @@ export const updateItem = handle(async (req: AuthRequest, res: Response) => {
   ok(res, await service.updateItem(actorOf(req), req.params.id, req.params.itemId, input));
 });
 
-export const syncLop = handle(async (req: AuthRequest, res: Response) => {
-  ok(res, await service.syncLopFromLeaves(actorOf(req), req.params.id));
+export const syncExternal = handle(async (req: AuthRequest, res: Response) => {
+  ok(res, await service.syncExternalData(actorOf(req), req.params.id));
 });
 
 export const submit = handle(async (req: AuthRequest, res: Response) => {

@@ -111,36 +111,58 @@ export interface LopSyncResult {
 }
 
 /**
- * Pull approved unpaid-leave (LOP) days from leave-v2 for the run's month and
- * apply them to each item, recomputing pay. Authoritative: overwrites existing
- * LOP (employees with no unpaid leave reset to 0 / full pay). Draft-only.
+ * Pull approved unpaid-leave (LOP) days and paid cash-advances from external modules
+ * (leave-v2, reimbursement-v2) for the run's month and apply them to each item, recomputing pay. 
+ * Authoritative: overwrites existing LOP and Advance deductions. Draft-only.
  */
-export async function syncLopFromLeaves(actor: Actor, runId: string): Promise<LopSyncResult> {
+export async function syncExternalData(actor: Actor, runId: string): Promise<LopSyncResult> {
   return withTenant(actor.tenantId, async (client) => {
     const run = await repo.findRunById(client, runId);
     if (!run) throw PayrollError.notFound('Pay run');
     if (run.status !== 'draft') throw PayrollError.badRequest('Only draft runs can be synced');
 
     let lopRows: { userId: string; lopDays: number }[];
+    let advanceRows: { userId: string; advanceAmount: number }[];
     try {
-      lopRows = await repo.findMonthlyLop(client, run.year, run.month);
+      [lopRows, advanceRows] = await Promise.all([
+        repo.findMonthlyLop(client, run.year, run.month),
+        repo.findMonthlyAdvances(client, run.year, run.month)
+      ]);
     } catch (err) {
-      console.error('[payroll] LOP sync — leave query failed:', err);
-      throw PayrollError.badRequest('Could not read leave data for LOP sync');
+      console.error('[payroll] External sync — query failed:', err);
+      throw PayrollError.badRequest('Could not read external data (leaves/advances) for sync');
     }
     const lopMap = new Map(lopRows.map((r) => [r.userId, r.lopDays]));
+    const advanceMap = new Map(advanceRows.map((r) => [r.userId, r.advanceAmount]));
 
     const items = await repo.findItems(client, runId);
     let syncedEmployees = 0;
     let totalLopDays = 0;
     for (const it of items) {
       const lop = Math.min(lopMap.get(it.employeeId) ?? 0, it.totalDays);
-      const c = computeItem(it.totalDays, lop, it.components.map(lineToInput));
+      const advanceAmount = advanceMap.get(it.employeeId) ?? 0;
+      
+      // Filter out any previous 'ADVREC' lines to keep sync idempotent
+      const baseComponents = it.components.filter(c => c.code !== 'ADVREC');
+      
+      if (advanceAmount > 0) {
+        baseComponents.push({
+          componentId: 'synthetic-advance-recovery',
+          code: 'ADVREC',
+          name: 'Advance Recovery',
+          category: 'deduction',
+          isProRata: false,
+          fullAmount: advanceAmount,
+          amount: advanceAmount
+        });
+      }
+
+      const c = computeItem(it.totalDays, lop, baseComponents.map(lineToInput));
       await repo.updateItemComputed(client, it.id, {
         lopDays: c.lopDays, paidDays: c.paidDays, gross: c.gross, totalDeductions: c.totalDeductions,
         net: c.net, lopDeduction: c.lopDeduction, components: c.lines as PayRunLine[],
       });
-      if (lop > 0) { syncedEmployees++; totalLopDays += lop; }
+      if (lop > 0 || advanceAmount > 0) { syncedEmployees++; totalLopDays += lop; }
     }
     await recomputeRunTotals(client, runId, actor.userId);
     return { detail: await buildDetail(client, runId), syncedEmployees, totalLopDays: round2(totalLopDays) };

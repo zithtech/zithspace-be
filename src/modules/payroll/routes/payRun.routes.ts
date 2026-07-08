@@ -13,7 +13,7 @@ router.get('/', requirePermission(Permissions.PAYROLL_RUN_READ), ctrl.list);
 router.get('/:id', requirePermission(Permissions.PAYROLL_RUN_READ), ctrl.getOne);
 router.post('/', requirePermission(Permissions.PAYROLL_RUN_CREATE), ctrl.create);
 router.put('/:id/items/:itemId', requirePermission(Permissions.PAYROLL_RUN_PROCESS), ctrl.updateItem);
-router.post('/:id/sync-lop', requirePermission(Permissions.PAYROLL_RUN_PROCESS), ctrl.syncLop);
+router.post('/:id/sync', requirePermission(Permissions.PAYROLL_RUN_PROCESS), ctrl.syncExternal);
 router.post('/:id/submit', requirePermission(Permissions.PAYROLL_RUN_PROCESS), ctrl.submit);
 router.post('/:id/process', requirePermission(Permissions.PAYROLL_RUN_APPROVE), ctrl.process);
 router.post('/:id/finalize', requirePermission(Permissions.PAYROLL_RUN_FINALIZE), ctrl.finalize);

@@ -297,6 +297,26 @@ export async function findMonthlyLop(client: TenantClient, year: number, month: 
   return rows.map((r) => ({ userId: r.user_id, lopDays: Math.round(Number(r.lop_days) * 100) / 100 }));
 }
 
+export interface MonthlyAdvanceRow {
+  userId: string;
+  advanceAmount: number;
+}
+
+export async function findMonthlyAdvances(client: TenantClient, year: number, month: number): Promise<MonthlyAdvanceRow[]> {
+  const { rows } = await client.query(
+    `SELECT user_id, SUM(amount) AS total_advance
+       FROM rb2_advances
+      WHERE tenant_id = $1
+        AND deleted_at IS NULL
+        AND status = 'paid'
+        AND EXTRACT(YEAR FROM paid_at) = $2
+        AND EXTRACT(MONTH FROM paid_at) = $3
+      GROUP BY user_id`,
+    [client.tenantId, year, month]
+  );
+  return rows.map((r) => ({ userId: r.user_id, advanceAmount: Number(r.total_advance) }));
+}
+
 export async function findActiveAssignmentSnapshots(client: TenantClient): Promise<AssignmentSnapshotRow[]> {
   const { rows } = await client.query(
     `SELECT a.id AS assignment_id, a.employee_id, a.monthly_ctc, s.name AS structure_name,
