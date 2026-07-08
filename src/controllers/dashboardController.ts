@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { prisma } from "@/config/database";
 import { AuthRequest, ApiResponse } from "@/types";
+import { getDashboardSettingsByTenantId, upsertDashboardSettings } from "@/models/dashboardSettings.model";
 
 export class DashboardController {
   /**
@@ -659,6 +660,48 @@ export class DashboardController {
         error: "Failed to fetch dashboard data",
         details: error.message,
       } as ApiResponse);
+    }
+  }
+
+  /**
+   * Get dashboard settings for the current tenant
+   */
+  static async getSettings(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId) {
+        res.status(400).json({ success: false, error: "Tenant context required" } as ApiResponse);
+        return;
+      }
+
+      const settings = await getDashboardSettingsByTenantId(req.tenantId);
+      res.status(200).json({ success: true, data: settings } as ApiResponse);
+    } catch (error: any) {
+      console.error("Get dashboard settings error:", error);
+      res.status(500).json({ success: false, error: "Failed to fetch dashboard settings", details: error.message } as ApiResponse);
+    }
+  }
+
+  /**
+   * Update dashboard settings for the current tenant
+   */
+  static async updateSettings(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId) {
+        res.status(400).json({ success: false, error: "Tenant context required" } as ApiResponse);
+        return;
+      }
+
+      const visibleCards = req.body.visibleCards;
+      if (!visibleCards || typeof visibleCards !== 'object') {
+        res.status(400).json({ success: false, error: "Invalid visibleCards object" } as ApiResponse);
+        return;
+      }
+
+      const settings = await upsertDashboardSettings(req.tenantId, visibleCards);
+      res.status(200).json({ success: true, data: settings } as ApiResponse);
+    } catch (error: any) {
+      console.error("Update dashboard settings error:", error);
+      res.status(500).json({ success: false, error: "Failed to update dashboard settings", details: error.message } as ApiResponse);
     }
   }
 }
