@@ -386,6 +386,7 @@ export declare const Permissions: {
     readonly MY_HUB_APPLY_LEAVE_READ: "my_hub.apply_leave.read";
     readonly MY_HUB_ATTENDANCE_READ: "my_hub.attendance.read";
     readonly MY_HUB_ESCALATION_READ: "my_hub.escalation.read";
+    readonly MY_HUB_DOCUMENTS_READ: "my_hub.documents.read";
     readonly MY_HUB_PERFORMANCE_READ: "my_hub.performance.read";
     readonly MY_HUB_PAYSLIPS_READ: "my_hub.payslips.read";
     readonly MY_HUB_PROFILE_READ: "my_hub.profile.read";
