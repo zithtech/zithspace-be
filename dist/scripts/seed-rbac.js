@@ -345,6 +345,7 @@ const PERMISSION_DESCRIPTIONS = {
     'my_hub.performance.read': 'View own performance reports from My Hub',
     'my_hub.payslips.read': 'View own payslips from My Hub',
     'my_hub.profile.read': 'View own profile from My Hub',
+    'my_hub.claims.read': 'View own claims from My Hub',
 };
 // ─── Role permission maps ─────────────────────────────────────────────────────
 const ROLE_PERMISSIONS = {
