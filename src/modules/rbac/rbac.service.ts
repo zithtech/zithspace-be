@@ -328,7 +328,7 @@ export const ADMIN_DEFAULT_PERMISSIONS: string[] = [
   'time_tracking.create', 'time_tracking.read', 'time_tracking.delete', 'time_tracking.team.read', 'time_tracking.manage_time',
   'activity_log.read', 'activity_log.read_all',
   // My Hub — granted to every role by default
-  'my_hub.overview.read', 'my_hub.apply_leave.read', 'my_hub.attendance.read', 'my_hub.escalation.read', 'my_hub.performance.read', 'my_hub.payslips.read', 'my_hub.profile.read',
+  'my_hub.overview.read', 'my_hub.apply_leave.read', 'my_hub.attendance.read', 'my_hub.escalation.read', 'my_hub.performance.read', 'my_hub.payslips.read', 'my_hub.profile.read', 'my_hub.claims.read',
 ];
 
 export const USER_DEFAULT_PERMISSIONS: string[] = [
@@ -367,5 +367,5 @@ export const USER_DEFAULT_PERMISSIONS: string[] = [
   'time_tracking.create', 'time_tracking.read', 'time_tracking.delete',
   'activity_log.read',
   // My Hub — granted to every role by default
-  'my_hub.overview.read', 'my_hub.apply_leave.read', 'my_hub.attendance.read', 'my_hub.escalation.read', 'my_hub.performance.read', 'my_hub.payslips.read', 'my_hub.profile.read',
+  'my_hub.overview.read', 'my_hub.apply_leave.read', 'my_hub.attendance.read', 'my_hub.escalation.read', 'my_hub.performance.read', 'my_hub.payslips.read', 'my_hub.profile.read', 'my_hub.claims.read',
 ];

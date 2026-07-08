@@ -389,6 +389,7 @@ export declare const Permissions: {
     readonly MY_HUB_PERFORMANCE_READ: "my_hub.performance.read";
     readonly MY_HUB_PAYSLIPS_READ: "my_hub.payslips.read";
     readonly MY_HUB_PROFILE_READ: "my_hub.profile.read";
+    readonly MY_HUB_CLAIMS_READ: "my_hub.claims.read";
 };
 export type Permission = (typeof Permissions)[keyof typeof Permissions];
 /**

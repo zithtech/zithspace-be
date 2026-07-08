@@ -18,6 +18,7 @@ const CAN_READ_CATEGORIES = [
   Permissions.REIMBURSEMENT_CREATE,
   Permissions.REIMBURSEMENT_CONFIG_READ,
   Permissions.REIMBURSEMENT_MANAGE,
+  Permissions.MY_HUB_CLAIMS_READ,
 ];
 
 router.get('/', requireAnyPermission(...CAN_READ_CATEGORIES), ctrl.list);
