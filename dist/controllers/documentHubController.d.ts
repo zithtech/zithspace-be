@@ -93,4 +93,8 @@ export declare class DocumentHubController {
      * Get content of a document within a public hub
      */
     static getPublicHubDocumentContent(req: any, res: Response): Promise<void>;
+    /**
+     * Download Document as PDF using Puppeteer
+     */
+    static downloadDocumentPdf(req: AuthRequest, res: Response): Promise<void>;
 }
