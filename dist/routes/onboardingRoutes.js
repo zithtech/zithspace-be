@@ -7,10 +7,13 @@ const express_1 = __importDefault(require("express"));
 const employeeOnboardingController_1 = require("@/controllers/employeeOnboardingController");
 const onboardingInviteController_1 = require("@/controllers/onboardingInviteController");
 const onboardingDocumentTypeController_1 = require("@/controllers/onboardingDocumentTypeController");
+const employeeDocumentController_1 = require("@/controllers/employeeDocumentController");
 const auth_1 = require("@/middleware/auth");
 const tenantContext_1 = require("@/middleware/tenantContext");
 const permission_1 = require("@/middleware/permission");
 const permissions_1 = require("@/types/permissions");
+const multer_1 = __importDefault(require("multer"));
+const upload = (0, multer_1.default)({ dest: "uploads/" });
 const router = express_1.default.Router();
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 // GLOBAL MIDDLEWARE
@@ -29,6 +32,11 @@ router.get("/document-types", (0, permission_1.requirePermission)(permissions_1.
 router.post("/document-types", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_SETTING_UPDATE), asyncHandler(onboardingDocumentTypeController_1.createDocumentType));
 router.put("/document-types/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_SETTING_UPDATE), asyncHandler(onboardingDocumentTypeController_1.updateDocumentType));
 router.delete("/document-types/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_SETTING_UPDATE), asyncHandler(onboardingDocumentTypeController_1.deleteDocumentType));
+// ─── Employee HR Documents ────────────────────────────────────────────────
+router.get("/my-documents", (0, permission_1.requirePermission)(permissions_1.Permissions.MY_HUB_DOCUMENTS_READ), asyncHandler(employeeDocumentController_1.listMyDocuments));
+router.get("/employee-documents", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_READ), asyncHandler(employeeDocumentController_1.listEmployeeDocuments));
+router.post("/employee-documents", upload.single("file"), (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_UPDATE), asyncHandler(employeeDocumentController_1.uploadEmployeeDocument));
+router.delete("/employee-documents/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_UPDATE), asyncHandler(employeeDocumentController_1.deleteEmployeeDocument));
 // ROUTES
 router.post("/", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_CREATE), asyncHandler(employeeOnboardingController_1.EmployeeOnboardingController.create));
 router.get("/", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_READ), asyncHandler(employeeOnboardingController_1.EmployeeOnboardingController.getAll));

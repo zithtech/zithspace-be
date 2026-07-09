@@ -13,10 +13,19 @@ import {
   updateDocumentType,
   deleteDocumentType,
 } from "@/controllers/onboardingDocumentTypeController";
+import {
+  listEmployeeDocuments,
+  listMyDocuments,
+  uploadEmployeeDocument,
+  deleteEmployeeDocument,
+} from "@/controllers/employeeDocumentController";
 import { authenticateToken, requireAuth } from "@/middleware/auth";
 import { resolveTenant } from "@/middleware/tenantContext";
 import { requirePermission } from "@/middleware/permission";
 import { Permissions } from "@/types/permissions";
+import multer from "multer";
+
+const upload = multer({ dest: "uploads/" });
 
 const router = express.Router();
 
@@ -41,6 +50,17 @@ router.get("/document-types", requirePermission(Permissions.ONBOARDING_SETTING_R
 router.post("/document-types", requirePermission(Permissions.ONBOARDING_SETTING_UPDATE), asyncHandler(createDocumentType));
 router.put("/document-types/:id", requirePermission(Permissions.ONBOARDING_SETTING_UPDATE), asyncHandler(updateDocumentType));
 router.delete("/document-types/:id", requirePermission(Permissions.ONBOARDING_SETTING_UPDATE), asyncHandler(deleteDocumentType));
+
+// ─── Employee HR Documents ────────────────────────────────────────────────
+router.get("/my-documents", requirePermission(Permissions.MY_HUB_DOCUMENTS_READ), asyncHandler(listMyDocuments));
+router.get("/employee-documents", requirePermission(Permissions.ONBOARDING_READ), asyncHandler(listEmployeeDocuments));
+router.post(
+  "/employee-documents",
+  upload.single("file"),
+  requirePermission(Permissions.ONBOARDING_UPDATE),
+  asyncHandler(uploadEmployeeDocument),
+);
+router.delete("/employee-documents/:id", requirePermission(Permissions.ONBOARDING_UPDATE), asyncHandler(deleteEmployeeDocument));
 
 // ROUTES
 router.post("/", requirePermission(Permissions.ONBOARDING_CREATE), asyncHandler(EmployeeOnboardingController.create));
