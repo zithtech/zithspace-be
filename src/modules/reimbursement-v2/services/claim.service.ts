@@ -13,6 +13,7 @@
 // resolved from org/user-scoped policies (resolvable without employee attrs).
 
 import { TenantClient, withTenant } from '../db/pool';
+import { generatePresignedUrl } from '@/utils/r2Client';
 import * as repo from '../repositories/claim.repo';
 import * as categoryRepo from '../repositories/category.repo';
 import * as advanceRepo from '../repositories/advance.repo';
@@ -119,10 +120,22 @@ async function assertLinkableAdvance(
 async function buildDetail(client: TenantClient, id: string): Promise<ClaimDetail> {
   const claim = await repo.findClaimById(client, id);
   if (!claim) throw ReimbursementV2Error.notFound('Claim');
+  
+  const attachments = await repo.findAttachments(client, id);
+  for (const attachment of attachments) {
+    if (attachment.fileUrl) {
+      try {
+        attachment.fileUrl = await generatePresignedUrl(attachment.fileUrl, 86400);
+      } catch (e) {
+        console.error('Failed to presign URL for attachment', attachment.id, e);
+      }
+    }
+  }
+
   return {
     ...claim,
     items: await repo.findItems(client, id),
-    attachments: await repo.findAttachments(client, id),
+    attachments,
   };
 }
 

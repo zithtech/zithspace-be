@@ -13,6 +13,7 @@ const upload = multer({ dest: 'uploads/' });
 
 router.get('/', requireAnyPermission(Permissions.REIMBURSEMENT_READ, Permissions.MY_HUB_CLAIMS_READ), ctrl.listMine);
 router.post('/', requireAnyPermission(Permissions.REIMBURSEMENT_CREATE, Permissions.MY_HUB_CLAIMS_READ), ctrl.create);
+router.post('/validate', requireAnyPermission(Permissions.REIMBURSEMENT_CREATE, Permissions.MY_HUB_CLAIMS_READ), ctrl.validateLimits);
 router.get('/:id', requireAnyPermission(Permissions.REIMBURSEMENT_READ, Permissions.MY_HUB_CLAIMS_READ), ctrl.getOne);
 router.put('/:id', requireAnyPermission(Permissions.REIMBURSEMENT_UPDATE, Permissions.MY_HUB_CLAIMS_READ), ctrl.update);
 router.delete('/:id', requireAnyPermission(Permissions.REIMBURSEMENT_DELETE, Permissions.MY_HUB_CLAIMS_READ), ctrl.remove);

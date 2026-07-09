@@ -8,18 +8,18 @@ const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD
 export const itemSchema = z.object({
   categoryId: z.string().uuid(),
   expenseDate: dateStr,
-  merchant: z.string().trim().max(160).optional().nullable(),
-  billNo: z.string().trim().max(100).optional().nullable(),
+  merchant: z.string().trim().max(160).regex(/^[a-zA-Z0-9\s\-_.,()]*$/, 'Special characters are not allowed').optional().nullable(),
+  billNo: z.string().trim().max(100).regex(/^[a-zA-Z0-9\s\-_.,()]*$/, 'Special characters are not allowed').optional().nullable(),
   // Optional here: for 'mileage' categories the amount is derived from distance ×
   // rate; for 'amount' categories the service requires it. Enforced in service.
   amount: z.number().positive('amount must be greater than 0').max(99999999.99).optional().nullable(),
   distance: z.number().positive('distance must be greater than 0').max(9999999.99).optional().nullable(),
   taxAmount: z.number().nonnegative().max(99999999.99).default(0),
-  description: z.string().trim().max(500).optional().nullable(),
+  description: z.string().trim().max(500).regex(/^[a-zA-Z0-9\s\-_.,()]*$/, 'Special characters are not allowed').optional().nullable(),
 });
 
 export const createClaimSchema = z.object({
-  title: z.string().trim().max(160).optional().nullable(),
+  title: z.string().trim().max(160).regex(/^[a-zA-Z0-9\s\-_.,()]*$/, 'Special characters are not allowed').optional().nullable(),
   currency: z.string().trim().length(3, 'currency must be a 3-letter code').toUpperCase().default('INR'),
   exchangeRate: z.number().positive().max(9999999.999999).default(1),
   baseCurrency: z.string().trim().length(3).toUpperCase().default('INR'),
@@ -31,7 +31,7 @@ export const createClaimSchema = z.object({
 
 export const updateClaimSchema = z
   .object({
-    title: z.string().trim().max(160).optional().nullable(),
+    title: z.string().trim().max(160).regex(/^[a-zA-Z0-9\s\-_.,()]*$/, 'Special characters are not allowed').optional().nullable(),
     currency: z.string().trim().length(3).toUpperCase().optional(),
     exchangeRate: z.number().positive().max(9999999.999999).optional(),
     baseCurrency: z.string().trim().length(3).toUpperCase().optional(),

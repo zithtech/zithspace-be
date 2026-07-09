@@ -7,7 +7,7 @@ const dateStr = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD
 
 export const createBudgetSchema = z
   .object({
-    name: z.string().trim().min(1, 'name is required').max(120),
+    name: z.string().trim().min(1, 'name is required').max(120).regex(/^[a-zA-Z0-9\s\-_.,()]*$/, 'Special characters are not allowed'),
     scopeType: z.enum(['org', 'department', 'project', 'category', 'user']),
     scopeId: z.string().uuid().optional().nullable(),
     periodStart: dateStr,
