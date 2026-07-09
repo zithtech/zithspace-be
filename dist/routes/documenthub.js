@@ -164,5 +164,6 @@ router.delete("/:id/star", (0, permission_1.requirePermission)(permissions_1.Per
  * @access  Private
  */
 router.delete("/:id/share", (0, permission_1.requirePermission)(permissions_1.Permissions.DOCUMENT_UPDATE), documentHubController_1.DocumentHubController.revokeHubShare);
+router.get("/document/:id/pdf", (0, permission_1.requirePermission)(permissions_1.Permissions.DOCUMENT_READ), documentHubController_1.DocumentHubController.downloadDocumentPdf);
 exports.default = router;
 //# sourceMappingURL=documenthub.js.map
