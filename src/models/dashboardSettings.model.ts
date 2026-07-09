@@ -13,6 +13,8 @@ export interface DashboardSettings {
     recentLeads: boolean;
     recentInvoices: boolean;
     calendar: boolean;
+    upcomingBirthdays: boolean;
+    dailyAttendanceCard: boolean;
   };
   createdAt: Date;
   updatedAt: Date;
@@ -28,6 +30,8 @@ export const DEFAULT_VISIBLE_CARDS = {
   recentLeads: true,
   recentInvoices: true,
   calendar: true,
+  upcomingBirthdays: true,
+  dailyAttendanceCard: true,
 };
 
 function mapRowToDashboardSettings(row: any): DashboardSettings {

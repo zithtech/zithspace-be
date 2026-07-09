@@ -53,6 +53,7 @@ export class DashboardController {
         dailyUpdatesStats,
         topPerformer,
         lateAndOvertime,
+        upcomingBirthdays,
       ] = await Promise.all([
         // 1. Total active members
         prisma.user.count({
@@ -438,6 +439,59 @@ export class DashboardController {
             overtime: overtimeCount,
           };
         })(),
+
+        // 15. Upcoming Birthdays (next 30 days)
+        (async () => {
+          const todayStr = new Date().toISOString().substring(5, 10); // MM-DD
+          // In Prisma, filtering by month/day of a Date field is tricky.
+          // We fetch all active users with a birthday and filter in memory.
+          // Since the number of active users is typically small per tenant, this is fine.
+          const users = await prisma.user.findMany({
+            where: {
+              tenantId: req.tenantId,
+              isActive: true,
+              dateOfBirth: { not: null },
+            },
+            select: {
+              id: true,
+              name: true,
+              position: true,
+              avatarUrl: true,
+              dateOfBirth: true,
+            },
+          });
+
+          const upcoming = users
+            .map((u) => {
+              const dob = u.dateOfBirth!;
+              const currentYear = new Date().getFullYear();
+              let nextBirthday = new Date(currentYear, dob.getUTCMonth(), dob.getUTCDate());
+              
+              // If birthday has passed this year, their next birthday is next year
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              
+              if (nextBirthday.getTime() < today.getTime()) {
+                nextBirthday = new Date(currentYear + 1, dob.getUTCMonth(), dob.getUTCDate());
+              }
+              
+              const daysUntil = Math.ceil((nextBirthday.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+              
+              return { ...u, nextBirthday, daysUntil };
+            })
+            .filter((u) => u.daysUntil <= 30)
+            .sort((a, b) => a.daysUntil - b.daysUntil)
+            .slice(0, 5); // top 5 upcoming
+
+          return upcoming.map(u => ({
+            id: u.id,
+            name: u.name,
+            position: (u.position as any)?.title || "Team Member",
+            avatarUrl: u.avatarUrl,
+            dateOfBirth: u.dateOfBirth,
+            daysUntil: u.daysUntil,
+          }));
+        })(),
       ]);
 
       // --- PROCESS DATA ---
@@ -632,6 +686,7 @@ export class DashboardController {
           lateArrivals: lateAndOvertime.late,
           overtimeWorkers: lateAndOvertime.overtime,
         },
+        upcomingBirthdays: upcomingBirthdays,
 
         trends: {
           memberGrowth: "+12%", // Could calculate from historical data
