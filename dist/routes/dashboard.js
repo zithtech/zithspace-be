@@ -20,5 +20,17 @@ router.use(auth_1.requireAuth);
  * @access  Private (Authenticated users)
  */
 router.get("/summary", dashboardController_1.DashboardController.getDashboardSummary);
+/**
+ * @route   GET /api/dashboard/settings
+ * @desc    Get dashboard settings (tenant-aware)
+ * @access  Private (Authenticated users)
+ */
+router.get("/settings", dashboardController_1.DashboardController.getSettings);
+/**
+ * @route   PUT /api/dashboard/settings
+ * @desc    Update dashboard settings (tenant-aware)
+ * @access  Private (Authenticated users)
+ */
+router.put("/settings", dashboardController_1.DashboardController.updateSettings);
 exports.default = router;
 //# sourceMappingURL=dashboard.js.map
