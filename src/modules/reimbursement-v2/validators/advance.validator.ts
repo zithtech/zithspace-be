@@ -4,7 +4,7 @@
 import { z } from 'zod';
 
 export const createAdvanceSchema = z.object({
-  purpose: z.string().trim().max(500).optional().nullable(),
+  purpose: z.string().trim().max(160).regex(/^[a-zA-Z0-9\s\-_.,()]*$/, 'Special characters are not allowed').optional().nullable(),
   amount: z.number().positive('amount must be greater than 0').max(99999999.99),
   currency: z.string().trim().length(3, 'currency must be a 3-letter code').toUpperCase().default('INR'),
   neededBy: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'neededBy must be YYYY-MM-DD').optional().nullable(),

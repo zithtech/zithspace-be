@@ -24,4 +24,18 @@ router.use(requireAuth);
  */
 router.get("/summary", DashboardController.getDashboardSummary);
 
+/**
+ * @route   GET /api/dashboard/settings
+ * @desc    Get dashboard settings (tenant-aware)
+ * @access  Private (Authenticated users)
+ */
+router.get("/settings", DashboardController.getSettings);
+
+/**
+ * @route   PUT /api/dashboard/settings
+ * @desc    Update dashboard settings (tenant-aware)
+ * @access  Private (Authenticated users)
+ */
+router.put("/settings", DashboardController.updateSettings);
+
 export default router;
