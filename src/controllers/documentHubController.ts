@@ -488,22 +488,19 @@ export class DocumentHubController {
 
       const position = lastNode ? lastNode.position + 1 : 0;
 
-      let documentId = null;
-      if (type === "file") {
-        // Create document if it's a file
-        const doc = await prisma.document.create({
-          data: {
-            tenantId: req.tenantId,
-            documentHubId,
-            title,
-            content: [], // Default empty content for Blocknote
-            createdById: req.user.id,
-            visibility: "public",
-            shareToken: crypto.randomBytes(32).toString("hex"),
-          },
-        });
-        documentId = doc.id;
-      }
+      // Create document for all node types (files, folders, sections) so they can all have editable content
+      const doc = await prisma.document.create({
+        data: {
+          tenantId: req.tenantId,
+          documentHubId,
+          title,
+          content: [], // Default empty content for Blocknote
+          createdById: req.user.id,
+          visibility: "public",
+          shareToken: crypto.randomBytes(32).toString("hex"),
+        },
+      });
+      let documentId = doc.id;
 
       const newNode = await prisma.documentTree.create({
         data: {
