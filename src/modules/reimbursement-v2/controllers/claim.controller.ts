@@ -26,6 +26,21 @@ import {
   EntityType,
 } from '@/utils/transactionHistory';
 
+
+export const validateLimits = handle(async (req: AuthRequest, res: Response) => {
+  const input = createClaimSchema.parse(req.body);
+  try {
+    await service.validateClaimLimitsEndpoint(actorOf(req), input);
+    ok(res, { valid: true });
+  } catch (err: any) {
+    if (err.statusCode && err.statusCode >= 400 && err.statusCode < 500) {
+      res.status(err.statusCode).json({ success: false, error: err.message, code: err.code || 'BAD_REQUEST' });
+      return;
+    }
+    throw err;
+  }
+});
+
 export const create = handle(async (req: AuthRequest, res: Response) => {
   const input = createClaimSchema.parse(req.body);
   const claim = await service.createClaim(actorOf(req), input);
@@ -130,7 +145,16 @@ export const removeAttachment = handle(async (req: AuthRequest, res: Response) =
 });
 
 export const submit = handle(async (req: AuthRequest, res: Response) => {
-  const claim = await service.submitClaim(actorOf(req), req.params.id);
+  let claim;
+  try {
+    claim = await service.submitClaim(actorOf(req), req.params.id);
+  } catch (err: any) {
+    if (err.statusCode && err.statusCode >= 400 && err.statusCode < 500) {
+      res.status(err.statusCode).json({ success: false, error: err.message, code: err.code || 'BAD_REQUEST' });
+      return;
+    }
+    throw err;
+  }
   recordTransaction({
     req,
     section: Section.FINANCE,
