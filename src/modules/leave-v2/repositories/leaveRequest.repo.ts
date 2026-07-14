@@ -32,8 +32,10 @@ export interface LeaveRequestRow {
   leaveTypeColor?: string | null;
   userName?: string;
   userEmail?: string;
+  userAvatarUrl?: string | null;
   reportsToId?: string | null;
   approverName?: string | null;
+  approverAvatarUrl?: string | null;
 }
 
 const SELECT_REQ = `
@@ -50,7 +52,7 @@ const SELECT_REQ = `
 `;
 
 // With requester info (for the approvals view). `ua` is the approver (nullable).
-const SELECT_REQ_EMP = `${SELECT_REQ}, u.name AS user_name, u.work_email AS user_email, u.reports_to_id AS reports_to_id, ua.name AS approver_name`;
+const SELECT_REQ_EMP = `${SELECT_REQ}, u.name AS user_name, u.work_email AS user_email, u.avatar_url AS user_avatar_url, u.reports_to_id AS reports_to_id, ua.name AS approver_name, ua.avatar_url AS approver_avatar_url`;
 
 // Join used alongside SELECT_REQ_EMP to resolve the approver's name.
 const JOIN_APPROVER = `LEFT JOIN users ua ON ua.id = r.approver_id::text`;
@@ -81,8 +83,10 @@ function mapReq(r: any): LeaveRequestRow {
     leaveTypeColor: r.leave_type_color,
     userName: r.user_name ?? undefined,
     userEmail: r.user_email ?? undefined,
+    userAvatarUrl: r.user_avatar_url ?? null,
     reportsToId: r.reports_to_id ?? null,
     approverName: r.approver_name ?? null,
+    approverAvatarUrl: r.approver_avatar_url ?? null,
   };
 }
 
