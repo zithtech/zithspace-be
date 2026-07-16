@@ -8,6 +8,7 @@ import {
 } from "@/types";
 import { socketService } from "@/services/socketService";
 import { generateDocumentDraft, rewriteSelection } from "@/services/aiDocumentService";
+import puppeteer from "puppeteer";
 import crypto from "crypto";
 import {
   recordTransaction,
@@ -18,6 +19,59 @@ import {
   Action,
   EntityType,
 } from "@/utils/transactionHistory";
+
+const generateHtmlFromBlocks = (blocks: any[]): string => {
+  let html = "";
+  for (const block of blocks) {
+    if (!block.type) continue;
+
+    let contentHtml = "";
+    if (Array.isArray(block.content)) {
+      contentHtml = block.content
+        .map((c: any) => {
+          let text = c.text || "";
+          if (c.styles) {
+            if (c.styles.bold) text = `<strong>${text}</strong>`;
+            if (c.styles.italic) text = `<em>${text}</em>`;
+            if (c.styles.underline) text = `<u>${text}</u>`;
+            if (c.styles.strike) text = `<s>${text}</s>`;
+            if (c.styles.code) text = `<code>${text}</code>`;
+          }
+          if (c.type === "link") {
+            text = `<a href="${c.href}">${text}</a>`;
+          }
+          return text;
+        })
+        .join("");
+    } else if (typeof block.content === "string") {
+      contentHtml = block.content;
+    }
+
+    switch (block.type) {
+      case "paragraph":
+        html += `<p>${contentHtml}</p>`;
+        break;
+      case "heading":
+        const level = block.props?.level || 1;
+        html += `<h${level}>${contentHtml}</h${level}>`;
+        break;
+      case "bulletListItem":
+        html += `<li>${contentHtml}</li>`; // Ideally wrapped in <ul> but this works for basic rendering
+        break;
+      case "numberedListItem":
+        html += `<li>${contentHtml}</li>`; // Ideally wrapped in <ol>
+        break;
+      default:
+        html += `<p>${contentHtml}</p>`;
+        break;
+    }
+
+    if (block.children && block.children.length > 0) {
+      html += `<div style="margin-left: 20px;">${generateHtmlFromBlocks(block.children)}</div>`;
+    }
+  }
+  return html;
+};
 
 export class DocumentHubController {
   /**
@@ -404,37 +458,6 @@ export class DocumentHubController {
         return;
       }
 
-      // If user is not the creator, prune empty folders/sections in the tree
-      if (documentHub.createdById !== req.user.id) {
-        const nodes = documentHub.treeNodes;
-        const visibleNodeIds = new Set<string>();
-        const nodeMap = new Map<string, any>();
-
-        nodes.forEach(node => nodeMap.set(node.id, { ...node, children: [] }));
-
-        // Link children
-        nodes.forEach(node => {
-          if (node.parentId && nodeMap.has(node.parentId)) {
-            nodeMap.get(node.parentId).children.push(node.id);
-          }
-        });
-
-        const isNodeVisible = (nodeId: string): boolean => {
-          const node = nodeMap.get(nodeId);
-          if (!node) return false;
-
-          if (node.type === 'file') {
-            // Accessible file nodes are already filtered by the query, but double check
-            return !!node.documentId && accessibleDocIds.includes(node.documentId);
-          }
-
-          // For folder/section, visible if any child is visible
-          return node.children.some((childId: string) => isNodeVisible(childId));
-        };
-
-        const filteredNodes = nodes.filter(node => isNodeVisible(node.id));
-        (documentHub as any).treeNodes = filteredNodes;
-      }
 
       res.status(200).json({
         success: true,
@@ -488,22 +511,19 @@ export class DocumentHubController {
 
       const position = lastNode ? lastNode.position + 1 : 0;
 
-      let documentId = null;
-      if (type === "file") {
-        // Create document if it's a file
-        const doc = await prisma.document.create({
-          data: {
-            tenantId: req.tenantId,
-            documentHubId,
-            title,
-            content: [], // Default empty content for Blocknote
-            createdById: req.user.id,
-            visibility: "public",
-            shareToken: crypto.randomBytes(32).toString("hex"),
-          },
-        });
-        documentId = doc.id;
-      }
+      // Create document for all node types (files, folders, sections) so they can all have editable content
+      const doc = await prisma.document.create({
+        data: {
+          tenantId: req.tenantId,
+          documentHubId,
+          title,
+          content: [], // Default empty content for Blocknote
+          createdById: req.user.id,
+          visibility: "public",
+          shareToken: crypto.randomBytes(32).toString("hex"),
+        },
+      });
+      let documentId = doc.id;
 
       const newNode = await prisma.documentTree.create({
         data: {
@@ -1280,20 +1300,7 @@ export class DocumentHubController {
         },
       });
 
-      // Filter DocumentHubs based on requirement:
-      // If total number of documents <= 0, hub should be visible only to creator.
-      // If all documents are private, hub should be visible only to creator.
-      const filteredDocumentHubs = documentHubs.filter((hub) => {
-        if (hub.createdById === req.user!.id) return true;
-
-        const docs = hub.documents || [];
-        if (docs.length <= 0) return false;
-
-        const hasPublicDoc = docs.some((doc) => doc.visibility === "public");
-        if (!hasPublicDoc) return false;
-
-        return true;
-      });
+      const filteredDocumentHubs = documentHubs;
 
       // Fetch this user's stars in one shot via raw SQL and decorate the
       // hubs with `isStarred`.
@@ -2888,6 +2895,89 @@ export class DocumentHubController {
         success: false,
         error: "Failed to fetch document content",
       } as ApiResponse);
+    }
+  }
+
+  /**
+   * Download Document as PDF using Puppeteer
+   */
+  static async downloadDocumentPdf(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({ success: false, error: "Unauthorized" } as ApiResponse);
+        return;
+      }
+      const { id } = req.params; // documentId
+      const document = await prisma.document.findUnique({
+        where: { id, tenantId: req.tenantId }
+      });
+
+      if (!document) {
+        res.status(404).json({ success: false, error: "Document not found" } as ApiResponse);
+        return;
+      }
+
+      // Convert BlockNote JSON content to HTML
+      const blocks = (document.content as any[]) || [];
+      const contentHtml = generateHtmlFromBlocks(blocks);
+      const title = document.title || "Document";
+
+      // Wrap in a basic HTML template
+      const fullHtml = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <title>${title}</title>
+            <style>
+              body { 
+                font-family: 'Inter', Arial, sans-serif; 
+                padding: 40px; 
+                color: #1e293b; 
+                line-height: 1.6;
+              }
+              h1, h2, h3, h4, h5, h6 { 
+                color: #0f172a; 
+                margin-top: 1.5em; 
+                margin-bottom: 0.5em; 
+              }
+              h1 { font-size: 24px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; }
+              p { margin-bottom: 1rem; }
+              strong { font-weight: 600; }
+              em { font-style: italic; }
+              code { background-color: #f1f5f9; padding: 2px 4px; border-radius: 4px; font-family: monospace; }
+              a { color: #3b82f6; text-decoration: none; }
+              a:hover { text-decoration: underline; }
+            </style>
+          </head>
+          <body>
+            <h1>${title}</h1>
+            ${contentHtml}
+          </body>
+        </html>
+      `;
+
+      // Launch Puppeteer
+      const browser = await puppeteer.launch({
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        headless: true
+      });
+      const page = await browser.newPage();
+      await page.setContent(fullHtml, { waitUntil: 'networkidle0' });
+
+      const pdfBuffer = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        margin: { top: '20px', bottom: '20px', left: '20px', right: '20px' }
+      });
+      await browser.close();
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${title.replace(/[^a-zA-Z0-9-_\.]/g, '_')}.pdf"`);
+      res.end(pdfBuffer);
+    } catch (error: any) {
+      console.error("PDF generation error:", error);
+      res.status(500).json({ success: false, error: "Failed to generate PDF" } as ApiResponse);
     }
   }
 }

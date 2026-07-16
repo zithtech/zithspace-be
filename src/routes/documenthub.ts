@@ -210,4 +210,10 @@ router.delete(
  */
 router.delete("/:id/share", requirePermission(Permissions.DOCUMENT_UPDATE), DocumentHubController.revokeHubShare);
 
+router.get(
+  "/document/:id/pdf",
+  requirePermission(Permissions.DOCUMENT_READ),
+  DocumentHubController.downloadDocumentPdf,
+);
+
 export default router;

@@ -478,9 +478,11 @@ export const Permissions = {
   MY_HUB_APPLY_LEAVE_READ: 'my_hub.apply_leave.read',
   MY_HUB_ATTENDANCE_READ: 'my_hub.attendance.read',
   MY_HUB_ESCALATION_READ: 'my_hub.escalation.read',
+  MY_HUB_DOCUMENTS_READ: 'my_hub.documents.read',
   MY_HUB_PERFORMANCE_READ: 'my_hub.performance.read',
   MY_HUB_PAYSLIPS_READ: 'my_hub.payslips.read',
   MY_HUB_PROFILE_READ: 'my_hub.profile.read',
+  MY_HUB_CLAIMS_READ: 'my_hub.claims.read',
 } as const;
 
 export type Permission = (typeof Permissions)[keyof typeof Permissions];
@@ -815,6 +817,7 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.MY_HUB_PERFORMANCE_READ,
     Permissions.MY_HUB_PAYSLIPS_READ,
     Permissions.MY_HUB_PROFILE_READ,
+    Permissions.MY_HUB_CLAIMS_READ,
   ],
 };
 

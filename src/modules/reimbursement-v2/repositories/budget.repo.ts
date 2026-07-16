@@ -116,6 +116,27 @@ export async function findById(client: TenantClient, id: string): Promise<Budget
   return rows[0] ? mapRow(rows[0]) : null;
 }
 
+export async function findDuplicate(
+  client: TenantClient,
+  scopeType: BudgetScopeType,
+  scopeId: string | null,
+  periodStart: string,
+  periodEnd: string
+): Promise<Budget | null> {
+  const scopeIdVal = scopeType === 'org' ? null : scopeId ?? null;
+  const { rows } = await client.query(
+    `SELECT ${COLS} FROM rb2_budgets 
+      WHERE tenant_id = $1 
+        AND scope_type = $2 
+        AND scope_id IS NOT DISTINCT FROM $3
+        AND period_start = $4 
+        AND period_end = $5 
+        AND deleted_at IS NULL LIMIT 1`,
+    [client.tenantId, scopeType, scopeIdVal, periodStart, periodEnd]
+  );
+  return rows[0] ? mapRow(rows[0]) : null;
+}
+
 export async function list(
   client: TenantClient,
   opts: { includeInactive?: boolean } = {}

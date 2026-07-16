@@ -28,7 +28,12 @@ function toData(input: CreateBudgetInput | UpdateBudgetInput): repo.BudgetData {
 
 export async function createBudget(actor: Actor, input: CreateBudgetInput): Promise<BudgetWithSpend> {
   return withTenant(actor.tenantId, async (client) => {
-    const budget = await repo.insert(client, toData(input), actor.userId);
+    const data = toData(input);
+    const existing = await repo.findDuplicate(client, data.scopeType, data.scopeId ?? null, data.periodStart, data.periodEnd);
+    if (existing) {
+      throw ReimbursementV2Error.badRequest('A budget with this scope and period already exists.');
+    }
+    const budget = await repo.insert(client, data, actor.userId);
     return withSpend(client, budget);
   });
 }

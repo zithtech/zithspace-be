@@ -30,6 +30,10 @@ import {
   getEmployeeAssets,
   deleteAllEmployeeAssets,
 } from "./employeeAssets";
+import {
+  createEmployeeDocumentsBulk,
+  getEmployeeDocuments,
+} from "./employeeDocumentController";
 import { recordTransaction, Section, Module, Page, Action, EntityType } from "@/utils/transactionHistory";
 
 const empName = (r: any) => [r?.first_name, r?.last_name].filter(Boolean).join(" ").trim();
@@ -40,7 +44,7 @@ export class EmployeeOnboardingController {
   // ✅ CREATE Employee (Full Onboarding)
   static async create(req: AuthRequest, res: Response) {
     try {
-      const { personal, employment, bank, history, assets } = req.body;
+      const { personal, employment, bank, history, assets, documents } = req.body;
 
       if (!req.tenantId) throw new Error("Unauthorized");
 
@@ -97,10 +101,19 @@ export class EmployeeOnboardingController {
           );
         }
 
+        // 6️⃣ Documents (Optional)
+        if (documents?.length) {
+          await createEmployeeDocumentsBulk(
+            { ...req, body: { documents } } as AuthRequest,
+            employee.id,
+            client,
+          );
+        }
+
         return employee;
       });
 
-      const sections = ["personal", employment && "employment", bank && "bank", history?.length && "history", assets?.length && "assets"].filter(Boolean);
+      const sections = ["personal", employment && "employment", bank && "bank", history?.length && "history", assets?.length && "assets", documents?.length && "documents"].filter(Boolean);
       recordTransaction({
         req,
         section: Section.HR,
@@ -174,12 +187,13 @@ export class EmployeeOnboardingController {
       const { employeeId } = req.params;
 
       // Fetch all details in parallel
-      const [personal, employment, bank, history, assets] = await Promise.all([
+      const [personal, employment, bank, history, assets, documents] = await Promise.all([
         getPersonalDetails(req, employeeId).catch(() => null),
         getEmploymentDetails(req, employeeId).catch(() => null),
         getBankPayrollDetails(req, employeeId).catch(() => null),
         getEmployeeHistory(req, employeeId).catch(() => []),
         getEmployeeAssets(req, employeeId).catch(() => []),
+        getEmployeeDocuments(req, employeeId).catch(() => []),
       ]);
 
       if (!personal) {
@@ -197,6 +211,7 @@ export class EmployeeOnboardingController {
           bank,
           history,
           assets,
+          documents,
         },
       });
     } catch (err: any) {
@@ -220,7 +235,7 @@ export class EmployeeOnboardingController {
         });
       }
 
-      const { personal, employment, bank, history, assets } = req.body;
+      const { personal, employment, bank, history, assets, documents } = req.body;
 
       if (!req.tenantId) throw new Error("Unauthorized");
 
@@ -278,10 +293,19 @@ export class EmployeeOnboardingController {
           }
         }
 
+        // 6️⃣ Documents (Append Only)
+        if (documents && documents.length > 0) {
+          await createEmployeeDocumentsBulk(
+            { ...req, body: { documents } } as AuthRequest,
+            employeeId,
+            client,
+          );
+        }
+
         return employee;
       });
 
-      const sections = [personal && "personal", employment && "employment", bank && "bank", history && "history", assets && "assets"].filter(Boolean);
+      const sections = [personal && "personal", employment && "employment", bank && "bank", history && "history", assets && "assets", documents && "documents"].filter(Boolean);
       recordTransaction({
         req,
         section: Section.HR,

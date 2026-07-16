@@ -538,7 +538,7 @@ export async function periodSum(
   categoryId: string,
   from: string,
   to: string,
-  includeClaimId: string
+  includeClaimId?: string | null
 ): Promise<number> {
   const { rows } = await client.query<{ total: string }>(
     `SELECT COALESCE(sum(i.amount), 0) AS total
