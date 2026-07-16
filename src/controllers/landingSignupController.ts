@@ -377,6 +377,7 @@ export class LandingSignupController {
       const verificationToken = JWTUtils.createTemporaryToken({ email }, "24h");
       const verificationExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
+      let tenantId: string = "";
       const dbClient = await pool.connect();
       try {
         await dbClient.query("BEGIN");
@@ -407,7 +408,7 @@ export class LandingSignupController {
            RETURNING id`,
           [tenantName, subdomain, planType, `${crypto.randomInt(10000, 100000)}/secretkey/${subdomain}`]
         );
-        const tenantId = tenantResult.rows[0].id;
+        tenantId = tenantResult.rows[0].id;
 
         // Create User
         await dbClient.query(
@@ -425,11 +426,43 @@ export class LandingSignupController {
         dbClient.release();
       }
 
+      // Fetch the newly created user to generate auth tokens (auto-login after signup)
+      const newUserResult = await pool.query(
+        `SELECT u.id, u.tenant_id, u.name, u.work_email, u.role
+         FROM users u WHERE u.tenant_id = $1 AND u.work_email = $2 LIMIT 1`,
+        [tenantId, email]
+      );
+
+      let accessToken: string | undefined;
+      if (newUserResult.rows.length > 0) {
+        const newUser = newUserResult.rows[0];
+        const authUser = {
+          id: newUser.id,
+          tenantId: newUser.tenant_id,
+          email: newUser.work_email,
+          role: newUser.role,
+          position: null,
+          name: newUser.name,
+        };
+        const tokens = JWTUtils.generateTokenPair(authUser);
+        accessToken = tokens.accessToken;
+
+        // Set refresh token as httpOnly cookie (same as login flow)
+        res.cookie("refreshToken", tokens.refreshToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "lax",
+          maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        });
+      }
+
       res.status(200).json({
         success: true,
         tenantSubdomain: subdomain,
         email: email,
         name: name,
+        // accessToken allows the LP to auto-login the user and skip the login page
+        accessToken: accessToken ?? null,
       });
     } catch (error) {
       console.error("Google signup error:", error);
@@ -499,6 +532,7 @@ export class LandingSignupController {
       const verificationToken = JWTUtils.createTemporaryToken({ email }, "24h");
       const verificationExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
+      let tenantId: string = "";
       const dbClient = await pool.connect();
       try {
         await dbClient.query("BEGIN");
@@ -529,7 +563,7 @@ export class LandingSignupController {
            RETURNING id`,
           [tenantName, subdomain, planType, `${crypto.randomInt(10000, 100000)}/secretkey/${subdomain}`]
         );
-        const tenantId = tenantResult.rows[0].id;
+        tenantId = tenantResult.rows[0].id;
 
         // Create User
         await dbClient.query(
@@ -547,11 +581,42 @@ export class LandingSignupController {
         dbClient.release();
       }
 
+      // Fetch the newly created user to generate auth tokens (auto-login after signup)
+      const newUserResult = await pool.query(
+        `SELECT u.id, u.tenant_id, u.name, u.work_email, u.role
+         FROM users u WHERE u.tenant_id = $1 AND u.work_email = $2 LIMIT 1`,
+        [tenantId, email]
+      );
+
+      let accessToken: string | undefined;
+      if (newUserResult.rows.length > 0) {
+        const newUser = newUserResult.rows[0];
+        const authUser = {
+          id: newUser.id,
+          tenantId: newUser.tenant_id,
+          email: newUser.work_email,
+          role: newUser.role,
+          position: null,
+          name: newUser.name,
+        };
+        const tokens = JWTUtils.generateTokenPair(authUser);
+        accessToken = tokens.accessToken;
+
+        // Set refresh token as httpOnly cookie (same as login flow)
+        res.cookie("refreshToken", tokens.refreshToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "lax",
+          maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        });
+      }
+
       res.status(200).json({
         success: true,
         tenantSubdomain: subdomain,
         email: email,
         name: name,
+        accessToken: accessToken ?? null,
       });
     } catch (error) {
       console.error("Microsoft signup error:", error);
