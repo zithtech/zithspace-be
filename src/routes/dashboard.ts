@@ -17,7 +17,7 @@ router.use(resolveTenant);
 // Apply authentication to all routes
 router.use(authenticateToken);
 router.use(requireAuth);
-router.use(requireSubscriptionFeature('page.dashboard'));
+router.use(requireSubscriptionFeature('home_home_general_dashboard'));
 
 /**
  * @route   GET /api/dashboard/summary

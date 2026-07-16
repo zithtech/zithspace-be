@@ -180,6 +180,72 @@ export const APP_STRUCTURE: ICore[] = [
               { key: 'prime', name: 'Prime', featureType: 'PRIME' },
               { key: 'grid', name: 'Grid', featureType: 'GRID' }
             ]
+          },
+          { 
+            key: 'mail', 
+            name: 'Mail', 
+            route: '/mail', 
+            menu_title: 'Mail', 
+            menu_order: 4,
+            features: [
+              { key: 'prime', name: 'Prime', featureType: 'PRIME' },
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
+            ]
+          },
+          { 
+            key: 'calendar', 
+            name: 'Calendar', 
+            route: '/calendar', 
+            menu_title: 'Calendar', 
+            menu_order: 5,
+            features: [
+              { key: 'prime', name: 'Prime', featureType: 'PRIME' },
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
+            ]
+          },
+          { 
+            key: 'skills', 
+            name: 'Skills', 
+            route: '/skills', 
+            menu_title: 'Skills', 
+            menu_order: 6,
+            features: [
+              { key: 'prime', name: 'Prime', featureType: 'PRIME' },
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
+            ]
+          },
+          { 
+            key: 'activity', 
+            name: 'Activity', 
+            route: '/activity', 
+            menu_title: 'Activity', 
+            menu_order: 7,
+            features: [
+              { key: 'prime', name: 'Prime', featureType: 'PRIME' },
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
+            ]
+          },
+          { 
+            key: 'team_chat', 
+            name: 'Team Chat', 
+            route: '/chat', 
+            menu_title: 'Team Chat', 
+            menu_order: 8,
+            features: [
+              { key: 'prime', name: 'Prime', featureType: 'PRIME' },
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
+            ]
+          },
+          { 
+            key: 'bookmarks', 
+            name: 'Bookmarks', 
+            route: '/bookmarks', 
+            menu_title: 'Bookmarks', 
+            menu_order: 9,
+            features: [
+              { key: 'prime', name: 'Prime', featureType: 'PRIME' },
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
+            ]
           }
         ]
       }
@@ -724,6 +790,145 @@ export const APP_STRUCTURE: ICore[] = [
             route: '/members/trash', 
             menu_title: 'Trash', 
             menu_order: 2,
+            features: [
+              { key: 'prime', name: 'Prime', featureType: 'PRIME' },
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
+            ]
+          }
+        ]
+      },
+      {
+        key: 'client_portal',
+        name: 'Client Portal',
+        sort_order: 5,
+        pages: [
+          {
+            key: 'dashboard',
+            name: 'Dashboard',
+            route: '/portal',
+            menu_title: 'Dashboard',
+            menu_order: 1,
+            features: [
+              { key: 'prime', name: 'Prime', featureType: 'PRIME' },
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
+            ]
+          },
+          {
+            key: 'approvals',
+            name: 'Approvals',
+            route: '/portal/approvals',
+            menu_title: 'Approvals',
+            menu_order: 2,
+            features: [
+              { key: 'prime', name: 'Prime', featureType: 'PRIME' },
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
+            ]
+          },
+          {
+            key: 'change_requests',
+            name: 'Change Requests',
+            route: '/portal/change-requests',
+            menu_title: 'Change Requests',
+            menu_order: 3,
+            features: [
+              { key: 'prime', name: 'Prime', featureType: 'PRIME' },
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
+            ]
+          },
+          {
+            key: 'documents',
+            name: 'Documents',
+            route: '/portal/documents',
+            menu_title: 'Documents',
+            menu_order: 4,
+            features: [
+              { key: 'prime', name: 'Prime', featureType: 'PRIME' },
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
+            ]
+          },
+          {
+            key: 'environments',
+            name: 'Environments',
+            route: '/portal/environments',
+            menu_title: 'Environments',
+            menu_order: 5,
+            features: [
+              { key: 'prime', name: 'Prime', featureType: 'PRIME' },
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
+            ]
+          },
+          {
+            key: 'invoices',
+            name: 'Invoices',
+            route: '/portal/invoices',
+            menu_title: 'Invoices',
+            menu_order: 6,
+            features: [
+              { key: 'prime', name: 'Prime', featureType: 'PRIME' },
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
+            ]
+          },
+          {
+            key: 'milestones',
+            name: 'Milestones',
+            route: '/portal/milestones',
+            menu_title: 'Milestones',
+            menu_order: 7,
+            features: [
+              { key: 'prime', name: 'Prime', featureType: 'PRIME' },
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
+            ]
+          },
+          {
+            key: 'mom',
+            name: 'MOM',
+            route: '/portal/mom',
+            menu_title: 'MOM',
+            menu_order: 8,
+            features: [
+              { key: 'prime', name: 'Prime', featureType: 'PRIME' },
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
+            ]
+          },
+          {
+            key: 'releases',
+            name: 'Releases',
+            route: '/portal/releases',
+            menu_title: 'Releases',
+            menu_order: 9,
+            features: [
+              { key: 'prime', name: 'Prime', featureType: 'PRIME' },
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
+            ]
+          },
+          {
+            key: 'sprints',
+            name: 'Sprints',
+            route: '/portal/sprints',
+            menu_title: 'Sprints',
+            menu_order: 10,
+            features: [
+              { key: 'prime', name: 'Prime', featureType: 'PRIME' },
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
+            ]
+          },
+          {
+            key: 'team',
+            name: 'Team',
+            route: '/portal/team',
+            menu_title: 'Team',
+            menu_order: 11,
+            features: [
+              { key: 'prime', name: 'Prime', featureType: 'PRIME' },
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
+            ]
+          },
+          {
+            key: 'tickets',
+            name: 'Tickets',
+            route: '/portal/tickets',
+            menu_title: 'Tickets',
+            menu_order: 12,
             features: [
               { key: 'prime', name: 'Prime', featureType: 'PRIME' },
               { key: 'grid', name: 'Grid', featureType: 'GRID' }
