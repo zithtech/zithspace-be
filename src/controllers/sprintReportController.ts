@@ -7,6 +7,7 @@ import {
   AiNarrative,
 } from "@/services/sprintReportAiService";
 import { SprintReportExportService } from "@/services/sprintReportExportService";
+import { entitlementService, EntitlementError } from "@/services/EntitlementService";
 import {
   recordTransaction,
   Section,
@@ -1897,8 +1898,12 @@ export class SprintReportController {
         return;
       }
 
+      await entitlementService.checkLimit(tenantId!, 'ai_credits_month');
+
       const narrative = await SprintReportAiService.generateNarrative(context);
       const predictions = SprintReportAiService.buildPredictions(context);
+
+      await entitlementService.incrementUsage(tenantId!, 'ai_credits_month');
 
       await pool.query(
         `INSERT INTO sprint_report_ai_narratives
@@ -1947,6 +1952,10 @@ export class SprintReportController {
         },
       } as ApiResponse);
     } catch (err: any) {
+      if (err instanceof EntitlementError) {
+        res.status(403).json({ success: false, error: 'AI limit reached', details: { current: err.current, allowed: err.allowed } } as ApiResponse);
+        return;
+      }
       console.error("[SprintReportController] postAiNarrative error:", err);
       res.status(500).json({
         success: false,

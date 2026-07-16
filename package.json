@@ -18,6 +18,8 @@
     "lv2:migrate": "npx ts-node -r tsconfig-paths/register src/modules/leave-v2/db/migrate.ts",
     "pay:migrate": "npx ts-node -r tsconfig-paths/register src/modules/payroll/db/migrate.ts",
     "rb2:migrate": "npx ts-node -r tsconfig-paths/register src/modules/reimbursement-v2/db/migrate.ts",
+    "db:sync-metadata": "npx ts-node -r tsconfig-paths/register src/scripts/sync-metadata.ts",
+    "db:sync-metadata:prod": "node dist/scripts/sync-metadata.js",
     "lint": "eslint src --ext .ts",
     "test": "jest",
     "postinstall": "prisma generate"

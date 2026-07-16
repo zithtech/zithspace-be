@@ -114,6 +114,7 @@ import leaveV2Routes from "@/modules/leave-v2/routes";
 import performanceReportRoutes from "@/modules/performance-report/routes";
 import payrollV2Routes from "@/modules/payroll/routes";
 import reimbursementV2Routes from "@/modules/reimbursement-v2/routes";
+import { metadataRoutes } from "@/modules/metadata";
 import reimbursementConfigurationRoutes from "@/routes/reimbursementConfig";
 import reimbursementsettingsRoutes from "@/routes/reimbursementsettingsRoutes";
 import reimbursementRoutes from "@/routes/reimbursementcreateRoutes";
@@ -307,6 +308,9 @@ app.get("/api/direct-test", (req, res) => {
   res.json({ success: true, message: "Direct app.get works" });
 });
 app.get("/api/debug-ping-unique", (req, res) => res.json({ success: true, message: "Debug route is active" }));
+
+// System/Metadata routes (must be before wildcard /api routers)
+app.use("/api/system", metadataRoutes);
 
 app.use("/api", proxyRoutes);
 app.use("/api/auth", authRoutes);
@@ -579,6 +583,10 @@ const startServer = async () => {
   try {
     // Connect PostgreSQL
     await connectDatabase();
+
+    // Initialize Metadata System Tables (raw-SQL module, idempotent)
+    const { metadataRepository } = require("@/modules/metadata/metadata.repository");
+    await metadataRepository.initializeTables();
 
     // Initialize Tables
     const { BidIQModel } = require("./models/BidIQ.model");

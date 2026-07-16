@@ -7,6 +7,7 @@ import {
   deleteBugAttachmentFromR2,
 } from "@/utils/r2Client";
 import { BugListAiService } from "@/services/bugListAiService";
+import { entitlementService, EntitlementError } from "@/services/EntitlementService";
 import {
   recordTransaction,
   diffShallow,
@@ -2625,6 +2626,8 @@ export class BugListController {
       return;
     }
     try {
+      await entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
+
       const rows = await pool.query(
         `SELECT id, description, module, severity, bug_type
            FROM bugs WHERE id = ANY($1::text[]) AND tenant_id = $2`,
@@ -2638,8 +2641,15 @@ export class BugListController {
         bugType: r.bug_type,
       }));
       const data = await BugListAiService.review(bugs);
+
+      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month');
+
       res.json({ success: true, data });
     } catch (err: any) {
+      if (err instanceof EntitlementError) {
+        bad(res, 403, "AI limit reached");
+        return;
+      }
       console.error("aiReview error:", err);
       bad(res, 500, err.message || "AI review failed");
     }
@@ -2657,9 +2667,17 @@ export class BugListController {
       return;
     }
     try {
+      await entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
+
       const enhanced = await BugListAiService.enhanceText(text);
+
+      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month');
       res.json({ success: true, data: { text: enhanced } });
     } catch (err: any) {
+      if (err instanceof EntitlementError) {
+        bad(res, 403, "AI limit reached");
+        return;
+      }
       console.error("aiEnhanceText error:", err);
       bad(res, 500, err.message || "Grammar enhancement failed");
     }
@@ -2676,6 +2694,8 @@ export class BugListController {
       return;
     }
     try {
+      await entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
+
       const rows = await pool.query(
         `SELECT id, description, module, severity, bug_type
            FROM bugs WHERE id = ANY($1::text[]) AND tenant_id = $2`,
@@ -2689,8 +2709,15 @@ export class BugListController {
         bugType: r.bug_type,
       }));
       const data = await BugListAiService.suggestGroups(bugs);
+
+      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month');
+
       res.json({ success: true, data });
     } catch (err: any) {
+      if (err instanceof EntitlementError) {
+        bad(res, 403, "AI limit reached");
+        return;
+      }
       console.error("aiSuggestGroups error:", err);
       bad(res, 500, err.message || "AI grouping failed");
     }

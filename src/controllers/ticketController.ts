@@ -21,6 +21,7 @@ import { sanitizeHtmlContent, validateHtmlLength } from "@/utils/htmlSanitizer";
 import { socketService } from "@/services/socketService";
 import cacheService from "@/utils/cacheService";
 import { generateTicketDraft, generateSubtasks } from "@/services/aiTicketService";
+import { entitlementService, EntitlementError } from "@/services/EntitlementService";
 import {
   recordTransaction,
   diffShallow,
@@ -655,7 +656,9 @@ export class TicketController {
         return;
       }
 
+      await entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
       const { draft, source, fallbackReason } = await generateTicketDraft(seed);
+      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month');
 
       res.status(200).json({
         success: true,
@@ -663,6 +666,10 @@ export class TicketController {
         message: "Ticket draft generated",
       } as ApiResponse);
     } catch (error: any) {
+      if (error instanceof EntitlementError) {
+        res.status(403).json({ success: false, error: 'AI limit reached', details: { current: error.current, allowed: error.allowed } } as ApiResponse);
+        return;
+      }
       console.error("AI generate ticket error:", error);
       res.status(500).json({
         success: false,
@@ -700,7 +707,9 @@ export class TicketController {
         return;
       }
 
+      await entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
       const result = await generateSubtasks({ description: seed, count, hoursEach });
+      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month');
 
       res.status(200).json({
         success: true,
@@ -708,6 +717,10 @@ export class TicketController {
         message: "Subtasks generated",
       } as ApiResponse);
     } catch (error: any) {
+      if (error instanceof EntitlementError) {
+        res.status(403).json({ success: false, error: 'AI limit reached', details: { current: error.current, allowed: error.allowed } } as ApiResponse);
+        return;
+      }
       console.error("AI generate subtasks error:", error);
       res.status(500).json({
         success: false,

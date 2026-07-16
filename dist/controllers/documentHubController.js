@@ -8,6 +8,7 @@ const database_1 = require("@/config/database");
 const types_1 = require("@/types");
 const socketService_1 = require("@/services/socketService");
 const aiDocumentService_1 = require("@/services/aiDocumentService");
+const EntitlementService_1 = require("@/services/EntitlementService");
 const puppeteer_1 = __importDefault(require("puppeteer"));
 const crypto_1 = __importDefault(require("crypto"));
 const transactionHistory_1 = require("@/utils/transactionHistory");
@@ -98,7 +99,9 @@ class DocumentHubController {
                 });
                 return;
             }
+            await EntitlementService_1.entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
             const { draft, source, fallbackReason } = await (0, aiDocumentService_1.generateDocumentDraft)(seed);
+            await EntitlementService_1.entitlementService.incrementUsage(req.tenantId, 'ai_credits_month');
             res.status(200).json({
                 success: true,
                 data: { ...draft, source, fallbackReason },
@@ -106,6 +109,10 @@ class DocumentHubController {
             });
         }
         catch (error) {
+            if (error instanceof EntitlementService_1.EntitlementError) {
+                res.status(403).json({ success: false, error: 'AI limit reached', details: { current: error.current, allowed: error.allowed } });
+                return;
+            }
             console.error("AI generate document error:", error);
             res.status(500).json({
                 success: false,
@@ -158,7 +165,9 @@ class DocumentHubController {
                 });
                 return;
             }
+            await EntitlementService_1.entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
             const result = await (0, aiDocumentService_1.rewriteSelection)(cleanText, cleanInstruction);
+            await EntitlementService_1.entitlementService.incrementUsage(req.tenantId, 'ai_credits_month');
             res.status(200).json({
                 success: true,
                 data: result,
@@ -166,6 +175,10 @@ class DocumentHubController {
             });
         }
         catch (error) {
+            if (error instanceof EntitlementService_1.EntitlementError) {
+                res.status(403).json({ success: false, error: 'AI limit reached', details: { current: error.current, allowed: error.allowed } });
+                return;
+            }
             console.error("AI rewrite selection error:", error);
             res.status(500).json({
                 success: false,

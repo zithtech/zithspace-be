@@ -14,6 +14,7 @@ import {
     UpdateEmployeeClientAllocationV2Data
 } from '@/types';
 import { uploadClientDocumentToR2, deleteFileFromR2, generatePresignedUrl, getFileBufferFromR2 } from '@/utils/r2Client';
+import { entitlementService, EntitlementError } from '@/services/EntitlementService';
 import { socketService } from '@/services/socketService';
 import {
     recordTransaction,

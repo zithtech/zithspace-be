@@ -2,6 +2,7 @@ import { Router } from "express";
 import { DashboardController } from "@/controllers/dashboardController";
 import { authenticateToken, requireAuth } from "@/middleware/auth";
 import { resolveTenant } from "@/middleware/tenantContext";
+import { requireSubscriptionFeature } from "@/modules/subscriptions";
 
 const router = Router();
 
@@ -16,6 +17,7 @@ router.use(resolveTenant);
 // Apply authentication to all routes
 router.use(authenticateToken);
 router.use(requireAuth);
+router.use(requireSubscriptionFeature('page.dashboard'));
 
 /**
  * @route   GET /api/dashboard/summary

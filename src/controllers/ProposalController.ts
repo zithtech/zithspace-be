@@ -6,6 +6,7 @@ import {
 } from '@/types';
 import { ProposalExportService } from '@/services/proposalExportService';
 import { AIService } from '@/services/aiService';
+import { entitlementService, EntitlementError } from '../services/EntitlementService';
 import { LeadModel } from '@/models/Lead.model';
 import { ProposalModel } from '@/models/Proposal.model';
 import { LeadActivityLogModel } from '@/models/LeadActivityLog.model';
@@ -425,6 +426,8 @@ export class ProposalController {
       const tenantId = req.tenantId;
       const userId = req.user?.id;
 
+      await entitlementService.checkLimit(tenantId!, 'ai_credits_month');
+
       const lead = await LeadModel.findById(leadId, tenantId);
       if (!lead) {
         res.status(404).json({ success: false, error: 'Lead not found' });
@@ -442,6 +445,8 @@ export class ProposalController {
         status: 'draft',
         created_by: userId
       });
+
+      await entitlementService.incrementUsage(tenantId!, 'ai_credits_month');
 
       // Log AI proposal generation
       if (userId) {
@@ -478,6 +483,10 @@ export class ProposalController {
         message: 'AI Proposal generated successfully'
       });
     } catch (error: any) {
+      if (error instanceof EntitlementError) {
+        res.status(403).json({ success: false, error: 'AI limit reached', details: { current: error.current, allowed: error.allowed } });
+        return;
+      }
       console.error('AI Proposal Gen Error:', error);
       res.status(500).json({ success: false, error: error.message || 'Failed to generate AI proposal' });
     }
@@ -491,6 +500,8 @@ export class ProposalController {
       const { leadId } = req.params;
       const tenantId = req.tenantId;
 
+      await entitlementService.checkLimit(tenantId!, 'ai_credits_month');
+
       const lead = await LeadModel.findById(leadId, tenantId);
       if (!lead) {
         res.status(404).json({ success: false, error: 'Lead not found' });
@@ -500,12 +511,18 @@ export class ProposalController {
       const preferences = req.body;
       const blocks = await AIService.composeProposal(lead, preferences);
 
+      await entitlementService.incrementUsage(tenantId!, 'ai_credits_month');
+
       res.status(200).json({
         success: true,
         data: { blocks, title: `Proposal: ${lead.title}`, client_name: lead.client_name, lead_id: leadId },
         message: 'AI Proposal content generated'
       });
     } catch (error: any) {
+      if (error instanceof EntitlementError) {
+        res.status(403).json({ success: false, error: 'AI limit reached', details: { current: error.current, allowed: error.allowed } });
+        return;
+      }
       console.error('AI Proposal Content Gen Error:', error);
       res.status(500).json({ success: false, error: error.message || 'Failed to generate AI content' });
     }
@@ -516,8 +533,13 @@ export class ProposalController {
    */
   static async refineBlock(req: AuthRequest, res: Response): Promise<void> {
     try {
+      const tenantId = req.tenantId;
+      await entitlementService.checkLimit(tenantId!, 'ai_credits_month');
+
       const { blockType, currentData, userPrompt } = req.body;
       const refinedData = await AIService.refineProposalBlock(currentData, userPrompt, blockType);
+
+      await entitlementService.incrementUsage(tenantId!, 'ai_credits_month');
 
       res.status(200).json({
         success: true,
@@ -525,6 +547,10 @@ export class ProposalController {
         message: 'Content refined successfully'
       });
     } catch (error: any) {
+      if (error instanceof EntitlementError) {
+        res.status(403).json({ success: false, error: 'AI limit reached', details: { current: error.current, allowed: error.allowed } });
+        return;
+      }
       console.error('AI Refinement Controller Error:', error);
       res.status(500).json({ success: false, error: error.message || 'Failed to refine content' });
     }

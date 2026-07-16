@@ -4,6 +4,7 @@ const express_1 = require("express");
 const dashboardController_1 = require("@/controllers/dashboardController");
 const auth_1 = require("@/middleware/auth");
 const tenantContext_1 = require("@/middleware/tenantContext");
+const subscriptions_1 = require("@/modules/subscriptions");
 const router = (0, express_1.Router)();
 /**
  * Dashboard Routes
@@ -14,6 +15,7 @@ router.use(tenantContext_1.resolveTenant);
 // Apply authentication to all routes
 router.use(auth_1.authenticateToken);
 router.use(auth_1.requireAuth);
+router.use((0, subscriptions_1.requireSubscriptionFeature)('page.dashboard'));
 /**
  * @route   GET /api/dashboard/summary
  * @desc    Get comprehensive dashboard summary with all metrics

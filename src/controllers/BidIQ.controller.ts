@@ -4,6 +4,7 @@ import { LeadModel } from "@/models/Lead.model";
 import { BidIQModel } from "../models/BidIQ.model";
 import { AIService } from "../services/aiService";
 import { LeadActivityLogModel } from "../models/LeadActivityLog.model";
+import { entitlementService, EntitlementError } from "../services/EntitlementService";
 
 export class BidIQController {
   static async analyzeLead(req: AuthRequest, res: Response) {
@@ -27,10 +28,23 @@ export class BidIQController {
           return res.status(200).json(cachedData);
       }
 
-      // 2. Perform fresh AI analysis
+      // 2. Check AI limits
+      try {
+        await entitlementService.checkLimit(tenantId, 'ai_credits_month');
+      } catch (err) {
+        if (err instanceof EntitlementError) {
+          return res.status(403).json(err);
+        }
+        throw err;
+      }
+
+      // 3. Perform fresh AI analysis
       const intelligence = await AIService.analyzeLead(lead);
 
-      // 3. Store in the NEW separate table only
+      // 4. Increment AI usage on success
+      await entitlementService.incrementUsage(tenantId, 'ai_credits_month', 1);
+
+      // 5. Store in the NEW separate table only
       const bidiqResult = await BidIQModel.upsert({
         lead_id: id,
         tenant_id: tenantId,
