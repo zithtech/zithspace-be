@@ -1,11 +1,8 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { getAIProvider } from "./ai";
+import { getAIProviderForTenant } from "./ai/resolver";
 import dotenv from "dotenv";
 
 dotenv.config();
-
-const MODEL = "gemini-flash-latest";
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 export interface AiNarrative {
   executiveSummary: string;
@@ -169,23 +166,23 @@ function buildDeterministicPredictions(
 
 export class SprintReportAiService {
   static isAvailable(): boolean {
-    return !!process.env.GEMINI_API_KEY;
+    return getAIProvider().isConfigured();
   }
 
   static buildPredictions(ctx: SprintAiContext): AiNarrative["predictions"] {
     return buildDeterministicPredictions(ctx);
   }
 
-  static async generateNarrative(ctx: SprintAiContext): Promise<AiNarrative> {
-    if (!SprintReportAiService.isAvailable()) {
+  static async generateNarrative(ctx: SprintAiContext, tenantId?: string): Promise<AiNarrative> {
+    const provider = await getAIProviderForTenant(tenantId);
+    if (!provider.isConfigured()) {
       throw new Error(
-        "AI narrative unavailable: GEMINI_API_KEY is not configured on the server."
+        "AI narrative unavailable: no AI provider is configured on the server."
       );
     }
 
     const deterministicPredictions = buildDeterministicPredictions(ctx);
 
-    const model = genAI.getGenerativeModel({ model: MODEL });
     const prompt = `
 You are an engineering delivery analyst. Produce a sharp, concise sprint retrospective narrative.
 
@@ -221,8 +218,7 @@ ADDITIONAL DETERMINISTIC PREDICTIONS (include these in "predictions" plus any AI
 ${JSON.stringify(deterministicPredictions, null, 2)}
 `.trim();
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
+    const text = await provider.generateText(prompt);
     const parsed = extractJson<AiNarrative>(text);
     if (!parsed) {
       throw new Error("AI returned an unparseable response.");

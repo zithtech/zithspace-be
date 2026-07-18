@@ -1,14 +1,10 @@
-import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
+import { getAIProviderForTenant } from "./ai/resolver";
 import dotenv from "dotenv";
 
 dotenv.config();
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-
 export class AIService {
-  static async analyzeLead(leadData: any) {
-    const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
-
+  static async analyzeLead(leadData: any, tenantId?: string) {
     const prompt = `
       Act as a Freelancer Bidding Coach & Market Analyst. Analyze the following lead data and provide a comprehensive "Bid-to-Win" strategy.
       
@@ -61,9 +57,8 @@ export class AIService {
     `;
 
     try {
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
+      const provider = await getAIProviderForTenant(tenantId);
+      const text = await provider.generateText(prompt);
       // Extract JSON from potential markdown blocks
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       return jsonMatch ? JSON.parse(jsonMatch[0]) : null;
@@ -73,9 +68,7 @@ export class AIService {
     }
   }
 
-  static async composeProposal(leadData: any, preferences?: any) {
-    const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
-
+  static async composeProposal(leadData: any, preferences?: any, tenantId?: string) {
     const components = preferences?.components || ['cover', 'text', 'scope', 'timeline', 'pricing', 'image', 'gallery', 'video', 'quote', 'callout', 'cta', 'signature'];
     const customCost = preferences?.cost;
     const customDuration = preferences?.duration;
@@ -277,8 +270,8 @@ export class AIService {
     `;
 
     try {
-      const response = await model.generateContent(prompt);
-      let text = response.response.text().trim();
+      const provider = await getAIProviderForTenant(tenantId);
+      let text = (await provider.generateText(prompt)).trim();
 
       // CLEANUP: AI often wraps results in ```json ... ``` blocks
       // We must strip these to parse the raw JSON correctly.
@@ -305,17 +298,7 @@ export class AIService {
       throw new Error("Failed to compose proposal with AI");
     }
   }
-  static async refineProposalBlock(currentData: any, userPrompt: string, blockType: string) {
-    const model = genAI.getGenerativeModel({
-      model: "gemini-flash-latest",
-      safetySettings: [
-        { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-        { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
-        { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
-        { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
-      ]
-    });
-
+  static async refineProposalBlock(currentData: any, userPrompt: string, blockType: string, tenantId?: string) {
     const prompt = `
       Act as a Professional Document Editor. Your goal is to rewrite or improve a SPECIFIC sub-section of a proposal block based on user instructions.
       
@@ -335,9 +318,8 @@ export class AIService {
     `;
 
     try {
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      let text = response.text().trim();
+      const provider = await getAIProviderForTenant(tenantId);
+      let text = (await provider.generateText(prompt, { disableSafety: true })).trim();
 
       // Fix: Some AI responses include markdown code blocks
       if (text.includes('```')) {

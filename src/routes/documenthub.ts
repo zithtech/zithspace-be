@@ -3,6 +3,7 @@ import { authenticateToken, requireAuth } from "@/middleware/auth";
 import { resolveTenant } from "@/middleware/tenantContext";
 import { DocumentHubController } from "@/controllers/documentHubController";
 import { requirePermission } from "@/middleware/permission";
+import { requireAiAccess } from "@/middleware/aiAccess";
 import { Permissions } from "@/types/permissions";
 
 const router = Router();
@@ -23,6 +24,7 @@ router.use(requireAuth);
 router.post(
   "/ai-generate",
   requirePermission(Permissions.DOCUMENT_CREATE),
+  requireAiAccess,
   DocumentHubController.aiGenerateDocument,
 );
 
@@ -35,6 +37,7 @@ router.post(
 router.post(
   "/ai-rewrite",
   requirePermission(Permissions.DOCUMENT_UPDATE),
+  requireAiAccess,
   DocumentHubController.aiRewriteSelection,
 );
 

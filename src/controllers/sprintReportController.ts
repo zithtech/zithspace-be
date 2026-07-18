@@ -1897,7 +1897,7 @@ export class SprintReportController {
         return;
       }
 
-      const narrative = await SprintReportAiService.generateNarrative(context);
+      const narrative = await SprintReportAiService.generateNarrative(context, req.tenantId);
       const predictions = SprintReportAiService.buildPredictions(context);
 
       await pool.query(

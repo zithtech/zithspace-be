@@ -107,7 +107,7 @@ export class DocumentHubController {
         return;
       }
 
-      const { draft, source, fallbackReason } = await generateDocumentDraft(seed);
+      const { draft, source, fallbackReason } = await generateDocumentDraft(seed, req.tenantId);
 
       res.status(200).json({
         success: true,
@@ -174,7 +174,7 @@ export class DocumentHubController {
         return;
       }
 
-      const result = await rewriteSelection(cleanText, cleanInstruction);
+      const result = await rewriteSelection(cleanText, cleanInstruction, req.tenantId);
 
       res.status(200).json({
         success: true,

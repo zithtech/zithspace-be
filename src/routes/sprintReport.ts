@@ -2,6 +2,7 @@ import { Router } from "express";
 import { SprintReportController } from "@/controllers/sprintReportController";
 import { authenticateToken, requireAuth } from "@/middleware/auth";
 import { requirePermission } from "@/middleware/permission";
+import { requireAiAccess } from "@/middleware/aiAccess";
 import { Permissions } from "@/types/permissions";
 import { resolveTenant } from "@/middleware/tenantContext";
 
@@ -99,6 +100,7 @@ router.get(
 router.post(
   "/:sprintId/ai-narrative",
   requirePermission(Permissions.TICKET_READ),
+  requireAiAccess,
   SprintReportController.postAiNarrative
 );
 
