@@ -431,7 +431,7 @@ export class ProposalController {
         return;
       }
 
-      const blocks = await AIService.composeProposal(lead);
+      const blocks = await AIService.composeProposal(lead, undefined, req.tenantId);
 
       const proposal = await ProposalModel.create({
         tenant_id: tenantId,
@@ -498,7 +498,7 @@ export class ProposalController {
       }
 
       const preferences = req.body;
-      const blocks = await AIService.composeProposal(lead, preferences);
+      const blocks = await AIService.composeProposal(lead, preferences, req.tenantId);
 
       res.status(200).json({
         success: true,
@@ -517,7 +517,7 @@ export class ProposalController {
   static async refineBlock(req: AuthRequest, res: Response): Promise<void> {
     try {
       const { blockType, currentData, userPrompt } = req.body;
-      const refinedData = await AIService.refineProposalBlock(currentData, userPrompt, blockType);
+      const refinedData = await AIService.refineProposalBlock(currentData, userPrompt, blockType, req.tenantId);
 
       res.status(200).json({
         success: true,

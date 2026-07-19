@@ -6,6 +6,7 @@ import {
   requireAuth,
 } from "@/middleware/auth";
 import { requirePermission } from '@/middleware/permission';
+import { requireAiAccess } from '@/middleware/aiAccess';
 import { Permissions } from '@/types/permissions';
 import { resolveTenant } from "@/middleware/tenantContext";
 
@@ -174,7 +175,7 @@ router.post("/upload-image", requirePermission(Permissions.TICKET_CREATE), Ticke
  * @access  Private (authenticated users within tenant)
  * @body    { description: string, title?: string }
  */
-router.post("/ai-generate", requirePermission(Permissions.TICKET_CREATE), TicketController.aiGenerateTicket);
+router.post("/ai-generate", requirePermission(Permissions.TICKET_CREATE), requireAiAccess, TicketController.aiGenerateTicket);
 
 /**
  * @route   POST /api/tickets/ai-generate-subtasks
@@ -182,7 +183,7 @@ router.post("/ai-generate", requirePermission(Permissions.TICKET_CREATE), Ticket
  * @access  Private (authenticated users within tenant)
  * @body    { description: string, count?: number, hoursEach?: number }
  */
-router.post("/ai-generate-subtasks", requirePermission(Permissions.TICKET_CREATE), TicketController.aiGenerateSubtasks);
+router.post("/ai-generate-subtasks", requirePermission(Permissions.TICKET_CREATE), requireAiAccess, TicketController.aiGenerateSubtasks);
 
 /**
  * @route   POST /api/tickets

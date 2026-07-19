@@ -1214,7 +1214,7 @@ export class MailController {
                     error: "body is required"
                 });
             }
-            const enhanced = await MailAiService.enhanceContent({ subject, body, context });
+            const enhanced = await MailAiService.enhanceContent({ subject, body, context }, req.tenantId);
             return res.json({
                 success: true,
                 data: { body: enhanced }
@@ -1240,7 +1240,7 @@ export class MailController {
                     error: "body is required"
                 });
             }
-            const corrected = await MailAiService.correctGrammar(body);
+            const corrected = await MailAiService.correctGrammar(body, req.tenantId);
             return res.json({
                 success: true,
                 data: { body: corrected }

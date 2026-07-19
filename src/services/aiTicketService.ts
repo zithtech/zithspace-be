@@ -2,12 +2,13 @@
  * AI Ticket Generation Service
  *
  * Converts a free-form user description into a structured Jira-style ticket.
- * Uses Google Gemini (Flash) via @google/generative-ai when GEMINI_API_KEY
- * (or GOOGLE_API_KEY) is configured; otherwise falls back to a deterministic
- * heuristic mock so the feature works out of the box.
+ * Uses the configured AI provider (see services/ai) when one is configured;
+ * otherwise falls back to a deterministic heuristic mock so the feature works
+ * out of the box.
  */
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { AIProvider, AIProviderName } from "./ai";
+import { getAIProviderForTenant } from "./ai/resolver";
 
 export type AiTicketPriority = "Low" | "Medium" | "High";
 
@@ -63,105 +64,15 @@ Other rules:
 
 const USER_TEMPLATE = (input: string) => `User input:\n${input}\n\nReturn JSON only.`;
 
-/** Hard ceiling on retry sleep — quota errors can suggest hours/days. */
-const MAX_RETRY_DELAY_MS = 15_000;
+// Captures the most-recent provider failure reason so the public entry points
+// can surface it to callers (controller → frontend) instead of swallowing it.
+// Transport-level retry / quota handling lives in the provider (see services/ai).
+let lastAiError: string | null = null;
 
-/**
- * Extract the suggested retry delay (in ms) from a Gemini SDK error.
- * Gemini surfaces it as `retryDelay: "4s"` inside RetryInfo on 429s; default 4s.
- * Capped at MAX_RETRY_DELAY_MS so a "retry after 21h" quota response doesn't
- * make the request hang indefinitely.
- */
-function parseRetryDelayMs(err: any, fallbackMs = 4000): number {
-  const msg = String(err?.message || "");
-  const match = msg.match(/retryDelay["']?\s*[:=]\s*["']?(\d+(?:\.\d+)?)\s*s/i);
-  const raw = match ? Math.ceil(parseFloat(match[1]) * 1000) : fallbackMs;
-  return Math.min(raw, MAX_RETRY_DELAY_MS);
-}
+async function callAi(description: string, provider: AIProvider): Promise<AiTicketDraft | null> {
+  if (!provider.isConfigured()) return null;
 
-/**
- * Quota-exhausted errors should NOT be retried — the suggested retry window
- * is hours away, and retrying within seconds will just hit the same error.
- * Detect them by the distinctive quota-failure message Gemini returns.
- */
-function isQuotaExhaustedError(err: any): boolean {
-  const msg = String(err?.message || "").toLowerCase();
-  return (
-    /quota.*exceeded/.test(msg) ||
-    /exceeded.*quota/.test(msg) ||
-    /resource.?exhausted/.test(msg) ||
-    /generate_content_free_tier/.test(msg) ||
-    /per[\s_-]*day/.test(msg)
-  );
-}
-
-function isRetriableError(err: any): boolean {
-  // Quota exhaustion is a 429 but it's NOT useful to retry — bail immediately.
-  if (isQuotaExhaustedError(err)) return false;
-  const msg = String(err?.message || "");
-  // 429 = rate-limited / per-minute throttle; 503 = model overloaded.
-  return /\b(429|503)\b/.test(msg) || /rate.?limit|overloaded|unavailable/i.test(msg);
-}
-
-/**
- * Wrap a Gemini call with retry-on-429/503 + delay (honoring the API's
- * retryDelay hint when present, otherwise 4s). Total attempts = retries + 1.
- */
-async function generateWithRetry(
-  model: ReturnType<GoogleGenerativeAI["getGenerativeModel"]>,
-  prompt: string,
-  // 2 retries × ≤15s = ≤30s worst case before we fall back to the mock.
-  retries = 2,
-): Promise<Awaited<ReturnType<typeof model.generateContent>>> {
-  try {
-    return await model.generateContent(prompt);
-  } catch (err: any) {
-    // Quota exhaustion = bail immediately, no retry would help.
-    if (isQuotaExhaustedError(err)) {
-      console.warn("[aiTicketService] Gemini quota exhausted — skipping retries");
-      throw err;
-    }
-    if (retries > 0 && isRetriableError(err)) {
-      const delayMs = parseRetryDelayMs(err);
-      console.warn(`[aiTicketService] Gemini retriable error — retrying in ${delayMs}ms (${retries} left)`);
-      await new Promise((r) => setTimeout(r, delayMs));
-      return generateWithRetry(model, prompt, retries - 1);
-    }
-    throw err;
-  }
-}
-
-/**
- * Call Google Gemini via the @google/generative-ai SDK.
- *
- * Reads GEMINI_API_KEY (preferred) or GOOGLE_API_KEY. Model defaults to
- * gemini-1.5-flash; override via GEMINI_MODEL.
- */
-// Captures the most-recent Gemini failure reason so the public entry points can
-// surface it to callers (controller → frontend) instead of swallowing it.
-let lastGeminiError: string | null = null;
-
-const GEMINI_MODEL_NAME = "gemini-flash-latest";
-// const GEMINI_MODEL_NAME = "gemini-3-flash"
-
-async function callGemini(description: string): Promise<AiTicketDraft | null> {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  if (!apiKey) return null;
-
-  lastGeminiError = null;
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: GEMINI_MODEL_NAME,
-    systemInstruction: SYSTEM_PROMPT,
-    generationConfig: {
-      // Forces Gemini to return parseable JSON instead of prose/fences.
-      responseMimeType: "application/json",
-      temperature: 0.4,
-      // 4096 leaves enough headroom for ~6 subtasks + HTML description without
-      // the response getting truncated mid-JSON.
-      maxOutputTokens: 4096,
-    },
-  });
+  lastAiError = null;
 
   // Attempt up to 2 calls so a single bad-JSON response doesn't drop us to the
   // heuristic mock. The second attempt nudges the model with an explicit
@@ -173,11 +84,18 @@ async function callGemini(description: string): Promise<AiTicketDraft | null> {
           ? USER_TEMPLATE(description)
           : `${USER_TEMPLATE(description)}\n\nIMPORTANT: Return ONLY a single valid JSON object. No prose, no markdown, no trailing commas. Make sure every string and brace is properly closed.`;
 
-      const result = await generateWithRetry(model, userPrompt);
-      const text = result.response.text()?.trim();
+      const text = (await provider.generateText(userPrompt, {
+        systemInstruction: SYSTEM_PROMPT,
+        // Forces parseable JSON instead of prose/fences.
+        json: true,
+        temperature: 0.4,
+        // 4096 leaves enough headroom for ~6 subtasks + HTML description without
+        // the response getting truncated mid-JSON.
+        maxOutputTokens: 4096,
+      }))?.trim();
       if (!text) {
-        lastGeminiError = "Gemini returned an empty response";
-        console.error(lastGeminiError);
+        lastAiError = `${provider.name} returned an empty response`;
+        console.error(lastAiError);
         if (attempt === 2) return null;
         continue;
       }
@@ -185,12 +103,12 @@ async function callGemini(description: string): Promise<AiTicketDraft | null> {
       const parsed = parseAiJson(text);
       if (parsed) return parsed;
 
-      lastGeminiError = "Gemini response was not valid JSON";
-      console.error(`${lastGeminiError} (attempt ${attempt}/2)`, "raw:", text.slice(0, 600));
+      lastAiError = `${provider.name} response was not valid JSON`;
+      console.error(`${lastAiError} (attempt ${attempt}/2)`, "raw:", text.slice(0, 600));
       // Loop and retry on the second attempt with the strengthened prompt.
     } catch (err: any) {
-      lastGeminiError = String(err?.message || err || "Unknown Gemini error");
-      console.error("Gemini call failed:", err);
+      lastAiError = String(err?.message || err || `Unknown ${provider.name} error`);
+      console.error("AI call failed:", err);
       return null;
     }
   }
@@ -545,18 +463,19 @@ function capitalize(s: string) {
 /**
  * Public entry point. Always resolves to a valid AiTicketDraft.
  */
-export async function generateTicketDraft(description: string): Promise<{
+export async function generateTicketDraft(description: string, tenantId?: string): Promise<{
   draft: AiTicketDraft;
-  source: "gemini" | "mock";
+  source: AIProviderName | "mock";
   /** Populated only when source === "mock", explains why we fell back. */
   fallbackReason?: string;
 }> {
-  const fromGemini = await callGemini(description);
-  if (fromGemini) return { draft: fromGemini, source: "gemini" };
+  const provider = await getAIProviderForTenant(tenantId);
+  const fromAi = await callAi(description, provider);
+  if (fromAi) return { draft: fromAi, source: provider.name };
 
-  const reason = !process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY
-    ? "GEMINI_API_KEY not set"
-    : (lastGeminiError || "Gemini call failed");
+  const reason = !provider.isConfigured()
+    ? `${provider.name} is not configured`
+    : (lastAiError || `${provider.name} call failed`);
   console.warn(`[aiTicketService] falling back to heuristic mock — ${reason}`);
 
   return { draft: heuristicDraft(description), source: "mock", fallbackReason: reason };
@@ -591,33 +510,26 @@ Rules:
 - No prose, no markdown, no fences. JSON only.
 `;
 
-async function callGeminiForSubtasks(
+async function callAiForSubtasks(
   description: string,
   count: number,
   hoursEach: number,
+  provider: AIProvider,
 ): Promise<AiSubtask[] | null> {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  if (!apiKey) return null;
+  if (!provider.isConfigured()) return null;
 
-  lastGeminiError = null;
+  lastAiError = null;
   const prompt = `Ticket description:\n${description}\n\nReturn EXACTLY ${count} subtasks, each ~${hoursEach} hours.`;
 
   try {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: GEMINI_MODEL_NAME,
+    const text = (await provider.generateText(prompt, {
       systemInstruction: SUBTASK_SYSTEM_PROMPT,
-      generationConfig: {
-        responseMimeType: "application/json",
-        temperature: 0.4,
-        // Bumped from 1024 — long subtask lists with hours can otherwise
-        // truncate and produce invalid JSON.
-        maxOutputTokens: 2048,
-      },
-    });
-
-    const result = await generateWithRetry(model, prompt);
-    const text = result.response.text()?.trim();
+      json: true,
+      temperature: 0.4,
+      // Bumped from 1024 — long subtask lists with hours can otherwise
+      // truncate and produce invalid JSON.
+      maxOutputTokens: 2048,
+    }))?.trim();
     if (!text) return null;
 
     // Try the same lenient parser used for the main flow. Falls back to a
@@ -649,8 +561,8 @@ async function callGeminiForSubtasks(
     const items = normalizeSubtasks(parsed?.subtasks, count * hoursEach);
     return items.slice(0, count).map((s) => ({ title: s.title, hours: hoursEach }));
   } catch (err: any) {
-    lastGeminiError = String(err?.message || err || "Unknown Gemini error");
-    console.error("Gemini subtasks call failed:", err);
+    lastAiError = String(err?.message || err || "Unknown AI error");
+    console.error("AI subtasks call failed:", err);
     return null;
   }
 }
@@ -669,9 +581,9 @@ function heuristicSubtasks(description: string, count: number, hoursEach: number
   }));
 }
 
-export async function generateSubtasks(input: GenerateSubtasksInput): Promise<{
+export async function generateSubtasks(input: GenerateSubtasksInput, tenantId?: string): Promise<{
   subtasks: AiSubtask[];
-  source: "gemini" | "mock";
+  source: AIProviderName | "mock";
   fallbackReason?: string;
 }> {
   const description = String(input.description || "").trim();
@@ -679,14 +591,15 @@ export async function generateSubtasks(input: GenerateSubtasksInput): Promise<{
   const count = clamp(Math.round(input.count ?? 5), 2, 12);
   const hoursEach = clamp(Math.round(input.hoursEach ?? 4), 1, 40);
 
-  const fromGemini = await callGeminiForSubtasks(description, count, hoursEach);
-  if (fromGemini && fromGemini.length > 0) {
-    return { subtasks: fromGemini, source: "gemini" };
+  const provider = await getAIProviderForTenant(tenantId);
+  const fromAi = await callAiForSubtasks(description, count, hoursEach, provider);
+  if (fromAi && fromAi.length > 0) {
+    return { subtasks: fromAi, source: provider.name };
   }
 
-  const reason = !process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY
-    ? "GEMINI_API_KEY not set"
-    : (lastGeminiError || "Gemini call failed");
+  const reason = !provider.isConfigured()
+    ? `${provider.name} is not configured`
+    : (lastAiError || `${provider.name} call failed`);
 
   return {
     subtasks: heuristicSubtasks(description, count, hoursEach),

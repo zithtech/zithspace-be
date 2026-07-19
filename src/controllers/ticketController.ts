@@ -655,7 +655,7 @@ export class TicketController {
         return;
       }
 
-      const { draft, source, fallbackReason } = await generateTicketDraft(seed);
+      const { draft, source, fallbackReason } = await generateTicketDraft(seed, req.tenantId);
 
       res.status(200).json({
         success: true,
@@ -700,7 +700,7 @@ export class TicketController {
         return;
       }
 
-      const result = await generateSubtasks({ description: seed, count, hoursEach });
+      const result = await generateSubtasks({ description: seed, count, hoursEach }, req.tenantId);
 
       res.status(200).json({
         success: true,

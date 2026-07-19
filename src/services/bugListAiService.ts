@@ -1,9 +1,7 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { getAIProviderForTenant } from "./ai/resolver";
 import dotenv from "dotenv";
 
 dotenv.config();
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 export interface RawBug {
   id: string;
@@ -31,8 +29,6 @@ export interface AiGroupSuggestion {
   bugIds: string[];
 }
 
-const MODEL = "gemini-flash-latest";
-
 function extractJson<T>(text: string): T | null {
   // Strip markdown fences and pull the first JSON value found.
   const stripped = text.replace(/```(?:json)?/g, "").trim();
@@ -46,9 +42,8 @@ function extractJson<T>(text: string): T | null {
 }
 
 export class BugListAiService {
-  static async review(bugs: RawBug[]): Promise<AiReviewResult[]> {
+  static async review(bugs: RawBug[], tenantId?: string): Promise<AiReviewResult[]> {
     if (bugs.length === 0) return [];
-    const model = genAI.getGenerativeModel({ model: MODEL });
     const prompt = `
 You are a senior QA lead. Clean and structure each raw bug below.
 Return ONLY a JSON array. One object per input bug, in the same order.
@@ -78,8 +73,8 @@ ${JSON.stringify(
 )}
 `.trim();
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
+    const provider = await getAIProviderForTenant(tenantId);
+    const text = await provider.generateText(prompt);
     const parsed = extractJson<AiReviewResult[]>(text);
     if (!Array.isArray(parsed)) {
       throw new Error("AI returned an unexpected shape for review");
@@ -87,10 +82,9 @@ ${JSON.stringify(
     return parsed;
   }
 
-  static async enhanceText(text: string): Promise<string> {
+  static async enhanceText(text: string, tenantId?: string): Promise<string> {
     const input = (text || "").trim();
     if (!input) return "";
-    const model = genAI.getGenerativeModel({ model: MODEL });
     const prompt = `
 You are a light-touch copy editor. Make ONLY minimal changes to the text below:
 - Fix spelling, grammar, punctuation, capitalisation, and obvious typos.
@@ -103,17 +97,16 @@ Text:
 ${input}
 `.trim();
 
-    const result = await model.generateContent(prompt);
-    const out = (result.response.text() || "").trim();
+    const provider = await getAIProviderForTenant(tenantId);
+    const out = (await provider.generateText(prompt) || "").trim();
     return out
       .replace(/^```[a-zA-Z]*\n?/, "")
       .replace(/```$/, "")
       .trim() || input;
   }
 
-  static async suggestGroups(bugs: RawBug[]): Promise<AiGroupSuggestion[]> {
+  static async suggestGroups(bugs: RawBug[], tenantId?: string): Promise<AiGroupSuggestion[]> {
     if (bugs.length === 0) return [];
-    const model = genAI.getGenerativeModel({ model: MODEL });
     const prompt = `
 You are a senior QA lead. Group the bugs below into logical clusters that
 each map to a single developer ticket. Group by feature/module/context, NOT
@@ -144,8 +137,8 @@ ${JSON.stringify(
 )}
 `.trim();
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
+    const provider = await getAIProviderForTenant(tenantId);
+    const text = await provider.generateText(prompt);
     const parsed = extractJson<AiGroupSuggestion[]>(text);
     if (!Array.isArray(parsed)) {
       throw new Error("AI returned an unexpected shape for grouping");

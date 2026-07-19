@@ -2637,7 +2637,7 @@ export class BugListController {
         severity: r.severity,
         bugType: r.bug_type,
       }));
-      const data = await BugListAiService.review(bugs);
+      const data = await BugListAiService.review(bugs, req.tenantId);
       res.json({ success: true, data });
     } catch (err: any) {
       console.error("aiReview error:", err);
@@ -2657,7 +2657,7 @@ export class BugListController {
       return;
     }
     try {
-      const enhanced = await BugListAiService.enhanceText(text);
+      const enhanced = await BugListAiService.enhanceText(text, req.tenantId);
       res.json({ success: true, data: { text: enhanced } });
     } catch (err: any) {
       console.error("aiEnhanceText error:", err);
@@ -2688,7 +2688,7 @@ export class BugListController {
         severity: r.severity,
         bugType: r.bug_type,
       }));
-      const data = await BugListAiService.suggestGroups(bugs);
+      const data = await BugListAiService.suggestGroups(bugs, req.tenantId);
       res.json({ success: true, data });
     } catch (err: any) {
       console.error("aiSuggestGroups error:", err);

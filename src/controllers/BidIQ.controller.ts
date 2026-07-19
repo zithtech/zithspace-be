@@ -28,7 +28,7 @@ export class BidIQController {
       }
 
       // 2. Perform fresh AI analysis
-      const intelligence = await AIService.analyzeLead(lead);
+      const intelligence = await AIService.analyzeLead(lead, req.tenantId);
 
       // 3. Store in the NEW separate table only
       const bidiqResult = await BidIQModel.upsert({

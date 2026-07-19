@@ -140,6 +140,7 @@ export class UserController {
           u.avatar_url as "avatarUrl",
           u.min_working_hours as "minWorkingHours",
           u.is_active as "isActive",
+          u.ai_enabled as "aiEnabled",
           u.last_login_at as "lastLoginAt",
           u.created_at as "createdAt",
           u.updated_at as "updatedAt",
@@ -1725,6 +1726,75 @@ export class UserController {
       res.status(500).json({
         success: false,
         error: "Failed to assign shift",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Toggle a member's AI access (users.ai_enabled). Opt-out model — enabled
+   * by default; admins disable it per user from the Members page.
+   */
+  static async setAiAccess(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { id } = req.params;
+      const { enabled } = req.body;
+
+      if (typeof enabled !== "boolean") {
+        res.status(400).json({
+          success: false,
+          error: "enabled (boolean) is required",
+        } as ApiResponse);
+        return;
+      }
+
+      const member = await UserModel.findById(id, req.tenantId);
+      if (!member) {
+        throw new NotFoundError("Member not found in this tenant");
+      }
+
+      await pool.query(
+        "UPDATE users SET ai_enabled = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
+        [enabled, id, req.tenantId],
+      );
+
+      recordTransaction({
+        req,
+        section: Section.ADMIN,
+        module: Module.MEMBERS,
+        page: Page.MEMBER_LIST,
+        action: Action.UPDATE,
+        actionLabel: `AI access ${enabled ? "enabled" : "disabled"} for ${member.name}`,
+        entityType: EntityType.USER,
+        entityId: id,
+        entityLabel: member.name,
+        beforeData: { aiEnabled: (member as any).aiEnabled ?? null },
+        afterData: { aiEnabled: enabled },
+        changedFields: ["aiEnabled"],
+        statusCode: 200,
+      });
+
+      res.status(200).json({
+        success: true,
+        data: { id, aiEnabled: enabled },
+        message: `AI access ${enabled ? "enabled" : "disabled"}`,
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Set AI access error:", error);
+      if (error instanceof NotFoundError) {
+        res.status(404).json({ success: false, error: error.message } as ApiResponse);
+        return;
+      }
+      res.status(500).json({
+        success: false,
+        error: "Failed to update AI access",
       } as ApiResponse);
     }
   }

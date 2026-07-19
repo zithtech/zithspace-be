@@ -4,6 +4,7 @@ import { resolveTenant } from "@/middleware/tenantContext";
 import { MailController } from "@/controllers/MailController";
 import { MailSettingsController } from "@/controllers/MailSettingsController";
 import { requirePermission } from "@/middleware/permission";
+import { requireAiAccess } from "@/middleware/aiAccess";
 
 const router = Router();
 
@@ -80,13 +81,13 @@ router.post("/upload-attachment", requirePermission('mail.create'), MailControll
  * @route POST /api/mail/ai/enhance
  * @desc AI-enhance email body (expand detail, polish tone)
  */
-router.post("/ai/enhance", requirePermission('mail.create'), MailController.aiEnhanceContent);
+router.post("/ai/enhance", requirePermission('mail.create'), requireAiAccess, MailController.aiEnhanceContent);
 
 /**
  * @route POST /api/mail/ai/grammar
  * @desc AI-correct grammar in email body (light-touch)
  */
-router.post("/ai/grammar", requirePermission('mail.create'), MailController.aiCorrectGrammar);
+router.post("/ai/grammar", requirePermission('mail.create'), requireAiAccess, MailController.aiCorrectGrammar);
 
 /**
  * @route POST /api/mail/:provider/disconnect
