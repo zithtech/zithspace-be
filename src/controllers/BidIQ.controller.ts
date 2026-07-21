@@ -41,7 +41,7 @@ export class BidIQController {
       }
 
       // 3. Perform fresh AI analysis
-      const aiResponse = await AIService.analyzeLead(lead);
+      const aiResponse = await AIService.analyzeLead(lead, req.tenantId);
       const intelligence = aiResponse.data;
 
       const pricingResult = await AIPricingEngine.calculate(aiResponse);

@@ -5,6 +5,7 @@ const ticketController_1 = require("@/controllers/ticketController");
 const ticketCodeController_1 = require("@/controllers/ticketCodeController");
 const auth_1 = require("@/middleware/auth");
 const permission_1 = require("@/middleware/permission");
+const aiAccess_1 = require("@/middleware/aiAccess");
 const permissions_1 = require("@/types/permissions");
 const tenantContext_1 = require("@/middleware/tenantContext");
 const router = (0, express_1.Router)();
@@ -141,14 +142,14 @@ router.post("/upload-image", (0, permission_1.requirePermission)(permissions_1.P
  * @access  Private (authenticated users within tenant)
  * @body    { description: string, title?: string }
  */
-router.post("/ai-generate", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_CREATE), ticketController_1.TicketController.aiGenerateTicket);
+router.post("/ai-generate", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_CREATE), aiAccess_1.requireAiAccess, ticketController_1.TicketController.aiGenerateTicket);
 /**
  * @route   POST /api/tickets/ai-generate-subtasks
  * @desc    Regenerate the subtask list for a Zai-drafted ticket with caller-specified shape (count + hoursEach)
  * @access  Private (authenticated users within tenant)
  * @body    { description: string, count?: number, hoursEach?: number }
  */
-router.post("/ai-generate-subtasks", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_CREATE), ticketController_1.TicketController.aiGenerateSubtasks);
+router.post("/ai-generate-subtasks", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_CREATE), aiAccess_1.requireAiAccess, ticketController_1.TicketController.aiGenerateSubtasks);
 /**
  * @route   POST /api/tickets
  * @desc    Create a new ticket (tenant-aware)

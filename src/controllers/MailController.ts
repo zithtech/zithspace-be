@@ -1220,12 +1220,11 @@ export class MailController {
                     error: "body is required"
                 });
             }
-            const aiResponse = await MailAiService.enhanceContent({ subject, body, context });
+            const aiResponse = await MailAiService.enhanceContent({ subject, body, context }, req.tenantId);
             const enhanced = aiResponse.data;
             const pricingResult = await AIPricingEngine.calculate(aiResponse);
 
             await entitlementService.incrementUsage(tenantId!, 'ai_credits_month', AIFeature.MAIL_ASSISTANT, pricingResult);
-
             return res.json({
                 success: true,
                 data: { body: enhanced }
@@ -1257,12 +1256,11 @@ export class MailController {
                     error: "body is required"
                 });
             }
-            const aiResponse = await MailAiService.correctGrammar(body);
+            const aiResponse = await MailAiService.correctGrammar(body, req.tenantId);
             const corrected = aiResponse.data;
             const pricingResult = await AIPricingEngine.calculate(aiResponse);
 
             await entitlementService.incrementUsage(tenantId!, 'ai_credits_month', AIFeature.MAIL_ASSISTANT, pricingResult);
-
             return res.json({
                 success: true,
                 data: { body: corrected }

@@ -102,7 +102,7 @@ class DocumentHubController {
                 return;
             }
             await EntitlementService_1.entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
-            const aiResponse = await (0, aiDocumentService_1.generateDocumentDraft)(seed);
+            const aiResponse = await (0, aiDocumentService_1.generateDocumentDraft)(seed, req.tenantId);
             const draft = aiResponse.data;
             const pricingResult = await AIPricingEngine_1.AIPricingEngine.calculate(aiResponse);
             await EntitlementService_1.entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature_1.AIFeature.DOCUMENT_SUMMARY, pricingResult);
@@ -170,7 +170,7 @@ class DocumentHubController {
                 return;
             }
             await EntitlementService_1.entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
-            const aiResponse = await (0, aiDocumentService_1.rewriteSelection)(cleanText, cleanInstruction);
+            const aiResponse = await (0, aiDocumentService_1.rewriteSelection)(cleanText, cleanInstruction, req.tenantId);
             const result = aiResponse.data;
             const pricingResult = await AIPricingEngine_1.AIPricingEngine.calculate(aiResponse);
             await EntitlementService_1.entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature_1.AIFeature.DOCUMENT_SUMMARY, pricingResult);

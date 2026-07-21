@@ -104,6 +104,7 @@ class UserController {
           u.avatar_url as "avatarUrl",
           u.min_working_hours as "minWorkingHours",
           u.is_active as "isActive",
+          u.ai_enabled as "aiEnabled",
           u.last_login_at as "lastLoginAt",
           u.created_at as "createdAt",
           u.updated_at as "updatedAt",
@@ -1498,6 +1499,66 @@ class UserController {
             res.status(500).json({
                 success: false,
                 error: "Failed to assign shift",
+            });
+        }
+    }
+    /**
+     * Toggle a member's AI access (users.ai_enabled). Opt-out model — enabled
+     * by default; admins disable it per user from the Members page.
+     */
+    static async setAiAccess(req, res) {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({
+                    success: false,
+                    error: "Tenant context and authentication required",
+                });
+                return;
+            }
+            const { id } = req.params;
+            const { enabled } = req.body;
+            if (typeof enabled !== "boolean") {
+                res.status(400).json({
+                    success: false,
+                    error: "enabled (boolean) is required",
+                });
+                return;
+            }
+            const member = await user_model_1.UserModel.findById(id, req.tenantId);
+            if (!member) {
+                throw new types_1.NotFoundError("Member not found in this tenant");
+            }
+            await dbpool_1.default.query("UPDATE users SET ai_enabled = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3", [enabled, id, req.tenantId]);
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.ADMIN,
+                module: transactionHistory_1.Module.MEMBERS,
+                page: transactionHistory_1.Page.MEMBER_LIST,
+                action: transactionHistory_1.Action.UPDATE,
+                actionLabel: `AI access ${enabled ? "enabled" : "disabled"} for ${member.name}`,
+                entityType: transactionHistory_1.EntityType.USER,
+                entityId: id,
+                entityLabel: member.name,
+                beforeData: { aiEnabled: member.aiEnabled ?? null },
+                afterData: { aiEnabled: enabled },
+                changedFields: ["aiEnabled"],
+                statusCode: 200,
+            });
+            res.status(200).json({
+                success: true,
+                data: { id, aiEnabled: enabled },
+                message: `AI access ${enabled ? "enabled" : "disabled"}`,
+            });
+        }
+        catch (error) {
+            console.error("Set AI access error:", error);
+            if (error instanceof types_1.NotFoundError) {
+                res.status(404).json({ success: false, error: error.message });
+                return;
+            }
+            res.status(500).json({
+                success: false,
+                error: "Failed to update AI access",
             });
         }
     }

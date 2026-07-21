@@ -436,7 +436,7 @@ export class ProposalController {
         return;
       }
 
-      const aiResponse = await AIService.composeProposal(lead);
+      const aiResponse = await AIService.composeProposal(lead, undefined, req.tenantId);
       const blocks = aiResponse.data;
       const pricingResult = await AIPricingEngine.calculate(aiResponse);
 
@@ -513,7 +513,7 @@ export class ProposalController {
       }
 
       const preferences = req.body;
-      const aiResponse = await AIService.composeProposal(lead, preferences);
+      const aiResponse = await AIService.composeProposal(lead, preferences, req.tenantId);
       const blocks = aiResponse.data;
       const pricingResult = await AIPricingEngine.calculate(aiResponse);
 
@@ -543,7 +543,7 @@ export class ProposalController {
       await entitlementService.checkLimit(tenantId!, 'ai_credits_month');
 
       const { blockType, currentData, userPrompt } = req.body;
-      const aiResponse = await AIService.refineProposalBlock(currentData, userPrompt, blockType);
+      const aiResponse = await AIService.refineProposalBlock(currentData, userPrompt, blockType, req.tenantId);
       const refinedData = aiResponse.data;
       const pricingResult = await AIPricingEngine.calculate(aiResponse);
 

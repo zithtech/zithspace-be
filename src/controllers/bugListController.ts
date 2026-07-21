@@ -2642,12 +2642,11 @@ export class BugListController {
         severity: r.severity,
         bugType: r.bug_type,
       }));
-      const aiResponse = await BugListAiService.review(bugs);
+      const aiResponse = await BugListAiService.review(bugs, req.tenantId);
       const data = aiResponse.data;
       const pricingResult = await AIPricingEngine.calculate(aiResponse);
 
       await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature.BUG_ANALYSIS, pricingResult);
-
       res.json({ success: true, data });
     } catch (err: any) {
       if (err instanceof EntitlementError) {
@@ -2673,7 +2672,7 @@ export class BugListController {
     try {
       await entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
 
-      const aiResponse = await BugListAiService.enhanceText(text);
+      const aiResponse = await BugListAiService.enhanceText(text, req.tenantId);
       const enhanced = aiResponse.data;
       const pricingResult = await AIPricingEngine.calculate(aiResponse);
 
@@ -2714,12 +2713,11 @@ export class BugListController {
         severity: r.severity,
         bugType: r.bug_type,
       }));
-      const aiResponse = await BugListAiService.suggestGroups(bugs);
+      const aiResponse = await BugListAiService.suggestGroups(bugs, req.tenantId);
       const data = aiResponse.data;
       const pricingResult = await AIPricingEngine.calculate(aiResponse);
 
       await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature.BUG_ANALYSIS, pricingResult);
-
       res.json({ success: true, data });
     } catch (err: any) {
       if (err instanceof EntitlementError) {

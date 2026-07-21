@@ -3,6 +3,7 @@ import { BugListController } from "@/controllers/bugListController";
 import { authenticateToken, requireAuth } from "@/middleware/auth";
 import { resolveTenant } from "@/middleware/tenantContext";
 import { requirePermission } from "@/middleware/permission";
+import { requireAiAccess } from "@/middleware/aiAccess";
 import { Permissions } from "@/types/permissions";
 
 const router = Router();
@@ -61,9 +62,9 @@ router.post("/bugs/:id/verify", requirePermission(Permissions.BUG_MANAGE), BugLi
 router.post("/bugs/:id/reopen", requirePermission(Permissions.BUG_MANAGE), BugListController.reopenBug);
 
 // ─── AI ────────────────────────────────────────────────────────────────────
-router.post("/ai/review", requirePermission(Permissions.BUG_READ), BugListController.aiReview);
-router.post("/ai/group", requirePermission(Permissions.BUG_READ), BugListController.aiSuggestGroups);
-router.post("/ai/enhance-text", requirePermission(Permissions.BUG_READ), BugListController.aiEnhanceText);
+router.post("/ai/review", requirePermission(Permissions.BUG_READ), requireAiAccess, BugListController.aiReview);
+router.post("/ai/group", requirePermission(Permissions.BUG_READ), requireAiAccess, BugListController.aiSuggestGroups);
+router.post("/ai/enhance-text", requirePermission(Permissions.BUG_READ), requireAiAccess, BugListController.aiEnhanceText);
 
 // ─── Config: Severity options ──────────────────────────────────────────────
 router.get("/config/severities", requirePermission(Permissions.BUG_READ), BugListController.listSeverityOptions);

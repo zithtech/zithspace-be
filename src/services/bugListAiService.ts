@@ -1,10 +1,8 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { getAIProviderForTenant } from "./ai/resolver";
 import { AIResponse } from "../ai/interfaces/AIResponse";
 import dotenv from "dotenv";
 
 dotenv.config();
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 export interface RawBug {
   id: string;
@@ -32,8 +30,6 @@ export interface AiGroupSuggestion {
   bugIds: string[];
 }
 
-const MODEL = "gemini-flash-latest";
-
 function extractJson<T>(text: string): T | null {
   // Strip markdown fences and pull the first JSON value found.
   const stripped = text.replace(/```(?:json)?/g, "").trim();
@@ -47,9 +43,8 @@ function extractJson<T>(text: string): T | null {
 }
 
 export class BugListAiService {
-  static async review(bugs: RawBug[]): Promise<AIResponse<AiReviewResult[]>> {
-    if (bugs.length === 0) return { data: [], provider: "gemini", model: MODEL, usage: { promptTokens: 0, completionTokens: 0 }, metadata: {} };
-    const model = genAI.getGenerativeModel({ model: MODEL });
+  static async review(bugs: RawBug[], tenantId?: string): Promise<AIResponse<AiReviewResult[]>> {
+    if (bugs.length === 0) return { data: [], provider: "mock", model: "mock", usage: { promptTokens: 0, completionTokens: 0 }, metadata: {} };
     const prompt = `
 You are a senior QA lead. Clean and structure each raw bug below.
 Return ONLY a JSON array. One object per input bug, in the same order.
@@ -79,30 +74,25 @@ ${JSON.stringify(
 )}
 `.trim();
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
-    const parsed = extractJson<AiReviewResult[]>(text);
+    const provider = await getAIProviderForTenant(tenantId);
+    const res = await provider.generateText(prompt);
+    const parsed = extractJson<AiReviewResult[]>(res.text);
     if (!Array.isArray(parsed)) {
       throw new Error("AI returned an unexpected shape for review");
     }
 
-    const usageMetadata = result.response.usageMetadata || { promptTokenCount: 0, candidatesTokenCount: 0 };
     return {
         data: parsed,
-        provider: "gemini",
-        model: MODEL,
-        usage: {
-            promptTokens: usageMetadata.promptTokenCount || 0,
-            completionTokens: usageMetadata.candidatesTokenCount || 0
-        },
+        provider: provider.name,
+        model: res.model,
+        usage: res.usage,
         metadata: {}
     };
   }
 
-  static async enhanceText(text: string): Promise<AIResponse<string>> {
+  static async enhanceText(text: string, tenantId?: string): Promise<AIResponse<string>> {
     const input = (text || "").trim();
-    if (!input) return { data: "", provider: "gemini", model: MODEL, usage: { promptTokens: 0, completionTokens: 0 }, metadata: {} };
-    const model = genAI.getGenerativeModel({ model: MODEL });
+    if (!input) return { data: "", provider: "mock", model: "mock", usage: { promptTokens: 0, completionTokens: 0 }, metadata: {} };
     const prompt = `
 You are a light-touch copy editor. Make ONLY minimal changes to the text below:
 - Fix spelling, grammar, punctuation, capitalisation, and obvious typos.
@@ -115,29 +105,25 @@ Text:
 ${input}
 `.trim();
 
-    const result = await model.generateContent(prompt);
-    const out = (result.response.text() || "").trim();
+    const provider = await getAIProviderForTenant(tenantId);
+    const res = await provider.generateText(prompt);
+    const out = (res.text || "").trim();
     const data = out
       .replace(/^```[a-zA-Z]*\n?/, "")
       .replace(/```$/, "")
       .trim() || input;
       
-    const usageMetadata = result.response.usageMetadata || { promptTokenCount: 0, candidatesTokenCount: 0 };
     return {
         data,
-        provider: "gemini",
-        model: MODEL,
-        usage: {
-            promptTokens: usageMetadata.promptTokenCount || 0,
-            completionTokens: usageMetadata.candidatesTokenCount || 0
-        },
+        provider: provider.name,
+        model: res.model,
+        usage: res.usage,
         metadata: {}
     };
   }
 
-  static async suggestGroups(bugs: RawBug[]): Promise<AIResponse<AiGroupSuggestion[]>> {
-    if (bugs.length === 0) return { data: [], provider: "gemini", model: MODEL, usage: { promptTokens: 0, completionTokens: 0 }, metadata: {} };
-    const model = genAI.getGenerativeModel({ model: MODEL });
+  static async suggestGroups(bugs: RawBug[], tenantId?: string): Promise<AIResponse<AiGroupSuggestion[]>> {
+    if (bugs.length === 0) return { data: [], provider: "mock", model: "mock", usage: { promptTokens: 0, completionTokens: 0 }, metadata: {} };
     const prompt = `
 You are a senior QA lead. Group the bugs below into logical clusters that
 each map to a single developer ticket. Group by feature/module/context, NOT
@@ -168,22 +154,18 @@ ${JSON.stringify(
 )}
 `.trim();
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
-    const parsed = extractJson<AiGroupSuggestion[]>(text);
+    const provider = await getAIProviderForTenant(tenantId);
+    const res = await provider.generateText(prompt);
+    const parsed = extractJson<AiGroupSuggestion[]>(res.text);
     if (!Array.isArray(parsed)) {
       throw new Error("AI returned an unexpected shape for grouping");
     }
     
-    const usageMetadata = result.response.usageMetadata || { promptTokenCount: 0, candidatesTokenCount: 0 };
     return {
         data: parsed,
-        provider: "gemini",
-        model: MODEL,
-        usage: {
-            promptTokens: usageMetadata.promptTokenCount || 0,
-            completionTokens: usageMetadata.candidatesTokenCount || 0
-        },
+        provider: provider.name,
+        model: res.model,
+        usage: res.usage,
         metadata: {}
     };
   }

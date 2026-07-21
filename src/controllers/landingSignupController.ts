@@ -456,8 +456,8 @@ export class LandingSignupController {
       const verificationToken = JWTUtils.createTemporaryToken({ email }, "24h");
       const verificationExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
+      let tenantId: string = "";
       const dbClient = await pool.connect();
-      let tenantId: string = '';
       try {
         await dbClient.query("BEGIN");
 
@@ -529,21 +529,34 @@ export class LandingSignupController {
         adminAction = { action: 'API_ERROR', message: errorMsg };
       }
 
-      // Generate a short-lived token for auto-login (SSO users have no password)
-      const newUserRes = await pool.query(
-        'SELECT id, role FROM users WHERE work_email = $1 AND tenant_id = $2 LIMIT 1',
-        [email, tenantId]
+      // Fetch the newly created user to generate auth tokens (auto-login after signup)
+      const newUserResult = await pool.query(
+        `SELECT u.id, u.tenant_id, u.name, u.work_email, u.role
+         FROM users u WHERE u.tenant_id = $1 AND u.work_email = $2 LIMIT 1`,
+        [tenantId, email]
       );
-      const newUser = newUserRes.rows[0];
+
       let accessToken: string | undefined;
-      if (newUser) {
-        accessToken = JWTUtils.generateTokenPair({
+      if (newUserResult.rows.length > 0) {
+        const newUser = newUserResult.rows[0];
+        const authUser = {
           id: newUser.id,
-          tenantId,
-          email,
+          tenantId: newUser.tenant_id,
+          email: newUser.work_email,
           role: newUser.role,
-          position: '',
-        } as any).accessToken;
+          position: null,
+          name: newUser.name,
+        };
+        const tokens = JWTUtils.generateTokenPair(authUser);
+        accessToken = tokens.accessToken;
+
+        // Set refresh token as httpOnly cookie (same as login flow)
+        res.cookie("refreshToken", tokens.refreshToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "lax",
+          maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        });
       }
 
       res.status(200).json({
@@ -551,7 +564,7 @@ export class LandingSignupController {
         tenantSubdomain: subdomain,
         email,
         name,
-        accessToken,
+        accessToken: accessToken ?? null,
         decision: adminAction,
       });
     } catch (error: any) {
@@ -637,8 +650,8 @@ export class LandingSignupController {
       const verificationToken = JWTUtils.createTemporaryToken({ email }, "24h");
       const verificationExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
+      let tenantId: string = "";
       const dbClient = await pool.connect();
-      let tenantId: string = '';
       try {
         await dbClient.query("BEGIN");
 
@@ -710,21 +723,34 @@ export class LandingSignupController {
         msAdminAction = { action: 'API_ERROR', message: errorMsg };
       }
 
-      // Generate a short-lived token for auto-login (SSO users have no password)
-      const msNewUserRes = await pool.query(
-        'SELECT id, role FROM users WHERE work_email = $1 AND tenant_id = $2 LIMIT 1',
-        [email, tenantId]
+      // Fetch the newly created user to generate auth tokens (auto-login after signup)
+      const newUserResult = await pool.query(
+        `SELECT u.id, u.tenant_id, u.name, u.work_email, u.role
+         FROM users u WHERE u.tenant_id = $1 AND u.work_email = $2 LIMIT 1`,
+        [tenantId, email]
       );
-      const msNewUser = msNewUserRes.rows[0];
-      let msAccessToken: string | undefined;
-      if (msNewUser) {
-        msAccessToken = JWTUtils.generateTokenPair({
-          id: msNewUser.id,
-          tenantId,
-          email,
-          role: msNewUser.role,
-          position: '',
-        } as any).accessToken;
+
+      let accessToken: string | undefined;
+      if (newUserResult.rows.length > 0) {
+        const newUser = newUserResult.rows[0];
+        const authUser = {
+          id: newUser.id,
+          tenantId: newUser.tenant_id,
+          email: newUser.work_email,
+          role: newUser.role,
+          position: null,
+          name: newUser.name,
+        };
+        const tokens = JWTUtils.generateTokenPair(authUser);
+        accessToken = tokens.accessToken;
+
+        // Set refresh token as httpOnly cookie (same as login flow)
+        res.cookie("refreshToken", tokens.refreshToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "lax",
+          maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        });
       }
 
       res.status(200).json({
@@ -732,7 +758,7 @@ export class LandingSignupController {
         tenantSubdomain: subdomain,
         email,
         name,
-        accessToken: msAccessToken,
+        accessToken: accessToken ?? null,
         decision: msAdminAction,
       });
     } catch (error: any) {

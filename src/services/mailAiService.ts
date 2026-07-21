@@ -1,11 +1,9 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { AIResponse } from "../ai/interfaces/AIResponse";
+import { getAIProviderForTenant } from "./ai/resolver";
 import dotenv from "dotenv";
 
 dotenv.config();
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-const MODEL = "gemini-flash-latest";
 
 function stripCodeFences(text: string): string {
   return text
@@ -23,11 +21,10 @@ export class MailAiService {
     subject?: string;
     body: string;
     context?: string;
-  }): Promise<AIResponse<string>> {
+  }, tenantId?: string): Promise<AIResponse<string>> {
     const body = (params.body || "").trim();
-    if (!body) return { data: "", provider: "gemini", model: MODEL, usage: { promptTokens: 0, completionTokens: 0 }, metadata: {} };
+    if (!body) return { data: "", provider: "mock", model: "mock", usage: { promptTokens: 0, completionTokens: 0 }, metadata: {} };
 
-    const model = genAI.getGenerativeModel({ model: MODEL });
     const prompt = `
 You are an expert business writing assistant helping a sales/account manager
 rewrite a client-facing email so it reads as more thoughtful, detailed, and persuasive.
@@ -51,19 +48,16 @@ ${body}
 Return ONLY the rewritten HTML.
 `.trim();
 
-    const result = await model.generateContent(prompt);
-    const raw = result.response.text() || "";
+    const provider = await getAIProviderForTenant(tenantId);
+    const res = await provider.generateText(prompt);
+    const raw = res.text || "";
     const cleaned = stripCodeFences(raw);
     
-    const usageMetadata = result.response.usageMetadata || { promptTokenCount: 0, candidatesTokenCount: 0 };
     return {
         data: cleaned || body,
-        provider: "gemini",
-        model: MODEL,
-        usage: {
-            promptTokens: usageMetadata.promptTokenCount || 0,
-            completionTokens: usageMetadata.candidatesTokenCount || 0
-        },
+        provider: provider.name,
+        model: res.model,
+        usage: res.usage,
         metadata: {}
     };
   }
@@ -72,11 +66,10 @@ Return ONLY the rewritten HTML.
    * Light-touch grammar/spelling correction. Preserves HTML structure
    * and the author's voice — no rewriting, no expansion.
    */
-  static async correctGrammar(body: string): Promise<AIResponse<string>> {
+  static async correctGrammar(body: string, tenantId?: string): Promise<AIResponse<string>> {
     const input = (body || "").trim();
-    if (!input) return { data: "", provider: "gemini", model: MODEL, usage: { promptTokens: 0, completionTokens: 0 }, metadata: {} };
+    if (!input) return { data: "", provider: "mock", model: "mock", usage: { promptTokens: 0, completionTokens: 0 }, metadata: {} };
 
-    const model = genAI.getGenerativeModel({ model: MODEL });
     const prompt = `
 You are a light-touch copy editor. Make ONLY minimal changes to the HTML email below:
 - Fix spelling, grammar, punctuation, capitalisation, and obvious typos.
@@ -91,19 +84,16 @@ ${input}
 Return ONLY the corrected HTML.
 `.trim();
 
-    const result = await model.generateContent(prompt);
-    const raw = result.response.text() || "";
+    const provider = await getAIProviderForTenant(tenantId);
+    const res = await provider.generateText(prompt);
+    const raw = res.text || "";
     const cleaned = stripCodeFences(raw);
 
-    const usageMetadata = result.response.usageMetadata || { promptTokenCount: 0, candidatesTokenCount: 0 };
     return {
         data: cleaned || input,
-        provider: "gemini",
-        model: MODEL,
-        usage: {
-            promptTokens: usageMetadata.promptTokenCount || 0,
-            completionTokens: usageMetadata.candidatesTokenCount || 0
-        },
+        provider: provider.name,
+        model: res.model,
+        usage: res.usage,
         metadata: {}
     };
   }

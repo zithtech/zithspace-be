@@ -1902,7 +1902,7 @@ export class SprintReportController {
 
       await entitlementService.checkLimit(tenantId!, 'ai_credits_month');
 
-      const aiResponse = await SprintReportAiService.generateNarrative(context);
+      const aiResponse = await SprintReportAiService.generateNarrative(context, req.tenantId);
       const narrative = aiResponse.data;
       const pricingResult = await AIPricingEngine.calculate(aiResponse);
       const predictions = SprintReportAiService.buildPredictions(context);

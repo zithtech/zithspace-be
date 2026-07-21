@@ -659,7 +659,7 @@ export class TicketController {
       }
 
       await entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
-      const aiResponse = await generateTicketDraft(seed);
+      const aiResponse = await generateTicketDraft(seed, req.tenantId);
       const draft = aiResponse.data;
       const pricingResult = await AIPricingEngine.calculate(aiResponse);
       await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature.TICKET_ANALYSIS, pricingResult);
@@ -712,7 +712,7 @@ export class TicketController {
       }
 
       await entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
-      const aiResponse = await generateSubtasks({ description: seed, count, hoursEach });
+      const aiResponse = await generateSubtasks({ description: seed, count, hoursEach }, req.tenantId);
       const result = aiResponse.data;
       const pricingResult = await AIPricingEngine.calculate(aiResponse);
       await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature.TICKET_ANALYSIS, pricingResult);

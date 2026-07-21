@@ -21,13 +21,14 @@ export interface AdjustmentRow {
   leaveTypeColor: string | null;
   userName: string;
   userEmail: string | null;
+  userAvatarUrl: string | null;
 }
 
 const SELECT_ADJ = `
   lg.id, lg.user_id, lg.leave_type_id, lg.entry_type, lg.units, lg.note,
   to_char(lg.effective_date, 'YYYY-MM-DD') AS effective_date, lg.created_by, lg.created_at,
   lt.name AS leave_type_name, lt.color AS leave_type_color,
-  u.name AS user_name, u.work_email AS user_email
+  u.name AS user_name, u.work_email AS user_email, u.avatar_url AS user_avatar_url
 `;
 
 function mapAdj(r: any): AdjustmentRow {
@@ -45,6 +46,7 @@ function mapAdj(r: any): AdjustmentRow {
     leaveTypeColor: r.leave_type_color,
     userName: r.user_name || '—',
     userEmail: r.user_email ?? null,
+    userAvatarUrl: r.user_avatar_url ?? null,
   };
 }
 
@@ -92,18 +94,19 @@ export interface EmployeeOption {
   value: string;
   label: string;
   code: string | null;
+  avatarUrl: string | null;
 }
 
 /** All active users — option `value` is the user id (the ledger's person key). */
 export async function listEmployees(client: TenantClient): Promise<EmployeeOption[]> {
   const { rows } = await client.query(
-    `SELECT u.id AS value, u.name AS label, u.work_email AS code
+    `SELECT u.id AS value, u.name AS label, u.work_email AS code, u.avatar_url AS avatar_url
        FROM users u
       WHERE u.tenant_id = $1 AND u.is_active = true
       ORDER BY u.name`,
     [client.tenantId]
   );
-  return rows.map((r) => ({ value: r.value, label: r.label || '—', code: r.code ?? null }));
+  return rows.map((r) => ({ value: r.value, label: r.label || '—', code: r.code ?? null, avatarUrl: r.avatar_url ?? null }));
 }
 
 /**

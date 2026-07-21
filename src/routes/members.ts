@@ -118,4 +118,12 @@ router.patch('/:id/activate', requirePermission(Permissions.USER_MANAGE), UserCo
  */
 router.patch('/:id/assign-shift', requirePermission(Permissions.USER_MANAGE), UserController.assignShift);
 
+/**
+ * @route   PATCH /api/members/:id/ai-access
+ * @desc    Toggle a member's AI access (users.ai_enabled)
+ * @access  Private (admin only)
+ * @body    { enabled: boolean }
+ */
+router.patch('/:id/ai-access', requirePermission(Permissions.USER_MANAGE), UserController.setAiAccess);
+
 export default router;
