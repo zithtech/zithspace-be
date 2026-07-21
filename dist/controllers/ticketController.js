@@ -558,7 +558,7 @@ class TicketController {
                 });
                 return;
             }
-            const { draft, source, fallbackReason } = await (0, aiTicketService_1.generateTicketDraft)(seed);
+            const { draft, source, fallbackReason } = await (0, aiTicketService_1.generateTicketDraft)(seed, req.tenantId);
             res.status(200).json({
                 success: true,
                 data: { ...draft, source, fallbackReason },
@@ -595,7 +595,7 @@ class TicketController {
                 });
                 return;
             }
-            const result = await (0, aiTicketService_1.generateSubtasks)({ description: seed, count, hoursEach });
+            const result = await (0, aiTicketService_1.generateSubtasks)({ description: seed, count, hoursEach }, req.tenantId);
             res.status(200).json({
                 success: true,
                 data: result,
@@ -847,8 +847,14 @@ class TicketController {
                     where.type = type;
                 }
             }
-            if (projectId)
-                where.projectId = projectId;
+            if (projectId) {
+                if (typeof projectId === "string" && projectId.includes(",")) {
+                    where.projectId = { in: projectId.split(",").map((id) => id.trim()) };
+                }
+                else {
+                    where.projectId = projectId;
+                }
+            }
             // Handle single or multiple assignees
             if (assigneeId) {
                 if (typeof assigneeId === "string") {
@@ -1107,6 +1113,7 @@ class TicketController {
                     },
                     // Include subtasks for the UI
                     subTasks: {
+                        where: { isDeleted: false },
                         select: {
                             id: true,
                             ticketNumber: true,
@@ -3508,6 +3515,7 @@ class TicketController {
                             },
                             // Get sub-tasks for each story
                             subTasks: {
+                                where: { isDeleted: false },
                                 select: {
                                     id: true,
                                     ticketNumber: true,

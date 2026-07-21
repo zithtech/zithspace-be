@@ -74,6 +74,11 @@ export declare class UserController {
      */
     static assignShift(req: AuthRequest, res: Response): Promise<void>;
     /**
+     * Toggle a member's AI access (users.ai_enabled). Opt-out model — enabled
+     * by default; admins disable it per user from the Members page.
+     */
+    static setAiAccess(req: AuthRequest, res: Response): Promise<void>;
+    /**
      * Helper to resolve or create a custom position title using dedicated fallback default department, sub-department, and grade.
      */
     private static getOrCreateCustomPosition;
