@@ -12,6 +12,7 @@
  */
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { AIResponse } from "../ai/interfaces/AIResponse";
 
 export interface AiDocumentDraft {
   /** Suggested name for the document hub. */
@@ -181,7 +182,7 @@ function safeParseJson(raw: string): any | null {
   }
 }
 
-async function callGemini(prompt: string): Promise<AiDocumentDraft | null> {
+async function callGemini(prompt: string): Promise<{ draft: AiDocumentDraft; result: any } | null> {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!apiKey) return null;
 
@@ -210,7 +211,7 @@ async function callGemini(prompt: string): Promise<AiDocumentDraft | null> {
     const fileTitle = cleanTitle(String(parsed.fileTitle || ""), "Overview");
     const contentHtml = cleanHtml(String(parsed.contentHtml || ""));
 
-    return { hubName, fileTitle, contentHtml };
+    return { draft: { hubName, fileTitle, contentHtml }, result };
   } catch (err: any) {
     lastGeminiError = err?.message || "Gemini call failed";
     console.error("[aiDocumentService] Gemini error:", err);
@@ -283,7 +284,7 @@ const REWRITE_USER_TEMPLATE = (text: string, instruction: string) =>
 async function callGeminiRewrite(
   text: string,
   instruction: string,
-): Promise<string | null> {
+): Promise<{ rewrittenHtml: string; result: any } | null> {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!apiKey) return null;
 
@@ -311,7 +312,7 @@ async function callGeminiRewrite(
       return null;
     }
     const html = String(parsed.rewrittenHtml || "");
-    return cleanHtml(html);
+    return { rewrittenHtml: cleanHtml(html), result };
   } catch (err: any) {
     lastGeminiError = err?.message || "Gemini call failed";
     console.error("[aiDocumentService] Gemini rewrite error:", err);
@@ -337,37 +338,55 @@ function heuristicRewrite(text: string, instruction: string): string {
 export async function rewriteSelection(
   text: string,
   instruction: string,
-): Promise<{
-  rewrittenHtml: string;
-  source: "gemini" | "mock";
-  fallbackReason?: string;
-}> {
+): Promise<AIResponse<{ rewrittenHtml: string }>> {
   const fromGemini = await callGeminiRewrite(text, instruction);
-  if (fromGemini) return { rewrittenHtml: fromGemini, source: "gemini" };
+  if (fromGemini) {
+    const usageMetadata = fromGemini.result.response.usageMetadata || { promptTokenCount: 0, candidatesTokenCount: 0 };
+    return {
+        data: { rewrittenHtml: fromGemini.rewrittenHtml },
+        provider: "gemini",
+        model: GEMINI_MODEL_NAME,
+        usage: { promptTokens: usageMetadata.promptTokenCount || 0, completionTokens: usageMetadata.candidatesTokenCount || 0 },
+        metadata: {}
+    };
+  }
 
   const reason = !process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY
     ? "GEMINI_API_KEY not set"
     : (lastGeminiError || "Gemini call failed");
 
   return {
-    rewrittenHtml: heuristicRewrite(text, instruction),
-    source: "mock",
-    fallbackReason: reason,
+    data: { rewrittenHtml: heuristicRewrite(text, instruction) },
+    provider: "mock",
+    model: "mock",
+    usage: { promptTokens: 0, completionTokens: 0 },
+    metadata: { finishReason: reason }
   };
 }
 
-export async function generateDocumentDraft(prompt: string): Promise<{
-  draft: AiDocumentDraft;
-  source: "gemini" | "mock";
-  fallbackReason?: string;
-}> {
+export async function generateDocumentDraft(prompt: string): Promise<AIResponse<AiDocumentDraft>> {
   const fromGemini = await callGemini(prompt);
-  if (fromGemini) return { draft: fromGemini, source: "gemini" };
+  if (fromGemini) {
+    const usageMetadata = fromGemini.result.response.usageMetadata || { promptTokenCount: 0, candidatesTokenCount: 0 };
+    return {
+        data: fromGemini.draft,
+        provider: "gemini",
+        model: GEMINI_MODEL_NAME,
+        usage: { promptTokens: usageMetadata.promptTokenCount || 0, completionTokens: usageMetadata.candidatesTokenCount || 0 },
+        metadata: {}
+    };
+  }
 
   const reason = !process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY
     ? "GEMINI_API_KEY not set"
     : (lastGeminiError || "Gemini call failed");
   console.warn(`[aiDocumentService] falling back to heuristic mock — ${reason}`);
 
-  return { draft: heuristicDraft(prompt), source: "mock", fallbackReason: reason };
+  return {
+      data: heuristicDraft(prompt),
+      provider: "mock",
+      model: "mock",
+      usage: { promptTokens: 0, completionTokens: 0 },
+      metadata: { finishReason: reason }
+  };
 }

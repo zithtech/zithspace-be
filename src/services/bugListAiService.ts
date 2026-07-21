@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { AIResponse } from "../ai/interfaces/AIResponse";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -46,8 +47,8 @@ function extractJson<T>(text: string): T | null {
 }
 
 export class BugListAiService {
-  static async review(bugs: RawBug[]): Promise<AiReviewResult[]> {
-    if (bugs.length === 0) return [];
+  static async review(bugs: RawBug[]): Promise<AIResponse<AiReviewResult[]>> {
+    if (bugs.length === 0) return { data: [], provider: "gemini", model: MODEL, usage: { promptTokens: 0, completionTokens: 0 }, metadata: {} };
     const model = genAI.getGenerativeModel({ model: MODEL });
     const prompt = `
 You are a senior QA lead. Clean and structure each raw bug below.
@@ -84,12 +85,23 @@ ${JSON.stringify(
     if (!Array.isArray(parsed)) {
       throw new Error("AI returned an unexpected shape for review");
     }
-    return parsed;
+
+    const usageMetadata = result.response.usageMetadata || { promptTokenCount: 0, candidatesTokenCount: 0 };
+    return {
+        data: parsed,
+        provider: "gemini",
+        model: MODEL,
+        usage: {
+            promptTokens: usageMetadata.promptTokenCount || 0,
+            completionTokens: usageMetadata.candidatesTokenCount || 0
+        },
+        metadata: {}
+    };
   }
 
-  static async enhanceText(text: string): Promise<string> {
+  static async enhanceText(text: string): Promise<AIResponse<string>> {
     const input = (text || "").trim();
-    if (!input) return "";
+    if (!input) return { data: "", provider: "gemini", model: MODEL, usage: { promptTokens: 0, completionTokens: 0 }, metadata: {} };
     const model = genAI.getGenerativeModel({ model: MODEL });
     const prompt = `
 You are a light-touch copy editor. Make ONLY minimal changes to the text below:
@@ -105,14 +117,26 @@ ${input}
 
     const result = await model.generateContent(prompt);
     const out = (result.response.text() || "").trim();
-    return out
+    const data = out
       .replace(/^```[a-zA-Z]*\n?/, "")
       .replace(/```$/, "")
       .trim() || input;
+      
+    const usageMetadata = result.response.usageMetadata || { promptTokenCount: 0, candidatesTokenCount: 0 };
+    return {
+        data,
+        provider: "gemini",
+        model: MODEL,
+        usage: {
+            promptTokens: usageMetadata.promptTokenCount || 0,
+            completionTokens: usageMetadata.candidatesTokenCount || 0
+        },
+        metadata: {}
+    };
   }
 
-  static async suggestGroups(bugs: RawBug[]): Promise<AiGroupSuggestion[]> {
-    if (bugs.length === 0) return [];
+  static async suggestGroups(bugs: RawBug[]): Promise<AIResponse<AiGroupSuggestion[]>> {
+    if (bugs.length === 0) return { data: [], provider: "gemini", model: MODEL, usage: { promptTokens: 0, completionTokens: 0 }, metadata: {} };
     const model = genAI.getGenerativeModel({ model: MODEL });
     const prompt = `
 You are a senior QA lead. Group the bugs below into logical clusters that
@@ -150,6 +174,17 @@ ${JSON.stringify(
     if (!Array.isArray(parsed)) {
       throw new Error("AI returned an unexpected shape for grouping");
     }
-    return parsed;
+    
+    const usageMetadata = result.response.usageMetadata || { promptTokenCount: 0, candidatesTokenCount: 0 };
+    return {
+        data: parsed,
+        provider: "gemini",
+        model: MODEL,
+        usage: {
+            promptTokens: usageMetadata.promptTokenCount || 0,
+            completionTokens: usageMetadata.candidatesTokenCount || 0
+        },
+        metadata: {}
+    };
   }
 }

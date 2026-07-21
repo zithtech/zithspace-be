@@ -8,6 +8,7 @@
  */
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { AIResponse } from "../ai/interfaces/AIResponse";
 
 export type AiTicketPriority = "Low" | "Medium" | "High";
 
@@ -144,7 +145,7 @@ let lastGeminiError: string | null = null;
 const GEMINI_MODEL_NAME = "gemini-flash-latest";
 // const GEMINI_MODEL_NAME = "gemini-3-flash"
 
-async function callGemini(description: string): Promise<AiTicketDraft | null> {
+async function callGemini(description: string): Promise<{ draft: AiTicketDraft; result: any } | null> {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!apiKey) return null;
 
@@ -183,7 +184,7 @@ async function callGemini(description: string): Promise<AiTicketDraft | null> {
       }
 
       const parsed = parseAiJson(text);
-      if (parsed) return parsed;
+      if (parsed) return { draft: parsed, result };
 
       lastGeminiError = "Gemini response was not valid JSON";
       console.error(`${lastGeminiError} (attempt ${attempt}/2)`, "raw:", text.slice(0, 600));
@@ -545,21 +546,31 @@ function capitalize(s: string) {
 /**
  * Public entry point. Always resolves to a valid AiTicketDraft.
  */
-export async function generateTicketDraft(description: string): Promise<{
-  draft: AiTicketDraft;
-  source: "gemini" | "mock";
-  /** Populated only when source === "mock", explains why we fell back. */
-  fallbackReason?: string;
-}> {
+export async function generateTicketDraft(description: string): Promise<AIResponse<AiTicketDraft>> {
   const fromGemini = await callGemini(description);
-  if (fromGemini) return { draft: fromGemini, source: "gemini" };
+  if (fromGemini) {
+    const usageMetadata = fromGemini.result.response.usageMetadata || { promptTokenCount: 0, candidatesTokenCount: 0 };
+    return { 
+        data: fromGemini.draft, 
+        provider: "gemini",
+        model: GEMINI_MODEL_NAME,
+        usage: { promptTokens: usageMetadata.promptTokenCount || 0, completionTokens: usageMetadata.candidatesTokenCount || 0 },
+        metadata: {} 
+    };
+  }
 
   const reason = !process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY
     ? "GEMINI_API_KEY not set"
     : (lastGeminiError || "Gemini call failed");
   console.warn(`[aiTicketService] falling back to heuristic mock — ${reason}`);
 
-  return { draft: heuristicDraft(description), source: "mock", fallbackReason: reason };
+  return { 
+      data: heuristicDraft(description), 
+      provider: "mock", 
+      model: "mock",
+      usage: { promptTokens: 0, completionTokens: 0 },
+      metadata: { finishReason: reason } 
+  };
 }
 
 /* ------------------------------------------------------------------------ */
@@ -595,7 +606,7 @@ async function callGeminiForSubtasks(
   description: string,
   count: number,
   hoursEach: number,
-): Promise<AiSubtask[] | null> {
+): Promise<{ subtasks: AiSubtask[]; result: any } | null> {
   const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
   if (!apiKey) return null;
 
@@ -647,7 +658,7 @@ async function callGeminiForSubtasks(
     // Reuse the same normalizer as the main flow, then enforce the requested
     // hoursEach so callers can trust the shape.
     const items = normalizeSubtasks(parsed?.subtasks, count * hoursEach);
-    return items.slice(0, count).map((s) => ({ title: s.title, hours: hoursEach }));
+    return { subtasks: items.slice(0, count).map((s) => ({ title: s.title, hours: hoursEach })), result };
   } catch (err: any) {
     lastGeminiError = String(err?.message || err || "Unknown Gemini error");
     console.error("Gemini subtasks call failed:", err);
@@ -669,19 +680,22 @@ function heuristicSubtasks(description: string, count: number, hoursEach: number
   }));
 }
 
-export async function generateSubtasks(input: GenerateSubtasksInput): Promise<{
-  subtasks: AiSubtask[];
-  source: "gemini" | "mock";
-  fallbackReason?: string;
-}> {
+export async function generateSubtasks(input: GenerateSubtasksInput): Promise<AIResponse<AiSubtask[]>> {
   const description = String(input.description || "").trim();
   // Clamp inputs into safe ranges so a bad client can't ask for 1000 subtasks.
   const count = clamp(Math.round(input.count ?? 5), 2, 12);
   const hoursEach = clamp(Math.round(input.hoursEach ?? 4), 1, 40);
 
   const fromGemini = await callGeminiForSubtasks(description, count, hoursEach);
-  if (fromGemini && fromGemini.length > 0) {
-    return { subtasks: fromGemini, source: "gemini" };
+  if (fromGemini && fromGemini.subtasks.length > 0) {
+    const usageMetadata = fromGemini.result.response.usageMetadata || { promptTokenCount: 0, candidatesTokenCount: 0 };
+    return { 
+        data: fromGemini.subtasks, 
+        provider: "gemini",
+        model: GEMINI_MODEL_NAME,
+        usage: { promptTokens: usageMetadata.promptTokenCount || 0, completionTokens: usageMetadata.candidatesTokenCount || 0 },
+        metadata: {} 
+    };
   }
 
   const reason = !process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY
@@ -689,9 +703,11 @@ export async function generateSubtasks(input: GenerateSubtasksInput): Promise<{
     : (lastGeminiError || "Gemini call failed");
 
   return {
-    subtasks: heuristicSubtasks(description, count, hoursEach),
-    source: "mock",
-    fallbackReason: reason,
+    data: heuristicSubtasks(description, count, hoursEach),
+    provider: "mock",
+    model: "mock",
+    usage: { promptTokens: 0, completionTokens: 0 },
+    metadata: { finishReason: reason }
   };
 }
 

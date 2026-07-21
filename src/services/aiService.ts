@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
+import { AIResponse } from "../ai/interfaces/AIResponse";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -6,7 +7,7 @@ dotenv.config();
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
 export class AIService {
-  static async analyzeLead(leadData: any) {
+  static async analyzeLead(leadData: any): Promise<AIResponse<any>> {
     const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
     const prompt = `
@@ -66,14 +67,26 @@ export class AIService {
       const text = response.text();
       // Extract JSON from potential markdown blocks
       const jsonMatch = text.match(/\{[\s\S]*\}/);
-      return jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+      const data = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+      
+      const usageMetadata = response.usageMetadata || { promptTokenCount: 0, candidatesTokenCount: 0 };
+      return {
+          data,
+          provider: 'gemini',
+          model: 'gemini-flash-latest',
+          usage: {
+              promptTokens: usageMetadata.promptTokenCount || 0,
+              completionTokens: usageMetadata.candidatesTokenCount || 0
+          },
+          metadata: {}
+      };
     } catch (error) {
       console.error("Gemini AI Analysis Error:", error);
       throw new Error("Failed to analyze lead with AI");
     }
   }
 
-  static async composeProposal(leadData: any, preferences?: any) {
+  static async composeProposal(leadData: any, preferences?: any): Promise<AIResponse<any>> {
     const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
 
     const components = preferences?.components || ['cover', 'text', 'scope', 'timeline', 'pricing', 'image', 'gallery', 'video', 'quote', 'callout', 'cta', 'signature'];
@@ -277,8 +290,9 @@ export class AIService {
     `;
 
     try {
-      const response = await model.generateContent(prompt);
-      let text = response.response.text().trim();
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      let text = response.text().trim();
 
       // CLEANUP: AI often wraps results in ```json ... ``` blocks
       // We must strip these to parse the raw JSON correctly.
@@ -289,23 +303,33 @@ export class AIService {
         }
       }
 
+      let data: any = text;
       // Try to parse as JSON if it looks like it
       if (text.startsWith('{') || text.startsWith('[')) {
         try {
-          return JSON.parse(text);
+          data = JSON.parse(text);
         } catch (e) {
           console.warn('JSON Parse failed after cleanup, returning raw text');
-          return text;
         }
       }
 
-      return text;
+      const usageMetadata = response.usageMetadata || { promptTokenCount: 0, candidatesTokenCount: 0 };
+      return {
+          data,
+          provider: 'gemini',
+          model: 'gemini-flash-latest',
+          usage: {
+              promptTokens: usageMetadata.promptTokenCount || 0,
+              completionTokens: usageMetadata.candidatesTokenCount || 0
+          },
+          metadata: {}
+      };
     } catch (error: any) {
       console.error("Gemini AI Proposal Compose Error:", error);
       throw new Error("Failed to compose proposal with AI");
     }
   }
-  static async refineProposalBlock(currentData: any, userPrompt: string, blockType: string) {
+  static async refineProposalBlock(currentData: any, userPrompt: string, blockType: string): Promise<AIResponse<any>> {
     const model = genAI.getGenerativeModel({
       model: "gemini-flash-latest",
       safetySettings: [
@@ -347,22 +371,31 @@ export class AIService {
         }
       }
 
+      let data: any = text;
       // Try to parse as JSON object/array
       const jsonMatch = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
       if (jsonMatch) {
         try {
-          return JSON.parse(jsonMatch[0]);
+          data = JSON.parse(jsonMatch[0]);
         } catch (e) {
           // If JSON parse fails, fall through to text return
         }
+      } else if (text.startsWith('"') && text.endsWith('"')) {
+        // If it's a quoted string, strip quotes
+        data = text.substring(1, text.length - 1);
       }
 
-      // If it's a quoted string, strip quotes
-      if (text.startsWith('"') && text.endsWith('"')) {
-        return text.substring(1, text.length - 1);
-      }
-
-      return text;
+      const usageMetadata = response.usageMetadata || { promptTokenCount: 0, candidatesTokenCount: 0 };
+      return {
+          data,
+          provider: 'gemini',
+          model: 'gemini-flash-latest',
+          usage: {
+              promptTokens: usageMetadata.promptTokenCount || 0,
+              completionTokens: usageMetadata.candidatesTokenCount || 0
+          },
+          metadata: {}
+      };
     } catch (error) {
       console.error("Gemini AI Block Refinement Error:", error);
       throw new Error("Failed to refine block with AI");

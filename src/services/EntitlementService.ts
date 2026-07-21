@@ -1,5 +1,7 @@
 import { SubscriptionCacheService } from '../modules/subscriptions/subscription.cache';
 import { usageService } from './UsageService';
+import { AIFeature } from '../ai/types/AIFeature';
+import { PricingResult } from '../ai/interfaces/PricingResult';
 
 export class EntitlementError extends Error {
   public code: string;
@@ -51,8 +53,8 @@ export class EntitlementService {
     }
   }
 
-  async incrementUsage(tenantId: string, limitKey: string, amount: number = 1): Promise<void> {
-      await usageService.increment(tenantId, limitKey, amount);
+  async incrementUsage(tenantId: string, limitKey: string, feature: AIFeature, pricing: PricingResult): Promise<void> {
+      await usageService.increment(tenantId, limitKey, feature, pricing);
   }
 }
 

@@ -1405,7 +1405,7 @@ export const APP_STRUCTURE: ICore[] = [
           }
         ]
       },
-      {
+       {
         key: 'reimbursement_v2',
         name: 'Reimbursement 2.0',
         sort_order: 3,
@@ -1502,7 +1502,7 @@ export const APP_STRUCTURE: ICore[] = [
       },
       {
         key: 'payroll_v2',
-        name: 'Payroll 2.5',
+        name: 'Payroll 2.0',
         sort_order: 4,
         pages: [
           { 

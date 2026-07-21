@@ -5,6 +5,8 @@ import { BidIQModel } from "../models/BidIQ.model";
 import { AIService } from "../services/aiService";
 import { LeadActivityLogModel } from "../models/LeadActivityLog.model";
 import { entitlementService, EntitlementError } from "../services/EntitlementService";
+import { AIPricingEngine } from "../ai/pricing/AIPricingEngine";
+import { AIFeature } from "../ai/types/AIFeature";
 
 export class BidIQController {
   static async analyzeLead(req: AuthRequest, res: Response) {
@@ -39,10 +41,13 @@ export class BidIQController {
       }
 
       // 3. Perform fresh AI analysis
-      const intelligence = await AIService.analyzeLead(lead);
+      const aiResponse = await AIService.analyzeLead(lead);
+      const intelligence = aiResponse.data;
+
+      const pricingResult = await AIPricingEngine.calculate(aiResponse);
 
       // 4. Increment AI usage on success
-      await entitlementService.incrementUsage(tenantId, 'ai_credits_month', 1);
+      await entitlementService.incrementUsage(tenantId, 'ai_credits_month', AIFeature.BID_IQ_ANALYSIS, pricingResult);
 
       // 5. Store in the NEW separate table only
       const bidiqResult = await BidIQModel.upsert({

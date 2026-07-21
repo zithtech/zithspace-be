@@ -9,6 +9,8 @@ import {
 import { socketService } from "@/services/socketService";
 import { generateDocumentDraft, rewriteSelection } from "@/services/aiDocumentService";
 import { entitlementService, EntitlementError } from "@/services/EntitlementService";
+import { AIPricingEngine } from "@/ai/pricing/AIPricingEngine";
+import { AIFeature } from "@/ai/types/AIFeature";
 import puppeteer from "puppeteer";
 import crypto from "crypto";
 import {
@@ -109,12 +111,14 @@ export class DocumentHubController {
       }
 
       await entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
-      const { draft, source, fallbackReason } = await generateDocumentDraft(seed);
-      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month');
+      const aiResponse = await generateDocumentDraft(seed);
+      const draft = aiResponse.data;
+      const pricingResult = await AIPricingEngine.calculate(aiResponse);
+      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature.DOCUMENT_SUMMARY, pricingResult);
 
       res.status(200).json({
         success: true,
-        data: { ...draft, source, fallbackReason },
+        data: { ...draft, source: aiResponse.provider, fallbackReason: aiResponse.metadata?.finishReason },
         message: "Document draft generated",
       } as ApiResponse);
     } catch (error: any) {
@@ -182,12 +186,14 @@ export class DocumentHubController {
       }
 
       await entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
-      const result = await rewriteSelection(cleanText, cleanInstruction);
-      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month');
+      const aiResponse = await rewriteSelection(cleanText, cleanInstruction);
+      const result = aiResponse.data;
+      const pricingResult = await AIPricingEngine.calculate(aiResponse);
+      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature.DOCUMENT_SUMMARY, pricingResult);
 
       res.status(200).json({
         success: true,
-        data: result,
+        data: { ...result, source: aiResponse.provider, fallbackReason: aiResponse.metadata?.finishReason },
         message: "Selection rewritten",
       } as ApiResponse);
     } catch (error: any) {

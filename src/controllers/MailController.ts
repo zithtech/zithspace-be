@@ -5,6 +5,8 @@ import { AuthRequest, ApiResponse } from "../types";
 import { MailService } from "../services/mail/MailService";
 import { MailAiService } from "../services/mailAiService";
 import { entitlementService, EntitlementError } from "../services/EntitlementService";
+import { AIPricingEngine } from "../ai/pricing/AIPricingEngine";
+import { AIFeature } from "../ai/types/AIFeature";
 import { MailSyncProducer } from "../services/mail/MailSyncProducer";
 import { syncLogger } from "../utils/logger";
 import { s3Client } from "../utils/r2Client";
@@ -1218,9 +1220,11 @@ export class MailController {
                     error: "body is required"
                 });
             }
-            const enhanced = await MailAiService.enhanceContent({ subject, body, context });
+            const aiResponse = await MailAiService.enhanceContent({ subject, body, context });
+            const enhanced = aiResponse.data;
+            const pricingResult = await AIPricingEngine.calculate(aiResponse);
 
-            await entitlementService.incrementUsage(tenantId!, 'ai_credits_month');
+            await entitlementService.incrementUsage(tenantId!, 'ai_credits_month', AIFeature.MAIL_ASSISTANT, pricingResult);
 
             return res.json({
                 success: true,
@@ -1253,9 +1257,11 @@ export class MailController {
                     error: "body is required"
                 });
             }
-            const corrected = await MailAiService.correctGrammar(body);
+            const aiResponse = await MailAiService.correctGrammar(body);
+            const corrected = aiResponse.data;
+            const pricingResult = await AIPricingEngine.calculate(aiResponse);
 
-            await entitlementService.incrementUsage(tenantId!, 'ai_credits_month');
+            await entitlementService.incrementUsage(tenantId!, 'ai_credits_month', AIFeature.MAIL_ASSISTANT, pricingResult);
 
             return res.json({
                 success: true,

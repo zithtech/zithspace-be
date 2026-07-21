@@ -8,6 +8,8 @@ import {
 } from "@/utils/r2Client";
 import { BugListAiService } from "@/services/bugListAiService";
 import { entitlementService, EntitlementError } from "@/services/EntitlementService";
+import { AIPricingEngine } from "@/ai/pricing/AIPricingEngine";
+import { AIFeature } from "@/ai/types/AIFeature";
 import {
   recordTransaction,
   diffShallow,
@@ -2640,9 +2642,11 @@ export class BugListController {
         severity: r.severity,
         bugType: r.bug_type,
       }));
-      const data = await BugListAiService.review(bugs);
+      const aiResponse = await BugListAiService.review(bugs);
+      const data = aiResponse.data;
+      const pricingResult = await AIPricingEngine.calculate(aiResponse);
 
-      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month');
+      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature.BUG_ANALYSIS, pricingResult);
 
       res.json({ success: true, data });
     } catch (err: any) {
@@ -2669,9 +2673,11 @@ export class BugListController {
     try {
       await entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
 
-      const enhanced = await BugListAiService.enhanceText(text);
+      const aiResponse = await BugListAiService.enhanceText(text);
+      const enhanced = aiResponse.data;
+      const pricingResult = await AIPricingEngine.calculate(aiResponse);
 
-      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month');
+      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature.BUG_ANALYSIS, pricingResult);
       res.json({ success: true, data: { text: enhanced } });
     } catch (err: any) {
       if (err instanceof EntitlementError) {
@@ -2708,9 +2714,11 @@ export class BugListController {
         severity: r.severity,
         bugType: r.bug_type,
       }));
-      const data = await BugListAiService.suggestGroups(bugs);
+      const aiResponse = await BugListAiService.suggestGroups(bugs);
+      const data = aiResponse.data;
+      const pricingResult = await AIPricingEngine.calculate(aiResponse);
 
-      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month');
+      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature.BUG_ANALYSIS, pricingResult);
 
       res.json({ success: true, data });
     } catch (err: any) {

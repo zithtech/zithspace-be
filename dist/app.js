@@ -280,8 +280,10 @@ app.get("/api/direct-test", (req, res) => {
 app.get("/api/debug-ping-unique", (req, res) => res.json({ success: true, message: "Debug route is active" }));
 // System/Metadata routes (must be before wildcard /api routers)
 app.use("/api/system", metadata_1.metadataRoutes);
+const payments_1 = require("./modules/payments");
 app.use("/api", proxyRoutes_1.default);
 app.use("/api/auth", auth_1.default);
+app.use("/api/payments", payments_1.paymentRoutes);
 app.use("/api/generate", generate_routes_1.default);
 app.use("/api/projects", projects_1.default);
 app.use("/api/tenants", tenants_1.default);

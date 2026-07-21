@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { AIResponse } from "../ai/interfaces/AIResponse";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -176,7 +177,7 @@ export class SprintReportAiService {
     return buildDeterministicPredictions(ctx);
   }
 
-  static async generateNarrative(ctx: SprintAiContext): Promise<AiNarrative> {
+  static async generateNarrative(ctx: SprintAiContext): Promise<AIResponse<AiNarrative>> {
     if (!SprintReportAiService.isAvailable()) {
       throw new Error(
         "AI narrative unavailable: GEMINI_API_KEY is not configured on the server."
@@ -242,6 +243,16 @@ ${JSON.stringify(deterministicPredictions, null, 2)}
       }
     }
 
-    return parsed;
+    const usageMetadata = result.response.usageMetadata || { promptTokenCount: 0, candidatesTokenCount: 0 };
+    return {
+        data: parsed,
+        provider: "gemini",
+        model: MODEL,
+        usage: {
+            promptTokens: usageMetadata.promptTokenCount || 0,
+            completionTokens: usageMetadata.candidatesTokenCount || 0
+        },
+        metadata: {}
+    };
   }
 }

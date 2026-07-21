@@ -312,8 +312,11 @@ app.get("/api/debug-ping-unique", (req, res) => res.json({ success: true, messag
 // System/Metadata routes (must be before wildcard /api routers)
 app.use("/api/system", metadataRoutes);
 
+import { paymentRoutes } from "./modules/payments";
+
 app.use("/api", proxyRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/payments", paymentRoutes);
 app.use("/api/generate", generateRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/tenants", tenantRoutes);

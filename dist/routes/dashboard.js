@@ -15,7 +15,7 @@ router.use(tenantContext_1.resolveTenant);
 // Apply authentication to all routes
 router.use(auth_1.authenticateToken);
 router.use(auth_1.requireAuth);
-router.use((0, subscriptions_1.requireSubscriptionFeature)('page.dashboard'));
+router.use((0, subscriptions_1.requireSubscriptionFeature)('home_home_general_dashboard'));
 /**
  * @route   GET /api/dashboard/summary
  * @desc    Get comprehensive dashboard summary with all metrics

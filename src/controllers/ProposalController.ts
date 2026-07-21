@@ -7,6 +7,8 @@ import {
 import { ProposalExportService } from '@/services/proposalExportService';
 import { AIService } from '@/services/aiService';
 import { entitlementService, EntitlementError } from '../services/EntitlementService';
+import { AIPricingEngine } from '../ai/pricing/AIPricingEngine';
+import { AIFeature } from '../ai/types/AIFeature';
 import { LeadModel } from '@/models/Lead.model';
 import { ProposalModel } from '@/models/Proposal.model';
 import { LeadActivityLogModel } from '@/models/LeadActivityLog.model';
@@ -434,7 +436,9 @@ export class ProposalController {
         return;
       }
 
-      const blocks = await AIService.composeProposal(lead);
+      const aiResponse = await AIService.composeProposal(lead);
+      const blocks = aiResponse.data;
+      const pricingResult = await AIPricingEngine.calculate(aiResponse);
 
       const proposal = await ProposalModel.create({
         tenant_id: tenantId,
@@ -446,7 +450,7 @@ export class ProposalController {
         created_by: userId
       });
 
-      await entitlementService.incrementUsage(tenantId!, 'ai_credits_month');
+      await entitlementService.incrementUsage(tenantId!, 'ai_credits_month', AIFeature.PROPOSAL_GENERATION, pricingResult);
 
       // Log AI proposal generation
       if (userId) {
@@ -509,9 +513,11 @@ export class ProposalController {
       }
 
       const preferences = req.body;
-      const blocks = await AIService.composeProposal(lead, preferences);
+      const aiResponse = await AIService.composeProposal(lead, preferences);
+      const blocks = aiResponse.data;
+      const pricingResult = await AIPricingEngine.calculate(aiResponse);
 
-      await entitlementService.incrementUsage(tenantId!, 'ai_credits_month');
+      await entitlementService.incrementUsage(tenantId!, 'ai_credits_month', AIFeature.PROPOSAL_GENERATION, pricingResult);
 
       res.status(200).json({
         success: true,
@@ -537,9 +543,11 @@ export class ProposalController {
       await entitlementService.checkLimit(tenantId!, 'ai_credits_month');
 
       const { blockType, currentData, userPrompt } = req.body;
-      const refinedData = await AIService.refineProposalBlock(currentData, userPrompt, blockType);
+      const aiResponse = await AIService.refineProposalBlock(currentData, userPrompt, blockType);
+      const refinedData = aiResponse.data;
+      const pricingResult = await AIPricingEngine.calculate(aiResponse);
 
-      await entitlementService.incrementUsage(tenantId!, 'ai_credits_month');
+      await entitlementService.incrementUsage(tenantId!, 'ai_credits_month', AIFeature.PROPOSAL_GENERATION, pricingResult);
 
       res.status(200).json({
         success: true,

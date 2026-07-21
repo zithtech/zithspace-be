@@ -9,6 +9,8 @@ const types_1 = require("@/types");
 const socketService_1 = require("@/services/socketService");
 const aiDocumentService_1 = require("@/services/aiDocumentService");
 const EntitlementService_1 = require("@/services/EntitlementService");
+const AIPricingEngine_1 = require("@/ai/pricing/AIPricingEngine");
+const AIFeature_1 = require("@/ai/types/AIFeature");
 const puppeteer_1 = __importDefault(require("puppeteer"));
 const crypto_1 = __importDefault(require("crypto"));
 const transactionHistory_1 = require("@/utils/transactionHistory");
@@ -100,11 +102,13 @@ class DocumentHubController {
                 return;
             }
             await EntitlementService_1.entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
-            const { draft, source, fallbackReason } = await (0, aiDocumentService_1.generateDocumentDraft)(seed);
-            await EntitlementService_1.entitlementService.incrementUsage(req.tenantId, 'ai_credits_month');
+            const aiResponse = await (0, aiDocumentService_1.generateDocumentDraft)(seed);
+            const draft = aiResponse.data;
+            const pricingResult = await AIPricingEngine_1.AIPricingEngine.calculate(aiResponse);
+            await EntitlementService_1.entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature_1.AIFeature.DOCUMENT_SUMMARY, pricingResult);
             res.status(200).json({
                 success: true,
-                data: { ...draft, source, fallbackReason },
+                data: { ...draft, source: aiResponse.provider, fallbackReason: aiResponse.metadata?.finishReason },
                 message: "Document draft generated",
             });
         }
@@ -166,11 +170,13 @@ class DocumentHubController {
                 return;
             }
             await EntitlementService_1.entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
-            const result = await (0, aiDocumentService_1.rewriteSelection)(cleanText, cleanInstruction);
-            await EntitlementService_1.entitlementService.incrementUsage(req.tenantId, 'ai_credits_month');
+            const aiResponse = await (0, aiDocumentService_1.rewriteSelection)(cleanText, cleanInstruction);
+            const result = aiResponse.data;
+            const pricingResult = await AIPricingEngine_1.AIPricingEngine.calculate(aiResponse);
+            await EntitlementService_1.entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature_1.AIFeature.DOCUMENT_SUMMARY, pricingResult);
             res.status(200).json({
                 success: true,
-                data: result,
+                data: { ...result, source: aiResponse.provider, fallbackReason: aiResponse.metadata?.finishReason },
                 message: "Selection rewritten",
             });
         }

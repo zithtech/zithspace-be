@@ -5,6 +5,7 @@ import pool from "@/config/dbpool";
 import { AuthRequest } from "@/types";
 import { emailService } from "@/utils/emailService";
 import { socketService } from "@/services/socketService";
+import { entitlementService, EntitlementError } from "@/services/EntitlementService";
 
 // Generate a human-friendly temporary password: 4 lowercase blocks of 4 chars
 // separated by hyphens, plus a digit. Examples: `quiet-river-flute-page-7`.
@@ -88,6 +89,20 @@ export class ClientPortalCredentialController {
     const tenantId = req.tenantId!;
     const { clientId } = req.params;
     const { contactId, email, displayName, username } = req.body || {};
+
+    try {
+      await entitlementService.checkLimit(tenantId, "client_portal_users");
+    } catch (err: any) {
+      if (err instanceof EntitlementError) {
+        res.status(403).json({
+          success: false,
+          error: "You have reached the maximum number of client portal users allowed on your current plan.",
+          details: { current: err.current, allowed: err.allowed },
+        });
+        return;
+      }
+      throw err;
+    }
 
     if (!email || typeof email !== "string") {
       res.status(400).json({ success: false, error: "email is required" });

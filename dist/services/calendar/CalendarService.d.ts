@@ -77,6 +77,7 @@ export declare class CalendarService {
         userId: string;
         provider: import(".prisma/client").$Enums.CalendarProvider;
         title: string;
+        calendar: string | null;
         isDeleted: boolean;
         startTime: Date;
         endTime: Date;
@@ -88,7 +89,6 @@ export declare class CalendarService {
         isAllDay: boolean | null;
         rrule: string | null;
         exdate: import("@prisma/client/runtime/library").JsonValue | null;
-        calendar: string | null;
         sourceType: string | null;
         meetingLink: string | null;
         organizerEmail: string | null;

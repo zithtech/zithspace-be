@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { AIResponse } from "../ai/interfaces/AIResponse";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -22,9 +23,9 @@ export class MailAiService {
     subject?: string;
     body: string;
     context?: string;
-  }): Promise<string> {
+  }): Promise<AIResponse<string>> {
     const body = (params.body || "").trim();
-    if (!body) return "";
+    if (!body) return { data: "", provider: "gemini", model: MODEL, usage: { promptTokens: 0, completionTokens: 0 }, metadata: {} };
 
     const model = genAI.getGenerativeModel({ model: MODEL });
     const prompt = `
@@ -53,16 +54,27 @@ Return ONLY the rewritten HTML.
     const result = await model.generateContent(prompt);
     const raw = result.response.text() || "";
     const cleaned = stripCodeFences(raw);
-    return cleaned || body;
+    
+    const usageMetadata = result.response.usageMetadata || { promptTokenCount: 0, candidatesTokenCount: 0 };
+    return {
+        data: cleaned || body,
+        provider: "gemini",
+        model: MODEL,
+        usage: {
+            promptTokens: usageMetadata.promptTokenCount || 0,
+            completionTokens: usageMetadata.candidatesTokenCount || 0
+        },
+        metadata: {}
+    };
   }
 
   /**
    * Light-touch grammar/spelling correction. Preserves HTML structure
    * and the author's voice — no rewriting, no expansion.
    */
-  static async correctGrammar(body: string): Promise<string> {
+  static async correctGrammar(body: string): Promise<AIResponse<string>> {
     const input = (body || "").trim();
-    if (!input) return "";
+    if (!input) return { data: "", provider: "gemini", model: MODEL, usage: { promptTokens: 0, completionTokens: 0 }, metadata: {} };
 
     const model = genAI.getGenerativeModel({ model: MODEL });
     const prompt = `
@@ -82,6 +94,17 @@ Return ONLY the corrected HTML.
     const result = await model.generateContent(prompt);
     const raw = result.response.text() || "";
     const cleaned = stripCodeFences(raw);
-    return cleaned || input;
+
+    const usageMetadata = result.response.usageMetadata || { promptTokenCount: 0, candidatesTokenCount: 0 };
+    return {
+        data: cleaned || input,
+        provider: "gemini",
+        model: MODEL,
+        usage: {
+            promptTokens: usageMetadata.promptTokenCount || 0,
+            completionTokens: usageMetadata.candidatesTokenCount || 0
+        },
+        metadata: {}
+    };
   }
 }

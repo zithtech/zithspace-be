@@ -22,6 +22,8 @@ import { socketService } from "@/services/socketService";
 import cacheService from "@/utils/cacheService";
 import { generateTicketDraft, generateSubtasks } from "@/services/aiTicketService";
 import { entitlementService, EntitlementError } from "@/services/EntitlementService";
+import { AIPricingEngine } from "@/ai/pricing/AIPricingEngine";
+import { AIFeature } from "@/ai/types/AIFeature";
 import {
   recordTransaction,
   diffShallow,
@@ -657,12 +659,14 @@ export class TicketController {
       }
 
       await entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
-      const { draft, source, fallbackReason } = await generateTicketDraft(seed);
-      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month');
+      const aiResponse = await generateTicketDraft(seed);
+      const draft = aiResponse.data;
+      const pricingResult = await AIPricingEngine.calculate(aiResponse);
+      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature.TICKET_ANALYSIS, pricingResult);
 
       res.status(200).json({
         success: true,
-        data: { ...draft, source, fallbackReason },
+        data: { ...draft, source: aiResponse.provider, fallbackReason: aiResponse.metadata?.finishReason },
         message: "Ticket draft generated",
       } as ApiResponse);
     } catch (error: any) {
@@ -708,8 +712,10 @@ export class TicketController {
       }
 
       await entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
-      const result = await generateSubtasks({ description: seed, count, hoursEach });
-      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month');
+      const aiResponse = await generateSubtasks({ description: seed, count, hoursEach });
+      const result = aiResponse.data;
+      const pricingResult = await AIPricingEngine.calculate(aiResponse);
+      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature.TICKET_ANALYSIS, pricingResult);
 
       res.status(200).json({
         success: true,

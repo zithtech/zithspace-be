@@ -8,6 +8,8 @@ import {
 } from "@/services/sprintReportAiService";
 import { SprintReportExportService } from "@/services/sprintReportExportService";
 import { entitlementService, EntitlementError } from "@/services/EntitlementService";
+import { AIPricingEngine } from "@/ai/pricing/AIPricingEngine";
+import { AIFeature } from "@/ai/types/AIFeature";
 import {
   recordTransaction,
   Section,
@@ -1900,10 +1902,12 @@ export class SprintReportController {
 
       await entitlementService.checkLimit(tenantId!, 'ai_credits_month');
 
-      const narrative = await SprintReportAiService.generateNarrative(context);
+      const aiResponse = await SprintReportAiService.generateNarrative(context);
+      const narrative = aiResponse.data;
+      const pricingResult = await AIPricingEngine.calculate(aiResponse);
       const predictions = SprintReportAiService.buildPredictions(context);
 
-      await entitlementService.incrementUsage(tenantId!, 'ai_credits_month');
+      await entitlementService.incrementUsage(tenantId!, 'ai_credits_month', AIFeature.SPRINT_SUMMARY, pricingResult);
 
       await pool.query(
         `INSERT INTO sprint_report_ai_narratives

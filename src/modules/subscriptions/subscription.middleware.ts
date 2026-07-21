@@ -20,6 +20,17 @@ export const validateSubscriptionStatus = async (req: AuthRequest, res: Response
       return;
     }
 
+    // IMPORTANT: Allow bypass for critical routes so users can actually renew!
+    const bypassPaths = [
+      '/api/payments',
+      '/api/plans',
+      '/api/subscriptions/tenant'
+    ];
+
+    if (bypassPaths.some(path => req.originalUrl.includes(path))) {
+      return next();
+    }
+
     // Read subscription from cache (falls back to Admin API on miss)
     const subscription = await subscriptionService.getTenantSubscription(tenantId);
 

@@ -1,4 +1,5 @@
-import { APP_STRUCTURE } from '../../config/app-structure';
+// Import types only
+import { ICore } from '../../config/app-structure';
 import { MetadataValidator } from './metadata.validator';
 import { metadataRepository } from './metadata.repository';
 import { MetadataPublisher } from './metadata.publisher';
@@ -10,8 +11,13 @@ export class MetadataSyncService {
     console.log('[Metadata Sync] Starting synchronization...');
     console.log('[Metadata Sync] Reading metadata configuration...');
     
+    // Dynamically require and bust cache to ensure we get the latest structure without server restart
+    const appStructurePath = require.resolve('../../config/app-structure');
+    delete require.cache[appStructurePath];
+    const { APP_STRUCTURE } = require('../../config/app-structure') as { APP_STRUCTURE: ICore[] };
+
     // 1. Validate Structure
-    MetadataValidator.validateAppStructure();
+    MetadataValidator.validate(APP_STRUCTURE);
 
     let changesOccurred = false;
 

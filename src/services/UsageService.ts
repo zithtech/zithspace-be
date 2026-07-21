@@ -1,4 +1,6 @@
 import pool from '../config/dbpool';
+import { AIFeature } from '../ai/types/AIFeature';
+import { PricingResult } from '../ai/interfaces/PricingResult';
 
 export class UsageService {
   /**
@@ -31,6 +33,9 @@ export class UsageService {
         break;
       case 'leads':
         query = 'SELECT COUNT(*) FROM leads WHERE tenant_id = $1';
+        break;
+      case 'client_portal_users':
+        query = 'SELECT COUNT(*) FROM client_portal_users WHERE tenant_id = $1';
         break;
       default:
         return 0;
@@ -68,17 +73,46 @@ export class UsageService {
     }
   }
 
-  async increment(tenantId: string, limitKey: string, amount: number = 1): Promise<void> {
+  async increment(tenantId: string, limitKey: string, feature: AIFeature, pricing: PricingResult): Promise<void> {
     const period = this.getCurrentPeriod(limitKey);
+    const client = await pool.connect();
+    
     try {
-        await pool.query(`
+        await client.query('BEGIN');
+
+        // 1. Atomic upsert to tenant_usage
+        await client.query(`
         INSERT INTO tenant_usage (tenant_id, usage_key, period, used)
         VALUES ($1, $2, $3, $4)
         ON CONFLICT (tenant_id, usage_key, period) 
         DO UPDATE SET used = tenant_usage.used + EXCLUDED.used, updated_at = CURRENT_TIMESTAMP
-        `, [tenantId, limitKey, period, amount]);
+        `, [tenantId, limitKey, period, pricing.credits]);
+
+        // 2. Insert audit log into usage_events
+        await client.query(`
+        INSERT INTO usage_events (
+            tenant_id, feature, credits, ai_request_id, provider, model, 
+            prompt_tokens, completion_tokens, provider_cost
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `, [
+            tenantId, 
+            feature, 
+            pricing.credits,
+            pricing.aiRequestId || null,
+            pricing.provider,
+            pricing.model,
+            pricing.promptTokens,
+            pricing.completionTokens,
+            pricing.providerCost
+        ]);
+
+        await client.query('COMMIT');
     } catch (err) {
+        await client.query('ROLLBACK');
         console.error('Failed to increment usage', err);
+        throw err;
+    } finally {
+        client.release();
     }
   }
 
