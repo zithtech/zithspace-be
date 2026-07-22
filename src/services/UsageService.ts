@@ -25,9 +25,13 @@ export class UsageService {
       case 'members':
         query = 'SELECT COUNT(*) FROM users WHERE tenant_id = $1 AND (is_deleted = false OR is_deleted IS NULL)';
         break;
-      case 'clients':
-        query = 'SELECT COUNT(*) FROM clients WHERE tenant_id = $1';
-        break;
+      case 'clients': {
+        let count = 0;
+        try { count += parseInt((await pool.query('SELECT COUNT(*) FROM clients WHERE tenant_id = $1', [tenantId])).rows[0].count, 10); } catch(e) {}
+        try { count += parseInt((await pool.query('SELECT COUNT(*) FROM clients_v2 WHERE tenant_id = $1', [tenantId])).rows[0].count, 10); } catch(e) {}
+        try { count += parseInt((await pool.query('SELECT COUNT(*) FROM "RecruitmentClient" WHERE "tenantId" = $1', [tenantId])).rows[0].count, 10); } catch(e) {}
+        return count;
+      }
       case 'projects':
         query = 'SELECT COUNT(*) FROM projects WHERE tenant_id = $1';
         break;
