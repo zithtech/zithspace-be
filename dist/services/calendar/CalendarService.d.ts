@@ -81,8 +81,8 @@ export declare class CalendarService {
         endTime: Date;
         location: string | null;
         provider: import(".prisma/client").$Enums.CalendarProvider;
-        attendees: import("@prisma/client/runtime/library").JsonValue | null;
         calendarId: string | null;
+        attendees: import("@prisma/client/runtime/library").JsonValue | null;
         isRecurring: boolean | null;
         externalId: string;
         isAllDay: boolean | null;
