@@ -98,7 +98,7 @@ class DocumentHubController {
                 });
                 return;
             }
-            const { draft, source, fallbackReason } = await (0, aiDocumentService_1.generateDocumentDraft)(seed);
+            const { draft, source, fallbackReason } = await (0, aiDocumentService_1.generateDocumentDraft)(seed, req.tenantId);
             res.status(200).json({
                 success: true,
                 data: { ...draft, source, fallbackReason },
@@ -158,7 +158,7 @@ class DocumentHubController {
                 });
                 return;
             }
-            const result = await (0, aiDocumentService_1.rewriteSelection)(cleanText, cleanInstruction);
+            const result = await (0, aiDocumentService_1.rewriteSelection)(cleanText, cleanInstruction, req.tenantId);
             res.status(200).json({
                 success: true,
                 data: result,

@@ -5,6 +5,7 @@ const auth_1 = require("@/middleware/auth");
 const tenantContext_1 = require("@/middleware/tenantContext");
 const documentHubController_1 = require("@/controllers/documentHubController");
 const permission_1 = require("@/middleware/permission");
+const aiAccess_1 = require("@/middleware/aiAccess");
 const permissions_1 = require("@/types/permissions");
 const router = (0, express_1.Router)();
 // Apply tenant context resolution to all routes
@@ -18,14 +19,14 @@ router.use(auth_1.requireAuth);
  *          mock fallback). Does not persist; client creates the hub afterwards.
  * @access  Private (DOCUMENT_CREATE)
  */
-router.post("/ai-generate", (0, permission_1.requirePermission)(permissions_1.Permissions.DOCUMENT_CREATE), documentHubController_1.DocumentHubController.aiGenerateDocument);
+router.post("/ai-generate", (0, permission_1.requirePermission)(permissions_1.Permissions.DOCUMENT_CREATE), aiAccess_1.requireAiAccess, documentHubController_1.DocumentHubController.aiGenerateDocument);
 /**
  * @route   POST /api/documenthub/ai-rewrite
  * @desc    Rewrite a selected excerpt of a document per a user instruction.
  *          Used by the inline Zai menu in the editor.
  * @access  Private (DOCUMENT_UPDATE)
  */
-router.post("/ai-rewrite", (0, permission_1.requirePermission)(permissions_1.Permissions.DOCUMENT_UPDATE), documentHubController_1.DocumentHubController.aiRewriteSelection);
+router.post("/ai-rewrite", (0, permission_1.requirePermission)(permissions_1.Permissions.DOCUMENT_UPDATE), aiAccess_1.requireAiAccess, documentHubController_1.DocumentHubController.aiRewriteSelection);
 /**
  * @route   GET /api/documenthub
  * @desc    Get all document hubs
