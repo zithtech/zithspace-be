@@ -102,5 +102,12 @@ router.patch('/:id/activate', (0, permission_1.requirePermission)(permissions_1.
  * @body    { shiftId: string }
  */
 router.patch('/:id/assign-shift', (0, permission_1.requirePermission)(permissions_1.Permissions.USER_MANAGE), userController_1.UserController.assignShift);
+/**
+ * @route   PATCH /api/members/:id/ai-access
+ * @desc    Toggle a member's AI access (users.ai_enabled)
+ * @access  Private (admin only)
+ * @body    { enabled: boolean }
+ */
+router.patch('/:id/ai-access', (0, permission_1.requirePermission)(permissions_1.Permissions.USER_MANAGE), userController_1.UserController.setAiAccess);
 exports.default = router;
 //# sourceMappingURL=members.js.map
