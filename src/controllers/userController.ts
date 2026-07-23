@@ -411,6 +411,7 @@ export class UserController {
         assignedShiftId: userData.assignedShiftId || null,
         isActive: userData.isActive !== undefined ? userData.isActive : true,
         minWorkingHours: userData.minWorkingHours !== undefined ? Number(userData.minWorkingHours) : 6,
+        employeeId: userData.employeeId || null,
       });
 
       // Load the newly created member with relation details using raw SELECT query
