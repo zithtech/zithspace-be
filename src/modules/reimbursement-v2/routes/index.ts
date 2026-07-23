@@ -14,6 +14,7 @@ import approvalRoutes from './approval.routes';
 import financeRoutes from './finance.routes';
 import budgetRoutes from './budget.routes';
 import reportRoutes from './report.routes';
+import settingsRoutes from './reimbursementSettings.routes';
 
 const router = express.Router();
 
@@ -29,5 +30,7 @@ router.use('/approvals', approvalRoutes);
 router.use('/finance', financeRoutes);
 router.use('/budgets', budgetRoutes);
 router.use('/reports', reportRoutes);
+router.use('/settings', settingsRoutes);
 
 export default router;
+
