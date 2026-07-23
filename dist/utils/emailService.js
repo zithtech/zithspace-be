@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -317,58 +350,80 @@ This is an automated mail, please do not reply.`;
     }
     async sendEmail(options, tenantId) {
         try {
-            // Initialize transporter with tenant-specific mail configuration
-            await this.initializeTransporter(tenantId);
-            if (!this.transporter) {
-                // Log to console if transporter is not configured
-                console.log("\n📧 EMAIL NOTIFICATION (Not Sent - No SMTP Config):");
+            // ─── FLOW 1: Zoho OAuth Integration (if connected) ───────────────────────
+            // Check if a Zoho mail account is connected for this tenant via OAuth.
+            // If yes, use the ZohoMailProvider (OAuth token-based) — no passwords needed.
+            if (tenantId) {
+                try {
+                    const zohoAccount = await database_1.prisma.mail_accounts.findFirst({
+                        where: {
+                            tenant_id: tenantId,
+                            provider: 'ZOHO',
+                            is_active: true,
+                        }
+                    });
+                    if (zohoAccount) {
+                        console.log(`✅ Zoho Mail integration found: ${zohoAccount.email}. Sending via Zoho OAuth.`);
+                        const { UnifiedAuthService } = await Promise.resolve().then(() => __importStar(require('../services/UnifiedAuthService')));
+                        const { ZohoMailProvider } = await Promise.resolve().then(() => __importStar(require('../services/mail/providers/ZohoMailProvider')));
+                        const accessToken = await UnifiedAuthService.getValidAccessToken(zohoAccount.user_id, 'ZOHO');
+                        const provider = new ZohoMailProvider();
+                        const fromName = process.env.SMTP_FROM_NAME || 'ZithSpace';
+                        const fromAddress = zohoAccount.email;
+                        await provider.sendMessage(accessToken, {
+                            from: `"${fromName}" <${fromAddress}>`,
+                            to: options.to ? options.to.split(',').map((e) => e.trim()) : [],
+                            cc: options.cc ? options.cc.split(',').map((e) => e.trim()) : undefined,
+                            subject: options.subject,
+                            body: options.text,
+                            htmlBody: options.html,
+                        });
+                        console.log(`✅ Email sent via Zoho OAuth - From: ${fromAddress}, To: ${options.to}`);
+                        if (options.replyTo)
+                            console.log(`📧 Reply-To: ${options.replyTo}`);
+                        return true;
+                    }
+                    else {
+                        console.log(`ℹ️  No connected Zoho Mail integration found for tenant ${tenantId}. Falling back to system transporter.`);
+                    }
+                }
+                catch (zohoError) {
+                    console.warn(`⚠️ Zoho OAuth send failed, falling back to system transporter:`, zohoError);
+                }
+            }
+            // ─── FLOW 2: System SMTP Transporter (fallback) ───────────────────────────
+            // Use centralized system transporter (SYSTEM_EMAIL / SYSTEM_APP_PASSWORD)
+            await this.initializeSystemTransporter();
+            const transporter = this.systemTransporter;
+            if (!transporter) {
+                console.log("\n📧 EMAIL NOTIFICATION (Not Sent - No System SMTP Config):");
                 console.log("To:", options.to);
                 console.log("Subject:", options.subject);
                 console.log("Body:", options.text || options.html);
                 console.log("---\n");
                 return true;
             }
-            let fromAddress = options.from;
-            console.log("🔍 Initial from address:", fromAddress);
-            // When using mail configuration, always use the SMTP username as from address
-            // to prevent relay errors, regardless of any custom from address provided
-            if (tenantId) {
-                console.log("🔍 Using mail configuration for tenant:", tenantId);
-                try {
-                    const mailConfig = await (0, mailConfiguration_model_1.getActiveMailConfiguration)(tenantId);
-                    if (mailConfig) {
-                        // Use the SMTP username as the from address to prevent relay errors
-                        // Most SMTP servers require the from address to match the authenticated user
-                        fromAddress = mailConfig.smtpUsername;
-                        console.log(`✅ Overriding with SMTP username as from address: ${fromAddress}`);
-                    }
-                    else {
-                        console.log("❌ No mail configuration found for from address");
-                    }
-                }
-                catch (error) {
-                    console.warn("❌ Could not get mail configuration for from address:", error);
-                }
-            }
-            // Fallback to environment variables if no mail config
-            if (!fromAddress) {
-                console.log("⚠️ Falling back to environment variables for from address");
-                fromAddress = process.env.SMTP_USER || `"${process.env.SMTP_FROM_NAME || "Zukvo"}" <${process.env.SMTP_FROM_EMAIL || "noreply@zukvo.com"}>`;
-                console.log(`📧 Using fallback from address: ${fromAddress}`);
-            }
+            // From address is always the system/office email (owner@zithtech.com)
+            // Reply-To is the employee's email so managers can reply directly to them
+            const fromAddress = process.env.SYSTEM_EMAIL || process.env.SMTP_FROM_EMAIL || "noreply@zithtech.com";
+            const fromName = process.env.SMTP_FROM_NAME || "ZithSpace";
             const mailOptions = {
-                from: fromAddress,
+                from: `"${fromName}" <${fromAddress}>`,
+                replyTo: options.replyTo,
                 to: options.to,
+                cc: options.cc,
                 subject: options.subject,
                 html: options.html,
                 text: options.text,
                 attachments: options.attachments
             };
-            console.log(`📧 Preparing to send email - From: ${mailOptions.from}, To: ${mailOptions.to}`);
-            const info = await this.transporter.sendMail(mailOptions);
+            console.log(`📧 Sending via System SMTP Transporter - From: ${fromAddress}, To: ${mailOptions.to}`);
+            const info = await transporter.sendMail(mailOptions);
             console.log("✅ Email sent successfully:", info.messageId);
-            console.log(`📧 From: ${mailOptions.from}`);
+            console.log(`📧 From: ${fromAddress}`);
             console.log(`📧 To: ${mailOptions.to}`);
+            if (options.replyTo)
+                console.log(`📧 Reply-To: ${options.replyTo}`);
             return true;
         }
         catch (error) {
@@ -489,7 +544,7 @@ ${data.reason}
 
 Please log in to review and approve/reject this request.
     `;
-        return this.sendEmail({ to: data.to, subject, html, text }, tenantId);
+        return this.sendEmail({ to: data.to, cc: data.cc, replyTo: data.replyTo, subject, html, text }, tenantId);
     }
     async sendLeaveApprovalEmail(data, tenantId) {
         const subject = `✅ Your Leave Request has been Approved`;
@@ -646,6 +701,252 @@ ${data.rejectionReason}
 
 If you have any questions or concerns, please contact your manager or HR department.
     `;
+        return this.sendEmail({ to: data.to, subject, html, text }, tenantId);
+    }
+    // ═══════════════════════════════════════════════════════════════════════════
+    // REIMBURSEMENT EMAIL METHODS
+    // ═══════════════════════════════════════════════════════════════════════════
+    async sendClaimSubmissionEmail(data, tenantId) {
+        const subject = `💼 New Expense Claim from ${data.employeeName} — ${data.claimNo}`;
+        const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background-color: #722ed1; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+          .content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; border-radius: 0 0 5px 5px; }
+          .detail-row { margin: 12px 0; padding: 10px; background-color: white; border-left: 3px solid #722ed1; }
+          .label { font-weight: bold; color: #555; }
+          .value { color: #333; margin-left: 10px; }
+          .amount-box { background-color: #f3e8ff; border: 1px solid #d3adf7; padding: 15px; margin: 20px 0; border-radius: 5px; text-align: center; }
+          .footer { text-align: center; margin-top: 20px; color: #777; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header"><h2>💼 New Expense Claim Submitted</h2></div>
+          <div class="content">
+            <p>Hi <strong>${data.managerName}</strong>,</p>
+            <p><strong>${data.employeeName}</strong> has submitted an expense claim for your review and approval.</p>
+            <div class="detail-row"><span class="label">Claim No:</span><span class="value">${data.claimNo}</span></div>
+            ${data.title ? `<div class="detail-row"><span class="label">Title:</span><span class="value">${data.title}</span></div>` : ''}
+            <div class="detail-row"><span class="label">Employee:</span><span class="value">${data.employeeName} (${data.employeeEmail})</span></div>
+            <div class="detail-row"><span class="label">No. of Items:</span><span class="value">${data.itemCount}</span></div>
+            <div class="amount-box">
+              <div style="font-size:13px;color:#555;">Total Claim Amount</div>
+              <div style="font-size:26px;font-weight:bold;color:#722ed1;">${data.currency} ${data.totalAmount.toFixed(2)}</div>
+            </div>
+            <p>Please log in to review and approve or reject this claim.</p>
+          </div>
+          <div class="footer"><p>This is an automated notification from ZithSpace Reimbursement.</p></div>
+        </div>
+      </body>
+      </html>
+    `;
+        const text = `New Expense Claim from ${data.employeeName}\n\nClaim No: ${data.claimNo}\nEmployee: ${data.employeeName} (${data.employeeEmail})\nItems: ${data.itemCount}\nTotal: ${data.currency} ${data.totalAmount.toFixed(2)}\n\nPlease log in to approve or reject this claim.`;
+        return this.sendEmail({ to: data.to, cc: data.cc, replyTo: data.replyTo, subject, html, text }, tenantId);
+    }
+    async sendClaimApprovalEmail(data, tenantId) {
+        const subject = `✅ Your Expense Claim ${data.claimNo} has been Approved`;
+        const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background-color: #52c41a; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+          .content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; border-radius: 0 0 5px 5px; }
+          .detail-row { margin: 12px 0; padding: 10px; background-color: white; border-left: 3px solid #52c41a; }
+          .label { font-weight: bold; color: #555; }
+          .value { color: #333; margin-left: 10px; }
+          .success-box { background-color: #d4edda; border: 1px solid #c3e6cb; padding: 15px; margin: 20px 0; border-radius: 5px; text-align: center; }
+          .footer { text-align: center; margin-top: 20px; color: #777; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header"><h2>✅ Expense Claim Approved</h2></div>
+          <div class="content">
+            <p>Hi <strong>${data.employeeName}</strong>,</p>
+            <p>Your expense claim has been approved by <strong>${data.approverName}</strong>.</p>
+            <div class="detail-row"><span class="label">Claim No:</span><span class="value">${data.claimNo}</span></div>
+            ${data.title ? `<div class="detail-row"><span class="label">Title:</span><span class="value">${data.title}</span></div>` : ''}
+            <div class="success-box">
+              <div style="font-size:13px;color:#155724;">Approved Amount</div>
+              <div style="font-size:26px;font-weight:bold;color:#155724;">${data.currency} ${data.totalAmount.toFixed(2)}</div>
+            </div>
+            ${data.remarks ? `<div class="detail-row"><span class="label">Remarks:</span><span class="value">${data.remarks}</span></div>` : ''}
+            <p>Your claim has been approved and will be processed for payment soon.</p>
+          </div>
+          <div class="footer"><p>This is an automated notification from ZithSpace Reimbursement.</p></div>
+        </div>
+      </body>
+      </html>
+    `;
+        const text = `Your Expense Claim ${data.claimNo} has been Approved\n\nHi ${data.employeeName},\n\nYour claim has been approved by ${data.approverName}.\nAmount: ${data.currency} ${data.totalAmount.toFixed(2)}\n${data.remarks ? `Remarks: ${data.remarks}\n` : ''}`;
+        return this.sendEmail({ to: data.to, subject, html, text }, tenantId);
+    }
+    async sendClaimRejectionEmail(data, tenantId) {
+        const statusLabel = data.status === 'sent_back' ? 'Sent Back for Revision' : data.status === 'cancelled' ? 'Cancelled' : 'Rejected';
+        const headerColor = data.status === 'sent_back' ? '#fa8c16' : '#ff4d4f';
+        const subject = `${data.status === 'sent_back' ? '🔄' : '❌'} Your Expense Claim ${data.claimNo} has been ${statusLabel}`;
+        const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background-color: ${headerColor}; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+          .content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; border-radius: 0 0 5px 5px; }
+          .detail-row { margin: 12px 0; padding: 10px; background-color: white; border-left: 3px solid ${headerColor}; }
+          .label { font-weight: bold; color: #555; }
+          .value { color: #333; margin-left: 10px; }
+          .remarks-box { background-color: #f8d7da; border: 1px solid #f5c6cb; padding: 15px; margin: 20px 0; border-radius: 5px; }
+          .footer { text-align: center; margin-top: 20px; color: #777; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header"><h2>Claim ${statusLabel}</h2></div>
+          <div class="content">
+            <p>Hi <strong>${data.employeeName}</strong>,</p>
+            <p>Your expense claim has been <strong>${statusLabel.toLowerCase()}</strong>${data.approverName ? ` by <strong>${data.approverName}</strong>` : ''}.</p>
+            <div class="detail-row"><span class="label">Claim No:</span><span class="value">${data.claimNo}</span></div>
+            ${data.title ? `<div class="detail-row"><span class="label">Title:</span><span class="value">${data.title}</span></div>` : ''}
+            <div class="detail-row"><span class="label">Amount:</span><span class="value">${data.currency} ${data.totalAmount.toFixed(2)}</span></div>
+            ${data.remarks ? `<div class="remarks-box"><strong>Remarks:</strong><br/>${data.remarks}</div>` : ''}
+            <p>If you have any questions, please contact your manager or HR department.</p>
+          </div>
+          <div class="footer"><p>This is an automated notification from ZithSpace Reimbursement.</p></div>
+        </div>
+      </body>
+      </html>
+    `;
+        const text = `Your Expense Claim ${data.claimNo} has been ${statusLabel}\n\nAmount: ${data.currency} ${data.totalAmount.toFixed(2)}\n${data.remarks ? `Remarks: ${data.remarks}` : ''}`;
+        return this.sendEmail({ to: data.to, subject, html, text }, tenantId);
+    }
+    async sendAdvanceSubmissionEmail(data, tenantId) {
+        const subject = `💰 New Advance Request from ${data.employeeName} — ${data.advanceNo}`;
+        const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background-color: #1677ff; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+          .content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; border-radius: 0 0 5px 5px; }
+          .detail-row { margin: 12px 0; padding: 10px; background-color: white; border-left: 3px solid #1677ff; }
+          .label { font-weight: bold; color: #555; }
+          .value { color: #333; margin-left: 10px; }
+          .amount-box { background-color: #e6f4ff; border: 1px solid #91d5ff; padding: 15px; margin: 20px 0; border-radius: 5px; text-align: center; }
+          .footer { text-align: center; margin-top: 20px; color: #777; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header"><h2>💰 New Advance Request</h2></div>
+          <div class="content">
+            <p>Hi <strong>${data.managerName}</strong>,</p>
+            <p><strong>${data.employeeName}</strong> has requested a cash advance that requires your approval.</p>
+            <div class="detail-row"><span class="label">Advance No:</span><span class="value">${data.advanceNo}</span></div>
+            <div class="detail-row"><span class="label">Employee:</span><span class="value">${data.employeeName} (${data.employeeEmail})</span></div>
+            ${data.purpose ? `<div class="detail-row"><span class="label">Purpose:</span><span class="value">${data.purpose}</span></div>` : ''}
+            ${data.neededBy ? `<div class="detail-row"><span class="label">Needed By:</span><span class="value">${data.neededBy}</span></div>` : ''}
+            <div class="amount-box">
+              <div style="font-size:13px;color:#0050b3;">Requested Amount</div>
+              <div style="font-size:26px;font-weight:bold;color:#1677ff;">${data.currency} ${data.amount.toFixed(2)}</div>
+            </div>
+            <p>Please log in to approve or reject this advance request.</p>
+          </div>
+          <div class="footer"><p>This is an automated notification from ZithSpace Reimbursement.</p></div>
+        </div>
+      </body>
+      </html>
+    `;
+        const text = `New Advance Request from ${data.employeeName}\n\nAdvance No: ${data.advanceNo}\nEmployee: ${data.employeeName} (${data.employeeEmail})\nAmount: ${data.currency} ${data.amount.toFixed(2)}\n${data.purpose ? `Purpose: ${data.purpose}\n` : ''}${data.neededBy ? `Needed By: ${data.neededBy}\n` : ''}\nPlease log in to approve or reject.`;
+        return this.sendEmail({ to: data.to, cc: data.cc, replyTo: data.replyTo, subject, html, text }, tenantId);
+    }
+    async sendAdvanceApprovalEmail(data, tenantId) {
+        const subject = `✅ Your Advance Request ${data.advanceNo} has been Approved`;
+        const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background-color: #52c41a; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+          .content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; border-radius: 0 0 5px 5px; }
+          .detail-row { margin: 12px 0; padding: 10px; background-color: white; border-left: 3px solid #52c41a; }
+          .label { font-weight: bold; color: #555; }
+          .value { color: #333; margin-left: 10px; }
+          .success-box { background-color: #d4edda; border: 1px solid #c3e6cb; padding: 15px; margin: 20px 0; border-radius: 5px; text-align: center; }
+          .footer { text-align: center; margin-top: 20px; color: #777; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header"><h2>✅ Advance Request Approved</h2></div>
+          <div class="content">
+            <p>Hi <strong>${data.employeeName}</strong>,</p>
+            <p>Your advance request has been approved by <strong>${data.approverName}</strong>.</p>
+            <div class="detail-row"><span class="label">Advance No:</span><span class="value">${data.advanceNo}</span></div>
+            <div class="success-box">
+              <div style="font-size:13px;color:#155724;">Approved Amount</div>
+              <div style="font-size:26px;font-weight:bold;color:#155724;">${data.currency} ${data.amount.toFixed(2)}</div>
+            </div>
+            ${data.remarks ? `<div class="detail-row"><span class="label">Remarks:</span><span class="value">${data.remarks}</span></div>` : ''}
+            <p>Your advance will be processed for payment shortly.</p>
+          </div>
+          <div class="footer"><p>This is an automated notification from ZithSpace Reimbursement.</p></div>
+        </div>
+      </body>
+      </html>
+    `;
+        const text = `Your Advance Request ${data.advanceNo} has been Approved\n\nAmount: ${data.currency} ${data.amount.toFixed(2)}\n${data.remarks ? `Remarks: ${data.remarks}` : ''}`;
+        return this.sendEmail({ to: data.to, subject, html, text }, tenantId);
+    }
+    async sendAdvanceRejectionEmail(data, tenantId) {
+        const statusLabel = data.status === 'cancelled' ? 'Cancelled' : 'Rejected';
+        const subject = `❌ Your Advance Request ${data.advanceNo} has been ${statusLabel}`;
+        const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background-color: #ff4d4f; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+          .content { background-color: #f9f9f9; padding: 30px; border: 1px solid #ddd; border-radius: 0 0 5px 5px; }
+          .detail-row { margin: 12px 0; padding: 10px; background-color: white; border-left: 3px solid #ff4d4f; }
+          .label { font-weight: bold; color: #555; }
+          .value { color: #333; margin-left: 10px; }
+          .remarks-box { background-color: #f8d7da; border: 1px solid #f5c6cb; padding: 15px; margin: 20px 0; border-radius: 5px; }
+          .footer { text-align: center; margin-top: 20px; color: #777; font-size: 12px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header"><h2>Advance Request ${statusLabel}</h2></div>
+          <div class="content">
+            <p>Hi <strong>${data.employeeName}</strong>,</p>
+            <p>Your advance request has been <strong>${statusLabel.toLowerCase()}</strong>${data.approverName ? ` by <strong>${data.approverName}</strong>` : ''}.</p>
+            <div class="detail-row"><span class="label">Advance No:</span><span class="value">${data.advanceNo}</span></div>
+            <div class="detail-row"><span class="label">Amount:</span><span class="value">${data.currency} ${data.amount.toFixed(2)}</span></div>
+            ${data.remarks ? `<div class="remarks-box"><strong>Remarks:</strong><br/>${data.remarks}</div>` : ''}
+            <p>If you have any questions, please contact your manager or HR department.</p>
+          </div>
+          <div class="footer"><p>This is an automated notification from ZithSpace Reimbursement.</p></div>
+        </div>
+      </body>
+      </html>
+    `;
+        const text = `Your Advance Request ${data.advanceNo} has been ${statusLabel}\n\nAmount: ${data.currency} ${data.amount.toFixed(2)}\n${data.remarks ? `Remarks: ${data.remarks}` : ''}`;
         return this.sendEmail({ to: data.to, subject, html, text }, tenantId);
     }
     static generateInvoiceHtml(data) {
