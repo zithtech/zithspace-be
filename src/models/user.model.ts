@@ -488,8 +488,8 @@ export class UserModel {
    */
   static async createDepartment(data: { id: string; tenantId: string; code: string; name: string; createdById: string; isActive: boolean }): Promise<any> {
     const query = `
-      INSERT INTO "departments" (id, tenant_id, code, name, created_by_id, is_active)
-      VALUES ($1, $2, $3, $4, $5, $6)
+      INSERT INTO "departments" (id, tenant_id, code, name, created_by_id, is_active, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
       RETURNING id;
     `;
     try {
@@ -524,8 +524,8 @@ export class UserModel {
    */
   static async createSubDepartment(data: { id: string; tenantId: string; parentDepartmentId: string; code: string; name: string; createdById: string; isActive: boolean }): Promise<any> {
     const query = `
-      INSERT INTO "sub_departments" (id, tenant_id, parent_department_id, code, name, created_by_id, is_active)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO "sub_departments" (id, tenant_id, parent_department_id, code, name, created_by_id, is_active, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
       RETURNING id;
     `;
     try {
@@ -560,8 +560,8 @@ export class UserModel {
    */
   static async createGrade(data: { id: string; tenantId: string; code: string; name: string; levelOrder: number; createdById: string; isActive: boolean }): Promise<any> {
     const query = `
-      INSERT INTO "grades" (id, tenant_id, code, name, level_order, created_by_id, is_active)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO "grades" (id, tenant_id, code, name, level_order, created_by_id, is_active, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
       RETURNING id, code;
     `;
     try {
@@ -579,7 +579,7 @@ export class UserModel {
   static async updateGradeCode(id: string, code: string): Promise<any> {
     const query = `
       UPDATE "grades"
-      SET code = $1
+      SET code = $1, updated_at = CURRENT_TIMESTAMP
       WHERE id = $2
       RETURNING id, code;
     `;
@@ -597,8 +597,8 @@ export class UserModel {
    */
   static async createPosition(data: { id: string; tenantId: string; code: string; title: string; departmentId: string; subDepartmentId?: string | null; gradeId: string; createdById: string; updatedById: string; isActive: boolean }): Promise<any> {
     const query = `
-      INSERT INTO "positions" (id, tenant_id, code, title, department_id, sub_department_id, grade_id, created_by_id, updated_by_id, is_active)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      INSERT INTO "positions" (id, tenant_id, code, title, department_id, sub_department_id, grade_id, created_by_id, updated_by_id, is_active, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP)
       RETURNING id;
     `;
     try {
