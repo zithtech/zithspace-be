@@ -3,7 +3,7 @@
 // Static paths (/pending, /payable) are declared before /:id so they match first.
 
 import express from 'express';
-import { requirePermission } from '@/middleware/permission';
+import { requirePermission, requireAnyPermission } from '@/middleware/permission';
 import { Permissions } from '@/types/permissions';
 import * as ctrl from '../controllers/advance.controller';
 
@@ -14,9 +14,9 @@ router.get('/pending', requirePermission(Permissions.REIMBURSEMENT_APPROVE), ctr
 router.get('/payable', requirePermission(Permissions.REIMBURSEMENT_PAY), ctrl.listPayable);
 
 // self-service
-router.get('/', requirePermission(Permissions.REIMBURSEMENT_READ), ctrl.listMine);
+router.get('/', requireAnyPermission(Permissions.REIMBURSEMENT_READ, Permissions.MY_HUB_CLAIMS_READ), ctrl.listMine);
 router.post('/', requirePermission(Permissions.REIMBURSEMENT_CREATE), ctrl.request);
-router.get('/:id', requirePermission(Permissions.REIMBURSEMENT_READ), ctrl.getMine);
+router.get('/:id', requireAnyPermission(Permissions.REIMBURSEMENT_READ, Permissions.MY_HUB_CLAIMS_READ), ctrl.getMine);
 router.post('/:id/cancel', requirePermission(Permissions.REIMBURSEMENT_READ), ctrl.cancel);
 
 // manager decisions
