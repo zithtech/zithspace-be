@@ -866,8 +866,14 @@ class TicketController {
                     where.type = type;
                 }
             }
-            if (projectId)
-                where.projectId = projectId;
+            if (projectId) {
+                if (typeof projectId === "string" && projectId.includes(",")) {
+                    where.projectId = { in: projectId.split(",").map((id) => id.trim()) };
+                }
+                else {
+                    where.projectId = projectId;
+                }
+            }
             // Handle single or multiple assignees
             if (assigneeId) {
                 if (typeof assigneeId === "string") {
@@ -1126,6 +1132,7 @@ class TicketController {
                     },
                     // Include subtasks for the UI
                     subTasks: {
+                        where: { isDeleted: false },
                         select: {
                             id: true,
                             ticketNumber: true,
@@ -3527,6 +3534,7 @@ class TicketController {
                             },
                             // Get sub-tasks for each story
                             subTasks: {
+                                where: { isDeleted: false },
                                 select: {
                                     id: true,
                                     ticketNumber: true,

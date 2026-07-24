@@ -3,6 +3,8 @@ interface LeaveApplicationEmailData {
     managerName: string;
     employeeName: string;
     employeeEmail: string;
+    cc?: string;
+    replyTo?: string;
     leaveType: string;
     startDate: string;
     endDate: string;
@@ -72,6 +74,72 @@ export declare class EmailService {
     sendLeaveApplicationEmail(data: LeaveApplicationEmailData, tenantId?: string): Promise<boolean>;
     sendLeaveApprovalEmail(data: LeaveApprovalEmailData, tenantId?: string): Promise<boolean>;
     sendLeaveRejectionEmail(data: LeaveRejectionEmailData, tenantId?: string): Promise<boolean>;
+    sendClaimSubmissionEmail(data: {
+        to: string;
+        cc?: string;
+        replyTo?: string;
+        managerName: string;
+        employeeName: string;
+        employeeEmail: string;
+        claimNo: string;
+        title?: string | null;
+        totalAmount: number;
+        currency: string;
+        itemCount: number;
+    }, tenantId?: string): Promise<boolean>;
+    sendClaimApprovalEmail(data: {
+        to: string;
+        employeeName: string;
+        approverName: string;
+        claimNo: string;
+        title?: string | null;
+        totalAmount: number;
+        currency: string;
+        remarks?: string | null;
+    }, tenantId?: string): Promise<boolean>;
+    sendClaimRejectionEmail(data: {
+        to: string;
+        employeeName: string;
+        approverName: string;
+        claimNo: string;
+        title?: string | null;
+        totalAmount: number;
+        currency: string;
+        status: 'rejected' | 'cancelled' | 'sent_back';
+        remarks?: string | null;
+    }, tenantId?: string): Promise<boolean>;
+    sendAdvanceSubmissionEmail(data: {
+        to: string;
+        cc?: string;
+        replyTo?: string;
+        managerName: string;
+        employeeName: string;
+        employeeEmail: string;
+        advanceNo: string;
+        purpose?: string | null;
+        amount: number;
+        currency: string;
+        neededBy?: string | null;
+    }, tenantId?: string): Promise<boolean>;
+    sendAdvanceApprovalEmail(data: {
+        to: string;
+        employeeName: string;
+        approverName: string;
+        advanceNo: string;
+        amount: number;
+        currency: string;
+        remarks?: string | null;
+    }, tenantId?: string): Promise<boolean>;
+    sendAdvanceRejectionEmail(data: {
+        to: string;
+        employeeName: string;
+        approverName?: string;
+        advanceNo: string;
+        amount: number;
+        currency: string;
+        status: 'rejected' | 'cancelled';
+        remarks?: string | null;
+    }, tenantId?: string): Promise<boolean>;
     static generateInvoiceHtml(data: {
         customerName: string;
         invoiceNumber: string;

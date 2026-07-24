@@ -10,8 +10,10 @@ import { withTenant } from '../db/pool';
 import * as repo from '../repositories/leaveRequest.repo';
 import * as leaveTypeRepo from '../repositories/leaveType.repo';
 import * as holidayRepo from '../repositories/holiday.repo';
+import * as settingsRepo from '../repositories/leaveSettings.repo';
 import { Actor, LeaveV2Error } from '../types';
 import { ApplyLeaveInput } from '../validators/leaveRequest.validator';
+import { EmailService } from '@/utils/emailService';
 
 /**
  * Working-day units in [from, to]: excludes weekends AND holidays.
@@ -80,6 +82,68 @@ export async function applyLeave(actor: Actor, input: ApplyLeaveInput) {
         effectiveDate: input.fromDate,
         createdBy: actor.userId,
       });
+    }
+
+    // -- Mail Sending Logic --
+    try {
+      const userQuery = await client.query(`
+        SELECT 
+          u.name as employee_name, 
+          u.work_email as employee_email,
+          m.name as manager_name,
+          m.work_email as manager_email
+        FROM users u
+        LEFT JOIN users m ON u.reports_to_id = m.id
+        WHERE u.id = $1
+      `, [userId]);
+      const uData = userQuery.rows[0];
+
+      if (uData) {
+        const mailConfig = await settingsRepo.getSettings(client);
+        
+        // 3) Determine Reply-To email
+        let replyToEmail = uData.employee_email;
+        if (mailConfig.replyToMode === 'custom' && mailConfig.customReplyToEmail) {
+          replyToEmail = mailConfig.customReplyToEmail;
+        }
+
+        const toEmails = new Set<string>();
+        if (mailConfig.reportsToEnabled && uData.manager_email) {
+          toEmails.add(uData.manager_email);
+        }
+        mailConfig.additionalToEmails?.forEach(e => toEmails.add(e));
+        mailConfig.customToEmails?.forEach(e => toEmails.add(e));
+
+        const ccEmails = new Set<string>();
+        if (mailConfig.officeCcEnabled) {
+          ccEmails.add('owner@zithtech.com');
+        }
+        mailConfig.additionalCcEmails?.forEach(e => ccEmails.add(e));
+        mailConfig.customCcEmails?.forEach(e => ccEmails.add(e));
+
+        if (toEmails.size > 0) {
+          const emailService = new EmailService();
+          emailService.sendLeaveApplicationEmail({
+            to: Array.from(toEmails).join(','),
+            cc: ccEmails.size > 0 ? Array.from(ccEmails).join(',') : undefined,
+            replyTo: replyToEmail,
+            managerName: uData.manager_name || 'Manager',
+            employeeName: uData.employee_name,
+            employeeEmail: uData.employee_email,
+            leaveType: lt.name,
+            startDate: input.fromDate,
+            endDate: input.toDate,
+            duration: units,
+            durationType: 'DAYS',
+            reason: input.reason || 'No reason provided',
+            leaveId: request.id,
+          }, actor.tenantId).catch(err => {
+            console.error('Failed to send leave application email:', err);
+          });
+        }
+      }
+    } catch (mailError) {
+      console.error('Error in leave mail logic:', mailError);
     }
 
     return request;

@@ -115,15 +115,28 @@ export class MailSettingsModel {
   }
 
   static async markAsVerified(id: string, tenantId: string): Promise<void> {
-    const query = `
-      UPDATE mail_settings 
-      SET is_verified = TRUE, 
-          verified_at = CURRENT_TIMESTAMP, 
-          verification_token = NULL,
-          updated_at = CURRENT_TIMESTAMP
-      WHERE id = $1 AND tenant_id = $2
-    `;
-    await pool.query(query, [id, tenantId]);
+    try {
+      const query = `
+        UPDATE mail_settings 
+        SET is_verified = TRUE, 
+            verified_at = CURRENT_TIMESTAMP, 
+            verification_token = NULL,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1 AND tenant_id = $2
+      `;
+      await pool.query(query, [id, tenantId]);
+    } catch (e: any) {
+      console.error("[MailSettingsModel] markAsVerified error:", e);
+      // Fallback for missing verified_at column or NOT NULL constraint on verification_token
+      const queryFallback = `
+        UPDATE mail_settings 
+        SET is_verified = TRUE, 
+            verification_token = '',
+            updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1 AND tenant_id = $2
+      `;
+      await pool.query(queryFallback, [id, tenantId]);
+    }
   }
 
   static async setAsDefault(id: string, tenantId: string, userId?: string): Promise<void> {
@@ -160,12 +173,35 @@ export class MailSettingsModel {
   }
 
   static async getByToken(token: string): Promise<MailSettings | null> {
-    const query = `
-      SELECT * FROM mail_settings 
-      WHERE verification_token = $1 AND verification_expires_at > CURRENT_TIMESTAMP AND deleted_at IS NULL
-    `;
-    const result = await pool.query(query, [token]);
-    return result.rows[0] || null;
+    try {
+      const query = `
+        SELECT * FROM mail_settings 
+        WHERE verification_token = $1 AND CAST(verification_expires_at AS timestamp) > CURRENT_TIMESTAMP AND deleted_at IS NULL
+      `;
+      const result = await pool.query(query, [token]);
+      return result.rows[0] || null;
+    } catch (e: any) {
+      console.error("[MailSettingsModel] getByToken error:", e);
+      // Fallback: check expiration in Node instead of Postgres if CAST fails or deleted_at causes issue
+      try {
+        const query = `
+          SELECT * FROM mail_settings 
+          WHERE verification_token = $1
+        `;
+        const result = await pool.query(query, [token]);
+        const row = result.rows[0];
+        if (row && row.verification_expires_at) {
+          const expiresAt = new Date(row.verification_expires_at);
+          if (expiresAt > new Date()) {
+            return row;
+          }
+        }
+        return null;
+      } catch (innerError) {
+        console.error("[MailSettingsModel] getByToken fallback error:", innerError);
+        throw innerError;
+      }
+    }
   }
 
   static async getDefaultVerified(tenantId: string, userId?: string): Promise<MailSettings | null> {
