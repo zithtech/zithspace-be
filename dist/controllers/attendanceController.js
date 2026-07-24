@@ -281,23 +281,34 @@ class AttendanceController {
             const today = new Date();
             const [startOfToday, endOfToday] = dayBounds(today);
             const formatted = await (0, attendancePool_1.withTenant)(req.tenantId, async (db) => {
-                const { rows: exRows } = await db.query(`SELECT id, user_id AS "userId", clock_in AS "clockIn", clock_out AS "clockOut"
-           FROM attendance WHERE user_id = $1 AND tenant_id = $2 AND date >= $3 AND date <= $4 LIMIT 1`, [userId, req.tenantId, startOfToday, endOfToday]);
+                const { rows: exRows } = await db.query(`SELECT id, user_id AS "userId", clock_in AS "clockIn", clock_out AS "clockOut", date
+           FROM attendance WHERE user_id = $1 AND tenant_id = $2 ORDER BY clock_in DESC NULLS LAST LIMIT 1`, [userId, req.tenantId]);
                 const existing = exRows[0] || null;
-                if (existing?.clockOut) {
-                    throw new types_1.ValidationError("You have already completed today. You can't clock in again.");
-                }
+                let existingIsToday = false;
                 if (existing) {
-                    const open = await AttendanceController.getOpenSession(db, existing);
-                    if (open)
-                        throw new types_1.ValidationError("You're already clocked in.");
+                    existingIsToday = existing.date && new Date(existing.date).getTime() >= startOfToday.getTime() && new Date(existing.date).getTime() <= endOfToday.getTime();
+                    if (existing.clockOut) {
+                        if (existingIsToday) {
+                            throw new types_1.ValidationError("You have already completed today. You can't clock in again.");
+                        }
+                        // If it's a completed past session, allow a new clock in for today
+                    }
+                    else {
+                        const open = await AttendanceController.getOpenSession(db, existing);
+                        if (open)
+                            throw new types_1.ValidationError("You're already clocked in.");
+                    }
                 }
                 const { rows: uRows } = await db.query(`SELECT id FROM users WHERE id = $1 AND tenant_id = $2 AND is_active = true LIMIT 1`, [userId, req.tenantId]);
                 if (!uRows[0])
                     throw new types_1.NotFoundError("User not found in this tenant");
                 const now = new Date();
                 let attendanceId;
-                if (!existing) {
+                // Reuse the record ONLY if it belongs to today and isn't closed yet.
+                // Wait, if it's not closed and belongs to today, it will have thrown "already clocked in".
+                // Wait, what if existing is NOT today, but it doesn't have an open session somehow?
+                // Let's just safely reuse it if existingIsToday is true and it's not closed.
+                if (!existingIsToday || existing.clockOut) {
                     attendanceId = (0, crypto_1.randomUUID)();
                     await db.query(`INSERT INTO attendance (id, tenant_id, user_id, date, clock_in, status, updated_at)
              VALUES ($1, $2, $3, $4, $5, 'present', now())`, [attendanceId, req.tenantId, userId, startOfToday, now]);
@@ -352,13 +363,10 @@ class AttendanceController {
             const [startOfToday, endOfToday] = dayBounds(today);
             const formatted = await (0, attendancePool_1.withTenant)(req.tenantId, async (db) => {
                 const { rows } = await db.query(`SELECT id, clock_in AS "clockIn", clock_out AS "clockOut"
-           FROM attendance WHERE user_id = $1 AND tenant_id = $2 AND date >= $3 AND date <= $4 LIMIT 1`, [userId, req.tenantId, startOfToday, endOfToday]);
+           FROM attendance WHERE user_id = $1 AND tenant_id = $2 AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, [userId, req.tenantId]);
                 const attendance = rows[0] || null;
                 if (!attendance || !attendance.clockIn) {
-                    throw new types_1.ValidationError("No clock in record found for today");
-                }
-                if (attendance.clockOut) {
-                    throw new types_1.ValidationError("Already clocked out today");
+                    throw new types_1.ValidationError("No active attendance record found.");
                 }
                 await AttendanceController.finalizeDay(db, attendance);
                 return await AttendanceController.getFormattedTodayAttendance(db, userId, req.tenantId, today);
@@ -423,15 +431,17 @@ class AttendanceController {
             const [startOfToday, endOfToday] = dayBounds(today);
             const formatted = await (0, attendancePool_1.withTenant)(req.tenantId, async (db) => {
                 const { rows } = await db.query(`SELECT id, clock_in AS "clockIn", clock_out AS "clockOut"
-           FROM attendance WHERE user_id = $1 AND tenant_id = $2 AND date >= $3 AND date <= $4 LIMIT 1`, [userId, req.tenantId, startOfToday, endOfToday]);
+           FROM attendance WHERE user_id = $1 AND tenant_id = $2 AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, [userId, req.tenantId]);
                 const attendance = rows[0] || null;
                 if (!attendance || !attendance.clockIn) {
-                    throw new types_1.ValidationError("You haven't clocked in yet today.");
+                    throw new types_1.ValidationError("No active attendance session found.");
                 }
-                if (attendance.clockOut) {
-                    throw new types_1.ValidationError("Your day is already complete.");
+                let now = new Date();
+                const MAX_SHIFT_HOURS = 24;
+                const clockInTime = new Date(attendance.clockIn).getTime();
+                if (now.getTime() - clockInTime > MAX_SHIFT_HOURS * 60 * 60 * 1000) {
+                    now = new Date(clockInTime + MAX_SHIFT_HOURS * 60 * 60 * 1000);
                 }
-                const now = new Date();
                 if (action === "pause") {
                     const open = await AttendanceController.getOpenSession(db, attendance);
                     if (!open)
@@ -597,6 +607,10 @@ class AttendanceController {
                 throw new types_1.ValidationError("Work intervals must not overlap.");
             }
         }
+        const MAX_SHIFT_HOURS = 24;
+        if (norm[norm.length - 1].end.getTime() - norm[0].start.getTime() > MAX_SHIFT_HOURS * 60 * 60 * 1000) {
+            throw new types_1.ValidationError("Total shift duration cannot exceed 24 hours.");
+        }
         // Full replace of the day's intervals.
         await db.query(`DELETE FROM attendance_sessions WHERE attendance_id = $1`, [attendanceId]);
         for (const s of norm) {
@@ -611,7 +625,12 @@ class AttendanceController {
     }
     /** Closes any open session and marks the day complete. */
     static async finalizeDay(db, attendance) {
-        const now = new Date();
+        let now = new Date();
+        const MAX_SHIFT_HOURS = 24;
+        const clockInTime = new Date(attendance.clockIn).getTime();
+        if (now.getTime() - clockInTime > MAX_SHIFT_HOURS * 60 * 60 * 1000) {
+            now = new Date(clockInTime + MAX_SHIFT_HOURS * 60 * 60 * 1000);
+        }
         const open = await AttendanceController.getOpenSession(db, attendance);
         if (open) {
             await AttendanceController.closeSession(db, open, now);
@@ -904,10 +923,14 @@ class AttendanceController {
                 }
                 // Recalculate work minutes if clock-in or clock-out changed.
                 if (!hasSessions && (body.clockIn !== undefined || body.clockOut !== undefined)) {
-                    const finalIn = body.clockIn !== undefined ? new Date(body.clockIn) : ex[0].clockIn;
-                    const finalOut = body.clockOut !== undefined ? new Date(body.clockOut) : ex[0].clockOut;
+                    const finalIn = body.clockIn !== undefined ? (body.clockIn ? new Date(body.clockIn) : null) : ex[0].clockIn;
+                    const finalOut = body.clockOut !== undefined ? (body.clockOut ? new Date(body.clockOut) : null) : ex[0].clockOut;
                     if (finalIn && finalOut) {
-                        const totalWorkMinutes = Math.floor((new Date(finalOut).getTime() - new Date(finalIn).getTime()) / 60000);
+                        const MAX_SHIFT_HOURS = 24;
+                        if (finalOut.getTime() - finalIn.getTime() > MAX_SHIFT_HOURS * 60 * 60 * 1000) {
+                            throw new types_1.ValidationError("Total shift duration cannot exceed 24 hours.");
+                        }
+                        const totalWorkMinutes = Math.floor((finalOut.getTime() - finalIn.getTime()) / 60000);
                         const effectiveWorkMinutes = totalWorkMinutes - (ex[0].totalBreakMinutes || 0);
                         await db.query(`UPDATE attendance SET total_work_minutes = $1, effective_work_minutes = $2, updated_at = now() WHERE id = $3`, [totalWorkMinutes, effectiveWorkMinutes, id]);
                     }
@@ -1130,6 +1153,14 @@ class AttendanceController {
                     throw new types_1.ValidationError("Attendance record already exists for this date");
                 const hasSessions = Array.isArray(attendanceData.sessions) && attendanceData.sessions.length > 0;
                 const newId = (0, crypto_1.randomUUID)();
+                const cIn = hasSessions ? null : attendanceData.clockIn ? new Date(attendanceData.clockIn) : null;
+                const cOut = hasSessions ? null : attendanceData.clockOut ? new Date(attendanceData.clockOut) : null;
+                if (cIn && cOut) {
+                    const MAX_SHIFT_HOURS = 24;
+                    if (cOut.getTime() - cIn.getTime() > MAX_SHIFT_HOURS * 60 * 60 * 1000) {
+                        throw new types_1.ValidationError("Total shift duration cannot exceed 24 hours.");
+                    }
+                }
                 await db.query(`INSERT INTO attendance
              (id, tenant_id, user_id, date, clock_in, clock_out, status, notes, is_manual_entry, entered_by_id, updated_at)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, $9, now())`, [
@@ -1137,9 +1168,8 @@ class AttendanceController {
                     req.tenantId,
                     attendanceData.userId,
                     startOfDay,
-                    // When a timeline is supplied, writeSessions sets the day bounds.
-                    hasSessions ? null : attendanceData.clockIn ? new Date(attendanceData.clockIn) : null,
-                    hasSessions ? null : attendanceData.clockOut ? new Date(attendanceData.clockOut) : null,
+                    cIn,
+                    cOut,
                     attendanceData.status || "present",
                     attendanceData.notes ?? null,
                     req.user.id,
@@ -1183,12 +1213,18 @@ class AttendanceController {
         if (!user)
             throw new types_1.NotFoundError("User not found");
         // Today's attendance + its shift.
-        const { rows: aRows } = await db.query(`SELECT a.id, a.clock_in AS "clockIn", a.clock_out AS "clockOut", a.status,
+        const { rows: aRows } = await db.query(`SELECT a.id, a.clock_in AS "clockIn", a.clock_out AS "clockOut", a.status, a.date,
               a.effective_work_minutes AS "effectiveWorkMinutes",
               s.id AS s_id, s.name AS s_name, s.start_time AS s_start, s.end_time AS s_end
        FROM attendance a LEFT JOIN shifts s ON s.id = a.shift_id
-       WHERE a.user_id = $1 AND a.tenant_id = $2 AND a.date >= $3 AND a.date <= $4 LIMIT 1`, [userId, tenantId, startOfToday, endOfToday]);
-        const attendance = aRows[0] || null;
+       WHERE a.user_id = $1 AND a.tenant_id = $2 ORDER BY a.clock_in DESC NULLS LAST LIMIT 1`, [userId, tenantId]);
+        let attendance = aRows[0] || null;
+        if (attendance) {
+            const isToday = attendance.date && new Date(attendance.date).getTime() >= startOfToday.getTime() && new Date(attendance.date).getTime() <= endOfToday.getTime();
+            if (!isToday && attendance.clockOut) {
+                attendance = null;
+            }
+        }
         const shift = attendance?.s_id
             ? { id: attendance.s_id, name: attendance.s_name, startTime: attendance.s_start, endTime: attendance.s_end }
             : user.ash_id
