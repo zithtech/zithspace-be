@@ -10,12 +10,12 @@ export declare function getBankPayrollDetails(req: AuthRequest, employeeId: stri
     bankName: any;
     branchName: any;
     accountHolderName: any;
-    accountNumber: string;
+    accountNumber: any;
     accountType: any;
-    ifscCode: string;
-    uanNumber: string;
-    pfNumber: string;
-    esiNumber: string;
+    ifscCode: any;
+    uanNumber: any;
+    pfNumber: any;
+    esiNumber: any;
     taxRegime: any;
     paymentType: any;
 }>;
