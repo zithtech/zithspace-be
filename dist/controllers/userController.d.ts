@@ -10,6 +10,14 @@ export declare class UserController {
      */
     static getMemberById(req: AuthRequest, res: Response): Promise<void>;
     /**
+     * Check if a member exists for syncing onboarding
+     */
+    static checkSync(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Sync an onboarding employeeId to an existing member
+     */
+    static syncEmployee(req: AuthRequest, res: Response): Promise<void>;
+    /**
      * Create new member/user (tenant-aware)
      */
     static createMember(req: AuthRequest, res: Response): Promise<void>;
