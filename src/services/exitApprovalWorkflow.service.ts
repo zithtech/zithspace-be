@@ -1,163 +1,135 @@
-import { ExitApprovalWorkflow } from "@prisma/client";
 import { prisma } from "@/config/database";
+import { randomUUID } from "crypto";
 
 export class ExitApprovalWorkflowService {
-  /**
-   * Helper to map database model to frontend-friendly structure.
-   */
   private mapStep(step: any): any {
     if (!step) return null;
     return {
       ...step,
-      // Map singular DB field back to FE array 'roleIds'
       roleIds: step.approverId ? [step.approverId] : [],
-      // Ensure boolean consistency for frontend
-      mandatory: !!step.mandatory,
+      mandatory: step.mandatory !== undefined ? !!step.mandatory : true,
       isActive: !!step.isActive,
     };
   }
 
-  /**
-   * Create a new approval step.
-   * Only includes fields that exist in the database schema.
-   */
   async createStep(
     tenantId: string,
     data: any,
     createdById: string
   ): Promise<any> {
-    try {
-      const { stepOrder, roleIds, mandatory, isActive } = data;
+    const { stepOrder, roleIds, isActive } = data;
+    const approverId = Array.isArray(roleIds) && roleIds.length > 0 ? roleIds[0] : (roleIds || null);
+    
+    const newId = randomUUID();
+    const result: any[] = await prisma.$queryRaw`
+      INSERT INTO exit_approval_workflows (
+        id, tenant_id, step_order, approver_type, approver_id,
+        is_active, created_by_id, created_at, updated_at
+      ) VALUES (
+        ${newId},
+        ${tenantId},
+        ${parseInt(stepOrder) || 1}::integer,
+        'Position',
+        ${approverId},
+        ${isActive !== undefined ? !!isActive : true},
+        ${createdById},
+        NOW(),
+        NOW()
+      )
+      RETURNING 
+        id, tenant_id AS "tenantId", step_order AS "stepOrder",
+        approver_type AS "approverType", approver_id AS "approverId",
+        is_active AS "isActive", created_by_id AS "createdById",
+        updated_by_id AS "updatedById", created_at AS "createdAt",
+        updated_at AS "updatedAt";
+    `;
 
-      // Type-casting to any to bypass stale @prisma/client type errors while they are being repaired
-      const step = await (prisma.exitApprovalWorkflow as any).create({
-        data: {
-          stepOrder: parseInt(stepOrder as any) || 1,
-          approverId: Array.isArray(roleIds) && roleIds.length > 0 ? roleIds[0] : (roleIds || null),
-          approverType: "Position", // Standardized value for the current database structure
-          mandatory: mandatory !== undefined ? !!mandatory : true,
-          isActive: isActive !== undefined ? !!isActive : true,
-          tenant: { connect: { id: tenantId } },
-          createdBy: { connect: { id: createdById } },
-        },
-      });
-
-      return this.mapStep(step);
-    } catch (error: any) {
-      console.error("Error in createStep:", error);
-      throw error;
-    }
+    return this.mapStep(result[0]);
   }
 
-  /**
-   * Get all approval steps for a tenant
-   */
   async getSteps(tenantId: string): Promise<any[]> {
-    try {
-      const steps = await prisma.exitApprovalWorkflow.findMany({
-        where: {
-          tenantId,
-        },
-        orderBy: {
-          stepOrder: "asc",
-        },
-      });
-
-      return steps.map(s => this.mapStep(s));
-    } catch (error: any) {
-      console.error("Error in getSteps:", error);
-      throw error;
-    }
+    const steps: any[] = await prisma.$queryRaw`
+      SELECT 
+        id, tenant_id AS "tenantId", step_order AS "stepOrder",
+        approver_type AS "approverType", approver_id AS "approverId",
+        is_active AS "isActive", created_by_id AS "createdById",
+        updated_by_id AS "updatedById", created_at AS "createdAt",
+        updated_at AS "updatedAt"
+      FROM exit_approval_workflows
+      WHERE tenant_id = ${tenantId}
+      ORDER BY step_order ASC;
+    `;
+    return steps.map(s => this.mapStep(s));
   }
 
-  /**
-   * Get a specific step by ID
-   */
   async getStepById(tenantId: string, id: string): Promise<any | null> {
-    try {
-      const step = await prisma.exitApprovalWorkflow.findUnique({
-        where: {
-          id,
-        },
-      });
-
-      if (!step || step.tenantId !== tenantId) {
-        return null;
-      }
-
-      return this.mapStep(step);
-    } catch (error: any) {
-      console.error("Error in getStepById:", error);
-      throw error;
-    }
+    const steps: any[] = await prisma.$queryRaw`
+      SELECT 
+        id, tenant_id AS "tenantId", step_order AS "stepOrder",
+        approver_type AS "approverType", approver_id AS "approverId",
+        is_active AS "isActive", created_by_id AS "createdById",
+        updated_by_id AS "updatedById", created_at AS "createdAt",
+        updated_at AS "updatedAt"
+      FROM exit_approval_workflows
+      WHERE id = ${id} AND tenant_id = ${tenantId}
+      LIMIT 1;
+    `;
+    return steps.length > 0 ? this.mapStep(steps[0]) : null;
   }
 
-  /**
-   * Update an existing step.
-   * Only includes fields that exist in the database schema.
-   */
   async updateStep(
     tenantId: string,
     id: string,
     data: any,
     updatedById: string
   ): Promise<any> {
-    try {
-      const existing = await prisma.exitApprovalWorkflow.findUnique({ 
-        where: { id } 
-      });
-
-      if (!existing || existing.tenantId !== tenantId) {
-        throw new Error("Approval step not found or access denied");
-      }
-
-      const { stepOrder, roleIds, mandatory, isActive } = data;
-
-      const step = await (prisma.exitApprovalWorkflow as any).update({
-        where: {
-          id,
-        },
-        data: {
-          stepOrder: stepOrder !== undefined ? parseInt(stepOrder as any) : undefined,
-          mandatory: mandatory !== undefined ? !!mandatory : undefined,
-          approverId: Array.isArray(roleIds) ? (roleIds.length > 0 ? roleIds[0] : null) : (roleIds ?? undefined),
-          approverType: roleIds ? "Position" : undefined,
-          isActive: isActive !== undefined ? !!isActive : undefined,
-          updatedBy: { connect: { id: updatedById } },
-        },
-      });
-
-      return this.mapStep(step);
-    } catch (error: any) {
-      console.error("Error in updateStep:", error);
-      throw error;
+    const existing = await this.getStepById(tenantId, id);
+    if (!existing) {
+      throw new Error("Approval step not found or access denied");
     }
+
+    const { stepOrder, roleIds, isActive } = data;
+    const newApproverId = Array.isArray(roleIds) ? (roleIds.length > 0 ? roleIds[0] : null) : (roleIds ?? undefined);
+
+    const result: any[] = await prisma.$queryRaw`
+      UPDATE exit_approval_workflows
+      SET 
+        step_order = ${stepOrder !== undefined ? parseInt(stepOrder) : existing.stepOrder}::integer,
+        approver_id = ${newApproverId !== undefined ? newApproverId : existing.approverId},
+        approver_type = ${roleIds !== undefined ? 'Position' : existing.approverType},
+        is_active = ${isActive !== undefined ? !!isActive : existing.isActive},
+        updated_by_id = ${updatedById},
+        updated_at = NOW()
+      WHERE id = ${id} AND tenant_id = ${tenantId}
+      RETURNING 
+        id, tenant_id AS "tenantId", step_order AS "stepOrder",
+        approver_type AS "approverType", approver_id AS "approverId",
+        is_active AS "isActive", created_by_id AS "createdById",
+        updated_by_id AS "updatedById", created_at AS "createdAt",
+        updated_at AS "updatedAt";
+    `;
+
+    return this.mapStep(result[0]);
   }
 
-  /**
-   * Delete a step
-   */
   async deleteStep(tenantId: string, id: string): Promise<any> {
-    try {
-      const existing = await prisma.exitApprovalWorkflow.findUnique({ 
-        where: { id } 
-      });
-
-      if (!existing || existing.tenantId !== tenantId) {
-        throw new Error("Approval step not found or access denied");
-      }
-
-      const step = await prisma.exitApprovalWorkflow.delete({
-        where: {
-          id,
-        },
-      });
-
-      return this.mapStep(step);
-    } catch (error: any) {
-      console.error("Error in deleteStep:", error);
-      throw error;
+    const existing = await this.getStepById(tenantId, id);
+    if (!existing) {
+      throw new Error("Approval step not found or access denied");
     }
+
+    const result: any[] = await prisma.$queryRaw`
+      DELETE FROM exit_approval_workflows
+      WHERE id = ${id} AND tenant_id = ${tenantId}
+      RETURNING 
+        id, tenant_id AS "tenantId", step_order AS "stepOrder",
+        approver_type AS "approverType", approver_id AS "approverId",
+        is_active AS "isActive", created_by_id AS "createdById",
+        updated_by_id AS "updatedById", created_at AS "createdAt",
+        updated_at AS "updatedAt";
+    `;
+
+    return this.mapStep(result[0]);
   }
 }
 
