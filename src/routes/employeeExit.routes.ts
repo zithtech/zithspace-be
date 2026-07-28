@@ -23,6 +23,7 @@ router.post("/config/checklist", requirePermission(Permissions.EXIT_MANAGE), Emp
 router.delete("/config/checklist/:id", requirePermission(Permissions.EXIT_MANAGE), EmployeeExitController.deleteChecklistConfig);
 
 router.get("/:id", requirePermission(Permissions.EXIT_READ), EmployeeExitController.getEmployeeExitById);
+router.get("/:id/clearances", requirePermission(Permissions.EXIT_READ), EmployeeExitController.getClearancesByRequestId);
 router.put("/:id/status", requirePermission(Permissions.EXIT_MANAGE), EmployeeExitController.updateEmployeeExitStatus);
 router.put("/:id/clearance", requirePermission(Permissions.EXIT_MANAGE), EmployeeExitController.updateClearanceStatus);
 router.post("/:id/fnf/calculate", requirePermission(Permissions.EXIT_MANAGE), EmployeeExitController.calculateFnF);

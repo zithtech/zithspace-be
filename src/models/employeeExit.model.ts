@@ -61,10 +61,10 @@ export const createEmployeeExit = async (
       id, tenant_id, employee_id, department_id, position_id, reporting_manager_id,
       exit_type_id, exit_reason_id, resignation_date, proposed_last_working_day,
       notice_period_day, waive_notice_period, buyout_required, buyout_amount,
-      explanation, status, created_by_id, updated_at, created_at
+      explanation, resignation_letter_url, status, created_by_id, updated_at, created_at
     ) VALUES (
       $1, $2, $3::uuid, $4, $5, $6, $7, $8, $9::timestamp, $10::timestamp,
-      $11::timestamp, $12, $13, $14::decimal, $15, $16, $17, NOW(), NOW()
+      $11::timestamp, $12, $13, $14::decimal, $15, $16, $17, $18, NOW(), NOW()
     )
     RETURNING 
       id, tenant_id AS "tenantId", employee_id AS "employeeId",
@@ -74,7 +74,7 @@ export const createEmployeeExit = async (
       proposed_last_working_day AS "proposedLastWorkingDay",
       notice_period_day AS "noticePeriodDay", waive_notice_period AS "waiveNoticePeriod",
       buyout_required AS "buyoutRequired", buyout_amount AS "buyoutAmount",
-      explanation, status, created_by_id AS "createdById",
+      explanation, resignation_letter_url AS "resignationLetterUrl", status, created_by_id AS "createdById",
       updated_by_id AS "updatedById", created_at AS "createdAt", updated_at AS "updatedAt"
   `;
 
@@ -87,7 +87,7 @@ export const createEmployeeExit = async (
     data.noticePeriodDay ? new Date(data.noticePeriodDay) : null,
     !!data.waiveNoticePeriod, !!data.buyoutRequired,
     data.buyoutAmount ? data.buyoutAmount : null,
-    data.explanation || null, data.status || "PENDING", createdById
+    data.explanation || null, data.resignationLetterUrl || null, data.status || "PENDING", createdById
   ];
 
   const result = await pool.query(query, values);
@@ -130,7 +130,7 @@ export const getEmployeeExits = async (tenantId: string): Promise<EmployeeExitRe
       e.proposed_last_working_day AS "proposedLastWorkingDay",
       e.notice_period_day AS "noticePeriodDay", e.waive_notice_period AS "waiveNoticePeriod",
       e.buyout_required AS "buyoutRequired", e.buyout_amount AS "buyoutAmount",
-      e.explanation, e.status, e.created_by_id AS "createdById",
+      e.explanation, e.resignation_letter_url AS "resignationLetterUrl", e.status, e.created_by_id AS "createdById",
       e.updated_by_id AS "updatedById", e.created_at AS "createdAt", e.updated_at AS "updatedAt",
       emp.first_name AS "employee_first_name",
       emp.last_name AS "employee_last_name",
@@ -194,7 +194,7 @@ export const getEmployeeExitById = async (tenantId: string, id: string): Promise
       e.proposed_last_working_day AS "proposedLastWorkingDay",
       e.notice_period_day AS "noticePeriodDay", e.waive_notice_period AS "waiveNoticePeriod",
       e.buyout_required AS "buyoutRequired", e.buyout_amount AS "buyoutAmount",
-      e.explanation, e.status, e.created_by_id AS "createdById",
+      e.explanation, e.resignation_letter_url AS "resignationLetterUrl", e.status, e.created_by_id AS "createdById",
       e.updated_by_id AS "updatedById", e.created_at AS "createdAt", e.updated_at AS "updatedAt",
       emp.first_name AS "employee_first_name",
       emp.last_name AS "employee_last_name",
@@ -256,7 +256,7 @@ export const getEmployeeExitsByEmployeeId = async (tenantId: string, employeeId:
       e.proposed_last_working_day AS "proposedLastWorkingDay",
       e.notice_period_day AS "noticePeriodDay", e.waive_notice_period AS "waiveNoticePeriod",
       e.buyout_required AS "buyoutRequired", e.buyout_amount AS "buyoutAmount",
-      e.explanation, e.status, e.created_by_id AS "createdById",
+      e.explanation, e.resignation_letter_url AS "resignationLetterUrl", e.status, e.created_by_id AS "createdById",
       e.updated_by_id AS "updatedById", e.created_at AS "createdAt", e.updated_at AS "updatedAt",
       emp.first_name AS "employee_first_name",
       emp.last_name AS "employee_last_name",
@@ -460,6 +460,31 @@ export const getClearances = async (tenantId: string): Promise<any[]> => {
       }
     };
   });
+};
+
+export const getClearancesByRequestId = async (tenantId: string, exitRequestId: string): Promise<any[]> => {
+  const query = `
+    SELECT 
+      c.id as clearance_id, c.department, c.is_cleared, c.comments, c.cleared_by_id, c.cleared_at, c.checklist,
+      u.name as cleared_by_name
+    FROM exit_clearances c
+    LEFT JOIN users u ON c.cleared_by_id = u.id
+    WHERE c.tenant_id = $1 AND c.exit_request_id = $2
+    ORDER BY c.created_at ASC
+  `;
+
+  const result = await pool.query(query, [tenantId, exitRequestId]);
+  
+  return result.rows.map(row => ({
+    id: row.clearance_id,
+    department: row.department,
+    isCleared: row.is_cleared,
+    comments: row.comments,
+    clearedById: row.cleared_by_id,
+    clearedByName: row.cleared_by_name,
+    clearedAt: row.cleared_at,
+    checklist: row.checklist
+  }));
 };
 
 export const deleteEmployeeExit = async (tenantId: string, id: string): Promise<any> => {

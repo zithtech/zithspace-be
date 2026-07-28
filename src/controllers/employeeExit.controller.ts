@@ -2,6 +2,7 @@ import { Response } from "express";
 import { AuthRequest, ApiResponse } from "../types";
 import { employeeExitService } from "../services/employeeExit.service";
 import TenantLogger from "@/utils/tenantLogger";
+import { uploadExitDocumentToR2 } from "../utils/r2Client";
 
 export class EmployeeExitController {
   static async createEmployeeExit(req: AuthRequest, res: Response): Promise<void> {
@@ -22,7 +23,7 @@ export class EmployeeExitController {
         ? rawEmployeeId.value 
         : rawEmployeeId;
 
-      const { resignationDate, proposedLastWorkingDay } = req.body;
+      const { resignationDate, proposedLastWorkingDay, resignationLetter } = req.body;
 
       if (!inputEmployeeId || !resignationDate || !proposedLastWorkingDay) {
         console.warn("[EmployeeExitController] Missing required fields:", { inputEmployeeId, resignationDate, proposedLastWorkingDay });
@@ -30,8 +31,28 @@ export class EmployeeExitController {
         return;
       }
 
-      // Update body with sanitized ID
-      const sanitizedBody = { ...req.body, employeeId: inputEmployeeId };
+      let resignationLetterUrl: string | undefined = undefined;
+
+      if (resignationLetter && resignationLetter.fileBase64 && resignationLetter.fileName) {
+        try {
+          resignationLetterUrl = await uploadExitDocumentToR2(
+            resignationLetter.fileBase64,
+            resignationLetter.fileName,
+            tenantId,
+            inputEmployeeId
+          );
+        } catch (uploadError) {
+          console.error("Failed to upload resignation letter:", uploadError);
+          // Optional: handle upload error specifically, or just continue without it
+        }
+      }
+
+      // Update body with sanitized ID and URL
+      const sanitizedBody = { 
+        ...req.body, 
+        employeeId: inputEmployeeId,
+        resignationLetterUrl
+      };
 
       const exitRequest = await employeeExitService.createExitRequest(tenantId, sanitizedBody, userId);
       console.log("[EmployeeExitController] Exit request created successfully:", exitRequest.id);
@@ -156,6 +177,32 @@ export class EmployeeExitController {
       } as ApiResponse);
     } catch (error: any) {
       console.error("Error fetching clearances:", error);
+      res.status(500).json({
+        success: false,
+        error: "Internal server error",
+        details: error.message
+      } as ApiResponse);
+    }
+  }
+
+  static async getClearancesByRequestId(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const tenantId = req.user?.tenantId;
+      const { id } = req.params;
+
+      if (!tenantId) {
+        res.status(401).json({ success: false, error: "Unauthorized" } as ApiResponse);
+        return;
+      }
+
+      const clearances = await employeeExitService.getClearancesByRequestId(tenantId, id);
+
+      res.status(200).json({
+        success: true,
+        data: clearances
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Error fetching clearances by request id:", error);
       res.status(500).json({
         success: false,
         error: "Internal server error",
@@ -343,28 +390,12 @@ export class EmployeeExitController {
         return;
       }
 
-      // TODO: Actual integration with Payroll Service
-      // This is a mocked response to simulate the payroll module calculation.
-      // E.g., POST /payroll/fnf/calculate
-      
-      const mockedPayrollResult = {
-        payrollRunId: "PR-" + Math.floor(Math.random() * 10000),
-        pendingSalary: 15000,
-        leaveEncashment: 5000,
-        bonus: 0,
-        incentives: 0,
-        loanRecovery: 0,
-        salaryAdvanceRecovery: 0,
-        tax: 2000,
-        pf: 1800,
-        esi: 0,
-        assetDeduction: 0, // This will be adjusted by Finance if IT adds any
-        noticeRecovery: 0,
-      };
+      const actor = { tenantId, userId: req.user?.id as string };
+      const dynamicPayrollResult = await employeeExitService.calculateDynamicFnF(actor, exitRequest);
 
       res.status(200).json({
         success: true,
-        data: mockedPayrollResult
+        data: dynamicPayrollResult
       } as ApiResponse);
     } catch (error: any) {
       console.error("Error calculating FnF:", error);

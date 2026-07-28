@@ -10,25 +10,32 @@ export class NoticePolicyService {
     const newId = randomUUID();
     const result: any[] = await prisma.$queryRaw`
       INSERT INTO exit_notice_policies (
-        id, tenant_id, policy_name, description, level_type, level_id,
-        notice_period_days, notice_buyout_allowed, status, created_at, created_by_id
+        id, tenant_id, policy_name, code, description, level_type, level_id,
+        notice_period_days, probation_period_days, probation_notice_days, buyout_calculating_type, notice_buyout_allowed, status, created_at, created_by_id
       ) VALUES (
         ${newId},
         ${tenantId},
         ${data.policyName},
+        ${data.code || null},
         ${data.description || null},
         ${data.levelType},
         ${data.levelId},
         ${data.noticePeriodDays}::integer,
+        ${data.probationPeriodDays ?? 0}::integer,
+        ${data.probationNoticeDays ?? 0}::integer,
+        ${data.buyoutCalculatingType || null},
         ${!!data.noticeBuyoutAllowed},
         ${data.status !== undefined ? !!data.status : true},
         NOW(),
         ${createdById}
       )
       RETURNING 
-        id, tenant_id AS "tenantId", policy_name AS "policyName",
+        id, tenant_id AS "tenantId", policy_name AS "policyName", code,
         description, level_type AS "levelType", level_id AS "levelId",
         notice_period_days AS "noticePeriodDays", 
+        probation_period_days AS "probationPeriodDays",
+        probation_notice_days AS "probationNoticeDays",
+        buyout_calculating_type AS "buyoutCalculatingType",
         notice_buyout_allowed AS "noticeBuyoutAllowed",
         status, created_at AS "createdAt",
         created_by_id AS "createdById";
@@ -39,9 +46,12 @@ export class NoticePolicyService {
   async getPolicies(tenantId: string): Promise<any[]> {
     return await prisma.$queryRaw`
       SELECT 
-        id, tenant_id AS "tenantId", policy_name AS "policyName",
+        id, tenant_id AS "tenantId", policy_name AS "policyName", code,
         description, level_type AS "levelType", level_id AS "levelId",
         notice_period_days AS "noticePeriodDays", 
+        probation_period_days AS "probationPeriodDays",
+        probation_notice_days AS "probationNoticeDays",
+        buyout_calculating_type AS "buyoutCalculatingType",
         notice_buyout_allowed AS "noticeBuyoutAllowed",
         status, created_at AS "createdAt",
         created_by_id AS "createdById"
@@ -54,9 +64,12 @@ export class NoticePolicyService {
   async getPolicyById(tenantId: string, id: string): Promise<any | null> {
     const policies: any[] = await prisma.$queryRaw`
       SELECT 
-        id, tenant_id AS "tenantId", policy_name AS "policyName",
+        id, tenant_id AS "tenantId", policy_name AS "policyName", code,
         description, level_type AS "levelType", level_id AS "levelId",
         notice_period_days AS "noticePeriodDays", 
+        probation_period_days AS "probationPeriodDays",
+        probation_notice_days AS "probationNoticeDays",
+        buyout_calculating_type AS "buyoutCalculatingType",
         notice_buyout_allowed AS "noticeBuyoutAllowed",
         status, created_at AS "createdAt",
         created_by_id AS "createdById"
@@ -82,23 +95,31 @@ export class NoticePolicyService {
       UPDATE exit_notice_policies
       SET 
         policy_name = ${data.policyName !== undefined ? data.policyName : existing.policyName},
+        code = ${data.code !== undefined ? data.code : existing.code},
         description = ${data.description !== undefined ? data.description : existing.description},
         level_type = ${data.levelType !== undefined ? data.levelType : existing.levelType},
         level_id = ${data.levelId !== undefined ? data.levelId : existing.levelId},
         notice_period_days = ${data.noticePeriodDays !== undefined ? data.noticePeriodDays : existing.noticePeriodDays}::integer,
+        probation_period_days = ${data.probationPeriodDays !== undefined ? data.probationPeriodDays : existing.probationPeriodDays}::integer,
+        probation_notice_days = ${data.probationNoticeDays !== undefined ? data.probationNoticeDays : existing.probationNoticeDays}::integer,
+        buyout_calculating_type = ${data.buyoutCalculatingType !== undefined ? data.buyoutCalculatingType : existing.buyoutCalculatingType},
         notice_buyout_allowed = ${data.noticeBuyoutAllowed !== undefined ? !!data.noticeBuyoutAllowed : existing.noticeBuyoutAllowed},
         status = ${data.status !== undefined ? !!data.status : existing.status},
         updated_by_id = ${updatedById},
         updated_at = NOW()
       WHERE id = ${id} AND tenant_id = ${tenantId}
       RETURNING 
-        id, tenant_id AS "tenantId", policy_name AS "policyName",
+        id, tenant_id AS "tenantId", policy_name AS "policyName", code,
         description, level_type AS "levelType", level_id AS "levelId",
         notice_period_days AS "noticePeriodDays", 
+        probation_period_days AS "probationPeriodDays",
+        probation_notice_days AS "probationNoticeDays",
+        buyout_calculating_type AS "buyoutCalculatingType",
         notice_buyout_allowed AS "noticeBuyoutAllowed",
         status, created_at AS "createdAt",
         created_by_id AS "createdById",
-        updated_by_id AS "updatedById";
+        updated_by_id AS "updatedById",
+        updated_at AS "updatedAt";
     `;
     return result[0];
   }
