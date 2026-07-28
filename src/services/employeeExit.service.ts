@@ -3,6 +3,7 @@ import {
   getEmployeeExits,
   getEmployeeExitById,
   deleteEmployeeExit,
+  updateEmployeeExit,
   getEmployeeExitsByEmployeeId,
   updateEmployeeExitStatus,
   getPendingApprovals,
@@ -54,6 +55,10 @@ export class EmployeeExitService {
 
   async getClearancesByRequestId(tenantId: string, exitRequestId: string): Promise<any[]> {
     return await getClearancesByRequestId(tenantId, exitRequestId);
+  }
+
+  async updateExitRequest(tenantId: string, id: string, data: any, updatedById: string): Promise<any> {
+    return await updateEmployeeExit(tenantId, id, data, updatedById);
   }
 
   async deleteExitRequest(tenantId: string, id: string): Promise<any> {

@@ -276,6 +276,30 @@ export class EmployeeExitController {
     }
   }
 
+  static async updateEmployeeExit(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const tenantId = req.user?.tenantId;
+      const userId = req.user?.id;
+      const { id } = req.params;
+
+      if (!tenantId || !userId) {
+        res.status(401).json({ success: false, error: "Unauthorized" } as ApiResponse);
+        return;
+      }
+
+      const updated = await employeeExitService.updateExitRequest(tenantId, id, req.body, userId);
+
+      res.status(200).json({ success: true, data: updated } as ApiResponse);
+    } catch (error: any) {
+      console.error("Error updating exit request:", error);
+      res.status(500).json({
+        success: false,
+        error: "Internal server error",
+        details: error.message
+      } as ApiResponse);
+    }
+  }
+
   static async updateEmployeeExitStatus(req: AuthRequest, res: Response): Promise<void> {
     try {
       const tenantId = req.user?.tenantId;

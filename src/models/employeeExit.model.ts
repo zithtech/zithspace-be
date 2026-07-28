@@ -94,13 +94,42 @@ export const createEmployeeExit = async (
   const exitRequest = result.rows[0];
 
   // Initialize approval workflow steps
-  const workflowQuery = `
+  let empPositionId = data.positionId || null;
+  let empGradeId = null;
+
+  if (empCheck.rows.length > 0) {
+    empPositionId = empPositionId || empCheck.rows[0].position_id;
+    empGradeId = empCheck.rows[0].grade_id;
+  }
+
+  let workflowQuery = `
     SELECT step_order, approver_type, approver_id
     FROM exit_approval_workflows
-    WHERE tenant_id = $1 AND is_active = true
+    WHERE tenant_id = $1 AND is_active = true AND level_type = 'positions' AND level_id = $2
     ORDER BY step_order ASC
   `;
-  const workflows = await pool.query(workflowQuery, [tenantId]);
+  let workflows = await pool.query(workflowQuery, [tenantId, empPositionId]);
+
+  if (workflows.rows.length === 0 && empGradeId) {
+    workflowQuery = `
+      SELECT step_order, approver_type, approver_id
+      FROM exit_approval_workflows
+      WHERE tenant_id = $1 AND is_active = true AND level_type = 'grades' AND level_id = $2
+      ORDER BY step_order ASC
+    `;
+    workflows = await pool.query(workflowQuery, [tenantId, empGradeId]);
+  }
+
+  // Fallback to Global workflows if needed
+  if (workflows.rows.length === 0) {
+    workflowQuery = `
+      SELECT step_order, approver_type, approver_id
+      FROM exit_approval_workflows
+      WHERE tenant_id = $1 AND is_active = true AND level_type IS NULL
+      ORDER BY step_order ASC
+    `;
+    workflows = await pool.query(workflowQuery, [tenantId]);
+  }
 
   if (workflows.rows.length > 0) {
     for (const step of workflows.rows) {
@@ -234,15 +263,64 @@ export const getEmployeeExitById = async (tenantId: string, id: string): Promise
     ...baseData 
   } = row;
 
+  // Fetch Approvals
+  let approvalsRows: any[] = [];
+  try {
+    const approvalsQuery = `
+      SELECT id, step_order AS "stepOrder", approver_type AS "approverType", approver_id AS "approverId",
+             status, comments, action_date AS "actionDate"
+      FROM exit_request_approvals
+      WHERE exit_request_id = $1 AND tenant_id = $2
+      ORDER BY step_order ASC
+    `;
+    const approvalsResult = await pool.query(approvalsQuery, [id, tenantId]);
+    approvalsRows = approvalsResult.rows;
+  } catch (e: any) {
+    console.error('[getEmployeeExitById] approvals sub-query failed:', e.message);
+  }
+
+  // Fetch Clearances
+  let clearancesRows: any[] = [];
+  try {
+    const clearancesQuery = `
+      SELECT id, department, is_cleared AS "isCleared", comments, cleared_by_id AS "clearedById", cleared_at AS "clearedAt"
+      FROM exit_clearances
+      WHERE exit_request_id = $1 AND tenant_id = $2
+      ORDER BY created_at ASC
+    `;
+    const clearancesResult = await pool.query(clearancesQuery, [id, tenantId]);
+    clearancesRows = clearancesResult.rows;
+  } catch (e: any) {
+    console.error('[getEmployeeExitById] clearances sub-query failed:', e.message);
+  }
+
+  // Fetch FnF
+  let fnfRow: any = null;
+  try {
+    const fnfQuery = `
+      SELECT id, status, net_payable AS "totalPayable", processed_at AS "processedAt"
+      FROM exit_fnf_settlements
+      WHERE exit_request_id = $1 AND tenant_id = $2
+      LIMIT 1
+    `;
+    const fnfResult = await pool.query(fnfQuery, [id, tenantId]);
+    fnfRow = fnfResult.rows.length > 0 ? fnfResult.rows[0] : null;
+  } catch (e: any) {
+    console.error('[getEmployeeExitById] fnf sub-query failed:', e.message);
+  }
+
   return {
     ...baseData,
     reportingManagerName,
-      createdBy: creator_name,
+    createdBy: creator_name,
     employee: {
       first_name: employee_first_name,
       last_name: employee_last_name,
       employee_code: employee_code,
-    }
+    },
+    approvals: approvalsRows,
+    clearances: clearancesRows,
+    fnf: fnfRow
   };
 };
 
@@ -494,6 +572,56 @@ export const deleteEmployeeExit = async (tenantId: string, id: string): Promise<
     RETURNING *
   `;
   const result = await pool.query(query, [id, tenantId]);
+  return result.rows[0];
+};
+
+export const updateEmployeeExit = async (
+  tenantId: string,
+  id: string,
+  data: any,
+  updatedById: string
+): Promise<any> => {
+  const query = `
+    UPDATE employee_exits SET
+      exit_type_id = $1,
+      exit_reason_id = $2,
+      resignation_date = $3::timestamp,
+      proposed_last_working_day = $4::timestamp,
+      notice_period_day = $5,
+      waive_notice_period = $6,
+      buyout_required = $7,
+      buyout_amount = $8,
+      explanation = $9,
+      updated_by_id = $10,
+      updated_at = NOW()
+    WHERE id = $11 AND tenant_id = $12
+    RETURNING 
+      id, tenant_id AS "tenantId", employee_id AS "employeeId",
+      exit_type_id AS "exitTypeId", exit_reason_id AS "exitReasonId",
+      resignation_date AS "resignationDate",
+      proposed_last_working_day AS "proposedLastWorkingDay",
+      notice_period_day AS "noticePeriodDay",
+      waive_notice_period AS "waiveNoticePeriod",
+      buyout_required AS "buyoutRequired", buyout_amount AS "buyoutAmount",
+      explanation, status, updated_at AS "updatedAt"
+  `;
+
+  const result = await pool.query(query, [
+    data.exitTypeId || null,
+    data.exitReasonId || null,
+    new Date(data.resignationDate),
+    new Date(data.proposedLastWorkingDay),
+    data.noticePeriodDay ? new Date(data.noticePeriodDay) : null,
+    !!data.waiveNoticePeriod,
+    !!data.buyoutRequired,
+    data.buyoutAmount || null,
+    data.explanation || null,
+    updatedById,
+    id,
+    tenantId
+  ]);
+
+  if (result.rows.length === 0) throw new Error('Exit request not found or access denied');
   return result.rows[0];
 };
 
