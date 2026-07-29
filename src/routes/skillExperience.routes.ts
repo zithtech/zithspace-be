@@ -6,31 +6,28 @@ import { requirePermission } from '@/middleware/permission';
 
 const router = Router();
 
-// Middleware (same as lead settings)
-router.use(resolveTenant);
-router.use(authenticateToken);
-router.use(requireAuth);
+const mw = [resolveTenant, authenticateToken, requireAuth];
 
 // ================= SKILLS =================
 // Create Skill
-router.post('/skills', requirePermission('skills.create'), SkillExperienceController.createSkill);
+router.post('/skills', mw, requirePermission('skills.create'), SkillExperienceController.createSkill);
 // Sync Skills (Bulk)
-router.post('/skills/sync', requirePermission('skills.manage'), SkillExperienceController.syncSkills);
+router.post('/skills/sync', mw, requirePermission('skills.manage'), SkillExperienceController.syncSkills);
 // Get All Skills
-router.get('/skills', requirePermission('skills.read'), SkillExperienceController.getSkills);
+router.get('/skills', mw, requirePermission('skills.read'), SkillExperienceController.getSkills);
 // Update Skill
-router.put('/skills/:id', requirePermission('skills.update'), SkillExperienceController.updateSkill);
+router.put('/skills/:id', mw, requirePermission('skills.update'), SkillExperienceController.updateSkill);
 // Delete Skill
-router.delete('/skills/:id', requirePermission('skills.delete'), SkillExperienceController.deleteSkill);
+router.delete('/skills/:id', mw, requirePermission('skills.delete'), SkillExperienceController.deleteSkill);
 
 // ================= EXPERIENCE =================
 // Create Experience
-router.post('/experience', requirePermission('skills.create'), SkillExperienceController.createExperience);
+router.post('/experience', mw, requirePermission('skills.create'), SkillExperienceController.createExperience);
 // Get All Experience
-router.get('/experience', requirePermission('skills.read'), SkillExperienceController.getExperience);
+router.get('/experience', mw, requirePermission('skills.read'), SkillExperienceController.getExperience);
 // Update Experience
-router.put('/experience/:id', requirePermission('skills.update'), SkillExperienceController.updateExperience);
+router.put('/experience/:id', mw, requirePermission('skills.update'), SkillExperienceController.updateExperience);
 // Delete Experience
-router.delete('/experience/:id', requirePermission('skills.delete'), SkillExperienceController.deleteExperience);
+router.delete('/experience/:id', mw, requirePermission('skills.delete'), SkillExperienceController.deleteExperience);
 
 export default router;

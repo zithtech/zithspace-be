@@ -140,6 +140,7 @@ export class UserController {
           u.avatar_url as "avatarUrl",
           u.min_working_hours as "minWorkingHours",
           u.is_active as "isActive",
+          u.ai_enabled as "aiEnabled",
           u.last_login_at as "lastLoginAt",
           u.created_at as "createdAt",
           u.updated_at as "updatedAt",
@@ -284,6 +285,91 @@ export class UserController {
   }
 
   /**
+   * Check if a member exists for syncing onboarding
+   */
+  static async checkSync(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId) {
+        res.status(400).json({ success: false, error: "Tenant context required" } as ApiResponse);
+        return;
+      }
+
+      const { employeeId, workEmail, phone } = req.query;
+      
+      console.log(`[checkSync] Params:`, req.query);
+      
+      let user = null;
+
+      if (employeeId) {
+        const result = await pool.query(`SELECT id, name, work_email as "workEmail", phone, employee_id as "employeeId", role FROM users WHERE tenant_id = $1 AND employee_id = $2 AND is_active = true`, [req.tenantId, employeeId]);
+        if (result.rows.length > 0) user = result.rows[0];
+        console.log(`[checkSync] Searched by employeeId (${employeeId}), found:`, user ? user.id : 'none');
+      }
+
+      if (!user && workEmail) {
+        const result = await pool.query(`SELECT id, name, work_email as "workEmail", phone, employee_id as "employeeId", role FROM users WHERE tenant_id = $1 AND work_email ILIKE $2 AND is_active = true AND employee_id IS NULL`, [req.tenantId, workEmail]);
+        console.log(`[checkSync] Searched by workEmail (${workEmail}), result count:`, result.rows.length);
+        // Only return if exactly one is found
+        if (result.rows.length === 1) user = result.rows[0];
+      }
+
+      if (!user && phone) {
+        const phoneStr = String(phone).replace(/\D/g, "");
+        if (phoneStr.length > 0) {
+          const result = await pool.query(`SELECT id, name, work_email as "workEmail", phone, employee_id as "employeeId", role FROM users WHERE tenant_id = $1 AND phone = $2 AND is_active = true AND employee_id IS NULL`, [req.tenantId, phoneStr]);
+          console.log(`[checkSync] Searched by phone (${phoneStr}), result count:`, result.rows.length);
+          if (result.rows.length === 1) user = result.rows[0];
+        }
+      }
+
+      console.log(`[checkSync] Returning exists:`, !!user);
+      if (user) {
+        res.status(200).json({ success: true, data: { exists: true, member: user } });
+      } else {
+        res.status(200).json({ success: true, data: { exists: false } });
+      }
+    } catch (error) {
+      console.error("Check sync error:", error);
+      res.status(500).json({ success: false, error: "Failed to check member sync" });
+    }
+  }
+
+  /**
+   * Sync an onboarding employeeId to an existing member
+   */
+  static async syncEmployee(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId) {
+        res.status(400).json({ success: false, error: "Tenant context required" });
+        return;
+      }
+
+      const memberId = req.params.id;
+      const { employeeId } = req.body;
+
+      if (!employeeId) {
+        res.status(400).json({ success: false, error: "employeeId is required" });
+        return;
+      }
+
+      const result = await pool.query(
+        `UPDATE users SET employee_id = $1, updated_at = now() WHERE id = $2 AND tenant_id = $3 RETURNING id`,
+        [employeeId, memberId, req.tenantId]
+      );
+
+      if (result.rows.length === 0) {
+        res.status(404).json({ success: false, error: "Member not found" });
+        return;
+      }
+
+      res.status(200).json({ success: true, message: "Member synced successfully" });
+    } catch (error) {
+      console.error("Sync employee error:", error);
+      res.status(500).json({ success: false, error: "Failed to sync member" });
+    }
+  }
+
+  /**
    * Create new member/user (tenant-aware)
    */
   static async createMember(req: AuthRequest, res: Response): Promise<void> {
@@ -410,6 +496,7 @@ export class UserController {
         assignedShiftId: userData.assignedShiftId || null,
         isActive: userData.isActive !== undefined ? userData.isActive : true,
         minWorkingHours: userData.minWorkingHours !== undefined ? Number(userData.minWorkingHours) : 6,
+        employeeId: userData.employeeId || null,
       });
 
       // Load the newly created member with relation details using raw SELECT query
@@ -1725,6 +1812,75 @@ export class UserController {
       res.status(500).json({
         success: false,
         error: "Failed to assign shift",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Toggle a member's AI access (users.ai_enabled). Opt-out model — enabled
+   * by default; admins disable it per user from the Members page.
+   */
+  static async setAiAccess(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context and authentication required",
+        } as ApiResponse);
+        return;
+      }
+
+      const { id } = req.params;
+      const { enabled } = req.body;
+
+      if (typeof enabled !== "boolean") {
+        res.status(400).json({
+          success: false,
+          error: "enabled (boolean) is required",
+        } as ApiResponse);
+        return;
+      }
+
+      const member = await UserModel.findById(id, req.tenantId);
+      if (!member) {
+        throw new NotFoundError("Member not found in this tenant");
+      }
+
+      await pool.query(
+        "UPDATE users SET ai_enabled = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3",
+        [enabled, id, req.tenantId],
+      );
+
+      recordTransaction({
+        req,
+        section: Section.ADMIN,
+        module: Module.MEMBERS,
+        page: Page.MEMBER_LIST,
+        action: Action.UPDATE,
+        actionLabel: `AI access ${enabled ? "enabled" : "disabled"} for ${member.name}`,
+        entityType: EntityType.USER,
+        entityId: id,
+        entityLabel: member.name,
+        beforeData: { aiEnabled: (member as any).aiEnabled ?? null },
+        afterData: { aiEnabled: enabled },
+        changedFields: ["aiEnabled"],
+        statusCode: 200,
+      });
+
+      res.status(200).json({
+        success: true,
+        data: { id, aiEnabled: enabled },
+        message: `AI access ${enabled ? "enabled" : "disabled"}`,
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Set AI access error:", error);
+      if (error instanceof NotFoundError) {
+        res.status(404).json({ success: false, error: error.message } as ApiResponse);
+        return;
+      }
+      res.status(500).json({
+        success: false,
+        error: "Failed to update AI access",
       } as ApiResponse);
     }
   }

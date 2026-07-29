@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticateToken, requireAuth } from '@/middleware/auth';
 import { requirePermission } from '@/middleware/permission';
+import { requireAiAccess } from '@/middleware/aiAccess';
 import { Permissions } from '@/types/permissions';
 import { optionalTenantContext, resolveTenant } from '@/middleware/tenantContext';
 import { ProposalController } from '@/controllers/ProposalController';
@@ -44,12 +45,12 @@ router.delete('/:id', requirePermission(Permissions.PROPOSAL_DELETE), (req, res)
 router.post('/:id/export', requirePermission(Permissions.PROPOSAL_READ), (req, res) => ProposalController.exportProposal(req, res));
 
 // Generate proposal from lead using AI (Saves to DB)
-router.post('/generate-from-lead/:leadId', requirePermission(Permissions.PROPOSAL_CREATE), (req, res) => ProposalController.generateFromLead(req, res));
+router.post('/generate-from-lead/:leadId', requirePermission(Permissions.PROPOSAL_CREATE), requireAiAccess, (req, res) => ProposalController.generateFromLead(req, res));
 
 // Generate proposal content ONLY (Does not save to DB)
-router.post('/generate-content-only/:leadId', requirePermission(Permissions.PROPOSAL_CREATE), (req, res) => ProposalController.generateContentOnly(req, res));
+router.post('/generate-content-only/:leadId', requirePermission(Permissions.PROPOSAL_CREATE), requireAiAccess, (req, res) => ProposalController.generateContentOnly(req, res));
 
 // Refine a block or sub-section with AI
-router.post('/refine-block', requirePermission(Permissions.PROPOSAL_UPDATE), (req, res) => ProposalController.refineBlock(req, res));
+router.post('/refine-block', requirePermission(Permissions.PROPOSAL_UPDATE), requireAiAccess, (req, res) => ProposalController.refineBlock(req, res));
 
 export default router;

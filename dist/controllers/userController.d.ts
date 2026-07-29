@@ -10,6 +10,14 @@ export declare class UserController {
      */
     static getMemberById(req: AuthRequest, res: Response): Promise<void>;
     /**
+     * Check if a member exists for syncing onboarding
+     */
+    static checkSync(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Sync an onboarding employeeId to an existing member
+     */
+    static syncEmployee(req: AuthRequest, res: Response): Promise<void>;
+    /**
      * Create new member/user (tenant-aware)
      */
     static createMember(req: AuthRequest, res: Response): Promise<void>;
@@ -73,6 +81,11 @@ export declare class UserController {
      * Assign shift to member (tenant-aware) - MISSING FUNCTIONALITY RESTORED
      */
     static assignShift(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Toggle a member's AI access (users.ai_enabled). Opt-out model — enabled
+     * by default; admins disable it per user from the Members page.
+     */
+    static setAiAccess(req: AuthRequest, res: Response): Promise<void>;
     /**
      * Helper to resolve or create a custom position title using dedicated fallback default department, sub-department, and grade.
      */

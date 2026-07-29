@@ -555,7 +555,6 @@ export async function periodSum(
   return num(rows[0].total);
 }
 
-// ── Reporting manager (Prisma-owned users table, tenant-scoped by RLS/GUC) ──
 export async function findReportsTo(
   client: TenantClient,
   userId: string
@@ -565,6 +564,17 @@ export async function findReportsTo(
     [userId]
   );
   return rows[0] ? rows[0].reports_to_id : null;
+}
+
+export async function findUserBasic(
+  client: TenantClient,
+  userId: string
+): Promise<{ name: string; email: string } | null> {
+  const { rows } = await client.query(
+    `SELECT name, work_email FROM users WHERE id = $1::text LIMIT 1`,
+    [userId]
+  );
+  return rows[0] ? { name: rows[0].name, email: rows[0].work_email } : null;
 }
 
 /** Applicable auto-approve threshold for a user from org/user-scoped policies. */

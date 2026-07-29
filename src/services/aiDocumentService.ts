@@ -2,16 +2,17 @@
  * AI Document Generation Service
  *
  * Converts a free-form user prompt into a structured documentation page
- * (hub name + first file title + HTML content). Uses Google Gemini (Flash)
- * via @google/generative-ai when GEMINI_API_KEY (or GOOGLE_API_KEY) is set;
- * otherwise falls back to a deterministic heuristic so the feature still
- * works in local/dev environments without a key.
+ * (hub name + first file title + HTML content). Uses the configured AI
+ * provider (see services/ai) when one is set; otherwise falls back to a
+ * deterministic heuristic so the feature still works in local/dev
+ * environments without a key.
  *
  * Distinct from aiTicketService — that service produces work items
  * ("Implement X"), this one produces *reference documentation* prose.
  */
 
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { AIProvider, AIProviderName } from "./ai";
+import { getAIProviderForTenant } from "./ai/resolver";
 
 export interface AiDocumentDraft {
   /** Suggested name for the document hub. */
@@ -68,59 +69,11 @@ const USER_TEMPLATE = (input: string) =>
   `Topic to document:\n${input}\n\nReturn JSON only.`;
 
 /* ------------------------------------------------------------------------ */
-/* Gemini call infrastructure (mirrors aiTicketService for retry behavior). */
+/* AI provider plumbing (retry/quota handling lives in services/ai).        */
 /* ------------------------------------------------------------------------ */
 
-const MAX_RETRY_DELAY_MS = 15_000;
-const GEMINI_MODEL_NAME = "gemini-flash-latest";
-
-let lastGeminiError: string | null = null;
-
-function parseRetryDelayMs(err: any, fallbackMs = 4000): number {
-  const msg = String(err?.message || "");
-  const match = msg.match(/retryDelay["']?\s*[:=]\s*["']?(\d+(?:\.\d+)?)\s*s/i);
-  const raw = match ? Math.ceil(parseFloat(match[1]) * 1000) : fallbackMs;
-  return Math.min(raw, MAX_RETRY_DELAY_MS);
-}
-
-function isQuotaExhaustedError(err: any): boolean {
-  const msg = String(err?.message || "").toLowerCase();
-  return (
-    /quota.*exceeded/.test(msg) ||
-    /exceeded.*quota/.test(msg) ||
-    /resource.?exhausted/.test(msg) ||
-    /generate_content_free_tier/.test(msg) ||
-    /per[\s_-]*day/.test(msg)
-  );
-}
-
-function isRetriableError(err: any): boolean {
-  if (isQuotaExhaustedError(err)) return false;
-  const msg = String(err?.message || "");
-  return /\b(429|503)\b/.test(msg) || /rate.?limit|overloaded|unavailable/i.test(msg);
-}
-
-async function generateWithRetry(
-  model: ReturnType<GoogleGenerativeAI["getGenerativeModel"]>,
-  prompt: string,
-  retries = 2,
-): Promise<Awaited<ReturnType<typeof model.generateContent>>> {
-  try {
-    return await model.generateContent(prompt);
-  } catch (err: any) {
-    if (isQuotaExhaustedError(err)) {
-      console.warn("[aiDocumentService] Gemini quota exhausted — skipping retries");
-      throw err;
-    }
-    if (retries > 0 && isRetriableError(err)) {
-      const delayMs = parseRetryDelayMs(err);
-      console.warn(`[aiDocumentService] Gemini retriable error — retrying in ${delayMs}ms (${retries} left)`);
-      await new Promise((r) => setTimeout(r, delayMs));
-      return generateWithRetry(model, prompt, retries - 1);
-    }
-    throw err;
-  }
-}
+// Captures the most-recent provider failure so callers can surface it.
+let lastAiError: string | null = null;
 
 /* ------------------------------------------------------------------------ */
 /* Output validation & cleanup                                              */
@@ -181,28 +134,20 @@ function safeParseJson(raw: string): any | null {
   }
 }
 
-async function callGemini(prompt: string): Promise<AiDocumentDraft | null> {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  if (!apiKey) return null;
+async function callAi(prompt: string, provider: AIProvider): Promise<AiDocumentDraft | null> {
+  if (!provider.isConfigured()) return null;
 
-  lastGeminiError = null;
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: GEMINI_MODEL_NAME,
-    systemInstruction: SYSTEM_PROMPT,
-    generationConfig: {
-      responseMimeType: "application/json",
+  lastAiError = null;
+  try {
+    const text = await provider.generateText(USER_TEMPLATE(prompt), {
+      systemInstruction: SYSTEM_PROMPT,
+      json: true,
       temperature: 0.5,
       maxOutputTokens: 4096,
-    },
-  });
-
-  try {
-    const result = await generateWithRetry(model, USER_TEMPLATE(prompt));
-    const text = result.response.text();
+    });
     const parsed = safeParseJson(text);
     if (!parsed) {
-      lastGeminiError = "Gemini returned non-JSON output";
+      lastAiError = `${provider.name} returned non-JSON output`;
       return null;
     }
 
@@ -212,8 +157,8 @@ async function callGemini(prompt: string): Promise<AiDocumentDraft | null> {
 
     return { hubName, fileTitle, contentHtml };
   } catch (err: any) {
-    lastGeminiError = err?.message || "Gemini call failed";
-    console.error("[aiDocumentService] Gemini error:", err);
+    lastAiError = err?.message || `${provider.name} call failed`;
+    console.error("[aiDocumentService] AI error:", err);
     return null;
   }
 }
@@ -235,7 +180,7 @@ function heuristicDraft(prompt: string): AiDocumentDraft {
   const contentHtml = [
     `<p>${topicSentence}.</p>`,
     `<h2>Overview</h2>`,
-    `<p>This page is a placeholder generated without an AI provider. Configure <code>GEMINI_API_KEY</code> on the server to enable richer, automatically-generated documentation.</p>`,
+    `<p>This page is a placeholder generated without an AI provider. Configure an AI provider (<code>GEMINI_API_KEY</code> or <code>DEEPSEEK_API_KEY</code>) on the server to enable richer, automatically-generated documentation.</p>`,
     `<h2>Notes</h2>`,
     `<ul><li>Edit this page directly to add real content.</li><li>You can use <strong>headings</strong>, <em>emphasis</em>, lists, and code blocks.</li></ul>`,
   ].join("");
@@ -280,41 +225,34 @@ Do not wrap the JSON in markdown fences.
 const REWRITE_USER_TEMPLATE = (text: string, instruction: string) =>
   `Instruction: ${instruction}\n\nOriginal text:\n${text}\n\nReturn JSON only.`;
 
-async function callGeminiRewrite(
+async function callAiRewrite(
   text: string,
   instruction: string,
+  provider: AIProvider,
 ): Promise<string | null> {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  if (!apiKey) return null;
+  if (!provider.isConfigured()) return null;
 
-  lastGeminiError = null;
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: GEMINI_MODEL_NAME,
-    systemInstruction: REWRITE_SYSTEM_PROMPT,
-    generationConfig: {
-      responseMimeType: "application/json",
-      temperature: 0.4,
-      maxOutputTokens: 2048,
-    },
-  });
-
+  lastAiError = null;
   try {
-    const result = await generateWithRetry(
-      model,
+    const raw = await provider.generateText(
       REWRITE_USER_TEMPLATE(text, instruction),
+      {
+        systemInstruction: REWRITE_SYSTEM_PROMPT,
+        json: true,
+        temperature: 0.4,
+        maxOutputTokens: 2048,
+      },
     );
-    const raw = result.response.text();
     const parsed = safeParseJson(raw);
     if (!parsed) {
-      lastGeminiError = "Gemini returned non-JSON output";
+      lastAiError = `${provider.name} returned non-JSON output`;
       return null;
     }
     const html = String(parsed.rewrittenHtml || "");
     return cleanHtml(html);
   } catch (err: any) {
-    lastGeminiError = err?.message || "Gemini call failed";
-    console.error("[aiDocumentService] Gemini rewrite error:", err);
+    lastAiError = err?.message || `${provider.name} call failed`;
+    console.error("[aiDocumentService] AI rewrite error:", err);
     return null;
   }
 }
@@ -337,17 +275,19 @@ function heuristicRewrite(text: string, instruction: string): string {
 export async function rewriteSelection(
   text: string,
   instruction: string,
+  tenantId?: string,
 ): Promise<{
   rewrittenHtml: string;
-  source: "gemini" | "mock";
+  source: AIProviderName | "mock";
   fallbackReason?: string;
 }> {
-  const fromGemini = await callGeminiRewrite(text, instruction);
-  if (fromGemini) return { rewrittenHtml: fromGemini, source: "gemini" };
+  const provider = await getAIProviderForTenant(tenantId);
+  const fromAi = await callAiRewrite(text, instruction, provider);
+  if (fromAi) return { rewrittenHtml: fromAi, source: provider.name };
 
-  const reason = !process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY
-    ? "GEMINI_API_KEY not set"
-    : (lastGeminiError || "Gemini call failed");
+  const reason = !provider.isConfigured()
+    ? `${provider.name} is not configured`
+    : (lastAiError || `${provider.name} call failed`);
 
   return {
     rewrittenHtml: heuristicRewrite(text, instruction),
@@ -356,17 +296,18 @@ export async function rewriteSelection(
   };
 }
 
-export async function generateDocumentDraft(prompt: string): Promise<{
+export async function generateDocumentDraft(prompt: string, tenantId?: string): Promise<{
   draft: AiDocumentDraft;
-  source: "gemini" | "mock";
+  source: AIProviderName | "mock";
   fallbackReason?: string;
 }> {
-  const fromGemini = await callGemini(prompt);
-  if (fromGemini) return { draft: fromGemini, source: "gemini" };
+  const provider = await getAIProviderForTenant(tenantId);
+  const fromAi = await callAi(prompt, provider);
+  if (fromAi) return { draft: fromAi, source: provider.name };
 
-  const reason = !process.env.GEMINI_API_KEY && !process.env.GOOGLE_API_KEY
-    ? "GEMINI_API_KEY not set"
-    : (lastGeminiError || "Gemini call failed");
+  const reason = !provider.isConfigured()
+    ? `${provider.name} is not configured`
+    : (lastAiError || `${provider.name} call failed`);
   console.warn(`[aiDocumentService] falling back to heuristic mock — ${reason}`);
 
   return { draft: heuristicDraft(prompt), source: "mock", fallbackReason: reason };

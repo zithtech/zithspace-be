@@ -147,7 +147,7 @@ export async function getBankPayrollDetails(
         throw new Error("Employee not found");
       }
 
-      const [bankRes, payrollRes] = await Promise.all([
+      const [bankRes, payrollRes, payProfileRes] = await Promise.all([
         db.query(
           `SELECT * FROM employee_bank_details WHERE employee_id = $1 LIMIT 1`,
           [employeeId],
@@ -156,32 +156,47 @@ export async function getBankPayrollDetails(
           `SELECT * FROM employee_payroll_details WHERE employee_id = $1 LIMIT 1`,
           [employeeId],
         ),
+        db.query(
+          `SELECT * FROM pay_employee_profiles WHERE employee_id = $1 LIMIT 1`,
+          [employeeId],
+        ).catch(() => ({ rows: [] })),
       ]);
 
       const bankDetails = bankRes.rows[0];
       const payrollDetails = payrollRes.rows[0];
+      const payProfile = payProfileRes.rows[0];
 
       return {
-        bankName: bankDetails?.bank_name || null,
+        bankName: payProfile?.bank_name || bankDetails?.bank_name || null,
         branchName: bankDetails?.branch_name || null,
-        accountHolderName: bankDetails?.account_holder_name || null,
-        accountNumber: bankDetails?.account_number
-          ? decrypt(bankDetails.account_number)
-          : null,
+        accountHolderName: payProfile?.account_holder_name || bankDetails?.account_holder_name || null,
+        accountNumber: payProfile?.bank_account_number
+          ? payProfile.bank_account_number
+          : (bankDetails?.account_number
+            ? decrypt(bankDetails.account_number)
+            : null),
         accountType: bankDetails?.account_type || null,
-        ifscCode: bankDetails?.ifsc_code
-          ? decrypt(bankDetails.ifsc_code)
-          : null,
-        uanNumber: payrollDetails?.uan_number
-          ? decrypt(payrollDetails.uan_number)
-          : null,
-        pfNumber: payrollDetails?.pf_number
-          ? decrypt(payrollDetails.pf_number)
-          : null,
-        esiNumber: payrollDetails?.esi_number
-          ? decrypt(payrollDetails.esi_number)
-          : null,
-        taxRegime: payrollDetails?.tax_regime || null,
+        ifscCode: payProfile?.bank_ifsc
+          ? payProfile.bank_ifsc
+          : (bankDetails?.ifsc_code
+            ? decrypt(bankDetails.ifsc_code)
+            : null),
+        uanNumber: payProfile?.uan
+          ? payProfile.uan
+          : (payrollDetails?.uan_number
+            ? decrypt(payrollDetails.uan_number)
+            : null),
+        pfNumber: payProfile?.pf_number
+          ? payProfile.pf_number
+          : (payrollDetails?.pf_number
+            ? decrypt(payrollDetails.pf_number)
+            : null),
+        esiNumber: payProfile?.esi_number
+          ? payProfile.esi_number
+          : (payrollDetails?.esi_number
+            ? decrypt(payrollDetails.esi_number)
+            : null),
+        taxRegime: payProfile?.tax_regime || payrollDetails?.tax_regime || null,
         paymentType: payrollDetails?.payment_type || null,
       };
     });

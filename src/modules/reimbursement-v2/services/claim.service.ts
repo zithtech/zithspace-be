@@ -14,10 +14,12 @@
 
 import { TenantClient, withTenant } from '../db/pool';
 import { generatePresignedUrl } from '@/utils/r2Client';
+import { EmailService } from '@/utils/emailService';
 import * as repo from '../repositories/claim.repo';
 import * as categoryRepo from '../repositories/category.repo';
 import * as advanceRepo from '../repositories/advance.repo';
 import * as policyRepo from '../repositories/policy.repo';
+import * as settingsRepo from '../repositories/reimbursementSettings.repo';
 import {
   Actor,
   Claim,
@@ -499,6 +501,67 @@ export async function submitClaim(actor: Actor, id: string): Promise<ClaimDetail
       const approverId = await repo.findReportsTo(client, actor.userId);
       await repo.setStatus(client, id, { status: 'pending', submittedAt: true, approverId }, actor.userId);
       await repo.insertApproval(client, id, actor.userId, 'submitted');
+      
+      try {
+        console.log(`[Reimbursement Email] Initiating email sequence for submitted claim: ${claim.claimNo}`);
+        const uData = await repo.findUserBasic(client, actor.userId);
+        const mId = approverId;
+        const mData = mId ? await repo.findUserBasic(client, mId) : null;
+        console.log(`[Reimbursement Email] Requester:`, uData?.email, `Manager:`, mData?.email);
+        
+        if (uData) {
+          const mailConfig = await settingsRepo.getSettings(client);
+          console.log(`[Reimbursement Email] Mail Config:`, mailConfig);
+          
+          let replyToEmail = uData.email;
+          if (mailConfig.replyToMode === 'custom' && mailConfig.customReplyToEmail) {
+            replyToEmail = mailConfig.customReplyToEmail;
+          }
+          console.log(`[Reimbursement Email] Resolved Reply-To:`, replyToEmail);
+
+          const toEmails = new Set<string>();
+          if (mailConfig.reportsToEnabled && mData?.email) {
+            toEmails.add(mData.email);
+          }
+          mailConfig.additionalToEmails?.forEach(e => toEmails.add(e));
+          mailConfig.customToEmails?.forEach(e => toEmails.add(e));
+          console.log(`[Reimbursement Email] Resolved To Emails:`, Array.from(toEmails));
+
+          const ccEmails = new Set<string>();
+          if (mailConfig.officeCcEnabled) {
+            ccEmails.add('owner@zithtech.com');
+          }
+          mailConfig.additionalCcEmails?.forEach(e => ccEmails.add(e));
+          mailConfig.customCcEmails?.forEach(e => ccEmails.add(e));
+          console.log(`[Reimbursement Email] Resolved CC Emails:`, Array.from(ccEmails));
+          mailConfig.additionalCcEmails?.forEach(e => ccEmails.add(e));
+          mailConfig.customCcEmails?.forEach(e => ccEmails.add(e));
+
+          if (toEmails.size > 0) {
+            console.log(`[Reimbursement Email] Calling sendClaimSubmissionEmail...`);
+            const emailService = new EmailService();
+            emailService.sendClaimSubmissionEmail({
+              to: Array.from(toEmails).join(','),
+              cc: ccEmails.size > 0 ? Array.from(ccEmails).join(',') : undefined,
+              replyTo: replyToEmail,
+              managerName: mData?.name || 'Manager',
+              employeeName: uData.name,
+              employeeEmail: uData.email,
+              claimNo: claim.claimNo,
+              title: claim.title,
+              totalAmount: total,
+              currency: claim.currency,
+              itemCount: items.length,
+            }, actor.tenantId)
+            .then(res => console.log(`[Reimbursement Email] sendClaimSubmissionEmail success:`, res))
+            .catch(err => console.error(`[Reimbursement Email] Failed to send submission email:`, err));
+          } else {
+            console.log(`[Reimbursement Email] No TO recipients found, skipping email.`);
+          }
+        }
+      } catch (mailErr) {
+        console.error('[Reimbursement Email] Fatal error in submission mail logic:', mailErr);
+      }
     }
 
     return buildDetail(client, id);
@@ -514,6 +577,31 @@ export async function cancelClaim(actor: Actor, id: string, remarks?: string | n
     }
     await repo.setStatus(client, id, { status: 'cancelled', decidedAt: true, decisionNote: remarks ?? null }, actor.userId);
     await repo.insertApproval(client, id, actor.userId, 'cancelled', remarks ?? null);
+    
+    try {
+      console.log(`[Reimbursement Email] Initiating email sequence for cancelled claim: ${claim!.claimNo}`);
+      const uData = await repo.findUserBasic(client, actor.userId);
+      if (uData) {
+        console.log(`[Reimbursement Email] Calling sendClaimRejectionEmail (cancel) to ${uData.email}...`);
+        const emailService = new EmailService();
+        emailService.sendClaimRejectionEmail({
+          to: uData.email,
+          employeeName: uData.name,
+          approverName: '',
+          claimNo: claim!.claimNo,
+          title: claim!.title,
+          totalAmount: claim!.totalAmount,
+          currency: claim!.currency,
+          status: 'cancelled',
+          remarks: remarks
+        }, actor.tenantId)
+        .then(res => console.log(`[Reimbursement Email] sendClaimRejectionEmail success:`, res))
+        .catch(err => console.error(`[Reimbursement Email] Failed to send cancel email:`, err));
+      }
+    } catch (mailErr) {
+      console.error('[Reimbursement Email] Fatal error in cancel mail logic:', mailErr);
+    }
+    
     return buildDetail(client, id);
   });
 }

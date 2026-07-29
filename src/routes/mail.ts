@@ -4,8 +4,12 @@ import { resolveTenant } from "@/middleware/tenantContext";
 import { MailController } from "@/controllers/MailController";
 import { MailSettingsController } from "@/controllers/MailSettingsController";
 import { requirePermission } from "@/middleware/permission";
+import { requireAiAccess } from "@/middleware/aiAccess";
 
 const router = Router();
+
+// Public routes (must be before authentication middleware)
+router.post("/verify", MailSettingsController.verifyMail);
 
 // Apply middleware to all remaining routes
 router.use(resolveTenant);
@@ -80,13 +84,13 @@ router.post("/upload-attachment", requirePermission('mail.create'), MailControll
  * @route POST /api/mail/ai/enhance
  * @desc AI-enhance email body (expand detail, polish tone)
  */
-router.post("/ai/enhance", requirePermission('mail.create'), MailController.aiEnhanceContent);
+router.post("/ai/enhance", requirePermission('mail.create'), requireAiAccess, MailController.aiEnhanceContent);
 
 /**
  * @route POST /api/mail/ai/grammar
  * @desc AI-correct grammar in email body (light-touch)
  */
-router.post("/ai/grammar", requirePermission('mail.create'), MailController.aiCorrectGrammar);
+router.post("/ai/grammar", requirePermission('mail.create'), requireAiAccess, MailController.aiCorrectGrammar);
 
 /**
  * @route POST /api/mail/:provider/disconnect
@@ -99,7 +103,6 @@ router.post("/:provider/disconnect", requirePermission('mail.manage'), MailContr
  */
 router.get("/invoice-settings", requirePermission('mail.manage'), MailSettingsController.getSettings);
 router.post("/invoice-mail", requirePermission('mail.manage'), MailSettingsController.setInvoiceMail);
-router.post("/verify", requirePermission('mail.manage'), MailSettingsController.verifyMail);
 router.post("/resend-verification", requirePermission('mail.manage'), MailSettingsController.resendVerification);
 
 export default router;

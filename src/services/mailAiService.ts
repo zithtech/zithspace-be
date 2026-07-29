@@ -1,10 +1,7 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { getAIProviderForTenant } from "./ai/resolver";
 import dotenv from "dotenv";
 
 dotenv.config();
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-const MODEL = "gemini-flash-latest";
 
 function stripCodeFences(text: string): string {
   return text
@@ -22,11 +19,10 @@ export class MailAiService {
     subject?: string;
     body: string;
     context?: string;
-  }): Promise<string> {
+  }, tenantId?: string): Promise<string> {
     const body = (params.body || "").trim();
     if (!body) return "";
 
-    const model = genAI.getGenerativeModel({ model: MODEL });
     const prompt = `
 You are an expert business writing assistant helping a sales/account manager
 rewrite a client-facing email so it reads as more thoughtful, detailed, and persuasive.
@@ -50,8 +46,8 @@ ${body}
 Return ONLY the rewritten HTML.
 `.trim();
 
-    const result = await model.generateContent(prompt);
-    const raw = result.response.text() || "";
+    const provider = await getAIProviderForTenant(tenantId);
+    const raw = (await provider.generateText(prompt)) || "";
     const cleaned = stripCodeFences(raw);
     return cleaned || body;
   }
@@ -60,11 +56,10 @@ Return ONLY the rewritten HTML.
    * Light-touch grammar/spelling correction. Preserves HTML structure
    * and the author's voice — no rewriting, no expansion.
    */
-  static async correctGrammar(body: string): Promise<string> {
+  static async correctGrammar(body: string, tenantId?: string): Promise<string> {
     const input = (body || "").trim();
     if (!input) return "";
 
-    const model = genAI.getGenerativeModel({ model: MODEL });
     const prompt = `
 You are a light-touch copy editor. Make ONLY minimal changes to the HTML email below:
 - Fix spelling, grammar, punctuation, capitalisation, and obvious typos.
@@ -79,8 +74,8 @@ ${input}
 Return ONLY the corrected HTML.
 `.trim();
 
-    const result = await model.generateContent(prompt);
-    const raw = result.response.text() || "";
+    const provider = await getAIProviderForTenant(tenantId);
+    const raw = (await provider.generateText(prompt)) || "";
     const cleaned = stripCodeFences(raw);
     return cleaned || input;
   }

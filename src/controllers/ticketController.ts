@@ -655,7 +655,7 @@ export class TicketController {
         return;
       }
 
-      const { draft, source, fallbackReason } = await generateTicketDraft(seed);
+      const { draft, source, fallbackReason } = await generateTicketDraft(seed, req.tenantId);
 
       res.status(200).json({
         success: true,
@@ -700,7 +700,7 @@ export class TicketController {
         return;
       }
 
-      const result = await generateSubtasks({ description: seed, count, hoursEach });
+      const result = await generateSubtasks({ description: seed, count, hoursEach }, req.tenantId);
 
       res.status(200).json({
         success: true,
@@ -984,7 +984,13 @@ export class TicketController {
           where.type = type;
         }
       }
-      if (projectId) where.projectId = projectId;
+      if (projectId) {
+        if (typeof projectId === "string" && projectId.includes(",")) {
+          where.projectId = { in: projectId.split(",").map((id) => id.trim()) };
+        } else {
+          where.projectId = projectId;
+        }
+      }
 
       // Handle single or multiple assignees
       if (assigneeId) {
@@ -1255,6 +1261,7 @@ export class TicketController {
           },
           // Include subtasks for the UI
           subTasks: {
+            where: { isDeleted: false },
             select: {
               id: true,
               ticketNumber: true,
@@ -3961,6 +3968,7 @@ export class TicketController {
               },
               // Get sub-tasks for each story
               subTasks: {
+                where: { isDeleted: false },
                 select: {
                   id: true,
                   ticketNumber: true,
