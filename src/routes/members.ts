@@ -69,6 +69,20 @@ router.patch('/:id/restore', requirePermission(Permissions.USER_TRASH_RESTORE), 
 router.delete('/:id/permanent', requirePermission(Permissions.USER_TRASH_DELETE), UserController.permanentlyDeleteMember);
 
 /**
+ * @route   GET /api/members/check-sync
+ * @desc    Check if a member exists for syncing onboarding
+ * @access  Private
+ */
+router.get('/check-sync', requirePermission(Permissions.ONBOARDING_UPDATE), UserController.checkSync);
+
+/**
+ * @route   PATCH /api/members/:id/sync-employee
+ * @desc    Sync an employeeId to an existing member
+ * @access  Private
+ */
+router.patch('/:id/sync-employee', requirePermission(Permissions.ONBOARDING_UPDATE), UserController.syncEmployee);
+
+/**
  * @route   GET /api/members/:id
  * @desc    Get member/user by ID (tenant-aware)
  * @access  Private (authenticated users within tenant)
