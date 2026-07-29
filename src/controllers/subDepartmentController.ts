@@ -53,7 +53,7 @@ export class SubDepartmentController {
       // ─── Activity log ───────────────────────────────────────────────
       recordTransaction({
         req,
-        section: Section.WORK,
+        section: Section.ADMIN,
         module: Module.ORG_STRUCTURE,
         page: Page.ORG_STRUCTURE_SUB_DEPARTMENTS,
         action: Action.CREATE,
@@ -183,7 +183,7 @@ export class SubDepartmentController {
 
         recordTransaction({
           req,
-          section: Section.WORK,
+          section: Section.ADMIN,
           module: Module.ORG_STRUCTURE,
           page: Page.ORG_STRUCTURE_SUB_DEPARTMENTS,
           action: Action.UPDATE,
@@ -233,7 +233,7 @@ export class SubDepartmentController {
       // ─── Activity log ───────────────────────────────────────────────
       recordTransaction({
         req,
-        section: Section.WORK,
+        section: Section.ADMIN,
         module: Module.ORG_STRUCTURE,
         page: Page.ORG_STRUCTURE_SUB_DEPARTMENTS,
         action: Action.DELETE,

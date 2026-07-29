@@ -3,6 +3,8 @@
 // No business logic here.
 
 import { AuthRequest } from '@/types';
+import { recordTransaction, Section, Module, Page, Action, EntityType } from "@/utils/transactionHistory";
+
 import { Response } from 'express';
 import { actorOf, handle, ok } from '../http';
 import * as service from '../services/settings.service';

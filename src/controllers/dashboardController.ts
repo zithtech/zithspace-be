@@ -1,4 +1,5 @@
 import { Response } from "express";
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from "@/utils/transactionHistory";
 import { prisma } from "@/config/database";
 import { AuthRequest, ApiResponse } from "@/types";
 import { getDashboardSettingsByTenantId, upsertDashboardSettings } from "@/models/dashboardSettings.model";
@@ -752,7 +753,29 @@ export class DashboardController {
         return;
       }
 
+      const beforeSettings = await getDashboardSettingsByTenantId(req.tenantId);
       const settings = await upsertDashboardSettings(req.tenantId, visibleCards);
+
+      // Only log if something actually changed
+      const diffShallow = require("@/utils/transactionHistory").diffShallow;
+      const { changedFields, before, after } = diffShallow(beforeSettings || {}, settings || {});
+      
+      if (changedFields.length > 0) {
+        recordTransaction({
+          req,
+          section: Section.HOME,
+          module: Module.DASHBOARD,
+          page: Page.DASHBOARD_SETTINGS,
+          action: Action.UPDATE,
+          entityType: EntityType.CUSTOM,
+          entityId: req.tenantId,
+          entityLabel: "Dashboard Settings",
+          actionLabel: "Updated dashboard settings",
+          beforeData: before,
+          afterData: after
+        });
+      }
+
       res.status(200).json({ success: true, data: settings } as ApiResponse);
     } catch (error: any) {
       console.error("Update dashboard settings error:", error);

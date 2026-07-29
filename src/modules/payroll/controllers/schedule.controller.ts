@@ -12,6 +12,7 @@ import {
   createGroupSchema,
   updateGroupSchema,
 } from '../validators/schedule.validator';
+import { recordTransaction, Section, Module, Page, Action, EntityType } from '@/utils/transactionHistory';
 
 // ── Schedules ──────────────────────────────────────────────────────────────
 export const listSchedules = handle(async (req: AuthRequest, res: Response) => {
@@ -25,16 +26,50 @@ export const getSchedule = handle(async (req: AuthRequest, res: Response) => {
 
 export const createSchedule = handle(async (req: AuthRequest, res: Response) => {
   const input = createScheduleSchema.parse(req.body);
-  ok(res, await scheduleService.createSchedule(actorOf(req), input), 201);
+  const schedule = await scheduleService.createSchedule(actorOf(req), input);
+  recordTransaction({
+    req,
+    section: Section.FINANCE,
+    module: Module.PAYROLL_V2,
+    page: Page.PAYROLL_V2_PAY_SCHEDULES,
+    action: Action.CREATE,
+    actionLabel: `Created pay schedule "${schedule.name}"`,
+    entityType: EntityType.PAYROLL_SCHEDULE,
+    entityId: schedule.id,
+    entityLabel: schedule.name,
+  });
+  ok(res, schedule, 201);
 });
 
 export const updateSchedule = handle(async (req: AuthRequest, res: Response) => {
   const input = updateScheduleSchema.parse(req.body);
-  ok(res, await scheduleService.updateSchedule(actorOf(req), req.params.id, input));
+  const schedule = await scheduleService.updateSchedule(actorOf(req), req.params.id, input);
+  recordTransaction({
+    req,
+    section: Section.FINANCE,
+    module: Module.PAYROLL_V2,
+    page: Page.PAYROLL_V2_PAY_SCHEDULES,
+    action: Action.UPDATE,
+    actionLabel: `Updated pay schedule "${schedule.name}"`,
+    entityType: EntityType.PAYROLL_SCHEDULE,
+    entityId: schedule.id,
+    entityLabel: schedule.name,
+  });
+  ok(res, schedule);
 });
 
 export const removeSchedule = handle(async (req: AuthRequest, res: Response) => {
   await scheduleService.deleteSchedule(actorOf(req), req.params.id);
+  recordTransaction({
+    req,
+    section: Section.FINANCE,
+    module: Module.PAYROLL_V2,
+    page: Page.PAYROLL_V2_PAY_SCHEDULES,
+    action: Action.DELETE,
+    actionLabel: `Deleted pay schedule`,
+    entityType: EntityType.PAYROLL_SCHEDULE,
+    entityId: req.params.id,
+  });
   ok(res, { id: req.params.id, deleted: true });
 });
 
@@ -50,15 +85,49 @@ export const getGroup = handle(async (req: AuthRequest, res: Response) => {
 
 export const createGroup = handle(async (req: AuthRequest, res: Response) => {
   const input = createGroupSchema.parse(req.body);
-  ok(res, await groupService.createGroup(actorOf(req), input), 201);
+  const group = await groupService.createGroup(actorOf(req), input);
+  recordTransaction({
+    req,
+    section: Section.FINANCE,
+    module: Module.PAYROLL_V2,
+    page: Page.PAYROLL_V2_PAY_SCHEDULES,
+    action: Action.CREATE,
+    actionLabel: `Created pay group "${group.name}"`,
+    entityType: EntityType.PAYROLL_SCHEDULE,
+    entityId: group.id,
+    entityLabel: group.name,
+  });
+  ok(res, group, 201);
 });
 
 export const updateGroup = handle(async (req: AuthRequest, res: Response) => {
   const input = updateGroupSchema.parse(req.body);
-  ok(res, await groupService.updateGroup(actorOf(req), req.params.id, input));
+  const group = await groupService.updateGroup(actorOf(req), req.params.id, input);
+  recordTransaction({
+    req,
+    section: Section.FINANCE,
+    module: Module.PAYROLL_V2,
+    page: Page.PAYROLL_V2_PAY_SCHEDULES,
+    action: Action.UPDATE,
+    actionLabel: `Updated pay group "${group.name}"`,
+    entityType: EntityType.PAYROLL_SCHEDULE,
+    entityId: group.id,
+    entityLabel: group.name,
+  });
+  ok(res, group);
 });
 
 export const removeGroup = handle(async (req: AuthRequest, res: Response) => {
   await groupService.deleteGroup(actorOf(req), req.params.id);
+  recordTransaction({
+    req,
+    section: Section.FINANCE,
+    module: Module.PAYROLL_V2,
+    page: Page.PAYROLL_V2_PAY_SCHEDULES,
+    action: Action.DELETE,
+    actionLabel: `Deleted pay group`,
+    entityType: EntityType.PAYROLL_SCHEDULE,
+    entityId: req.params.id,
+  });
   ok(res, { id: req.params.id, deleted: true });
 });

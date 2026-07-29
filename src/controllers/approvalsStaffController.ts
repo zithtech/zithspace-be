@@ -1,3 +1,4 @@
+import { recordTransaction, Section, Module, Page, Action, EntityType } from "@/utils/transactionHistory";
 import { Response } from "express";
 import pool from "@/config/dbpool";
 import { AuthRequest } from "@/types";
@@ -230,6 +231,20 @@ export class ApprovalsStaffController {
     // approvers → stays 'open' until someone is added).
     await recomputeApprovalStatus(tenantId, id);
 
+    recordTransaction({
+      req,
+      parentEntityType: EntityType.CLIENT,
+      parentEntityId: clientId,
+      section: Section.ADMIN,
+      module: Module.CLIENTS_V2,
+      page: Page.CLIENT_DETAIL,
+      action: Action.CREATE,
+      actionLabel: `Created approval request: ${b.title.trim()}`,
+      entityType: "approval_request",
+      entityId: id,
+      entityLabel: b.title.trim(),
+    });
+
     res.status(201).json({
       success: true,
       data: { id, approvalNumber: ins.rows[0].approval_number },
@@ -253,7 +268,7 @@ export class ApprovalsStaffController {
     const { id } = req.params;
 
     const result = await pool.query(
-      `DELETE FROM portal_approval_requests WHERE id = $1 AND tenant_id = $2`,
+      `DELETE FROM portal_approval_requests WHERE id = $1 AND tenant_id = $2 RETURNING client_id`,
       [id, tenantId]
     );
 
@@ -261,6 +276,20 @@ export class ApprovalsStaffController {
       res.status(404).json({ success: false, error: "Approval not found" });
       return;
     }
+
+    recordTransaction({
+      req,
+      parentEntityType: EntityType.CLIENT,
+      parentEntityId: (result.rows[0] as any).client_id,
+      section: Section.ADMIN,
+      module: Module.CLIENTS_V2,
+      page: Page.CLIENT_DETAIL,
+      action: Action.DELETE,
+      actionLabel: `Deleted approval request`,
+      entityType: "approval_request",
+      entityId: id,
+      entityLabel: id,
+    });
 
     res.json({ success: true });
   }
@@ -271,7 +300,7 @@ export class ApprovalsStaffController {
     const userId = req.user?.id || null;
     const { id } = req.params;
     const cur = await pool.query(
-      `SELECT status FROM portal_approval_requests
+      `SELECT status, client_id FROM portal_approval_requests
         WHERE id = $1 AND tenant_id = $2`,
       [id, tenantId],
     );
@@ -292,6 +321,19 @@ export class ApprovalsStaffController {
     await logApprovalEvent(tenantId, id, "cancelled", {
       actorType: "staff",
       actorStaffUserId: userId,
+    });
+    recordTransaction({
+      req,
+      parentEntityType: EntityType.CLIENT,
+      parentEntityId: cur.rows[0].client_id,
+      section: Section.ADMIN,
+      module: Module.CLIENTS_V2,
+      page: Page.CLIENT_DETAIL,
+      action: Action.UPDATE,
+      actionLabel: `Cancelled approval request`,
+      entityType: "approval_request",
+      entityId: id,
+      entityLabel: id,
     });
     res.json({ success: true, data: { id, status: "cancelled" } });
   }

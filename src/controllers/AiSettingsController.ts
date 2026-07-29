@@ -10,6 +10,7 @@
  */
 
 import { Response } from "express";
+import { recordTransaction, Section, Module, Page, Action, EntityType } from "@/utils/transactionHistory";
 import { AuthRequest } from "@/types";
 import pool from "@/config/dbpool";
 import { encryptSecure, decryptSecure } from "@/utils/encryption";
@@ -146,6 +147,18 @@ export class AiSettingsController {
 
       const saved = upsert.rows[0] as TenantAiRow;
       invalidateTenantAiCache(tenantId);
+
+      recordTransaction({
+        req,
+        section: Section.ADMIN,
+        module: Module.GENERAL_SETTINGS,
+        page: Page.GENERAL_SETTINGS_VIEW,
+        action: Action.UPDATE,
+        actionLabel: `AI Settings updated`,
+        entityType: "ai_settings",
+        entityId: tenantId,
+        entityLabel: "AI Settings",
+      });
 
       return res.json({
         success: true,

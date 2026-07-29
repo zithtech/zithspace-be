@@ -448,8 +448,8 @@ export const deleteEscalation = async (req: AuthRequest, res: Response): Promise
             section: Section.WORK,
             module: Module.ESCALATIONS,
             page: Page.ESCALATION_LIST,
-            action: Action.DELETE,
-            actionLabel: `Deleted escalation "${escalation.short_summary}"`,
+            action: "move_to_trash",
+            actionLabel: `Moved escalation "${escalation.short_summary}" to trash`,
             entityType: EntityType.ESCALATION,
             entityId: id,
             entityLabel: escalation.short_summary,
@@ -546,6 +546,19 @@ export const restoreEscalation = async (req: AuthRequest, res: Response): Promis
             success: true,
             message: "Escalation restored successfully",
         };
+
+        // ─── Activity log ───────────────────────────────────────────────
+        recordTransaction({
+            req,
+            section: Section.WORK,
+            module: Module.ESCALATIONS,
+            page: Page.ESCALATIONS_TRASH,
+            action: Action.RESTORE,
+            actionLabel: `Restored escalation from trash`,
+            entityType: EntityType.ESCALATION,
+            entityId: id,
+            entityLabel: "Escalation",
+        });
         res.status(200).json(response);
     } catch (error: any) {
         console.error("Error in restoreEscalation:", error.message);
@@ -601,6 +614,19 @@ export const permanentDeleteEscalation = async (req: AuthRequest, res: Response)
             success: true,
             message: "Escalation permanently deleted successfully",
         };
+
+        // ─── Activity log ───────────────────────────────────────────────
+        recordTransaction({
+            req,
+            section: Section.WORK,
+            module: Module.ESCALATIONS,
+            page: Page.ESCALATIONS_TRASH,
+            action: Action.PERMANENT_DELETE,
+            actionLabel: `Permanently deleted escalation`,
+            entityType: EntityType.ESCALATION,
+            entityId: id,
+            entityLabel: "Escalation",
+        });
         res.status(200).json(response);
     } catch (error: any) {
         console.error("Error in permanentDeleteEscalation:", error.message);
@@ -690,6 +716,18 @@ export const bulkRestoreEscalations = async (req: AuthRequest, res: Response): P
             message: `${count} escalations restored successfully`,
             data: { restoredCount: count },
         };
+
+        // ─── Activity log ───────────────────────────────────────────────
+        recordTransaction({
+            req,
+            section: Section.WORK,
+            module: Module.ESCALATIONS,
+            page: Page.ESCALATIONS_TRASH,
+            action: Action.BULK_RESTORE,
+            actionLabel: `Restored ${count} escalations from trash`,
+            entityType: EntityType.ESCALATION,
+            entityLabel: `Bulk operation`,
+        });
         res.status(200).json(response);
     } catch (error: any) {
         console.error("Error in bulkRestoreEscalations:", error.message);
@@ -747,6 +785,18 @@ export const bulkPermanentDeleteEscalations = async (req: AuthRequest, res: Resp
             message: `${count} escalations permanently deleted`,
             data: { deletedCount: count },
         };
+
+        // ─── Activity log ───────────────────────────────────────────────
+        recordTransaction({
+            req,
+            section: Section.WORK,
+            module: Module.ESCALATIONS,
+            page: Page.ESCALATIONS_TRASH,
+            action: Action.BULK_PERMANENT_DELETE,
+            actionLabel: `Permanently deleted ${count} escalations`,
+            entityType: EntityType.ESCALATION,
+            entityLabel: `Bulk operation`,
+        });
         res.status(200).json(response);
     } catch (error: any) {
         console.error("Error in bulkPermanentDeleteEscalations:", error.message);

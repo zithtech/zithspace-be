@@ -1448,8 +1448,24 @@ export class UserController {
         }
       }
 
+      const existingUser = await UserModel.findById(userId, req.tenantId);
       await UserModel.update(userId, req.tenantId, updateData);
       const updatedUser = await UserModel.findById(userId, req.tenantId);
+
+      recordTransaction({
+        req,
+        section: Section.HR,
+        module: Module.MY_PROFILE,
+        page: Page.MY_PROFILE,
+        action: Action.UPDATE,
+        actionLabel: "Updated profile details",
+        entityType: EntityType.USER,
+        entityId: userId,
+        entityLabel: updatedUser?.name,
+        beforeData: existingUser,
+        afterData: updatedUser,
+        statusCode: 200,
+      });
 
       res.status(200).json({
         success: true,
@@ -1547,6 +1563,19 @@ export class UserController {
       // Update password
       await UserModel.update(userId, req.tenantId, {
         passwordHash: newPasswordHash,
+      });
+
+      recordTransaction({
+        req,
+        section: Section.HR,
+        module: Module.MY_PROFILE,
+        page: Page.MY_PROFILE,
+        action: Action.UPDATE,
+        actionLabel: "Changed password",
+        entityType: EntityType.USER,
+        entityId: userId,
+        entityLabel: req.user.name,
+        statusCode: 200,
       });
 
       res.status(200).json({

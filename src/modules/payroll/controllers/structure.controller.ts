@@ -10,10 +10,22 @@ import {
   previewStructureSchema,
   updateStructureSchema,
 } from '../validators/structure.validator';
+import { recordTransaction, Section, Module, Page, Action, EntityType } from '@/utils/transactionHistory';
 
 export const create = handle(async (req: AuthRequest, res: Response) => {
   const input = createStructureSchema.parse(req.body);
   const structure = await service.createStructure(actorOf(req), input);
+  recordTransaction({
+    req,
+    section: Section.FINANCE,
+    module: Module.PAYROLL_V2,
+    page: Page.PAYROLL_V2_SALARY_STRUCTURES,
+    action: Action.CREATE,
+    actionLabel: `Created salary structure "${structure.name}"`,
+    entityType: EntityType.PAYROLL_STRUCTURE,
+    entityId: structure.id,
+    entityLabel: structure.name,
+  });
   ok(res, structure, 201);
 });
 
@@ -31,11 +43,32 @@ export const getOne = handle(async (req: AuthRequest, res: Response) => {
 export const update = handle(async (req: AuthRequest, res: Response) => {
   const input = updateStructureSchema.parse(req.body);
   const structure = await service.updateStructure(actorOf(req), req.params.id, input);
+  recordTransaction({
+    req,
+    section: Section.FINANCE,
+    module: Module.PAYROLL_V2,
+    page: Page.PAYROLL_V2_SALARY_STRUCTURES,
+    action: Action.UPDATE,
+    actionLabel: `Updated salary structure "${structure.name}"`,
+    entityType: EntityType.PAYROLL_STRUCTURE,
+    entityId: structure.id,
+    entityLabel: structure.name,
+  });
   ok(res, structure);
 });
 
 export const remove = handle(async (req: AuthRequest, res: Response) => {
   await service.deleteStructure(actorOf(req), req.params.id);
+  recordTransaction({
+    req,
+    section: Section.FINANCE,
+    module: Module.PAYROLL_V2,
+    page: Page.PAYROLL_V2_SALARY_STRUCTURES,
+    action: Action.DELETE,
+    actionLabel: `Deleted salary structure`,
+    entityType: EntityType.PAYROLL_STRUCTURE,
+    entityId: req.params.id,
+  });
   ok(res, { id: req.params.id, deleted: true });
 });
 

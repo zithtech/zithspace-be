@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AttendanceController = void 0;
+const transactionHistory_1 = require("@/utils/transactionHistory");
 const crypto_1 = require("crypto");
 const types_1 = require("@/types");
 const rbac_service_1 = require("@/modules/rbac/rbac.service");
@@ -327,6 +328,18 @@ class AttendanceController {
                 return await AttendanceController.getFormattedTodayAttendance(db, userId, req.tenantId, today);
             });
             socketService_1.socketService.emitToTenant(req.tenantId, "attendance:updated", formatted);
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.HR,
+                module: transactionHistory_1.Module.ATTENDANCE,
+                page: transactionHistory_1.Page.ATTENDANCE_DASHBOARD,
+                action: transactionHistory_1.Action.CREATE,
+                actionLabel: `Clocked in for ${formatted?.member?.name || req.user.name}`,
+                entityType: transactionHistory_1.EntityType.ATTENDANCE_RECORD,
+                entityId: formatted?.id,
+                afterData: formatted,
+                statusCode: 200,
+            });
             res.status(200).json({
                 success: true,
                 data: formatted,
@@ -385,6 +398,18 @@ class AttendanceController {
                 console.error("[attendance] timer stop failed:", timerErr);
             }
             socketService_1.socketService.emitToTenant(req.tenantId, "attendance:updated", formatted);
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.HR,
+                module: transactionHistory_1.Module.ATTENDANCE,
+                page: transactionHistory_1.Page.ATTENDANCE_DASHBOARD,
+                action: transactionHistory_1.Action.UPDATE,
+                actionLabel: `Clocked out for ${formatted?.member?.name || req.user.name}`,
+                entityType: transactionHistory_1.EntityType.ATTENDANCE_RECORD,
+                entityId: formatted?.id,
+                afterData: formatted,
+                statusCode: 200,
+            });
             res.status(200).json({
                 success: true,
                 data: formatted,
@@ -938,6 +963,17 @@ class AttendanceController {
                 const { rows } = await db.query(`SELECT ${A_COLS}, ${MEMBER_COLS} ${MEMBER_JOINS} WHERE a.id = $1 LIMIT 1`, [id]);
                 return rowToAttendance(rows[0]);
             });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.HR,
+                module: transactionHistory_1.Module.ATTENDANCE,
+                page: transactionHistory_1.Page.ATTENDANCE_RECORDS,
+                action: transactionHistory_1.Action.UPDATE,
+                actionLabel: `Updated attendance record for ${attendance?.member?.name || req.user.name}`,
+                entityType: transactionHistory_1.EntityType.ATTENDANCE_RECORD,
+                entityId: id,
+                statusCode: 200,
+            });
             res.status(200).json({
                 success: true,
                 data: attendance,
@@ -972,13 +1008,26 @@ class AttendanceController {
                 return;
             }
             const { id } = req.params;
+            let deletedName = "";
             await (0, attendancePool_1.withTenant)(req.tenantId, async (db) => {
-                const { rows } = await db.query(`SELECT id FROM attendance WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [id, req.tenantId]);
+                const { rows } = await db.query(`SELECT u.name FROM attendance a LEFT JOIN users u ON a.user_id = u.id WHERE a.id = $1 AND a.tenant_id = $2 LIMIT 1`, [id, req.tenantId]);
                 if (!rows[0])
                     throw new types_1.NotFoundError("Attendance record not found in this tenant");
+                deletedName = rows[0].name;
                 // Remove child sessions first (no FK cascade on attendance_sessions).
                 await db.query(`DELETE FROM attendance_sessions WHERE attendance_id = $1`, [id]);
                 await db.query(`DELETE FROM attendance WHERE id = $1`, [id]);
+            });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.HR,
+                module: transactionHistory_1.Module.ATTENDANCE,
+                page: transactionHistory_1.Page.ATTENDANCE_RECORDS,
+                action: transactionHistory_1.Action.DELETE,
+                actionLabel: `Deleted attendance record for ${deletedName || req.user.name}`,
+                entityType: transactionHistory_1.EntityType.ATTENDANCE_RECORD,
+                entityId: id,
+                statusCode: 200,
             });
             res.status(200).json({
                 success: true,
@@ -1179,6 +1228,18 @@ class AttendanceController {
                 }
                 const { rows } = await db.query(`SELECT ${A_COLS}, ${MEMBER_COLS} ${MEMBER_JOINS} WHERE a.id = $1 LIMIT 1`, [newId]);
                 return rowToAttendance(rows[0]);
+            });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.HR,
+                module: transactionHistory_1.Module.ATTENDANCE,
+                page: transactionHistory_1.Page.ATTENDANCE_RECORDS,
+                action: transactionHistory_1.Action.CREATE,
+                actionLabel: `Created manual attendance record for ${attendance?.member?.name || req.user.name}`,
+                entityType: transactionHistory_1.EntityType.ATTENDANCE_RECORD,
+                entityId: attendance?.id,
+                afterData: attendance,
+                statusCode: 201,
             });
             res.status(201).json({
                 success: true,

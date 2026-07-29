@@ -38,7 +38,7 @@ export class GradeController {
       // ─── Activity log ───────────────────────────────────────────────
       recordTransaction({
         req,
-        section: Section.WORK,
+        section: Section.ADMIN,
         module: Module.ORG_STRUCTURE,
         page: Page.ORG_STRUCTURE_GRADES,
         action: Action.CREATE,
@@ -173,7 +173,7 @@ export class GradeController {
 
         recordTransaction({
           req,
-          section: Section.WORK,
+          section: Section.ADMIN,
           module: Module.ORG_STRUCTURE,
           page: Page.ORG_STRUCTURE_GRADES,
           action: Action.UPDATE,
@@ -218,7 +218,7 @@ export class GradeController {
       if (existing) {
         recordTransaction({
           req,
-          section: Section.WORK,
+          section: Section.ADMIN,
           module: Module.ORG_STRUCTURE,
           page: Page.ORG_STRUCTURE_GRADES,
           action: Action.DELETE,
