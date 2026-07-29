@@ -2,7 +2,8 @@ import { Response } from "express";
 import { AuthRequest, ApiResponse } from "../types";
 import { employeeExitService } from "../services/employeeExit.service";
 import TenantLogger from "@/utils/tenantLogger";
-import { uploadExitDocumentToR2 } from "../utils/r2Client";
+import { uploadExitDocumentToR2, s3Client, BUCKET_NAME } from "../utils/r2Client";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
 
 export class EmployeeExitController {
   static async createEmployeeExit(req: AuthRequest, res: Response): Promise<void> {
@@ -520,6 +521,109 @@ export class EmployeeExitController {
     } catch (error: any) {
       console.error("Error submitting exit interview:", error);
       res.status(500).json({ success: false, error: "Internal server error", details: error.message } as ApiResponse);
+    }
+  }
+  static async uploadDocument(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const tenantId = req.user?.tenantId;
+      const { id } = req.params;
+      const { documentType, fileBase64, fileName, employeeId } = req.body;
+
+      if (!tenantId) {
+        res.status(401).json({ success: false, error: "Unauthorized" } as ApiResponse);
+        return;
+      }
+
+      if (!documentType || !fileBase64 || !fileName || !employeeId) {
+        res.status(400).json({ success: false, error: "Missing required fields for document upload" } as ApiResponse);
+        return;
+      }
+
+      if (documentType !== 'relieving' && documentType !== 'experience') {
+        res.status(400).json({ success: false, error: "Invalid document type" } as ApiResponse);
+        return;
+      }
+
+      const fileUrl = await uploadExitDocumentToR2(
+        fileBase64,
+        fileName,
+        tenantId,
+        employeeId
+      );
+
+      const updated = await employeeExitService.updateExitDocumentUrl(tenantId, id, documentType, fileUrl);
+
+      res.status(200).json({
+        success: true,
+        message: "Document uploaded successfully",
+        data: updated
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Error uploading document:", error);
+      res.status(500).json({
+        success: false,
+        error: "Internal server error",
+        details: error.message
+      } as ApiResponse);
+    }
+  }
+
+  static async downloadDocument(req: AuthRequest, res: Response) {
+    try {
+      const { url: finalUrl, filename, mode = 'attachment' } = req.query;
+
+      if (!finalUrl || typeof finalUrl !== 'string') {
+        return res.status(400).json({ success: false, error: "URL is required" });
+      }
+
+      const urlObj = new URL(finalUrl);
+      let key = urlObj.pathname.startsWith("/") ? urlObj.pathname.slice(1) : urlObj.pathname;
+
+      if (key.startsWith(BUCKET_NAME + '/')) {
+        key = key.substring(BUCKET_NAME.length + 1);
+      }
+      
+      key = decodeURIComponent(key);
+
+      const filenameStr = typeof filename === 'string' ? filename : 'document.pdf';
+      const ext = filenameStr.split('.').pop()?.toLowerCase() || 'pdf';
+      const MIME_MAP: Record<string, string> = {
+        pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+        gif: 'image/gif', webp: 'image/webp', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      };
+      const resolvedContentType = MIME_MAP[ext] || 'application/octet-stream';
+
+      const command = new GetObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: key
+      });
+
+      const s3Response = await s3Client.send(command);
+
+      if (!s3Response.Body) {
+        throw new Error("Empty response body from R2");
+      }
+
+      res.setHeader('Content-Type', resolvedContentType);
+      res.setHeader('Content-Disposition', mode === 'inline' 
+        ? `inline; filename="${filenameStr}"` 
+        : `attachment; filename="${filenameStr}"`);
+
+      const body = s3Response.Body as any;
+      if (typeof body.pipe === 'function') {
+        return body.pipe(res);
+      } else {
+        const bytes = await s3Response.Body.transformToByteArray();
+        return res.send(Buffer.from(bytes));
+      }
+    } catch (error: any) {
+      console.error("[EmployeeExitController] downloadDocument error:", error);
+      return res.status(500).json({ 
+        success: false, 
+        error: "Failed to download document",
+        details: error.message
+      });
     }
   }
 }

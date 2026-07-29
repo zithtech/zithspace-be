@@ -16,7 +16,8 @@ import {
   deleteChecklistConfig,
   EmployeeExitRequest,
   getExitInterview,
-  upsertExitInterview
+  upsertExitInterview,
+  updateExitDocumentUrl
 } from "../models/employeeExit.model";
 
 import { getByEmployee } from "../modules/payroll/services/assignment.service";
@@ -167,7 +168,7 @@ export class EmployeeExitService {
         if (basicComp) {
           basicDailyRate = basicComp.fullAmount / 30; // full amount divided by standard 30 days
         }
-        
+
         let encashableDays = 0;
         for (const b of balances) {
           if (b.available > 0) {
@@ -181,7 +182,7 @@ export class EmployeeExitService {
     }
 
     return {
-      payrollRunId: `FNF-${exitRequest.employee_id.substring(0,8)}-${month}-${year}`,
+      payrollRunId: `FNF-${exitRequest.employee_id.substring(0, 8)}-${month}-${year}`,
       pendingSalary: computed.gross,
       leaveEncashment,
       bonus: 0,
@@ -194,6 +195,10 @@ export class EmployeeExitService {
       assetDeduction: 0, // Manual adjustment by Finance
       noticeRecovery: exitRequest.buyout_amount ? parseFloat(exitRequest.buyout_amount) : 0,
     };
+  }
+
+  async updateExitDocumentUrl(tenantId: string, id: string, documentType: string, url: string) {
+    return await updateExitDocumentUrl(tenantId, id, documentType, url);
   }
 }
 

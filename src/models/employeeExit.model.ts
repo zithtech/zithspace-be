@@ -159,7 +159,9 @@ export const getEmployeeExits = async (tenantId: string): Promise<EmployeeExitRe
       e.proposed_last_working_day AS "proposedLastWorkingDay",
       e.notice_period_day AS "noticePeriodDay", e.waive_notice_period AS "waiveNoticePeriod",
       e.buyout_required AS "buyoutRequired", e.buyout_amount AS "buyoutAmount",
-      e.explanation, e.resignation_letter_url AS "resignationLetterUrl", e.status, e.created_by_id AS "createdById",
+      e.explanation, e.resignation_letter_url AS "resignationLetterUrl", 
+      e.relieving_letter_url AS "relievingLetterUrl", e.experience_letter_url AS "experienceLetterUrl",
+      e.status, e.created_by_id AS "createdById",
       e.updated_by_id AS "updatedById", e.created_at AS "createdAt", e.updated_at AS "updatedAt",
       emp.first_name AS "employee_first_name",
       emp.last_name AS "employee_last_name",
@@ -223,7 +225,9 @@ export const getEmployeeExitById = async (tenantId: string, id: string): Promise
       e.proposed_last_working_day AS "proposedLastWorkingDay",
       e.notice_period_day AS "noticePeriodDay", e.waive_notice_period AS "waiveNoticePeriod",
       e.buyout_required AS "buyoutRequired", e.buyout_amount AS "buyoutAmount",
-      e.explanation, e.resignation_letter_url AS "resignationLetterUrl", e.status, e.created_by_id AS "createdById",
+      e.explanation, e.resignation_letter_url AS "resignationLetterUrl",
+      e.relieving_letter_url AS "relievingLetterUrl", e.experience_letter_url AS "experienceLetterUrl",
+      e.status, e.created_by_id AS "createdById",
       e.updated_by_id AS "updatedById", e.created_at AS "createdAt", e.updated_at AS "updatedAt",
       emp.first_name AS "employee_first_name",
       emp.last_name AS "employee_last_name",
@@ -424,15 +428,15 @@ export const getPendingApprovals = async (tenantId: string, employeeId: string):
           AND a2.status != 'APPROVED'
         )
       )
+      AND (
+        (a.approver_type = 'ReportingManager' AND e.reporting_manager_id = $2)
+        OR (a.approver_id = $2)
+        OR (a.approver_id IN (SELECT position_id FROM employees WHERE id::text = $2 OR user_id = $2))
+      )
     ORDER BY a.created_at DESC
   `;
 
-  // Note: We are currently ignoring the approverId match because we want to see it work
-  // in a standard flow where maybe the user is testing it as an admin. But in real life:
-  // AND a.approver_id IN (SELECT position_id FROM users WHERE id = $2)
-  // For the sake of demonstration, we return all pending approvals that are ready for the NEXT step.
-
-  const result = await pool.query(query, [tenantId]);
+  const result = await pool.query(query, [tenantId, employeeId]);
   
   return result.rows.map(row => {
     let reportingManagerName = null;
@@ -636,6 +640,18 @@ export const getChecklistConfigs = async (tenantId: string): Promise<any[]> => {
   `;
   const result = await pool.query(query, [tenantId]);
   return result.rows;
+};
+
+export const updateExitDocumentUrl = async (tenantId: string, id: string, documentType: string, url: string): Promise<any> => {
+  const column = documentType === 'relieving' ? 'relieving_letter_url' : 'experience_letter_url';
+  const query = `
+    UPDATE employee_exits 
+    SET ${column} = $1, updated_at = NOW()
+    WHERE id = $2 AND tenant_id = $3
+    RETURNING *
+  `;
+  const result = await pool.query(query, [url, id, tenantId]);
+  return result.rows[0];
 };
 
 export const addChecklistConfig = async (tenantId: string, department: string, itemName: string): Promise<any> => {
