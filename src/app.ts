@@ -152,6 +152,7 @@ import proposalTemplateRoutes from "@/routes/proposalTemplates";
 import projectOverviewRoutes from "./routes/projectOverviewRoutes";
 import { socketService } from "@/services/socketService";
 import { closeAttendancePool } from "@/db/attendancePool";
+import testScopeRoutes from "@/routes/testScopeRoutes";
 // Load environment
 dotenv.config();
 console.log("🚀 API Starting up...");
@@ -398,6 +399,7 @@ app.use("/api/leave-allocation", leaveAllocationRoutes);
 app.use("/api/leave-request", leaveRequestRoutes);
 app.use("/api/leave-balances", leaveBalanceRoutes);
 app.use("/api/v2/leave", leaveV2Routes);
+app.use("/api/v2/qa/test-scopes", testScopeRoutes);
 app.use("/api/v2/payroll", payrollV2Routes);
 app.use("/api/v2/reimbursement", reimbursementV2Routes);
 app.use("/api/performance-report", performanceReportRoutes);
