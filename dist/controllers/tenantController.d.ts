@@ -50,5 +50,17 @@ export declare class TenantController {
      * Requires super_admin access
      */
     static generateSecretKey(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Get the current Chrome Extension install key for the active tenant (admin only).
+     * The key lives in tenants.settings.extensionInstallKey (JSONB). Returns null
+     * when none has been generated yet.
+     */
+    static getExtensionInstallKey(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * Generate (or rotate) the Chrome Extension install key for the active tenant
+     * (admin only). Distribute the returned key to that tenant's users; rotating
+     * invalidates the previous key. Tenant is derived from the authenticated JWT.
+     */
+    static generateExtensionInstallKey(req: AuthRequest, res: Response): Promise<void>;
 }
 export default TenantController;

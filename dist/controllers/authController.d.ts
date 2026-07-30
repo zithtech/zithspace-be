@@ -7,6 +7,19 @@ export declare class AuthController {
      */
     static extensionLogin(req: Request, res: Response): Promise<void>;
     /**
+     * Resolve a workspace by slug for the Chrome Extension activation screen.
+     * Public (no auth): only exposes whether the workspace exists + its display
+     * name, so the extension can bind an install to a tenant before login.
+     */
+    static resolveWorkspace(req: Request, res: Response): Promise<void>;
+    /**
+     * Redeem a one-time install key for the Chrome Extension activation screen.
+     * Unlike /resolve-tenant (which takes a public slug), the install key is a
+     * high-entropy secret provisioned per tenant — so this endpoint is not an
+     * existence oracle for workspace names. Returns the bound workspace on match.
+     */
+    static redeemInstallKey(req: Request, res: Response): Promise<void>;
+    /**
      * User login with tenant context
      */
     static login(req: AuthRequest, res: Response): Promise<void>;
