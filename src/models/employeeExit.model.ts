@@ -1,5 +1,5 @@
 import pool from "../config/dbpool";
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID as uuidv4 } from "crypto";
 
 export interface EmployeeExitRequest {
   id: string;
