@@ -1006,6 +1006,81 @@ export class TenantController {
       } as ApiResponse);
     }
   }
+
+  /**
+   * Get the current Chrome Extension install key for the active tenant (admin only).
+   * The key lives in tenants.settings.extensionInstallKey (JSONB). Returns null
+   * when none has been generated yet.
+   */
+  static async getExtensionInstallKey(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const tenantId = req.user?.tenantId || req.tenantId;
+      if (!tenantId) {
+        res.status(400).json({ success: false, error: "Tenant context is required" } as ApiResponse);
+        return;
+      }
+
+      const result = await pool.query(
+        "SELECT settings->>'extensionInstallKey' AS key FROM tenants WHERE id = $1",
+        [tenantId]
+      );
+      if (result.rows.length === 0) {
+        res.status(404).json({ success: false, error: "Tenant not found" } as ApiResponse);
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        data: { installKey: result.rows[0].key || null },
+      });
+    } catch (error) {
+      console.error("Get extension install key error:", error);
+      res.status(500).json({ success: false, error: "Failed to get install key" } as ApiResponse);
+    }
+  }
+
+  /**
+   * Generate (or rotate) the Chrome Extension install key for the active tenant
+   * (admin only). Distribute the returned key to that tenant's users; rotating
+   * invalidates the previous key. Tenant is derived from the authenticated JWT.
+   */
+  static async generateExtensionInstallKey(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const tenantId = req.user?.tenantId || req.tenantId;
+      if (!tenantId) {
+        res.status(400).json({ success: false, error: "Tenant context is required" } as ApiResponse);
+        return;
+      }
+
+      const tenantResult = await pool.query("SELECT subdomain FROM tenants WHERE id = $1", [tenantId]);
+      if (tenantResult.rows.length === 0) {
+        res.status(404).json({ success: false, error: "Tenant not found" } as ApiResponse);
+        return;
+      }
+
+      const crypto = require("crypto");
+      const subdomain = tenantResult.rows[0].subdomain;
+      const installKey = `zk_${subdomain}_${crypto.randomBytes(18).toString("hex")}`;
+
+      // Merge into the settings JSONB without clobbering other keys.
+      await pool.query(
+        `UPDATE tenants
+           SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{extensionInstallKey}', to_jsonb($1::text)),
+               updated_at = NOW()
+         WHERE id = $2`,
+        [installKey, tenantId]
+      );
+
+      res.status(200).json({
+        success: true,
+        message: "Install key generated successfully",
+        data: { installKey },
+      });
+    } catch (error) {
+      console.error("Generate extension install key error:", error);
+      res.status(500).json({ success: false, error: "Failed to generate install key" } as ApiResponse);
+    }
+  }
 }
 
 export default TenantController;
