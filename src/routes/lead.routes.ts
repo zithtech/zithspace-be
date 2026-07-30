@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { LeadController } from '@/controllers/Lead.controller';
 import { BidIQController } from '@/controllers/BidIQ.controller';
-import { authenticateToken, optionalAuth } from '@/middleware/auth';
+import { authenticateToken } from '@/middleware/auth';
 import { requirePermission } from '@/middleware/permission';
 import { requireAiAccess } from '@/middleware/aiAccess';
 import { Permissions } from '@/types/permissions';
@@ -17,8 +17,9 @@ router.use(requireTenant);
 /**
  * Lead Routes
  */
-// Allow lead creation with optional auth (to support extensions)
-router.post('/', optionalAuth, requirePermission(Permissions.LEAD_CREATE),LeadController.createLead);
+// Lead creation requires a verified token; the lead's tenant is derived from
+// the authenticated identity (JWT), never from a client-supplied tenant id.
+router.post('/', authenticateToken, requirePermission(Permissions.LEAD_CREATE), LeadController.createLead);
 
 // Strictly protected routes
 router.use(authenticateToken);

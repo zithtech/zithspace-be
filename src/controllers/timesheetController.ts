@@ -181,11 +181,15 @@ export class TimesheetController {
         userId,
         fromDate,
         toDate,
+        forApproval,
       } = req.query;
 
       const where: any = { tenantId: req.tenantId };
       if (status) where.status = status;
       if (userId) where.userId = userId;
+      if (forApproval === 'true') {
+        where.user = { reportsToId: req.user.id };
+      }
       // if (fromDate && toDate) {
       //   where.weekStart = {
       //     gte: new Date(fromDate as string),
@@ -297,9 +301,14 @@ export class TimesheetController {
 
       const timesheet = await prisma.timesheet.findFirst({
         where: { id, tenantId: req.tenantId },
+        include: { user: true },
       });
 
       if (!timesheet) throw new NotFoundError("Timesheet not found");
+
+      if (timesheet.user?.reportsToId !== req.user.id) {
+        throw new ValidationError("Only the reporting manager can approve this timesheet");
+      }
 
       const updated = await prisma.timesheet.update({
         where: { id },

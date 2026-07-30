@@ -142,12 +142,15 @@ class TimesheetController {
             if (!req.user || !req.tenantId)
                 throw new types_1.ValidationError("Tenant context and authentication required");
             // const { page = 1, limit = 20, status, userId } = req.query;
-            const { page = 1, limit = 20, status, userId, fromDate, toDate, } = req.query;
+            const { page = 1, limit = 20, status, userId, fromDate, toDate, forApproval, } = req.query;
             const where = { tenantId: req.tenantId };
             if (status)
                 where.status = status;
             if (userId)
                 where.userId = userId;
+            if (forApproval === 'true') {
+                where.user = { reportsToId: req.user.id };
+            }
             // if (fromDate && toDate) {
             //   where.weekStart = {
             //     gte: new Date(fromDate as string),
@@ -240,9 +243,13 @@ class TimesheetController {
             }
             const timesheet = await database_1.prisma.timesheet.findFirst({
                 where: { id, tenantId: req.tenantId },
+                include: { user: true },
             });
             if (!timesheet)
                 throw new types_1.NotFoundError("Timesheet not found");
+            if (timesheet.user?.reportsToId !== req.user.id) {
+                throw new types_1.ValidationError("Only the reporting manager can approve this timesheet");
+            }
             const updated = await database_1.prisma.timesheet.update({
                 where: { id },
                 data: {

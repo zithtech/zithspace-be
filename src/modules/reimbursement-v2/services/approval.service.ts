@@ -28,8 +28,8 @@ async function notifyEmployee(client: TenantClient, claim: any, actorId: string,
           currency: claim.currency,
           remarks
         }, claim.tenantId)
-        .then(res => console.log(`[Reimbursement Email] sendClaimApprovalEmail success:`, res))
-        .catch(err => console.error(`[Reimbursement Email] Failed to send approval email:`, err));
+          .then(res => console.log(`[Reimbursement Email] sendClaimApprovalEmail success:`, res))
+          .catch(err => console.error(`[Reimbursement Email] Failed to send approval email:`, err));
       } else {
         await emailService.sendClaimRejectionEmail({
           to: employee.email,
@@ -42,8 +42,8 @@ async function notifyEmployee(client: TenantClient, claim: any, actorId: string,
           status,
           remarks
         }, claim.tenantId)
-        .then(res => console.log(`[Reimbursement Email] sendClaimRejectionEmail success:`, res))
-        .catch(err => console.error(`[Reimbursement Email] Failed to send rejection/sent_back email:`, err));
+          .then(res => console.log(`[Reimbursement Email] sendClaimRejectionEmail success:`, res))
+          .catch(err => console.error(`[Reimbursement Email] Failed to send rejection/sent_back email:`, err));
       }
     }
   } catch (err) {
