@@ -30,6 +30,34 @@ export const createStep = async (req: AuthRequest, res: Response) => {
   }
 };
 
+export const saveSequence = async (req: AuthRequest, res: Response) => {
+  try {
+    const tenantId = req.user?.tenantId;
+    const userId = req.user?.id;
+    const { levelType, levelId, steps } = req.body;
+
+    if (!tenantId || !userId) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    if (!levelType || !levelId || !Array.isArray(steps)) {
+      return res.status(400).json({ message: "Invalid payload: levelType, levelId, and steps are required" });
+    }
+
+    const data = {
+      levelType,
+      levelId,
+      steps,
+    };
+
+    const result = await exitApprovalWorkflowService.saveWorkflowSequence(tenantId, data, userId);
+    return res.status(200).json({ success: true, message: "Approval sequence saved successfully", data: result });
+  } catch (error: any) {
+    console.error("Error saving approval sequence:", error);
+    return res.status(500).json({ success: false, message: "Internal server error", error: error.message });
+  }
+};
+
 export const getAllSteps = async (req: AuthRequest, res: Response) => {
   try {
     const tenantId = req.user?.tenantId;
