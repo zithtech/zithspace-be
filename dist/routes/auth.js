@@ -33,6 +33,10 @@ const generalAuthRateLimit = (0, express_rate_limit_1.default)({
     standardHeaders: true,
     legacyHeaders: false,
 });
+// Extension workspace resolution - public, used by the activation/binding screen
+router.get("/resolve-tenant", generalAuthRateLimit, authController_1.AuthController.resolveWorkspace);
+// Extension install-key redemption - public, high-entropy key (not an existence oracle)
+router.post("/redeem-install-key", authRateLimit, authController_1.AuthController.redeemInstallKey);
 // Extension global login - doesn't require tenant context
 router.post("/extension-login", authRateLimit, authController_1.AuthController.extensionLogin);
 // Login route - requires tenant context

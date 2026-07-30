@@ -17,7 +17,7 @@ class AuthController {
     static async extensionLogin(req, res) {
         console.log("extensionLogin hit:", req.body);
         try {
-            const { email, password } = req.body;
+            const { email, password, tenantSlug } = req.body;
             if (!email || !password) {
                 res.status(400).json({
                     success: false,
@@ -25,7 +25,31 @@ class AuthController {
                 });
                 return;
             }
-            // Global search for user across all tenants
+            // When the extension install is bound to a workspace, scope the lookup to
+            // that tenant. This enforces the pre-bound model and prevents a user whose
+            // email exists in multiple tenants from being resolved to the wrong one.
+            let boundTenantId;
+            if (tenantSlug) {
+                const boundTenant = await database_1.prisma.tenant.findFirst({
+                    where: {
+                        OR: [
+                            { subdomain: String(tenantSlug).toLowerCase() },
+                            { id: String(tenantSlug) },
+                        ],
+                        isActive: true,
+                    },
+                    select: { id: true },
+                });
+                if (!boundTenant) {
+                    res.status(404).json({
+                        success: false,
+                        error: "Workspace not found or inactive",
+                    });
+                    return;
+                }
+                boundTenantId = boundTenant.id;
+            }
+            // Search for the user, scoped to the bound tenant when provided.
             const user = await database_1.prisma.user.findFirst({
                 where: {
                     OR: [
@@ -33,6 +57,7 @@ class AuthController {
                         { personalEmail: email.toLowerCase() },
                     ],
                     isActive: true,
+                    ...(boundTenantId ? { tenantId: boundTenantId } : {}),
                 },
                 include: {
                     tenant: true,
@@ -91,6 +116,98 @@ class AuthController {
             res.status(500).json({
                 success: false,
                 error: "An unexpected error occurred during login",
+            });
+        }
+    }
+    /**
+     * Resolve a workspace by slug for the Chrome Extension activation screen.
+     * Public (no auth): only exposes whether the workspace exists + its display
+     * name, so the extension can bind an install to a tenant before login.
+     */
+    static async resolveWorkspace(req, res) {
+        try {
+            const slug = req.query.slug || "";
+            if (!slug) {
+                res.status(400).json({
+                    success: false,
+                    error: "Workspace slug is required",
+                });
+                return;
+            }
+            const tenant = await database_1.prisma.tenant.findFirst({
+                where: {
+                    OR: [{ subdomain: slug.toLowerCase() }, { id: slug }],
+                    isActive: true,
+                },
+                select: { id: true, name: true, subdomain: true },
+            });
+            if (!tenant) {
+                res.status(404).json({
+                    success: false,
+                    error: "Workspace not found or inactive",
+                });
+                return;
+            }
+            res.status(200).json({
+                success: true,
+                tenant: {
+                    name: tenant.name,
+                    slug: tenant.subdomain,
+                },
+            });
+        }
+        catch (error) {
+            console.error("Resolve workspace error:", error);
+            res.status(500).json({
+                success: false,
+                error: "An unexpected error occurred",
+            });
+        }
+    }
+    /**
+     * Redeem a one-time install key for the Chrome Extension activation screen.
+     * Unlike /resolve-tenant (which takes a public slug), the install key is a
+     * high-entropy secret provisioned per tenant — so this endpoint is not an
+     * existence oracle for workspace names. Returns the bound workspace on match.
+     */
+    static async redeemInstallKey(req, res) {
+        try {
+            const key = req.body?.key || "";
+            if (!key || key.trim().length < 8) {
+                res.status(400).json({
+                    success: false,
+                    error: "A valid install key is required",
+                });
+                return;
+            }
+            const tenant = await database_1.prisma.tenant.findFirst({
+                where: {
+                    isActive: true,
+                    settings: { path: ["extensionInstallKey"], equals: key.trim() },
+                },
+                select: { id: true, name: true, subdomain: true },
+            });
+            if (!tenant) {
+                // Generic message — never reveal whether a key "almost" matched.
+                res.status(404).json({
+                    success: false,
+                    error: "Invalid or expired install key",
+                });
+                return;
+            }
+            res.status(200).json({
+                success: true,
+                tenant: {
+                    name: tenant.name,
+                    slug: tenant.subdomain,
+                },
+            });
+        }
+        catch (error) {
+            console.error("Redeem install key error:", error);
+            res.status(500).json({
+                success: false,
+                error: "An unexpected error occurred",
             });
         }
     }
