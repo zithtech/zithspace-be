@@ -115,6 +115,8 @@ import leaveV2Routes from "@/modules/leave-v2/routes";
 import performanceReportRoutes from "@/modules/performance-report/routes";
 import payrollV2Routes from "@/modules/payroll/routes";
 import reimbursementV2Routes from "@/modules/reimbursement-v2/routes";
+import { pipelineRouter } from "@/modules/pipeline/routes";
+
 import reimbursementConfigurationRoutes from "@/routes/reimbursementConfig";
 import reimbursementsettingsRoutes from "@/routes/reimbursementsettingsRoutes";
 import reimbursementRoutes from "@/routes/reimbursementcreateRoutes";
@@ -332,6 +334,7 @@ app.use("/api/milestones", milestoneRoutes);
 app.use("/api/milestone-items", milestoneItemRoutes);
 app.use("/api/client-releases", clientReleaseRoutes);
 app.use("/api/tickets", ticketRoutes);
+app.use("/api/pipeline", pipelineRouter);
 app.use("/api/recruitment", recruitmentRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/clients", clientRoutes);
