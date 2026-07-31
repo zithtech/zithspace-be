@@ -115,3 +115,54 @@ export const deleteTestScope = async (req: Request, res: Response) => {
     res.status(500).json({ success: false, error: 'Internal Server Error' });
   }
 };
+
+import { getAIProviderForTenant } from '../services/ai/resolver';
+
+export const generateScopeContentAI = async (req: Request, res: Response) => {
+  try {
+    console.log('generateScopeContentAI hit. User:', (req as any).user);
+    const tenantId = (req as any).user?.tenantId;
+    if (!tenantId) {
+      console.log('No tenant found in req.user');
+      return res.status(401).json({ success: false, error: 'Unauthorized: No tenant found' });
+    }
+
+    const { field, projectOverview, modules, testingTypes, userPrompt } = req.body;
+    
+    const provider = await getAIProviderForTenant(tenantId);
+    if (!provider || !provider.isConfigured()) {
+      return res.status(400).json({ success: false, error: 'AI provider is not configured. Please add an API key in .env or Tenant AI settings.' });
+    }
+
+    const fieldLabel = field === 'outScope' ? 'Out of Scope' : 'In Scope';
+    let prompt = `
+You are a senior QA engineer writing a Test Scope document.
+Generate the "${fieldLabel}" section based on the following project context.
+
+Project Overview: ${projectOverview || 'N/A'}
+Modules: ${modules && modules.length > 0 ? modules.join(', ') : 'N/A'}
+Testing Types: ${testingTypes && testingTypes.length > 0 ? testingTypes.join(', ') : 'N/A'}
+`;
+
+    if (userPrompt) {
+      prompt += `\nAdditional user instructions: ${userPrompt}\n`;
+    }
+
+    prompt += `
+Return ONLY a valid HTML snippet containing the content. Do not include any markdown fences (like \`\`\`html) or preamble. 
+Format it nicely using HTML tags like <p>, <ul>, <li>, <strong>.
+`;
+    
+    const result = await provider.generateText(prompt, {
+      temperature: 0.7,
+      maxOutputTokens: 2048,
+    });
+    
+    const cleanHtml = result.replace(/^```html\s*/i, '').replace(/\s*```$/i, '').trim();
+
+    res.json({ success: true, data: cleanHtml });
+  } catch (err: any) {
+    console.error('Failed to generate scope content', err);
+    res.status(500).json({ success: false, error: 'Failed to generate content' });
+  }
+};
