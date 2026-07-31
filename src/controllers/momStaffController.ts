@@ -2,6 +2,7 @@ import { Response } from "express";
 import { nanoid } from "nanoid";
 import pool from "@/config/dbpool";
 import { AuthRequest } from "@/types";
+import { recordTransaction, Section, Module, Page, Action, EntityType } from "@/utils/transactionHistory";
 import { allocateCrNumber } from "./clientPortalCrController";
 import { s3Client, BUCKET_NAME } from "@/utils/r2Client";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
@@ -456,6 +457,19 @@ export class MomStaffController {
       clientId,
       id,
     });
+    recordTransaction({
+      req,
+      parentEntityType: EntityType.CLIENT,
+      parentEntityId: clientId,
+      section: Section.ADMIN,
+      module: Module.CLIENTS_V2,
+      page: Page.CLIENT_DETAIL,
+      action: Action.CREATE,
+      actionLabel: `Created meeting: ${b.title}`,
+      entityType: "meeting",
+      statusCode: 201,
+    });
+
     res.status(201).json({ success: true, data: full ? shape(full) : { id } });
   }
 
@@ -573,6 +587,19 @@ export class MomStaffController {
       clientId: clientIdForEmit,
       id,
     });
+    recordTransaction({
+      req,
+      parentEntityType: EntityType.CLIENT,
+      parentEntityId: clientIdForEmit,
+      section: Section.ADMIN,
+      module: Module.CLIENTS_V2,
+      page: Page.CLIENT_DETAIL,
+      action: Action.UPDATE,
+      actionLabel: `Updated meeting`,
+      entityType: "meeting",
+      statusCode: 200,
+    });
+
     res.json({ success: true, data: full ? shape(full) : null });
   }
 
@@ -597,6 +624,19 @@ export class MomStaffController {
       clientId: clientIdForEmit,
       id,
     });
+    recordTransaction({
+      req,
+      parentEntityType: EntityType.CLIENT,
+      parentEntityId: clientIdForEmit,
+      section: Section.ADMIN,
+      module: Module.CLIENTS_V2,
+      page: Page.CLIENT_DETAIL,
+      action: Action.DELETE,
+      actionLabel: `Deleted meeting`,
+      entityType: "meeting",
+      statusCode: 200,
+    });
+
     res.json({ success: true });
   }
 

@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DashboardController = void 0;
+const transactionHistory_1 = require("@/utils/transactionHistory");
 const database_1 = require("@/config/database");
 const dashboardSettings_model_1 = require("@/models/dashboardSettings.model");
 class DashboardController {
@@ -651,7 +652,26 @@ class DashboardController {
                 res.status(400).json({ success: false, error: "Invalid visibleCards object" });
                 return;
             }
+            const beforeSettings = await (0, dashboardSettings_model_1.getDashboardSettingsByTenantId)(req.tenantId);
             const settings = await (0, dashboardSettings_model_1.upsertDashboardSettings)(req.tenantId, visibleCards);
+            // Only log if something actually changed
+            const diffShallow = require("@/utils/transactionHistory").diffShallow;
+            const { changedFields, before, after } = diffShallow(beforeSettings || {}, settings || {});
+            if (changedFields.length > 0) {
+                (0, transactionHistory_1.recordTransaction)({
+                    req,
+                    section: transactionHistory_1.Section.HOME,
+                    module: transactionHistory_1.Module.DASHBOARD,
+                    page: transactionHistory_1.Page.DASHBOARD_SETTINGS,
+                    action: transactionHistory_1.Action.UPDATE,
+                    entityType: transactionHistory_1.EntityType.CUSTOM,
+                    entityId: req.tenantId,
+                    entityLabel: "Dashboard Settings",
+                    actionLabel: "Updated dashboard settings",
+                    beforeData: before,
+                    afterData: after
+                });
+            }
             res.status(200).json({ success: true, data: settings });
         }
         catch (error) {

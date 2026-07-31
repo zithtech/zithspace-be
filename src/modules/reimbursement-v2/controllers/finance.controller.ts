@@ -34,8 +34,8 @@ export const markPaid = handle(async (req: AuthRequest, res: Response) => {
   recordTransaction({
     req,
     section: Section.FINANCE,
-    module: Module.REIMBURSEMENT,
-    page: Page.REIMBURSEMENT_FINANCE,
+    module: Module.REIMBURSEMENT_V2,
+    page: Page.REIMBURSEMENT_V2_FINANCE,
     action: Action.UPDATE,
     actionLabel: `Marked reimbursement claim ${claim.claimNo} as paid (${claim.paymentReference})`,
     entityType: EntityType.REIMBURSEMENT_CLAIM,

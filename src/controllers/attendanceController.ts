@@ -1,4 +1,6 @@
 import { Response } from "express";
+import { recordTransaction, Section, Module, Page, Action, EntityType } from "@/utils/transactionHistory";
+
 import { randomUUID } from "crypto";
 import {
   AuthRequest,
@@ -426,6 +428,20 @@ export class AttendanceController {
 
       socketService.emitToTenant(req.tenantId, "attendance:updated", formatted);
 
+      recordTransaction({
+        req,
+        section: Section.HR,
+        module: Module.ATTENDANCE,
+        page: Page.ATTENDANCE_DASHBOARD,
+        action: Action.CREATE,
+        actionLabel: `Clocked in for ${formatted?.member?.name || req.user.name}`,
+        entityType: EntityType.ATTENDANCE_RECORD,
+        entityId: formatted?.id,
+        afterData: formatted,
+        statusCode: 200,
+      });
+
+
       res.status(200).json({
         success: true,
         data: formatted,
@@ -498,6 +514,19 @@ export class AttendanceController {
       }
 
       socketService.emitToTenant(req.tenantId, "attendance:updated", formatted);
+        
+      recordTransaction({
+        req,
+        section: Section.HR,
+        module: Module.ATTENDANCE,
+        page: Page.ATTENDANCE_DASHBOARD,
+        action: Action.UPDATE,
+        actionLabel: `Clocked out for ${formatted?.member?.name || req.user.name}`,
+        entityType: EntityType.ATTENDANCE_RECORD,
+        entityId: formatted?.id,
+        afterData: formatted,
+        statusCode: 200,
+      });
 
       res.status(200).json({
         success: true,
@@ -1174,6 +1203,18 @@ export class AttendanceController {
         );
         return rowToAttendance(rows[0]);
       });
+        
+      recordTransaction({
+        req,
+        section: Section.HR,
+        module: Module.ATTENDANCE,
+        page: Page.ATTENDANCE_RECORDS,
+        action: Action.UPDATE,
+        actionLabel: `Updated attendance record for ${attendance?.member?.name || req.user.name}`,
+        entityType: EntityType.ATTENDANCE_RECORD,
+        entityId: id,
+        statusCode: 200,
+      });
 
       res.status(200).json({
         success: true,
@@ -1211,16 +1252,30 @@ export class AttendanceController {
 
       const { id } = req.params;
 
+      let deletedName = "";
       await withTenant(req.tenantId, async (db) => {
         const { rows } = await db.query(
-          `SELECT id FROM attendance WHERE id = $1 AND tenant_id = $2 LIMIT 1`,
+          `SELECT u.name FROM attendance a LEFT JOIN users u ON a.user_id = u.id WHERE a.id = $1 AND a.tenant_id = $2 LIMIT 1`,
           [id, req.tenantId],
         );
         if (!rows[0]) throw new NotFoundError("Attendance record not found in this tenant");
+        deletedName = rows[0].name;
 
         // Remove child sessions first (no FK cascade on attendance_sessions).
         await db.query(`DELETE FROM attendance_sessions WHERE attendance_id = $1`, [id]);
         await db.query(`DELETE FROM attendance WHERE id = $1`, [id]);
+      });
+        
+      recordTransaction({
+        req,
+        section: Section.HR,
+        module: Module.ATTENDANCE,
+        page: Page.ATTENDANCE_RECORDS,
+        action: Action.DELETE,
+        actionLabel: `Deleted attendance record for ${deletedName || req.user.name}`,
+        entityType: EntityType.ATTENDANCE_RECORD,
+        entityId: id,
+        statusCode: 200,
       });
 
       res.status(200).json({
@@ -1478,6 +1533,19 @@ export class AttendanceController {
           [newId],
         );
         return rowToAttendance(rows[0]);
+      });
+
+      recordTransaction({
+        req,
+        section: Section.HR,
+        module: Module.ATTENDANCE,
+        page: Page.ATTENDANCE_RECORDS,
+        action: Action.CREATE,
+        actionLabel: `Created manual attendance record for ${attendance?.member?.name || req.user.name}`,
+        entityType: EntityType.ATTENDANCE_RECORD,
+        entityId: attendance?.id,
+        afterData: attendance,
+        statusCode: 201,
       });
 
       res.status(201).json({

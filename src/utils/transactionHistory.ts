@@ -8,6 +8,7 @@ import { socketService } from "@/services/socketService";
 // routes change. Controllers reference these constants — never raw req.path.
 
 export const Section = {
+  HOME: "HOME",
   WORK: "WORK",
   HR: "HR",
   FINANCE: "FINANCE",
@@ -18,6 +19,11 @@ export const Section = {
 export type SectionT = typeof Section[keyof typeof Section];
 
 export const Module = {
+  DASHBOARD: "Dashboard",
+  INTEGRATIONS: "Integrations",
+  SKILLS: "Skills",
+  MESSAGES: "Messages",
+  BOOKMARKS: "Bookmarks",
   // WORK
   TICKETS: "Tickets",
   BUG_LIST: "BugList",
@@ -29,6 +35,7 @@ export const Module = {
   ARCHIVED: "Archived",
   DOCUMENT_HUB: "DocumentHub",
   LEADS: "Leads",
+  BID_IQ: "BidIQ",
   PROPOSALS: "Proposals",
   SQUAD: "Squad",
   ESCALATIONS: "Escalations",
@@ -39,6 +46,9 @@ export const Module = {
   LEAVES: "Leaves",
   ONBOARDING: "Onboarding",
   REIMBURSEMENT: "Reimbursement",
+  MY_PROFILE: "MyProfile",
+  ATTENDANCE: "Attendance",
+  PERFORMANCE_REPORT: "PerformanceReport",
   // FINANCE
   ACCOUNTS: "Accounts",
   INVOICES: "Invoices",
@@ -46,6 +56,8 @@ export const Module = {
   INVOICE_SETTINGS: "InvoiceSettings",
   INVOICE_TEMPLATES: "InvoiceTemplates",
   INVOICE_TRASH: "InvoiceTrash",
+  REIMBURSEMENT_V2: "ReimbursementV2",
+  PAYROLL_V2: "PayrollV2",
   // ADMIN
   CLIENTS_V2: "ClientsV2",
   GENERAL_SETTINGS: "GeneralSettings",
@@ -56,6 +68,13 @@ export const Module = {
 export type ModuleT = typeof Module[keyof typeof Module];
 
 export const Page = {
+  DASHBOARD_SETTINGS: "DashboardSettings",
+  INTEGRATION_PAGE: "IntegrationPage",
+  INTEGRATION_MAIL: "IntegrationMail",
+  INTEGRATION_CALENDAR: "IntegrationCalendar",
+  SKILLS_VIEW: "SkillsView",
+  MESSAGES_VIEW: "MessagesView",
+  BOOKMARKS_VIEW: "BookmarksView",
   // Tickets module
   TICKET_LIST: "TicketList",
   TICKET_DETAIL: "TicketDetail",
@@ -90,6 +109,8 @@ export const Page = {
   DOCUMENT_DETAIL: "DocumentDetail",
   LEADS_LIST: "LeadsList",
   LEAD_DETAIL: "LeadDetail",
+  BID_IQ_DASHBOARD: "BidIQDashboard",
+  BID_IQ_SETTINGS: "BidIQSettings",
   LEAD_SETTINGS: "LeadSettings",
   LEADS_TRASH: "LeadsTrash",
   PROPOSAL_LIST: "ProposalList",
@@ -97,6 +118,7 @@ export const Page = {
   SQUAD_VIEW: "SquadView",
   ESCALATION_LIST: "EscalationList",
   ESCALATION_SETTINGS: "EscalationSettings",
+  ESCALATIONS_TRASH: "EscalationsTrash",
   DAILY_UPDATES_SUBMIT: "DailyUpdatesSubmit",
   DAILY_UPDATES_VIEW: "DailyUpdatesView",
   TIME_TRACKING_MY: "TimeTrackingMy",
@@ -121,11 +143,41 @@ export const Page = {
   REIMBURSEMENT_FINANCE: "ReimbursementFinance",
   REIMBURSEMENT_CATEGORIES: "ReimbursementCategories",
   REIMBURSEMENT_POLICIES: "ReimbursementPolicies",
+  // Reimbursement V2 module pages
+  REIMBURSEMENT_V2_DASHBOARD: "ReimbursementDashboard",
+  REIMBURSEMENT_V2_MY_CLAIMS: "ReimbursementMyClaims",
+  REIMBURSEMENT_V2_ADVANCES: "ReimbursementAdvances",
+  REIMBURSEMENT_V2_APPROVALS: "ReimbursementApprovals",
+  REIMBURSEMENT_V2_FINANCE: "ReimbursementFinance",
+  REIMBURSEMENT_V2_CATEGORIES: "ReimbursementCategories",
+  REIMBURSEMENT_V2_POLICIES: "ReimbursementPolicies",
+  REIMBURSEMENT_V2_BUDGETS: "ReimbursementBudgets",
+  REIMBURSEMENT_V2_SETTINGS: "ReimbursementSettings",
+  // Payroll V2 module pages
+  PAYROLL_V2_GENERAL_SETTINGS: "PayrollGeneralSettings",
+  PAYROLL_V2_SALARY_COMPONENTS: "PayrollSalaryComponents",
+  PAYROLL_V2_SALARY_STRUCTURES: "PayrollSalaryStructures",
+  PAYROLL_V2_PAY_SCHEDULES: "PayrollPaySchedulesAndGroups",
+  PAYROLL_V2_STATUTORY: "PayrollStatutory",
+  PAYROLL_V2_PT_LWF: "PayrollProfessionalTaxAndLwf",
+  PAYROLL_V2_APPROVAL_WORKFLOWS: "PayrollApprovalWorkflows",
+  PAYROLL_V2_PAYSLIP_BANK: "PayrollPayslipAndBank",
+  PAYROLL_V2_EMPLOYEE_PAY_SETUP: "PayrollEmployeePaySetup",
+  PAYROLL_V2_RUN_PAYROLL: "PayrollRunPayroll",
+  PAYROLL_V2_REPORTS: "PayrollReports",
+  PAYROLL_V2_MY_PAYSLIPS: "PayrollMyPayslips",
   // Onboarding module pages
   ONBOARDING_INVITES: "OnboardingInvites",
   ONBOARDING_EMPLOYEES: "OnboardingEmployees",
   ONBOARDING_DOCUMENT_TYPES: "OnboardingDocumentTypes",
-  // Admin module pages
+  // Profile pages
+  MY_PROFILE: "MyProfile",
+  // Attendance pages
+  ATTENDANCE_DASHBOARD: "AttendanceDashboard",
+  ATTENDANCE_RECORDS: "AttendanceRecords",
+  // Performance Report
+  PERFORMANCE_REPORT: "PerformanceReport",
+  // Clients V2 pages
   CLIENT_LIST: "ClientList",
   CLIENT_DETAIL: "ClientDetail",
   GENERAL_SETTINGS_VIEW: "GeneralSettingsView",
@@ -148,6 +200,7 @@ export const Action = {
   CREATE: "create",
   UPDATE: "update",
   DELETE: "delete",
+  TRASH: "trash",
   ARCHIVE: "archive",
   RESTORE: "restore",
   PERMANENT_DELETE: "permanent_delete",
@@ -191,6 +244,9 @@ export const Action = {
 export type ActionT = typeof Action[keyof typeof Action] | string;
 
 export const EntityType = {
+  CUSTOM: "custom",
+  SKILL: "skill",
+  EXPERIENCE: "experience",
   TICKET: "ticket",
   BUG: "bug",
   BUG_FOLDER: "bug_folder",
@@ -210,6 +266,7 @@ export const EntityType = {
   DOCUMENT: "document",
   DOCUMENT_HISTORY_ENTRY: "document_history_entry",
   LEAD: "lead",
+  BID_IQ: "bidiq",
   LEAD_STATUS: "lead_status",
   LEAD_ACTION_OPTION: "lead_action_option",
   PROPOSAL: "proposal",
@@ -233,10 +290,26 @@ export const EntityType = {
   LEAVE_HOLIDAY: "leave_holiday",
   LEAVE_ACCRUAL_RUN: "leave_accrual_run",
   LEAVE_SETTINGS: "leave_settings",
+  ATTENDANCE_RECORD: "attendance_record",
+  PERFORMANCE_REPORT: "performance_report",
   // Reimbursement entities
   REIMBURSEMENT_CLAIM: "reimbursement_claim",
   REIMBURSEMENT_CATEGORY: "reimbursement_category",
   REIMBURSEMENT_POLICY: "reimbursement_policy",
+  REIMBURSEMENT_BUDGET: "reimbursement_budget",
+  REIMBURSEMENT_ADVANCE: "reimbursement_advance",
+  REIMBURSEMENT_SETTINGS: "reimbursement_settings",
+  // Payroll entities
+  PAYROLL_COMPONENT: "payroll_component",
+  PAYROLL_STRUCTURE: "payroll_structure",
+  PAYROLL_SCHEDULE: "payroll_schedule",
+  PAYROLL_STATUTORY: "payroll_statutory",
+  PAYROLL_STATUTORY_STATE: "payroll_statutory_state",
+  PAYROLL_WORKFLOW: "payroll_workflow",
+  PAYROLL_PAYSLIP_BANK_SETTINGS: "payroll_payslip_bank_settings",
+  PAYROLL_ASSIGNMENT: "payroll_assignment",
+  PAYROLL_RUN: "payroll_run",
+  PAYROLL_SETTINGS: "payroll_settings",
   // Onboarding entities
   EMPLOYEE: "employee",
   ONBOARDING_INVITE: "onboarding_invite",

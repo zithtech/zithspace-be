@@ -36,7 +36,7 @@ class PositionController {
             // ─── Activity log ───────────────────────────────────────────────
             (0, transactionHistory_1.recordTransaction)({
                 req,
-                section: transactionHistory_1.Section.WORK,
+                section: transactionHistory_1.Section.ADMIN,
                 module: transactionHistory_1.Module.ORG_STRUCTURE,
                 page: transactionHistory_1.Page.ORG_STRUCTURE_POSITIONS,
                 action: transactionHistory_1.Action.CREATE,
@@ -172,7 +172,7 @@ class PositionController {
                 const { changedFields, before, after } = (0, transactionHistory_1.diffShallow)(beforeSnap, afterSnap);
                 (0, transactionHistory_1.recordTransaction)({
                     req,
-                    section: transactionHistory_1.Section.WORK,
+                    section: transactionHistory_1.Section.ADMIN,
                     module: transactionHistory_1.Module.ORG_STRUCTURE,
                     page: transactionHistory_1.Page.ORG_STRUCTURE_POSITIONS,
                     action: transactionHistory_1.Action.UPDATE,
@@ -218,7 +218,7 @@ class PositionController {
             if (existing) {
                 (0, transactionHistory_1.recordTransaction)({
                     req,
-                    section: transactionHistory_1.Section.WORK,
+                    section: transactionHistory_1.Section.ADMIN,
                     module: transactionHistory_1.Module.ORG_STRUCTURE,
                     page: transactionHistory_1.Page.ORG_STRUCTURE_POSITIONS,
                     action: transactionHistory_1.Action.DELETE,
