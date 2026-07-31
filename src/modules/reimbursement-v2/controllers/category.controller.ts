@@ -46,8 +46,8 @@ export const create = handle(async (req: AuthRequest, res: Response) => {
   recordTransaction({
     req,
     section: Section.FINANCE,
-    module: Module.REIMBURSEMENT,
-    page: Page.REIMBURSEMENT_CATEGORIES,
+    module: Module.REIMBURSEMENT_V2,
+    page: Page.REIMBURSEMENT_V2_CATEGORIES,
     action: Action.CREATE,
     actionLabel: `Created expense category "${category.name}" (${category.code})`,
     entityType: EntityType.REIMBURSEMENT_CATEGORY,
@@ -82,8 +82,8 @@ export const update = handle(async (req: AuthRequest, res: Response) => {
     recordTransaction({
       req,
       section: Section.FINANCE,
-      module: Module.REIMBURSEMENT,
-      page: Page.REIMBURSEMENT_CATEGORIES,
+      module: Module.REIMBURSEMENT_V2,
+      page: Page.REIMBURSEMENT_V2_CATEGORIES,
       action: Action.UPDATE,
       actionLabel: `Updated expense category "${category.name}"`,
       entityType: EntityType.REIMBURSEMENT_CATEGORY,
@@ -104,8 +104,8 @@ export const remove = handle(async (req: AuthRequest, res: Response) => {
   recordTransaction({
     req,
     section: Section.FINANCE,
-    module: Module.REIMBURSEMENT,
-    page: Page.REIMBURSEMENT_CATEGORIES,
+    module: Module.REIMBURSEMENT_V2,
+    page: Page.REIMBURSEMENT_V2_CATEGORIES,
     action: Action.DELETE,
     actionLabel: `Deleted expense category "${existing.name}" (${existing.code})`,
     entityType: EntityType.REIMBURSEMENT_CATEGORY,

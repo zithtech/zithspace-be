@@ -9,6 +9,7 @@ import * as payslipService from '../services/payslip.service';
 import * as payslipJobService from '../services/payslipJob.service';
 import * as bankFileService from '../services/bankFile.service';
 import { createRunSchema, updateItemSchema, processStepSchema } from '../validators/payRun.validator';
+import { recordTransaction, Section, Module, Page, Action, EntityType } from '@/utils/transactionHistory';
 
 // NB: this module exports a handler named `process`, which shadows Node's global
 // `process` in module scope — so read env via globalThis.
@@ -23,12 +24,34 @@ export const getOne = handle(async (req: AuthRequest, res: Response) => {
 });
 
 export const create = handle(async (req: AuthRequest, res: Response) => {
-  ok(res, await service.createRun(actorOf(req), createRunSchema.parse(req.body)), 201);
+  const run = await service.createRun(actorOf(req), createRunSchema.parse(req.body));
+  recordTransaction({
+    req,
+    section: Section.FINANCE,
+    module: Module.PAYROLL_V2,
+    page: Page.PAYROLL_V2_RUN_PAYROLL,
+    action: Action.CREATE,
+    actionLabel: `Created payroll run`,
+    entityType: EntityType.PAYROLL_RUN,
+    entityId: run.id,
+  });
+  ok(res, run, 201);
 });
 
 export const updateItem = handle(async (req: AuthRequest, res: Response) => {
   const input = updateItemSchema.parse(req.body);
-  ok(res, await service.updateItem(actorOf(req), req.params.id, req.params.itemId, input));
+  const result = await service.updateItem(actorOf(req), req.params.id, req.params.itemId, input);
+  recordTransaction({
+    req,
+    section: Section.FINANCE,
+    module: Module.PAYROLL_V2,
+    page: Page.PAYROLL_V2_RUN_PAYROLL,
+    action: Action.UPDATE,
+    actionLabel: `Updated payroll run item`,
+    entityType: EntityType.PAYROLL_RUN,
+    entityId: req.params.id,
+  });
+  ok(res, result);
 });
 
 export const syncLop = handle(async (req: AuthRequest, res: Response) => {
@@ -36,20 +59,64 @@ export const syncLop = handle(async (req: AuthRequest, res: Response) => {
 });
 
 export const submit = handle(async (req: AuthRequest, res: Response) => {
-  ok(res, await service.submitRun(actorOf(req), req.params.id));
+  const run = await service.submitRun(actorOf(req), req.params.id);
+  recordTransaction({
+    req,
+    section: Section.FINANCE,
+    module: Module.PAYROLL_V2,
+    page: Page.PAYROLL_V2_RUN_PAYROLL,
+    action: Action.SUBMIT,
+    actionLabel: `Submitted payroll run`,
+    entityType: EntityType.PAYROLL_RUN,
+    entityId: req.params.id,
+  });
+  ok(res, run);
 });
 
 export const process = handle(async (req: AuthRequest, res: Response) => {
   const input = processStepSchema.parse(req.body);
-  ok(res, await service.processStep(actorOf(req), req.params.id, input));
+  const run = await service.processStep(actorOf(req), req.params.id, input);
+  recordTransaction({
+    req,
+    section: Section.FINANCE,
+    module: Module.PAYROLL_V2,
+    page: Page.PAYROLL_V2_RUN_PAYROLL,
+    action: Action.UPDATE,
+    actionLabel: `Processed step in payroll run`,
+    entityType: EntityType.PAYROLL_RUN,
+    entityId: req.params.id,
+  });
+  ok(res, run);
 });
 
 export const finalize = handle(async (req: AuthRequest, res: Response) => {
-  ok(res, await service.finalizeRun(actorOf(req), req.params.id));
+  const run = await service.finalizeRun(actorOf(req), req.params.id);
+  recordTransaction({
+    req,
+    section: Section.FINANCE,
+    module: Module.PAYROLL_V2,
+    page: Page.PAYROLL_V2_RUN_PAYROLL,
+    action: Action.COMPLETE,
+    actionLabel: `Finalized payroll run`,
+    entityType: EntityType.PAYROLL_RUN,
+    entityId: req.params.id,
+  });
+  ok(res, run);
 });
 
 export const markPaid = handle(async (req: AuthRequest, res: Response) => {
-  ok(res, await service.markRunPaid(actorOf(req), req.params.id));
+  const run = await service.markRunPaid(actorOf(req), req.params.id);
+  recordTransaction({
+    req,
+    section: Section.FINANCE,
+    module: Module.PAYROLL_V2,
+    page: Page.PAYROLL_V2_RUN_PAYROLL,
+    action: Action.UPDATE,
+    actionLabel: `Marked payroll run as paid`,
+    entityType: EntityType.PAYROLL_RUN,
+    entityId: req.params.id,
+  });
+  ok(res, run);
 });
 
 // ── Payslips ─────────────────────────────────────────────────────────────────
@@ -97,5 +164,15 @@ export const myPayslips = handle(async (req: AuthRequest, res: Response) => {
 
 export const remove = handle(async (req: AuthRequest, res: Response) => {
   await service.deleteRun(actorOf(req), req.params.id);
+  recordTransaction({
+    req,
+    section: Section.FINANCE,
+    module: Module.PAYROLL_V2,
+    page: Page.PAYROLL_V2_RUN_PAYROLL,
+    action: Action.DELETE,
+    actionLabel: `Deleted payroll run`,
+    entityType: EntityType.PAYROLL_RUN,
+    entityId: req.params.id,
+  });
   ok(res, { id: req.params.id, deleted: true });
 });

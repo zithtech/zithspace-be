@@ -299,6 +299,53 @@ export async function uploadEmployeeDocumentToR2(
 }
 
 /**
+ * Upload Exit Document (like resignation letter) to Cloudflare R2
+ * @param base64File - Base64 encoded file string
+ * @param fileName - Original file name
+ * @param tenantId - Tenant ID
+ * @param employeeId - Employee ID
+ * @returns Public URL of uploaded document
+ */
+export async function uploadExitDocumentToR2(
+  base64File: string,
+  fileName: string,
+  tenantId: string,
+  employeeId: string,
+): Promise<string> {
+  try {
+    const matches = base64File.match(/^data:([^;]+);base64,(.*)$/);
+    if (!matches) {
+      throw new Error("Invalid file format. Expected base64 encoded file.");
+    }
+
+    const contentType = matches[1];
+    const base64Data = matches[2];
+    const buffer = Buffer.from(base64Data, "base64");
+
+    const uniqueId = nanoid(12);
+    const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+    // Organize by tenant -> employee-exits -> employee ID -> document
+    const key = `${tenantId}/employee-exits/${employeeId}/documents/${uniqueId}_${sanitizedFileName}`;
+
+    const params = {
+      Bucket: BUCKET_NAME,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+    };
+
+    await s3Client.send(new PutObjectCommand(params));
+
+    const baseUrl =
+      PUBLIC_URL || "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+    return `${baseUrl}/${key}`;
+  } catch (error: any) {
+    console.error("R2 upload error (Exit Document):", error);
+    throw new Error(`Failed to upload exit document: ${error.message}`);
+  }
+}
+
+/**
  * Upload a generated performance report (PDF) to Cloudflare R2.
  * Accepts a base64 data URL; returns the public URL + the object key.
  */

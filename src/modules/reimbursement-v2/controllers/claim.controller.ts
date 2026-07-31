@@ -47,8 +47,8 @@ export const create = handle(async (req: AuthRequest, res: Response) => {
   recordTransaction({
     req,
     section: Section.FINANCE,
-    module: Module.REIMBURSEMENT,
-    page: Page.REIMBURSEMENT_CLAIMS,
+    module: Module.REIMBURSEMENT_V2,
+    page: Page.REIMBURSEMENT_V2_MY_CLAIMS,
     action: Action.CREATE,
     actionLabel: `Created reimbursement claim ${claim.claimNo}`,
     entityType: EntityType.REIMBURSEMENT_CLAIM,
@@ -158,8 +158,8 @@ export const submit = handle(async (req: AuthRequest, res: Response) => {
   recordTransaction({
     req,
     section: Section.FINANCE,
-    module: Module.REIMBURSEMENT,
-    page: Page.REIMBURSEMENT_CLAIMS,
+    module: Module.REIMBURSEMENT_V2,
+    page: Page.REIMBURSEMENT_V2_MY_CLAIMS,
     action: Action.SUBMIT,
     actionLabel: `Submitted reimbursement claim ${claim.claimNo} (${claim.status})`,
     entityType: EntityType.REIMBURSEMENT_CLAIM,
@@ -175,8 +175,8 @@ export const cancel = handle(async (req: AuthRequest, res: Response) => {
   recordTransaction({
     req,
     section: Section.FINANCE,
-    module: Module.REIMBURSEMENT,
-    page: Page.REIMBURSEMENT_CLAIMS,
+    module: Module.REIMBURSEMENT_V2,
+    page: Page.REIMBURSEMENT_V2_MY_CLAIMS,
     action: Action.CANCEL,
     actionLabel: `Cancelled reimbursement claim ${claim.claimNo}`,
     entityType: EntityType.REIMBURSEMENT_CLAIM,

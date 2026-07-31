@@ -1,3 +1,4 @@
+import { recordTransaction, Section, Module, Page, Action, EntityType } from "@/utils/transactionHistory";
 import { Response } from "express";
 import pool from "@/config/dbpool";
 import { AuthRequest } from "@/types";
@@ -91,6 +92,21 @@ export class ClientPortalModuleSettingsController {
     const tenantId = req.tenantId!;
     const { clientId } = req.params;
     const map = await getModuleMap(tenantId, clientId);
+    
+    recordTransaction({
+      req,
+      parentEntityType: EntityType.CLIENT,
+      parentEntityId: clientId,
+      section: Section.ADMIN,
+      module: Module.CLIENTS_V2,
+      page: Page.CLIENT_DETAIL,
+      action: Action.UPDATE,
+      actionLabel: `Updated portal settings`,
+      entityType: "portal_settings",
+      entityId: clientId,
+      entityLabel: "Portal Settings",
+    });
+
     res.json({
       success: true,
       data: PORTAL_MODULES.map((m) => ({
@@ -143,6 +159,21 @@ export class ClientPortalModuleSettingsController {
     }
 
     const map = await getModuleMap(tenantId, clientId);
+    
+    recordTransaction({
+      req,
+      parentEntityType: EntityType.CLIENT,
+      parentEntityId: clientId,
+      section: Section.ADMIN,
+      module: Module.CLIENTS_V2,
+      page: Page.CLIENT_DETAIL,
+      action: Action.UPDATE,
+      actionLabel: `Updated portal settings`,
+      entityType: "portal_settings",
+      entityId: clientId,
+      entityLabel: "Portal Settings",
+    });
+
     res.json({
       success: true,
       data: PORTAL_MODULES.map((m) => ({

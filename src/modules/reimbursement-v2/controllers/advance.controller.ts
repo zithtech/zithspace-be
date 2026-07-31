@@ -22,11 +22,11 @@ function record(req: AuthRequest, a: any, action: string, label: string) {
   recordTransaction({
     req,
     section: Section.FINANCE,
-    module: Module.REIMBURSEMENT,
-    page: Page.REIMBURSEMENT_CLAIMS,
+    module: Module.REIMBURSEMENT_V2,
+    page: Page.REIMBURSEMENT_V2_ADVANCES,
     action,
     actionLabel: label,
-    entityType: EntityType.REIMBURSEMENT_CLAIM,
+    entityType: EntityType.REIMBURSEMENT_ADVANCE,
     entityId: a.id,
     entityLabel: a.advanceNo,
   });

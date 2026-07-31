@@ -1,4 +1,5 @@
 import { Response } from "express";
+import { recordTransaction, Section, Module, Page, Action, EntityType } from "@/utils/transactionHistory";
 import { prisma } from "@/config/database";
 import { AuthRequest, ApiResponse } from "@/types";
 
@@ -30,6 +31,17 @@ export class CompanyLocationController {
         },
       });
 
+      recordTransaction({
+        req,
+        section: Section.ADMIN,
+        module: Module.GENERAL_SETTINGS,
+        page: Page.GENERAL_SETTINGS_VIEW,
+        action: Action.CREATE,
+        actionLabel: `Company location created: ${city}`,
+        entityType: "company_location",
+        entityId: newLocation.id,
+        entityLabel: city,
+      });
       res.status(201).json({ success: true, data: newLocation, message: "Company location created successfully" } as ApiResponse);
     } catch (error: any) {
       console.error("Error creating company location:", error);
@@ -124,6 +136,17 @@ export class CompanyLocationController {
         },
       });
 
+      recordTransaction({
+        req,
+        section: Section.ADMIN,
+        module: Module.GENERAL_SETTINGS,
+        page: Page.GENERAL_SETTINGS_VIEW,
+        action: Action.UPDATE,
+        actionLabel: `Company location updated: ${city}`,
+        entityType: "company_location",
+        entityId: updatedLocation.id,
+        entityLabel: city,
+      });
       res.status(200).json({ success: true, data: updatedLocation, message: "Company location updated successfully" } as ApiResponse);
     } catch (error: any) {
       console.error("Error updating company location:", error);
@@ -150,6 +173,18 @@ export class CompanyLocationController {
       }
 
       await prisma.companyLocation.delete({ where: { id } });
+
+      recordTransaction({
+        req,
+        section: Section.ADMIN,
+        module: Module.GENERAL_SETTINGS,
+        page: Page.GENERAL_SETTINGS_VIEW,
+        action: Action.DELETE,
+        actionLabel: `Company location deleted`,
+        entityType: "company_location",
+        entityId: id,
+        entityLabel: id,
+      });
 
       res.status(200).json({ success: true, message: "Company location deleted successfully" } as ApiResponse);
     } catch (error: any) {

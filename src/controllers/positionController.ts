@@ -49,7 +49,7 @@ export class PositionController {
       // ─── Activity log ───────────────────────────────────────────────
       recordTransaction({
         req,
-        section: Section.WORK,
+        section: Section.ADMIN,
         module: Module.ORG_STRUCTURE,
         page: Page.ORG_STRUCTURE_POSITIONS,
         action: Action.CREATE,
@@ -204,7 +204,7 @@ export class PositionController {
 
         recordTransaction({
           req,
-          section: Section.WORK,
+          section: Section.ADMIN,
           module: Module.ORG_STRUCTURE,
           page: Page.ORG_STRUCTURE_POSITIONS,
           action: Action.UPDATE,
@@ -255,7 +255,7 @@ export class PositionController {
       if (existing) {
         recordTransaction({
           req,
-          section: Section.WORK,
+          section: Section.ADMIN,
           module: Module.ORG_STRUCTURE,
           page: Page.ORG_STRUCTURE_POSITIONS,
           action: Action.DELETE,
