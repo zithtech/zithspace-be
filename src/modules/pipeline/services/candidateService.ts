@@ -159,22 +159,28 @@ export async function deleteCandidate(tenantId: string, id: string) {
   });
 }
 
-export async function updateCandidateStatus(tenantId: string, userId: string, id: string, status: string) {
+export async function updateCandidateStatus(tenantId: string, userId: string, id: string, status: string, rejectedRoundId?: string) {
   return withTenant(tenantId, async (client) => {
     const { rows } = await client.query(
       `UPDATE pipeline_candidates 
-       SET status = $1, updated_at = now()
+       SET status = $1, rejected_round_id = $4, updated_at = now()
        WHERE tenant_id = $2 AND id = $3
        RETURNING *`,
-      [status, tenantId, id]
+      [status, tenantId, id, rejectedRoundId || null]
     );
     const candidate = rows[0];
 
     if (candidate) {
+      let roundName = '';
+      if (status === 'Rejected' && rejectedRoundId) {
+        const { rows: rRows } = await client.query(`SELECT round_name FROM pipeline_interview_rounds WHERE id = $1`, [rejectedRoundId]);
+        if (rRows[0]) roundName = ` (Round: ${rRows[0].round_name})`;
+      }
+
       await client.query(
         `INSERT INTO pipeline_activity_logs (tenant_id, candidate_id, user_id, action_type, description)
          VALUES ($1, $2, $3, 'UPDATE', $4)`,
-        [tenantId, candidate.id, userId, `Status updated to ${status}`]
+        [tenantId, candidate.id, userId, `Status updated to ${status}${roundName}`]
       );
     }
 
@@ -226,6 +232,56 @@ export async function resendEmail(tenantId: string, userId: string, emailId: str
       `INSERT INTO pipeline_activity_logs (tenant_id, candidate_id, user_id, action_type, description)
        VALUES ($1, $2, $3, 'EMAIL_SENT', 'Resent email: ' || $4)`,
       [tenantId, email.candidate_id, userId, email.subject]
+    );
+
+    return rows[0];
+  });
+}
+
+export async function updateAndSendEmail(tenantId: string, userId: string, emailId: string, subject: string, body: string) {
+  return withTenant(tenantId, async (client) => {
+    const { rows: emailRows } = await client.query(
+      `SELECT * FROM pipeline_emails WHERE id = $1 AND tenant_id = $2`,
+      [emailId, tenantId]
+    );
+    if (!emailRows.length) throw new Error('Email not found');
+    const email = emailRows[0];
+
+    const { rows: candRows } = await client.query(
+      `SELECT email FROM pipeline_candidates WHERE id = $1`,
+      [email.candidate_id]
+    );
+    if (!candRows.length || !candRows[0].email) throw new Error('Candidate email not found');
+    const candidateEmail = candRows[0].email;
+
+    const { MailService } = await import('../../../services/mail/MailService');
+    const { prisma } = await import('../../../config/database');
+
+    const mailAccount = await prisma.mail_accounts.findFirst({
+      where: { tenant_id: tenantId, user_id: userId }
+    });
+
+    if (!mailAccount) {
+      throw new Error('No mail account connected to send email');
+    }
+
+    await MailService.sendMessage(userId, tenantId, mailAccount.email, {
+      subject,
+      from: mailAccount.email,
+      to: [candidateEmail],
+      body
+    });
+
+    const { rows } = await client.query(
+      `UPDATE pipeline_emails SET subject = $1, body = $2, status = 'Sent', sent_at = now(), sender_id = $3
+       WHERE id = $4 RETURNING *`,
+      [subject, body, userId, emailId]
+    );
+
+    await client.query(
+      `INSERT INTO pipeline_activity_logs (tenant_id, candidate_id, user_id, action_type, description)
+       VALUES ($1, $2, $3, 'EMAIL_SENT', 'Sent email: ' || $4)`,
+      [tenantId, email.candidate_id, userId, subject]
     );
 
     return rows[0];

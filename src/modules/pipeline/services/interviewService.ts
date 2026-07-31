@@ -127,35 +127,41 @@ export async function scheduleInterview(tenantId: string, userId: string, data: 
         </div>
       `;
 
+      let emailRecord = null;
       if (mailAccount && candidate.email) {
-        await MailService.sendMessage(userId, tenantId, mailAccount.email, {
-          subject,
-          from: mailAccount.email,
-          to: [candidate.email],
-          body
-        });
-        emailStatus = 'Sent';
+        // We do NOT send the email automatically anymore.
+        // We just create it as a Draft so the UI can review it.
+        emailStatus = 'Draft';
       } else {
         emailStatus = 'Failed_NoAccount';
       }
 
-      await client.query(
+      const { rows: emailRows } = await client.query(
         `INSERT INTO pipeline_emails (tenant_id, candidate_id, subject, body, status, sender_id)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [tenantId, candidate.id, subject, body, emailStatus === 'Sent' ? 'Sent' : 'Pending', userId]
+         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+        [tenantId, candidate.id, subject, body, emailStatus, userId]
       );
+      
+      emailRecord = emailRows[0];
+      
+      await client.query(
+        `INSERT INTO pipeline_activity_logs (tenant_id, candidate_id, user_id, action_type, description)
+         VALUES ($1, $2, $3, 'SCHEDULE_INTERVIEW', $4)`,
+        [tenantId, data.candidate_id, userId, `Scheduled ${roundName} (${data.mode}). Email Status: ${emailStatus}`]
+      );
+      
+      return { ...interview, email: emailRecord, emailStatus };
     } catch (err) {
-      console.error('Failed to send custom interview email:', err);
-      emailStatus = 'Failed_Error';
+      console.error('Failed to prepare custom interview email draft:', err);
+      
+      await client.query(
+        `INSERT INTO pipeline_activity_logs (tenant_id, candidate_id, user_id, action_type, description)
+         VALUES ($1, $2, $3, 'SCHEDULE_INTERVIEW', $4)`,
+        [tenantId, data.candidate_id, userId, `Scheduled ${roundName} (${data.mode}). Email Status: Failed_Error`]
+      );
+      
+      return { ...interview, emailStatus: 'Failed_Error' };
     }
-
-    await client.query(
-      `INSERT INTO pipeline_activity_logs (tenant_id, candidate_id, user_id, action_type, description)
-       VALUES ($1, $2, $3, 'SCHEDULE_INTERVIEW', $4)`,
-      [tenantId, data.candidate_id, userId, `Scheduled ${roundName} (${data.mode}). Email Status: ${emailStatus}`]
-    );
-
-    return { ...interview, emailStatus };
   });
 }
 
@@ -201,10 +207,26 @@ export async function submitEvaluation(tenantId: string, userId: string, data: E
 
 export async function listCandidateInterviews(tenantId: string, candidateId: string) {
   const { rows } = await pipelinePool.query(
-    `SELECT i.*, r.round_name, r.round_type 
+    `SELECT i.*, r.round_name, r.round_type,
+      COALESCE(
+        (
+          SELECT json_agg(json_build_object(
+            'id', e.id,
+            'criteria_id', e.criteria_id,
+            'criteria_name', sc.criteria_name,
+            'score', e.score,
+            'feedback', e.feedback,
+            'interviewer_id', e.interviewer_id
+          ))
+          FROM pipeline_evaluations e
+          JOIN pipeline_scorecard_criteria sc ON e.criteria_id = sc.id
+          WHERE e.interview_id = i.id
+        ), '[]'::json
+      ) as evaluations
      FROM pipeline_interviews i 
      JOIN pipeline_interview_rounds r ON i.round_id = r.id
-     WHERE i.tenant_id = $1 AND i.candidate_id = $2 ORDER BY i.scheduled_date DESC`,
+     WHERE i.tenant_id = $1 AND i.candidate_id = $2 
+     ORDER BY i.scheduled_date DESC`,
     [tenantId, candidateId]
   );
   return rows;

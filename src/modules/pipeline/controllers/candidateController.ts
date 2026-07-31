@@ -24,7 +24,8 @@ export const upload = multer({ storage });
 export const parseResume = handle(async (req: AuthRequest, res: Response) => {
   if (!req.file) throw new Error('No resume file provided');
   const parsed = await parseResumeFile(req.file.path, req.file.mimetype);
-  ok(res, { parsed, file_path: req.file.path });
+  const file_url = `${process.env.API_BASE_URL || ''}/uploads/resumes/${req.file.filename}`;
+  ok(res, { parsed, file_url });
 });
 
 export const createCandidate = handle(async (req: AuthRequest, res: Response) => {
@@ -77,8 +78,8 @@ export const deleteCandidate = handle(async (req: AuthRequest, res: Response) =>
 
 export const updateCandidateStatus = handle(async (req: AuthRequest, res: Response) => {
   const actor = actorOf(req);
-  const { status } = req.body;
-  const candidate = await candidateService.updateCandidateStatus(actor.tenantId, actor.userId, req.params.id, status);
+  const { status, rejected_round_id } = req.body;
+  const candidate = await candidateService.updateCandidateStatus(actor.tenantId, actor.userId, req.params.id, status, rejected_round_id);
   if (!candidate) return ok(res, { error: 'Not found' }, 404);
   ok(res, candidate);
 });
@@ -86,5 +87,12 @@ export const updateCandidateStatus = handle(async (req: AuthRequest, res: Respon
 export const resendCandidateEmail = handle(async (req: AuthRequest, res: Response) => {
   const actor = actorOf(req);
   const email = await candidateService.resendEmail(actor.tenantId, actor.userId, req.params.emailId);
+  ok(res, email);
+});
+
+export const sendDraftEmail = handle(async (req: AuthRequest, res: Response) => {
+  const actor = actorOf(req);
+  const { subject, body } = req.body;
+  const email = await candidateService.updateAndSendEmail(actor.tenantId, actor.userId, req.params.emailId, subject, body);
   ok(res, email);
 });
