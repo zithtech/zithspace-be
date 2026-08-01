@@ -404,6 +404,17 @@ export const Permissions = {
   PIPELINE_SETTING_READ: 'pipeline.setting.read',
   PIPELINE_SETTING_UPDATE: 'pipeline.setting.update',
 
+  // ─── Recruitment / ATS ───────────────────────────────────────────
+  RECRUITMENT_CREATE: 'recruitment.create',
+  RECRUITMENT_READ: 'recruitment.read',
+  RECRUITMENT_UPDATE: 'recruitment.update',
+  RECRUITMENT_DELETE: 'recruitment.delete',
+  RECRUITMENT_MANAGE: 'recruitment.manage',
+  RECRUITMENT_SETTING_READ: 'recruitment.setting.read',
+  RECRUITMENT_SETTING_CREATE: 'recruitment.setting.create',
+  RECRUITMENT_SETTING_UPDATE: 'recruitment.setting.update',
+  RECRUITMENT_SETTING_DELETE: 'recruitment.setting.delete',
+
   // ─── Employee Exit ───────────────────────────────────────────────
   EXIT_CREATE: 'exit.create',
   EXIT_READ: 'exit.read',
@@ -779,6 +790,17 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.PIPELINE_FORECAST_READ,
     Permissions.PIPELINE_SETTING_READ,
     Permissions.PIPELINE_SETTING_UPDATE,
+  ],
+  recruitment: [
+    Permissions.RECRUITMENT_CREATE,
+    Permissions.RECRUITMENT_READ,
+    Permissions.RECRUITMENT_UPDATE,
+    Permissions.RECRUITMENT_DELETE,
+    Permissions.RECRUITMENT_MANAGE,
+    Permissions.RECRUITMENT_SETTING_READ,
+    Permissions.RECRUITMENT_SETTING_CREATE,
+    Permissions.RECRUITMENT_SETTING_UPDATE,
+    Permissions.RECRUITMENT_SETTING_DELETE,
   ],
   exit: [
     Permissions.EXIT_CREATE,
