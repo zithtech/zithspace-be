@@ -95,6 +95,15 @@ model Tenant {
   documentHubs            DocumentHub[]
   shortcuts               Shortcut[]
   sprintCompletionLogs    SprintCompletionLog[]
+  documentCategories      DocumentCategory[]
+  documentTemplates       DocumentTemplate[]
+  templateVersions        TemplateVersion[]
+  templatePlaceholders    TemplatePlaceholder[]
+  generatedDocuments      GeneratedDocument[]
+  generatedDocumentValues GeneratedDocumentValue[]
+  documentAuditLogs       DocumentAuditLog[]
+  documentFiles           DocumentFile[]
+  documentStructures      DocumentStructure[]
 
   @@map("tenants")
 }
@@ -190,6 +199,7 @@ model User {
   updatedPositions                                         Position[]                          @relation("PositionUpdater")
   projectMemberships                                       ProjectMember[]
   createdProjects                                          Project[]                           @relation("ProjectCreator")
+  createdDocumentStructures                                DocumentStructure[]                 @relation("DocumentStructureCreator")
   managedProjects                                          Project[]                           @relation("ProjectManager")
   createdReasonsForExit                                    ReasonForExit[]                     @relation("ReasonForExitCreator")
   updatedReasonsForExit                                    ReasonForExit[]                     @relation("ReasonForExitUpdater")
@@ -274,6 +284,10 @@ model User {
   updatedInvoicePayments                                   InvoicePayment[]                    @relation("InvoicePaymentUpdatedBy")
   createdShortcuts                                         Shortcut[]                          @relation("ShortcutCreator")
   updatedShortcuts                                         Shortcut[]                          @relation("ShortcutUpdater")
+  createdDocumentTemplates                                 DocumentTemplate[]                  @relation("DocumentTemplateCreator")
+  createdTemplateVersions                                  TemplateVersion[]                   @relation("TemplateVersionCreator")
+  generatedDocuments                                       GeneratedDocument[]                 @relation("GeneratedDocumentCreator")
+  performedDocumentAuditLogs                               DocumentAuditLog[]                  @relation("DocumentAuditLogPerformer")
 
   @@unique([tenantId, workEmail])
   @@unique([tenantId, personalEmail])
@@ -392,6 +406,7 @@ model Position {
   tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   updatedBy           User?                @relation("PositionUpdater", fields: [updatedById], references: [id])
   users               User[]               @relation("UserPosition")
+  documentTemplates   DocumentTemplate[]
 
   @@unique([tenantId, code])
   @@map("positions")
@@ -4664,3 +4679,158 @@ model CompanyLocation {
 
   @@map("company_locations")
 }
+
+model DocumentCategory {
+  id           String             @id @default(uuid())
+  tenantId     String             @map("tenant_id")
+  categoryName String             @map("category_name")
+  description  String?
+  status       String             @default("ACTIVE")
+  createdAt    DateTime           @default(now()) @map("created_at")
+  updatedAt    DateTime           @updatedAt @map("updated_at")
+  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  templates    DocumentTemplate[]
+  generatedDocuments GeneratedDocument[]
+
+  @@map("document_categories")
+}
+
+model DocumentTemplate {
+  id              String                @id @default(uuid())
+  tenantId        String                @map("tenant_id")
+  templateName    String                @map("template_name")
+  categoryId      String?               @map("category_id")
+  designationId   String?               @map("designation_id")
+  description     String?
+  editorContent   String                @map("editor_content") @db.Text
+  currentVersion  Int                   @default(1) @map("current_version")
+  status          String                @default("ACTIVE")
+  createdById     String                @map("created_by")
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+  tenant          Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category        DocumentCategory?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  designation     Position?             @relation(fields: [designationId], references: [id], onDelete: SetNull)
+  createdBy       User                  @relation("DocumentTemplateCreator", fields: [createdById], references: [id])
+  versions        TemplateVersion[]
+  placeholders    TemplatePlaceholder[]
+  generatedDocuments GeneratedDocument[]
+
+  @@map("document_templates")
+}
+
+model TemplateVersion {
+  id            String           @id @default(uuid())
+  tenantId      String           @map("tenant_id")
+  templateId    String           @map("template_id")
+  versionNumber Int              @map("version_number")
+  editorContent String           @map("editor_content") @db.Text
+  changeNotes   String?          @map("change_notes")
+  createdById   String           @map("created_by")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  tenant        Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  template      DocumentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  createdBy     User             @relation("TemplateVersionCreator", fields: [createdById], references: [id])
+
+  @@map("template_versions")
+}
+
+model TemplatePlaceholder {
+  id               String           @id @default(uuid())
+  tenantId         String           @map("tenant_id")
+  templateId       String           @map("template_id")
+  placeholderKey   String           @map("placeholder_key")
+  placeholderLabel String           @map("placeholder_label")
+  dataType         String           @default("Text") @map("data_type")
+  required         Boolean          @default(true)
+  defaultValue     String?          @map("default_value")
+  displayOrder     Int              @default(0) @map("display_order")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  template         DocumentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@map("template_placeholders")
+}
+
+model GeneratedDocument {
+  id                  String                   @id @default(uuid())
+  tenantId            String                   @map("tenant_id")
+  templateId          String?                  @map("template_id")
+  categoryId          String?                  @map("category_id")
+  referenceEntityId   String?                  @map("reference_entity_id")
+  referenceEntityType String?                  @default("EMPLOYEE") @map("reference_entity_type")
+  documentNumber      String                   @map("document_number")
+  status              String                   @default("GENERATED")
+  generatedById       String                   @map("generated_by")
+  generatedAt         DateTime                 @default(now()) @map("generated_at")
+  docxFilePath        String?                  @map("docx_file_path")
+  pdfFilePath         String?                  @map("pdf_file_path")
+  tenant              Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  template            DocumentTemplate?        @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  category            DocumentCategory?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  generatedBy         User                     @relation("GeneratedDocumentCreator", fields: [generatedById], references: [id])
+  values              GeneratedDocumentValue[]
+  files               DocumentFile[]
+
+  @@map("generated_documents")
+}
+
+model DocumentStructure {
+  id              String   @id @default(uuid())
+  tenantId        String   @map("tenant_id")
+  name            String
+  htmlContent     String   @map("html_content")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  createdById     String   @map("created_by_id")
+  createdBy       User     @relation("DocumentStructureCreator", fields: [createdById], references: [id])
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@map("document_structures")
+}
+
+model GeneratedDocumentValue {
+  id                  String            @id @default(uuid())
+  tenantId            String            @map("tenant_id")
+  generatedDocumentId String            @map("generated_document_id")
+  placeholderKey      String            @map("placeholder_key")
+  placeholderValue    String?           @map("placeholder_value") @db.Text
+  createdAt           DateTime          @default(now()) @map("created_at")
+  tenant              Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  generatedDocument   GeneratedDocument @relation(fields: [generatedDocumentId], references: [id], onDelete: Cascade)
+
+  @@map("generated_document_values")
+}
+
+model DocumentAuditLog {
+  id            String   @id @default(uuid())
+  tenantId      String   @map("tenant_id")
+  module        String
+  referenceId   String?  @map("reference_id")
+  action        String
+  performedById String   @map("performed_by")
+  ipAddress     String?  @map("ip_address")
+  remarks       String?  @db.Text
+  createdAt     DateTime @default(now()) @map("created_at")
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  performedBy   User     @relation("DocumentAuditLogPerformer", fields: [performedById], references: [id])
+
+  @@map("document_audit_logs")
+}
+
+model DocumentFile {
+  id                  String            @id @default(uuid())
+  tenantId            String            @map("tenant_id")
+  generatedDocumentId String            @map("generated_document_id")
+  fileName            String            @map("file_name")
+  fileType            String            @map("file_type")
+  filePath            String            @map("file_path")
+  fileSize            Int?              @map("file_size")
+  storageProvider     String            @default("Local") @map("storage_provider")
+  createdAt           DateTime          @default(now()) @map("created_at")
+  tenant              Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  generatedDocument   GeneratedDocument @relation(fields: [generatedDocumentId], references: [id], onDelete: Cascade)
+
+  @@map("document_files")
+}
+
