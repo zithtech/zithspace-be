@@ -1,4 +1,5 @@
 import { Response } from "express";
+import { recordTransaction, Section, Module, Page, Action } from "@/utils/transactionHistory";
 import axios from "axios";
 import { prisma } from "../config/database";
 import { AuthRequest, ApiResponse } from "../types";
@@ -345,6 +346,17 @@ export class MailController {
                 email: account.email
             });
 
+            
+            recordTransaction({
+                req: req as AuthRequest,
+                section: Section.HOME,
+                module: Module.INTEGRATIONS,
+                page: Page.INTEGRATION_PAGE,
+                action: "sync",
+                actionLabel: `Synced mail`,
+                entityType: "mail",
+            });
+
             return res.json({
                 success: true,
                 message: "Mail synchronization started in background"
@@ -475,6 +487,18 @@ export class MailController {
                 console.error("[MailController] Failed to queue sync after send:", err);
             }
             */
+
+            
+            recordTransaction({
+                req: req as AuthRequest,
+                section: Section.HOME,
+                module: Module.INTEGRATIONS,
+                page: Page.INTEGRATION_PAGE,
+                action: Action.CREATE,
+                actionLabel: `Sent mail: ${subject}`,
+                entityType: "mail",
+                entityLabel: subject,
+            });
 
             return res.json({
                 success: true,

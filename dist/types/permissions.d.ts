@@ -331,6 +331,15 @@ export declare const Permissions: {
     readonly PIPELINE_FORECAST_READ: "pipeline.forecast.read";
     readonly PIPELINE_SETTING_READ: "pipeline.setting.read";
     readonly PIPELINE_SETTING_UPDATE: "pipeline.setting.update";
+    readonly RECRUITMENT_CREATE: "recruitment.create";
+    readonly RECRUITMENT_READ: "recruitment.read";
+    readonly RECRUITMENT_UPDATE: "recruitment.update";
+    readonly RECRUITMENT_DELETE: "recruitment.delete";
+    readonly RECRUITMENT_MANAGE: "recruitment.manage";
+    readonly RECRUITMENT_SETTING_READ: "recruitment.setting.read";
+    readonly RECRUITMENT_SETTING_CREATE: "recruitment.setting.create";
+    readonly RECRUITMENT_SETTING_UPDATE: "recruitment.setting.update";
+    readonly RECRUITMENT_SETTING_DELETE: "recruitment.setting.delete";
     readonly EXIT_CREATE: "exit.create";
     readonly EXIT_READ: "exit.read";
     readonly EXIT_UPDATE: "exit.update";

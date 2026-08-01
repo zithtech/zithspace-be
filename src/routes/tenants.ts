@@ -92,6 +92,20 @@ router.delete('/logo-version', tenantRateLimit, resolveTenant, authenticateToken
  */
 router.get('/statistics', tenantRateLimit, resolveTenant, authenticateToken, requirePermission(Permissions.REPORT_READ), TenantController.getStatistics);
 
+/**
+ * GET /api/tenants/extension-install-key
+ * Get the current Chrome Extension install key for the active tenant.
+ * Requires tenant context, authentication, and settings-update permission (admin).
+ */
+router.get('/extension-install-key', tenantRateLimit, resolveTenant, authenticateToken, requirePermission(Permissions.SETTINGS_UPDATE), TenantController.getExtensionInstallKey);
+
+/**
+ * POST /api/tenants/extension-install-key/generate
+ * Generate or rotate the Chrome Extension install key for the active tenant.
+ * Requires tenant context, authentication, and settings-update permission (admin).
+ */
+router.post('/extension-install-key/generate', tenantRateLimit, resolveTenant, authenticateToken, requirePermission(Permissions.SETTINGS_UPDATE), TenantController.generateExtensionInstallKey);
+
 // ==========================================
 // super_admin ENDPOINTS (Require super_admin access)
 // ==========================================

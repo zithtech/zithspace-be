@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { AuthRequest } from '@/types';
 import { SkillModel } from '@/models/Skill.model';
 import { ExperienceModel } from '@/models/Experience.model';
+import { recordTransaction, Section, Module, Page, Action } from '@/utils/transactionHistory';
 
 export class SkillExperienceController {
 
@@ -17,6 +18,20 @@ export class SkillExperienceController {
       tenant_id: req.tenantId,
       user_id: req.user!.id
     });
+    
+    if (skill) {
+      recordTransaction({
+        req: req as AuthRequest,
+        section: Section.HOME,
+        module: Module.MY_PROFILE,
+        page: Page.MY_PROFILE,
+        action: Action.CREATE,
+        actionLabel: `Added skill: ${skill.name}`,
+        entityType: "skill",
+        entityLabel: skill.name,
+      });
+    }
+
     res.json({ success: true, data: skill });
   }
 
@@ -36,6 +51,16 @@ export class SkillExperienceController {
       const newSkills = await SkillModel.bulkSync(req.tenantId!, req.user!.id, skills, category || 'General');
       console.log('Bulk Sync Result:', newSkills.length, 'new skills added');
       
+      recordTransaction({
+        req: req as AuthRequest,
+        section: Section.HOME,
+        module: Module.MY_PROFILE,
+        page: Page.MY_PROFILE,
+        action: "sync",
+        actionLabel: `Synced ${newSkills.length} skills`,
+        entityType: "skill",
+      });
+
       res.json({ 
         success: true, 
         message: `Synced ${newSkills.length} new skills`,
@@ -58,11 +83,35 @@ export class SkillExperienceController {
       req.user!.id,
       req.body
     );
+
+    if (skill) {
+      recordTransaction({
+        req: req as AuthRequest,
+        section: Section.HOME,
+        module: Module.MY_PROFILE,
+        page: Page.MY_PROFILE,
+        action: Action.UPDATE,
+        actionLabel: `Updated skill`,
+        entityType: "skill",
+      });
+    }
+
     res.json({ success: true, data: skill });
   }
 
   static async deleteSkill(req: AuthRequest, res: Response) {
     await SkillModel.delete(req.params.id, req.tenantId!, req.user!.id);
+    
+    recordTransaction({
+      req: req as AuthRequest,
+      section: Section.HOME,
+      module: Module.MY_PROFILE,
+      page: Page.MY_PROFILE,
+      action: Action.DELETE,
+      actionLabel: `Deleted skill`,
+      entityType: "skill",
+    });
+
     res.json({ success: true });
   }
 
@@ -78,6 +127,20 @@ export class SkillExperienceController {
       tenant_id: req.tenantId,
       user_id: req.user!.id
     });
+
+    if (exp) {
+      recordTransaction({
+        req: req as AuthRequest,
+        section: Section.HOME,
+        module: Module.MY_PROFILE,
+        page: Page.MY_PROFILE,
+        action: Action.CREATE,
+        actionLabel: `Added experience: ${exp.job_title}`,
+        entityType: "experience",
+        entityLabel: exp.job_title,
+      });
+    }
+
     res.json({ success: true, data: exp });
   }
 
@@ -88,11 +151,35 @@ export class SkillExperienceController {
       req.user!.id,
       req.body
     );
+
+    if (exp) {
+      recordTransaction({
+        req: req as AuthRequest,
+        section: Section.HOME,
+        module: Module.MY_PROFILE,
+        page: Page.MY_PROFILE,
+        action: Action.UPDATE,
+        actionLabel: `Updated experience`,
+        entityType: "experience",
+      });
+    }
+
     res.json({ success: true, data: exp });
   }
 
   static async deleteExperience(req: AuthRequest, res: Response) {
     await ExperienceModel.delete(req.params.id, req.tenantId!, req.user!.id);
+    
+    recordTransaction({
+      req: req as AuthRequest,
+      section: Section.HOME,
+      module: Module.MY_PROFILE,
+      page: Page.MY_PROFILE,
+      action: Action.DELETE,
+      actionLabel: `Deleted experience`,
+      entityType: "experience",
+    });
+
     res.json({ success: true });
   }
 }

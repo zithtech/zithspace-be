@@ -39,8 +39,8 @@ export const create = handle(async (req: AuthRequest, res: Response) => {
   recordTransaction({
     req,
     section: Section.FINANCE,
-    module: Module.REIMBURSEMENT,
-    page: Page.REIMBURSEMENT_POLICIES,
+    module: Module.REIMBURSEMENT_V2,
+    page: Page.REIMBURSEMENT_V2_POLICIES,
     action: Action.CREATE,
     actionLabel: `Created reimbursement policy "${policy.name}" (${policy.code})`,
     entityType: EntityType.REIMBURSEMENT_POLICY,
@@ -68,8 +68,8 @@ export const update = handle(async (req: AuthRequest, res: Response) => {
   recordTransaction({
     req,
     section: Section.FINANCE,
-    module: Module.REIMBURSEMENT,
-    page: Page.REIMBURSEMENT_POLICIES,
+    module: Module.REIMBURSEMENT_V2,
+    page: Page.REIMBURSEMENT_V2_POLICIES,
     action: Action.UPDATE,
     actionLabel: `Updated reimbursement policy "${policy.name}"`,
     entityType: EntityType.REIMBURSEMENT_POLICY,
@@ -87,8 +87,8 @@ export const remove = handle(async (req: AuthRequest, res: Response) => {
   recordTransaction({
     req,
     section: Section.FINANCE,
-    module: Module.REIMBURSEMENT,
-    page: Page.REIMBURSEMENT_POLICIES,
+    module: Module.REIMBURSEMENT_V2,
+    page: Page.REIMBURSEMENT_V2_POLICIES,
     action: Action.DELETE,
     actionLabel: `Deleted reimbursement policy "${existing.name}" (${existing.code})`,
     entityType: EntityType.REIMBURSEMENT_POLICY,

@@ -1,3 +1,4 @@
+import { recordTransaction, Section, Module, Page, Action, EntityType } from "@/utils/transactionHistory";
 import { Response } from "express";
 import pool from "@/config/dbpool";
 import { AuthRequest } from "@/types";
@@ -305,14 +306,27 @@ export class TeamStaffController {
   static async remove(req: AuthRequest, res: Response): Promise<void> {
     const tenantId = req.tenantId!;
     const r = await pool.query(
-      `DELETE FROM portal_team_members WHERE id = $1 AND tenant_id = $2`,
+      `DELETE FROM portal_team_members WHERE id = $1 AND tenant_id = $2 RETURNING client_id`,
       [req.params.id, tenantId],
     );
     if (r.rowCount === 0) {
       res.status(404).json({ success: false, error: "Team member not found" });
       return;
     }
-    res.json({ success: true });
+    
+    recordTransaction({
+      req,
+      parentEntityType: EntityType.CLIENT,
+      parentEntityId: (r.rows[0] as any).client_id,
+      section: Section.ADMIN,
+      module: Module.CLIENTS_V2,
+      page: Page.CLIENT_DETAIL,
+      action: Action.DELETE,
+      actionLabel: `Removed team member from client portal`,
+      entityType: "client_portal_data",
+      statusCode: 200,
+    });
+res.json({ success: true });
   }
 
   /**

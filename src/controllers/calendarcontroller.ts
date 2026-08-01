@@ -11,6 +11,7 @@ import { PushNotificationService } from '@/services/pushNotificationService';
 import crypto from "crypto";
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
+import { recordTransaction, Section, Module, Page, Action } from "@/utils/transactionHistory";
 
 function getAbsoluteReturnUrl(inputUrl: string | undefined, frontendUrl: string, subdomain?: string): string {
     let target = inputUrl || "/calendar";
@@ -244,6 +245,21 @@ export class CalendarController {
                 tenantId
             );
 
+            // Mock req.user for recordTransaction since callback doesn't have auth middleware
+            (req as any).tenantId = tenantId;
+            (req as any).user = { id: userId, email: mailAccount?.email || null };
+            recordTransaction({
+                req: req as AuthRequest,
+                section: Section.HOME,
+                module: Module.INTEGRATIONS,
+                page: Page.INTEGRATION_PAGE,
+                action: Action.CREATE,
+                actionLabel: `Connected ${provider} integration`,
+                entityType: "integration",
+                entityLabel: provider,
+            });
+
+
             // Sync Calendar immediately after connection.
             // Strategy: Fire a direct full syncEvents() in background FIRST (guaranteed, no RabbitMQ dependency),
             // then ALSO enqueue via RabbitMQ for resilience.
@@ -338,6 +354,18 @@ export class CalendarController {
                 success: true,
                 message: `${provider} disconnected successfully`,
             } as ApiResponse);
+
+            recordTransaction({
+                req: req as AuthRequest,
+                section: Section.HOME,
+                module: Module.INTEGRATIONS,
+                page: Page.INTEGRATION_PAGE,
+                action: Action.DELETE,
+                actionLabel: `Disconnected ${provider} integration`,
+                entityType: "integration",
+                entityLabel: provider,
+            });
+
         } catch (error) {
             console.error("Calendar disconnect error:", error);
             res.status(500).json({
@@ -560,6 +588,18 @@ export class CalendarController {
 
             console.log("🟣🟣🟣 BACKEND CONTROLLER - CREATE EVENT END 🟣🟣🟣");
 
+            
+            recordTransaction({
+                req: req as AuthRequest,
+                section: Section.HOME,
+                module: Module.INTEGRATIONS,
+                page: Page.INTEGRATION_PAGE,
+                action: Action.CREATE,
+                actionLabel: `Created calendar event: ${eventData.title || eventData.subject || "Event"}`,
+                entityType: "calendar_event",
+                entityLabel: eventData.title || eventData.subject || "Event",
+            });
+
             res.status(201).json({
                 success: true,
                 data: event,
@@ -628,6 +668,19 @@ export class CalendarController {
                 occurrenceDate,
                 req.user.email
             );
+
+            
+            recordTransaction({
+                req: req as AuthRequest,
+                section: Section.HOME,
+                module: Module.INTEGRATIONS,
+                page: Page.INTEGRATION_PAGE,
+                action: Action.UPDATE,
+                actionLabel: `Updated calendar event`,
+                entityType: "calendar_event",
+                entityId: id,
+                entityLabel: "Event",
+            });
 
             res.status(200).json({
                 success: true,
@@ -700,6 +753,19 @@ export class CalendarController {
                 req.user.email
             );
 
+            
+            recordTransaction({
+                req: req as AuthRequest,
+                section: Section.HOME,
+                module: Module.INTEGRATIONS,
+                page: Page.INTEGRATION_PAGE,
+                action: Action.DELETE,
+                actionLabel: `Deleted calendar event`,
+                entityType: "calendar_event",
+                entityId: id,
+                entityLabel: "Event",
+            });
+
             res.status(200).json({
                 success: true,
                 message: "Event deleted successfully",
@@ -762,6 +828,17 @@ export class CalendarController {
                     console.warn(`[CalendarController] Optional RabbitMQ enqueue failed for ${integ.id}:`, enqueueError.message);
                 }
             }
+
+            
+            recordTransaction({
+                req: req as AuthRequest,
+                section: Section.HOME,
+                module: Module.INTEGRATIONS,
+                page: Page.INTEGRATION_PAGE,
+                action: "sync",
+                actionLabel: `Synced calendar events${provider ? " for " + provider : ""}`,
+                entityType: "calendar",
+            });
 
             res.status(202).json({
                 success: true,

@@ -407,12 +407,29 @@ This is an automated mail, please do not reply.`;
       // If yes, use the ZohoMailProvider (OAuth token-based) — no passwords needed.
       if (tenantId) {
         try {
-          const zohoAccount = await prisma.mail_accounts.findFirst({
-            where: {
-              tenant_id: tenantId,
-              provider: 'ZOHO' as any,
-              is_active: true,
+          let specificEmail = null;
+          let extractedName = null;
+          if (options.from) {
+            const emailMatch = options.from.match(/<([^>]+)>/);
+            specificEmail = emailMatch ? emailMatch[1].trim() : options.from.trim();
+            const nameMatch = options.from.match(/^"([^"]+)"/);
+            if (nameMatch) {
+              extractedName = nameMatch[1];
             }
+          }
+
+          const whereClause: any = {
+            tenant_id: tenantId,
+            provider: 'ZOHO' as any,
+            is_active: true,
+          };
+
+          if (specificEmail) {
+            whereClause.email = specificEmail;
+          }
+
+          const zohoAccount = await prisma.mail_accounts.findFirst({
+            where: whereClause
           }) as any;
 
           if (zohoAccount) {
@@ -422,7 +439,7 @@ This is an automated mail, please do not reply.`;
 
             const accessToken = await UnifiedAuthService.getValidAccessToken(zohoAccount.user_id, 'ZOHO' as any);
             const provider = new ZohoMailProvider();
-            const fromName = process.env.SMTP_FROM_NAME || 'ZithSpace';
+            const fromName = extractedName || process.env.SMTP_FROM_NAME || 'ZithSpace';
             const fromAddress = zohoAccount.email;
 
             await provider.sendMessage(accessToken, {
@@ -460,13 +477,12 @@ This is an automated mail, please do not reply.`;
         return true;
       }
 
-      // From address is always the system/office email (owner@zithtech.com)
-      // Reply-To is the employee's email so managers can reply directly to them
+      // If options.from is provided, use it (e.g. employee email), otherwise fallback to system email
       const fromAddress = process.env.SYSTEM_EMAIL || process.env.SMTP_FROM_EMAIL || "noreply@zithtech.com";
       const fromName = process.env.SMTP_FROM_NAME || "ZithSpace";
 
       const mailOptions = {
-        from: `"${fromName}" <${fromAddress}>`,
+        from: options.from || `"${fromName}" <${fromAddress}>`,
         replyTo: options.replyTo,
         to: options.to,
         cc: options.cc,
@@ -619,7 +635,7 @@ ${data.reason}
 Please log in to review and approve/reject this request.
     `;
 
-    return this.sendEmail({ to: data.to, cc: data.cc, replyTo: data.replyTo, subject, html, text }, tenantId);
+    return this.sendEmail({ to: data.to, from: `"${data.employeeName}" <${data.employeeEmail}>`, cc: data.cc, replyTo: data.replyTo, subject, html, text }, tenantId);
   }
 
   async sendLeaveApprovalEmail(data: LeaveApprovalEmailData, tenantId?: string): Promise<boolean> {
@@ -854,7 +870,7 @@ If you have any questions or concerns, please contact your manager or HR departm
       </html>
     `;
     const text = `New Expense Claim from ${data.employeeName}\n\nClaim No: ${data.claimNo}\nEmployee: ${data.employeeName} (${data.employeeEmail})\nItems: ${data.itemCount}\nTotal: ${data.currency} ${data.totalAmount.toFixed(2)}\n\nPlease log in to approve or reject this claim.`;
-    return this.sendEmail({ to: data.to, cc: data.cc, replyTo: data.replyTo, subject, html, text }, tenantId);
+    return this.sendEmail({ to: data.to, from: `"${data.employeeName}" <${data.employeeEmail}>`, cc: data.cc, replyTo: data.replyTo, subject, html, text }, tenantId);
   }
 
   async sendClaimApprovalEmail(data: {
@@ -1011,7 +1027,7 @@ If you have any questions or concerns, please contact your manager or HR departm
       </html>
     `;
     const text = `New Advance Request from ${data.employeeName}\n\nAdvance No: ${data.advanceNo}\nEmployee: ${data.employeeName} (${data.employeeEmail})\nAmount: ${data.currency} ${data.amount.toFixed(2)}\n${data.purpose ? `Purpose: ${data.purpose}\n` : ''}${data.neededBy ? `Needed By: ${data.neededBy}\n` : ''}\nPlease log in to approve or reject.`;
-    return this.sendEmail({ to: data.to, cc: data.cc, replyTo: data.replyTo, subject, html, text }, tenantId);
+    return this.sendEmail({ to: data.to, from: `"${data.employeeName}" <${data.employeeEmail}>`, cc: data.cc, replyTo: data.replyTo, subject, html, text }, tenantId);
   }
 
   async sendAdvanceApprovalEmail(data: {

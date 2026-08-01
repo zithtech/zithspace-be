@@ -112,6 +112,7 @@ const routes_1 = __importDefault(require("@/modules/leave-v2/routes"));
 const routes_2 = __importDefault(require("@/modules/performance-report/routes"));
 const routes_3 = __importDefault(require("@/modules/payroll/routes"));
 const routes_4 = __importDefault(require("@/modules/reimbursement-v2/routes"));
+const routes_5 = require("@/modules/pipeline/routes");
 const reimbursementConfig_1 = __importDefault(require("@/routes/reimbursementConfig"));
 const reimbursementsettingsRoutes_1 = __importDefault(require("@/routes/reimbursementsettingsRoutes"));
 const reimbursementcreateRoutes_1 = __importDefault(require("@/routes/reimbursementcreateRoutes"));
@@ -185,6 +186,7 @@ app.use((0, cors_1.default)({
 // Body parsing middleware
 app.use(express_1.default.json({ limit: "30mb" }));
 app.use(express_1.default.urlencoded({ extended: true, limit: "30mb" }));
+app.use("/uploads", express_1.default.static(path_1.default.join(process.cwd(), "uploads")));
 app.use((0, express_session_1.default)({
     secret: process.env.SESSION_SECRET || "your-fallback-secret-key",
     resave: false,
@@ -301,6 +303,7 @@ app.use("/api/milestones", milestones_1.default);
 app.use("/api/milestone-items", milestoneItems_1.default);
 app.use("/api/client-releases", clientReleases_1.default);
 app.use("/api/tickets", tickets_1.default);
+app.use("/api/pipeline", routes_5.pipelineRouter);
 app.use("/api/recruitment", jobRequisition_routes_1.default);
 app.use("/api/attendance", attendance_1.default);
 app.use("/api/clients", clients_1.default);

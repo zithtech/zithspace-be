@@ -8,6 +8,7 @@ import * as service from '../services/assignment.service';
 import * as profileService from '../services/profile.service';
 import { assignSchema, previewAssignSchema } from '../validators/assignment.validator';
 import { upsertProfileSchema } from '../validators/profile.validator';
+import { recordTransaction, Section, Module, Page, Action, EntityType } from '@/utils/transactionHistory';
 
 export const list = handle(async (req: AuthRequest, res: Response) => {
   ok(res, await service.listAssignments(actorOf(req)));
@@ -24,7 +25,18 @@ export const getHistory = handle(async (req: AuthRequest, res: Response) => {
 });
 
 export const assign = handle(async (req: AuthRequest, res: Response) => {
-  ok(res, await service.assign(actorOf(req), assignSchema.parse(req.body)), 201);
+  const assignment = await service.assign(actorOf(req), assignSchema.parse(req.body));
+  recordTransaction({
+    req,
+    section: Section.FINANCE,
+    module: Module.PAYROLL_V2,
+    page: Page.PAYROLL_V2_EMPLOYEE_PAY_SETUP,
+    action: Action.CREATE,
+    actionLabel: `Assigned salary structure to employee`,
+    entityType: EntityType.PAYROLL_ASSIGNMENT,
+    entityId: assignment.id,
+  });
+  ok(res, assignment, 201);
 });
 
 export const preview = handle(async (req: AuthRequest, res: Response) => {
@@ -33,6 +45,16 @@ export const preview = handle(async (req: AuthRequest, res: Response) => {
 
 export const revoke = handle(async (req: AuthRequest, res: Response) => {
   await service.revoke(actorOf(req), req.params.id);
+  recordTransaction({
+    req,
+    section: Section.FINANCE,
+    module: Module.PAYROLL_V2,
+    page: Page.PAYROLL_V2_EMPLOYEE_PAY_SETUP,
+    action: Action.REVOKE,
+    actionLabel: `Revoked salary assignment`,
+    entityType: EntityType.PAYROLL_ASSIGNMENT,
+    entityId: req.params.id,
+  });
   ok(res, { id: req.params.id, revoked: true });
 });
 
@@ -45,5 +67,16 @@ export const getProfile = handle(async (req: AuthRequest, res: Response) => {
 });
 export const upsertProfile = handle(async (req: AuthRequest, res: Response) => {
   const input = upsertProfileSchema.parse(req.body);
-  ok(res, await profileService.upsertProfile(actorOf(req), req.params.employeeId, input));
+  const profile = await profileService.upsertProfile(actorOf(req), req.params.employeeId, input);
+  recordTransaction({
+    req,
+    section: Section.FINANCE,
+    module: Module.PAYROLL_V2,
+    page: Page.PAYROLL_V2_PAYSLIP_BANK,
+    action: Action.UPDATE,
+    actionLabel: `Updated bank/statutory profile for employee`,
+    entityType: EntityType.PAYROLL_PAYSLIP_BANK_SETTINGS,
+    entityId: req.params.employeeId,
+  });
+  ok(res, profile);
 });

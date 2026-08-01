@@ -68,7 +68,7 @@ export class DepartmentController {
       // ─── Activity log ───────────────────────────────────────────────
       recordTransaction({
         req,
-        section: Section.WORK,
+        section: Section.ADMIN,
         module: Module.ORG_STRUCTURE,
         page: Page.ORG_STRUCTURE_DEPARTMENTS,
         action: Action.CREATE,
@@ -223,7 +223,7 @@ export class DepartmentController {
 
         recordTransaction({
           req,
-          section: Section.WORK,
+          section: Section.ADMIN,
           module: Module.ORG_STRUCTURE,
           page: Page.ORG_STRUCTURE_DEPARTMENTS,
           action: Action.UPDATE,
@@ -268,7 +268,7 @@ export class DepartmentController {
       if (existing) {
         recordTransaction({
           req,
-          section: Section.WORK,
+          section: Section.ADMIN,
           module: Module.ORG_STRUCTURE,
           page: Page.ORG_STRUCTURE_DEPARTMENTS,
           action: Action.DELETE,
