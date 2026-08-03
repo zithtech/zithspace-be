@@ -1,3 +1,4 @@
+import { getFileBufferFromR2 } from '../utils/r2Client';
 import { Response } from 'express';
 import { AuthRequest, ApiResponse, ValidationError } from '../types';
 import { GeneratedLetterService } from '../services/GeneratedLetterService';
@@ -57,12 +58,16 @@ export class GeneratedLetterController {
         throw new ValidationError('Tenant context required');
       }
 
-      const { templateId, values } = req.body;
-      if (!templateId || !values) {
-        throw new ValidationError('Template ID and placeholder values are required');
+      const { templateId, values, generatedDocumentId, customContent } = req.body;
+      if (!values) {
+        throw new ValidationError('Placeholder values are required');
+      }
+      if (!templateId && !generatedDocumentId && !customContent) {
+        throw new ValidationError('Either a template ID, a generated document ID, or custom content is required for preview');
       }
 
-      const renderedHtml = await GeneratedLetterService.previewLetter(req.tenantId, templateId, values);
+
+      const renderedHtml = await GeneratedLetterService.previewLetter(req.tenantId, templateId, values, generatedDocumentId, customContent);
 
       res.status(200).json({
         success: true,
@@ -82,7 +87,7 @@ export class GeneratedLetterController {
         throw new ValidationError('Tenant context and user authentication required');
       }
 
-      const { templateId, referenceEntityId, referenceEntityType, documentNumber, values } = req.body;
+      const { templateId, referenceEntityId, referenceEntityType, documentNumber, values, customContent } = req.body;
       if (!templateId || !values) {
         throw new ValidationError('Template ID and values map are required');
       }
@@ -96,6 +101,7 @@ export class GeneratedLetterController {
           referenceEntityType,
           documentNumber,
           values,
+          customContent,
         },
         req.user.id,
         ipAddress
@@ -121,7 +127,7 @@ export class GeneratedLetterController {
       }
 
       const { id } = req.params;
-      const { templateId, referenceEntityId, referenceEntityType, documentNumber, values } = req.body;
+      const { templateId, referenceEntityId, referenceEntityType, documentNumber, values, customContent } = req.body;
       if (!templateId || !values) {
         throw new ValidationError('Template ID and values map are required');
       }
@@ -136,6 +142,7 @@ export class GeneratedLetterController {
           referenceEntityType,
           documentNumber,
           values,
+          customContent,
         },
         req.user.id,
         ipAddress
@@ -163,20 +170,15 @@ export class GeneratedLetterController {
       const { id } = req.params;
       const doc = await GeneratedLetterService.getGeneratedLetterById(req.tenantId, id);
 
-      if (!doc.template) {
-        throw new Error('Associated template for document no longer exists');
+      if (!doc.pdfFilePath || doc.pdfFilePath.includes('/api/')) {
+        throw new Error('PDF file is missing or still processing.');
       }
 
-      // Reconstruct values map
-      const valuesMap: Record<string, string> = {};
-      doc.values.forEach(v => {
-        valuesMap[v.placeholderKey] = v.placeholderValue || '';
-      });
+      const pdfBuffer = await getFileBufferFromR2(doc.pdfFilePath);
 
-      const renderedHtml = await GeneratedLetterService.substitutePlaceholders(req.tenantId, doc.template.editorContent, valuesMap, (doc.template as any).placeholders);
-      const pdfBuffer = await GeneratedLetterService.generatePDFBuffer(renderedHtml);
-
-      const filename = `${doc.documentNumber}_${doc.template.templateName.replace(/\s+/g, '_')}.pdf`;
+      // Safe filename handling whether template exists or not
+      const templateName = doc.template ? doc.template.templateName.replace(/\s+/g, '_') : 'Document';
+      const filename = `${doc.documentNumber}_${templateName}.pdf`;
 
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -185,7 +187,7 @@ export class GeneratedLetterController {
     } catch (error: any) {
       res.status(500).json({
         success: false,
-        message: error.message || 'Failed to generate and download PDF',
+        message: error.message || 'Failed to download PDF',
       } as ApiResponse);
     }
   }
@@ -199,39 +201,15 @@ export class GeneratedLetterController {
       const { id } = req.params;
       const doc = await GeneratedLetterService.getGeneratedLetterById(req.tenantId, id);
 
-      if (!doc.template) {
-        throw new Error('Associated template for document no longer exists');
+      if (!doc.docxFilePath || doc.docxFilePath.includes('/api/')) {
+        throw new Error('DOCX file is missing or still processing.');
       }
 
-      // Reconstruct values map
-      const valuesMap: Record<string, string> = {};
-      doc.values.forEach(v => {
-        valuesMap[v.placeholderKey] = v.placeholderValue || '';
-      });
+      const docxBuffer = await getFileBufferFromR2(doc.docxFilePath);
 
-      let renderedHtml = await GeneratedLetterService.substitutePlaceholders(req.tenantId, doc.template.editorContent, valuesMap, (doc.template as any).placeholders);
-      
-      let pageConfig: any = {};
-      const configRegex = /<script\s+id="zith-page-config"\s+type="application\/json">([\s\S]*?)<\/script>/is;
-      const match = configRegex.exec(renderedHtml);
-      if (match && match[1]) {
-        try {
-          pageConfig = JSON.parse(match[1]);
-        } catch (e) {}
-        renderedHtml = renderedHtml.replace(configRegex, '');
-      }
-
-      const headerHtml = pageConfig.headerHtml;
-      const footerHtml = pageConfig.footerHtml;
-
-      const docxBuffer = await GeneratedLetterService.generateDOCXBuffer(
-        renderedHtml, 
-        `${doc.template.templateName} - ${doc.documentNumber}`,
-        headerHtml,
-        footerHtml
-      );
-
-      const filename = `${doc.documentNumber}_${doc.template.templateName.replace(/\s+/g, '_')}.docx`;
+      // Safe filename handling whether template exists or not
+      const templateName = doc.template ? doc.template.templateName.replace(/\s+/g, '_') : 'Document';
+      const filename = `${doc.documentNumber}_${templateName}.docx`;
 
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -240,7 +218,7 @@ export class GeneratedLetterController {
     } catch (error: any) {
       res.status(500).json({
         success: false,
-        message: error.message || 'Failed to generate and download DOCX',
+        message: error.message || 'Failed to download DOCX',
       } as ApiResponse);
     }
   }
