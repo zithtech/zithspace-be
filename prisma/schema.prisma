@@ -4765,6 +4765,7 @@ model GeneratedDocument {
   generatedAt         DateTime                 @default(now()) @map("generated_at")
   docxFilePath        String?                  @map("docx_file_path")
   pdfFilePath         String?                  @map("pdf_file_path")
+  snapshotContent     String?                  @map("snapshot_content") @db.Text
   tenant              Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   template            DocumentTemplate?        @relation(fields: [templateId], references: [id], onDelete: SetNull)
   category            DocumentCategory?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
