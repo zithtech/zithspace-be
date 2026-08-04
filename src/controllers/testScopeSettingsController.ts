@@ -1,10 +1,6 @@
 import { Request, Response } from 'express';
-import { Pool } from 'pg';
-import dotenv from 'dotenv';
-import path from 'path';
+import pool from '../config/dbpool';
 
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 // Ensure table exists
 const ensureTable = async () => {
@@ -35,9 +31,9 @@ export const getScopeSettings = async (req: Request, res: Response) => {
     );
 
     res.json({ success: true, data: rows });
-  } catch (err) {
+  } catch (err: any) {
     console.error(err);
-    res.status(500).json({ success: false, error: 'Internal Server Error' });
+    res.status(500).json({ success: false, error: 'Internal Server Error', details: err.message });
   }
 };
 

@@ -864,6 +864,51 @@ export class BugListController {
     }
   }
 
+  static async listAllSheets(req: AuthRequest, res: Response): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    try {
+      const { search, limit = 10 } = req.query;
+      let queryStr = `
+        SELECT s.*, f.name as folder_name 
+        FROM bug_sheets s
+        INNER JOIN bug_folders f ON s.folder_id = f.id
+        WHERE f.tenant_id = $1 
+          AND s.status NOT IN ('archived', 'trash')
+          AND f.status NOT IN ('archived', 'trash')
+      `;
+      const values: any[] = [req.tenantId];
+      let paramIndex = 2;
+
+      if (search) {
+        queryStr += ` AND s.name ILIKE $${paramIndex}`;
+        values.push(`%${search}%`);
+        paramIndex++;
+      }
+
+      queryStr += ` ORDER BY s.created_at DESC LIMIT $${paramIndex}`;
+      values.push(Number(limit));
+
+      const r = await pool.query(queryStr, values);
+      res.json({ 
+        success: true, 
+        data: r.rows.map(row => ({
+          id: row.id,
+          folderId: row.folder_id,
+          folderName: row.folder_name,
+          name: row.name,
+          description: row.description,
+          status: row.status,
+          createdById: row.created_by_id,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at
+        })) 
+      });
+    } catch (err: any) {
+      console.error("listAllSheets error:", err);
+      bad(res, 500, err.message || "Failed to load all sheets");
+    }
+  }
+
   static async listArchivedSheets(req: AuthRequest, res: Response): Promise<void> {
     if (!ensureAuth(req, res)) return;
     const { folderId } = req.query;

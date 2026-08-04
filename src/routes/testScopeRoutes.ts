@@ -1,10 +1,12 @@
 import express from 'express';
 import {
   getTestScopes,
+  getTestScope,
   createTestScope,
   updateTestScope,
   deleteTestScope,
-  generateScopeContentAI
+  generateScopeContentAI,
+  exportPdf
 } from '../controllers/testScopeController';
 import {
   getScopeSettings,
@@ -31,7 +33,10 @@ router.post('/settings', createScopeSetting);
 router.put('/settings/:id', updateScopeSetting);
 router.delete('/settings/:id', deleteScopeSetting);
 
+// Dynamic ID routes must be at the bottom
+router.get('/:id', getTestScope);
 router.put('/:id', updateTestScope);
 router.delete('/:id', deleteTestScope);
+router.post('/:id/export-pdf', exportPdf);
 
 export default router;

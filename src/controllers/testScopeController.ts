@@ -1,14 +1,6 @@
 import { Request, Response } from 'express';
-import { Pool } from 'pg';
-import dotenv from 'dotenv';
-import path from 'path';
-
-// Import the existing pool logic. Instead of duplicating it, we'll initialize a pool here
-// or use the global one. Let's recreate a lightweight instance pointing to DATABASE_URL.
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-});
+import pool from '../config/dbpool';
+import { SprintReportExportService } from '../services/sprintReportExportService';
 
 export const getTestScopes = async (req: Request, res: Response) => {
   try {
@@ -25,6 +17,29 @@ export const getTestScopes = async (req: Request, res: Response) => {
     res.status(200).json({ success: true, data: rows });
   } catch (error) {
     console.error('Error fetching test scopes:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+};
+
+export const getTestScope = async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).user?.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized: No tenant found' });
+    }
+    const { id } = req.params;
+    const { rows } = await pool.query(
+      `SELECT * FROM qa_test_scopes WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Test Scope not found' });
+    }
+
+    res.status(200).json({ success: true, data: rows[0] });
+  } catch (error) {
+    console.error('Error fetching test scope:', error);
     res.status(500).json({ success: false, error: 'Internal Server Error' });
   }
 };
@@ -164,5 +179,44 @@ Format it nicely using HTML tags like <p>, <ul>, <li>, <strong>.
   } catch (err: any) {
     console.error('Failed to generate scope content', err);
     res.status(500).json({ success: false, error: 'Failed to generate content' });
+  }
+};
+
+export const exportPdf = async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).user?.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({
+        success: false,
+        error: "Tenant context and authentication required",
+      });
+    }
+
+    const { id } = req.params;
+    const { htmlPayload } = req.body;
+
+    if (!htmlPayload) {
+      return res.status(400).json({
+        success: false,
+        error: "htmlPayload is required",
+      });
+    }
+
+    // Generate the PDF buffer directly in memory
+    const pdfBuffer = await SprintReportExportService.generatePDFBuffer(htmlPayload);
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="Test-Scope-${id}.pdf"`
+    );
+
+    res.send(pdfBuffer);
+  } catch (error) {
+    console.error("Error generating Test Scope PDF:", error);
+    res.status(500).json({
+      success: false,
+      error: "Failed to generate PDF",
+    });
   }
 };
