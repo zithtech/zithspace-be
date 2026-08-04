@@ -116,6 +116,7 @@ import leaveV2Routes from "@/modules/leave-v2/routes";
 import performanceReportRoutes from "@/modules/performance-report/routes";
 import payrollV2Routes from "@/modules/payroll/routes";
 import reimbursementV2Routes from "@/modules/reimbursement-v2/routes";
+import openingManagementV2Routes from "@/modules/opening-management/routes";
 import { pipelineRouter } from "@/modules/pipeline/routes";
 
 import reimbursementConfigurationRoutes from "@/routes/reimbursementConfig";
@@ -406,6 +407,7 @@ app.use("/api/leave-balances", leaveBalanceRoutes);
 app.use("/api/v2/leave", leaveV2Routes);
 app.use("/api/v2/payroll", payrollV2Routes);
 app.use("/api/v2/reimbursement", reimbursementV2Routes);
+app.use("/api/v2/openings", openingManagementV2Routes);
 app.use("/api/performance-report", performanceReportRoutes);
 
 //Escalation
@@ -606,6 +608,10 @@ const startServer = async () => {
     const { runPayrollMigrations } = require("@/modules/payroll/db/migrate");
     await runPayrollMigrations();
 
+    // Opening Management tables (raw-SQL module, forward-only migrations)
+    const { runOpeningMigrations } = require("@/modules/opening-management/db/migrate");
+    await runOpeningMigrations();
+
     // Connect RabbitMQ & Start Workers
     try {
       await rabbitMQService.connect();
@@ -655,6 +661,11 @@ const startServer = async () => {
     // Start scheduled email sender cron job
     const { startMailScheduledSendJob } = require("@/jobs/mailScheduledSend");
     startMailScheduledSendJob();
+
+    // Move openings from internal to external posting when the window elapses
+    // (disable with OPENING_AUTO_MOVE_ENABLED=false)
+    const { startPostingAutoMoveJob } = require("@/modules/opening-management/jobs/postingAutoMove");
+    startPostingAutoMoveJob();
 
   } catch (error) {
     console.error("Server startup failed:", error);

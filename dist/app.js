@@ -57,6 +57,7 @@ const sprintReport_1 = __importDefault(require("@/routes/sprintReport"));
 const sprintReports_1 = __importDefault(require("@/routes/sprintReports"));
 const fixedHolidays_1 = __importDefault(require("@/routes/fixedHolidays"));
 const documenthub_1 = __importDefault(require("@/routes/documenthub"));
+const letters_routes_1 = __importDefault(require("@/routes/letters.routes"));
 const aiSettings_1 = __importDefault(require("@/routes/aiSettings"));
 const channels_1 = __importDefault(require("@/routes/channels"));
 const messages_1 = __importDefault(require("@/routes/messages"));
@@ -112,7 +113,8 @@ const routes_1 = __importDefault(require("@/modules/leave-v2/routes"));
 const routes_2 = __importDefault(require("@/modules/performance-report/routes"));
 const routes_3 = __importDefault(require("@/modules/payroll/routes"));
 const routes_4 = __importDefault(require("@/modules/reimbursement-v2/routes"));
-const routes_5 = require("@/modules/pipeline/routes");
+const routes_5 = __importDefault(require("@/modules/opening-management/routes"));
+const routes_6 = require("@/modules/pipeline/routes");
 const reimbursementConfig_1 = __importDefault(require("@/routes/reimbursementConfig"));
 const reimbursementsettingsRoutes_1 = __importDefault(require("@/routes/reimbursementsettingsRoutes"));
 const reimbursementcreateRoutes_1 = __importDefault(require("@/routes/reimbursementcreateRoutes"));
@@ -303,7 +305,7 @@ app.use("/api/milestones", milestones_1.default);
 app.use("/api/milestone-items", milestoneItems_1.default);
 app.use("/api/client-releases", clientReleases_1.default);
 app.use("/api/tickets", tickets_1.default);
-app.use("/api/pipeline", routes_5.pipelineRouter);
+app.use("/api/pipeline", routes_6.pipelineRouter);
 app.use("/api/recruitment", jobRequisition_routes_1.default);
 app.use("/api/attendance", attendance_1.default);
 app.use("/api/clients", clients_1.default);
@@ -353,6 +355,7 @@ app.use("/api/sub-departments", subDepartmentRoutes_1.default);
 app.use("/api/positions", positionRoutes_1.default);
 app.use("/api/employment-types", employmentTypeRoutes_1.default);
 app.use("/api/documenthub", documenthub_1.default);
+app.use("/api/hrms/letters", letters_routes_1.default);
 app.use("/api/ai", aiSettings_1.default);
 app.use("/api/channels", channels_1.default);
 app.use("/api/channels/:channelId/messages", messages_1.default);
@@ -369,6 +372,7 @@ app.use("/api/leave-balances", leaveBalanceRoutes_1.default);
 app.use("/api/v2/leave", routes_1.default);
 app.use("/api/v2/payroll", routes_3.default);
 app.use("/api/v2/reimbursement", routes_4.default);
+app.use("/api/v2/openings", routes_5.default);
 app.use("/api/performance-report", routes_2.default);
 //Escalation
 app.use("/api/escalation-categories", escalationCategoryV2_routes_1.default);
@@ -537,6 +541,9 @@ const startServer = async () => {
         // Payroll 2.0 tables (raw-SQL module, forward-only migrations)
         const { runPayrollMigrations } = require("@/modules/payroll/db/migrate");
         await runPayrollMigrations();
+        // Opening Management tables (raw-SQL module, forward-only migrations)
+        const { runOpeningMigrations } = require("@/modules/opening-management/db/migrate");
+        await runOpeningMigrations();
         // Connect RabbitMQ & Start Workers
         try {
             await RabbitMQService_1.rabbitMQService.connect();
@@ -581,6 +588,10 @@ const startServer = async () => {
         // Start scheduled email sender cron job
         const { startMailScheduledSendJob } = require("@/jobs/mailScheduledSend");
         startMailScheduledSendJob();
+        // Move openings from internal to external posting when the window elapses
+        // (disable with OPENING_AUTO_MOVE_ENABLED=false)
+        const { startPostingAutoMoveJob } = require("@/modules/opening-management/jobs/postingAutoMove");
+        startPostingAutoMoveJob();
     }
     catch (error) {
         console.error("Server startup failed:", error);
