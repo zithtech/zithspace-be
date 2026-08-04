@@ -1,3 +1,4 @@
+import { recordTransaction, Section, Module, Page, Action, EntityType } from "@/utils/transactionHistory";
 import { Response } from "express";
 import pool from "@/config/dbpool";
 import { AuthRequest } from "@/types";
@@ -312,7 +313,20 @@ export class EnvironmentsStaffController {
         WHERE id = $${params.length - 1} AND tenant_id = $${params.length}`,
       params,
     );
-    res.json({ success: true });
+    
+    recordTransaction({
+      req,
+      parentEntityType: EntityType.CLIENT,
+      parentEntityId: (cur.rows[0] as any).client_id,
+      section: Section.ADMIN,
+      module: Module.CLIENTS_V2,
+      page: Page.CLIENT_DETAIL,
+      action: Action.UPDATE,
+      actionLabel: `Updated environment`,
+      entityType: "client_portal_data",
+      statusCode: 200,
+    });
+res.json({ success: true });
   }
 
   /** DELETE /api/environments/:id */

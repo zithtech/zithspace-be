@@ -74,180 +74,180 @@ export class AIService {
     const customDuration = preferences?.duration;
 
     const blocksBlueprint: any[] = [];
-    
+
     if (components.includes('cover')) {
       blocksBlueprint.push({
-          "id": "cover-auto",
-          "type": "cover",
-          "data": { 
-            "title": `Proposal for ${leadData.title.replace(/"/g, "'")}`, 
-            "clientName": leadData.client_name, 
-            "companyName": "Freelancer Services",
-            "projectSummary": "string (Short summary for cover page)",
-            "date": new Date().toISOString().split('T')[0]
-          }
+        "id": "cover-auto",
+        "type": "cover",
+        "data": {
+          "title": `Proposal for ${leadData.title.replace(/"/g, "'")}`,
+          "clientName": leadData.client_name,
+          "companyName": "Freelancer Services",
+          "projectSummary": "string (Short summary for cover page)",
+          "date": new Date().toISOString().split('T')[0]
+        }
       });
     }
 
     if (components.includes('text')) {
       blocksBlueprint.push({
-          "id": "summary-auto",
-          "type": "text",
-          "data": { "content": "<h1>Executive Summary</h1><p>Persuasive proposal summary...</p>" }
+        "id": "summary-auto",
+        "type": "text",
+        "data": { "content": "<h1>Executive Summary</h1><p>Persuasive proposal summary...</p>" }
       });
     }
 
     if (components.includes('scope')) {
       blocksBlueprint.push({
-          "id": "scope-auto",
-          "type": "scope",
-          "data": {
-            "title": "Scope of Work",
-            "milestones": [
-              { "id": "m1", "title": "Phase 1: Discovery", "deliverables": "Technical Requirements Doc", "tasks": "Requirement gathering\\nArchitecture design" }
-            ],
-            "terms": [
-              { "id": "t1", "title": "Exclusions", "description": "Materials for print are not included.", "color": "#ef4444" }
-            ]
-          }
+        "id": "scope-auto",
+        "type": "scope",
+        "data": {
+          "title": "Scope of Work",
+          "milestones": [
+            { "id": "m1", "title": "Phase 1: Discovery", "deliverables": "Technical Requirements Doc", "tasks": "Requirement gathering\\nArchitecture design" }
+          ],
+          "terms": [
+            { "id": "t1", "title": "Exclusions", "description": "Materials for print are not included.", "color": "#ef4444" }
+          ]
+        }
       });
     }
 
     if (components.includes('timeline')) {
       blocksBlueprint.push({
-          "id": "timeline-auto",
-          "type": "timeline",
-          "data": {
-            "title": "Project Timeline",
-            "phases": [
-              { "id": "p1", "title": "Discovery Phase", "deadline": "2024-05-10", "reviewPeriod": "2 Days", "description": "string" }
-            ],
-            "dependencyNotes": "string (Constraints)"
-          }
+        "id": "timeline-auto",
+        "type": "timeline",
+        "data": {
+          "title": "Project Timeline",
+          "phases": [
+            { "id": "p1", "title": "Discovery Phase", "deadline": "2024-05-10", "reviewPeriod": "2 Days", "description": "string" }
+          ],
+          "dependencyNotes": "string (Constraints)"
+        }
       });
     }
 
     if (components.includes('pricing')) {
       blocksBlueprint.push({
-          "id": "pricing-auto",
-          "type": "pricing",
-          "data": {
-            "title": "Project Investment",
-            "currency": "USD",
-            "feeStructure": "Fixed Price",
-            "items": [
-              { "id": "i1", "name": "Phase 1 Development", "description": "Core features implementation", "quantity": 1, "price": 1000 }
-            ],
-            "paymentSchedule": "50% Initial Deposit\\n50% Completion",
-            "paymentMethods": "Bank Transfer, Stripe",
-            "taxesIncluded": false
-          }
+        "id": "pricing-auto",
+        "type": "pricing",
+        "data": {
+          "title": "Project Investment",
+          "currency": "USD",
+          "feeStructure": "Fixed Price",
+          "items": [
+            { "id": "i1", "name": "Phase 1 Development", "description": "Core features implementation", "quantity": 1, "price": 1000 }
+          ],
+          "paymentSchedule": "50% Initial Deposit\\n50% Completion",
+          "paymentMethods": "Bank Transfer, Stripe",
+          "taxesIncluded": false
+        }
       });
     }
 
     if (components.includes('image')) {
       blocksBlueprint.push({
-          "id": "image-auto",
-          "type": "component",
-          "data": {
-            "kind": "image",
-            "title": "Project Context",
-            "props": {
-              "src": "https://placehold.co/600x400/png",
-              "caption": "Project Visualization"
-            }
+        "id": "image-auto",
+        "type": "component",
+        "data": {
+          "kind": "image",
+          "title": "Project Context",
+          "props": {
+            "src": "https://placehold.co/600x400/png",
+            "caption": "Project Visualization"
           }
+        }
       });
     }
 
     if (components.includes('gallery')) {
       blocksBlueprint.push({
-          "id": "gallery-auto",
-          "type": "component",
-          "data": {
-            "kind": "gallery",
-            "title": "Design Concepts",
-            "props": {
-              "images": [
-                { "src": "https://placehold.co/400x300/png", "caption": "Concept 1" },
-                { "src": "https://placehold.co/400x300/png", "caption": "Concept 2" },
-                { "src": "https://placehold.co/400x300/png", "caption": "Concept 3" }
-              ]
-            }
+        "id": "gallery-auto",
+        "type": "component",
+        "data": {
+          "kind": "gallery",
+          "title": "Design Concepts",
+          "props": {
+            "images": [
+              { "src": "https://placehold.co/400x300/png", "caption": "Concept 1" },
+              { "src": "https://placehold.co/400x300/png", "caption": "Concept 2" },
+              { "src": "https://placehold.co/400x300/png", "caption": "Concept 3" }
+            ]
           }
+        }
       });
     }
 
     if (components.includes('video')) {
       blocksBlueprint.push({
-          "id": "video-auto",
-          "type": "component",
-          "data": {
-            "kind": "video",
-            "title": "Project Overview Video",
-            "props": {
-              "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-            }
+        "id": "video-auto",
+        "type": "component",
+        "data": {
+          "kind": "video",
+          "title": "Project Overview Video",
+          "props": {
+            "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
           }
+        }
       });
     }
 
     if (components.includes('quote')) {
       blocksBlueprint.push({
-          "id": "quote-auto",
-          "type": "component",
-          "data": {
-            "kind": "quote",
-            "title": "Client Testimonial",
-            "props": {
-              "text": "They delivered exactly what we needed, ahead of schedule.",
-              "author": "Previous Client"
-            }
+        "id": "quote-auto",
+        "type": "component",
+        "data": {
+          "kind": "quote",
+          "title": "Client Testimonial",
+          "props": {
+            "text": "They delivered exactly what we needed, ahead of schedule.",
+            "author": "Previous Client"
           }
+        }
       });
     }
 
     if (components.includes('callout')) {
       blocksBlueprint.push({
-          "id": "callout-auto",
-          "type": "component",
-          "data": {
-            "kind": "callout",
-            "title": "Important Note",
-            "props": {
-              "title": "Key Dependency",
-              "text": "This timeline assumes access to the existing codebase by Day 1.",
-              "variant": "info"
-            }
+        "id": "callout-auto",
+        "type": "component",
+        "data": {
+          "kind": "callout",
+          "title": "Important Note",
+          "props": {
+            "title": "Key Dependency",
+            "text": "This timeline assumes access to the existing codebase by Day 1.",
+            "variant": "info"
           }
+        }
       });
     }
 
     if (components.includes('cta')) {
       blocksBlueprint.push({
-          "id": "cta-auto",
-          "type": "component",
-          "data": {
-            "kind": "cta",
-            "title": "Next Steps",
-            "props": {
-              "label": "Approve Proposal",
-              "url": "#"
-            }
+        "id": "cta-auto",
+        "type": "component",
+        "data": {
+          "kind": "cta",
+          "title": "Next Steps",
+          "props": {
+            "label": "Approve Proposal",
+            "url": "#"
           }
+        }
       });
     }
 
     if (components.includes('signature')) {
       blocksBlueprint.push({
-          "id": "sig-auto",
-          "type": "signature",
-          "data": { 
-            "title": "Terms and Conditions",
-            "companyName": "Freelancer Services",
-            "clientName": leadData.client_name,
-            "companySigner": "Freelancer Name"
-          }
+        "id": "sig-auto",
+        "type": "signature",
+        "data": {
+          "title": "Terms and Conditions",
+          "companyName": "Freelancer Services",
+          "clientName": leadData.client_name,
+          "companySigner": "Freelancer Name"
+        }
       });
     }
 
@@ -348,6 +348,52 @@ export class AIService {
     } catch (error) {
       console.error("Gemini AI Block Refinement Error:", error);
       throw new Error("Failed to refine block with AI");
+    }
+  }
+
+  static async generateLetterTemplate(params: { templateName: string, category: string, placeholders: string[], description: string }, tenantId?: string) {
+    const prompt = `
+      You are an expert HR and Business Operations writer. Your task is to generate a highly professional and polished document/letter template.
+      
+      Requirements:
+      - Template Name: ${params.templateName}
+      - Category: ${params.category}
+      - Goal: ${params.description}
+      
+      You must incorporate ALL of the following placeholders naturally into the text where appropriate:
+      ${params.placeholders.map(p => `{{${p}}}`).join(', ')}
+
+      Formatting rules:
+      - Return ONLY the raw HTML body content. 
+      - Do NOT include <html>, <head>, or <body> tags.
+      - Do NOT wrap in Markdown code blocks like \`\`\`html.
+      - Use standard HTML tags (<h1>, <p>, <strong>, <br>, <ul>, <li>).
+      - STRICTLY AVOID email-style headers like "To:", "From:", or "Subject:". Do NOT format this as an email.
+      - Format it as a formal printed document suitable for PDF or physical print. Use centered titles (e.g., <h2>OFFER LETTER</h2>) instead of "Subject:" lines.
+      - Structure it as a formal business letter with a standard date and address block, professional salutation, body, and sign-off.
+    `;
+
+    try {
+      const provider = await getAIProviderForTenant(tenantId);
+      const text = await provider.generateText(prompt);
+
+      // Clean up markdown wrappers if the LLM includes them
+      let html = text.trim();
+      if (html.startsWith('\`\`\`html')) {
+        html = html.substring(7);
+      } else if (html.startsWith('\`\`\`')) {
+        html = html.substring(3);
+      }
+      if (html.endsWith('\`\`\`')) {
+        html = html.substring(0, html.length - 3);
+      }
+      return html.trim();
+    } catch (error: any) {
+      console.error("AI Letter Template Generation Error:", error);
+      if (error?.status === 429 || error?.message?.includes('quota') || error?.message?.toLowerCase().includes('limit')) {
+        throw new Error("AI service limit reached. Please try again after some time.");
+      }
+      throw new Error("Failed to generate template with AI");
     }
   }
 }

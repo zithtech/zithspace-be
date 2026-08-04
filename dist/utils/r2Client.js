@@ -5,6 +5,7 @@ exports.uploadImageToR2 = uploadImageToR2;
 exports.uploadFileToR2 = uploadFileToR2;
 exports.uploadRequisitionAttachmentToR2 = uploadRequisitionAttachmentToR2;
 exports.uploadEmployeeDocumentToR2 = uploadEmployeeDocumentToR2;
+exports.uploadExitDocumentToR2 = uploadExitDocumentToR2;
 exports.uploadGeneratedReportToR2 = uploadGeneratedReportToR2;
 exports.uploadClientDocumentToR2 = uploadClientDocumentToR2;
 exports.uploadEmployeeAssetToR2 = uploadEmployeeAssetToR2;
@@ -18,6 +19,7 @@ exports.cleanupOrphanedImages = cleanupOrphanedImages;
 exports.generatePresignedUrl = generatePresignedUrl;
 exports.getFileBufferFromR2 = getFileBufferFromR2;
 exports.uploadEscalationDocumentToR2 = uploadEscalationDocumentToR2;
+exports.uploadDocumentToR2 = uploadDocumentToR2;
 const client_s3_1 = require("@aws-sdk/client-s3");
 const s3_request_presigner_1 = require("@aws-sdk/s3-request-presigner");
 const nanoid_1 = require("nanoid");
@@ -248,6 +250,42 @@ async function uploadEmployeeDocumentToR2(base64File, fileName, tenantId, employ
     catch (error) {
         console.error("R2 upload error:", error);
         throw new Error(`Failed to upload document: ${error.message}`);
+    }
+}
+/**
+ * Upload Exit Document (like resignation letter) to Cloudflare R2
+ * @param base64File - Base64 encoded file string
+ * @param fileName - Original file name
+ * @param tenantId - Tenant ID
+ * @param employeeId - Employee ID
+ * @returns Public URL of uploaded document
+ */
+async function uploadExitDocumentToR2(base64File, fileName, tenantId, employeeId) {
+    try {
+        const matches = base64File.match(/^data:([^;]+);base64,(.*)$/);
+        if (!matches) {
+            throw new Error("Invalid file format. Expected base64 encoded file.");
+        }
+        const contentType = matches[1];
+        const base64Data = matches[2];
+        const buffer = Buffer.from(base64Data, "base64");
+        const uniqueId = (0, nanoid_1.nanoid)(12);
+        const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+        // Organize by tenant -> employee-exits -> employee ID -> document
+        const key = `${tenantId}/employee-exits/${employeeId}/documents/${uniqueId}_${sanitizedFileName}`;
+        const params = {
+            Bucket: exports.BUCKET_NAME,
+            Key: key,
+            Body: buffer,
+            ContentType: contentType,
+        };
+        await exports.s3Client.send(new client_s3_1.PutObjectCommand(params));
+        const baseUrl = PUBLIC_URL || "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+        return `${baseUrl}/${key}`;
+    }
+    catch (error) {
+        console.error("R2 upload error (Exit Document):", error);
+        throw new Error(`Failed to upload exit document: ${error.message}`);
     }
 }
 /**
@@ -679,6 +717,35 @@ async function uploadEscalationDocumentToR2(base64File, fileName, tenantId, esca
     catch (error) {
         console.error("R2 escalation document upload error:", error);
         throw new Error(`Failed to upload escalation document: ${error.message}`);
+    }
+}
+async function uploadDocumentToR2(buffer, fileName, tenantId, documentId, contentType) {
+    try {
+        const fileExtension = fileName.split(".").pop() || "bin";
+        const uniqueId = (0, nanoid_1.nanoid)(12);
+        const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+        const folderPath = `${tenantId}/documents/${documentId}`;
+        const storedFileName = `${folderPath}/${uniqueId}_${sanitizedFileName}`;
+        const params = {
+            Bucket: exports.BUCKET_NAME,
+            Key: storedFileName,
+            Body: buffer,
+            ContentType: contentType,
+            CacheControl: "public, max-age=31536000",
+            ContentDisposition: `attachment; filename="${sanitizedFileName}"`,
+        };
+        await exports.s3Client.send(new client_s3_1.PutObjectCommand(params));
+        let baseUrl = (PUBLIC_URL && !PUBLIC_URL.includes('r2.cloudflarestorage.com'))
+            ? PUBLIC_URL
+            : "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+        if (baseUrl.endsWith('/')) {
+            baseUrl = baseUrl.slice(0, -1);
+        }
+        return `${baseUrl}/${storedFileName}`;
+    }
+    catch (error) {
+        console.error("R2 document upload error:", error);
+        throw new Error(`Failed to upload document: ${error.message}`);
     }
 }
 //# sourceMappingURL=r2Client.js.map

@@ -39,8 +39,8 @@ function record(req: AuthRequest, claim: any, action: string, label: string) {
   recordTransaction({
     req,
     section: Section.FINANCE,
-    module: Module.REIMBURSEMENT,
-    page: Page.REIMBURSEMENT_APPROVALS,
+    module: Module.REIMBURSEMENT_V2,
+    page: Page.REIMBURSEMENT_V2_APPROVALS,
     action,
     actionLabel: label,
     entityType: EntityType.REIMBURSEMENT_CLAIM,

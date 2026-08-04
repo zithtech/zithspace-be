@@ -12,6 +12,7 @@ const MailSyncProducer_1 = require("../services/mail/MailSyncProducer");
 const pushNotificationService_1 = require("@/services/pushNotificationService");
 const crypto_1 = __importDefault(require("crypto"));
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
+const transactionHistory_1 = require("@/utils/transactionHistory");
 function getAbsoluteReturnUrl(inputUrl, frontendUrl, subdomain) {
     let target = inputUrl || "/calendar";
     if (target.startsWith("http://") || target.startsWith("https://")) {
@@ -231,6 +232,19 @@ class CalendarController {
             // Establish row-level isolation context
             await database_1.tenantAwarePrisma.setTenantContext(tenantId);
             const mailAccount = await UnifiedAuthService_1.UnifiedAuthService.handleCallback(provider.toUpperCase(), code, state, userId, tenantId);
+            // Mock req.user for recordTransaction since callback doesn't have auth middleware
+            req.tenantId = tenantId;
+            req.user = { id: userId, email: mailAccount?.email || null };
+            (0, transactionHistory_1.recordTransaction)({
+                req: req,
+                section: transactionHistory_1.Section.HOME,
+                module: transactionHistory_1.Module.INTEGRATIONS,
+                page: transactionHistory_1.Page.INTEGRATION_PAGE,
+                action: transactionHistory_1.Action.CREATE,
+                actionLabel: `Connected ${provider} integration`,
+                entityType: "integration",
+                entityLabel: provider,
+            });
             // Sync Calendar immediately after connection.
             // Strategy: Fire a direct full syncEvents() in background FIRST (guaranteed, no RabbitMQ dependency),
             // then ALSO enqueue via RabbitMQ for resilience.
@@ -314,6 +328,16 @@ class CalendarController {
             res.status(200).json({
                 success: true,
                 message: `${provider} disconnected successfully`,
+            });
+            (0, transactionHistory_1.recordTransaction)({
+                req: req,
+                section: transactionHistory_1.Section.HOME,
+                module: transactionHistory_1.Module.INTEGRATIONS,
+                page: transactionHistory_1.Page.INTEGRATION_PAGE,
+                action: transactionHistory_1.Action.DELETE,
+                actionLabel: `Disconnected ${provider} integration`,
+                entityType: "integration",
+                entityLabel: provider,
             });
         }
         catch (error) {
@@ -497,6 +521,16 @@ class CalendarController {
                 console.error("Failed to emit meeting-created socket event:", socketErr.message);
             }
             console.log("🟣🟣🟣 BACKEND CONTROLLER - CREATE EVENT END 🟣🟣🟣");
+            (0, transactionHistory_1.recordTransaction)({
+                req: req,
+                section: transactionHistory_1.Section.HOME,
+                module: transactionHistory_1.Module.INTEGRATIONS,
+                page: transactionHistory_1.Page.INTEGRATION_PAGE,
+                action: transactionHistory_1.Action.CREATE,
+                actionLabel: `Created calendar event: ${eventData.title || eventData.subject || "Event"}`,
+                entityType: "calendar_event",
+                entityLabel: eventData.title || eventData.subject || "Event",
+            });
             res.status(201).json({
                 success: true,
                 data: event,
@@ -548,6 +582,17 @@ class CalendarController {
                 ? existingEvent.externalId + optimisticSuffix
                 : existingEvent.externalId;
             const updatedEvent = await CalendarService_1.CalendarService.updateEvent(req.user.id, req.user.tenantId, existingEvent.provider, targetExternalId, restEventData, parsedAction, occurrenceDate, req.user.email);
+            (0, transactionHistory_1.recordTransaction)({
+                req: req,
+                section: transactionHistory_1.Section.HOME,
+                module: transactionHistory_1.Module.INTEGRATIONS,
+                page: transactionHistory_1.Page.INTEGRATION_PAGE,
+                action: transactionHistory_1.Action.UPDATE,
+                actionLabel: `Updated calendar event`,
+                entityType: "calendar_event",
+                entityId: id,
+                entityLabel: "Event",
+            });
             res.status(200).json({
                 success: true,
                 data: updatedEvent,
@@ -601,6 +646,17 @@ class CalendarController {
                 ? existingEvent.externalId // Use master ID for single occurrence deletion
                 : existingEvent.externalId;
             await CalendarService_1.CalendarService.deleteEvent(req.user.id, req.user.tenantId, existingEvent.provider, targetExternalId, parsedAction, occurrenceDate, req.user.email);
+            (0, transactionHistory_1.recordTransaction)({
+                req: req,
+                section: transactionHistory_1.Section.HOME,
+                module: transactionHistory_1.Module.INTEGRATIONS,
+                page: transactionHistory_1.Page.INTEGRATION_PAGE,
+                action: transactionHistory_1.Action.DELETE,
+                actionLabel: `Deleted calendar event`,
+                entityType: "calendar_event",
+                entityId: id,
+                entityLabel: "Event",
+            });
             res.status(200).json({
                 success: true,
                 message: "Event deleted successfully",
@@ -659,6 +715,15 @@ class CalendarController {
                     console.warn(`[CalendarController] Optional RabbitMQ enqueue failed for ${integ.id}:`, enqueueError.message);
                 }
             }
+            (0, transactionHistory_1.recordTransaction)({
+                req: req,
+                section: transactionHistory_1.Section.HOME,
+                module: transactionHistory_1.Module.INTEGRATIONS,
+                page: transactionHistory_1.Page.INTEGRATION_PAGE,
+                action: "sync",
+                actionLabel: `Synced calendar events${provider ? " for " + provider : ""}`,
+                entityType: "calendar",
+            });
             res.status(202).json({
                 success: true,
                 message: "Incremental synchronization started in the background",

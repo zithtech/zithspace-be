@@ -376,6 +376,16 @@ exports.Permissions = {
     PIPELINE_FORECAST_READ: 'pipeline.forecast.read',
     PIPELINE_SETTING_READ: 'pipeline.setting.read',
     PIPELINE_SETTING_UPDATE: 'pipeline.setting.update',
+    // ─── Recruitment / ATS ───────────────────────────────────────────
+    RECRUITMENT_CREATE: 'recruitment.create',
+    RECRUITMENT_READ: 'recruitment.read',
+    RECRUITMENT_UPDATE: 'recruitment.update',
+    RECRUITMENT_DELETE: 'recruitment.delete',
+    RECRUITMENT_MANAGE: 'recruitment.manage',
+    RECRUITMENT_SETTING_READ: 'recruitment.setting.read',
+    RECRUITMENT_SETTING_CREATE: 'recruitment.setting.create',
+    RECRUITMENT_SETTING_UPDATE: 'recruitment.setting.update',
+    RECRUITMENT_SETTING_DELETE: 'recruitment.setting.delete',
     // ─── Employee Exit ───────────────────────────────────────────────
     EXIT_CREATE: 'exit.create',
     EXIT_READ: 'exit.read',
@@ -444,6 +454,15 @@ exports.Permissions = {
     MY_HUB_PAYSLIPS_READ: 'my_hub.payslips.read',
     MY_HUB_PROFILE_READ: 'my_hub.profile.read',
     MY_HUB_CLAIMS_READ: 'my_hub.claims.read',
+    // ─── Letters & Docs ──────────────────────────────────────────────
+    LETTER_TEMPLATE_CREATE: 'letter_template.create',
+    LETTER_TEMPLATE_READ: 'letter_template.read',
+    LETTER_TEMPLATE_UPDATE: 'letter_template.update',
+    LETTER_TEMPLATE_DELETE: 'letter_template.delete',
+    LETTER_GENERATE: 'letter.generate',
+    LETTER_READ: 'letter.read',
+    LETTER_DELETE: 'letter.delete',
+    LETTER_MANAGE: 'letter.manage',
 };
 /**
  * All permissions grouped by resource for UI rendering (permission picker).
@@ -738,6 +757,17 @@ exports.PERMISSIONS_BY_RESOURCE = {
         exports.Permissions.PIPELINE_SETTING_READ,
         exports.Permissions.PIPELINE_SETTING_UPDATE,
     ],
+    recruitment: [
+        exports.Permissions.RECRUITMENT_CREATE,
+        exports.Permissions.RECRUITMENT_READ,
+        exports.Permissions.RECRUITMENT_UPDATE,
+        exports.Permissions.RECRUITMENT_DELETE,
+        exports.Permissions.RECRUITMENT_MANAGE,
+        exports.Permissions.RECRUITMENT_SETTING_READ,
+        exports.Permissions.RECRUITMENT_SETTING_CREATE,
+        exports.Permissions.RECRUITMENT_SETTING_UPDATE,
+        exports.Permissions.RECRUITMENT_SETTING_DELETE,
+    ],
     exit: [
         exports.Permissions.EXIT_CREATE,
         exports.Permissions.EXIT_READ,
@@ -776,6 +806,16 @@ exports.PERMISSIONS_BY_RESOURCE = {
         exports.Permissions.MY_HUB_PAYSLIPS_READ,
         exports.Permissions.MY_HUB_PROFILE_READ,
         exports.Permissions.MY_HUB_CLAIMS_READ,
+    ],
+    letters_docs: [
+        exports.Permissions.LETTER_TEMPLATE_CREATE,
+        exports.Permissions.LETTER_TEMPLATE_READ,
+        exports.Permissions.LETTER_TEMPLATE_UPDATE,
+        exports.Permissions.LETTER_TEMPLATE_DELETE,
+        exports.Permissions.LETTER_GENERATE,
+        exports.Permissions.LETTER_READ,
+        exports.Permissions.LETTER_DELETE,
+        exports.Permissions.LETTER_MANAGE,
     ],
 };
 /** Flat list of all permissions — used for seeding. */

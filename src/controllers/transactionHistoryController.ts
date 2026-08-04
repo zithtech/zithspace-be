@@ -140,15 +140,73 @@ export class TransactionHistoryController {
         push("entity_id = $$", entityId);
       }
       if (actorId) push("actor_id = $$", actorId);
-      if (section) push("section = $$", section);
+      if (section) {
+        if (section === "ADMIN") {
+          if (moduleFilter === "OrgStructure") {
+            // Skip section filter so we can fetch old OrgStructure rows that were logged under WORK
+          } else if (!moduleFilter) {
+            where.push(`(section = $${baseParams.length + 1} OR module = 'OrgStructure')`);
+            baseParams.push(section);
+          } else {
+            push("section = $$", section);
+          }
+        } else if (section === "WORK") {
+          push("section = $$", section);
+          if (!moduleFilter) {
+            push("module != $$", "OrgStructure");
+          }
+        } else {
+          push("section = $$", section);
+        }
+      }
       if (moduleFilter) {
         if (moduleFilter === "Invoices") {
           push("module = ANY($$::text[])", ["Invoices", "InvoiceCustomers", "InvoiceSettings", "InvoiceTemplates", "InvoiceTrash"]);
+        } else if (moduleFilter === "Tickets") {
+          // If the user selected the Tickets module, we include all the sub-modules that were mapped to its pages.
+          if (!page) {
+             push("module = ANY($$::text[])", ["Tickets", "BugList", "Sprints", "Buckets", "TicketSettings", "Trash", "Archived"]);
+          } else {
+             // If a specific page is selected under Tickets, we map it to the underlying DB modules/pages
+             if (page === "Plans") {
+               push("module = $$", "Sprints");
+             } else if (page === "TicketList") {
+               push("module = $$", "Tickets");
+             } else if (page === "Buckets") {
+               push("module = $$", "Buckets");
+             } else if (page === "BugList") {
+               push("module = $$", "BugList");
+             } else if (page === "Reports") {
+               push("page = $$", "SprintReport");
+             } else if (page === "Settings") {
+               push("module = $$", "TicketSettings");
+             } else if (page === "Trash") {
+               push("module = $$", "Trash");
+             } else if (page === "Archive") {
+               push("module = $$", "Archived");
+             } else {
+               push("module = $$", "Tickets");
+               push("page = $$", page);
+             }
+          }
+        } else if (moduleFilter === "LeadsManagement") {
+          push("module = $$", "Leads");
+          if (page) push("page = $$", page);
+        } else if (moduleFilter === "TimeTracking") {
+          if (page === "TimeTrackingDetails") {
+            push("module = $$", "TimeTracking");
+            push("page = $$", "TicketDetail");
+          } else {
+            push("module = $$", "TimeTracking");
+            if (page) push("page = $$", page);
+          }
         } else {
           push("module = $$", moduleFilter);
+          if (page) push("page = $$", page);
         }
+      } else {
+        if (page) push("page = $$", page);
       }
-      if (page) push("page = $$", page);
       if (actions && actions.length > 0) push("action = ANY($$::text[])", actions);
       if (correlationId) push("correlation_id = $$", correlationId);
       if (from) push("created_at >= $$", new Date(from));
@@ -285,7 +343,7 @@ export class TransactionHistoryController {
         return;
       }
 
-      const [sections, modules, pages, actions, entityTypes] = await Promise.all([
+      const [sections, modules, pages, actions, entityTypes, pageActionsResult] = await Promise.all([
         pool.query(
           `SELECT DISTINCT section FROM transaction_history WHERE tenant_id = $1 ORDER BY section`,
           [req.tenantId]
@@ -306,70 +364,69 @@ export class TransactionHistoryController {
           `SELECT DISTINCT entity_type FROM transaction_history WHERE tenant_id = $1 AND entity_type IS NOT NULL ORDER BY entity_type`,
           [req.tenantId]
         ),
+        pool.query(
+          `SELECT DISTINCT page, action FROM transaction_history WHERE tenant_id = $1 AND page IS NOT NULL AND action IS NOT NULL ORDER BY page, action`,
+          [req.tenantId]
+        ),
       ]);
 
       const predefinedSections = ["WORK", "HR", "ADMIN", "FINANCE"];
       const predefinedModules = [
         { section: "WORK", module: "Tickets" },
-        { section: "WORK", module: "BugList" },
         { section: "WORK", module: "Projects" },
-        { section: "WORK", module: "Sprints" },
-        { section: "WORK", module: "Buckets" },
-        { section: "WORK", module: "TicketSettings" },
-        { section: "WORK", module: "Trash" },
-        { section: "WORK", module: "Archived" },
+        { section: "WORK", module: "TimeTracking" },
+        { section: "WORK", module: "DailyUpdates" },
         { section: "WORK", module: "DocumentHub" },
-        { section: "WORK", module: "Leads" },
         { section: "WORK", module: "Proposals" },
         { section: "WORK", module: "Squad" },
         { section: "WORK", module: "Escalations" },
-        { section: "WORK", module: "DailyUpdates" },
-        { section: "WORK", module: "TimeTracking" },
-        { section: "WORK", module: "OrgStructure" },
+        { section: "WORK", module: "LeadsManagement" },
+        { section: "WORK", module: "BidIQ" },
         { section: "HR", module: "Leaves" },
         { section: "HR", module: "Onboarding" },
+        { section: "HR", module: "Attendance" },
+        { section: "HR", module: "MyProfile" },
+        { section: "HR", module: "PerformanceReport" },
         { section: "ADMIN", module: "ClientsV2" },
         { section: "ADMIN", module: "GeneralSettings" },
         { section: "ADMIN", module: "Members" },
         { section: "ADMIN", module: "RoleAndPermissions" },
+                { section: "ADMIN", module: "OrgStructure" },
+        { section: "HOME", module: "Dashboard" },
+        { section: "HOME", module: "Integrations" },
+        { section: "HOME", module: "Skills" },
+        { section: "HOME", module: "Messages" },
+        { section: "HOME", module: "Bookmarks" },
         { section: "ADMIN", module: "Auth" },
         { section: "FINANCE", module: "Accounts" },
         { section: "FINANCE", module: "Invoices" },
+        { section: "FINANCE", module: "ReimbursementV2" },
+        { section: "FINANCE", module: "PayrollV2" },
       ];
       const predefinedPages = [
+        { module: "Tickets", page: "Plans" },
         { module: "Tickets", page: "TicketList" },
-        { module: "Tickets", page: "TicketDetail" },
-        { module: "Tickets", page: "TicketKanban" },
-        { module: "Tickets", page: "TicketEpic" },
-        { module: "BugList", page: "BugFolderList" },
-        { module: "BugList", page: "BugSheetList" },
-        { module: "BugList", page: "BugList" },
-        { module: "BugList", page: "BugSettings" },
-        { module: "BugList", page: "BugTrash" },
-        { module: "Projects", page: "ProjectList" },
-        { module: "Projects", page: "ProjectDetail" },
-        { module: "Projects", page: "ProjectTrash" },
-        { module: "Sprints", page: "SprintList" },
-        { module: "Sprints", page: "SprintDetail" },
-        { module: "Sprints", page: "SprintCompletion" },
-        { module: "Sprints", page: "SprintReport" },
-        { module: "Buckets", page: "BucketList" },
-        { module: "Buckets", page: "BucketDetail" },
-        { module: "TicketSettings", page: "WorkflowTemplate" },
-        { module: "TicketSettings", page: "DropdownOptions" },
-        { module: "Trash", page: "TrashView" },
-        { module: "Archived", page: "ArchivedView" },
+        { module: "Tickets", page: "Buckets" },
+        { module: "Tickets", page: "BugList" },
+        { module: "Tickets", page: "Reports" },
+        { module: "Tickets", page: "Settings" },
+        { module: "Tickets", page: "Trash" },
+        { module: "Tickets", page: "Archive" },
         { module: "DocumentHub", page: "DocumentHubList" },
         { module: "DocumentHub", page: "DocumentDetail" },
-        { module: "Leads", page: "LeadsList" },
-        { module: "Leads", page: "LeadDetail" },
-        { module: "Leads", page: "LeadSettings" },
-        { module: "Leads", page: "LeadsTrash" },
-        { module: "Proposals", page: "ProposalList" },
+        { module: "LeadsManagement", page: "LeadsList" },
+        { module: "LeadsManagement", page: "LeadDetail" },
+        { module: "LeadsManagement", page: "LeadSettings" },
+        { module: "LeadsManagement", page: "LeadsTrash" },
+        { module: "BidIQ", page: "BidIQDashboard" },
+        { module: "BidIQ", page: "BidIQSettings" },
+        
+                                { module: "Proposals", page: "ProposalList" },
         { module: "Proposals", page: "ProposalBuilder" },
         { module: "Squad", page: "SquadView" },
         { module: "Escalations", page: "EscalationList" },
         { module: "Escalations", page: "EscalationSettings" },
+        { module: "Escalations", page: "EscalationsTrash" },
         { module: "DailyUpdates", page: "DailyUpdatesSubmit" },
         { module: "TimeTracking", page: "TimeTrackingMy" },
         { module: "TimeTracking", page: "TimeTrackingTeam" },
@@ -389,6 +446,10 @@ export class TransactionHistoryController {
         { module: "Onboarding", page: "OnboardingInvites" },
         { module: "Onboarding", page: "OnboardingEmployees" },
         { module: "Onboarding", page: "OnboardingDocumentTypes" },
+        { module: "Attendance", page: "AttendanceDashboard" },
+        { module: "Attendance", page: "AttendanceRecords" },
+        { module: "MyProfile", page: "MyProfile" },
+        { module: "PerformanceReport", page: "PerformanceReport" },
         { module: "ClientsV2", page: "ClientList" },
         { module: "ClientsV2", page: "ClientDetail" },
         { module: "GeneralSettings", page: "GeneralSettingsView" },
@@ -403,6 +464,27 @@ export class TransactionHistoryController {
         { module: "Invoices", page: "InvoiceSettingsView" },
         { module: "Invoices", page: "InvoiceTemplateList" },
         { module: "Invoices", page: "InvoiceTrashView" },
+        { module: "ReimbursementV2", page: "ReimbursementDashboard" },
+        { module: "ReimbursementV2", page: "ReimbursementMyClaims" },
+        { module: "ReimbursementV2", page: "ReimbursementAdvances" },
+        { module: "ReimbursementV2", page: "ReimbursementApprovals" },
+        { module: "ReimbursementV2", page: "ReimbursementFinance" },
+        { module: "ReimbursementV2", page: "ReimbursementCategories" },
+        { module: "ReimbursementV2", page: "ReimbursementPolicies" },
+        { module: "ReimbursementV2", page: "ReimbursementBudgets" },
+        { module: "ReimbursementV2", page: "ReimbursementSettings" },
+        { module: "PayrollV2", page: "PayrollGeneralSettings" },
+        { module: "PayrollV2", page: "PayrollSalaryComponents" },
+        { module: "PayrollV2", page: "PayrollSalaryStructures" },
+        { module: "PayrollV2", page: "PayrollPaySchedulesAndGroups" },
+        { module: "PayrollV2", page: "PayrollStatutory" },
+        { module: "PayrollV2", page: "PayrollProfessionalTaxAndLwf" },
+        { module: "PayrollV2", page: "PayrollApprovalWorkflows" },
+        { module: "PayrollV2", page: "PayrollPayslipAndBank" },
+        { module: "PayrollV2", page: "PayrollEmployeePaySetup" },
+        { module: "PayrollV2", page: "PayrollRunPayroll" },
+        { module: "PayrollV2", page: "PayrollReports" },
+        { module: "PayrollV2", page: "PayrollMyPayslips" },
       ];
       const predefinedActions = [
         "create", "update", "delete", "archive", "restore", "permanent_delete", "status_change",
@@ -424,7 +506,8 @@ export class TransactionHistoryController {
         "invoice_template", "invoice_customer", "invoice_settings_profile", "session",
         "leave_request", "leave_adjustment", "leave_type", "leave_policy",
         "leave_holiday", "leave_accrual_run", "leave_settings",
-        "employee", "onboarding_invite", "onboarding_document_type"
+        "employee", "onboarding_invite", "onboarding_document_type",
+        "attendance_record", "performance_report"
       ];
 
       // Union distinct db rows with predefined constants
@@ -441,11 +524,29 @@ export class TransactionHistoryController {
           if (["InvoiceCustomers", "InvoiceSettings", "InvoiceTemplates", "InvoiceTrash"].includes(modName)) {
             modName = "Invoices";
           }
+          if (["BugList", "Sprints", "Buckets", "TicketSettings", "Trash", "Archived"].includes(modName)) {
+            modName = "Tickets";
+          }
+          if (modName === "Leads") {
+            modName = "LeadsManagement";
+          }
+          if (modName === "OrgStructure") {
+            r.section = "ADMIN";
+          }
           modulesMap.set(modName, r.section);
         }
       });
+      const allowedWorkModules = new Set([
+        "Tickets", "Projects", "TimeTracking", "DailyUpdates", "DocumentHub", 
+        "Proposals", "Squad", "Escalations", "LeadsManagement", "BidIQ"
+      ]);
+
       const finalModules = Array.from(modulesMap.entries())
-        .filter(([module]) => !["InvoiceCustomers", "InvoiceSettings", "InvoiceTemplates", "InvoiceTrash"].includes(module))
+        .filter(([module, section]) => {
+          if (["InvoiceCustomers", "InvoiceSettings", "InvoiceTemplates", "InvoiceTrash", "Reimbursement"].includes(module)) return false;
+          if (section === "WORK" && !allowedWorkModules.has(module)) return false;
+          return true;
+        })
         .map(([module, section]) => ({
           section,
           module,
@@ -459,13 +560,28 @@ export class TransactionHistoryController {
           if (["InvoiceCustomers", "InvoiceSettings", "InvoiceTemplates", "InvoiceTrash"].includes(modName)) {
             modName = "Invoices";
           }
+          if (["BugList", "Sprints", "Buckets", "TicketSettings", "Trash", "Archived"].includes(modName)) {
+            modName = "Tickets";
+          }
+          if (modName === "Leads") {
+            modName = "LeadsManagement";
+          }
           pagesMap.set(r.page, modName);
         }
       });
-      const finalPages = Array.from(pagesMap.entries()).map(([page, module]) => ({
-        module,
-        page,
-      }));
+      const finalPages = Array.from(pagesMap.entries())
+        .filter(([page, module]) => {
+          if (module === "Reimbursement") return false;
+          const allowedTicketPages = new Set(["Plans", "TicketList", "Buckets", "BugList", "Reports", "Settings", "Trash", "Archive"]);
+          if (module === "Tickets" && !allowedTicketPages.has(page)) return false;
+          const section = modulesMap.get(module);
+          if (section === "WORK" && !allowedWorkModules.has(module)) return false;
+          return true;
+        })
+        .map(([page, module]) => ({
+          module,
+          page,
+        }));
 
       const actionsSet = new Set(predefinedActions);
       actions.rows.forEach((r: any) => {
@@ -477,6 +593,11 @@ export class TransactionHistoryController {
         if (r.entity_type) entityTypesSet.add(r.entity_type);
       });
 
+      const pageActionsList = pageActionsResult.rows.map((r: any) => ({
+        page: r.page,
+        action: r.action,
+      }));
+
       res.json({
         success: true,
         data: {
@@ -484,6 +605,7 @@ export class TransactionHistoryController {
           modules: finalModules.sort((a, b) => a.section.localeCompare(b.section) || a.module.localeCompare(b.module)),
           pages: finalPages.sort((a, b) => a.module.localeCompare(b.module) || a.page.localeCompare(b.page)),
           actions: Array.from(actionsSet).sort(),
+          pageActions: pageActionsList,
           entityTypes: Array.from(entityTypesSet).sort(),
         },
       });

@@ -404,6 +404,17 @@ export const Permissions = {
   PIPELINE_SETTING_READ: 'pipeline.setting.read',
   PIPELINE_SETTING_UPDATE: 'pipeline.setting.update',
 
+  // ─── Recruitment / ATS ───────────────────────────────────────────
+  RECRUITMENT_CREATE: 'recruitment.create',
+  RECRUITMENT_READ: 'recruitment.read',
+  RECRUITMENT_UPDATE: 'recruitment.update',
+  RECRUITMENT_DELETE: 'recruitment.delete',
+  RECRUITMENT_MANAGE: 'recruitment.manage',
+  RECRUITMENT_SETTING_READ: 'recruitment.setting.read',
+  RECRUITMENT_SETTING_CREATE: 'recruitment.setting.create',
+  RECRUITMENT_SETTING_UPDATE: 'recruitment.setting.update',
+  RECRUITMENT_SETTING_DELETE: 'recruitment.setting.delete',
+
   // ─── Employee Exit ───────────────────────────────────────────────
   EXIT_CREATE: 'exit.create',
   EXIT_READ: 'exit.read',
@@ -483,6 +494,16 @@ export const Permissions = {
   MY_HUB_PAYSLIPS_READ: 'my_hub.payslips.read',
   MY_HUB_PROFILE_READ: 'my_hub.profile.read',
   MY_HUB_CLAIMS_READ: 'my_hub.claims.read',
+
+  // ─── Letters & Docs ──────────────────────────────────────────────
+  LETTER_TEMPLATE_CREATE: 'letter_template.create',
+  LETTER_TEMPLATE_READ: 'letter_template.read',
+  LETTER_TEMPLATE_UPDATE: 'letter_template.update',
+  LETTER_TEMPLATE_DELETE: 'letter_template.delete',
+  LETTER_GENERATE: 'letter.generate',
+  LETTER_READ: 'letter.read',
+  LETTER_DELETE: 'letter.delete',
+  LETTER_MANAGE: 'letter.manage',
 } as const;
 
 export type Permission = (typeof Permissions)[keyof typeof Permissions];
@@ -780,6 +801,17 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.PIPELINE_SETTING_READ,
     Permissions.PIPELINE_SETTING_UPDATE,
   ],
+  recruitment: [
+    Permissions.RECRUITMENT_CREATE,
+    Permissions.RECRUITMENT_READ,
+    Permissions.RECRUITMENT_UPDATE,
+    Permissions.RECRUITMENT_DELETE,
+    Permissions.RECRUITMENT_MANAGE,
+    Permissions.RECRUITMENT_SETTING_READ,
+    Permissions.RECRUITMENT_SETTING_CREATE,
+    Permissions.RECRUITMENT_SETTING_UPDATE,
+    Permissions.RECRUITMENT_SETTING_DELETE,
+  ],
   exit: [
     Permissions.EXIT_CREATE,
     Permissions.EXIT_READ,
@@ -818,6 +850,16 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.MY_HUB_PAYSLIPS_READ,
     Permissions.MY_HUB_PROFILE_READ,
     Permissions.MY_HUB_CLAIMS_READ,
+  ],
+  letters_docs: [
+    Permissions.LETTER_TEMPLATE_CREATE,
+    Permissions.LETTER_TEMPLATE_READ,
+    Permissions.LETTER_TEMPLATE_UPDATE,
+    Permissions.LETTER_TEMPLATE_DELETE,
+    Permissions.LETTER_GENERATE,
+    Permissions.LETTER_READ,
+    Permissions.LETTER_DELETE,
+    Permissions.LETTER_MANAGE,
   ],
 };
 

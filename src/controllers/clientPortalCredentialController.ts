@@ -1,3 +1,4 @@
+import { recordTransaction, Section, Module, Page, Action, EntityType } from "@/utils/transactionHistory";
 import { Response } from "express";
 import bcrypt from "bcryptjs";
 import { randomBytes } from "crypto";
@@ -251,6 +252,19 @@ export class ClientPortalCredentialController {
       { clientId: user.client_id, id: portalUserId, kind: "password_reset" },
     );
 
+    recordTransaction({
+      req,
+      parentEntityType: EntityType.CLIENT,
+      parentEntityId: user.client_id,
+      section: Section.ADMIN,
+      module: Module.CLIENTS_V2,
+      page: Page.CLIENT_DETAIL,
+      action: Action.UPDATE,
+      actionLabel: `Reset portal access password`,
+      entityType: "portal_user",
+      entityId: portalUserId,
+      entityLabel: portalUserId,
+    });
     res.json({
       success: true,
       data: { temporaryPassword: tempPassword, emailSent },
@@ -303,6 +317,20 @@ export class ClientPortalCredentialController {
       { clientId: updated.client_id, id: updated.id, kind: "status" },
     );
 
+    recordTransaction({
+      req,
+      parentEntityType: EntityType.CLIENT,
+      parentEntityId: updated.client_id,
+      section: Section.ADMIN,
+      module: Module.CLIENTS_V2,
+      page: Page.CLIENT_DETAIL,
+      action: Action.UPDATE,
+      actionLabel: `Updated portal access status`,
+      entityType: "portal_user",
+      entityId: portalUserId,
+      entityLabel: portalUserId,
+    });
+
     res.json({
       success: true,
       data: { id: updated.id, status: updated.status },
@@ -330,6 +358,21 @@ export class ClientPortalCredentialController {
       clientId,
       id: portalUserId,
     });
+
+    recordTransaction({
+      req,
+      parentEntityType: EntityType.CLIENT,
+      parentEntityId: clientId,
+      section: Section.ADMIN,
+      module: Module.CLIENTS_V2,
+      page: Page.CLIENT_DETAIL,
+      action: Action.DELETE,
+      actionLabel: `Deleted portal access`,
+      entityType: "portal_user",
+      entityId: portalUserId,
+      entityLabel: portalUserId,
+    });
+
     res.json({ success: true });
   }
 }

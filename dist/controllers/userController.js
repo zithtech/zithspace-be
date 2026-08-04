@@ -1251,8 +1251,23 @@ class UserController {
                     return;
                 }
             }
+            const existingUser = await user_model_1.UserModel.findById(userId, req.tenantId);
             await user_model_1.UserModel.update(userId, req.tenantId, updateData);
             const updatedUser = await user_model_1.UserModel.findById(userId, req.tenantId);
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.HR,
+                module: transactionHistory_1.Module.MY_PROFILE,
+                page: transactionHistory_1.Page.MY_PROFILE,
+                action: transactionHistory_1.Action.UPDATE,
+                actionLabel: "Updated profile details",
+                entityType: transactionHistory_1.EntityType.USER,
+                entityId: userId,
+                entityLabel: updatedUser?.name,
+                beforeData: existingUser,
+                afterData: updatedUser,
+                statusCode: 200,
+            });
             res.status(200).json({
                 success: true,
                 data: updatedUser,
@@ -1334,6 +1349,18 @@ class UserController {
             // Update password
             await user_model_1.UserModel.update(userId, req.tenantId, {
                 passwordHash: newPasswordHash,
+            });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.HR,
+                module: transactionHistory_1.Module.MY_PROFILE,
+                page: transactionHistory_1.Page.MY_PROFILE,
+                action: transactionHistory_1.Action.UPDATE,
+                actionLabel: "Changed password",
+                entityType: transactionHistory_1.EntityType.USER,
+                entityId: userId,
+                entityLabel: req.user.name,
+                statusCode: 200,
             });
             res.status(200).json({
                 success: true,

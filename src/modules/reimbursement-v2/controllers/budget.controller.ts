@@ -21,11 +21,11 @@ export const create = handle(async (req: AuthRequest, res: Response) => {
   recordTransaction({
     req,
     section: Section.FINANCE,
-    module: Module.REIMBURSEMENT,
-    page: Page.REIMBURSEMENT_POLICIES,
+    module: Module.REIMBURSEMENT_V2,
+    page: Page.REIMBURSEMENT_V2_BUDGETS,
     action: Action.CREATE,
     actionLabel: `Created budget "${budget.name}" (${budget.scopeType})`,
-    entityType: EntityType.REIMBURSEMENT_POLICY,
+    entityType: EntityType.REIMBURSEMENT_BUDGET,
     entityId: budget.id,
     entityLabel: budget.name,
   });
@@ -47,11 +47,11 @@ export const update = handle(async (req: AuthRequest, res: Response) => {
   recordTransaction({
     req,
     section: Section.FINANCE,
-    module: Module.REIMBURSEMENT,
-    page: Page.REIMBURSEMENT_POLICIES,
+    module: Module.REIMBURSEMENT_V2,
+    page: Page.REIMBURSEMENT_V2_BUDGETS,
     action: Action.UPDATE,
     actionLabel: `Updated budget "${budget.name}"`,
-    entityType: EntityType.REIMBURSEMENT_POLICY,
+    entityType: EntityType.REIMBURSEMENT_BUDGET,
     entityId: budget.id,
     entityLabel: budget.name,
   });
@@ -65,11 +65,11 @@ export const remove = handle(async (req: AuthRequest, res: Response) => {
   recordTransaction({
     req,
     section: Section.FINANCE,
-    module: Module.REIMBURSEMENT,
-    page: Page.REIMBURSEMENT_POLICIES,
+    module: Module.REIMBURSEMENT_V2,
+    page: Page.REIMBURSEMENT_V2_BUDGETS,
     action: Action.DELETE,
     actionLabel: `Deleted budget "${existing.name}"`,
-    entityType: EntityType.REIMBURSEMENT_POLICY,
+    entityType: EntityType.REIMBURSEMENT_BUDGET,
     entityId: req.params.id,
     entityLabel: existing.name,
   });
