@@ -148,3 +148,4 @@ export declare function generatePresignedUrl(fileUrl: string, expiresIn?: number
  */
 export declare function getFileBufferFromR2(fileUrl: string): Promise<Buffer>;
 export declare function uploadEscalationDocumentToR2(base64File: string, fileName: string, tenantId: string, escalationId: string): Promise<string>;
+export declare function uploadDocumentToR2(buffer: Buffer, fileName: string, tenantId: string, documentId: string, contentType: string): Promise<string>;
