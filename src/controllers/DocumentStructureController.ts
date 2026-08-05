@@ -1,17 +1,19 @@
 import { Response } from 'express';
 import { AuthRequest } from '../types';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import pool from '../config/dbpool';
 
 export class DocumentStructureController {
   static async getStructures(req: AuthRequest, res: Response) {
     try {
       const tenantId = req.tenantId!;
-      const structures = await prisma.documentStructure.findMany({
-        where: { tenantId: { in: [tenantId, 'GLOBAL'] } },
-        orderBy: { createdAt: 'desc' },
-      });
+      const result = await pool.query(`
+        SELECT id, tenant_id AS "tenantId", name, html_content AS "htmlContent", created_by_id AS "createdById", created_at AS "createdAt", updated_at AS "updatedAt"
+        FROM document_structures
+        WHERE tenant_id IN ($1, 'GLOBAL')
+        ORDER BY created_at DESC
+      `, [tenantId]);
+      
+      const structures = result.rows;
 
       return res.status(200).json({
         success: true,
@@ -39,14 +41,13 @@ export class DocumentStructureController {
         });
       }
 
-      const structure = await prisma.documentStructure.create({
-        data: {
-          name,
-          htmlContent,
-          tenantId,
-          createdById: userId,
-        },
-      });
+      const result = await pool.query(`
+        INSERT INTO document_structures (id, tenant_id, name, html_content, created_by_id, created_at, updated_at)
+        VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW(), NOW())
+        RETURNING id, tenant_id AS "tenantId", name, html_content AS "htmlContent", created_by_id AS "createdById", created_at AS "createdAt", updated_at AS "updatedAt"
+      `, [tenantId, name, htmlContent, userId]);
+      
+      const structure = result.rows[0];
 
       return res.status(201).json({
         success: true,
@@ -60,6 +61,7 @@ export class DocumentStructureController {
       });
     }
   }
+
   static async updateStructure(req: AuthRequest, res: Response) {
     try {
       const tenantId = req.tenantId!;
@@ -73,9 +75,8 @@ export class DocumentStructureController {
         });
       }
 
-      const existing = await prisma.documentStructure.findUnique({
-        where: { id },
-      });
+      const existRes = await pool.query(`SELECT id, tenant_id AS "tenantId" FROM document_structures WHERE id = $1 LIMIT 1`, [id]);
+      const existing = existRes.rows[0];
 
       if (!existing || existing.tenantId !== tenantId) {
         return res.status(404).json({
@@ -91,10 +92,14 @@ export class DocumentStructureController {
         });
       }
 
-      const updated = await prisma.documentStructure.update({
-        where: { id },
-        data: { name, htmlContent },
-      });
+      const updateRes = await pool.query(`
+        UPDATE document_structures 
+        SET name = $1, html_content = $2, updated_at = NOW()
+        WHERE id = $3
+        RETURNING id, tenant_id AS "tenantId", name, html_content AS "htmlContent", created_by_id AS "createdById", created_at AS "createdAt", updated_at AS "updatedAt"
+      `, [name, htmlContent, id]);
+      
+      const updated = updateRes.rows[0];
 
       return res.status(200).json({
         success: true,
@@ -114,9 +119,8 @@ export class DocumentStructureController {
       const tenantId = req.tenantId!;
       const { id } = req.params;
 
-      const existing = await prisma.documentStructure.findUnique({
-        where: { id },
-      });
+      const existRes = await pool.query(`SELECT id, tenant_id AS "tenantId" FROM document_structures WHERE id = $1 LIMIT 1`, [id]);
+      const existing = existRes.rows[0];
 
       if (!existing || existing.tenantId !== tenantId) {
         return res.status(404).json({
@@ -132,9 +136,7 @@ export class DocumentStructureController {
         });
       }
 
-      await prisma.documentStructure.delete({
-        where: { id },
-      });
+      await pool.query(`DELETE FROM document_structures WHERE id = $1`, [id]);
 
       return res.status(200).json({
         success: true,
@@ -154,9 +156,14 @@ export class DocumentStructureController {
       const tenantId = req.tenantId!;
       const { id } = req.params;
 
-      const structure = await prisma.documentStructure.findUnique({
-        where: { id },
-      });
+      const result = await pool.query(`
+        SELECT id, tenant_id AS "tenantId", name, html_content AS "htmlContent", created_by_id AS "createdById", created_at AS "createdAt", updated_at AS "updatedAt"
+        FROM document_structures
+        WHERE id = $1
+        LIMIT 1
+      `, [id]);
+      
+      const structure = result.rows[0];
 
       if (!structure || (structure.tenantId !== tenantId && structure.tenantId !== 'GLOBAL')) {
         return res.status(404).json({

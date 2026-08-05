@@ -63,9 +63,9 @@ export class LetterTemplateController {
         throw new ValidationError('Template name and content are required');
       }
 
-      if (isGlobal && req.user.role !== 'SUPER ADMIN' && req.user.role !== 'admin') {
-         // Silently ignore or throw error? Let's throw error.
-         throw new ValidationError('Only super admins can create global templates');
+      if (isGlobal && req.user.role !== 'super_admin' && req.user.role !== 'admin') {
+        // Silently ignore or throw error? Let's throw error.
+        throw new ValidationError('Only super admins can create global templates');
       }
 
       const ipAddress = req.ip || req.socket.remoteAddress || undefined;
@@ -117,12 +117,26 @@ export class LetterTemplateController {
       });
 
       const ipAddress = req.ip || req.socket.remoteAddress || undefined;
+
+      const defaultPageConfig = {
+        marginTop: '20mm',
+        marginBottom: '20mm',
+        marginLeft: '20mm',
+        marginRight: '20mm',
+        borderWidth: '0px',
+        borderStyle: 'solid',
+        borderColor: '#000000',
+        headerHtml: '',
+        footerHtml: '<div style="border-top: 1px solid #cbd5e1; padding-top: 8px; text-align: right; font-size: 11px; color: #64748b;">Page <span class="pageNumber" style="font-weight: bold; color: #64748b;">[Page #]</span></div>'
+      };
       
+      const configScript = `\n<script id="zith-page-config" type="application/json">${JSON.stringify(defaultPageConfig)}</script>`;
+
       const templateData = {
         templateName,
         categoryId,
         description,
-        editorContent: finalHtml,
+        editorContent: finalHtml + configScript,
         status: 'ACTIVE',
         placeholders: (placeholders || []).map((p: string, idx: number) => ({
           placeholderKey: p.toLowerCase().replace(/\s+/g, '_'),
@@ -163,7 +177,7 @@ export class LetterTemplateController {
       const { isGlobal } = req.body;
 
       if (isGlobal && req.user.role?.toUpperCase() !== 'SUPER_ADMIN' && req.user.role?.toUpperCase() !== 'SUPER ADMIN') {
-         throw new ValidationError('Only super admins can set templates as global');
+        throw new ValidationError('Only super admins can set templates as global');
       }
 
       const ipAddress = req.ip || req.socket.remoteAddress || undefined;

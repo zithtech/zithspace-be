@@ -368,7 +368,9 @@ export class AIService {
       - Do NOT include <html>, <head>, or <body> tags.
       - Do NOT wrap in Markdown code blocks like \`\`\`html.
       - Use standard HTML tags (<h1>, <p>, <strong>, <br>, <ul>, <li>).
-      - Ensure a professional tone and proper letter structure (Date, Addressee, Salutation, Body, Sign-off).
+      - STRICTLY AVOID email-style headers like "To:", "From:", or "Subject:". Do NOT format this as an email.
+      - Format it as a formal printed document suitable for PDF or physical print. Use centered titles (e.g., <h2>OFFER LETTER</h2>) instead of "Subject:" lines.
+      - Structure it as a formal business letter with a standard date and address block, professional salutation, body, and sign-off.
     `;
 
     try {

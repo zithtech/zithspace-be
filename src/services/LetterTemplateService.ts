@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { prisma } from '../config/database';
+import pool from '../config/dbpool';
 import { ValidationError } from '../types';
 
 export interface CreateTemplateDto {
@@ -74,49 +74,76 @@ export class LetterTemplateService {
   }
 
   static async getTemplates(tenantId: string, filters?: { categoryId?: string; designationId?: string; status?: string; search?: string }) {
-    const where: Prisma.DocumentTemplateWhereInput = { tenantId: { in: [tenantId, 'GLOBAL'] } };
+    const conditions = ["dt.tenant_id IN ($1, 'GLOBAL')"];
+    const values: any[] = [tenantId];
+    let paramIdx = 2;
 
-    if (filters?.categoryId) where.categoryId = filters.categoryId;
-    if (filters?.designationId) where.designationId = filters.designationId;
-    if (filters?.status) where.status = filters.status;
+    if (filters?.categoryId) {
+      conditions.push(`dt.category_id = $${paramIdx++}`);
+      values.push(filters.categoryId);
+    }
+    if (filters?.designationId) {
+      conditions.push(`dt.designation_id = $${paramIdx++}`);
+      values.push(filters.designationId);
+    }
+    if (filters?.status) {
+      conditions.push(`dt.status = $${paramIdx++}`);
+      values.push(filters.status);
+    }
     if (filters?.search) {
-      where.OR = [
-        { templateName: { contains: filters.search, mode: 'insensitive' } },
-        { description: { contains: filters.search, mode: 'insensitive' } },
-      ];
+      conditions.push(`(dt.template_name ILIKE $${paramIdx} OR dt.description ILIKE $${paramIdx})`);
+      values.push(`%${filters.search}%`);
+      paramIdx++;
     }
 
-    return await prisma.documentTemplate.findMany({
-      where,
-      include: {
-        category: true,
-        designation: true,
-        placeholders: { orderBy: { displayOrder: 'asc' } },
-        _count: {
-          select: {
-            versions: true,
-            generatedDocuments: true,
-          },
-        },
-      },
-      orderBy: { updatedAt: 'desc' },
-    });
+    const query = `
+      SELECT 
+        dt.id, dt.tenant_id AS "tenantId", dt.template_name AS "templateName", 
+        dt.description, dt.category_id AS "categoryId", dt.designation_id AS "designationId", 
+        dt.editor_content AS "editorContent", dt.current_version AS "currentVersion", 
+        dt.status, dt.created_by AS "createdById", dt.created_at AS "createdAt", 
+        dt.updated_at AS "updatedAt",
+        (SELECT json_build_object('id', dc.id, 'categoryName', dc.category_name, 'description', dc.description) FROM document_categories dc WHERE dc.id = dt.category_id) AS category,
+        (SELECT json_build_object('id', p.id, 'title', p.title) FROM positions p WHERE p.id = dt.designation_id) AS designation,
+        (SELECT COALESCE(json_agg(json_build_object(
+          'id', tp.id, 'tenantId', tp.tenant_id, 'templateId', tp.template_id, 'placeholderKey', tp.placeholder_key, 'placeholderLabel', tp.placeholder_label, 'dataType', tp.data_type, 'required', tp.required, 'defaultValue', tp.default_value, 'displayOrder', tp.display_order, 'createdAt', tp.created_at
+        ) ORDER BY tp.display_order ASC), '[]'::json) FROM template_placeholders tp WHERE tp.template_id = dt.id) AS placeholders,
+        json_build_object(
+          'versions', (SELECT COUNT(*) FROM template_versions tv WHERE tv.template_id = dt.id)::int,
+          'generatedDocuments', (SELECT COUNT(*) FROM generated_documents gd WHERE gd.template_id = dt.id)::int
+        ) AS "_count"
+      FROM document_templates dt
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY dt.updated_at DESC
+    `;
+    const result = await pool.query(query, values);
+    return result.rows;
   }
 
   static async getTemplateById(tenantId: string, id: string) {
-    const template = await prisma.documentTemplate.findFirst({
-      where: { id, tenantId: { in: [tenantId, 'GLOBAL'] } },
-      include: {
-        category: true,
-        designation: true,
-        placeholders: { orderBy: { displayOrder: 'asc' } },
-        versions: {
-          orderBy: { versionNumber: 'desc' },
-          include: { createdBy: { select: { id: true, name: true, workEmail: true } } },
-        },
-        createdBy: { select: { id: true, name: true, workEmail: true } },
-      },
-    });
+    const query = `
+      SELECT 
+        dt.id, dt.tenant_id AS "tenantId", dt.template_name AS "templateName", 
+        dt.description, dt.category_id AS "categoryId", dt.designation_id AS "designationId", 
+        dt.editor_content AS "editorContent", dt.current_version AS "currentVersion", 
+        dt.status, dt.created_by AS "createdById", dt.created_at AS "createdAt", 
+        dt.updated_at AS "updatedAt",
+        (SELECT json_build_object('id', dc.id, 'categoryName', dc.category_name, 'description', dc.description) FROM document_categories dc WHERE dc.id = dt.category_id) AS category,
+        (SELECT json_build_object('id', p.id, 'title', p.title) FROM positions p WHERE p.id = dt.designation_id) AS designation,
+        (SELECT COALESCE(json_agg(json_build_object(
+          'id', tp.id, 'tenantId', tp.tenant_id, 'templateId', tp.template_id, 'placeholderKey', tp.placeholder_key, 'placeholderLabel', tp.placeholder_label, 'dataType', tp.data_type, 'required', tp.required, 'defaultValue', tp.default_value, 'displayOrder', tp.display_order, 'createdAt', tp.created_at
+        ) ORDER BY tp.display_order ASC), '[]'::json) FROM template_placeholders tp WHERE tp.template_id = dt.id) AS placeholders,
+        (SELECT COALESCE(json_agg(json_build_object(
+          'id', tv.id, 'tenantId', tv.tenant_id, 'templateId', tv.template_id, 'versionNumber', tv.version_number, 'editorContent', tv.editor_content, 'changeNotes', tv.change_notes, 'createdById', tv.created_by, 'createdAt', tv.created_at,
+          'createdBy', (SELECT json_build_object('id', u.id, 'name', u.name, 'workEmail', u.work_email) FROM users u WHERE u.id = tv.created_by)
+        ) ORDER BY tv.version_number DESC), '[]'::json) FROM template_versions tv WHERE tv.template_id = dt.id) AS versions,
+        (SELECT json_build_object('id', u.id, 'name', u.name, 'workEmail', u.work_email) FROM users u WHERE u.id = dt.created_by) AS "createdBy"
+      FROM document_templates dt
+      WHERE dt.id = $1 AND dt.tenant_id IN ($2, 'GLOBAL')
+      LIMIT 1
+    `;
+    const result = await pool.query(query, [id, tenantId]);
+    const template = result.rows[0];
 
     if (!template) {
       throw new Error('Template not found');
@@ -131,27 +158,14 @@ export class LetterTemplateService {
       throw new ValidationError('Template name is required');
     }
 
-    const existingName = await prisma.documentTemplate.findFirst({
-      where: {
-        tenantId,
-        templateName: {
-          equals: trimmedName,
-          mode: 'insensitive',
-        },
-      },
-    });
-
-    if (existingName) {
+    const existRes = await pool.query(`SELECT id FROM document_templates WHERE tenant_id = $1 AND template_name ILIKE $2 LIMIT 1`, [tenantId, trimmedName]);
+    if (existRes.rows.length > 0) {
       throw new ValidationError(`A template with the name "${trimmedName}" already exists.`);
     }
 
     data.templateName = trimmedName;
-
-    // Optional: override tenantId if isGlobal
-    // Wait, the UI request only sets it if Super Admin, but we can do a backend check if we have the user role.
     const effectiveTenantId = data.isGlobal ? 'GLOBAL' : tenantId;
 
-    // 1. Determine placeholders
     let placeholdersToCreate = data.placeholders || [];
     if (placeholdersToCreate.length === 0) {
       const extracted = this.extractPlaceholdersFromContent(data.editorContent);
@@ -164,72 +178,48 @@ export class LetterTemplateService {
       }));
     }
 
-    // 2. Create Template, initial Version, Placeholders, and Audit Log in transaction
-    return await prisma.$transaction(async (tx) => {
-      const template = await tx.documentTemplate.create({
-        data: {
-          tenantId: effectiveTenantId,
-          templateName: data.templateName,
-          categoryId: data.categoryId || null,
-          designationId: data.designationId || null,
-          description: data.description || null,
-          editorContent: data.editorContent,
-          currentVersion: 1,
-          status: data.status || 'ACTIVE',
-          createdById: userId,
-        },
-      });
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-      // Create Version 1
-      await tx.templateVersion.create({
-        data: {
-          tenantId: effectiveTenantId,
-          templateId: template.id,
-          versionNumber: 1,
-          editorContent: data.editorContent,
-          changeNotes: 'Initial template creation',
-          createdById: userId,
-        },
-      });
+      const tplRes = await client.query(
+        `INSERT INTO document_templates (id, tenant_id, template_name, category_id, designation_id, description, editor_content, current_version, status, created_by, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, 1, $7, $8, NOW(), NOW()) RETURNING id`,
+        [effectiveTenantId, data.templateName, data.categoryId || null, data.designationId || null, data.description || null, data.editorContent, data.status || 'ACTIVE', userId]
+      );
+      const templateId = tplRes.rows[0].id;
 
-      // Create Placeholders
+      await client.query(
+        `INSERT INTO template_versions (id, tenant_id, template_id, version_number, editor_content, change_notes, created_by, created_at)
+         VALUES (gen_random_uuid(), $1, $2, 1, $3, 'Initial template creation', $4, NOW())`,
+        [effectiveTenantId, templateId, data.editorContent, userId]
+      );
+
       if (placeholdersToCreate.length > 0) {
-        await tx.templatePlaceholder.createMany({
-          data: placeholdersToCreate.map((p, idx) => ({
-            tenantId: effectiveTenantId,
-            templateId: template.id,
-            placeholderKey: p.placeholderKey,
-            placeholderLabel: p.placeholderLabel || p.placeholderKey,
-            dataType: p.dataType || 'Text',
-            required: p.required !== undefined ? p.required : true,
-            defaultValue: p.defaultValue || null,
-            displayOrder: p.displayOrder !== undefined ? p.displayOrder : idx,
-          })),
-        });
+        for (let idx = 0; idx < placeholdersToCreate.length; idx++) {
+          const p = placeholdersToCreate[idx];
+          await client.query(
+            `INSERT INTO template_placeholders (id, tenant_id, template_id, placeholder_key, placeholder_label, data_type, required, default_value, display_order, created_at)
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
+            [effectiveTenantId, templateId, p.placeholderKey, p.placeholderLabel || p.placeholderKey, p.dataType || 'Text', p.required !== undefined ? p.required : true, p.defaultValue || null, p.displayOrder !== undefined ? p.displayOrder : idx]
+          );
+        }
       }
 
-      // Audit log
-      await tx.documentAuditLog.create({
-        data: {
-          tenantId: effectiveTenantId,
-          module: 'Template Management',
-          referenceId: template.id,
-          action: 'Created',
-          performedById: userId,
-          ipAddress: ipAddress || null,
-          remarks: `Created template "${data.templateName}"${data.isGlobal ? ' as Global Template' : ''}`,
-        },
-      });
+      await client.query(
+        `INSERT INTO document_audit_logs (id, tenant_id, module, reference_id, action, performed_by, ip_address, remarks, created_at)
+         VALUES (gen_random_uuid(), $1, 'Template Management', $2, 'Created', $3, $4, $5, NOW())`,
+        [effectiveTenantId, templateId, userId, ipAddress || null, `Created template "${data.templateName}"${data.isGlobal ? ' as Global Template' : ''}`]
+      );
 
-      return await tx.documentTemplate.findUnique({
-        where: { id: template.id },
-        include: {
-          category: true,
-          designation: true,
-          placeholders: true,
-        },
-      });
-    });
+      await client.query('COMMIT');
+      return await this.getTemplateById(tenantId, templateId);
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
   }
 
   static async updateTemplate(tenantId: string, id: string, data: UpdateTemplateDto, userId: string, ipAddress?: string) {
@@ -248,16 +238,11 @@ export class LetterTemplateService {
         throw new ValidationError('Template name cannot be empty');
       }
       if (trimmedName.toLowerCase() !== existing.templateName.trim().toLowerCase()) {
-        const existingName = await prisma.documentTemplate.findFirst({
-          where: {
-            tenantId,
-            id: { not: id },
-            templateName: {
-              equals: trimmedName,
-              mode: 'insensitive',
-            },
-          },
-        });
+        const existRes = await pool.query(
+          `SELECT id FROM document_templates WHERE tenant_id = $1 AND id != $2 AND template_name ILIKE $3 LIMIT 1`,
+          [tenantId, id, trimmedName]
+        );
+        const existingName = existRes.rows[0];
 
         if (existingName) {
           throw new ValidationError(`A template with the name "${trimmedName}" already exists.`);
@@ -268,7 +253,9 @@ export class LetterTemplateService {
 
     const effectiveTenantId = data.isGlobal ? 'GLOBAL' : existing.tenantId;
 
-    return await prisma.$transaction(async (tx) => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
       let newVersionNumber = existing.currentVersion;
       let editorContentChanged = false;
 
@@ -276,89 +263,70 @@ export class LetterTemplateService {
         newVersionNumber += 1;
         editorContentChanged = true;
 
-        await tx.templateVersion.create({
-          data: {
-            tenantId: effectiveTenantId,
-            templateId: id,
-            versionNumber: newVersionNumber,
-            editorContent: data.editorContent,
-            changeNotes: data.changeNotes || `Updated template version ${newVersionNumber}`,
-            createdById: userId,
-          },
-        });
+        await client.query(
+          `INSERT INTO template_versions (id, tenant_id, template_id, version_number, editor_content, change_notes, created_by, created_at)
+           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, NOW())`,
+          [effectiveTenantId, id, newVersionNumber, data.editorContent, data.changeNotes || `Updated template version ${newVersionNumber}`, userId]
+        );
       }
 
-      const updated = await tx.documentTemplate.update({
-        where: { id },
-        data: {
-          tenantId: effectiveTenantId,
-          templateName: data.templateName !== undefined ? data.templateName : existing.templateName,
-          categoryId: data.categoryId !== undefined ? data.categoryId : existing.categoryId,
-          designationId: data.designationId !== undefined ? data.designationId : existing.designationId,
-          description: data.description !== undefined ? data.description : existing.description,
-          editorContent: data.editorContent !== undefined ? data.editorContent : existing.editorContent,
-          status: data.status !== undefined ? data.status : existing.status,
-          currentVersion: newVersionNumber,
-        },
-      });
+      await client.query(
+        `UPDATE document_templates 
+         SET tenant_id = $1, template_name = $2, category_id = $3, designation_id = $4, description = $5, editor_content = $6, status = $7, current_version = $8, updated_at = NOW()
+         WHERE id = $9`,
+        [
+          effectiveTenantId, 
+          data.templateName !== undefined ? data.templateName : existing.templateName,
+          data.categoryId !== undefined ? data.categoryId : (existing.categoryId || null),
+          data.designationId !== undefined ? data.designationId : (existing.designationId || null),
+          data.description !== undefined ? data.description : (existing.description || null),
+          data.editorContent !== undefined ? data.editorContent : existing.editorContent,
+          data.status !== undefined ? data.status : existing.status,
+          newVersionNumber,
+          id
+        ]
+      );
 
-      // Update Placeholders if provided or content changed
       if (data.placeholders || editorContentChanged) {
         if (data.placeholders && data.placeholders.length > 0) {
-          await tx.templatePlaceholder.deleteMany({
-            where: { templateId: id },
-          });
-
-          await tx.templatePlaceholder.createMany({
-            data: data.placeholders.map((p, idx) => ({
-              tenantId: effectiveTenantId,
-              templateId: id,
-              placeholderKey: p.placeholderKey,
-              placeholderLabel: p.placeholderLabel || p.placeholderKey,
-              dataType: p.dataType || 'Text',
-              required: p.required !== undefined ? p.required : true,
-              defaultValue: p.defaultValue || null,
-              displayOrder: p.displayOrder !== undefined ? p.displayOrder : idx,
-            })),
-          });
+          await client.query(`DELETE FROM template_placeholders WHERE template_id = $1`, [id]);
+          for (let idx = 0; idx < data.placeholders.length; idx++) {
+            const p = data.placeholders[idx];
+            await client.query(
+              `INSERT INTO template_placeholders (id, tenant_id, template_id, placeholder_key, placeholder_label, data_type, required, default_value, display_order, created_at)
+               VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
+              [effectiveTenantId, id, p.placeholderKey, p.placeholderLabel || p.placeholderKey, p.dataType || 'Text', p.required !== undefined ? p.required : true, p.defaultValue || null, p.displayOrder !== undefined ? p.displayOrder : idx]
+            );
+          }
         } else if (editorContentChanged) {
-          const extracted = this.extractPlaceholdersFromContent(updated.editorContent);
-          await tx.templatePlaceholder.deleteMany({ where: { templateId: id } });
-          await tx.templatePlaceholder.createMany({
-            data: extracted.map((p, idx) => {
-              const old = existing.placeholders.find(x => x.placeholderKey === p.key);
-              return {
-                tenantId: effectiveTenantId,
-                templateId: id,
-                placeholderKey: p.key,
-                placeholderLabel: old?.placeholderLabel || p.label,
-                dataType: old?.dataType || 'Text',
-                required: old?.required !== undefined ? old.required : true,
-                defaultValue: old?.defaultValue || null,
-                displayOrder: old?.displayOrder !== undefined ? old.displayOrder : idx,
-              };
-            }),
-          });
+          const extracted = this.extractPlaceholdersFromContent(data.editorContent || existing.editorContent);
+          await client.query(`DELETE FROM template_placeholders WHERE template_id = $1`, [id]);
+          for (let idx = 0; idx < extracted.length; idx++) {
+            const p = extracted[idx];
+            const old = existing.placeholders.find((x: any) => x.placeholderKey === p.key);
+            await client.query(
+              `INSERT INTO template_placeholders (id, tenant_id, template_id, placeholder_key, placeholder_label, data_type, required, default_value, display_order, created_at)
+               VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
+              [effectiveTenantId, id, p.key, old?.placeholderLabel || p.label, old?.dataType || 'Text', old?.required !== undefined ? old.required : true, old?.defaultValue || null, old?.displayOrder !== undefined ? old.displayOrder : idx]
+            );
+          }
         }
       }
 
-      await tx.documentAuditLog.create({
-        data: {
-          tenantId: effectiveTenantId,
-          module: 'Template Management',
-          referenceId: id,
-          action: 'Updated',
-          performedById: userId,
-          ipAddress: ipAddress || null,
-          remarks: `Updated template "${updated.templateName}"${data.isGlobal && existing.tenantId !== 'GLOBAL' ? ' and set as Global' : ''} (Version ${newVersionNumber})`,
-        },
-      });
+      await client.query(
+        `INSERT INTO document_audit_logs (id, tenant_id, module, reference_id, action, performed_by, ip_address, remarks, created_at)
+         VALUES (gen_random_uuid(), $1, 'Template Management', $2, 'Updated', $3, $4, $5, NOW())`,
+        [effectiveTenantId, id, userId, ipAddress || null, `Updated template "${data.templateName !== undefined ? data.templateName : existing.templateName}"${data.isGlobal && existing.tenantId !== 'GLOBAL' ? ' and set as Global' : ''} (Version ${newVersionNumber})`]
+      );
 
-      return await tx.documentTemplate.findUnique({
-        where: { id },
-        include: { category: true, designation: true, placeholders: true },
-      });
-    });
+      await client.query('COMMIT');
+      return await this.getTemplateById(tenantId, id);
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
   }
 
   static async duplicateTemplate(tenantId: string, id: string, newName: string, userId: string, ipAddress?: string) {
@@ -370,13 +338,8 @@ export class LetterTemplateService {
     let targetName = (newName || `${existing.templateName} (Copy)`).trim();
     let counter = 1;
     while (true) {
-      const exists = await prisma.documentTemplate.findFirst({
-        where: {
-          tenantId,
-          templateName: { equals: targetName, mode: 'insensitive' },
-        },
-      });
-      if (!exists) break;
+      const existRes = await pool.query(`SELECT id FROM document_templates WHERE tenant_id = $1 AND template_name ILIKE $2 LIMIT 1`, [tenantId, targetName]);
+      if (existRes.rows.length === 0) break;
       counter += 1;
       const baseName = (newName || existing.templateName).replace(/\s*\(Copy(\s+\d+)?\)$/i, '').trim();
       targetName = `${baseName} (Copy ${counter})`;
@@ -391,7 +354,7 @@ export class LetterTemplateService {
         description: existing.description || undefined,
         editorContent: existing.editorContent,
         status: 'ACTIVE',
-        placeholders: existing.placeholders.map(p => ({
+        placeholders: existing.placeholders.map((p: any) => ({
           placeholderKey: p.placeholderKey,
           placeholderLabel: p.placeholderLabel,
           dataType: p.dataType,
@@ -406,9 +369,8 @@ export class LetterTemplateService {
   }
 
   static async restoreVersion(tenantId: string, templateId: string, versionNumber: number, userId: string, ipAddress?: string) {
-    const version = await prisma.templateVersion.findFirst({
-      where: { templateId, versionNumber, tenantId },
-    });
+    const verRes = await pool.query(`SELECT editor_content AS "editorContent" FROM template_versions WHERE template_id = $1 AND version_number = $2 AND tenant_id = $3 LIMIT 1`, [templateId, versionNumber, tenantId]);
+    const version = verRes.rows[0];
 
     if (!version) {
       throw new Error('Version not found');
@@ -436,22 +398,14 @@ export class LetterTemplateService {
         throw new ValidationError('Cannot delete global templates.');
     }
 
-    // Delete template and log audit
-    const res = await prisma.documentTemplate.delete({
-      where: { id },
-    });
+    const delRes = await pool.query(`DELETE FROM document_templates WHERE id = $1 RETURNING *`, [id]);
+    const res = delRes.rows[0];
 
-    await prisma.documentAuditLog.create({
-      data: {
-        tenantId,
-        module: 'Template Management',
-        referenceId: id,
-        action: 'Deleted',
-        performedById: userId,
-        ipAddress: ipAddress || null,
-        remarks: `Deleted template "${existing.templateName}"`,
-      },
-    });
+    await pool.query(
+      `INSERT INTO document_audit_logs (id, tenant_id, module, reference_id, action, performed_by, ip_address, remarks, created_at)
+       VALUES (gen_random_uuid(), $1, 'Template Management', $2, 'Deleted', $3, $4, $5, NOW())`,
+      [tenantId, id, userId, ipAddress || null, `Deleted template "${existing.templateName}"`]
+    );
 
     return res;
   }

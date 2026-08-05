@@ -918,3 +918,44 @@ export async function uploadEscalationDocumentToR2(
     throw new Error(`Failed to upload escalation document: ${error.message}`);
   }
 }
+
+export async function uploadDocumentToR2(
+  buffer: Buffer,
+  fileName: string,
+  tenantId: string,
+  documentId: string,
+  contentType: string
+): Promise<string> {
+  try {
+    const fileExtension = fileName.split(".").pop() || "bin";
+    const uniqueId = nanoid(12);
+    const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+
+    const folderPath = `${tenantId}/documents/${documentId}`;
+    const storedFileName = `${folderPath}/${uniqueId}_${sanitizedFileName}`;
+
+    const params = {
+      Bucket: BUCKET_NAME,
+      Key: storedFileName,
+      Body: buffer,
+      ContentType: contentType,
+      CacheControl: "public, max-age=31536000",
+      ContentDisposition: `attachment; filename="${sanitizedFileName}"`,
+    };
+
+    await s3Client.send(new PutObjectCommand(params));
+
+    let baseUrl = (PUBLIC_URL && !PUBLIC_URL.includes('r2.cloudflarestorage.com')) 
+      ? PUBLIC_URL 
+      : "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+    
+    if (baseUrl.endsWith('/')) {
+      baseUrl = baseUrl.slice(0, -1);
+    }
+    
+    return `${baseUrl}/${storedFileName}`;
+  } catch (error: any) {
+    console.error("R2 document upload error:", error);
+    throw new Error(`Failed to upload document: ${error.message}`);
+  }
+}

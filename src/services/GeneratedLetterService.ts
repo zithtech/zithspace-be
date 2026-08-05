@@ -1,9 +1,10 @@
 import { Prisma } from '@prisma/client';
-import { prisma } from '../config/database';
+import pool from '../config/dbpool';
 import puppeteer from 'puppeteer';
 import { Document, Packer, Paragraph, TextRun, ImageRun, Table as DocxTable, TableRow as DocxTableRow, TableCell as DocxTableCell, WidthType, BorderStyle, ShadingType, AlignmentType } from 'docx';
 import HTMLtoDOCX from 'html-to-docx';
-import { getFileBufferFromR2 } from '../utils/r2Client';
+import * as cheerio from 'cheerio';
+import { getFileBufferFromR2, uploadDocumentToR2 } from '../utils/r2Client';
 import { getStructure } from '../modules/payroll/services/structure.service';
 import { calcStructure, CalcLineInput } from '../modules/payroll/services/structureCalc';
 
@@ -13,165 +14,10 @@ export interface GenerateLetterDto {
   referenceEntityType?: string;
   documentNumber?: string;
   values: Record<string, string>;
+  customContent?: string;
 }
 
 export class GeneratedLetterService {
-  static async generateSalaryStructureTableHtml(tenantId: string, ctcInput?: string, salaryStructureId?: string): Promise<string> {
-    const numStr = ctcInput ? String(ctcInput).replace(/[^0-9.]/g, '') : '';
-    const parsed = numStr ? parseFloat(numStr) : 0;
-
-    let annualCtc = parsed > 0 ? (parsed <= 50000 ? Math.round(parsed * 12) : Math.round(parsed)) : 120000;
-    let monthlyGross = Math.round(annualCtc / 12);
-
-    let rowsHtml = '';
-    let totalDeductions = 0;
-
-    const formatINR = (val: number) => '₹' + val.toLocaleString('en-IN');
-
-    if (salaryStructureId && tenantId) {
-      try {
-        const structure = await getStructure({ tenantId, userId: 'SYSTEM' }, salaryStructureId);
-
-        const calcInputs = structure.lines.map(l => ({
-          key: l.id,
-          code: l.code,
-          category: l.category,
-          calculationType: l.calculationType,
-          percentageOf: l.percentageOf,
-          value: l.value,
-          displayOrder: l.displayOrder,
-        } as CalcLineInput));
-
-        const breakdown = calcStructure(monthlyGross, calcInputs);
-        monthlyGross = breakdown.grossSalary;
-        annualCtc = monthlyGross * 12;
-        totalDeductions = breakdown.totalDeductions;
-
-        for (const line of breakdown.lines) {
-          const mAmt = line.calculatedAmount;
-          const aAmt = mAmt * 12;
-          const categoryDisplay = line.category === 'earning' ? '● Earning' : line.category === 'deduction' ? '● DEDUCTION' : '● ' + line.category.toUpperCase();
-          const categoryColor = line.category === 'earning' ? '#10b981' : line.category === 'deduction' ? '#ef4444' : '#3b82f6';
-
-          let calcTypeDisplay = 'Fixed';
-          let percentageDisplay = '-';
-          if (line.calculationType === 'percentage') {
-            calcTypeDisplay = line.percentageOf ? `% of ${line.percentageOf.charAt(0).toUpperCase() + line.percentageOf.slice(1)}` : '%';
-            percentageDisplay = `${line.value}%`;
-          }
-
-          const componentName = structure.lines.find(l => l.id === line.key)?.name || line.code;
-
-          rowsHtml += `<tr>` +
-            `<td style="padding: 10px 14px; border: 1px solid #cbd5e1;">` +
-            `<div style="font-weight: 600; color: #1e293b; font-size: 14px;">${componentName}</div>` +
-            `<div style="font-size: 11px; color: ${categoryColor}; font-weight: 600; margin-top: 2px;">${categoryDisplay}</div>` +
-            `</td>` +
-            `<td style="padding: 10px 14px; border: 1px solid #cbd5e1; color: #475569;">${calcTypeDisplay}</td>` +
-            `<td style="padding: 10px 14px; border: 1px solid #cbd5e1; font-weight: 600; color: #334155;">${percentageDisplay}</td>` +
-            `<td style="padding: 10px 14px; border: 1px solid #cbd5e1; font-weight: 600; color: #1e293b; text-align: right;">${formatINR(mAmt)}</td>` +
-            `<td style="padding: 10px 14px; border: 1px solid #cbd5e1; font-weight: 600; color: #1e293b; text-align: right;">${formatINR(aAmt)}</td>` +
-            `</tr>`;
-        }
-      } catch (err) {
-        console.error("Failed to generate custom salary table", err);
-      }
-    }
-
-    if (!rowsHtml) {
-      const mBasic = Math.round(monthlyGross * 0.40);
-      const aBasic = mBasic * 12;
-      const mHra = Math.round(monthlyGross * 0.20);
-      const aHra = mHra * 12;
-      const mConv = Math.round(monthlyGross * 0.10);
-      const aConv = mConv * 12;
-      const mMed = monthlyGross - (mBasic + mHra + mConv);
-      const aMed = mMed * 12;
-
-      rowsHtml = `<tr>` +
-        `<td style="padding: 10px 14px; border: 1px solid #cbd5e1;">` +
-        `<div style="font-weight: 600; color: #1e293b; font-size: 14px;">Basic</div>` +
-        `<div style="font-size: 11px; font-weight: 600; margin-top: 2px;"><span style="color: #10b981">● Earning</span></div>` +
-        `</td>` +
-        `<td style="padding: 10px 14px; border: 1px solid #cbd5e1; color: #475569;">% of Gross</td>` +
-        `<td style="padding: 10px 14px; border: 1px solid #cbd5e1; font-weight: 600; color: #334155;">40%</td>` +
-        `<td style="padding: 10px 14px; border: 1px solid #cbd5e1; font-weight: 600; color: #1e293b; text-align: right;">${formatINR(mBasic)}</td>` +
-        `<td style="padding: 10px 14px; border: 1px solid #cbd5e1; font-weight: 600; color: #1e293b; text-align: right;">${formatINR(aBasic)}</td>` +
-        `</tr>` +
-        `<tr>` +
-        `<td style="padding: 10px 14px; border: 1px solid #cbd5e1;">` +
-        `<div style="font-weight: 600; color: #1e293b; font-size: 14px;">House Rent Allowance</div>` +
-        `<div style="font-size: 11px; font-weight: 600; margin-top: 2px;"><span style="color: #10b981">● Earning</span></div>` +
-        `</td>` +
-        `<td style="padding: 10px 14px; border: 1px solid #cbd5e1; color: #475569;">% of Gross</td>` +
-        `<td style="padding: 10px 14px; border: 1px solid #cbd5e1; font-weight: 600; color: #334155;">20%</td>` +
-        `<td style="padding: 10px 14px; border: 1px solid #cbd5e1; font-weight: 600; color: #1e293b; text-align: right;">${formatINR(mHra)}</td>` +
-        `<td style="padding: 10px 14px; border: 1px solid #cbd5e1; font-weight: 600; color: #1e293b; text-align: right;">${formatINR(aHra)}</td>` +
-        `</tr>` +
-        `<tr>` +
-        `<td style="padding: 10px 14px; border: 1px solid #cbd5e1;">` +
-        `<div style="font-weight: 600; color: #1e293b; font-size: 14px;">Conveyance Allowance</div>` +
-        `<div style="font-size: 11px; font-weight: 600; margin-top: 2px;"><span style="color: #10b981">● Earning</span></div>` +
-        `</td>` +
-        `<td style="padding: 10px 14px; border: 1px solid #cbd5e1; color: #475569;">% of Gross</td>` +
-        `<td style="padding: 10px 14px; border: 1px solid #cbd5e1; font-weight: 600; color: #334155;">10%</td>` +
-        `<td style="padding: 10px 14px; border: 1px solid #cbd5e1; font-weight: 600; color: #1e293b; text-align: right;">${formatINR(mConv)}</td>` +
-        `<td style="padding: 10px 14px; border: 1px solid #cbd5e1; font-weight: 600; color: #1e293b; text-align: right;">${formatINR(aConv)}</td>` +
-        `</tr>` +
-        `<tr>` +
-        `<td style="padding: 10px 14px; border: 1px solid #cbd5e1;">` +
-        `<div style="font-weight: 600; color: #1e293b; font-size: 14px;">Medical Allowance</div>` +
-        `<div style="font-size: 11px; font-weight: 600; margin-top: 2px;"><span style="color: #10b981">● Earning</span></div>` +
-        `</td>` +
-        `<td style="padding: 10px 14px; border: 1px solid #cbd5e1; color: #475569;">% of Gross</td>` +
-        `<td style="padding: 10px 14px; border: 1px solid #cbd5e1; font-weight: 600; color: #334155;">30%</td>` +
-        `<td style="padding: 10px 14px; border: 1px solid #cbd5e1; font-weight: 600; color: #1e293b; text-align: right;">${formatINR(mMed)}</td>` +
-        `<td style="padding: 10px 14px; border: 1px solid #cbd5e1; font-weight: 600; color: #1e293b; text-align: right;">${formatINR(aMed)}</td>` +
-        `</tr>`;
-    }
-
-    const netPay = Math.round(monthlyGross - totalDeductions);
-
-    return `<div data-salary-structure="true" style="margin-top: 20px; margin-bottom: 20px; font-family: 'Inter', system-ui, -apple-system, sans-serif;">` +
-      `<div style="font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 10px;">Salary Structure</div>` +
-      `<table style="width: 100%; border-collapse: collapse; border: 1px solid #cbd5e1; font-size: 13px; text-align: left; background: #ffffff;">` +
-      `<thead>` +
-      `<tr style="background-color: #f8fafc; border-bottom: 1px solid #cbd5e1; color: #475569;">` +
-      `<th style="padding: 10px 14px; font-weight: 600; border: 1px solid #cbd5e1;">SALARY COMPONENT</th>` +
-      `<th style="padding: 10px 14px; font-weight: 600; border: 1px solid #cbd5e1;">CALCULATION TYPE</th>` +
-      `<th style="padding: 10px 14px; font-weight: 600; border: 1px solid #cbd5e1;">PERCENTAGE</th>` +
-      `<th style="padding: 10px 14px; font-weight: 600; border: 1px solid #cbd5e1; text-align: right;">MONTHLY AMOUNT</th>` +
-      `<th style="padding: 10px 14px; font-weight: 600; border: 1px solid #cbd5e1; text-align: right;">ANNUAL AMOUNT</th>` +
-      `</tr>` +
-      `</thead>` +
-      `<tbody>` +
-      rowsHtml +
-      `</tbody>` +
-      `<tfoot>` +
-      `<tr style="background-color: #f8fafc; font-weight: 600; color: #475569; border-top: 2px solid #cbd5e1;">` +
-      `<td colspan="3" style="padding: 10px 14px; border: 1px solid #cbd5e1; text-align: right;">Total Gross</td>` +
-      `<td style="padding: 10px 14px; border: 1px solid #cbd5e1; text-align: right;">${formatINR(monthlyGross)}</td>` +
-      `<td style="padding: 10px 14px; border: 1px solid #cbd5e1; text-align: right;">${formatINR(monthlyGross * 12)}</td>` +
-      `</tr>` +
-      `<tr style="background-color: #f8fafc; font-weight: 600; color: #ef4444;">` +
-      `<td colspan="3" style="padding: 10px 14px; border: 1px solid #cbd5e1; text-align: right;">Total Deductions</td>` +
-      `<td style="padding: 10px 14px; border: 1px solid #cbd5e1; text-align: right;">${totalDeductions > 0 ? '- ' + formatINR(totalDeductions) : '₹0'}</td>` +
-      `<td style="padding: 10px 14px; border: 1px solid #cbd5e1; text-align: right;">${totalDeductions > 0 ? '- ' + formatINR(totalDeductions * 12) : '₹0'}</td>` +
-      `</tr>` +
-      `<tr style="background-color: #f1f5f9; font-weight: 700; color: #0f172a;">` +
-      `<td colspan="3" style="padding: 12px 14px; border: 1px solid #cbd5e1; text-align: right;">Net Pay</td>` +
-      `<td style="padding: 12px 14px; border: 1px solid #cbd5e1; text-align: right;">${formatINR(netPay)}</td>` +
-      `<td style="padding: 12px 14px; border: 1px solid #cbd5e1; text-align: right;">${formatINR(netPay * 12)}</td>` +
-      `</tr>` +
-      `<tr style="background-color: #e2e8f0; font-weight: 800; color: #0f172a; border-top: 2px solid #94a3b8;">` +
-      `<td colspan="3" style="padding: 14px 14px; border: 1px solid #cbd5e1; text-align: right; text-transform: uppercase;">Total CTC</td>` +
-      `<td style="padding: 14px 14px; border: 1px solid #cbd5e1; text-align: right; color: #10b981;">✓ Balanced (${formatINR(monthlyGross)})</td>` +
-      `<td style="padding: 14px 14px; border: 1px solid #cbd5e1; text-align: right; font-size: 15px;">${formatINR(annualCtc)} / yr</td>` +
-      `</tr>` +
-      `</tfoot>` +
-      `</table>` +
-      `</div>`;
-  }
 
   /**
    * Substitute placeholder keys in HTML string with actual values
@@ -247,135 +93,335 @@ export class GeneratedLetterService {
 
     const ctcVal = values['salary_ctc'] || '';
     const salaryStructureId = values['salary_structure_id'];
-    if (output.includes('data-salary-structure="true"') || output.includes('SALARY COMPONENT') || output.includes('House Rent Allowance')) {
-      if (ctcVal && ctcVal.trim() !== '') {
-        const salaryHtml = await GeneratedLetterService.generateSalaryStructureTableHtml(tenantId, ctcVal, salaryStructureId);
-        let replaced = false;
 
-        // 1. First try replacing a div tagged with data-salary-structure="true" without regex greediness across tables
-        const divMatchIdx = output.search(/<div[^>]*data-salary-structure="true"[^>]*>/i);
-        if (divMatchIdx !== -1) {
-          const endTableIdx = output.indexOf('</table>', divMatchIdx);
-          if (endTableIdx !== -1) {
-            const endDivIdx = output.indexOf('</div>', endTableIdx);
-            const closeIdx = (endDivIdx !== -1 && (endDivIdx - endTableIdx) < 80) ? endDivIdx + 6 : endTableIdx + 8;
-            output = output.substring(0, divMatchIdx) + salaryHtml + output.substring(closeIdx);
-            replaced = true;
-          }
+    // First remove the marker as we don't append a new table anymore (we rely on the existing UI)
+    output = output.replace(/<!-- SALARY_STRUCTURE_MARKER -->/g, '');
+
+    if (salaryStructureId && tenantId && ctcVal && ctcVal.trim() !== '') {
+      try {
+        const numStr = String(ctcVal).replace(/[^0-9.]/g, '');
+        const parsed = numStr ? parseFloat(numStr) : 0;
+        let annualCtc = parsed > 0 ? (parsed <= 50000 ? Math.round(parsed * 12) : Math.round(parsed)) : 0;
+        let monthlyGross = annualCtc > 0 ? Math.round(annualCtc / 12) : 0;
+
+        const structure = await getStructure({ tenantId, userId: 'SYSTEM' }, salaryStructureId);
+
+        if (monthlyGross === 0) {
+          monthlyGross = structure.totals.grossSalary || (structure.monthlyCtc ? Number(structure.monthlyCtc) : 10000);
         }
 
-        // 2. Otherwise find the specific table containing SALARY COMPONENT or House Rent Allowance
-        if (!replaced) {
-          const keywordIdx = output.search(/SALARY COMPONENT|House Rent Allowance/i);
-          if (keywordIdx !== -1) {
-            let tableStartIdx = output.lastIndexOf('<table', keywordIdx);
-            const tableEndIdx = output.indexOf('</table>', keywordIdx);
-            if (tableStartIdx !== -1 && tableEndIdx !== -1) {
-              // Check if right before <table there is a title/div like <div ...>Salary Structure</div> that belongs to the table
-              const precedingText = output.substring(Math.max(0, tableStartIdx - 300), tableStartIdx);
-              const titleMatch = precedingText.match(/<(div|p|h[1-6]|span|b|strong)[^>]*>\s*(?:<b>|<strong>)?\s*Salary Structure\s*(?:<\/b>|<\/strong>)?\s*<\/\1>\s*$/i);
-              if (titleMatch && titleMatch.index !== undefined) {
-                tableStartIdx = Math.max(0, tableStartIdx - 300) + titleMatch.index;
+        const calcInputs = structure.lines.map(l => ({
+          key: l.id,
+          code: l.code,
+          category: l.category,
+          calculationType: l.calculationType,
+          percentageOf: l.percentageOf,
+          value: l.value,
+          displayOrder: l.displayOrder,
+        } as CalcLineInput));
+
+        const breakdown = calcStructure(monthlyGross, calcInputs);
+        monthlyGross = breakdown.grossSalary;
+        annualCtc = monthlyGross * 12;
+        const totalDeductions = breakdown.totalDeductions;
+        const netPay = Math.round(monthlyGross - totalDeductions);
+
+        const formatINR = (val: number) => '₹' + val.toLocaleString('en-IN');
+
+        const $ = cheerio.load(output, null, false);
+        const table = $('table').filter((i, el) => {
+          const text = $(el).text();
+          return text.includes('COMPONENT') || text.includes('House Rent Allowance') || text.includes('Compensation') || $(el).closest('[data-salary-structure="true"]').length > 0;
+        }).first();
+
+        if (table.length > 0) {
+          const allRows = table.find('tr');
+
+          if (allRows.length > 0) {
+            let headerRowIndex = 0;
+            for (let i = 0; i < allRows.length; i++) {
+              const text = $(allRows[i]).text().toUpperCase();
+              if (text.includes('COMPONENT') || text.includes('COMPENSATION') || $(allRows[i]).find('th').length > 0) {
+                headerRowIndex = i;
+                break;
               }
-              // Also check if wrapped in an outer div
-              const beforeOuter = output.substring(Math.max(0, tableStartIdx - 200), tableStartIdx);
-              const outerDivMatch = beforeOuter.match(/<div[^>]*>\s*$/i);
-              const afterTable = output.substring(tableEndIdx + 8, Math.min(output.length, tableEndIdx + 100));
-              const afterDivMatch = afterTable.match(/^\s*<\/div>/i);
-              let closeIdx = tableEndIdx + 8;
-              if (outerDivMatch && outerDivMatch.index !== undefined && afterDivMatch && afterDivMatch[0]) {
-                tableStartIdx = Math.max(0, tableStartIdx - 200) + outerDivMatch.index;
-                closeIdx = tableEndIdx + 8 + afterDivMatch[0].length;
+            }
+
+            let footerStartIndex = allRows.length;
+            for (let i = headerRowIndex + 1; i < allRows.length; i++) {
+              const rowEl = $(allRows[i]);
+              const parentTag = rowEl.parent().get(0)?.tagName?.toLowerCase();
+              if (parentTag === 'tfoot') {
+                footerStartIndex = i;
+                break;
               }
-              output = output.substring(0, tableStartIdx) + salaryHtml + output.substring(closeIdx);
-              replaced = true;
+              const text = rowEl.text().toUpperCase();
+              if (text.includes('GROSS SALARY') || text.includes('TOTAL DEDUCTION') || text.includes('NET PAY') || text.includes('TOTAL CTC') || text.includes('TOTAL EARNINGS')) {
+                footerStartIndex = i;
+                break;
+              }
+            }
+
+            if (footerStartIndex > headerRowIndex) {
+              const dummyCount = footerStartIndex - headerRowIndex - 1;
+
+              let templateClone;
+              if (dummyCount > 0) {
+                templateClone = $(allRows[headerRowIndex + 1]).clone();
+              } else {
+                const headerCols = $(allRows[headerRowIndex]).find('th, td').length || 3;
+                templateClone = $('<tr></tr>');
+                for (let i = 0; i < headerCols; i++) templateClone.append('<td></td>');
+              }
+
+              for (let i = headerRowIndex + 1; i < footerStartIndex; i++) {
+                $(allRows[i]).remove();
+              }
+
+              let insertAfterTarget = $(allRows[headerRowIndex]);
+
+              for (const line of breakdown.lines) {
+                const mAmt = line.calculatedAmount;
+                const aAmt = mAmt * 12;
+                const categoryDisplay = line.category === 'earning' ? '● Earning' : line.category === 'deduction' ? '● DEDUCTION' : '● ' + line.category.toUpperCase();
+                const categoryColor = line.category === 'earning' ? '#10b981' : line.category === 'deduction' ? '#ef4444' : '#3b82f6';
+
+                let calcTypeDisplay = 'Fixed';
+                let percentageDisplay = '-';
+                if (line.calculationType === 'percentage') {
+                  calcTypeDisplay = line.percentageOf ? `% of ${line.percentageOf.charAt(0).toUpperCase() + line.percentageOf.slice(1)}` : '%';
+                  percentageDisplay = `${line.value}%`;
+                }
+
+                const componentName = structure.lines.find(l => l.id === line.key)?.name || line.code;
+
+                const newRow = templateClone.clone();
+                newRow.removeAttr('data-salary-row-template');
+                newRow.removeAttr('style');
+
+                const cols = newRow.find('td, th');
+
+                const nameCol = newRow.find('[data-col="component_name"]');
+                const calcCol = newRow.find('[data-col="calc_type"]');
+                const percCol = newRow.find('[data-col="percentage"]');
+                const monthlyCol = newRow.find('[data-col="monthly_amount"]');
+                const annualCol = newRow.find('[data-col="annual_amount"]');
+
+                if (nameCol.length > 0) {
+                  nameCol.html(`<div style="font-weight: 600; color: #1e293b; font-size: 14px;">${componentName}</div><div style="font-size: 11px; color: ${categoryColor}; font-weight: 600; margin-top: 2px;">${categoryDisplay}</div>`);
+                  if (calcCol.length > 0) calcCol.text(calcTypeDisplay);
+                  if (percCol.length > 0) percCol.text(percentageDisplay);
+                  if (monthlyCol.length > 0) monthlyCol.text(formatINR(mAmt));
+                  if (annualCol.length > 0) annualCol.text(formatINR(aAmt));
+                } else {
+                  if (cols.length >= 5) {
+                    $(cols[0]).html(`<div style="font-weight: 600; color: #1e293b; font-size: 14px;">${componentName}</div><div style="font-size: 11px; color: ${categoryColor}; font-weight: 600; margin-top: 2px;">${categoryDisplay}</div>`);
+                    $(cols[1]).text(calcTypeDisplay);
+                    $(cols[2]).text(percentageDisplay);
+                    $(cols[3]).text(formatINR(mAmt));
+                    $(cols[4]).text(formatINR(aAmt));
+                  } else if (cols.length >= 3) {
+                    $(cols[0]).html(`<div style="font-weight: 600; color: #1e293b; font-size: 14px;">${componentName}</div>`);
+                    $(cols[1]).text(formatINR(mAmt));
+                    $(cols[2]).text(formatINR(aAmt));
+                  } else if (cols.length >= 2) {
+                    $(cols[0]).text(componentName);
+                    $(cols[1]).text(formatINR(mAmt));
+                  }
+                }
+
+                // Force inner tags to td just in case the template cloned a th
+                newRow.find('th').each(function () {
+                  $(this).replaceWith($('<td>' + $(this).html() + '</td>'));
+                });
+
+                insertAfterTarget.after(newRow);
+                insertAfterTarget = newRow;
+              }
+
+              const footerRows = [];
+              for (let i = footerStartIndex; i < allRows.length; i++) {
+                footerRows.push(allRows[i]);
+              }
+
+              const updateRightmostCols = (row: any, monthlyVal: string, annualVal: string) => {
+                const tds = $(row).find('td, th');
+                if (tds.length >= 2) {
+                  $(tds[tds.length - 2]).text(monthlyVal);
+                  $(tds[tds.length - 1]).text(annualVal);
+                }
+              };
+
+              if (footerRows.length >= 4) {
+                updateRightmostCols(footerRows[0], formatINR(monthlyGross), formatINR(monthlyGross * 12));
+                updateRightmostCols(footerRows[1], totalDeductions > 0 ? '- ' + formatINR(totalDeductions) : '₹0', totalDeductions > 0 ? '- ' + formatINR(totalDeductions * 12) : '₹0');
+                updateRightmostCols(footerRows[2], formatINR(netPay), formatINR(netPay * 12));
+                const ctcTds = $(footerRows[3]).find('td, th');
+                if (ctcTds.length >= 2) {
+                  $(ctcTds[ctcTds.length - 2]).text(`${formatINR(monthlyGross)} / mon`);
+                  $(ctcTds[ctcTds.length - 1]).text(`${formatINR(annualCtc)} / yr`);
+                }
+              } else if (footerRows.length >= 3) {
+                updateRightmostCols(footerRows[0], formatINR(monthlyGross), formatINR(monthlyGross * 12));
+                updateRightmostCols(footerRows[1], totalDeductions > 0 ? '- ' + formatINR(totalDeductions) : '₹0', totalDeductions > 0 ? '- ' + formatINR(totalDeductions * 12) : '₹0');
+                updateRightmostCols(footerRows[2], formatINR(netPay), formatINR(netPay * 12));
+              }
+
+              output = $.html();
             }
           }
         }
-      }
-    } else {
-      if (!output.includes('<!-- SALARY_STRUCTURE_MARKER -->')) {
-        const salarySpanRegex = /<span[^>]*data-(?:placeholder-key|id)="salary_ctc"[^>]*>[^<]*<\/span>/i;
-        if (salarySpanRegex.test(output)) {
-          output = output.replace(salarySpanRegex, (match) => match + '<!-- SALARY_STRUCTURE_MARKER -->');
-        } else {
-          const salaryPlainRegex = /\{\{\s*(?:salary_ctc:)?Annual Salary \(CTC\)\s*\}\}/i;
-          if (salaryPlainRegex.test(output)) {
-            output = output.replace(salaryPlainRegex, (match) => match + '<!-- SALARY_STRUCTURE_MARKER -->');
-          } else {
-            const salaryKeyRegex = /\{\{\s*salary_ctc\s*\}\}/i;
-            if (salaryKeyRegex.test(output)) {
-              output = output.replace(salaryKeyRegex, (match) => match + '<!-- SALARY_STRUCTURE_MARKER -->');
-            }
-          }
-        }
-      }
-
-      if (output.includes('<!-- SALARY_STRUCTURE_MARKER -->')) {
-        const markerIdx = output.indexOf('<!-- SALARY_STRUCTURE_MARKER -->');
-        const afterMarker = output.substring(markerIdx + '<!-- SALARY_STRUCTURE_MARKER -->'.length);
-        const closeTagMatch = afterMarker.match(/(?:<\/p>|<\/li>|<\/div>|<br\s*\/?>|\n)/i);
-        if (closeTagMatch && closeTagMatch.index !== undefined && closeTagMatch.index < 300) {
-          const insertIdx = markerIdx + '<!-- SALARY_STRUCTURE_MARKER -->'.length + closeTagMatch.index + closeTagMatch[0].length;
-          output = output.substring(0, insertIdx) + (await GeneratedLetterService.generateSalaryStructureTableHtml(tenantId, ctcVal, salaryStructureId)) + output.substring(insertIdx);
-        } else {
-          output = output.replace('<!-- SALARY_STRUCTURE_MARKER -->', '<br/>' + (await GeneratedLetterService.generateSalaryStructureTableHtml(tenantId, ctcVal, salaryStructureId)));
-        }
+      } catch (err) {
+        console.error("Failed to dynamically populate salary table", err);
       }
     }
-    output = output.replace(/<!-- SALARY_STRUCTURE_MARKER -->/g, '');
 
     return output;
   }
 
-  static async previewLetter(tenantId: string, templateId: string, values: Record<string, string>): Promise<string> {
-    const template = await prisma.documentTemplate.findFirst({
-      where: { id: templateId, tenantId },
-      include: { placeholders: true },
-    });
-    if (!template) {
-      throw new Error('Template not found');
+  static async previewLetter(tenantId: string, templateId: string, values: Record<string, string>, generatedDocumentId?: string, customContent?: string): Promise<string> {
+    let contentToUse = customContent || null;
+
+    if (!contentToUse && generatedDocumentId) {
+      const docRes = await pool.query(`
+        SELECT COALESCE(
+          gd.snapshot_content,
+          (SELECT tv.editor_content FROM template_versions tv WHERE tv.template_id = gd.template_id AND tv.created_at <= gd.generated_at ORDER BY tv.created_at DESC LIMIT 1)
+        ) AS "snapshotContent" 
+        FROM generated_documents gd 
+        WHERE gd.id = $1 AND gd.tenant_id = $2 LIMIT 1`,
+        [generatedDocumentId, tenantId]
+      );
+      if (docRes.rows.length > 0 && docRes.rows[0].snapshotContent) {
+        contentToUse = docRes.rows[0].snapshotContent;
+      }
     }
 
-    return await this.substitutePlaceholders(tenantId, template.editorContent, values, template.placeholders);
+    let template = null;
+    if (templateId) {
+      const result = await pool.query(
+        `SELECT dt.*, 
+          (
+            SELECT COALESCE(json_agg(json_build_object(
+              'id', tp.id,
+              'templateId', tp.template_id,
+              'placeholderKey', tp.placeholder_key,
+              'placeholderLabel', tp.placeholder_label,
+              'dataType', tp.data_type,
+              'required', tp.required,
+              'defaultValue', tp.default_value,
+              'displayOrder', tp.display_order
+            )), '[]'::json)
+            FROM template_placeholders tp 
+            WHERE tp.template_id = dt.id
+          ) AS placeholders 
+         FROM document_templates dt 
+         WHERE dt.id = $1 AND dt.tenant_id = $2 
+         LIMIT 1`,
+        [templateId, tenantId]
+      );
+      template = result.rows[0];
+    }
+
+    if (!template && !contentToUse) {
+      throw new Error('Preview unavailable because the document snapshot is missing.');
+    }
+
+    if (!contentToUse && template) {
+      contentToUse = template.editor_content;
+    }
+
+    return await this.substitutePlaceholders(tenantId, contentToUse as string, values, template?.placeholders || []);
   }
 
   static async getGeneratedLetters(tenantId: string, filters?: { templateId?: string; categoryId?: string; status?: string; referenceEntityId?: string; search?: string }) {
-    const where: Prisma.GeneratedDocumentWhereInput = { tenantId };
+    const conditions = ['gd.tenant_id = $1'];
+    const values: any[] = [tenantId];
+    let paramIdx = 2;
 
-    if (filters?.templateId) where.templateId = filters.templateId;
-    if (filters?.categoryId) where.categoryId = filters.categoryId;
-    if (filters?.status) where.status = filters.status;
-    if (filters?.referenceEntityId) where.referenceEntityId = filters.referenceEntityId;
+    if (filters?.templateId) {
+      conditions.push(`gd.template_id = $${paramIdx++}`);
+      values.push(filters.templateId);
+    }
+    if (filters?.categoryId) {
+      conditions.push(`gd.category_id = $${paramIdx++}`);
+      values.push(filters.categoryId);
+    }
+    if (filters?.status) {
+      conditions.push(`gd.status = $${paramIdx++}`);
+      values.push(filters.status);
+    }
+    if (filters?.referenceEntityId) {
+      conditions.push(`gd.reference_entity_id = $${paramIdx++}`);
+      values.push(filters.referenceEntityId);
+    }
     if (filters?.search) {
-      where.documentNumber = { contains: filters.search, mode: 'insensitive' };
+      conditions.push(`gd.document_number ILIKE $${paramIdx++}`);
+      values.push(`%${filters.search}%`);
     }
 
-    return await prisma.generatedDocument.findMany({
-      where,
-      include: {
-        template: { select: { id: true, templateName: true } },
-        category: { select: { id: true, categoryName: true } },
-        generatedBy: { select: { id: true, name: true, workEmail: true } },
-        _count: { select: { values: true, files: true } },
-      },
-      orderBy: { generatedAt: 'desc' },
-    });
+    const query = `
+      SELECT 
+        gd.id, gd.tenant_id AS "tenantId", gd.template_id AS "templateId", 
+        gd.category_id AS "categoryId", gd.reference_entity_id AS "referenceEntityId", 
+        gd.reference_entity_type AS "referenceEntityType", gd.document_number AS "documentNumber", 
+        gd.status, gd.generated_by AS "generatedById", gd.generated_at AS "generatedAt", 
+        gd.docx_file_path AS "docxFilePath", gd.pdf_file_path AS "pdfFilePath", 
+        COALESCE(
+          gd.snapshot_content,
+          (SELECT tv.editor_content FROM template_versions tv WHERE tv.template_id = gd.template_id AND tv.created_at <= gd.generated_at ORDER BY tv.created_at DESC LIMIT 1)
+        ) AS "snapshotContent",
+        (SELECT json_build_object('id', dt.id, 'templateName', dt.template_name) FROM document_templates dt WHERE dt.id = gd.template_id) AS template,
+        (SELECT json_build_object('id', dc.id, 'categoryName', dc.category_name) FROM document_categories dc WHERE dc.id = gd.category_id) AS category,
+        (SELECT json_build_object('id', u.id, 'name', u.name, 'workEmail', u.work_email) FROM users u WHERE u.id = gd.generated_by) AS "generatedBy",
+        json_build_object(
+          'values', (SELECT COUNT(*) FROM generated_document_values gdv WHERE gdv.generated_document_id = gd.id)::int,
+          'files', (SELECT COUNT(*) FROM document_files df WHERE df.generated_document_id = gd.id)::int
+        ) AS "_count"
+      FROM generated_documents gd
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY gd.generated_at DESC
+    `;
+    const result = await pool.query(query, values);
+    return result.rows;
   }
 
   static async getGeneratedLetterById(tenantId: string, id: string) {
-    const doc = await prisma.generatedDocument.findFirst({
-      where: { id, tenantId },
-      include: {
-        template: {
-          include: { placeholders: true },
-        },
-        category: true,
-        values: true,
-        files: true,
-        generatedBy: { select: { id: true, name: true, workEmail: true } },
-      },
-    });
+    const query = `
+      SELECT 
+        gd.id, gd.tenant_id AS "tenantId", gd.template_id AS "templateId", 
+        gd.category_id AS "categoryId", gd.reference_entity_id AS "referenceEntityId", 
+        gd.reference_entity_type AS "referenceEntityType", gd.document_number AS "documentNumber", 
+        gd.status, gd.generated_by AS "generatedById", gd.generated_at AS "generatedAt", 
+        gd.docx_file_path AS "docxFilePath", gd.pdf_file_path AS "pdfFilePath", 
+        COALESCE(
+          gd.snapshot_content,
+          (SELECT tv.editor_content FROM template_versions tv WHERE tv.template_id = gd.template_id AND tv.created_at <= gd.generated_at ORDER BY tv.created_at DESC LIMIT 1)
+        ) AS "snapshotContent",
+        (
+          SELECT json_build_object(
+            'id', dt.id, 'tenantId', dt.tenant_id, 'templateName', dt.template_name, 'description', dt.description, 'categoryId', dt.category_id, 'editorContent', dt.editor_content, 'status', dt.status, 'createdAt', dt.created_at, 'updatedAt', dt.updated_at, 'createdById', dt.created_by,
+            'placeholders', (
+              SELECT COALESCE(json_agg(json_build_object(
+                'id', tp.id, 'templateId', tp.template_id, 'placeholderKey', tp.placeholder_key, 'placeholderLabel', tp.placeholder_label, 'dataType', tp.data_type, 'required', tp.required, 'defaultValue', tp.default_value, 'displayOrder', tp.display_order
+              )), '[]'::json) FROM template_placeholders tp WHERE tp.template_id = dt.id
+            )
+          ) FROM document_templates dt WHERE dt.id = gd.template_id
+        ) AS template,
+        (SELECT json_build_object('id', dc.id, 'tenantId', dc.tenant_id, 'categoryName', dc.category_name, 'description', dc.description, 'status', dc.status, 'createdAt', dc.created_at, 'updatedAt', dc.updated_at) FROM document_categories dc WHERE dc.id = gd.category_id) AS category,
+        (SELECT json_build_object('id', u.id, 'name', u.name, 'workEmail', u.work_email) FROM users u WHERE u.id = gd.generated_by) AS "generatedBy",
+        (SELECT COALESCE(json_agg(json_build_object(
+          'id', v.id, 'tenantId', v.tenant_id, 'generatedDocumentId', v.generated_document_id, 'placeholderKey', v.placeholder_key, 'placeholderValue', v.placeholder_value, 'createdAt', v.created_at
+        )), '[]'::json) FROM generated_document_values v WHERE v.generated_document_id = gd.id) AS values,
+        (SELECT COALESCE(json_agg(json_build_object(
+          'id', f.id, 'tenantId', f.tenant_id, 'generatedDocumentId', f.generated_document_id, 'fileName', f.file_name, 'fileType', f.file_type, 'filePath', f.file_path, 'storageProvider', f.storage_provider, 'createdAt', f.created_at
+        )), '[]'::json) FROM document_files f WHERE f.generated_document_id = gd.id) AS files
+      FROM generated_documents gd
+      WHERE gd.id = $1 AND gd.tenant_id = $2
+      LIMIT 1
+    `;
+    const result = await pool.query(query, [id, tenantId]);
+    const doc = result.rows[0];
 
     if (!doc) {
       throw new Error('Generated document not found');
@@ -384,107 +430,131 @@ export class GeneratedLetterService {
     return doc;
   }
 
+  private static async getFullDoc(id: string) {
+    const query = `
+      SELECT 
+        gd.id, gd.tenant_id AS "tenantId", gd.template_id AS "templateId", 
+        gd.category_id AS "categoryId", gd.reference_entity_id AS "referenceEntityId", 
+        gd.reference_entity_type AS "referenceEntityType", gd.document_number AS "documentNumber", 
+        gd.status, gd.generated_by AS "generatedById", gd.generated_at AS "generatedAt", 
+        gd.docx_file_path AS "docxFilePath", gd.pdf_file_path AS "pdfFilePath", 
+        COALESCE(
+          gd.snapshot_content,
+          (SELECT tv.editor_content FROM template_versions tv WHERE tv.template_id = gd.template_id AND tv.created_at <= gd.generated_at ORDER BY tv.created_at DESC LIMIT 1)
+        ) AS "snapshotContent",
+        (SELECT json_build_object('id', dt.id, 'tenantId', dt.tenant_id, 'templateName', dt.template_name, 'description', dt.description, 'categoryId', dt.category_id, 'editorContent', dt.editor_content, 'status', dt.status, 'createdAt', dt.created_at, 'updatedAt', dt.updated_at, 'createdById', dt.created_by) FROM document_templates dt WHERE dt.id = gd.template_id) AS template,
+        (SELECT json_build_object('id', dc.id, 'tenantId', dc.tenant_id, 'categoryName', dc.category_name, 'description', dc.description, 'status', dc.status, 'createdAt', dc.created_at, 'updatedAt', dc.updated_at) FROM document_categories dc WHERE dc.id = gd.category_id) AS category,
+        (SELECT COALESCE(json_agg(json_build_object('id', v.id, 'tenantId', v.tenant_id, 'generatedDocumentId', v.generated_document_id, 'placeholderKey', v.placeholder_key, 'placeholderValue', v.placeholder_value, 'createdAt', v.created_at)), '[]'::json) FROM generated_document_values v WHERE v.generated_document_id = gd.id) AS values,
+        (SELECT COALESCE(json_agg(json_build_object('id', f.id, 'tenantId', f.tenant_id, 'generatedDocumentId', f.generated_document_id, 'fileName', f.file_name, 'fileType', f.file_type, 'filePath', f.file_path, 'storageProvider', f.storage_provider, 'createdAt', f.created_at)), '[]'::json) FROM document_files f WHERE f.generated_document_id = gd.id) AS files
+      FROM generated_documents gd
+      WHERE gd.id = $1
+      LIMIT 1
+    `;
+    const result = await pool.query(query, [id]);
+    return result.rows[0];
+  }
+
   static async generateLetter(tenantId: string, data: GenerateLetterDto, userId: string, ipAddress?: string) {
-    const template = await prisma.documentTemplate.findFirst({
-      where: { id: data.templateId, tenantId },
-      include: { category: true },
-    });
+    const tplRes = await pool.query(`SELECT id, category_id AS "categoryId", template_name AS "templateName", editor_content AS "editorContent" FROM document_templates WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [data.templateId, tenantId]);
+    const template = tplRes.rows[0];
 
     if (!template) {
       throw new Error('Template not found');
     }
 
     const documentNumber = data.documentNumber || `DOC-${Date.now().toString().slice(-6)}`;
+    
+    // Pre-generate UUID
+    const uuidRes = await pool.query('SELECT gen_random_uuid() AS id');
+    const generatedDocId = uuidRes.rows[0].id;
+    
+    // Generate PDF and DOCX before transaction
+    const snapshotContentToSave = data.customContent || template.editorContent;
+    const placeholdersRes = await pool.query('SELECT placeholder_key AS "placeholderKey" FROM template_placeholders WHERE template_id = $1', [template.id]);
+    const templatePlaceholders = placeholdersRes.rows;
+    
+    const renderedHtmlWithConfig = await this.substitutePlaceholders(tenantId, snapshotContentToSave, data.values, templatePlaceholders);
+    
+    let pageConfig: any = {};
+    const configRegex = /<script\s+id="zith-page-config"\s+type="application\/json">([\s\S]*?)<\/script>/i;
+    const match = configRegex.exec(renderedHtmlWithConfig);
+    if (match && match[1]) {
+      try {
+        pageConfig = JSON.parse(match[1]);
+      } catch (e) { }
+    }
+    // Pass HTML with the config tag intact so generatePDFBuffer can read header/footer settings
+    const renderedHtml = renderedHtmlWithConfig.replace(configRegex, '');
+    
+    const headerHtml = pageConfig.headerHtml;
+    const footerHtml = pageConfig.footerHtml;
+    
+    const pdfBuffer = await this.generatePDFBuffer(renderedHtmlWithConfig);
+    const docxBuffer = await this.generateDOCXBuffer(renderedHtml, `${template.templateName} - ${documentNumber}`, headerHtml, footerHtml);
+    
+    const safeTemplateName = template.templateName.replace(/\s+/g, '_');
+    const pdfFileName = `${documentNumber}_${safeTemplateName}.pdf`;
+    const docxFileName = `${documentNumber}_${safeTemplateName}.docx`;
+    
+    const pdfUrl = await uploadDocumentToR2(pdfBuffer, pdfFileName, tenantId, generatedDocId, 'application/pdf');
+    const docxUrl = await uploadDocumentToR2(docxBuffer, docxFileName, tenantId, generatedDocId, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
 
-    return await prisma.$transaction(async (tx) => {
-      const generatedDoc = await tx.generatedDocument.create({
-        data: {
-          tenantId,
-          templateId: template.id,
-          categoryId: template.categoryId || null,
-          referenceEntityId: data.referenceEntityId || null,
-          referenceEntityType: data.referenceEntityType || 'EMPLOYEE',
-          documentNumber,
-          status: 'GENERATED',
-          generatedById: userId,
-          docxFilePath: `/api/hrms/generated-letters/download-docx`, // Stream endpoint reference
-          pdfFilePath: `/api/hrms/generated-letters/download-pdf`,   // Stream endpoint reference
-        },
-      });
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-      // Save exact placeholder values
+      await client.query(
+        `INSERT INTO generated_documents (id, tenant_id, template_id, category_id, reference_entity_id, reference_entity_type, document_number, status, generated_by, snapshot_content, docx_file_path, pdf_file_path, generated_at) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'GENERATED', $8, $9, $10, $11, NOW())`,
+        [generatedDocId, tenantId, template.id, template.categoryId || null, data.referenceEntityId || null, data.referenceEntityType || 'EMPLOYEE', documentNumber, userId, snapshotContentToSave, docxUrl, pdfUrl]
+      );
+
       const valueEntries = Object.entries(data.values);
       if (valueEntries.length > 0) {
-        await tx.generatedDocumentValue.createMany({
-          data: valueEntries.map(([key, val]) => ({
-            tenantId,
-            generatedDocumentId: generatedDoc.id,
-            placeholderKey: key,
-            placeholderValue: val || '',
-          })),
-        });
+        for (const [key, val] of valueEntries) {
+          await client.query(
+            `INSERT INTO generated_document_values (id, tenant_id, generated_document_id, placeholder_key, placeholder_value, created_at) VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW())`,
+            [tenantId, generatedDocId, key, val || '']
+          );
+        }
       }
 
-      // Record file metadata
-      await tx.documentFile.createMany({
-        data: [
-          {
-            tenantId,
-            generatedDocumentId: generatedDoc.id,
-            fileName: `${template.templateName.replace(/\s+/g, '_')}_${documentNumber}.pdf`,
-            fileType: 'PDF',
-            filePath: `/api/hrms/generated-letters/${generatedDoc.id}/download-pdf`,
-            storageProvider: 'DynamicStream',
-          },
-          {
-            tenantId,
-            generatedDocumentId: generatedDoc.id,
-            fileName: `${template.templateName.replace(/\s+/g, '_')}_${documentNumber}.docx`,
-            fileType: 'DOCX',
-            filePath: `/api/hrms/generated-letters/${generatedDoc.id}/download-docx`,
-            storageProvider: 'DynamicStream',
-          },
-        ],
-      });
+      await client.query(
+        `INSERT INTO document_files (id, tenant_id, generated_document_id, file_name, file_type, file_path, storage_provider, created_at) VALUES 
+         (gen_random_uuid(), $1, $2, $3, 'PDF', $4, 'R2', NOW()),
+         (gen_random_uuid(), $1, $2, $5, 'DOCX', $6, 'R2', NOW())`,
+        [tenantId, generatedDocId, pdfFileName, pdfUrl, docxFileName, docxUrl]
+      );
 
-      // Audit log
-      await tx.documentAuditLog.create({
-        data: {
-          tenantId,
-          module: 'Letter Generation',
-          referenceId: generatedDoc.id,
-          action: 'Generated',
-          performedById: userId,
-          ipAddress: ipAddress || null,
-          remarks: `Generated document "${documentNumber}" from template "${template.templateName}"`,
-        },
-      });
+      await client.query(
+        `INSERT INTO document_audit_logs (id, tenant_id, module, reference_id, action, performed_by, ip_address, remarks, created_at) VALUES (gen_random_uuid(), $1, 'Letter Generation', $2, 'Generated', $3, $4, $5, NOW())`,
+        [tenantId, generatedDocId, userId, ipAddress || null, `Generated document "${documentNumber}" from template "${template.templateName}"`]
+      );
 
-      return await tx.generatedDocument.findUnique({
-        where: { id: generatedDoc.id },
-        include: {
-          template: true,
-          category: true,
-          values: true,
-          files: true,
-        },
-      });
-    });
+      await client.query('COMMIT');
+
+      return await this.getFullDoc(generatedDocId);
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
   }
 
   static async updateGeneratedLetter(tenantId: string, id: string, data: GenerateLetterDto, userId: string, ipAddress?: string) {
-    const existingDoc = await prisma.generatedDocument.findFirst({
-      where: { id, tenantId }
-    });
+    const exRes = await pool.query(`SELECT id, template_id AS "templateId", document_number AS "documentNumber", snapshot_content AS "snapshotContent" FROM generated_documents WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [id, tenantId]);
+    const existingDoc = exRes.rows[0];
 
     if (!existingDoc) {
       throw new Error('Generated document not found');
     }
 
-    const template = await prisma.documentTemplate.findFirst({
-      where: { id: data.templateId, tenantId },
-      include: { category: true },
-    });
+    let template = null;
+    if (data.templateId) {
+      const tplRes = await pool.query(`SELECT id, category_id AS "categoryId", template_name AS "templateName", editor_content AS "editorContent" FROM document_templates WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [data.templateId, tenantId]);
+      template = tplRes.rows[0];
+    }
 
     if (!template) {
       throw new Error('Template not found');
@@ -492,93 +562,89 @@ export class GeneratedLetterService {
 
     const documentNumber = data.documentNumber || existingDoc.documentNumber;
 
-    return await prisma.$transaction(async (tx) => {
-      const generatedDoc = await tx.generatedDocument.update({
-        where: { id: existingDoc.id },
-        data: {
-          templateId: template.id,
-          categoryId: template.categoryId || null,
-          referenceEntityId: data.referenceEntityId || null,
-          referenceEntityType: data.referenceEntityType || 'EMPLOYEE',
-          documentNumber,
-        },
-      });
+    const snapshotContentToSave = data.customContent || ((existingDoc.templateId === data.templateId)
+      ? existingDoc.snapshotContent
+      : template.editorContent);
 
-      // Delete old placeholder values
-      await tx.generatedDocumentValue.deleteMany({
-        where: { generatedDocumentId: existingDoc.id },
-      });
+    // Pre-generate PDF and DOCX before transaction
+    const placeholdersRes = await pool.query('SELECT placeholder_key AS "placeholderKey" FROM template_placeholders WHERE template_id = $1', [template.id]);
+    const templatePlaceholders = placeholdersRes.rows;
+    
+    const renderedHtmlWithConfig = await this.substitutePlaceholders(tenantId, snapshotContentToSave, data.values, templatePlaceholders);
+    
+    let pageConfig: any = {};
+    const configRegex = /<script\s+id="zith-page-config"\s+type="application\/json">([\s\S]*?)<\/script>/i;
+    const match = configRegex.exec(renderedHtmlWithConfig);
+    if (match && match[1]) {
+      try {
+        pageConfig = JSON.parse(match[1]);
+      } catch (e) { }
+    }
+    // Pass HTML with the config tag intact so generatePDFBuffer can read header/footer settings
+    const renderedHtml = renderedHtmlWithConfig.replace(configRegex, '');
+    
+    const headerHtml = pageConfig.headerHtml;
+    const footerHtml = pageConfig.footerHtml;
+    
+    const pdfBuffer = await this.generatePDFBuffer(renderedHtmlWithConfig);
+    const docxBuffer = await this.generateDOCXBuffer(renderedHtml, `${template.templateName} - ${documentNumber}`, headerHtml, footerHtml);
+    
+    const safeTemplateName = template.templateName.replace(/\s+/g, '_');
+    const pdfFileName = `${documentNumber}_${safeTemplateName}.pdf`;
+    const docxFileName = `${documentNumber}_${safeTemplateName}.docx`;
+    
+    const pdfUrl = await uploadDocumentToR2(pdfBuffer, pdfFileName, tenantId, existingDoc.id, 'application/pdf');
+    const docxUrl = await uploadDocumentToR2(docxBuffer, docxFileName, tenantId, existingDoc.id, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
 
-      // Save exact placeholder values
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      await client.query(
+        `UPDATE generated_documents SET template_id = $1, category_id = $2, reference_entity_id = $3, reference_entity_type = $4, document_number = $5, snapshot_content = $6, pdf_file_path = $7, docx_file_path = $8 WHERE id = $9`,
+        [template.id, template.categoryId || null, data.referenceEntityId || null, data.referenceEntityType || 'EMPLOYEE', documentNumber, snapshotContentToSave, pdfUrl, docxUrl, existingDoc.id]
+      );
+
+      await client.query(`DELETE FROM generated_document_values WHERE generated_document_id = $1`, [existingDoc.id]);
+
       const valueEntries = Object.entries(data.values);
       if (valueEntries.length > 0) {
-        await tx.generatedDocumentValue.createMany({
-          data: valueEntries.map(([key, val]) => ({
-            tenantId,
-            generatedDocumentId: generatedDoc.id,
-            placeholderKey: key,
-            placeholderValue: val || '',
-          })),
-        });
+        for (const [key, val] of valueEntries) {
+          await client.query(
+            `INSERT INTO generated_document_values (id, tenant_id, generated_document_id, placeholder_key, placeholder_value, created_at) VALUES (gen_random_uuid(), $1, $2, $3, $4, NOW())`,
+            [tenantId, existingDoc.id, key, val || '']
+          );
+        }
       }
 
-      // Update file metadata if necessary
-      await tx.documentFile.deleteMany({
-        where: { generatedDocumentId: existingDoc.id },
-      });
+      await client.query(`DELETE FROM document_files WHERE generated_document_id = $1`, [existingDoc.id]);
 
-      await tx.documentFile.createMany({
-        data: [
-          {
-            tenantId,
-            generatedDocumentId: generatedDoc.id,
-            fileName: `${template.templateName.replace(/\\s+/g, '_')}_${documentNumber}.pdf`,
-            fileType: 'PDF',
-            filePath: `/api/hrms/generated-letters/${generatedDoc.id}/download-pdf`,
-            storageProvider: 'DynamicStream',
-          },
-          {
-            tenantId,
-            generatedDocumentId: generatedDoc.id,
-            fileName: `${template.templateName.replace(/\\s+/g, '_')}_${documentNumber}.docx`,
-            fileType: 'DOCX',
-            filePath: `/api/hrms/generated-letters/${generatedDoc.id}/download-docx`,
-            storageProvider: 'DynamicStream',
-          },
-        ],
-      });
+      await client.query(
+        `INSERT INTO document_files (id, tenant_id, generated_document_id, file_name, file_type, file_path, storage_provider, created_at) VALUES 
+         (gen_random_uuid(), $1, $2, $3, 'PDF', $4, 'R2', NOW()),
+         (gen_random_uuid(), $1, $2, $5, 'DOCX', $6, 'R2', NOW())`,
+        [tenantId, existingDoc.id, pdfFileName, pdfUrl, docxFileName, docxUrl]
+      );
 
-      // Audit log
-      await tx.documentAuditLog.create({
-        data: {
-          tenantId,
-          module: 'Letter Generation',
-          referenceId: generatedDoc.id,
-          action: 'Updated',
-          performedById: userId,
-          ipAddress: ipAddress || null,
-          remarks: `Updated document "${documentNumber}" from template "${template.templateName}"`,
-        },
-      });
+      await client.query(
+        `INSERT INTO document_audit_logs (id, tenant_id, module, reference_id, action, performed_by, ip_address, remarks, created_at) VALUES (gen_random_uuid(), $1, 'Letter Generation', $2, 'Updated', $3, $4, $5, NOW())`,
+        [tenantId, existingDoc.id, userId, ipAddress || null, `Updated generated document "${documentNumber}"`]
+      );
 
-      return await tx.generatedDocument.findUnique({
-        where: { id: generatedDoc.id },
-        include: {
-          template: true,
-          category: true,
-          values: true,
-          files: true,
-        },
-      });
-    });
+      await client.query('COMMIT');
+
+      return await this.getFullDoc(existingDoc.id);
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
   }
 
-  /**
-   * Generate PDF buffer from substituted HTML using Puppeteer
-   */
   static async generatePDFBuffer(htmlContent: string): Promise<Buffer> {
     let pageConfig: any = null;
-    const configRegex = /<script\s+id="zith-page-config"\s+type="application\/json">([\s\S]*?)<\/script>/is;
+    const configRegex = /<script\s+id="zith-page-config"\s+type="application\/json">([\s\S]*?)<\/script>/i;
     const match = configRegex.exec(htmlContent);
     if (match && match[1]) {
       try {
@@ -610,6 +676,7 @@ export class GeneratedLetterService {
             h1, h2, h3 { color: #111827; margin-top: 24px; margin-bottom: 12px; }
             p { margin-bottom: 12px; }
             .html2pdf__page-break hr { display: none !important; border: none !important; opacity: 0 !important; }
+            .logo-placeholder-btn { display: none !important; }
           </style>
         </head>
         <body>
@@ -758,6 +825,7 @@ export class GeneratedLetterService {
           let headerTemplate = `<style>
             #header-wrap, #footer-wrap { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.6; width: 100%; color: #1f2937; padding: 0 20mm; -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
             #header-wrap *, #footer-wrap * { box-sizing: border-box; }
+            .logo-placeholder-btn { display: none !important; }
           </style><div id="header-wrap" style="width: 100%; text-align: center;">`;
           if (hasHeader) {
             headerTemplate += pageConfig.headerHtml;
@@ -833,7 +901,7 @@ export class GeneratedLetterService {
    */
   static async generateDOCXBuffer(htmlContent: string, documentTitle: string, headerHtml?: string, footerHtml?: string): Promise<Buffer> {
     // 1. Filter out the zith-page-config script tag so it doesn't render in the document
-    const configRegex = /<script\s+id="zith-page-config"\s+type="application\/json">([\s\S]*?)<\/script>/is;
+    const configRegex = /<script\s+id="zith-page-config"\s+type="application\/json">([\s\S]*?)<\/script>/i;
     htmlContent = htmlContent.replace(configRegex, '');
 
     const wrappedHtml = `<!DOCTYPE html>
@@ -874,29 +942,20 @@ export class GeneratedLetterService {
   }
 
   static async deleteGeneratedLetter(tenantId: string, id: string, userId: string, ipAddress?: string) {
-    const existing = await prisma.generatedDocument.findFirst({
-      where: { id, tenantId },
-    });
+    const exRes = await pool.query(`SELECT id, document_number AS "documentNumber" FROM generated_documents WHERE id = $1 AND tenant_id = $2 LIMIT 1`, [id, tenantId]);
+    const existing = exRes.rows[0];
 
     if (!existing) {
       throw new Error('Generated document not found');
     }
 
-    const res = await prisma.generatedDocument.delete({
-      where: { id },
-    });
+    const delRes = await pool.query(`DELETE FROM generated_documents WHERE id = $1 RETURNING *`, [id]);
+    const res = delRes.rows[0];
 
-    await prisma.documentAuditLog.create({
-      data: {
-        tenantId,
-        module: 'Letter Generation',
-        referenceId: id,
-        action: 'Deleted',
-        performedById: userId,
-        ipAddress: ipAddress || null,
-        remarks: `Deleted generated document "${existing.documentNumber}"`,
-      },
-    });
+    await pool.query(
+      `INSERT INTO document_audit_logs (id, tenant_id, module, reference_id, action, performed_by, ip_address, remarks, created_at) VALUES (gen_random_uuid(), $1, 'Letter Generation', $2, 'Deleted', $3, $4, $5, NOW())`,
+      [tenantId, id, userId, ipAddress || null, `Deleted generated document "${existing.documentNumber}"`]
+    );
 
     return res;
   }

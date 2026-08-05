@@ -19,6 +19,7 @@ exports.cleanupOrphanedImages = cleanupOrphanedImages;
 exports.generatePresignedUrl = generatePresignedUrl;
 exports.getFileBufferFromR2 = getFileBufferFromR2;
 exports.uploadEscalationDocumentToR2 = uploadEscalationDocumentToR2;
+exports.uploadDocumentToR2 = uploadDocumentToR2;
 const client_s3_1 = require("@aws-sdk/client-s3");
 const s3_request_presigner_1 = require("@aws-sdk/s3-request-presigner");
 const nanoid_1 = require("nanoid");
@@ -722,6 +723,35 @@ async function uploadEscalationDocumentToR2(base64File, fileName, tenantId, esca
     catch (error) {
         console.error("R2 escalation document upload error:", error);
         throw new Error(`Failed to upload escalation document: ${error.message}`);
+    }
+}
+async function uploadDocumentToR2(buffer, fileName, tenantId, documentId, contentType) {
+    try {
+        const fileExtension = fileName.split(".").pop() || "bin";
+        const uniqueId = (0, nanoid_1.nanoid)(12);
+        const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+        const folderPath = `${tenantId}/documents/${documentId}`;
+        const storedFileName = `${folderPath}/${uniqueId}_${sanitizedFileName}`;
+        const params = {
+            Bucket: exports.BUCKET_NAME,
+            Key: storedFileName,
+            Body: buffer,
+            ContentType: contentType,
+            CacheControl: "public, max-age=31536000",
+            ContentDisposition: `attachment; filename="${sanitizedFileName}"`,
+        };
+        await exports.s3Client.send(new client_s3_1.PutObjectCommand(params));
+        let baseUrl = (PUBLIC_URL && !PUBLIC_URL.includes('r2.cloudflarestorage.com'))
+            ? PUBLIC_URL
+            : "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+        if (baseUrl.endsWith('/')) {
+            baseUrl = baseUrl.slice(0, -1);
+        }
+        return `${baseUrl}/${storedFileName}`;
+    }
+    catch (error) {
+        console.error("R2 document upload error:", error);
+        throw new Error(`Failed to upload document: ${error.message}`);
     }
 }
 //# sourceMappingURL=r2Client.js.map
