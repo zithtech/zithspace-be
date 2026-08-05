@@ -148,6 +148,7 @@ const proposalTemplates_1 = __importDefault(require("@/routes/proposalTemplates"
 const projectOverviewRoutes_1 = __importDefault(require("./routes/projectOverviewRoutes"));
 const socketService_1 = require("@/services/socketService");
 const attendancePool_1 = require("@/db/attendancePool");
+const testScopeRoutes_1 = __importDefault(require("@/routes/testScopeRoutes"));
 // Load environment
 dotenv_1.default.config();
 console.log("🚀 API Starting up...");
@@ -369,6 +370,7 @@ app.use("/api/leave-allocation", leaveAllocationRoutes_1.default);
 app.use("/api/leave-request", leaveRequestRoutes_1.default);
 app.use("/api/leave-balances", leaveBalanceRoutes_1.default);
 app.use("/api/v2/leave", routes_1.default);
+app.use("/api/v2/qa/test-scopes", testScopeRoutes_1.default);
 app.use("/api/v2/payroll", routes_3.default);
 app.use("/api/v2/reimbursement", routes_4.default);
 app.use("/api/performance-report", routes_2.default);
