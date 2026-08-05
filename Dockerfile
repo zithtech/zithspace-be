@@ -1,6 +1,6 @@
 # Multi-stage build for z-backend-v2
 # Stage 1: Build TypeScript application
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 
 # Install necessary packages for Puppeteer
 RUN apk add --no-cache \
@@ -20,9 +20,9 @@ COPY package*.json ./
 # Copy Prisma schema first
 COPY prisma/ ./prisma/
 
-# Install dependencies
-RUN npm ci --only=production && \
-    npm install -D typescript @types/node && \
+# Install ALL dependencies (devDependencies are needed to compile TypeScript).
+# This stage is discarded, so it does not affect the final image size.
+RUN npm ci && \
     npx prisma generate
 
 # Copy source code
@@ -32,7 +32,7 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Production image
-FROM node:20-alpine
+FROM node:22-alpine
 
 # Install Chromium and dependencies for Puppeteer in production
 # Install openssl for Prisma compatibility
@@ -68,7 +68,7 @@ COPY --chown=nodejs:nodejs prisma/ ./prisma/
 COPY --chown=nodejs:nodejs package*.json ./
 
 # Install production dependencies only
-RUN npm ci --only=production && \
+RUN npm ci --omit=dev && \
     npm cache clean --force && \
     npx prisma generate
 
