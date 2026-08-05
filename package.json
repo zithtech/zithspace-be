@@ -36,6 +36,9 @@
   ],
   "author": "Dinesh Kumar",
   "license": "ISC",
+  "engines": {
+    "node": "22.x"
+  },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",
     "@aws-sdk/client-s3": "^3.937.0",
