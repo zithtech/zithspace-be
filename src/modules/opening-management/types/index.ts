@@ -644,3 +644,30 @@ export interface Paginated<T> {
   pageSize: number;
   totalPages: number;
 }
+
+// ─── Referrals ─────────────────────────────────────────────────────────────
+
+export interface OpeningReferral {
+  id: string;
+  openingId: string;
+  referredBy: string;
+  name: string;
+  email: string;
+  mobile: string;
+  resumeUrl?: string | null;
+  notes?: string | null;
+  skills: string[];
+  totalExperience: number;
+  status: 'pending' | 'converted' | 'rejected';
+  createdAt: string;
+}
+
+export interface CreateReferralInput {
+  name: string;
+  email: string;
+  mobile: string;
+  resumeUrl?: string | null;
+  notes?: string | null;
+  skills?: string[];
+  totalExperience?: number;
+}

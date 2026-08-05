@@ -244,6 +244,9 @@ export const listOpeningsQuerySchema = z.object({
   hiringManagerId: z.string().trim().max(64).optional(),
   /** Openings this recruiter is assigned to. */
   recruiterId: z.string().trim().max(64).optional(),
+  recruiters: csv.pipe(z.array(z.string()).optional()),
+  experience: csv.pipe(z.array(z.string()).optional()),
+  jobTitles: csv.pipe(z.array(z.string()).optional()),
   /**
    * Archived openings are finished work (Phase 7) and are hidden by default.
    * `only` is the archive view.

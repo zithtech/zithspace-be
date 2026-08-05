@@ -14,6 +14,7 @@ import approvalRoutes from './approval.routes';
 import statusRoutes from './status.routes';
 import postingRoutes from './posting.routes';
 import applicationRoutes from './application.routes';
+import referralRoutes from './referral.routes';
 import dashboardRoutes from './dashboard.routes';
 import aiAssistRoutes from './aiAssist.routes';
 import closureRoutes from './closure.routes';
@@ -110,6 +111,7 @@ router.use('/', postingRoutes);
 
 // Phase 5 — per-opening candidate intake (`/:id/applications`, …).
 router.use('/', applicationRoutes);
+router.use('/', referralRoutes);
 
 // Phase 7 — per-opening closing and archiving (`/:id/close`, …).
 router.use('/', closureRoutes);

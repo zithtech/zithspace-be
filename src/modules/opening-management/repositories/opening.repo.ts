@@ -365,6 +365,9 @@ export interface ListFilters {
   subDepartmentId?: string;
   hiringManagerId?: string;
   recruiterId?: string;
+  recruiters?: string[];
+  experience?: string[];
+  jobTitles?: string[];
   /**
    * Archived openings are finished work. 'exclude' (the default) keeps them out
    * of the working list, 'only' is the archive view.
@@ -428,6 +431,26 @@ function buildWhere(filters: ListFilters, params: any[]): string {
       `EXISTS (SELECT 1 FROM om_opening_recruiters r
                 WHERE r.opening_id = o.id AND r.recruiter_id = ${push(filters.recruiterId)})`
     );
+  }
+  if (filters.recruiters?.length) {
+    conditions.push(
+      `EXISTS (SELECT 1 FROM om_opening_recruiters r
+                WHERE r.opening_id = o.id AND r.recruiter_id = ANY(${push(filters.recruiters)}))`
+    );
+  }
+  if (filters.jobTitles?.length) {
+    conditions.push(`o.job_title = ANY(${push(filters.jobTitles)})`);
+  }
+  if (filters.experience?.length) {
+    const expConds = filters.experience.map(exp => {
+      if (exp === '0-2') return `(o.min_experience <= 2 OR o.min_experience IS NULL)`;
+      if (exp === '3-5') return `(o.min_experience >= 3 AND o.min_experience <= 5)`;
+      if (exp === '5+') return `(o.min_experience >= 5)`;
+      return null;
+    }).filter(Boolean);
+    if (expConds.length > 0) {
+      conditions.push(`(${expConds.join(' OR ')})`);
+    }
   }
 
   return conditions.join(' AND ');

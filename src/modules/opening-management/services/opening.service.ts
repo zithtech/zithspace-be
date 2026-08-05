@@ -277,6 +277,9 @@ export async function listOpenings(
       subDepartmentId: query.subDepartmentId,
       hiringManagerId: query.hiringManagerId,
       recruiterId: query.recruiterId,
+      recruiters: query.recruiters,
+      experience: query.experience,
+      jobTitles: query.jobTitles,
       archived: query.archived,
     };
 
@@ -344,6 +347,7 @@ export async function updateOpening(
     await validateReferences(client, input as Partial<CreateOpeningInput>);
     assertMergedRangesValid(existing, input);
 
+    
     const { recruiters, hiringTeam, requiredDocuments, ...fields } = input as any;
 
     // A payload of nothing but child collections is legitimate — skip the

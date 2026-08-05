@@ -69,7 +69,18 @@ async function resolveApprover(
 ): Promise<{ approverId: string | null; roleId: string | null }> {
   switch (step.approverType) {
     case 'hiring_manager': {
-      const approverId = opening.hiringManagerId ?? step.fallbackUserId ?? null;
+      let approverId = opening.hiringManagerId;
+      if (!approverId) {
+        const { rows } = await client.query<{ member_id: string }>(
+          `SELECT member_id FROM om_opening_hiring_team 
+            WHERE opening_id = $1 AND member_type = 'hiring_manager' AND member_id IS NOT NULL 
+            LIMIT 1`,
+          [opening.id]
+        );
+        approverId = rows[0]?.member_id ?? null;
+      }
+      approverId = approverId ?? step.fallbackUserId ?? null;
+
       if (!approverId) {
         throw OpeningError.badRequest(
           `Step "${step.stepName}" needs a hiring manager — assign one on the opening, or give the step a fallback approver`
