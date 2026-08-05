@@ -16,6 +16,8 @@ import {
 } from '../controllers/testScopeSettingsController';
 import { authenticateToken } from '../middleware/auth';
 import { resolveTenant } from '../middleware/tenantContext';
+import { requireAnyPermission } from '../middleware/permission';
+import { Permissions } from '../types/permissions';
 
 const router = express.Router();
 
@@ -23,20 +25,20 @@ const router = express.Router();
 router.use(resolveTenant);
 router.use(authenticateToken);
 
-router.get('/', getTestScopes);
-router.post('/', createTestScope);
-router.post('/generate-ai', generateScopeContentAI);
+router.get('/', requireAnyPermission(Permissions.QA_SCOPE_READ, Permissions.QA_MANAGE), getTestScopes);
+router.post('/', requireAnyPermission(Permissions.QA_SCOPE_CREATE, Permissions.QA_MANAGE), createTestScope);
+router.post('/generate-ai', requireAnyPermission(Permissions.QA_SCOPE_CREATE, Permissions.QA_MANAGE), generateScopeContentAI);
 
 // Scope Settings (Type, Priority, Status)
-router.get('/settings', getScopeSettings);
-router.post('/settings', createScopeSetting);
-router.put('/settings/:id', updateScopeSetting);
-router.delete('/settings/:id', deleteScopeSetting);
+router.get('/settings', requireAnyPermission(Permissions.QA_SCOPE_READ, Permissions.QA_MANAGE), getScopeSettings);
+router.post('/settings', requireAnyPermission(Permissions.QA_SCOPE_CREATE, Permissions.QA_MANAGE), createScopeSetting);
+router.put('/settings/:id', requireAnyPermission(Permissions.QA_SCOPE_UPDATE, Permissions.QA_MANAGE), updateScopeSetting);
+router.delete('/settings/:id', requireAnyPermission(Permissions.QA_SCOPE_DELETE, Permissions.QA_MANAGE), deleteScopeSetting);
 
 // Dynamic ID routes must be at the bottom
-router.get('/:id', getTestScope);
-router.put('/:id', updateTestScope);
-router.delete('/:id', deleteTestScope);
-router.post('/:id/export-pdf', exportPdf);
+router.get('/:id', requireAnyPermission(Permissions.QA_SCOPE_READ, Permissions.QA_MANAGE), getTestScope);
+router.put('/:id', requireAnyPermission(Permissions.QA_SCOPE_UPDATE, Permissions.QA_MANAGE), updateTestScope);
+router.delete('/:id', requireAnyPermission(Permissions.QA_SCOPE_DELETE, Permissions.QA_MANAGE), deleteTestScope);
+router.post('/:id/export-pdf', requireAnyPermission(Permissions.QA_SCOPE_READ, Permissions.QA_MANAGE), exportPdf);
 
 export default router;
