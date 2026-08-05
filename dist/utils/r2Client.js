@@ -418,7 +418,13 @@ async function uploadCandidateDocumentToR2(base64File, fileName, tenantId, candi
             Body: buffer,
             ContentType: contentType,
         }));
-        const baseUrl = PUBLIC_URL || "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+        let baseUrl = (PUBLIC_URL && !PUBLIC_URL.includes('r2.cloudflarestorage.com'))
+            ? PUBLIC_URL
+            : "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+        // Remove trailing slash if present to avoid double slashes
+        if (baseUrl.endsWith('/')) {
+            baseUrl = baseUrl.slice(0, -1);
+        }
         return `${baseUrl}/${key}`;
     }
     catch (error) {

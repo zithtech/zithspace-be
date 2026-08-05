@@ -4,10 +4,12 @@ import { AuthRequest } from '@/types';
 import { handle, actorOf, ok } from '../http';
 import * as candidateService from '../services/candidateService';
 import * as logService from '../services/logService';
+import * as documentService from '../services/documentService';
 import { parseResumeFile } from '../services/resumeParser';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import { uploadCandidateDocumentToR2 } from '../../../utils/r2Client';
 
 const uploadDir = path.join(process.cwd(), 'uploads', 'resumes');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
@@ -96,3 +98,72 @@ export const sendDraftEmail = handle(async (req: AuthRequest, res: Response) => 
   const email = await candidateService.updateAndSendEmail(actor.tenantId, actor.userId, req.params.emailId, subject, body);
   ok(res, email);
 });
+
+// Documents
+export const requestDocuments = handle(async (req: AuthRequest, res: Response) => {
+  const actor = actorOf(req);
+  const { documents } = req.body;
+  const result = await documentService.requestCandidateDocuments(actor.tenantId, actor.userId, req.params.id, documents);
+  ok(res, result);
+});
+
+export const getCandidateDocuments = handle(async (req: AuthRequest, res: Response) => {
+  const actor = actorOf(req);
+  const docs = await documentService.getCandidateDocuments(actor.tenantId, req.params.id);
+  ok(res, docs);
+});
+
+export const uploadManualDocument = handle(async (req: AuthRequest, res: Response) => {
+  const actor = actorOf(req);
+  if (!req.file) throw new Error('No document file provided');
+  
+  const fileData = fs.readFileSync(req.file.path);
+  const base64Str = fileData.toString('base64');
+  
+  const docType = req.body.document_type;
+  if (!docType) throw new Error('document_type is required');
+  
+  const result = await documentService.uploadManualDocument(
+    actor.tenantId,
+    actor.userId,
+    req.params.id,
+    docType,
+    base64Str,
+    req.file.originalname,
+    req.file.mimetype
+  );
+  
+  ok(res, result);
+});
+
+export const verifyDocument = handle(async (req: AuthRequest, res: Response) => {
+  const actor = actorOf(req);
+  const { status, remarks } = req.body;
+  const doc = await documentService.verifyCandidateDocument(actor.tenantId, actor.userId, req.params.id, req.params.docId, status, remarks);
+  ok(res, doc);
+});
+
+// Portal
+export const getPortalDocuments = handle(async (req: AuthRequest, res: Response) => {
+  const result = await documentService.getPortalDocuments(req.params.token);
+  ok(res, result);
+});
+
+export const uploadPortalDocument = handle(async (req: AuthRequest, res: Response) => {
+  if (!req.file) throw new Error('No document file provided');
+  
+  const fileData = fs.readFileSync(req.file.path);
+  const base64Str = fileData.toString('base64');
+  
+  const result = await documentService.uploadPortalDocument(
+    req.params.token, 
+    req.params.docId, 
+    base64Str, 
+    req.file.originalname, 
+    req.file.mimetype
+  );
+
+  fs.unlinkSync(req.file.path);
+  ok(res, result);
+});
+

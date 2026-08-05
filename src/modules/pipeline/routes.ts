@@ -17,6 +17,12 @@ import {
   resendCandidateEmail,
   sendDraftEmail,
   getCandidateEmails,
+  requestDocuments,
+  getCandidateDocuments,
+  verifyDocument,
+  getPortalDocuments,
+  uploadPortalDocument,
+  uploadManualDocument,
 } from './controllers/candidateController';
 import { 
   createConfig, 
@@ -34,11 +40,12 @@ import {
 
 export const pipelineRouter = Router();
 
+// Public Portal Routes
+pipelineRouter.get('/portal/:token/documents', getPortalDocuments);
+pipelineRouter.post('/portal/:token/documents/:docId/upload', upload.single('document'), uploadPortalDocument);
+
 pipelineRouter.use(resolveTenant);
 pipelineRouter.use(authenticateToken);
-
-
-
 
 // Candidates
 pipelineRouter.post('/candidates/parse-resume', requirePermission(Permissions.RECRUITMENT_CREATE), upload.single('resume'), parseResume);
@@ -50,6 +57,10 @@ pipelineRouter.put('/candidates/:id/status', requirePermission(Permissions.RECRU
 pipelineRouter.delete('/candidates/:id', requirePermission(Permissions.RECRUITMENT_DELETE), deleteCandidate);
 pipelineRouter.get('/candidates/:id/logs', requirePermission(Permissions.RECRUITMENT_READ), getCandidateLogs);
 pipelineRouter.get('/candidates/:id/emails', requirePermission(Permissions.RECRUITMENT_READ), getCandidateEmails);
+pipelineRouter.post('/candidates/:id/documents/request', requirePermission(Permissions.RECRUITMENT_UPDATE), requestDocuments);
+pipelineRouter.get('/candidates/:id/documents', requirePermission(Permissions.RECRUITMENT_READ), getCandidateDocuments);
+pipelineRouter.post('/candidates/:id/documents/upload', requirePermission(Permissions.RECRUITMENT_UPDATE), upload.single('document'), uploadManualDocument);
+pipelineRouter.put('/candidates/:id/documents/:docId/verify', requirePermission(Permissions.RECRUITMENT_UPDATE), verifyDocument);
 pipelineRouter.post('/emails/:emailId/resend', requirePermission(Permissions.RECRUITMENT_UPDATE), resendCandidateEmail);
 pipelineRouter.post('/emails/:emailId/send-draft', requirePermission(Permissions.RECRUITMENT_UPDATE), sendDraftEmail);
 
