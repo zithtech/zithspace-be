@@ -90,4 +90,9 @@ router.post(
   AuthController.createUser,
 );
 
+// Password reset routes
+router.post("/forgot-password", authRateLimit, AuthController.forgotPassword);
+router.get("/reset-password/validate", generalAuthRateLimit, AuthController.validateResetToken);
+router.post("/reset-password", authRateLimit, AuthController.resetPassword);
+
 export default router;
