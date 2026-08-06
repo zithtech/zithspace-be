@@ -6,6 +6,8 @@ import {
   updateTestScope,
   deleteTestScope,
   generateScopeContentAI,
+  enhanceScopeText,
+  aiRewriteScopeSelection,
   exportPdf
 } from '../controllers/testScopeController';
 import {
@@ -28,6 +30,8 @@ router.use(authenticateToken);
 router.get('/', requireAnyPermission(Permissions.QA_SCOPE_READ, Permissions.QA_MANAGE), getTestScopes);
 router.post('/', requireAnyPermission(Permissions.QA_SCOPE_CREATE, Permissions.QA_MANAGE), createTestScope);
 router.post('/generate-ai', requireAnyPermission(Permissions.QA_SCOPE_CREATE, Permissions.QA_MANAGE), generateScopeContentAI);
+router.post('/enhance-text', requireAnyPermission(Permissions.QA_SCOPE_CREATE, Permissions.QA_MANAGE), enhanceScopeText);
+router.post('/ai-rewrite', requireAnyPermission(Permissions.QA_SCOPE_CREATE, Permissions.QA_SCOPE_UPDATE, Permissions.QA_MANAGE), aiRewriteScopeSelection);
 
 // Scope Settings (Type, Priority, Status)
 router.get('/settings', requireAnyPermission(Permissions.QA_SCOPE_READ, Permissions.QA_MANAGE), getScopeSettings);

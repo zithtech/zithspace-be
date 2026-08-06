@@ -202,3 +202,102 @@ export const deleteTestCase = async (req: Request, res: Response) => {
     res.status(500).json({ success: false, error: 'Internal Server Error' });
   }
 };
+
+import { getAIProviderForTenant } from '../services/ai/resolver';
+
+/**
+ * Draft a module test case from a plain-language description.
+ * Returns the name, reproduction steps and expected result so the drawer can
+ * prefill itself — the QA engineer still reviews and saves.
+ */
+export const generateTestCaseAI = async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).user?.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized: No tenant found' });
+    }
+
+    const { prompt, scenarioTitle, moduleName, feature } = req.body || {};
+    const instruction = (prompt || '').trim();
+    if (!instruction) {
+      return res.status(400).json({ success: false, error: 'Describe the test case you want to generate' });
+    }
+    if (instruction.length > 2000) {
+      return res.status(400).json({ success: false, error: 'Description is too long (max 2000 characters)' });
+    }
+
+    const provider = await getAIProviderForTenant(tenantId);
+    if (!provider || !provider.isConfigured()) {
+      return res.status(400).json({ success: false, error: 'AI provider is not configured. Please add an API key in .env or Tenant AI settings.' });
+    }
+
+    const aiPrompt = `
+You are a senior QA engineer writing a single module test case.
+
+Business scenario: ${scenarioTitle || 'N/A'}
+Module: ${moduleName || 'N/A'}
+Feature: ${feature || 'N/A'}
+
+What the tester described:
+${instruction}
+
+Return ONLY a JSON object with exactly these keys, no markdown fences and no commentary:
+{
+  "name": "concise test case title, max 90 characters, starts with a verb like Verify or Validate",
+  "description": "one or two sentences on what this case covers",
+  "preconditions": "what must be true before the steps run, or an empty string",
+  "steps_to_reproduce": ["one action per item, imperative, no leading numbers"],
+  "expected_result": "the single observable outcome that means this case passed",
+  "test_type": "one of Functional, UI, API, Regression, Security, Performance, Usability",
+  "priority": "one of Low, Medium, High, Critical",
+  "severity": "one of Minor, Major, Critical"
+}
+Write 3 to 8 steps. Cover the validation and error paths the tester mentioned.
+`.trim();
+
+    const raw = await provider.generateText(aiPrompt, { temperature: 0.5, maxOutputTokens: 2048 });
+
+    const cleaned = (raw || '')
+      .replace(/^```[a-zA-Z]*\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch {
+      // Models sometimes wrap the object in prose — salvage the outermost braces
+      const start = cleaned.indexOf('{');
+      const end = cleaned.lastIndexOf('}');
+      if (start === -1 || end === -1) {
+        return res.status(502).json({ success: false, error: 'AI returned an unexpected format. Try rephrasing.' });
+      }
+      try {
+        parsed = JSON.parse(cleaned.slice(start, end + 1));
+      } catch {
+        return res.status(502).json({ success: false, error: 'AI returned an unexpected format. Try rephrasing.' });
+      }
+    }
+
+    const steps = Array.isArray(parsed.steps_to_reproduce)
+      ? parsed.steps_to_reproduce.map((s: any) => String(s).replace(/^\d+[.)]\s*/, '').trim()).filter(Boolean)
+      : [];
+
+    res.json({
+      success: true,
+      data: {
+        name: String(parsed.name || '').slice(0, 200),
+        description: String(parsed.description || ''),
+        preconditions: String(parsed.preconditions || ''),
+        steps_to_reproduce: steps,
+        expected_result: String(parsed.expected_result || ''),
+        test_type: parsed.test_type ? String(parsed.test_type) : undefined,
+        priority: parsed.priority ? String(parsed.priority) : undefined,
+        severity: parsed.severity ? String(parsed.severity) : undefined,
+      },
+    });
+  } catch (err: any) {
+    console.error('Failed to generate test case', err);
+    res.status(500).json({ success: false, error: 'Failed to generate test case' });
+  }
+};

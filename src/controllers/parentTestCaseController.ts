@@ -1,6 +1,18 @@
 import { Request, Response } from 'express';
 import pool from '../config/dbpool';
 
+let projectColumnReady = false;
+/** Test cases belong to a project so bugs raised from them land in the right list. */
+const ensureProjectColumn = async () => {
+  if (projectColumnReady) return;
+  try {
+    await pool.query(`ALTER TABLE qa_parent_test_cases ADD COLUMN IF NOT EXISTS project_id TEXT`);
+    projectColumnReady = true;
+  } catch (e) {
+    console.error('Failed to ensure project_id column:', e);
+  }
+};
+
 let schemaFixed = false;
 const ensureModuleFkDropped = async () => {
   if (schemaFixed) return;
@@ -17,6 +29,7 @@ const ensureModuleFkDropped = async () => {
 export const getParentTestCases = async (req: Request, res: Response) => {
   try {
     await ensureModuleFkDropped();
+    await ensureProjectColumn();
     const tenantId = (req as any).user?.tenantId;
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
@@ -71,6 +84,7 @@ export const getParentTestCases = async (req: Request, res: Response) => {
 export const getParentTestCase = async (req: Request, res: Response) => {
   try {
     await ensureModuleFkDropped();
+    await ensureProjectColumn();
     const tenantId = (req as any).user?.tenantId;
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
     const { id } = req.params;
@@ -113,14 +127,15 @@ export const createParentTestCase = async (req: Request, res: Response) => {
     const userId = (req as any).user?.id || null;
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
-    const { title, module_id, feature, automation, owner, status } = req.body;
+    await ensureProjectColumn();
+    const { title, module_id, feature, automation, owner, status, project_id } = req.body;
     if (!title) return res.status(400).json({ success: false, error: 'Title is required' });
 
     const ownerToUse = owner || userId;
 
     const { rows } = await pool.query(`
-      INSERT INTO qa_parent_test_cases (tenant_id, title, module_id, feature, automation, owner, status, created_by, updated_by)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      INSERT INTO qa_parent_test_cases (tenant_id, title, module_id, feature, automation, owner, status, project_id, created_by, updated_by)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
       RETURNING *
     `, [
       tenantId,
@@ -130,6 +145,7 @@ export const createParentTestCase = async (req: Request, res: Response) => {
       automation || 'Manual',
       ownerToUse,
       status || 'Draft',
+      project_id || null,
       userId,
       userId
     ]);
@@ -149,7 +165,8 @@ export const updateParentTestCase = async (req: Request, res: Response) => {
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
     const { id } = req.params;
 
-    const { title, module_id, feature, automation, owner, status } = req.body;
+    await ensureProjectColumn();
+    const { title, module_id, feature, automation, owner, status, project_id } = req.body;
 
     const { rows } = await pool.query(`
       UPDATE qa_parent_test_cases
@@ -159,11 +176,12 @@ export const updateParentTestCase = async (req: Request, res: Response) => {
           automation = COALESCE($4, automation),
           owner = $5,
           status = COALESCE($6, status),
-          updated_by = $7,
+          project_id = COALESCE($7, project_id),
+          updated_by = $8,
           updated_at = NOW()
-      WHERE id = $8 AND tenant_id = $9
+      WHERE id = $9 AND tenant_id = $10
       RETURNING *
-    `, [title, module_id || null, feature || null, automation, owner || null, status, userId, id, tenantId]);
+    `, [title, module_id || null, feature || null, automation, owner || null, status, project_id || null, userId, id, tenantId]);
 
     if (!rows.length) return res.status(404).json({ success: false, error: 'Parent Test Case not found' });
 

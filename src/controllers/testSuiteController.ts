@@ -208,3 +208,78 @@ export const deleteTestSuite = async (req: Request, res: Response) => {
     res.status(500).json({ success: false, error: 'Internal Server Error' });
   }
 };
+
+import { getAIProviderForTenant } from '../services/ai/resolver';
+
+/**
+ * Text assistance for the suite description field.
+ * mode 'generate' drafts a description from the suite's context;
+ * mode 'grammar' does a light-touch copy edit of what the user wrote.
+ */
+export const suiteAiText = async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).user?.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized: No tenant found' });
+    }
+
+    const { mode, text, suiteName, scenarioTitle, moduleName, caseCount } = req.body || {};
+    const input = (text || '').trim();
+
+    if (mode === 'grammar' && !input) {
+      return res.status(400).json({ success: false, error: 'Nothing to polish yet' });
+    }
+    if (input.length > 4000) {
+      return res.status(400).json({ success: false, error: 'Text is too long (max 4000 characters)' });
+    }
+
+    const provider = await getAIProviderForTenant(tenantId);
+    if (!provider || !provider.isConfigured()) {
+      return res.status(400).json({ success: false, error: 'AI provider is not configured. Please add an API key in .env or Tenant AI settings.' });
+    }
+
+    const prompt = mode === 'grammar'
+      ? `
+You are a light-touch copy editor. Make ONLY minimal changes to the text below:
+- Fix spelling, grammar, punctuation, capitalisation, and obvious typos.
+- Preserve the author's voice, tone, structure, line breaks, and technical terms.
+- Do NOT rewrite, summarise, expand, translate, or add anything new.
+- Do NOT wrap in quotes or markdown. Do NOT add a preamble or explanation.
+Return ONLY the corrected text as plain text.
+
+Text:
+${input}
+`.trim()
+      : `
+You are a senior QA engineer describing a test suite.
+
+Suite name: ${suiteName || 'N/A'}
+Business scenario: ${scenarioTitle || 'N/A'}
+Module: ${moduleName || 'N/A'}
+Linked module cases: ${caseCount ?? 'N/A'}
+${input ? `\nWhat the author already wrote:\n${input}\n` : ''}
+Write 2 to 3 sentences covering what this suite validates and when a team would run it.
+Return ONLY plain text — no markdown, no headings, no preamble.
+`.trim();
+
+    const raw = await provider.generateText(prompt, {
+      temperature: mode === 'grammar' ? 0.2 : 0.6,
+      maxOutputTokens: 1024,
+    });
+
+    const cleaned = (raw || '')
+      .replace(/^```[a-zA-Z]*\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .replace(/<[^>]*>/g, '')
+      .trim();
+
+    if (!cleaned) {
+      return res.status(502).json({ success: false, error: 'AI returned an empty response' });
+    }
+
+    res.json({ success: true, data: { text: cleaned } });
+  } catch (err: any) {
+    console.error('Suite AI text error:', err);
+    res.status(500).json({ success: false, error: 'Failed to generate text' });
+  }
+};

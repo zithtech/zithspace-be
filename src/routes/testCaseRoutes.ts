@@ -30,6 +30,7 @@ router.delete('/parents/:id', requireAnyPermission(Permissions.QA_CASE_DELETE, P
 
 // --- Test Cases (Child) ---
 router.get('/', requireAnyPermission(Permissions.QA_CASE_READ, Permissions.QA_MANAGE), testCaseController.getTestCases);
+router.post('/generate-ai', requireAnyPermission(Permissions.QA_CASE_CREATE, Permissions.QA_MANAGE), testCaseController.generateTestCaseAI);
 router.post('/', requireAnyPermission(Permissions.QA_CASE_CREATE, Permissions.QA_MANAGE), testCaseController.createTestCase);
 router.get('/:id', requireAnyPermission(Permissions.QA_CASE_READ, Permissions.QA_MANAGE), testCaseController.getTestCase);
 router.put('/:id', requireAnyPermission(Permissions.QA_CASE_UPDATE, Permissions.QA_MANAGE), testCaseController.updateTestCase);
@@ -37,6 +38,7 @@ router.delete('/:id', requireAnyPermission(Permissions.QA_CASE_DELETE, Permissio
 
 // --- Test Suites ---
 router.get('/suites/all', requireAnyPermission(Permissions.QA_SUITE_READ, Permissions.QA_MANAGE), testSuiteController.getTestSuites);
+router.post('/suites/ai-text', requireAnyPermission(Permissions.QA_SUITE_CREATE, Permissions.QA_SUITE_UPDATE, Permissions.QA_MANAGE), testSuiteController.suiteAiText);
 router.post('/suites', requireAnyPermission(Permissions.QA_SUITE_CREATE, Permissions.QA_MANAGE), testSuiteController.createTestSuite);
 router.get('/suites/:id', requireAnyPermission(Permissions.QA_SUITE_READ, Permissions.QA_MANAGE), testSuiteController.getTestSuite);
 router.put('/suites/:id', requireAnyPermission(Permissions.QA_SUITE_UPDATE, Permissions.QA_MANAGE), testSuiteController.updateTestSuite);
@@ -46,6 +48,11 @@ router.delete('/suites/:id', requireAnyPermission(Permissions.QA_SUITE_DELETE, P
 router.get('/runs/all', requireAnyPermission(Permissions.QA_RUN_READ, Permissions.QA_MANAGE), testRunController.getTestRuns);
 router.post('/runs', requireAnyPermission(Permissions.QA_RUN_CREATE, Permissions.QA_MANAGE), testRunController.createTestRun);
 router.get('/runs/:id', requireAnyPermission(Permissions.QA_RUN_READ, Permissions.QA_MANAGE), testRunController.getTestRun);
+router.post('/runs/note-grammar', requireAnyPermission(Permissions.QA_RUN_UPDATE, Permissions.QA_MANAGE), testRunController.runNoteGrammar);
+router.post('/runs/:runId/cases', requireAnyPermission(Permissions.QA_CASE_CREATE, Permissions.QA_MANAGE), testRunController.addCaseToRun);
+router.post('/runs/:runId/results/:resultId/attachments', requireAnyPermission(Permissions.QA_RUN_UPDATE, Permissions.QA_MANAGE), testRunController.addResultAttachment);
+router.delete('/runs/:runId/results/:resultId/attachments/:attachmentId', requireAnyPermission(Permissions.QA_RUN_UPDATE, Permissions.QA_MANAGE), testRunController.deleteResultAttachment);
+router.post('/runs/:runId/results/:resultId/bug-link', requireAnyPermission(Permissions.QA_RUN_UPDATE, Permissions.QA_MANAGE), testRunController.linkResultBug);
 router.put('/runs/:runId/results/:resultId', requireAnyPermission(Permissions.QA_RUN_UPDATE, Permissions.QA_MANAGE), testRunController.updateTestRunResult);
 router.delete('/runs/:id', requireAnyPermission(Permissions.QA_RUN_DELETE, Permissions.QA_MANAGE), testRunController.deleteTestRun);
 
