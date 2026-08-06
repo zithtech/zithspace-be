@@ -495,6 +495,42 @@ export async function uploadEmployeeAssetToR2({
 }
 
 /**
+ * Upload a resume file (from disk path) to Cloudflare R2.
+ * Returns a public URL suitable for Google Docs Viewer.
+ * Path: {tenantId}/resumes/{uniqueId}_{fileName}
+ */
+export async function uploadResumeToR2(
+  filePath: string,
+  fileName: string,
+  tenantId: string,
+  mimeType: string,
+): Promise<string> {
+  const fs = await import('fs');
+  const buffer = fs.readFileSync(filePath);
+  const uniqueId = nanoid(12);
+  const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+  const key = `${tenantId}/resumes/${uniqueId}_${sanitizedFileName}`;
+
+  await s3Client.send(
+    new PutObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+      Body: buffer,
+      ContentType: mimeType,
+      ContentDisposition: 'inline',
+      CacheControl: 'public, max-age=31536000',
+    }),
+  );
+
+  let baseUrl = (PUBLIC_URL && !PUBLIC_URL.includes('r2.cloudflarestorage.com'))
+    ? PUBLIC_URL
+    : 'https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev';
+  if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
+
+  return `${baseUrl}/${key}`;
+}
+
+/**
  * Upload candidate document to Cloudflare R2
  * @param base64File - Base64 encoded file string
  * @param fileName - Original file name
