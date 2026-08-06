@@ -959,3 +959,54 @@ export async function uploadDocumentToR2(
     throw new Error(`Failed to upload document: ${error.message}`);
   }
 }
+
+/**
+ * Upload an attachment captured while executing a test run (screenshot, log,
+ * recording) to Cloudflare R2, organised by tenant, run and result.
+ */
+export async function uploadRunAttachmentToR2(
+  base64File: string,
+  fileName: string,
+  tenantId: string,
+  runId: string,
+  resultId: string,
+): Promise<{ fileUrl: string; fileSize: number; fileType: string }> {
+  try {
+    const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+    if (!matches) {
+      throw new Error("Invalid file format. Expected a base64 data URI.");
+    }
+
+    const contentType = matches[1];
+    const buffer = Buffer.from(matches[2], "base64");
+
+    const fileSizeInBytes = buffer.length;
+    if (fileSizeInBytes / (1024 * 1024) > 10) {
+      throw new Error("File size exceeds the 10MB limit");
+    }
+
+    const uniqueId = nanoid(12);
+    const sanitizedFileName = (fileName || "attachment").replace(/[^a-zA-Z0-9.-]/g, "_");
+    const key = `${tenantId}/qa/test-runs/${runId}/${resultId}/${uniqueId}_${sanitizedFileName}`;
+
+    await s3Client.send(
+      new PutObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+        CacheControl: "public, max-age=31536000",
+      }),
+    );
+
+    let baseUrl = (PUBLIC_URL && !PUBLIC_URL.includes("r2.cloudflarestorage.com"))
+      ? PUBLIC_URL
+      : "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+    if (baseUrl.endsWith("/")) baseUrl = baseUrl.slice(0, -1);
+
+    return { fileUrl: `${baseUrl}/${key}`, fileSize: fileSizeInBytes, fileType: contentType };
+  } catch (error: any) {
+    console.error("R2 run attachment upload error:", error);
+    throw new Error(`Failed to upload attachment: ${error.message}`);
+  }
+}

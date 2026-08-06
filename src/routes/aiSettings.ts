@@ -1,10 +1,12 @@
 import { Router } from "express";
 import { authenticateToken } from "@/middleware/auth";
+import { resolveTenant } from "@/middleware/tenantContext";
 import { requirePermission } from "@/middleware/permission";
 import { AiSettingsController } from "@/controllers/AiSettingsController";
 
 const router = Router();
 
+router.use(resolveTenant);
 router.use(authenticateToken);
 
 // Read the tenant's AI config + the predefined platform menu.
