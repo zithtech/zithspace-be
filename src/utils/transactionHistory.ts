@@ -49,6 +49,7 @@ export const Module = {
   MY_PROFILE: "MyProfile",
   ATTENDANCE: "Attendance",
   PERFORMANCE_REPORT: "PerformanceReport",
+  RECRUITMENT: "Recruitment",
   // FINANCE
   ACCOUNTS: "Accounts",
   INVOICES: "Invoices",
@@ -193,6 +194,13 @@ export const Page = {
   INVOICE_SETTINGS_VIEW: "InvoiceSettingsView",
   INVOICE_TEMPLATE_LIST: "InvoiceTemplateList",
   INVOICE_TRASH_VIEW: "InvoiceTrashView",
+  // Recruitment module pages
+  OPENING_LIST: "OpeningList",
+  OPENING_DETAIL: "OpeningDetail",
+  OPENING_APPROVALS: "OpeningApprovals",
+  OPENING_APPROVAL_WORKFLOWS: "OpeningApprovalWorkflows",
+  OPENING_POSTINGS: "OpeningPostings",
+  OPENING_CANDIDATES: "OpeningCandidates",
 } as const;
 export type PageT = typeof Page[keyof typeof Page];
 
@@ -334,6 +342,12 @@ export const EntityType = {
   INVOICE_TEMPLATE: "invoice_template",
   INVOICE_CUSTOMER: "invoice_customer",
   INVOICE_SETTINGS_PROFILE: "invoice_settings_profile",
+  // Recruitment entities
+  OPENING: "opening",
+  OPENING_APPROVAL: "opening_approval",
+  OPENING_APPROVAL_WORKFLOW: "opening_approval_workflow",
+  OPENING_POSTING: "opening_posting",
+  OPENING_APPLICATION: "opening_application",
 } as const;
 
 // ===== PII scrub =====
