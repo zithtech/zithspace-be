@@ -132,6 +132,7 @@ export const deleteTestScope = async (req: Request, res: Response) => {
 };
 
 import { getAIProviderForTenant } from '../services/ai/resolver';
+import { rewriteSelection } from '../services/aiDocumentService';
 
 export const generateScopeContentAI = async (req: Request, res: Response) => {
   try {
@@ -142,18 +143,23 @@ export const generateScopeContentAI = async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: 'Unauthorized: No tenant found' });
     }
 
-    const { field, projectOverview, modules, testingTypes, userPrompt } = req.body;
-    
+    const { field, projectOverview, modules, testingTypes, userPrompt, scopeName } = req.body;
+
     const provider = await getAIProviderForTenant(tenantId);
     if (!provider || !provider.isConfigured()) {
       return res.status(400).json({ success: false, error: 'AI provider is not configured. Please add an API key in .env or Tenant AI settings.' });
     }
 
-    const fieldLabel = field === 'outScope' ? 'Out of Scope' : 'In Scope';
+    const isDescription = field === 'description';
+    const fieldLabel = isDescription
+      ? 'Description'
+      : field === 'outScope' ? 'Out of Scope' : 'In Scope';
+
     let prompt = `
 You are a senior QA engineer writing a Test Scope document.
 Generate the "${fieldLabel}" section based on the following project context.
 
+Test Scope Name: ${scopeName || 'N/A'}
 Project Overview: ${projectOverview || 'N/A'}
 Modules: ${modules && modules.length > 0 ? modules.join(', ') : 'N/A'}
 Testing Types: ${testingTypes && testingTypes.length > 0 ? testingTypes.join(', ') : 'N/A'}
@@ -163,22 +169,117 @@ Testing Types: ${testingTypes && testingTypes.length > 0 ? testingTypes.join(', 
       prompt += `\nAdditional user instructions: ${userPrompt}\n`;
     }
 
-    prompt += `
-Return ONLY a valid HTML snippet containing the content. Do not include any markdown fences (like \`\`\`html) or preamble. 
+    prompt += isDescription
+      ? `
+Write a concise summary (2-4 sentences) a reviewer can read in one pass: what is being
+tested and why it matters. Return ONLY plain text — no markdown, no HTML, no preamble.
+`
+      : `
+Return ONLY a valid HTML snippet containing the content. Do not include any markdown fences (like \`\`\`html) or preamble.
 Format it nicely using HTML tags like <p>, <ul>, <li>, <strong>.
 `;
-    
+
     const result = await provider.generateText(prompt, {
       temperature: 0.7,
       maxOutputTokens: 2048,
     });
-    
-    const cleanHtml = result.replace(/^```html\s*/i, '').replace(/\s*```$/i, '').trim();
 
-    res.json({ success: true, data: cleanHtml });
+    const cleaned = result
+      .replace(/^```[a-zA-Z]*\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
+
+    res.json({ success: true, data: isDescription ? cleaned.replace(/<[^>]*>/g, '') : cleaned });
   } catch (err: any) {
     console.error('Failed to generate scope content', err);
     res.status(500).json({ success: false, error: 'Failed to generate content' });
+  }
+};
+
+/**
+ * Light-touch copy edit for a free-text field (currently the scope Description).
+ * Fixes grammar/spelling only — never rewrites or expands the author's text.
+ */
+export const enhanceScopeText = async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).user?.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized: No tenant found' });
+    }
+
+    const { text } = req.body || {};
+    if (typeof text !== 'string' || !text.trim()) {
+      return res.status(400).json({ success: false, error: 'text is required' });
+    }
+    if (text.length > 8000) {
+      return res.status(400).json({ success: false, error: 'text is too long' });
+    }
+
+    const provider = await getAIProviderForTenant(tenantId);
+    if (!provider || !provider.isConfigured()) {
+      return res.status(400).json({ success: false, error: 'AI provider is not configured. Please add an API key in .env or Tenant AI settings.' });
+    }
+
+    const input = text.trim();
+    const prompt = `
+You are a light-touch copy editor. Make ONLY minimal changes to the text below:
+- Fix spelling, grammar, punctuation, capitalisation, and obvious typos.
+- Preserve the author's voice, tone, structure, line breaks, and technical terms.
+- Do NOT rewrite, summarise, expand, translate, or add anything new.
+- Do NOT wrap in quotes or markdown. Do NOT add a preamble or explanation.
+Return ONLY the corrected text as plain text.
+
+Text:
+${input}
+`.trim();
+
+    const out = (await provider.generateText(prompt, { temperature: 0.2, maxOutputTokens: 2048 }) || '').trim();
+    const corrected = out
+      .replace(/^```[a-zA-Z]*\n?/, '')
+      .replace(/```$/, '')
+      .trim() || input;
+
+    res.json({ success: true, data: { text: corrected } });
+  } catch (err: any) {
+    console.error('Failed to enhance scope text', err);
+    res.status(500).json({ success: false, error: 'Grammar enhancement failed' });
+  }
+};
+
+/**
+ * Rewrite a selected excerpt of the scope editor per a user instruction.
+ * Mirrors POST /api/documenthub/ai-rewrite so the inline Zai menu works for
+ * QA users, who hold scope permissions rather than DOCUMENT_UPDATE.
+ */
+export const aiRewriteScopeSelection = async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).user?.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized: No tenant found' });
+    }
+
+    const { text, instruction } = req.body as { text?: string; instruction?: string };
+    const cleanText = (text || '').trim();
+    const cleanInstruction = (instruction || '').trim();
+
+    if (!cleanText || cleanText.length < 2) {
+      return res.status(400).json({ success: false, error: 'Selected text is required (min 2 characters)' });
+    }
+    if (cleanText.length > 8000) {
+      return res.status(400).json({ success: false, error: 'Selected text is too long (max 8000 characters)' });
+    }
+    if (!cleanInstruction || cleanInstruction.length < 2) {
+      return res.status(400).json({ success: false, error: 'Instruction is required' });
+    }
+    if (cleanInstruction.length > 500) {
+      return res.status(400).json({ success: false, error: 'Instruction is too long (max 500 characters)' });
+    }
+
+    const result = await rewriteSelection(cleanText, cleanInstruction, tenantId);
+    res.status(200).json({ success: true, data: result, message: 'Selection rewritten' });
+  } catch (err: any) {
+    console.error('AI rewrite scope selection error:', err);
+    res.status(500).json({ success: false, error: 'Failed to rewrite selection' });
   }
 };
 

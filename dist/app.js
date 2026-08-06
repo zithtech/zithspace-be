@@ -23,6 +23,7 @@ const express_session_1 = __importDefault(require("express-session"));
 // Import configurations
 const database_1 = require("@/config/database");
 const gradeRoutes_1 = __importDefault(require("@/routes/gradeRoutes"));
+const testCaseRoutes_1 = __importDefault(require("./routes/testCaseRoutes"));
 const companyRoutes_1 = __importDefault(require("./routes/companyRoutes"));
 const auth_1 = __importDefault(require("@/routes/auth"));
 const tenants_1 = __importDefault(require("@/routes/tenants"));
@@ -372,6 +373,7 @@ app.use("/api/leave-request", leaveRequestRoutes_1.default);
 app.use("/api/leave-balances", leaveBalanceRoutes_1.default);
 app.use("/api/v2/leave", routes_1.default);
 app.use("/api/v2/qa/test-scopes", testScopeRoutes_1.default);
+app.use("/api/v2/qa", testCaseRoutes_1.default); // Registers /api/v2/qa/modules, /api/v2/qa/, /api/v2/qa/suites, /api/v2/qa/runs
 app.use("/api/v2/payroll", routes_3.default);
 app.use("/api/v2/reimbursement", routes_4.default);
 app.use("/api/v2/openings", routes_5.default);
