@@ -11,25 +11,60 @@ export interface CreateCandidateDto {
   current_ctc?: number;
   expected_ctc?: number;
   resume_url?: string;
+  skills?: string[];
 }
 
 export async function createCandidate(tenantId: string, userId: string, data: CreateCandidateDto) {
   return withTenant(tenantId, async (client) => {
-    // Duplicate check
     if (data.email || data.mobile) {
       const { rows: dups } = await client.query(
         `SELECT id FROM pipeline_candidates WHERE tenant_id = $1 AND (email = $2 OR mobile = $3)`,
         [tenantId, data.email || null, data.mobile || null]
       );
       if (dups.length > 0) {
-        throw new PipelineError('Candidate with this email or mobile already exists', 'DUPLICATE_CANDIDATE');
+        const existingCandidateId = dups[0].id;
+        // Check when their last application was created
+        const { rows: lastAppRows } = await client.query(
+          `SELECT created_at FROM om_opening_applications 
+           WHERE pipeline_candidate_id = $1 
+           ORDER BY created_at DESC LIMIT 1`,
+          [existingCandidateId]
+        );
+        
+        const lastAppDate = lastAppRows.length > 0 ? new Date(lastAppRows[0].created_at) : null;
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+        if (lastAppDate && lastAppDate > sixMonthsAgo) {
+          throw new PipelineError('Candidate with this email or mobile has applied within the last 6 months', 'DUPLICATE_CANDIDATE');
+        }
+
+        // If older than 6 months (or no application found), update their info and return the existing record
+        const { rows: updatedRows } = await client.query(
+          `UPDATE pipeline_candidates 
+           SET role = $2, name = $3, mobile = $4, email = $5, total_experience = COALESCE($6, total_experience), 
+               resume_url = COALESCE($7, resume_url), skills = COALESCE($8, skills), updated_at = now()
+           WHERE id = $1
+           RETURNING *`,
+          [
+            existingCandidateId,
+            data.role,
+            data.name,
+            data.mobile,
+            data.email,
+            String(data.total_experience) === '' ? null : Number(data.total_experience),
+            data.resume_url,
+            data.skills ? JSON.stringify(data.skills) : null
+          ]
+        );
+        return updatedRows[0];
       }
     }
 
     const { rows } = await client.query(
       `INSERT INTO pipeline_candidates 
-       (tenant_id, role, name, mobile, email, total_experience, current_ctc, expected_ctc, resume_url, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'New')
+       (tenant_id, role, name, mobile, email, total_experience, current_ctc, expected_ctc, resume_url, skills, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'New')
        RETURNING *`,
       [
         tenantId,
@@ -41,6 +76,7 @@ export async function createCandidate(tenantId: string, userId: string, data: Cr
         String(data.current_ctc) === '' ? null : Number(data.current_ctc),
         String(data.expected_ctc) === '' ? null : Number(data.expected_ctc),
         data.resume_url,
+        data.skills ? JSON.stringify(data.skills) : '[]'
       ]
     );
     const candidate = rows[0];
@@ -119,8 +155,9 @@ export async function updateCandidate(tenantId: string, userId: string, id: stri
            current_ctc = $7, 
            expected_ctc = $8, 
            resume_url = COALESCE($9, resume_url),
+           skills = COALESCE($10, skills),
            updated_at = now()
-       WHERE tenant_id = $1 AND id = $10
+       WHERE tenant_id = $1 AND id = $11
        RETURNING *`,
       [
         tenantId,
@@ -132,6 +169,7 @@ export async function updateCandidate(tenantId: string, userId: string, id: stri
         data.current_ctc === undefined || String(data.current_ctc) === '' ? null : Number(data.current_ctc),
         data.expected_ctc === undefined || String(data.expected_ctc) === '' ? null : Number(data.expected_ctc),
         data.resume_url,
+        data.skills ? JSON.stringify(data.skills) : null,
         id
       ]
     );
