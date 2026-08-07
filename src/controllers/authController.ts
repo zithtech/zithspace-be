@@ -2,6 +2,8 @@ import { Response } from "express";
 import bcrypt from "bcryptjs";
 import axios from "axios";
 import { tenantAwarePrisma, prisma } from "@/config/database";
+import crypto from "crypto";
+import { EmailService } from "@/utils/emailService";
 import { JWTUtils } from "@/utils/jwt";
 import {
   AuthRequest,
@@ -1331,6 +1333,221 @@ export class AuthController {
         success: false,
         error: "Microsoft login failed",
       } as ApiResponse);
+    }
+  }
+
+  static async forgotPassword(req: Request, res: Response): Promise<void> {
+    try {
+      const { email, tenantSubdomain } = req.body;
+      
+      if (!email) {
+        res.status(400).json({ success: false, error: "Email is required" });
+        return;
+      }
+
+      let tenantCondition: any = {};
+      
+      // Look up tenant based on subdomain if provided
+      if (tenantSubdomain) {
+        const tenant = await prisma.tenant.findFirst({
+          where: { subdomain: String(tenantSubdomain).toLowerCase(), isActive: true }
+        });
+        if (tenant) {
+          tenantCondition = { tenantId: tenant.id };
+        }
+      }
+
+      // We still use a generic success message to prevent email enumeration
+      const genericResponse = {
+        success: true,
+        message: "If an account with that email exists, a password reset link has been sent.",
+      };
+
+      const user = await prisma.user.findFirst({
+        where: { 
+          workEmail: email.toLowerCase(),
+          isActive: true,
+          ...tenantCondition
+        },
+        include: { tenant: true }
+      });
+
+      if (!user) {
+        res.status(200).json(genericResponse);
+        return;
+      }
+
+      // Invalidate existing unused tokens for this user
+      await prisma.password_reset_tokens.updateMany({
+        where: { user_id: user.id, used: false },
+        data: { used: true }
+      });
+
+      // Generate token
+      const rawToken = crypto.randomBytes(32).toString('hex');
+      const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+      const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 mins
+
+      await prisma.password_reset_tokens.create({
+        data: {
+          user_id: user.id,
+          token: hashedToken,
+          expires_at: expiresAt,
+          used: false
+        }
+      });
+
+      // Send email
+      let frontendUrl = process.env.FRONTEND_URL || "http://localhost:3001";
+      if (user.tenant?.subdomain) {
+        try {
+          const urlObj = new URL(frontendUrl);
+          const parts = urlObj.hostname.split('.');
+          if (parts[0] === 'app' || parts[0] === 'www') {
+            parts[0] = user.tenant.subdomain;
+          } else if (parts[0] === 'localhost' || parts[0] === '127') {
+            urlObj.hostname = `${user.tenant.subdomain}.${urlObj.hostname}`;
+          } else {
+            parts.unshift(user.tenant.subdomain);
+            urlObj.hostname = parts.join('.');
+          }
+          frontendUrl = urlObj.toString().replace(/\/$/, '');
+        } catch (e) {
+          // Fallback if URL parsing fails
+        }
+      }
+      
+      const resetLink = `${frontendUrl}/reset-password?token=${rawToken}`;
+      const emailService = new EmailService();
+
+      await emailService.sendPasswordResetEmail({
+        to: user.workEmail,
+        displayName: user.name,
+        username: user.workEmail,
+        resetLink
+      }, user.tenantId);
+
+      // Audit Log
+      recordTransaction({
+        req,
+        section: Section.ADMIN,
+        module: Module.AUTH,
+        page: Page.LOGIN,
+        action: Action.UPDATE,
+        actionLabel: `Password reset requested for ${user.workEmail}`,
+        entityType: "user" as any,
+        entityId: user.id,
+        entityLabel: user.workEmail,
+        metadata: { ip: req.ip ?? null }
+      });
+
+      res.status(200).json(genericResponse);
+    } catch (error) {
+      console.error("Forgot password error:", error);
+      res.status(500).json({ success: false, error: "Internal server error" });
+    }
+  }
+
+  static async validateResetToken(req: Request, res: Response): Promise<void> {
+    try {
+      const { token } = req.query;
+      if (!token || typeof token !== "string") {
+        res.status(400).json({ success: false, error: "Invalid token format" });
+        return;
+      }
+
+      const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+      
+      const resetToken = await prisma.password_reset_tokens.findFirst({
+        where: { token: hashedToken, used: false, expires_at: { gt: new Date() } }
+      });
+
+      if (!resetToken) {
+        res.status(400).json({ success: false, error: "Invalid or expired token" });
+        return;
+      }
+
+      res.status(200).json({ success: true, message: "Token is valid" });
+    } catch (error) {
+      console.error("Validate token error:", error);
+      res.status(500).json({ success: false, error: "Internal server error" });
+    }
+  }
+
+  static async resetPassword(req: Request, res: Response): Promise<void> {
+    try {
+      const { token, newPassword } = req.body;
+      
+      if (!token || !newPassword) {
+        res.status(400).json({ success: false, error: "Token and new password are required" });
+        return;
+      }
+
+      // Strong password validation on backend
+      const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/;
+      if (!passwordRegex.test(newPassword)) {
+        res.status(400).json({ success: false, error: "Password must be at least 8 characters long and contain numbers and special characters." });
+        return;
+      }
+
+      const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+      
+      const resetToken = await prisma.password_reset_tokens.findFirst({
+        where: { token: hashedToken, used: false, expires_at: { gt: new Date() } }
+      });
+
+      if (!resetToken || !resetToken.user_id) {
+        res.status(400).json({ success: false, error: "Invalid or expired token" });
+        return;
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { id: resetToken.user_id }
+      });
+
+      if (!user) {
+        res.status(404).json({ success: false, error: "User not found" });
+        return;
+      }
+
+      // Update password
+      const newPasswordHash = await bcrypt.hash(newPassword, 10);
+      
+      await prisma.$transaction(async (tx) => {
+        await tx.user.update({
+          where: { id: user.id },
+          data: { passwordHash: newPasswordHash }
+        });
+
+        await tx.password_reset_tokens.update({
+          where: { id: resetToken.id },
+          data: { used: true }
+        });
+
+        // Revoke active sessions
+        await tx.refreshToken.deleteMany({
+          where: { userId: user.id }
+        });
+      });
+
+      // Audit Log
+      recordTransaction({
+        req,
+        section: Section.ADMIN,
+        module: Module.AUTH,
+        page: Page.LOGIN,
+        action: Action.UPDATE,
+        actionLabel: `Password successfully reset for ${user.workEmail}`,
+        entityType: "user" as any,
+        entityId: user.id,
+        entityLabel: user.workEmail,
+        metadata: { ip: req.ip ?? null }
+      });
+
+      res.status(200).json({ success: true, message: "Password has been successfully reset" });
+    } catch (error) {
+      console.error("Reset password error:", error);
+      res.status(500).json({ success: false, error: "Internal server error" });
     }
   }
 }

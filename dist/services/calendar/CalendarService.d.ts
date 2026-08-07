@@ -20,10 +20,8 @@ export declare class CalendarService {
         createdById: string | null;
         updatedById: string | null;
         userId: string;
-        accessToken: string | null;
-        created_by: string | null;
-        updated_by: string | null;
         provider: import(".prisma/client").$Enums.CalendarProvider;
+        accessToken: string | null;
         calendarId: string | null;
         mail_account_id: string | null;
         tokenExpiry: Date | null;
@@ -36,6 +34,8 @@ export declare class CalendarService {
         microsoftSubscriptionExpiry: Date | null;
         microsoftClientState: string | null;
         zohoLastSync: Date | null;
+        created_by: string | null;
+        updated_by: string | null;
         isSyncing: boolean;
         lastSyncStatus: string | null;
         lastSyncAt: Date | null;
@@ -76,12 +76,12 @@ export declare class CalendarService {
         updatedById: string | null;
         userId: string;
         title: string;
+        provider: import(".prisma/client").$Enums.CalendarProvider;
+        calendarId: string | null;
         isDeleted: boolean;
         startTime: Date;
         endTime: Date;
         location: string | null;
-        provider: import(".prisma/client").$Enums.CalendarProvider;
-        calendarId: string | null;
         attendees: import("@prisma/client/runtime/library").JsonValue | null;
         isRecurring: boolean | null;
         externalId: string;
