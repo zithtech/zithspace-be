@@ -427,6 +427,10 @@ export declare const Permissions: {
     readonly LETTER_READ: "letter.read";
     readonly LETTER_DELETE: "letter.delete";
     readonly LETTER_MANAGE: "letter.manage";
+    readonly LETTER_FORMAT_CREATE: "letter.format.create";
+    readonly LETTER_FORMAT_READ: "letter.format.read";
+    readonly LETTER_FORMAT_UPDATE: "letter.format.update";
+    readonly LETTER_FORMAT_DELETE: "letter.format.delete";
 };
 export type Permission = (typeof Permissions)[keyof typeof Permissions];
 /**

@@ -483,6 +483,10 @@ exports.Permissions = {
     LETTER_READ: 'letter.read',
     LETTER_DELETE: 'letter.delete',
     LETTER_MANAGE: 'letter.manage',
+    LETTER_FORMAT_CREATE: 'letter.format.create',
+    LETTER_FORMAT_READ: 'letter.format.read',
+    LETTER_FORMAT_UPDATE: 'letter.format.update',
+    LETTER_FORMAT_DELETE: 'letter.format.delete',
 };
 /**
  * All permissions grouped by resource for UI rendering (permission picker).
@@ -837,6 +841,10 @@ exports.PERMISSIONS_BY_RESOURCE = {
         exports.Permissions.LETTER_READ,
         exports.Permissions.LETTER_DELETE,
         exports.Permissions.LETTER_MANAGE,
+        exports.Permissions.LETTER_FORMAT_CREATE,
+        exports.Permissions.LETTER_FORMAT_READ,
+        exports.Permissions.LETTER_FORMAT_UPDATE,
+        exports.Permissions.LETTER_FORMAT_DELETE,
     ],
 };
 /** Flat list of all permissions — used for seeding. */
