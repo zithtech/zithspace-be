@@ -28,8 +28,36 @@ export const getTestCases = async (req: Request, res: Response) => {
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
     // Allow filtering by module_id and parent_test_case_id
-    const { module_id, parent_test_case_id, parent_id, search, limit } = req.query;
+    const { module_id, parent_test_case_id, parent_id, search, limit, offset, ids_only, paginated } = req.query;
     const parentId = parent_test_case_id || parent_id;
+
+    // Filters are built once so the count, the id-only and the full queries
+    // all stay in sync as the page is scrolled.
+    const params: any[] = [tenantId];
+    let where = ` WHERE tc.tenant_id = $1`;
+
+    if (module_id) {
+      params.push(module_id);
+      where += ` AND tc.module_id::text = $${params.length}::text`;
+    }
+    if (parentId) {
+      params.push(parentId);
+      where += ` AND tc.parent_test_case_id::text = $${params.length}::text`;
+    }
+    if (search) {
+      params.push(`%${search}%`);
+      where += ` AND (tc.name ILIKE $${params.length} OR tc.test_case_id ILIKE $${params.length})`;
+    }
+
+    // Cheap id-only mode, used by "select all" so the client can act on every
+    // match without pulling the rows it hasn't scrolled to yet.
+    if (ids_only === 'true' || ids_only === '1') {
+      const { rows } = await pool.query(
+        `SELECT tc.id FROM qa_test_cases tc${where} ORDER BY tc.created_at DESC`,
+        params
+      );
+      return res.status(200).json({ success: true, data: rows, total: rows.length });
+    }
 
     let query = `
       SELECT tc.*, COALESCE(mv2.name, m.module_name, 'Unassigned') as module_name, 
@@ -50,30 +78,45 @@ export const getTestCases = async (req: Request, res: Response) => {
       LEFT JOIN modules_v2 mv2 ON tc.module_id::text = mv2.id::text
       LEFT JOIN users u_owner ON tc.owner::text = u_owner.id::text
       LEFT JOIN users u_creator ON tc.created_by::text = u_creator.id::text
-      WHERE tc.tenant_id = $1
-    `;
-    const params: any[] = [tenantId];
-
-    if (module_id) {
-      params.push(module_id);
-      query += ` AND tc.module_id::text = $${params.length}::text`;
-    }
-    if (parentId) {
-      params.push(parentId);
-      query += ` AND tc.parent_test_case_id::text = $${params.length}::text`;
-    }
-    if (search) {
-      params.push(`%${search}%`);
-      query += ` AND (tc.name ILIKE $${params.length} OR tc.test_case_id ILIKE $${params.length})`;
-    }
+    ` + where;
 
     query += ` ORDER BY tc.created_at DESC`;
-    if (limit) {
-      params.push(parseInt(limit as string, 10));
-      query += ` LIMIT $${params.length}`;
+
+    const parsedLimit = limit ? parseInt(limit as string, 10) : null;
+    const parsedOffset = offset ? parseInt(offset as string, 10) : 0;
+    const pageParams = [...params];
+
+    if (parsedLimit && parsedLimit > 0) {
+      pageParams.push(parsedLimit);
+      query += ` LIMIT $${pageParams.length}`;
+      if (parsedOffset > 0) {
+        pageParams.push(parsedOffset);
+        query += ` OFFSET $${pageParams.length}`;
+      }
     }
 
-    const { rows } = await pool.query(query, params);
+    const { rows } = await pool.query(query, pageParams);
+
+    // Opt-in envelope: infinite-scroll callers need the total and a next-page
+    // flag. Everyone else keeps receiving a bare array.
+    if (paginated === 'true' || paginated === '1') {
+      const countRes = await pool.query(
+        `SELECT COUNT(*)::int AS total FROM qa_test_cases tc${where}`,
+        params
+      );
+      const total = countRes.rows[0]?.total ?? rows.length;
+      return res.status(200).json({
+        success: true,
+        data: {
+          items: rows,
+          total,
+          offset: parsedOffset,
+          limit: parsedLimit,
+          hasMore: parsedOffset + rows.length < total,
+        },
+      });
+    }
+
     res.status(200).json({ success: true, data: rows });
   } catch (error) {
     console.error('Error fetching test cases:', error);
