@@ -45,27 +45,27 @@ router.delete(
 // ─── Document Structures ───────────────────────────────────────────
 router.get(
   '/structures',
-  requirePermission(Permissions.LETTER_TEMPLATE_READ),
+  requirePermission(Permissions.LETTER_FORMAT_READ),
   DocumentStructureController.getStructures
 );
 router.post(
   '/structures',
-  requirePermission(Permissions.LETTER_TEMPLATE_CREATE),
+  requirePermission(Permissions.LETTER_FORMAT_CREATE),
   DocumentStructureController.createStructure
 );
 router.get(
   '/structures/:id',
-  requirePermission(Permissions.LETTER_TEMPLATE_READ),
+  requirePermission(Permissions.LETTER_FORMAT_READ),
   DocumentStructureController.getStructureById
 );
 router.put(
   '/structures/:id',
-  requirePermission(Permissions.LETTER_TEMPLATE_UPDATE),
+  requirePermission(Permissions.LETTER_FORMAT_UPDATE),
   DocumentStructureController.updateStructure
 );
 router.delete(
   '/structures/:id',
-  requirePermission(Permissions.LETTER_TEMPLATE_DELETE),
+  requirePermission(Permissions.LETTER_FORMAT_DELETE),
   DocumentStructureController.deleteStructure
 );
 
