@@ -425,7 +425,7 @@ export const Permissions = {
   PIPELINE_SETTING_READ: 'pipeline.setting.read',
   PIPELINE_SETTING_UPDATE: 'pipeline.setting.update',
 
-  // ─── Recruitment / ATS ───────────────────────────────────────────
+  // ─── Candidate Pipeline / ATS (keys keep the legacy `recruitment.` prefix) ───
   RECRUITMENT_CREATE: 'recruitment.create',
   RECRUITMENT_READ: 'recruitment.read',
   RECRUITMENT_UPDATE: 'recruitment.update',

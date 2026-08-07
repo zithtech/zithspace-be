@@ -10,3 +10,8 @@ export const list = handle(async (req: AuthRequest, res: Response) => {
   const result = await service.listMembers(actorOf(req), query);
   ok(res, result);
 });
+
+export const filterOptions = handle(async (req: AuthRequest, res: Response) => {
+  const result = await service.listFilterOptions(actorOf(req));
+  ok(res, result);
+});
