@@ -12,6 +12,8 @@ export async function listMembers(actor: Actor, query: MemberListQuery) {
       limit: query.limit,
       search: query.search,
       projectId: query.projectId,
+      positionId: query.positionId,
+      departmentId: query.departmentId,
     });
     return {
       data: rows,
@@ -21,4 +23,9 @@ export async function listMembers(actor: Actor, query: MemberListQuery) {
       totalPages: Math.max(1, Math.ceil(total / query.limit)),
     };
   });
+}
+
+/** Position / department options for the directory filters. */
+export async function listFilterOptions(actor: Actor) {
+  return withTenant(actor.tenantId, (client) => repo.findFilterOptions(client));
 }
