@@ -87,7 +87,7 @@ export class GeneratedLetterController {
         throw new ValidationError('Tenant context and user authentication required');
       }
 
-      const { templateId, referenceEntityId, referenceEntityType, documentNumber, values, customContent } = req.body;
+      const { templateId, referenceEntityId, referenceEntityType, documentNumber, documentName, values, customContent } = req.body;
       if (!templateId || !values) {
         throw new ValidationError('Template ID and values map are required');
       }
@@ -100,6 +100,7 @@ export class GeneratedLetterController {
           referenceEntityId,
           referenceEntityType,
           documentNumber,
+          documentName,
           values,
           customContent,
         },
@@ -127,7 +128,7 @@ export class GeneratedLetterController {
       }
 
       const { id } = req.params;
-      const { templateId, referenceEntityId, referenceEntityType, documentNumber, values, customContent } = req.body;
+      const { templateId, referenceEntityId, referenceEntityType, documentNumber, documentName, values, customContent } = req.body;
       if (!templateId || !values) {
         throw new ValidationError('Template ID and values map are required');
       }
@@ -141,6 +142,7 @@ export class GeneratedLetterController {
           referenceEntityId,
           referenceEntityType,
           documentNumber,
+          documentName,
           values,
           customContent,
         },
