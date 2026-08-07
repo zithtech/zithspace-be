@@ -223,8 +223,9 @@ export const suiteAiText = async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: 'Unauthorized: No tenant found' });
     }
 
-    const { mode, text, suiteName, scenarioTitle, moduleName, caseCount } = req.body || {};
+    const { mode, text, suiteName, scenarioTitle, moduleName, caseCount, userPrompt } = req.body || {};
     const input = (text || '').trim();
+    const instruction = (userPrompt || '').trim().slice(0, 1000);
 
     if (mode === 'grammar' && !input) {
       return res.status(400).json({ success: false, error: 'Nothing to polish yet' });
@@ -257,7 +258,7 @@ Suite name: ${suiteName || 'N/A'}
 Business scenario: ${scenarioTitle || 'N/A'}
 Module: ${moduleName || 'N/A'}
 Linked module cases: ${caseCount ?? 'N/A'}
-${input ? `\nWhat the author already wrote:\n${input}\n` : ''}
+${input ? `\nWhat the author already wrote:\n${input}\n` : ''}${instruction ? `\nThe author's instruction — follow it closely:\n${instruction}\n` : ''}
 Write 2 to 3 sentences covering what this suite validates and when a team would run it.
 Return ONLY plain text — no markdown, no headings, no preamble.
 `.trim();
