@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.s3Client = exports.BUCKET_NAME = void 0;
 exports.uploadImageToR2 = uploadImageToR2;
@@ -9,6 +42,7 @@ exports.uploadExitDocumentToR2 = uploadExitDocumentToR2;
 exports.uploadGeneratedReportToR2 = uploadGeneratedReportToR2;
 exports.uploadClientDocumentToR2 = uploadClientDocumentToR2;
 exports.uploadEmployeeAssetToR2 = uploadEmployeeAssetToR2;
+exports.uploadResumeToR2 = uploadResumeToR2;
 exports.uploadCandidateDocumentToR2 = uploadCandidateDocumentToR2;
 exports.uploadBugAttachmentToR2 = uploadBugAttachmentToR2;
 exports.deleteFileFromR2 = deleteFileFromR2;
@@ -20,6 +54,7 @@ exports.generatePresignedUrl = generatePresignedUrl;
 exports.getFileBufferFromR2 = getFileBufferFromR2;
 exports.uploadEscalationDocumentToR2 = uploadEscalationDocumentToR2;
 exports.uploadDocumentToR2 = uploadDocumentToR2;
+exports.uploadRunAttachmentToR2 = uploadRunAttachmentToR2;
 const client_s3_1 = require("@aws-sdk/client-s3");
 const s3_request_presigner_1 = require("@aws-sdk/s3-request-presigner");
 const nanoid_1 = require("nanoid");
@@ -392,6 +427,32 @@ async function uploadEmployeeAssetToR2({ base64, fileName = "asset.png", tenantI
     }
 }
 /**
+ * Upload a resume file (from disk path) to Cloudflare R2.
+ * Returns a public URL suitable for Google Docs Viewer.
+ * Path: {tenantId}/resumes/{uniqueId}_{fileName}
+ */
+async function uploadResumeToR2(filePath, fileName, tenantId, mimeType) {
+    const fs = await Promise.resolve().then(() => __importStar(require('fs')));
+    const buffer = fs.readFileSync(filePath);
+    const uniqueId = (0, nanoid_1.nanoid)(12);
+    const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    const key = `${tenantId}/resumes/${uniqueId}_${sanitizedFileName}`;
+    await exports.s3Client.send(new client_s3_1.PutObjectCommand({
+        Bucket: exports.BUCKET_NAME,
+        Key: key,
+        Body: buffer,
+        ContentType: mimeType,
+        ContentDisposition: 'inline',
+        CacheControl: 'public, max-age=31536000',
+    }));
+    let baseUrl = (PUBLIC_URL && !PUBLIC_URL.includes('r2.cloudflarestorage.com'))
+        ? PUBLIC_URL
+        : 'https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev';
+    if (baseUrl.endsWith('/'))
+        baseUrl = baseUrl.slice(0, -1);
+    return `${baseUrl}/${key}`;
+}
+/**
  * Upload candidate document to Cloudflare R2
  * @param base64File - Base64 encoded file string
  * @param fileName - Original file name
@@ -752,6 +813,44 @@ async function uploadDocumentToR2(buffer, fileName, tenantId, documentId, conten
     catch (error) {
         console.error("R2 document upload error:", error);
         throw new Error(`Failed to upload document: ${error.message}`);
+    }
+}
+/**
+ * Upload an attachment captured while executing a test run (screenshot, log,
+ * recording) to Cloudflare R2, organised by tenant, run and result.
+ */
+async function uploadRunAttachmentToR2(base64File, fileName, tenantId, runId, resultId) {
+    try {
+        const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+        if (!matches) {
+            throw new Error("Invalid file format. Expected a base64 data URI.");
+        }
+        const contentType = matches[1];
+        const buffer = Buffer.from(matches[2], "base64");
+        const fileSizeInBytes = buffer.length;
+        if (fileSizeInBytes / (1024 * 1024) > 10) {
+            throw new Error("File size exceeds the 10MB limit");
+        }
+        const uniqueId = (0, nanoid_1.nanoid)(12);
+        const sanitizedFileName = (fileName || "attachment").replace(/[^a-zA-Z0-9.-]/g, "_");
+        const key = `${tenantId}/qa/test-runs/${runId}/${resultId}/${uniqueId}_${sanitizedFileName}`;
+        await exports.s3Client.send(new client_s3_1.PutObjectCommand({
+            Bucket: exports.BUCKET_NAME,
+            Key: key,
+            Body: buffer,
+            ContentType: contentType,
+            CacheControl: "public, max-age=31536000",
+        }));
+        let baseUrl = (PUBLIC_URL && !PUBLIC_URL.includes("r2.cloudflarestorage.com"))
+            ? PUBLIC_URL
+            : "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+        if (baseUrl.endsWith("/"))
+            baseUrl = baseUrl.slice(0, -1);
+        return { fileUrl: `${baseUrl}/${key}`, fileSize: fileSizeInBytes, fileType: contentType };
+    }
+    catch (error) {
+        console.error("R2 run attachment upload error:", error);
+        throw new Error(`Failed to upload attachment: ${error.message}`);
     }
 }
 //# sourceMappingURL=r2Client.js.map

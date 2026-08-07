@@ -1523,6 +1523,97 @@ Access your workspace here: ${portalUrlWithParams}
 This is an automated mail, please do not reply.`;
         return this.sendCentralizedMail({ to: data.to, tenantId, subject, html, text });
     }
+    async sendPasswordResetEmail(data, tenantId) {
+        const greetingName = data.displayName || data.username;
+        const branding = await this.resolveTenantMailBranding(tenantId);
+        const subject = `Reset your ${branding.companyName} password`;
+        const logoHtml = branding.companyLogo
+            ? `<img class="logo" src="${branding.companyLogo}" alt="${branding.companyName}" style="max-height: 50px; border-radius: 8px; margin-bottom: 8px;" />`
+            : "";
+        const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 0; }
+          .wrapper { width: 100%; background-color: #f8fafc; padding: 40px 0; }
+          .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+          .header { padding: 32px 40px; text-align: center; border-bottom: 1px solid #f1f5f9; background-color: #ffffff; }
+          .company-name { font-size: 20px; font-weight: 700; color: #0f172a; margin: 0; }
+          .content { padding: 40px 48px; }
+          .title { font-size: 26px; font-weight: 700; color: #0f172a; margin-top: 0; margin-bottom: 8px; text-align: center; }
+          .accent-bar { width: 32px; height: 3px; background-color: #0b57d0; margin: 8px auto 24px; border-radius: 2px; }
+          .welcome-greeting { text-align: center; font-size: 15px; color: #64748b; margin: 0 0 12px 0; }
+          .welcome-text { text-align: center; font-size: 14.5px; line-height: 1.6; color: #64748b; margin: 0 auto 32px; max-width: 480px; }
+          
+          .reset-button { display: inline-block; background-color: #0b57d0; color: #ffffff; text-decoration: none; font-size: 14.5px; font-weight: 600; padding: 12px 28px; border-radius: 8px; box-shadow: 0 2px 4px rgba(11, 87, 208, 0.1); margin: 0 auto; text-align: center; }
+          .reset-button:hover { background-color: #0842a0; }
+          
+          .footer { background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 24px 40px; text-align: center; }
+          .footer-text { font-size: 13px; color: #64748b; margin: 0 0 8px 0; line-height: 1.5; }
+          .warning-text { font-size: 12.5px; color: #94a3b8; margin: 0; font-style: italic; }
+        </style>
+      </head>
+      <body>
+        <div class="wrapper">
+          <div class="container">
+            <div class="header">
+              ${logoHtml}
+              ${!branding.companyLogo ? `<h1 class="company-name">${branding.companyName}</h1>` : ""}
+            </div>
+            
+            <div class="content">
+              <h2 class="title">Reset Your Password</h2>
+              <div class="accent-bar"></div>
+              
+              <p class="welcome-greeting">Hello ${greetingName},</p>
+              
+              <p class="welcome-text">
+                We received a request to reset the password for your ${branding.companyName} account associated with <strong>${data.username}</strong>. 
+                If you didn't make this request, you can safely ignore this email.
+              </p>
+              
+              <div style="text-align: center; margin-top: 32px; margin-bottom: 32px;">
+                <a href="${data.resetLink}" class="reset-button">Reset Password</a>
+              </div>
+
+              <p class="welcome-text" style="font-size: 13px;">
+                Or copy and paste this link into your browser:<br>
+                <a href="${data.resetLink}" style="color: #0b57d0; word-break: break-all;">${data.resetLink}</a>
+              </p>
+              
+              <p class="welcome-text" style="font-size: 13px; font-weight: 600; margin-bottom: 0;">
+                This link will expire in 30 minutes.
+              </p>
+            </div>
+            
+            <div class="footer">
+              <p class="footer-text">Powered by <strong>ZithSpace</strong></p>
+              <p class="warning-text">This is an automated message. Please do not reply directly to this email.</p>
+            </div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+        const text = `Reset your ${branding.companyName} password
+
+Hello ${greetingName},
+
+We received a request to reset the password for your ${branding.companyName} account associated with ${data.username}.
+
+Please click the following link to reset your password (or copy and paste it into your browser):
+${data.resetLink}
+
+This link will expire in 30 minutes.
+
+If you didn't request a password reset, you can safely ignore this email.
+
+Powered by ZithSpace
+This is an automated mail, please do not reply.`;
+        return this.sendCentralizedMail({ to: data.to, tenantId, subject, html, text });
+    }
     async sendPortalPasswordResetEmail(data, tenantId) {
         const greetingName = data.displayName || data.username;
         const branding = await this.resolveTenantMailBranding(tenantId);

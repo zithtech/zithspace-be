@@ -213,6 +213,12 @@ export declare class EmailService {
         temporaryPassword: string;
         portalUrl: string;
     }, tenantId?: string): Promise<boolean>;
+    sendPasswordResetEmail(data: {
+        to: string;
+        displayName: string | null;
+        username: string;
+        resetLink: string;
+    }, tenantId?: string): Promise<boolean>;
     sendPortalPasswordResetEmail(data: {
         to: string;
         displayName: string | null;

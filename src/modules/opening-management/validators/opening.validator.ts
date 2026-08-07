@@ -26,7 +26,7 @@ const optionalText = (max: number) =>
 
 /** A tag list — trimmed, blank-free, de-duplicated case-insensitively. */
 const tagList = z
-  .array(z.string().trim().min(1).max(120))
+  .array(z.string().trim().min(1).max(120).regex(/^[a-zA-Z0-9\s\+#\.\-]*$/, 'Contains invalid characters'))
   .max(100)
   .optional()
   .transform((v) => {
@@ -117,18 +117,18 @@ const openingBaseShape = {
   employmentType: employmentTypeEnum,
   workMode: workModeEnum,
   locationId: refId,
-  location: optionalText(200),
+  location: z.string().trim().max(200).regex(/^[a-zA-Z0-9\s,]*$/, 'Location contains invalid characters').optional().nullable().transform((v) => (v ? v : null)),
   numberOfPositions: z.number().int().min(1).max(10_000).default(1),
 
   // Job details
-  jobTitle: z.string().trim().min(1, 'jobTitle is required').max(200),
+  jobTitle: z.string().trim().min(1, 'jobTitle is required').max(200).regex(/^[a-zA-Z0-9\s\-&]*$/, 'Job title contains invalid characters'),
   jobDescription: optionalText(20_000),
   responsibilities: optionalText(20_000),
   requiredSkills: tagList,
   preferredSkills: tagList,
   minExperience: z.number().min(0).max(60).optional().nullable(),
   maxExperience: z.number().min(0).max(60).optional().nullable(),
-  education: optionalText(500),
+  education: z.string().trim().max(500).regex(/^[a-zA-Z0-9\s\.\/]*$/, 'Education contains invalid characters').optional().nullable().transform((v) => (v ? v : null)),
   certifications: tagList,
   salaryMin: money,
   salaryMax: money,
@@ -136,8 +136,8 @@ const openingBaseShape = {
   salaryPeriod: salaryPeriodEnum.default('yearly'),
   budget: money,
   noticePeriodDays: z.number().int().min(0).max(365).optional().nullable(),
-  shiftTiming: optionalText(200),
-  joiningTimeline: optionalText(200),
+  shiftTiming: z.string().trim().max(200).regex(/^[a-zA-Z0-9\s:\-]*$/, 'Shift timing contains invalid characters').optional().nullable().transform((v) => (v ? v : null)),
+  joiningTimeline: z.string().trim().max(200).regex(/^[0-9]*$/, 'Joining timeline must be a number').optional().nullable().transform((v) => (v ? v : null)),
   targetJoiningDate: z
     .string()
     .trim()

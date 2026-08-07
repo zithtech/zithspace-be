@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { TicketController } from "@/controllers/ticketController";
 import { TicketCodeController } from "@/controllers/ticketCodeController";
+import * as TicketQaLinkController from "@/controllers/ticketQaLinkController";
 import {
   authenticateToken,
   requireAuth,
@@ -306,6 +307,34 @@ router.put("/:ticketId/links/:linkId", requirePermission(Permissions.TICKET_UPDA
  * @param   linkId - Link ID
  */
 router.delete("/:ticketId/links/:linkId", requirePermission(Permissions.TICKET_UPDATE), TicketController.deleteRelatedLink);
+
+/**
+ * @route   GET /api/tickets/:id/qa-links
+ * @desc    QA records (test scopes, scenarios, runs) linked to the ticket.
+ *          Names come denormalized so PMs without QA permissions can still
+ *          see and open what QA attached.
+ * @access  Private (ticket read)
+ * @param   id - Ticket ID
+ */
+router.get("/:id/qa-links", requirePermission(Permissions.TICKET_READ), TicketQaLinkController.getTicketQaLinks);
+
+/**
+ * @route   POST /api/tickets/:id/qa-links
+ * @desc    Link a QA record to the ticket (tenant-aware)
+ * @access  Private (ticket update)
+ * @param   id - Ticket ID
+ * @body    { entityType: 'scope' | 'case' | 'run', entityId: string }
+ */
+router.post("/:id/qa-links", requirePermission(Permissions.TICKET_UPDATE), TicketQaLinkController.addTicketQaLink);
+
+/**
+ * @route   DELETE /api/tickets/:ticketId/qa-links/:linkId
+ * @desc    Remove a QA link from the ticket (tenant-aware)
+ * @access  Private (ticket update)
+ * @param   ticketId - Ticket ID
+ * @param   linkId - QA link ID
+ */
+router.delete("/:ticketId/qa-links/:linkId", requirePermission(Permissions.TICKET_UPDATE), TicketQaLinkController.deleteTicketQaLink);
 
 /**
  * @route   POST /api/tickets/:id/attachments
