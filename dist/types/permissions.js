@@ -65,12 +65,14 @@ exports.Permissions = {
     BUG_TRASH_DELETE: 'bug.trash.delete',
     BUG_ARCHIVE_READ: 'bug.archive.read',
     BUG_ARCHIVE_RESTORE: 'bug.archive.restore',
+    BUG_ARCHIVE_DELETE: 'bug.archive.delete',
     BUG_MANAGE: 'bug.manage',
     // ─── QA Space ────────────────────────────────────────────────────
     QA_SCOPE_CREATE: 'qa.scope.create',
     QA_SCOPE_READ: 'qa.scope.read',
     QA_SCOPE_UPDATE: 'qa.scope.update',
     QA_SCOPE_DELETE: 'qa.scope.delete',
+    QA_SCOPE_APPROVE: 'qa.scope.approve',
     QA_CASE_CREATE: 'qa.case.create',
     QA_CASE_READ: 'qa.case.read',
     QA_CASE_UPDATE: 'qa.case.update',
@@ -481,6 +483,10 @@ exports.Permissions = {
     LETTER_READ: 'letter.read',
     LETTER_DELETE: 'letter.delete',
     LETTER_MANAGE: 'letter.manage',
+    LETTER_FORMAT_CREATE: 'letter.format.create',
+    LETTER_FORMAT_READ: 'letter.format.read',
+    LETTER_FORMAT_UPDATE: 'letter.format.update',
+    LETTER_FORMAT_DELETE: 'letter.format.delete',
 };
 /**
  * All permissions grouped by resource for UI rendering (permission picker).
@@ -532,6 +538,7 @@ exports.PERMISSIONS_BY_RESOURCE = {
         exports.Permissions.BUG_TRASH_DELETE,
         exports.Permissions.BUG_ARCHIVE_READ,
         exports.Permissions.BUG_ARCHIVE_RESTORE,
+        exports.Permissions.BUG_ARCHIVE_DELETE,
         exports.Permissions.BUG_MANAGE,
     ],
     attendance: [
@@ -834,6 +841,10 @@ exports.PERMISSIONS_BY_RESOURCE = {
         exports.Permissions.LETTER_READ,
         exports.Permissions.LETTER_DELETE,
         exports.Permissions.LETTER_MANAGE,
+        exports.Permissions.LETTER_FORMAT_CREATE,
+        exports.Permissions.LETTER_FORMAT_READ,
+        exports.Permissions.LETTER_FORMAT_UPDATE,
+        exports.Permissions.LETTER_FORMAT_DELETE,
     ],
 };
 /** Flat list of all permissions — used for seeding. */

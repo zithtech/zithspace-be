@@ -66,6 +66,7 @@ export const Permissions = {
   BUG_TRASH_DELETE: 'bug.trash.delete',
   BUG_ARCHIVE_READ: 'bug.archive.read',
   BUG_ARCHIVE_RESTORE: 'bug.archive.restore',
+  BUG_ARCHIVE_DELETE: 'bug.archive.delete',
   BUG_MANAGE: 'bug.manage',
 
   // ─── QA Space ────────────────────────────────────────────────────
@@ -73,6 +74,7 @@ export const Permissions = {
   QA_SCOPE_READ:   'qa.scope.read',
   QA_SCOPE_UPDATE: 'qa.scope.update',
   QA_SCOPE_DELETE: 'qa.scope.delete',
+  QA_SCOPE_APPROVE: 'qa.scope.approve',
   QA_CASE_CREATE:  'qa.case.create',
   QA_CASE_READ:    'qa.case.read',
   QA_CASE_UPDATE:  'qa.case.update',
@@ -581,6 +583,7 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.BUG_TRASH_DELETE,
     Permissions.BUG_ARCHIVE_READ,
     Permissions.BUG_ARCHIVE_RESTORE,
+    Permissions.BUG_ARCHIVE_DELETE,
     Permissions.BUG_MANAGE,
   ],
   attendance: [
