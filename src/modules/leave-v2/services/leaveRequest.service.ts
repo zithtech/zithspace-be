@@ -99,7 +99,7 @@ export async function applyLeave(actor: Actor, input: ApplyLeaveInput) {
       const uData = userQuery.rows[0];
 
       if (uData) {
-        const mailConfig = await settingsRepo.getSettings(client);
+        const mailConfig = await settingsRepo.getSettings(client, actor.tenantId);
         
         // 3) Determine Reply-To email
         let replyToEmail = uData.employee_email;

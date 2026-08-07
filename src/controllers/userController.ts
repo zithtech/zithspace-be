@@ -480,6 +480,25 @@ export class UserController {
         }
       }
 
+      // Auto-resolve employeeId by workEmail if not provided
+      let targetEmployeeId = userData.employeeId || null;
+      if (!targetEmployeeId && userData.workEmail) {
+        try {
+          const empMatch = await pool.query(
+            `SELECT id FROM employees 
+               WHERE tenant_id = $1 AND (LOWER(work_email) = LOWER($2) OR (personal_email IS NOT NULL AND LOWER(personal_email) = LOWER($2))) 
+               ORDER BY (CASE WHEN date_of_birth IS NOT NULL AND date_of_birth::text NOT LIKE '1970-01-01%' THEN 0 ELSE 1 END) ASC, created_at ASC 
+               LIMIT 1`,
+            [req.tenantId, userData.workEmail.trim()]
+          );
+          if (empMatch.rows[0]) {
+            targetEmployeeId = empMatch.rows[0].id;
+          }
+        } catch (err) {
+          console.error("Failed to auto-resolve employeeId by email in user create:", err);
+        }
+      }
+
       // Create user via UserModel using raw INSERT query
       const createdRaw = await UserModel.create({
         tenantId: req.tenantId,
@@ -496,7 +515,7 @@ export class UserController {
         assignedShiftId: userData.assignedShiftId || null,
         isActive: userData.isActive !== undefined ? userData.isActive : true,
         minWorkingHours: userData.minWorkingHours !== undefined ? Number(userData.minWorkingHours) : 6,
-        employeeId: userData.employeeId || null,
+        employeeId: targetEmployeeId,
       });
 
       // Load the newly created member with relation details using raw SELECT query
