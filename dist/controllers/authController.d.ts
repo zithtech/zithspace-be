@@ -55,5 +55,8 @@ export declare class AuthController {
      * Microsoft User login with tenant context
      */
     static microsoftLogin(req: AuthRequest, res: Response): Promise<void>;
+    static forgotPassword(req: Request, res: Response): Promise<void>;
+    static validateResetToken(req: Request, res: Response): Promise<void>;
+    static resetPassword(req: Request, res: Response): Promise<void>;
 }
 export default AuthController;

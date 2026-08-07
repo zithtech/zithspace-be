@@ -57,5 +57,9 @@ router.get("/new", authController_1.AuthController.getNewProfile);
 router.get("/check", generalAuthRateLimit, auth_1.authenticateToken, authController_1.AuthController.check);
 // Create user route - requires tenant context (for testing/setup)
 router.post("/users", generalAuthRateLimit, tenantContext_1.resolveTenant, authController_1.AuthController.createUser);
+// Password reset routes
+router.post("/forgot-password", authRateLimit, authController_1.AuthController.forgotPassword);
+router.get("/reset-password/validate", generalAuthRateLimit, authController_1.AuthController.validateResetToken);
+router.post("/reset-password", authRateLimit, authController_1.AuthController.resetPassword);
 exports.default = router;
 //# sourceMappingURL=auth.js.map
