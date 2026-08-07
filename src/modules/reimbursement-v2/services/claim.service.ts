@@ -510,7 +510,7 @@ export async function submitClaim(actor: Actor, id: string): Promise<ClaimDetail
         console.log(`[Reimbursement Email] Requester:`, uData?.email, `Manager:`, mData?.email);
 
         if (uData) {
-          const mailConfig = await settingsRepo.getSettings(client);
+          const mailConfig = await settingsRepo.getSettings(client, actor.tenantId);
           console.log(`[Reimbursement Email] Mail Config:`, mailConfig);
 
           let replyToEmail = uData.email;

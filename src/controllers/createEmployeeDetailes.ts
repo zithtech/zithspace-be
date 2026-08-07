@@ -377,7 +377,7 @@ export async function getAllEmployees(req: AuthRequest) {
 
       const employeeIds = employees.map((e: any) => e.id);
 
-      const [addressesRes, emergencyRes, identityRes, workRes] =
+      const [addressesRes, emergencyRes, identityRes, workRes, projectsRes] =
         await Promise.all([
           db.query(
             `SELECT * FROM employee_addresses WHERE employee_id = ANY($1::uuid[])`,
@@ -403,6 +403,10 @@ export async function getAllEmployees(req: AuthRequest) {
               ORDER BY wd.created_at ASC`,
             [employeeIds],
           ),
+          db.query(
+            `SELECT employee_id, reporting_manager FROM employee_project_mappings WHERE employee_id = ANY($1::uuid[]) ORDER BY created_at ASC`,
+            [employeeIds],
+          ),
         ]);
 
       // Index related rows by employee_id for O(1) assembly.
@@ -426,6 +430,10 @@ export async function getAllEmployees(req: AuthRequest) {
       for (const w of workRes.rows) {
         // First by created_at ASC mirrors the previous `workDetail[0]`.
         if (!workByEmp.has(w.employee_id)) workByEmp.set(w.employee_id, w);
+      }
+      const managerByEmp = new Map<string, string | null>();
+      for (const p of projectsRes.rows) {
+        if (!managerByEmp.has(p.employee_id)) managerByEmp.set(p.employee_id, p.reporting_manager);
       }
 
       return employees.map((employee: any) => {
@@ -455,6 +463,8 @@ export async function getAllEmployees(req: AuthRequest) {
           departmentId: latestWorkDetail?.department_id || null,
           departmentName: latestWorkDetail?.department_name || null,
           positionTitle: latestWorkDetail?.position_title || null,
+          positionId: latestWorkDetail?.position_id || null,
+          reportsToId: managerByEmp.get(employee.id) || null,
           address: {
             current: currentAddress
               ? {

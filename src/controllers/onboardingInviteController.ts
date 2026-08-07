@@ -122,32 +122,45 @@ export async function createInvite(req: AuthRequest, res: Response) {
     const tokenHash = hashToken(token);
 
     const result = await withTenant(tenantId, async (client) => {
-      // 1. Create the draft employee (generates employee_code, status=true).
-      const employee = await createPersonalDetails(
-        actorReq(tenantId, userId, {
-          personal: {
-            firstName,
-            lastName,
-            workEmail,
-            personalEmail: personalEmail || null,
-            // NOT NULL columns the employee will correct later via the link.
-            // Must be non-empty: createPersonalDetails coerces falsy -> NULL.
-            mobile: mobile || "0000000000",
-            gender: gender || "Unspecified",
-            dob: dob || "1970-01-01",
-          },
-        }),
-        undefined,
-        client,
+      // 1. Check if an employee record already exists in onboarding for this email
+      const existingEmp = await client.query(
+        `SELECT id, employee_code, first_name, last_name, date_of_birth FROM employees 
+           WHERE tenant_id = $1 AND (LOWER(work_email) = LOWER($2) OR (personal_email IS NOT NULL AND LOWER(personal_email) = LOWER($2))) 
+           ORDER BY (CASE WHEN date_of_birth IS NOT NULL AND date_of_birth::text NOT LIKE '1970-01-01%' THEN 0 ELSE 1 END) ASC, created_at ASC 
+           LIMIT 1`,
+        [tenantId, workEmail.trim()]
       );
 
-      // 2. Mark it inactive so it stays out of active employee / leave / payroll
-      //    queries until HR completes and activates it.
-      await client.query(
-        `UPDATE employees SET status = false, updated_by = $1, updated_at = now()
-          WHERE id = $2 AND tenant_id = $3`,
-        [userId, employee.id, tenantId],
-      );
+      let employee = existingEmp.rows[0];
+
+      if (!employee) {
+        // Create the draft employee only if one does not already exist
+        employee = await createPersonalDetails(
+          actorReq(tenantId, userId, {
+            personal: {
+              firstName,
+              lastName,
+              workEmail,
+              personalEmail: personalEmail || null,
+              // NOT NULL columns the employee will correct later via the link.
+              // Must be non-empty: createPersonalDetails coerces falsy -> NULL.
+              mobile: mobile || "0000000000",
+              gender: gender || "Unspecified",
+              dob: dob || "1970-01-01",
+            },
+          }),
+          undefined,
+          client,
+        );
+
+        // Mark it inactive so it stays out of active employee / leave / payroll
+        // queries until HR completes and activates it.
+        await client.query(
+          `UPDATE employees SET status = false, updated_by = $1, updated_at = now()
+            WHERE id = $2 AND tenant_id = $3`,
+          [userId, employee.id, tenantId],
+        );
+      }
 
       // 3. Persist the invite token (hashed) + expiry.
       const invite = await client.query(
