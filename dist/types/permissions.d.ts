@@ -57,11 +57,13 @@ export declare const Permissions: {
     readonly BUG_TRASH_DELETE: "bug.trash.delete";
     readonly BUG_ARCHIVE_READ: "bug.archive.read";
     readonly BUG_ARCHIVE_RESTORE: "bug.archive.restore";
+    readonly BUG_ARCHIVE_DELETE: "bug.archive.delete";
     readonly BUG_MANAGE: "bug.manage";
     readonly QA_SCOPE_CREATE: "qa.scope.create";
     readonly QA_SCOPE_READ: "qa.scope.read";
     readonly QA_SCOPE_UPDATE: "qa.scope.update";
     readonly QA_SCOPE_DELETE: "qa.scope.delete";
+    readonly QA_SCOPE_APPROVE: "qa.scope.approve";
     readonly QA_CASE_CREATE: "qa.case.create";
     readonly QA_CASE_READ: "qa.case.read";
     readonly QA_CASE_UPDATE: "qa.case.update";
