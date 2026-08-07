@@ -523,6 +523,10 @@ export const Permissions = {
   LETTER_READ: 'letter.read',
   LETTER_DELETE: 'letter.delete',
   LETTER_MANAGE: 'letter.manage',
+  LETTER_FORMAT_CREATE: 'letter.format.create',
+  LETTER_FORMAT_READ: 'letter.format.read',
+  LETTER_FORMAT_UPDATE: 'letter.format.update',
+  LETTER_FORMAT_DELETE: 'letter.format.delete',
 } as const;
 
 export type Permission = (typeof Permissions)[keyof typeof Permissions];
@@ -879,6 +883,10 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.LETTER_READ,
     Permissions.LETTER_DELETE,
     Permissions.LETTER_MANAGE,
+    Permissions.LETTER_FORMAT_CREATE,
+    Permissions.LETTER_FORMAT_READ,
+    Permissions.LETTER_FORMAT_UPDATE,
+    Permissions.LETTER_FORMAT_DELETE,
   ],
 };
 
