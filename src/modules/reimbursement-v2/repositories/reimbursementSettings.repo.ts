@@ -26,12 +26,13 @@ const DEFAULT_MAIL_CONFIG: ReimbMailConfig = {
   customCcEmails: [],
 };
 
-export async function getSettings(client: TenantClient): Promise<ReimbMailConfig> {
+export async function getSettings(client: TenantClient, tenantId: string): Promise<ReimbMailConfig> {
   const result = await client.query(`
     SELECT mail_config
     FROM rb2_reimbursement_settings
+    WHERE tenant_id = $1
     LIMIT 1
-  `);
+  `, [tenantId]);
 
   if (result.rows.length === 0) {
     return DEFAULT_MAIL_CONFIG;

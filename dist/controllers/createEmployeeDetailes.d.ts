@@ -69,6 +69,8 @@ export declare function getAllEmployees(req: AuthRequest): Promise<{
     departmentId: any;
     departmentName: any;
     positionTitle: any;
+    positionId: any;
+    reportsToId: string;
     address: {
         current: {
             c_flat: any;

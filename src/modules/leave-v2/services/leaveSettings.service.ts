@@ -4,7 +4,7 @@ import { Actor } from '../types';
 
 export async function getMailSettings(actor: Actor) {
   return withTenant(actor.tenantId, async (client) => {
-    return repo.getSettings(client);
+    return repo.getSettings(client, actor.tenantId);
   });
 }
 
