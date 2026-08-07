@@ -21,6 +21,7 @@ import bcrypt from "bcryptjs";
 // Import configurations
 import { connectDatabase, disconnectDatabase } from "@/config/database";
 import gradeRoutes from "@/routes/gradeRoutes";
+import testCaseRoutes from "./routes/testCaseRoutes";
 import companyRoutes from "./routes/companyRoutes";
 
 import authRoutes from "@/routes/auth";
@@ -407,6 +408,7 @@ app.use("/api/leave-request", leaveRequestRoutes);
 app.use("/api/leave-balances", leaveBalanceRoutes);
 app.use("/api/v2/leave", leaveV2Routes);
 app.use("/api/v2/qa/test-scopes", testScopeRoutes);
+app.use("/api/v2/qa", testCaseRoutes); // Registers /api/v2/qa/modules, /api/v2/qa/, /api/v2/qa/suites, /api/v2/qa/runs
 app.use("/api/v2/payroll", payrollV2Routes);
 app.use("/api/v2/reimbursement", reimbursementV2Routes);
 app.use("/api/v2/openings", openingManagementV2Routes);

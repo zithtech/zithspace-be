@@ -74,6 +74,12 @@ router.put("/config/severities/:id", requirePermission(Permissions.BUG_MANAGE), 
 router.delete("/config/severities/:id", requirePermission(Permissions.BUG_MANAGE), BugListController.deleteSeverityOption);
 
 // ─── Config: Type options ──────────────────────────────────────────────────
+// Priority options — shared with the QA workspace
+router.get("/config/priorities", requirePermission(Permissions.BUG_READ), BugListController.listPriorityOptions);
+router.post("/config/priorities", requirePermission(Permissions.BUG_MANAGE), BugListController.createPriorityOption);
+router.put("/config/priorities/:id", requirePermission(Permissions.BUG_MANAGE), BugListController.updatePriorityOption);
+router.delete("/config/priorities/:id", requirePermission(Permissions.BUG_MANAGE), BugListController.deletePriorityOption);
+
 router.get("/config/types", requirePermission(Permissions.BUG_READ), BugListController.listTypeOptions);
 router.post("/config/types", requirePermission(Permissions.BUG_MANAGE), BugListController.createTypeOption);
 router.put("/config/types/:id", requirePermission(Permissions.BUG_MANAGE), BugListController.updateTypeOption);
