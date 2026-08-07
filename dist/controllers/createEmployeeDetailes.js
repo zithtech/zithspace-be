@@ -308,7 +308,7 @@ async function getAllEmployees(req) {
             if (employees.length === 0)
                 return [];
             const employeeIds = employees.map((e) => e.id);
-            const [addressesRes, emergencyRes, identityRes, workRes] = await Promise.all([
+            const [addressesRes, emergencyRes, identityRes, workRes, projectsRes] = await Promise.all([
                 db.query(`SELECT * FROM employee_addresses WHERE employee_id = ANY($1::uuid[])`, [employeeIds]),
                 db.query(`SELECT * FROM employee_emergency_contacts WHERE employee_id = ANY($1::uuid[])`, [employeeIds]),
                 db.query(`SELECT * FROM employee_identities WHERE employee_id = ANY($1::uuid[])`, [employeeIds]),
@@ -321,6 +321,7 @@ async function getAllEmployees(req) {
                LEFT JOIN departments d ON d.id = p.department_id
               WHERE wd.employee_id = ANY($1::uuid[])
               ORDER BY wd.created_at ASC`, [employeeIds]),
+                db.query(`SELECT employee_id, reporting_manager FROM employee_project_mappings WHERE employee_id = ANY($1::uuid[]) ORDER BY created_at ASC`, [employeeIds]),
             ]);
             // Index related rows by employee_id for O(1) assembly.
             const addrByEmp = new Map();
@@ -345,6 +346,11 @@ async function getAllEmployees(req) {
                 if (!workByEmp.has(w.employee_id))
                     workByEmp.set(w.employee_id, w);
             }
+            const managerByEmp = new Map();
+            for (const p of projectsRes.rows) {
+                if (!managerByEmp.has(p.employee_id))
+                    managerByEmp.set(p.employee_id, p.reporting_manager);
+            }
             return employees.map((employee) => {
                 const addresses = addrByEmp.get(employee.id) || [];
                 const currentAddress = addresses.find((addr) => addr.address_type === "CURRENT");
@@ -367,6 +373,8 @@ async function getAllEmployees(req) {
                     departmentId: latestWorkDetail?.department_id || null,
                     departmentName: latestWorkDetail?.department_name || null,
                     positionTitle: latestWorkDetail?.position_title || null,
+                    positionId: latestWorkDetail?.position_id || null,
+                    reportsToId: managerByEmp.get(employee.id) || null,
                     address: {
                         current: currentAddress
                             ? {

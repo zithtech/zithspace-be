@@ -1,6 +1,8 @@
 // src/modules/pipeline/services/candidateService.ts
 import { pipelinePool, withTenant } from '../db/pool';
 import { PipelineError } from '../types';
+import { MailService } from '../../../services/mail/MailService';
+import { prisma } from '../../../config/database';
 
 export interface CreateCandidateDto {
   role: string;
@@ -52,7 +54,7 @@ export async function createCandidate(tenantId: string, userId: string, data: Cr
             data.name,
             data.mobile,
             data.email,
-            String(data.total_experience) === '' ? null : Number(data.total_experience),
+            data.total_experience === undefined || data.total_experience === null || String(data.total_experience).trim() === '' || isNaN(Number(data.total_experience)) ? null : Number(data.total_experience),
             data.resume_url,
             data.skills ? JSON.stringify(data.skills) : null
           ]
@@ -72,9 +74,9 @@ export async function createCandidate(tenantId: string, userId: string, data: Cr
         data.name,
         data.mobile,
         data.email,
-        String(data.total_experience) === '' ? null : Number(data.total_experience),
-        String(data.current_ctc) === '' ? null : Number(data.current_ctc),
-        String(data.expected_ctc) === '' ? null : Number(data.expected_ctc),
+        data.total_experience === undefined || data.total_experience === null || String(data.total_experience).trim() === '' || isNaN(Number(data.total_experience)) ? null : Number(data.total_experience),
+        data.current_ctc === undefined || data.current_ctc === null || String(data.current_ctc).trim() === '' || isNaN(Number(data.current_ctc)) ? null : Number(data.current_ctc),
+        data.expected_ctc === undefined || data.expected_ctc === null || String(data.expected_ctc).trim() === '' || isNaN(Number(data.expected_ctc)) ? null : Number(data.expected_ctc),
         data.resume_url,
         data.skills ? JSON.stringify(data.skills) : '[]'
       ]
@@ -165,9 +167,9 @@ export async function updateCandidate(tenantId: string, userId: string, id: stri
         data.name,
         data.mobile,
         data.email,
-        data.total_experience === undefined || String(data.total_experience) === '' ? null : Number(data.total_experience),
-        data.current_ctc === undefined || String(data.current_ctc) === '' ? null : Number(data.current_ctc),
-        data.expected_ctc === undefined || String(data.expected_ctc) === '' ? null : Number(data.expected_ctc),
+        data.total_experience === undefined || data.total_experience === null || String(data.total_experience).trim() === '' || isNaN(Number(data.total_experience)) ? null : Number(data.total_experience),
+        data.current_ctc === undefined || data.current_ctc === null || String(data.current_ctc).trim() === '' || isNaN(Number(data.current_ctc)) ? null : Number(data.current_ctc),
+        data.expected_ctc === undefined || data.expected_ctc === null || String(data.expected_ctc).trim() === '' || isNaN(Number(data.expected_ctc)) ? null : Number(data.expected_ctc),
         data.resume_url,
         data.skills ? JSON.stringify(data.skills) : null,
         id
@@ -242,9 +244,6 @@ export async function resendEmail(tenantId: string, userId: string, emailId: str
     if (!candRows.length || !candRows[0].email) throw new Error('Candidate email not found');
     const candidateEmail = candRows[0].email;
 
-    const { MailService } = await import('../../../services/mail/MailService');
-    const { prisma } = await import('../../../config/database');
-
     const mailAccount = await prisma.mail_accounts.findFirst({
       where: { tenant_id: tenantId, user_id: userId }
     });
@@ -291,9 +290,6 @@ export async function updateAndSendEmail(tenantId: string, userId: string, email
     );
     if (!candRows.length || !candRows[0].email) throw new Error('Candidate email not found');
     const candidateEmail = candRows[0].email;
-
-    const { MailService } = await import('../../../services/mail/MailService');
-    const { prisma } = await import('../../../config/database');
 
     const mailAccount = await prisma.mail_accounts.findFirst({
       where: { tenant_id: tenantId, user_id: userId }

@@ -17,6 +17,7 @@ import {
   Action,
   EntityType,
 } from "@/utils/transactionHistory";
+import { RBACService } from "@/modules/rbac/rbac.service";
 
 // ============================================================================
 // Helpers
@@ -612,6 +613,15 @@ export class BugListController {
         return;
       }
       const currentStatus = owned.rows[0].status;
+      
+      if (currentStatus === 'archived') {
+        const allowed = await RBACService.hasAnyPermission(req.user!.id, req.tenantId!, ['bug.archive.delete', 'bug.manage'], req.user!.role);
+        if (!allowed) {
+          bad(res, 403, "Permission denied. You need archive delete permission.");
+          return;
+        }
+      }
+      
       const originalStatus = currentStatus === 'trash' ? null : currentStatus;
 
       const r = await pool.query(
@@ -781,12 +791,27 @@ export class BugListController {
     const { id } = req.params;
     try {
       const folderResult = await pool.query(
-        `SELECT original_status FROM bug_folders WHERE id = $1 AND tenant_id = $2 AND status IN ('trash', 'archived')`,
+        `SELECT original_status, status FROM bug_folders WHERE id = $1 AND tenant_id = $2 AND status IN ('trash', 'archived')`,
         [id, req.tenantId],
       );
       if (folderResult.rows.length === 0) {
         bad(res, 404, "Item not found in trash or archive");
         return;
+      }
+      
+      const currentStatus = folderResult.rows[0].status;
+      if (currentStatus === "archived") {
+        const allowed = await RBACService.hasAnyPermission(req.user!.id, req.tenantId!, ['bug.archive.restore', 'bug.manage'], req.user!.role);
+        if (!allowed) {
+          bad(res, 403, "Permission denied. You need archive restore permission.");
+          return;
+        }
+      } else if (currentStatus === "trash") {
+        const allowed = await RBACService.hasAnyPermission(req.user!.id, req.tenantId!, ['bug.trash.restore', 'bug.manage'], req.user!.role);
+        if (!allowed) {
+          bad(res, 403, "Permission denied. You need trash restore permission.");
+          return;
+        }
       }
       const originalStatus = folderResult.rows[0].original_status || 'active';
       await pool.query(
@@ -1220,11 +1245,25 @@ export class BugListController {
       bad(res, 400, "status must be one of: active, current, completed, archived");
       return;
     }
+    
+    // Explicitly require BUG_DELETE permission to archive a sheet
+    if (status === "archived") {
+      const allowed = await RBACService.hasAnyPermission(
+        req.user!.id,
+        req.tenantId!,
+        ['bug.delete', 'bug.manage'],
+        req.user!.role
+      );
+      if (!allowed) {
+        bad(res, 403, "Permission denied. You need delete permission to archive.");
+        return;
+      }
+    }
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
       const owned = await client.query(
-        `SELECT id, folder_id FROM bug_sheets WHERE id = $1 AND tenant_id = $2`,
+        `SELECT id, folder_id, status FROM bug_sheets WHERE id = $1 AND tenant_id = $2`,
         [id, req.tenantId],
       );
       if (owned.rows.length === 0) {
@@ -1233,6 +1272,22 @@ export class BugListController {
         return;
       }
       const folderId = owned.rows[0].folder_id;
+      const currentStatus = owned.rows[0].status;
+      
+      // Enforce restore from archive permission
+      if (currentStatus === "archived" && status !== "archived") {
+        const allowed = await RBACService.hasAnyPermission(
+          req.user!.id,
+          req.tenantId!,
+          ['bug.archive.restore', 'bug.manage'],
+          req.user!.role
+        );
+        if (!allowed) {
+          await client.query("ROLLBACK");
+          bad(res, 403, "Permission denied. You need archive restore permission.");
+          return;
+        }
+      }
       // 'current' is unique per folder — demote any existing current first.
       if (status === "current") {
         await client.query(
@@ -1328,6 +1383,15 @@ export class BugListController {
       }
       
       const currentStatus = sheetResult.rows[0].status;
+      
+      if (currentStatus === 'archived') {
+        const allowed = await RBACService.hasAnyPermission(req.user!.id, req.tenantId!, ['bug.archive.delete', 'bug.manage'], req.user!.role);
+        if (!allowed) {
+          bad(res, 403, "Permission denied. You need archive delete permission.");
+          return;
+        }
+      }
+      
       // Only preserve status if it's not already trash
       const originalStatus = currentStatus === 'trash' ? null : currentStatus;
       
@@ -2087,6 +2151,15 @@ export class BugListController {
       
       const bugRow = bugResult.rows[0];
       const currentStatus = bugRow.status;
+      
+      if (currentStatus === 'archived') {
+        const allowed = await RBACService.hasAnyPermission(req.user!.id, req.tenantId!, ['bug.archive.delete', 'bug.manage'], req.user!.role);
+        if (!allowed) {
+          bad(res, 403, "Permission denied. You need archive delete permission.");
+          return;
+        }
+      }
+      
       // Only preserve status if it's not already trash, using COALESCE logic
       const originalStatus = currentStatus === 'trash' ? bugRow.original_status : (bugRow.original_status || currentStatus);
       
@@ -2267,6 +2340,19 @@ export class BugListController {
       return;
     }
     try {
+      // Check for archived bugs
+      const archivedCheck = await pool.query(
+        `SELECT id FROM bugs WHERE id = ANY($1::text[]) AND tenant_id = $2 AND status = 'archived' LIMIT 1`,
+        [bugIds, req.tenantId]
+      );
+      if (archivedCheck.rows.length > 0) {
+        const allowed = await RBACService.hasAnyPermission(req.user!.id, req.tenantId!, ['bug.archive.delete', 'bug.manage'], req.user!.role);
+        if (!allowed) {
+          bad(res, 403, "Permission denied. You need archive delete permission to delete archived bugs.");
+          return;
+        }
+      }
+
       // Update all bugs to preserve their original status before moving to trash
       const r = await pool.query(
         `UPDATE bugs

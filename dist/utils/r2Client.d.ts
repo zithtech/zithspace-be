@@ -86,6 +86,12 @@ export declare function uploadEmployeeAssetToR2({ base64, fileName, tenantId, em
     folder?: string;
 }): Promise<string>;
 /**
+ * Upload a resume file (from disk path) to Cloudflare R2.
+ * Returns a public URL suitable for Google Docs Viewer.
+ * Path: {tenantId}/resumes/{uniqueId}_{fileName}
+ */
+export declare function uploadResumeToR2(filePath: string, fileName: string, tenantId: string, mimeType: string): Promise<string>;
+/**
  * Upload candidate document to Cloudflare R2
  * @param base64File - Base64 encoded file string
  * @param fileName - Original file name

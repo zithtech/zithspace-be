@@ -1,5 +1,6 @@
 // src/modules/pipeline/controllers/candidateController.ts
 import { Response } from 'express';
+import { z } from 'zod';
 import { AuthRequest } from '@/types';
 import { handle, actorOf, ok } from '../http';
 import * as candidateService from '../services/candidateService';
@@ -9,7 +10,7 @@ import { parseResumeFile } from '../services/resumeParser';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { uploadCandidateDocumentToR2 } from '../../../utils/r2Client';
+import { uploadCandidateDocumentToR2, uploadResumeToR2 } from '../../../utils/r2Client';
 
 const uploadDir = path.join(process.cwd(), 'uploads', 'resumes');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
@@ -25,14 +26,44 @@ export const upload = multer({ storage });
 
 export const parseResume = handle(async (req: AuthRequest, res: Response) => {
   if (!req.file) throw new Error('No resume file provided');
+  const actor = actorOf(req);
   const parsed = await parseResumeFile(req.file.path, req.file.mimetype);
-  const file_url = `${process.env.API_BASE_URL || ''}/uploads/resumes/${req.file.filename}`;
+  
+  let file_url: string;
+  try {
+    // Upload to R2 so the URL is publicly accessible (required for Google Docs Viewer)
+    file_url = await uploadResumeToR2(
+      req.file.path,
+      req.file.originalname,
+      actor.tenantId,
+      req.file.mimetype,
+    );
+  } catch (uploadErr) {
+    console.error('R2 upload failed, falling back to local URL:', uploadErr);
+    file_url = `${process.env.API_BASE_URL || ''}/uploads/resumes/${req.file.filename}`;
+  } finally {
+    // Clean up the temp file from disk regardless of outcome
+    try { fs.unlinkSync(req.file.path); } catch {}
+  }
+
   ok(res, { parsed, file_url });
+});
+
+const candidateSchema = z.object({
+  role: z.string(),
+  name: z.string().trim().min(1, 'Name is required').regex(/^[a-zA-Z\s\.\-']*$/, 'Name contains invalid characters'),
+  email: z.string().email('Invalid email address').optional().nullable(),
+  mobile: z.string().regex(/^[0-9\+\-\s]*$/, 'Invalid mobile number').min(7, 'Mobile must be at least 7 characters').max(15, 'Mobile cannot exceed 15 characters').optional().nullable(),
+  total_experience: z.preprocess((val) => Number(val) || undefined, z.number().min(0).max(60).optional().nullable()),
+  current_ctc: z.preprocess((val) => Number(val) || undefined, z.number().min(0).optional().nullable()),
+  expected_ctc: z.preprocess((val) => Number(val) || undefined, z.number().min(0).optional().nullable()),
+  resume_url: z.string().optional().nullable(),
+  skills: z.array(z.string()).optional(),
 });
 
 export const createCandidate = handle(async (req: AuthRequest, res: Response) => {
   const actor = actorOf(req);
-  const data = req.body;
+  const data = candidateSchema.parse(req.body) as candidateService.CreateCandidateDto;
   const candidate = await candidateService.createCandidate(actor.tenantId, actor.userId, data);
   ok(res, candidate, 201);
 });
@@ -66,7 +97,7 @@ export const getCandidateEmails = handle(async (req: AuthRequest, res: Response)
 
 export const updateCandidate = handle(async (req: AuthRequest, res: Response) => {
   const actor = actorOf(req);
-  const data = req.body;
+  const data = candidateSchema.partial().parse(req.body) as Partial<candidateService.CreateCandidateDto>;
   const candidate = await candidateService.updateCandidate(actor.tenantId, actor.userId, req.params.id, data);
   if (!candidate) return ok(res, { error: 'Not found' }, 404);
   ok(res, candidate);

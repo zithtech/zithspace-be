@@ -13,6 +13,7 @@ export interface GenerateLetterDto {
   referenceEntityId?: string;
   referenceEntityType?: string;
   documentNumber?: string;
+  documentName?: string;
   values: Record<string, string>;
   customContent?: string;
 }
@@ -364,7 +365,7 @@ export class GeneratedLetterService {
       SELECT 
         gd.id, gd.tenant_id AS "tenantId", gd.template_id AS "templateId", 
         gd.category_id AS "categoryId", gd.reference_entity_id AS "referenceEntityId", 
-        gd.reference_entity_type AS "referenceEntityType", gd.document_number AS "documentNumber", 
+        gd.reference_entity_type AS "referenceEntityType", gd.document_number AS "documentNumber", gd.document_name AS "documentName", 
         gd.status, gd.generated_by AS "generatedById", gd.generated_at AS "generatedAt", 
         gd.docx_file_path AS "docxFilePath", gd.pdf_file_path AS "pdfFilePath", 
         COALESCE(
@@ -373,7 +374,7 @@ export class GeneratedLetterService {
         ) AS "snapshotContent",
         (SELECT json_build_object('id', dt.id, 'templateName', dt.template_name) FROM document_templates dt WHERE dt.id = gd.template_id) AS template,
         (SELECT json_build_object('id', dc.id, 'categoryName', dc.category_name) FROM document_categories dc WHERE dc.id = gd.category_id) AS category,
-        (SELECT json_build_object('id', u.id, 'name', u.name, 'workEmail', u.work_email) FROM users u WHERE u.id = gd.generated_by) AS "generatedBy",
+        (SELECT json_build_object('id', u.id, 'name', u.name, 'workEmail', u.work_email, 'avatarUrl', u.avatar_url) FROM users u WHERE u.id = gd.generated_by) AS "generatedBy",
         json_build_object(
           'values', (SELECT COUNT(*) FROM generated_document_values gdv WHERE gdv.generated_document_id = gd.id)::int,
           'files', (SELECT COUNT(*) FROM document_files df WHERE df.generated_document_id = gd.id)::int
@@ -391,7 +392,7 @@ export class GeneratedLetterService {
       SELECT 
         gd.id, gd.tenant_id AS "tenantId", gd.template_id AS "templateId", 
         gd.category_id AS "categoryId", gd.reference_entity_id AS "referenceEntityId", 
-        gd.reference_entity_type AS "referenceEntityType", gd.document_number AS "documentNumber", 
+        gd.reference_entity_type AS "referenceEntityType", gd.document_number AS "documentNumber", gd.document_name AS "documentName",
         gd.status, gd.generated_by AS "generatedById", gd.generated_at AS "generatedAt", 
         gd.docx_file_path AS "docxFilePath", gd.pdf_file_path AS "pdfFilePath", 
         COALESCE(
@@ -463,18 +464,18 @@ export class GeneratedLetterService {
     }
 
     const documentNumber = data.documentNumber || `DOC-${Date.now().toString().slice(-6)}`;
-    
+
     // Pre-generate UUID
     const uuidRes = await pool.query('SELECT gen_random_uuid() AS id');
     const generatedDocId = uuidRes.rows[0].id;
-    
+
     // Generate PDF and DOCX before transaction
     const snapshotContentToSave = data.customContent || template.editorContent;
     const placeholdersRes = await pool.query('SELECT placeholder_key AS "placeholderKey" FROM template_placeholders WHERE template_id = $1', [template.id]);
     const templatePlaceholders = placeholdersRes.rows;
-    
+
     const renderedHtmlWithConfig = await this.substitutePlaceholders(tenantId, snapshotContentToSave, data.values, templatePlaceholders);
-    
+
     let pageConfig: any = {};
     const configRegex = /<script\s+id="zith-page-config"\s+type="application\/json">([\s\S]*?)<\/script>/i;
     const match = configRegex.exec(renderedHtmlWithConfig);
@@ -485,17 +486,17 @@ export class GeneratedLetterService {
     }
     // Pass HTML with the config tag intact so generatePDFBuffer can read header/footer settings
     const renderedHtml = renderedHtmlWithConfig.replace(configRegex, '');
-    
+
     const headerHtml = pageConfig.headerHtml;
     const footerHtml = pageConfig.footerHtml;
-    
+
     const pdfBuffer = await this.generatePDFBuffer(renderedHtmlWithConfig);
     const docxBuffer = await this.generateDOCXBuffer(renderedHtml, `${template.templateName} - ${documentNumber}`, headerHtml, footerHtml);
-    
+
     const safeTemplateName = template.templateName.replace(/\s+/g, '_');
     const pdfFileName = `${documentNumber}_${safeTemplateName}.pdf`;
     const docxFileName = `${documentNumber}_${safeTemplateName}.docx`;
-    
+
     const pdfUrl = await uploadDocumentToR2(pdfBuffer, pdfFileName, tenantId, generatedDocId, 'application/pdf');
     const docxUrl = await uploadDocumentToR2(docxBuffer, docxFileName, tenantId, generatedDocId, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
 
@@ -504,9 +505,9 @@ export class GeneratedLetterService {
       await client.query('BEGIN');
 
       await client.query(
-        `INSERT INTO generated_documents (id, tenant_id, template_id, category_id, reference_entity_id, reference_entity_type, document_number, status, generated_by, snapshot_content, docx_file_path, pdf_file_path, generated_at) 
-         VALUES ($1, $2, $3, $4, $5, $6, $7, 'GENERATED', $8, $9, $10, $11, NOW())`,
-        [generatedDocId, tenantId, template.id, template.categoryId || null, data.referenceEntityId || null, data.referenceEntityType || 'EMPLOYEE', documentNumber, userId, snapshotContentToSave, docxUrl, pdfUrl]
+        `INSERT INTO generated_documents (id, tenant_id, template_id, category_id, reference_entity_id, reference_entity_type, document_number, document_name, status, generated_by, snapshot_content, docx_file_path, pdf_file_path, generated_at) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'GENERATED', $9, $10, $11, $12, NOW())`,
+        [generatedDocId, tenantId, template.id, template.categoryId || null, data.referenceEntityId || null, data.referenceEntityType || 'EMPLOYEE', documentNumber, data.documentName || null, userId, snapshotContentToSave, docxUrl, pdfUrl]
       );
 
       const valueEntries = Object.entries(data.values);
@@ -569,9 +570,9 @@ export class GeneratedLetterService {
     // Pre-generate PDF and DOCX before transaction
     const placeholdersRes = await pool.query('SELECT placeholder_key AS "placeholderKey" FROM template_placeholders WHERE template_id = $1', [template.id]);
     const templatePlaceholders = placeholdersRes.rows;
-    
+
     const renderedHtmlWithConfig = await this.substitutePlaceholders(tenantId, snapshotContentToSave, data.values, templatePlaceholders);
-    
+
     let pageConfig: any = {};
     const configRegex = /<script\s+id="zith-page-config"\s+type="application\/json">([\s\S]*?)<\/script>/i;
     const match = configRegex.exec(renderedHtmlWithConfig);
@@ -582,17 +583,17 @@ export class GeneratedLetterService {
     }
     // Pass HTML with the config tag intact so generatePDFBuffer can read header/footer settings
     const renderedHtml = renderedHtmlWithConfig.replace(configRegex, '');
-    
+
     const headerHtml = pageConfig.headerHtml;
     const footerHtml = pageConfig.footerHtml;
-    
+
     const pdfBuffer = await this.generatePDFBuffer(renderedHtmlWithConfig);
     const docxBuffer = await this.generateDOCXBuffer(renderedHtml, `${template.templateName} - ${documentNumber}`, headerHtml, footerHtml);
-    
+
     const safeTemplateName = template.templateName.replace(/\s+/g, '_');
     const pdfFileName = `${documentNumber}_${safeTemplateName}.pdf`;
     const docxFileName = `${documentNumber}_${safeTemplateName}.docx`;
-    
+
     const pdfUrl = await uploadDocumentToR2(pdfBuffer, pdfFileName, tenantId, existingDoc.id, 'application/pdf');
     const docxUrl = await uploadDocumentToR2(docxBuffer, docxFileName, tenantId, existingDoc.id, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
 
@@ -601,8 +602,8 @@ export class GeneratedLetterService {
       await client.query('BEGIN');
 
       await client.query(
-        `UPDATE generated_documents SET template_id = $1, category_id = $2, reference_entity_id = $3, reference_entity_type = $4, document_number = $5, snapshot_content = $6, pdf_file_path = $7, docx_file_path = $8 WHERE id = $9`,
-        [template.id, template.categoryId || null, data.referenceEntityId || null, data.referenceEntityType || 'EMPLOYEE', documentNumber, snapshotContentToSave, pdfUrl, docxUrl, existingDoc.id]
+        `UPDATE generated_documents SET template_id = $1, category_id = $2, reference_entity_id = $3, reference_entity_type = $4, document_number = $5, snapshot_content = $6, pdf_file_path = $7, docx_file_path = $8, document_name = $9 WHERE id = $10`,
+        [template.id, template.categoryId || null, data.referenceEntityId || null, data.referenceEntityType || 'EMPLOYEE', documentNumber, snapshotContentToSave, pdfUrl, docxUrl, data.documentName || null, existingDoc.id]
       );
 
       await client.query(`DELETE FROM generated_document_values WHERE generated_document_id = $1`, [existingDoc.id]);
@@ -761,15 +762,26 @@ export class GeneratedLetterService {
               const div = document.createElement('div');
               div.innerHTML = html;
               div.style.width = '100%';
-              div.style.padding = '0 20mm';
+              div.style.padding = '4px 20mm 0';
               div.style.position = 'absolute';
               div.style.visibility = 'hidden';
               div.style.fontFamily = "'Helvetica Neue', Helvetica, Arial, sans-serif";
-              div.style.fontSize = '14px';
-              div.style.lineHeight = '1.6';
+              div.style.fontSize = '11px';
+              div.style.lineHeight = '1.4';
               div.style.boxSizing = 'border-box';
-              div.style.textAlign = 'center';
               div.style.overflow = 'hidden';
+              // Constrain images the same way the header template does
+              // @ts-ignore
+              const style = document.createElement('style');
+              style.textContent = `
+                .measure-div img { max-height: 55px !important; max-width: 120px !important; width: auto !important; height: auto !important; }
+                .measure-div p, .measure-div div { margin: 0 !important; padding: 0 !important; line-height: 1.4 !important; }
+                .measure-div table { width: 100% !important; border-collapse: collapse !important; border: none !important; margin: 0 !important; }
+                .measure-div td, .measure-div th { border: none !important; padding: 0 4px !important; vertical-align: middle !important; }
+              `;
+              div.classList.add('measure-div');
+              // @ts-ignore
+              document.head.appendChild(style);
               // @ts-ignore
               document.body.appendChild(div);
 
@@ -785,6 +797,8 @@ export class GeneratedLetterService {
               const height = div.offsetHeight;
               // @ts-ignore
               document.body.removeChild(div);
+              // @ts-ignore
+              document.head.removeChild(style);
               return height;
             };
             return {
@@ -803,30 +817,91 @@ export class GeneratedLetterService {
             return num;
           };
 
+          // A4 page height at 96 dpi: 297mm * 3.7795 ≈ 1122.5px
+          const A4_HEIGHT_PX = 1122;
+          // Reserve at least 80mm (≈ 302px) for body content
+          const MIN_CONTENT_PX = 302;
+          const MAX_TOTAL_MARGIN_PX = A4_HEIGHT_PX - MIN_CONTENT_PX; // ≈ 820px
+
           if (hasHeader) {
             const currentTop = parseMarginToPx(pdfOptions.margin.top);
-            const neededTop = headerHeight + 20; // 20px buffer for slight padding
-            if (neededTop > currentTop) {
-              pdfOptions.margin.top = `${neededTop}px`;
-            }
+            const neededTop = headerHeight + 10; // 10px safety buffer
+            const resolvedTop = Math.max(currentTop, neededTop);
+            pdfOptions.margin.top = `${resolvedTop}px`;
+          } else {
+            // Normalise to px so all margins are the same unit
+            pdfOptions.margin.top = `${parseMarginToPx(pdfOptions.margin.top)}px`;
           }
+
           if (hasFooter) {
             const currentBottom = parseMarginToPx(pdfOptions.margin.bottom);
-            const neededBottom = footerHeight + 20; // 20px buffer for slight padding
-            if (neededBottom > currentBottom) {
-              pdfOptions.margin.bottom = `${neededBottom}px`;
-            }
+            const neededBottom = footerHeight + 10; // 10px safety buffer
+            const resolvedBottom = Math.max(currentBottom, neededBottom);
+            pdfOptions.margin.bottom = `${resolvedBottom}px`;
+          } else {
+            pdfOptions.margin.bottom = `${parseMarginToPx(pdfOptions.margin.bottom)}px`;
           }
+
+          // Clamp: top + bottom must never exceed MAX_TOTAL_MARGIN_PX
+          const topPx = parseMarginToPx(pdfOptions.margin.top);
+          const bottomPx = parseMarginToPx(pdfOptions.margin.bottom);
+          if (topPx + bottomPx > MAX_TOTAL_MARGIN_PX) {
+            const scale = MAX_TOTAL_MARGIN_PX / (topPx + bottomPx);
+            pdfOptions.margin.top = `${Math.floor(topPx * scale)}px`;
+            pdfOptions.margin.bottom = `${Math.floor(bottomPx * scale)}px`;
+          }
+
         }
 
         if (hasBorder || hasHeader || hasFooter) {
           pdfOptions.displayHeaderFooter = true;
 
           let headerTemplate = `<style>
-            #header-wrap, #footer-wrap { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.6; width: 100%; color: #1f2937; padding: 0 20mm; -webkit-print-color-adjust: exact; print-color-adjust: exact; box-sizing: border-box; }
+            #header-wrap, #footer-wrap {
+              font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+              font-size: 11px;
+              line-height: 1.4;
+              width: 100%;
+              color: #1f2937;
+              padding: 4px 20mm 0;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+              box-sizing: border-box;
+            }
             #header-wrap *, #footer-wrap * { box-sizing: border-box; }
             .logo-placeholder-btn { display: none !important; }
-          </style><div id="header-wrap" style="width: 100%; text-align: center;">`;
+            /* Reset paragraph / div spacing inside header */
+            #header-wrap p, #header-wrap div,
+            #footer-wrap p, #footer-wrap div {
+              margin: 0 !important;
+              padding: 0 !important;
+              line-height: 1.4 !important;
+            }
+            /* Constrain logo image size */
+            #header-wrap img, #footer-wrap img {
+              max-height: 55px !important;
+              max-width: 120px !important;
+              width: auto !important;
+              height: auto !important;
+              object-fit: contain !important;
+              display: inline-block !important;
+            }
+            /* Table layout inside header — no borders, proper alignment */
+            #header-wrap table, #footer-wrap table {
+              width: 100% !important;
+              border-collapse: collapse !important;
+              border: none !important;
+              margin: 0 !important;
+            }
+            #header-wrap td, #header-wrap th,
+            #footer-wrap td, #footer-wrap th {
+              border: none !important;
+              padding: 0 4px !important;
+              vertical-align: middle !important;
+              word-break: break-word !important;
+            }
+          </style><div id="header-wrap" style="width: 100%;">`;
+
           if (hasHeader) {
             headerTemplate += pageConfig.headerHtml;
           }

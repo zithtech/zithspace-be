@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import pool from '../config/dbpool';
 import { SprintReportExportService } from '../services/sprintReportExportService';
+import { RBACService } from '../modules/rbac/rbac.service';
+import { Permissions } from '../types/permissions';
 
 export const getTestScopes = async (req: Request, res: Response) => {
   try {
@@ -75,6 +77,19 @@ export const updateTestScope = async (req: Request, res: Response) => {
 
     console.log('UpdateTestScope called with id:', id, 'body:', req.body);
     const { name, type, priority, status, qa_owner, start_date, end_date, details } = req.body || {};
+
+    // Check approve/reject permissions
+    if (status === 'Approved' || status === 'Rejected') {
+      const allowed = await RBACService.hasAnyPermission(
+        (req as any).user.id, 
+        tenantId, 
+        [Permissions.QA_SCOPE_APPROVE, Permissions.QA_MANAGE], 
+        (req as any).user.role
+      );
+      if (!allowed) {
+        return res.status(403).json({ success: false, error: 'You do not have permission to approve or reject test scopes' });
+      }
+    }
 
     const query = `UPDATE qa_test_scopes 
        SET name = $1, type = $2, priority = $3, status = $4, qa_owner = $5, start_date = $6, end_date = $7, details = $8, updated_at = NOW()

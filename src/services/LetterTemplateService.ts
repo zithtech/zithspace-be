@@ -108,6 +108,7 @@ export class LetterTemplateService {
         (SELECT COALESCE(json_agg(json_build_object(
           'id', tp.id, 'tenantId', tp.tenant_id, 'templateId', tp.template_id, 'placeholderKey', tp.placeholder_key, 'placeholderLabel', tp.placeholder_label, 'dataType', tp.data_type, 'required', tp.required, 'defaultValue', tp.default_value, 'displayOrder', tp.display_order, 'createdAt', tp.created_at
         ) ORDER BY tp.display_order ASC), '[]'::json) FROM template_placeholders tp WHERE tp.template_id = dt.id) AS placeholders,
+        (SELECT json_build_object('id', u.id, 'name', u.name, 'workEmail', u.work_email, 'avatarUrl', u.avatar_url) FROM users u WHERE u.id = dt.created_by) AS "createdBy",
         json_build_object(
           'versions', (SELECT COUNT(*) FROM template_versions tv WHERE tv.template_id = dt.id)::int,
           'generatedDocuments', (SELECT COUNT(*) FROM generated_documents gd WHERE gd.template_id = dt.id)::int

@@ -1405,6 +1405,7 @@ export class AuthController {
           const parts = urlObj.hostname.split('.');
           if (parts[0] === 'app' || parts[0] === 'www') {
             parts[0] = user.tenant.subdomain;
+            urlObj.hostname = parts.join('.');
           } else if (parts[0] === 'localhost' || parts[0] === '127') {
             urlObj.hostname = `${user.tenant.subdomain}.${urlObj.hostname}`;
           } else {
