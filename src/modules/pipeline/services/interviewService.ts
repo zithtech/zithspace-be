@@ -3,6 +3,7 @@ import { pipelinePool, withTenant } from '../db/pool';
 import { prisma } from '../../../config/database';
 import { CalendarService } from '../../../services/calendar/CalendarService';
 import { MailService } from '../../../services/mail/MailService';
+import { PipelineError } from '../types';
 
 export interface ScheduleInterviewDto {
   candidate_id: string;
@@ -20,6 +21,14 @@ export interface ScheduleInterviewDto {
 
 export async function scheduleInterview(tenantId: string, userId: string, data: ScheduleInterviewDto) {
   return withTenant(tenantId, async (client) => {
+    // 0. Ensure Mail is Integrated
+    const mailAccount = await prisma.mail_accounts.findFirst({
+      where: { tenant_id: tenantId, user_id: userId, is_active: true }
+    });
+    if (!mailAccount) {
+      throw new PipelineError("Mail integration is required to schedule interviews. Please connect your email first.", "NO_MAIL_INTEGRATION");
+    }
+
     let locationOrLink = data.location_or_link || '';
     
     // 1. Fetch Candidate
@@ -38,13 +47,16 @@ export async function scheduleInterview(tenantId: string, userId: string, data: 
 
     // 2. Online Mode - Calendar Event
     if (data.mode === 'Online' && data.generate_meeting) {
-      try {
-        const integration = await prisma.calendarIntegration.findFirst({
-          where: { userId: userId, tenantId: tenantId }
-        });
+      const integration = await prisma.calendarIntegration.findFirst({
+        where: { userId: userId, tenantId: tenantId }
+      });
 
-        if (integration) {
-          // EXCLUDE candidate.email from attendees to prevent provider from sending automated invite!
+      if (!integration) {
+        throw new PipelineError("Calendar integration is required to auto-generate a meeting link. Please connect your calendar or uncheck the 'Auto-generate meeting link' option.", "NO_CALENDAR_INTEGRATION");
+      }
+
+      try {
+        // EXCLUDE candidate.email from attendees to prevent provider from sending automated invite!
           const attendees: string[] = [];
 
           if (data.interviewer_ids.length > 0) {
@@ -72,7 +84,6 @@ export async function scheduleInterview(tenantId: string, userId: string, data: 
           if (createdEvent && createdEvent.meetingLink) {
             locationOrLink = createdEvent.meetingLink;
           }
-        }
       } catch (err: any) {
         console.error('Failed to generate calendar meeting:', err);
       }
