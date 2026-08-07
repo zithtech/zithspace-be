@@ -68,6 +68,25 @@ export const Permissions = {
   BUG_ARCHIVE_RESTORE: 'bug.archive.restore',
   BUG_MANAGE: 'bug.manage',
 
+  // ─── QA Space ────────────────────────────────────────────────────
+  QA_SCOPE_CREATE: 'qa.scope.create',
+  QA_SCOPE_READ:   'qa.scope.read',
+  QA_SCOPE_UPDATE: 'qa.scope.update',
+  QA_SCOPE_DELETE: 'qa.scope.delete',
+  QA_CASE_CREATE:  'qa.case.create',
+  QA_CASE_READ:    'qa.case.read',
+  QA_CASE_UPDATE:  'qa.case.update',
+  QA_CASE_DELETE:  'qa.case.delete',
+  QA_SUITE_CREATE: 'qa.suite.create',
+  QA_SUITE_READ:   'qa.suite.read',
+  QA_SUITE_UPDATE: 'qa.suite.update',
+  QA_SUITE_DELETE: 'qa.suite.delete',
+  QA_RUN_CREATE:   'qa.run.create',
+  QA_RUN_READ:     'qa.run.read',
+  QA_RUN_UPDATE:   'qa.run.update',
+  QA_RUN_DELETE:   'qa.run.delete',
+  QA_MANAGE:       'qa.manage',
+
   // ─── Attendance ──────────────────────────────────────────────────
   ATTENDANCE_CREATE: 'attendance.create',
   ATTENDANCE_READ: 'attendance.read',
