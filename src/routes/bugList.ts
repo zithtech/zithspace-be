@@ -18,7 +18,7 @@ router.get("/folders/archived", requirePermission(Permissions.BUG_READ), BugList
 router.get("/folders/trashed", requirePermission(Permissions.BUG_READ), BugListController.listTrashedFolders);
 router.post("/folders", requirePermission(Permissions.BUG_CREATE), BugListController.createFolder);
 router.put("/folders/:id", requirePermission(Permissions.BUG_UPDATE), BugListController.updateFolder);
-router.patch("/folders/:id/archive", requirePermission(Permissions.BUG_UPDATE), BugListController.archiveFolder);
+router.patch("/folders/:id/archive", requirePermission(Permissions.BUG_DELETE), BugListController.archiveFolder);
 router.post("/folders/:id/restore", requirePermission(Permissions.BUG_UPDATE), BugListController.restoreFolder);
 router.delete("/folders/:id", requirePermission(Permissions.BUG_DELETE), BugListController.deleteFolder);
 router.delete("/folders/:id/permanent", requirePermission(Permissions.BUG_DELETE), BugListController.permanentDeleteFolder);

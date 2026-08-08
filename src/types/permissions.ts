@@ -66,6 +66,7 @@ export const Permissions = {
   BUG_TRASH_DELETE: 'bug.trash.delete',
   BUG_ARCHIVE_READ: 'bug.archive.read',
   BUG_ARCHIVE_RESTORE: 'bug.archive.restore',
+  BUG_ARCHIVE_DELETE: 'bug.archive.delete',
   BUG_MANAGE: 'bug.manage',
 
   // ─── QA Space ────────────────────────────────────────────────────
@@ -73,6 +74,7 @@ export const Permissions = {
   QA_SCOPE_READ:   'qa.scope.read',
   QA_SCOPE_UPDATE: 'qa.scope.update',
   QA_SCOPE_DELETE: 'qa.scope.delete',
+  QA_SCOPE_APPROVE: 'qa.scope.approve',
   QA_CASE_CREATE:  'qa.case.create',
   QA_CASE_READ:    'qa.case.read',
   QA_CASE_UPDATE:  'qa.case.update',
@@ -423,7 +425,7 @@ export const Permissions = {
   PIPELINE_SETTING_READ: 'pipeline.setting.read',
   PIPELINE_SETTING_UPDATE: 'pipeline.setting.update',
 
-  // ─── Recruitment / ATS ───────────────────────────────────────────
+  // ─── Candidate Pipeline / ATS (keys keep the legacy `recruitment.` prefix) ───
   RECRUITMENT_CREATE: 'recruitment.create',
   RECRUITMENT_READ: 'recruitment.read',
   RECRUITMENT_UPDATE: 'recruitment.update',
@@ -523,6 +525,10 @@ export const Permissions = {
   LETTER_READ: 'letter.read',
   LETTER_DELETE: 'letter.delete',
   LETTER_MANAGE: 'letter.manage',
+  LETTER_FORMAT_CREATE: 'letter.format.create',
+  LETTER_FORMAT_READ: 'letter.format.read',
+  LETTER_FORMAT_UPDATE: 'letter.format.update',
+  LETTER_FORMAT_DELETE: 'letter.format.delete',
 } as const;
 
 export type Permission = (typeof Permissions)[keyof typeof Permissions];
@@ -577,6 +583,7 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.BUG_TRASH_DELETE,
     Permissions.BUG_ARCHIVE_READ,
     Permissions.BUG_ARCHIVE_RESTORE,
+    Permissions.BUG_ARCHIVE_DELETE,
     Permissions.BUG_MANAGE,
   ],
   attendance: [
@@ -879,6 +886,10 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.LETTER_READ,
     Permissions.LETTER_DELETE,
     Permissions.LETTER_MANAGE,
+    Permissions.LETTER_FORMAT_CREATE,
+    Permissions.LETTER_FORMAT_READ,
+    Permissions.LETTER_FORMAT_UPDATE,
+    Permissions.LETTER_FORMAT_DELETE,
   ],
 };
 

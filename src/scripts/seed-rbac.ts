@@ -301,14 +301,14 @@ const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'pipeline.setting.update': 'Update pipeline and deal settings',
 
   'recruitment.create': 'Create new candidates and applications',
-  'recruitment.read': 'View recruitment pipeline, candidates, and interviews',
+  'recruitment.read': 'View candidate pipeline, candidates, and interviews',
   'recruitment.update': 'Update candidate status, interviews, and offers',
   'recruitment.delete': 'Delete candidates or applications',
-  'recruitment.manage': 'Full recruitment pipeline management',
-  'recruitment.setting.read': 'View recruitment configuration',
-  'recruitment.setting.create': 'Create recruitment configuration',
-  'recruitment.setting.update': 'Update recruitment configuration',
-  'recruitment.setting.delete': 'Delete recruitment configuration',
+  'recruitment.manage': 'Full candidate pipeline management',
+  'recruitment.setting.read': 'View candidate pipeline configuration',
+  'recruitment.setting.create': 'Create candidate pipeline configuration',
+  'recruitment.setting.update': 'Update candidate pipeline configuration',
+  'recruitment.setting.delete': 'Delete candidate pipeline configuration',
 
   'exit.create': 'Initiate employee exit process',
   'exit.read': 'View employee exit requests and status',
@@ -326,12 +326,14 @@ const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'bug.trash.delete': 'Permanently delete bugs',
   'bug.archive.read': 'View archived bugs',
   'bug.archive.restore': 'Restore bugs from archive',
+  'bug.archive.delete': 'Delete archived bugs',
   'bug.manage': 'Manage bug list folders and sheets',
 
   'qa.scope.create': 'Create test scopes and business requirements',
   'qa.scope.read': 'View test scopes and details',
   'qa.scope.update': 'Edit test scopes and configurations',
   'qa.scope.delete': 'Delete test scopes',
+  'qa.scope.approve': 'Approve or reject test scopes',
   'qa.case.create': 'Create test cases and scenarios',
   'qa.case.read': 'View test cases and modules',
   'qa.case.update': 'Edit test cases and steps',
@@ -455,7 +457,7 @@ async function main() {
 
   for (const permName of ALL_PERMISSIONS) {
     let [resource, ...actionParts] = permName.split('.');
-    
+
     // Treat 'bug' as a sub-resource of 'qa' for grouping
     if (resource === 'bug') {
       resource = 'qa';
@@ -524,74 +526,74 @@ async function main() {
       roleIdBySlug[slug] = role.id;
     }
 
-      // ── 2b. Sync permissions for system roles (Full Replace) ─────────
-      for (const slug of [SystemRoles.SUPER_ADMIN, SystemRoles.ADMIN, SystemRoles.USER]) {
-        const roleId = roleIdBySlug[slug];
-        const targetPermNames = ROLE_PERMISSIONS[slug];
-        
-        // Map names to IDs
-        const targetPermIds = targetPermNames
-          .map(name => permByName.get(name)?.id)
-          .filter((id): id is string => !!id);
+    // ── 2b. Sync permissions for system roles (Full Replace) ─────────
+    for (const slug of [SystemRoles.SUPER_ADMIN, SystemRoles.ADMIN, SystemRoles.USER]) {
+      const roleId = roleIdBySlug[slug];
+      const targetPermNames = ROLE_PERMISSIONS[slug];
 
-        // Get current permissions in DB
-        const currentRPs = await prisma.rolePermission.findMany({
-          where: { roleId },
-          select: { permissionId: true }
-        });
-        const currentPermIds = currentRPs.map(rp => rp.permissionId);
-
-        // Add missing
-        const toAdd = targetPermIds.filter(id => !currentPermIds.includes(id));
-        if (toAdd.length > 0) {
-          await prisma.rolePermission.createMany({
-            data: toAdd.map(permissionId => ({ roleId, permissionId })),
-            skipDuplicates: true,
-          });
-        }
-
-        // Remove extra
-        const toRemove = currentPermIds.filter(id => !targetPermIds.includes(id));
-        if (toRemove.length > 0) {
-          await prisma.rolePermission.deleteMany({
-            where: { roleId, permissionId: { in: toRemove } }
-          });
-        }
-
-        if (toAdd.length > 0 || toRemove.length > 0) {
-          console.log(`      🔑 Synced ${ROLE_DISPLAY_NAMES[slug]}: +${toAdd.length}, -${toRemove.length} permissions`);
-        }
-      }
-
-      // ── 2b-2. My Hub → every role (system + custom) ──────────────────
-      // My Hub is a universal self-service module, so ensure ALL roles in the
-      // tenant (including admin-created custom roles) have every my_hub.* page.
-      // Add-only — never removes, so an admin's other choices are preserved.
-      const myHubPermIds = PERMISSIONS_BY_RESOURCE.my_hub
-        .map((name) => permByName.get(name)?.id)
+      // Map names to IDs
+      const targetPermIds = targetPermNames
+        .map(name => permByName.get(name)?.id)
         .filter((id): id is string => !!id);
 
-      if (myHubPermIds.length > 0) {
-        const tenantRoles = await prisma.role.findMany({
-          where: { tenantId: tenant.id },
-          select: { id: true, name: true },
+      // Get current permissions in DB
+      const currentRPs = await prisma.rolePermission.findMany({
+        where: { roleId },
+        select: { permissionId: true }
+      });
+      const currentPermIds = currentRPs.map(rp => rp.permissionId);
+
+      // Add missing
+      const toAdd = targetPermIds.filter(id => !currentPermIds.includes(id));
+      if (toAdd.length > 0) {
+        await prisma.rolePermission.createMany({
+          data: toAdd.map(permissionId => ({ roleId, permissionId })),
+          skipDuplicates: true,
         });
-        for (const r of tenantRoles) {
-          const existing = await prisma.rolePermission.findMany({
-            where: { roleId: r.id, permissionId: { in: myHubPermIds } },
-            select: { permissionId: true },
+      }
+
+      // Remove extra
+      const toRemove = currentPermIds.filter(id => !targetPermIds.includes(id));
+      if (toRemove.length > 0) {
+        await prisma.rolePermission.deleteMany({
+          where: { roleId, permissionId: { in: toRemove } }
+        });
+      }
+
+      if (toAdd.length > 0 || toRemove.length > 0) {
+        console.log(`      🔑 Synced ${ROLE_DISPLAY_NAMES[slug]}: +${toAdd.length}, -${toRemove.length} permissions`);
+      }
+    }
+
+    // ── 2b-2. My Hub → every role (system + custom) ──────────────────
+    // My Hub is a universal self-service module, so ensure ALL roles in the
+    // tenant (including admin-created custom roles) have every my_hub.* page.
+    // Add-only — never removes, so an admin's other choices are preserved.
+    const myHubPermIds = PERMISSIONS_BY_RESOURCE.my_hub
+      .map((name) => permByName.get(name)?.id)
+      .filter((id): id is string => !!id);
+
+    if (myHubPermIds.length > 0) {
+      const tenantRoles = await prisma.role.findMany({
+        where: { tenantId: tenant.id },
+        select: { id: true, name: true },
+      });
+      for (const r of tenantRoles) {
+        const existing = await prisma.rolePermission.findMany({
+          where: { roleId: r.id, permissionId: { in: myHubPermIds } },
+          select: { permissionId: true },
+        });
+        const have = new Set(existing.map((e) => e.permissionId));
+        const toAdd = myHubPermIds.filter((id) => !have.has(id));
+        if (toAdd.length > 0) {
+          await prisma.rolePermission.createMany({
+            data: toAdd.map((permissionId) => ({ roleId: r.id, permissionId })),
+            skipDuplicates: true,
           });
-          const have = new Set(existing.map((e) => e.permissionId));
-          const toAdd = myHubPermIds.filter((id) => !have.has(id));
-          if (toAdd.length > 0) {
-            await prisma.rolePermission.createMany({
-              data: toAdd.map((permissionId) => ({ roleId: r.id, permissionId })),
-              skipDuplicates: true,
-            });
-            console.log(`      🧭 My Hub → ${r.name}: +${toAdd.length}`);
-          }
+          console.log(`      🧭 My Hub → ${r.name}: +${toAdd.length}`);
         }
       }
+    }
 
     // ── 2c. Migrate existing users into UserRole ───────────────────────────
     console.log(`      👥 Migrating users...`);
