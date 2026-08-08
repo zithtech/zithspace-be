@@ -54,10 +54,11 @@ export const getTestRun = async (req: Request, res: Response) => {
     // can be filed against the right project's bug list.
     await pool.query(`ALTER TABLE qa_parent_test_cases ADD COLUMN IF NOT EXISTS project_id TEXT`).catch(() => {});
     const { rows: runRows } = await pool.query(`
-      SELECT tr.*, ts.suite_name, ptc.project_id, ptc.title AS scenario_title
+      SELECT tr.*, ts.suite_name, ptc.project_id, ptc.title AS scenario_title, u.name as created_by_name
       FROM qa_test_runs tr
       LEFT JOIN qa_test_suites ts ON tr.suite_id = ts.id
       LEFT JOIN qa_parent_test_cases ptc ON ts.parent_test_case_id::text = ptc.id::text
+      LEFT JOIN users u ON tr.executed_by::text = u.id::text
       WHERE tr.id = $1 AND tr.tenant_id = $2
     `, [id, tenantId]);
     if (!runRows.length) return res.status(404).json({ success: false, error: 'Test Run not found' });

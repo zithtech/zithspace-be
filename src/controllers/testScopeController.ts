@@ -143,7 +143,7 @@ export const generateScopeContentAI = async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: 'Unauthorized: No tenant found' });
     }
 
-    const { field, projectOverview, modules, testingTypes, userPrompt, scopeName } = req.body;
+    const { field, projectOverview, modules, testingTypes, userPrompt, scopeName, existingContent, action } = req.body;
 
     const provider = await getAIProviderForTenant(tenantId);
     if (!provider || !provider.isConfigured()) {
@@ -155,15 +155,27 @@ export const generateScopeContentAI = async (req: Request, res: Response) => {
       ? 'Description'
       : field === 'outScope' ? 'Out of Scope' : 'In Scope';
 
-    let prompt = `
-You are a senior QA engineer writing a Test Scope document.
-Generate the "${fieldLabel}" section based on the following project context.
+    let prompt = `You are a senior QA engineer writing a Test Scope document.\n`;
+
+    if (action === 'optimize' && existingContent) {
+      prompt += `Please optimize the existing "${fieldLabel}" section based on the following project context to make it more professional, structured, and clear.`;
+    } else if (action === 'enhance' && existingContent) {
+      prompt += `Please enhance and enrich the existing "${fieldLabel}" section based on the following project context, adding relevant details, expanding on key concepts, and ensuring comprehensiveness.`;
+    } else {
+      prompt += `Generate the "${fieldLabel}" section based on the following project context.`;
+    }
+
+    prompt += `
 
 Test Scope Name: ${scopeName || 'N/A'}
 Project Overview: ${projectOverview || 'N/A'}
 Modules: ${modules && modules.length > 0 ? modules.join(', ') : 'N/A'}
 Testing Types: ${testingTypes && testingTypes.length > 0 ? testingTypes.join(', ') : 'N/A'}
 `;
+
+    if (existingContent) {
+      prompt += `\nExisting ${fieldLabel}:\n${existingContent}\n`;
+    }
 
     if (userPrompt) {
       prompt += `\nAdditional user instructions: ${userPrompt}\n`;
