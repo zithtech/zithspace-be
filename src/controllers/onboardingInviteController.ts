@@ -240,6 +240,101 @@ export async function createInvite(req: AuthRequest, res: Response) {
 }
 
 /**
+ * POST /api/onboarding/invite/:inviteId/regenerate
+ * Regenerates an expired invite with a new token and expiry, and re-sends the email.
+ */
+export async function regenerateInvite(req: AuthRequest, res: Response) {
+  try {
+    if (!req.user?.id || !req.tenantId) throw new Error("Unauthorized");
+    const { inviteId } = req.params;
+
+    const token = crypto.randomBytes(32).toString("hex");
+    const tokenHash = hashToken(token);
+
+    const result = await withTenant(req.tenantId, async (db) => {
+      const { rows: inviteRows } = await db.query(
+        `SELECT i.id, i.employee_id, e.first_name, e.last_name, e.work_email, e.personal_email, e.employee_code 
+           FROM employee_onboarding_invites i
+           JOIN employees e ON e.id = i.employee_id
+          WHERE i.id = $1 AND i.tenant_id = $2`,
+        [inviteId, req.tenantId]
+      );
+      const inviteData = inviteRows[0];
+      if (!inviteData) return null;
+
+      const { rows: updatedRows } = await db.query(
+        `UPDATE employee_onboarding_invites
+            SET token_hash = $1,
+                expires_at = now() + ($2 || ' days')::interval,
+                status = 'invited',
+                updated_at = now()
+          WHERE id = $3 AND tenant_id = $4
+          RETURNING id, expires_at`,
+        [tokenHash, String(INVITE_TTL_DAYS), inviteId, req.tenantId]
+      );
+      
+      return { inviteData, updatedInvite: updatedRows[0] };
+    });
+
+    if (!result) return res.status(404).json({ success: false, error: "Invite not found" });
+
+    const link = `${frontendBase(req.tenant?.subdomain)}/onboard/${token}`;
+
+    const { first_name, work_email, personal_email } = result.inviteData;
+    const recipients = [work_email, personal_email].filter(Boolean) as string[];
+    let emailed = false;
+    
+    try {
+      await emailService.sendCentralizedMail({
+        tenantId: req.tenantId,
+        to: recipients.join(", "),
+        subject: "Action required: Your onboarding link has been regenerated",
+        html: inviteEmailHtml({ firstName: first_name, link, expiresAt: result.updatedInvite.expires_at }),
+        text:
+          `Hi ${first_name || "there"},\n\n` +
+          `Your onboarding invite has been regenerated. Use this secure link:\n${link}\n\n` +
+          `It expires on ${new Date(result.updatedInvite.expires_at).toDateString()}.`,
+      });
+      emailed = true;
+    } catch (mailErr) {
+      console.error("regenerateInvite: failed to email onboarding link:", mailErr);
+    }
+
+    recordTransaction({
+      req,
+      section: Section.HR,
+      module: Module.ONBOARDING,
+      page: Page.ONBOARDING_INVITES,
+      action: Action.UPDATE,
+      actionLabel: `Regenerated onboarding invite for ${result.inviteData.first_name} ${result.inviteData.last_name}`,
+      entityType: EntityType.ONBOARDING_INVITE,
+      entityId: inviteId,
+      entityLabel: empLabel(result.inviteData),
+      afterData: {
+        status: "invited",
+        emailed,
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Onboarding invite regenerated",
+      data: {
+        inviteId,
+        link,
+        token,
+        expiresAt: result.updatedInvite.expires_at,
+        emailed,
+        emailedTo: recipients,
+      }
+    });
+  } catch (err: any) {
+    console.error("regenerateInvite error:", err);
+    return res.status(500).json({ success: false, error: err.message || "Internal Server Error" });
+  }
+}
+
+/**
  * GET /api/onboarding/invites
  * Lists draft/pending onboarding records for the tenant (the "awaiting" queue).
  */

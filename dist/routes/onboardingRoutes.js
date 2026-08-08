@@ -5,6 +5,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const employeeOnboardingController_1 = require("@/controllers/employeeOnboardingController");
+const employeeOrgHistoryController_1 = require("@/controllers/employeeOrgHistoryController");
 const onboardingInviteController_1 = require("@/controllers/onboardingInviteController");
 const onboardingDocumentTypeController_1 = require("@/controllers/onboardingDocumentTypeController");
 const employeeDocumentController_1 = require("@/controllers/employeeDocumentController");
@@ -25,6 +26,7 @@ router.use(auth_1.requireAuth);
 router.post("/invite", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_CREATE), asyncHandler(onboardingInviteController_1.createInvite));
 router.get("/invites", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_READ), asyncHandler(onboardingInviteController_1.listInvites));
 router.post("/invite/:inviteId/revoke", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_UPDATE), asyncHandler(onboardingInviteController_1.revokeInvite));
+router.post("/invite/:inviteId/regenerate", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_UPDATE), asyncHandler(onboardingInviteController_1.regenerateInvite));
 router.put("/invite/:employeeId", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_UPDATE), asyncHandler(onboardingInviteController_1.updateInviteContact));
 router.post("/:employeeId/activate", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_UPDATE), asyncHandler(onboardingInviteController_1.activateEmployee));
 // ─── Documents-needed catalog (Settings → Documents Needed) ──────────────
@@ -43,7 +45,9 @@ router.get("/", (0, permission_1.requirePermission)(permissions_1.Permissions.ON
 // Must be placed before /:employeeId to prevent 'birthdays' from being treated as an employeeId parameter
 router.get("/birthdays", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_READ), asyncHandler(employeeOnboardingController_1.EmployeeOnboardingController.getUpcomingBirthdays));
 router.get("/:employeeId", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_READ), asyncHandler(employeeOnboardingController_1.EmployeeOnboardingController.getById));
+router.get("/:employeeId/org-history", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_READ), asyncHandler(employeeOrgHistoryController_1.getOrgHistory));
 router.put("/:employeeId", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_UPDATE), asyncHandler(employeeOnboardingController_1.EmployeeOnboardingController.update));
+router.post("/:employeeId/promote", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_UPDATE), asyncHandler(employeeOnboardingController_1.EmployeeOnboardingController.promote));
 router.delete("/:employeeId", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_DELETE), asyncHandler(employeeOnboardingController_1.EmployeeOnboardingController.delete));
 exports.default = router;
 //# sourceMappingURL=onboardingRoutes.js.map
