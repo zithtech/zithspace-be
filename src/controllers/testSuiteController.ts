@@ -25,6 +25,7 @@ export const getTestSuites = async (req: Request, res: Response) => {
 
     let query = `
       SELECT ts.*, COALESCE(mv2.name, ptc_mv2.name, m.module_name, ptc_m.module_name, 'Unassigned') as module_name, ptc.title as parent_title,
+      uc.name as created_by_name, uu.name as updated_by_name,
       (SELECT COUNT(*) FROM qa_test_suite_cases tsc WHERE tsc.test_suite_id::text = ts.id::text) as case_count
       FROM qa_test_suites ts
       LEFT JOIN qa_todo_modules m ON ts.module_id::text = m.id::text
@@ -32,6 +33,8 @@ export const getTestSuites = async (req: Request, res: Response) => {
       LEFT JOIN qa_parent_test_cases ptc ON ts.parent_test_case_id::text = ptc.id::text
       LEFT JOIN qa_todo_modules ptc_m ON ptc.module_id::text = ptc_m.id::text
       LEFT JOIN modules_v2 ptc_mv2 ON ptc.module_id::text = ptc_mv2.id::text
+      LEFT JOIN users uc ON ts.created_by::text = uc.id::text
+      LEFT JOIN users uu ON ts.updated_by::text = uu.id::text
       WHERE ts.tenant_id = $1
     `;
     const params: any[] = [tenantId];
@@ -71,13 +74,16 @@ export const getTestSuite = async (req: Request, res: Response) => {
     const { id } = req.params;
     
     const { rows: suiteRows } = await pool.query(`
-      SELECT ts.*, COALESCE(mv2.name, ptc_mv2.name, m.module_name, ptc_m.module_name, 'Unassigned') as module_name, ptc.title as parent_title 
+      SELECT ts.*, COALESCE(mv2.name, ptc_mv2.name, m.module_name, ptc_m.module_name, 'Unassigned') as module_name, ptc.title as parent_title,
+      uc.name as created_by_name, uu.name as updated_by_name
       FROM qa_test_suites ts
       LEFT JOIN qa_todo_modules m ON ts.module_id::text = m.id::text
       LEFT JOIN modules_v2 mv2 ON ts.module_id::text = mv2.id::text
       LEFT JOIN qa_parent_test_cases ptc ON ts.parent_test_case_id::text = ptc.id::text
       LEFT JOIN qa_todo_modules ptc_m ON ptc.module_id::text = ptc_m.id::text
       LEFT JOIN modules_v2 ptc_mv2 ON ptc.module_id::text = ptc_mv2.id::text
+      LEFT JOIN users uc ON ts.created_by::text = uc.id::text
+      LEFT JOIN users uu ON ts.updated_by::text = uu.id::text
       WHERE ts.id = $1 AND ts.tenant_id = $2
     `, [id, tenantId]);
     if (!suiteRows.length) return res.status(404).json({ success: false, error: 'Test Suite not found' });
