@@ -7,4 +7,5 @@ export declare class EmployeeOnboardingController {
     static getById(req: AuthRequest, res: Response): Promise<Response<any, Record<string, any>>>;
     static update(req: AuthRequest, res: Response): Promise<Response<any, Record<string, any>>>;
     static delete(req: AuthRequest, res: Response): Promise<void>;
+    static promote(req: AuthRequest, res: Response): Promise<Response<any, Record<string, any>>>;
 }
