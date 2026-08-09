@@ -164,3 +164,13 @@ export declare function uploadRunAttachmentToR2(base64File: string, fileName: st
     fileSize: number;
     fileType: string;
 }>;
+/**
+ * Upload supporting evidence attached to a QA Submission (test evidence,
+ * screenshots, reports, documents) to Cloudflare R2, organised by tenant and
+ * submission.
+ */
+export declare function uploadSubmissionAttachmentToR2(base64File: string, fileName: string, tenantId: string, submissionId: string): Promise<{
+    fileUrl: string;
+    fileSize: number;
+    fileType: string;
+}>;

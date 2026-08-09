@@ -87,6 +87,21 @@ export const Permissions = {
   QA_RUN_READ:     'qa.run.read',
   QA_RUN_UPDATE:   'qa.run.update',
   QA_RUN_DELETE:   'qa.run.delete',
+  // QA Submissions — reporting completed testing, then QA Sign-off and PM Approval.
+  // Submit / sign-off / approve are separate from update on purpose: they are
+  // the three distinct authorities in the workflow, not editing operations.
+  QA_SUBMISSION_CREATE:   'qa.submission.create',
+  QA_SUBMISSION_READ:     'qa.submission.read',
+  QA_SUBMISSION_UPDATE:   'qa.submission.update',
+  QA_SUBMISSION_DELETE:   'qa.submission.delete',
+  QA_SUBMISSION_SUBMIT:   'qa.submission.submit',
+  QA_SUBMISSION_SIGNOFF:  'qa.submission.signoff',
+  QA_APPROVAL_READ:       'qa.approval.read',
+  QA_APPROVAL_APPROVE:    'qa.approval.approve',
+  QA_APPROVAL_SEND_BACK:  'qa.approval.send_back',
+  // Cross-scope reporting exposes the whole QA estate, so it is granted
+  // separately from being able to read the runs you work on.
+  QA_ANALYTICS_READ:      'qa.analytics.read',
   QA_MANAGE:       'qa.manage',
 
   // ─── Attendance ──────────────────────────────────────────────────

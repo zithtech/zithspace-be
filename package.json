@@ -19,6 +19,8 @@
     "pay:migrate": "npx ts-node -r tsconfig-paths/register src/modules/payroll/db/migrate.ts",
     "rb2:migrate": "npx ts-node -r tsconfig-paths/register src/modules/reimbursement-v2/db/migrate.ts",
     "om:migrate": "npx ts-node -r tsconfig-paths/register src/modules/opening-management/db/migrate.ts",
+    "qa:submissions:migrate": "npx ts-node -r tsconfig-paths/register src/scripts/createQaSubmissionTables.ts",
+    "qa:submissions:verify": "node src/scripts/verify-qa-submission-math.js",
     "lint": "eslint src --ext .ts",
     "test": "jest",
     "postinstall": "prisma generate"

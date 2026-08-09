@@ -158,6 +158,8 @@ import projectOverviewRoutes from "./routes/projectOverviewRoutes";
 import { socketService } from "@/services/socketService";
 import { closeAttendancePool } from "@/db/attendancePool";
 import testScopeRoutes from "@/routes/testScopeRoutes";
+import qaSubmissionRoutes from "@/routes/qaSubmissionRoutes";
+import qaAnalyticsRoutes from "@/routes/qaAnalyticsRoutes";
 // Load environment
 dotenv.config();
 console.log("🚀 API Starting up...");
@@ -408,6 +410,10 @@ app.use("/api/leave-request", leaveRequestRoutes);
 app.use("/api/leave-balances", leaveBalanceRoutes);
 app.use("/api/v2/leave", leaveV2Routes);
 app.use("/api/v2/qa/test-scopes", testScopeRoutes);
+// Must precede the /api/v2/qa mount below — testCaseRoutes claims "/:id",
+// which would otherwise swallow /api/v2/qa/submissions as a test case id.
+app.use("/api/v2/qa/submissions", qaSubmissionRoutes);
+app.use("/api/v2/qa/analytics", qaAnalyticsRoutes);
 app.use("/api/v2/qa", testCaseRoutes); // Registers /api/v2/qa/modules, /api/v2/qa/, /api/v2/qa/suites, /api/v2/qa/runs
 app.use("/api/v2/payroll", payrollV2Routes);
 app.use("/api/v2/reimbursement", reimbursementV2Routes);

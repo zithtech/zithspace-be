@@ -151,6 +151,8 @@ const projectOverviewRoutes_1 = __importDefault(require("./routes/projectOvervie
 const socketService_1 = require("@/services/socketService");
 const attendancePool_1 = require("@/db/attendancePool");
 const testScopeRoutes_1 = __importDefault(require("@/routes/testScopeRoutes"));
+const qaSubmissionRoutes_1 = __importDefault(require("@/routes/qaSubmissionRoutes"));
+const qaAnalyticsRoutes_1 = __importDefault(require("@/routes/qaAnalyticsRoutes"));
 // Load environment
 dotenv_1.default.config();
 console.log("🚀 API Starting up...");
@@ -373,6 +375,10 @@ app.use("/api/leave-request", leaveRequestRoutes_1.default);
 app.use("/api/leave-balances", leaveBalanceRoutes_1.default);
 app.use("/api/v2/leave", routes_1.default);
 app.use("/api/v2/qa/test-scopes", testScopeRoutes_1.default);
+// Must precede the /api/v2/qa mount below — testCaseRoutes claims "/:id",
+// which would otherwise swallow /api/v2/qa/submissions as a test case id.
+app.use("/api/v2/qa/submissions", qaSubmissionRoutes_1.default);
+app.use("/api/v2/qa/analytics", qaAnalyticsRoutes_1.default);
 app.use("/api/v2/qa", testCaseRoutes_1.default); // Registers /api/v2/qa/modules, /api/v2/qa/, /api/v2/qa/suites, /api/v2/qa/runs
 app.use("/api/v2/payroll", routes_3.default);
 app.use("/api/v2/reimbursement", routes_4.default);
