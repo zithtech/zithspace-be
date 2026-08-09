@@ -76,6 +76,16 @@ export declare const Permissions: {
     readonly QA_RUN_READ: "qa.run.read";
     readonly QA_RUN_UPDATE: "qa.run.update";
     readonly QA_RUN_DELETE: "qa.run.delete";
+    readonly QA_SUBMISSION_CREATE: "qa.submission.create";
+    readonly QA_SUBMISSION_READ: "qa.submission.read";
+    readonly QA_SUBMISSION_UPDATE: "qa.submission.update";
+    readonly QA_SUBMISSION_DELETE: "qa.submission.delete";
+    readonly QA_SUBMISSION_SUBMIT: "qa.submission.submit";
+    readonly QA_SUBMISSION_SIGNOFF: "qa.submission.signoff";
+    readonly QA_APPROVAL_READ: "qa.approval.read";
+    readonly QA_APPROVAL_APPROVE: "qa.approval.approve";
+    readonly QA_APPROVAL_SEND_BACK: "qa.approval.send_back";
+    readonly QA_ANALYTICS_READ: "qa.analytics.read";
     readonly QA_MANAGE: "qa.manage";
     readonly ATTENDANCE_CREATE: "attendance.create";
     readonly ATTENDANCE_READ: "attendance.read";

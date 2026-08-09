@@ -149,6 +149,82 @@ export const deleteTestScope = async (req: Request, res: Response) => {
 import { getAIProviderForTenant } from '../services/ai/resolver';
 import { rewriteSelection } from '../services/aiDocumentService';
 
+/**
+ * Documents from the Document Hub, for the PRD reference picker.
+ *
+ * A PRD is nearly always already written in the hub, so pointing at it beats
+ * pasting a URL: the reference can't rot, and Zai can read the document when
+ * drafting the scope.
+ */
+export const getHubDocuments = async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).user?.tenantId;
+    if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+    const search = String(req.query.search ?? '').trim();
+    const params: any[] = [tenantId];
+    let where = `d."tenantId" = $1 AND COALESCE(d.is_deleted, false) = false`;
+    if (search) {
+      params.push(`%${search}%`);
+      where += ` AND d.title ILIKE $${params.length}`;
+    }
+
+    // Prisma maps these models to snake-case tables but leaves tenantId /
+    // documentHubId / updatedAt camel-cased, so those need quoting.
+    const { rows } = await pool.query(
+      `SELECT d.id, d.title, d."updatedAt" AS updated_at, dh.name AS hub_name
+         FROM documents d
+         LEFT JOIN document_hub dh ON dh.id = d."documentHubId"
+        WHERE ${where}
+        ORDER BY d."updatedAt" DESC
+        LIMIT 200`,
+      params,
+    );
+
+    res.status(200).json({ success: true, data: rows });
+  } catch (error) {
+    console.error('Error fetching hub documents:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+};
+
+/**
+ * Flattens a Document Hub document (BlockNote JSON) to plain text.
+ *
+ * Walks for any `text` field rather than assuming a block shape, so a document
+ * using tables, lists or nested blocks still contributes its wording instead of
+ * silently arriving empty.
+ */
+const documentToText = (content: any, out: string[] = [], depth = 0): string => {
+  if (depth > 12 || out.length > 4000) return out.join(' ');
+  if (Array.isArray(content)) {
+    for (const c of content) documentToText(c, out, depth + 1);
+  } else if (content && typeof content === 'object') {
+    if (typeof content.text === 'string' && content.text.trim()) out.push(content.text.trim());
+    for (const key of ['content', 'children', 'rows', 'cells']) {
+      if (content[key]) documentToText(content[key], out, depth + 1);
+    }
+  }
+  return out.join(' ');
+};
+
+/** Loads a PRD's wording so the generator can work from it, or '' if unusable. */
+const loadPrdText = async (documentId: string, tenantId: string): Promise<{ title: string; text: string } | null> => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT title, content FROM documents
+        WHERE id = $1 AND "tenantId" = $2 AND COALESCE(is_deleted, false) = false`,
+      [documentId, tenantId],
+    );
+    if (!rows.length) return null;
+    const text = documentToText(rows[0].content).slice(0, 12000);
+    return { title: rows[0].title, text };
+  } catch (e) {
+    console.error('Failed to read PRD document:', e);
+    return null;
+  }
+};
+
 export const generateScopeContentAI = async (req: Request, res: Response) => {
   try {
     console.log('generateScopeContentAI hit. User:', (req as any).user);
@@ -158,7 +234,7 @@ export const generateScopeContentAI = async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, error: 'Unauthorized: No tenant found' });
     }
 
-    const { field, projectOverview, modules, testingTypes, userPrompt, scopeName, existingContent, action } = req.body;
+    const { field, projectOverview, modules, testingTypes, userPrompt, scopeName, existingContent, action, prdDocumentId } = req.body;
 
     const provider = await getAIProviderForTenant(tenantId);
     if (!provider || !provider.isConfigured()) {
@@ -187,6 +263,20 @@ Project Overview: ${projectOverview || 'N/A'}
 Modules: ${modules && modules.length > 0 ? modules.join(', ') : 'N/A'}
 Testing Types: ${testingTypes && testingTypes.length > 0 ? testingTypes.join(', ') : 'N/A'}
 `;
+
+    // The PRD is the strongest signal available, so it goes in ahead of the
+    // thin context fields and the model is told to prefer it.
+    if (prdDocumentId) {
+      const prd = await loadPrdText(String(prdDocumentId), tenantId);
+      if (prd?.text) {
+        prompt += `
+Source PRD — "${prd.title}". Base the section on this document. Only describe behaviour it actually specifies; do not invent features it does not mention.
+---
+${prd.text}
+---
+`;
+      }
+    }
 
     if (existingContent) {
       prompt += `\nExisting ${fieldLabel}:\n${existingContent}\n`;

@@ -8,6 +8,10 @@ const ensureModuleFkDropped = async () => {
     await pool.query(`ALTER TABLE qa_parent_test_cases DROP CONSTRAINT IF EXISTS qa_parent_test_cases_module_id_fkey;`).catch(() => {});
     await pool.query(`ALTER TABLE qa_test_cases DROP CONSTRAINT IF EXISTS qa_test_cases_module_id_fkey;`).catch(() => {});
     await pool.query(`ALTER TABLE qa_test_suites DROP CONSTRAINT IF EXISTS qa_test_suites_module_id_fkey;`).catch(() => {});
+    // What kind of testing the suite performs. Free text rather than an enum:
+    // teams name these differently, and the picker offers the values already in
+    // use alongside the standard list, so a custom type spreads by being used.
+    await pool.query(`ALTER TABLE qa_test_suites ADD COLUMN IF NOT EXISTS testing_type VARCHAR(120)`).catch(() => {});
     schemaFixed = true;
   } catch (e) {
     // Ignore error if tables don't exist yet
@@ -115,16 +119,17 @@ export const createTestSuite = async (req: Request, res: Response) => {
     const userId = (req as any).user?.id;
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
     
-    const { suite_name, module_id, parent_test_case_id, parent_id, description, test_case_ids } = req.body;
+    const { suite_name, module_id, parent_test_case_id, parent_id, description, test_case_ids, testing_type } = req.body;
     const parentId = parent_test_case_id || parent_id || null;
     
     await client.query('BEGIN');
     
     // Create Suite
     const { rows: suiteRows } = await client.query(
-      `INSERT INTO qa_test_suites (tenant_id, suite_name, module_id, parent_test_case_id, description, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-      [tenantId, suite_name, module_id || null, parentId, description, userId]
+      `INSERT INTO qa_test_suites (tenant_id, suite_name, module_id, parent_test_case_id, description, testing_type, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+      [tenantId, suite_name, module_id || null, parentId, description,
+       (testing_type || '').trim() || null, userId]
     );
     const suiteId = suiteRows[0].id;
     
@@ -159,16 +164,18 @@ export const updateTestSuite = async (req: Request, res: Response) => {
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
     
     const { id } = req.params;
-    const { suite_name, module_id, parent_test_case_id, parent_id, description, test_case_ids } = req.body;
+    const { suite_name, module_id, parent_test_case_id, parent_id, description, test_case_ids, testing_type } = req.body;
     const parentId = parent_test_case_id || parent_id || null;
     
     await client.query('BEGIN');
     
     const { rows: suiteRows } = await client.query(
       `UPDATE qa_test_suites SET 
-        suite_name = $1, module_id = $2, parent_test_case_id = COALESCE($3, parent_test_case_id), description = $4, updated_by = $5, updated_at = NOW()
-       WHERE id = $6 AND tenant_id = $7 RETURNING *`,
-      [suite_name, module_id || null, parentId, description, userId, id, tenantId]
+        suite_name = $1, module_id = $2, parent_test_case_id = COALESCE($3, parent_test_case_id), description = $4,
+        testing_type = $5, updated_by = $6, updated_at = NOW()
+       WHERE id = $7 AND tenant_id = $8 RETURNING *`,
+      [suite_name, module_id || null, parentId, description,
+       (testing_type || '').trim() || null, userId, id, tenantId]
     );
     
     if (!suiteRows.length) {
