@@ -375,6 +375,17 @@ export declare const Permissions: {
     readonly EXIT_MANAGE: "exit.manage";
     readonly EXIT_CONFIG_READ: "exit.config.read";
     readonly EXIT_CONFIG_UPDATE: "exit.config.update";
+    readonly HOTSPOT_OPENING_READ: "hotspot.opening.read";
+    readonly HOTSPOT_OPENING_CREATE: "hotspot.opening.create";
+    readonly HOTSPOT_CIRCULATION_READ: "hotspot.circulation.read";
+    readonly HOTSPOT_CIRCULATION_CREATE: "hotspot.circulation.create";
+    readonly HOTSPOT_CIRCULATION_UPDATE: "hotspot.circulation.update";
+    readonly HOTSPOT_CIRCULATION_DELETE: "hotspot.circulation.delete";
+    readonly HOTSPOT_CIRCULATION_PIN: "hotspot.circulation.pin";
+    readonly HOTSPOT_BLOG_READ: "hotspot.blog.read";
+    readonly HOTSPOT_BLOG_CREATE: "hotspot.blog.create";
+    readonly HOTSPOT_BLOG_UPDATE: "hotspot.blog.update";
+    readonly HOTSPOT_BLOG_DELETE: "hotspot.blog.delete";
     readonly OPENING_CREATE: "opening.create";
     readonly OPENING_READ: "opening.read";
     readonly OPENING_UPDATE: "opening.update";
