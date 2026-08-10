@@ -2,7 +2,7 @@
 // Per-opening candidate intake and pipeline.
 
 import express from 'express';
-import { requirePermission } from '@/middleware/permission';
+import { requirePermission, requireAnyPermission } from '@/middleware/permission';
 import { Permissions } from '@/types/permissions';
 import * as ctrl from '../controllers/application.controller';
 import { validateUuidParam } from '../http';
@@ -19,7 +19,11 @@ router.get(
   requirePermission(Permissions.OPENING_READ),
   ctrl.getOne
 );
-router.post('/:id/applications', requirePermission(Permissions.OPENING_UPDATE), ctrl.create);
+router.post(
+  '/:id/applications',
+  requireAnyPermission(Permissions.OPENING_UPDATE, Permissions.HOTSPOT_OPENING_CREATE),
+  ctrl.create
+);
 // Read-only scoring, so `opening.read` is the right gate — you do not have to be
 // able to edit an opening to see how well someone fits it.
 router.post('/:id/skill-match', requirePermission(Permissions.OPENING_READ), ctrl.skillMatch);

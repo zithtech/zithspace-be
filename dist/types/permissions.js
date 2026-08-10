@@ -428,6 +428,18 @@ exports.Permissions = {
     EXIT_MANAGE: 'exit.manage', // exit interview templates, clearing checklists, and separation data
     EXIT_CONFIG_READ: 'exit.config.read',
     EXIT_CONFIG_UPDATE: 'exit.config.update',
+    // ─── Hotspot ─────────────────────────────────────────────────────
+    HOTSPOT_OPENING_READ: 'hotspot.opening.read',
+    HOTSPOT_OPENING_CREATE: 'hotspot.opening.create',
+    HOTSPOT_CIRCULATION_READ: 'hotspot.circulation.read',
+    HOTSPOT_CIRCULATION_CREATE: 'hotspot.circulation.create',
+    HOTSPOT_CIRCULATION_UPDATE: 'hotspot.circulation.update',
+    HOTSPOT_CIRCULATION_DELETE: 'hotspot.circulation.delete',
+    HOTSPOT_CIRCULATION_PIN: 'hotspot.circulation.pin',
+    HOTSPOT_BLOG_READ: 'hotspot.blog.read',
+    HOTSPOT_BLOG_CREATE: 'hotspot.blog.create',
+    HOTSPOT_BLOG_UPDATE: 'hotspot.blog.update',
+    HOTSPOT_BLOG_DELETE: 'hotspot.blog.delete',
     // ─── Job Openings ───────────────────────────────────────────────
     OPENING_CREATE: 'opening.create',
     OPENING_READ: 'opening.read',
@@ -757,6 +769,19 @@ exports.PERMISSIONS_BY_RESOURCE = {
         exports.Permissions.DAILY_UPDATE_UPDATE,
         exports.Permissions.DAILY_UPDATE_DELETE,
         exports.Permissions.DAILY_UPDATE_MANAGE_TIME,
+    ],
+    hotspot: [
+        exports.Permissions.HOTSPOT_OPENING_READ,
+        exports.Permissions.HOTSPOT_OPENING_CREATE,
+        exports.Permissions.HOTSPOT_CIRCULATION_READ,
+        exports.Permissions.HOTSPOT_CIRCULATION_CREATE,
+        exports.Permissions.HOTSPOT_CIRCULATION_UPDATE,
+        exports.Permissions.HOTSPOT_CIRCULATION_DELETE,
+        exports.Permissions.HOTSPOT_CIRCULATION_PIN,
+        exports.Permissions.HOTSPOT_BLOG_READ,
+        exports.Permissions.HOTSPOT_BLOG_CREATE,
+        exports.Permissions.HOTSPOT_BLOG_UPDATE,
+        exports.Permissions.HOTSPOT_BLOG_DELETE,
     ],
     squad: [exports.Permissions.SQUAD_CREATE, exports.Permissions.SQUAD_READ, exports.Permissions.SQUAD_UPDATE, exports.Permissions.SQUAD_DELETE, exports.Permissions.SQUAD_MANAGE],
     lead: [
