@@ -277,6 +277,10 @@ exports.ADMIN_DEFAULT_PERMISSIONS = [
     'activity_log.read', 'activity_log.read_all',
     // My Hub — granted to every role by default
     'my_hub.overview.read', 'my_hub.apply_leave.read', 'my_hub.attendance.read', 'my_hub.escalation.read', 'my_hub.performance.read', 'my_hub.payslips.read', 'my_hub.profile.read', 'my_hub.claims.read',
+    // Hotspot
+    'hotspot.opening.read', 'hotspot.opening.create',
+    'hotspot.circulation.read', 'hotspot.circulation.create', 'hotspot.circulation.update', 'hotspot.circulation.delete', 'hotspot.circulation.pin',
+    'hotspot.blog.read', 'hotspot.blog.create', 'hotspot.blog.update', 'hotspot.blog.delete',
 ];
 exports.USER_DEFAULT_PERMISSIONS = [
     'dashboard.read',
@@ -321,5 +325,9 @@ exports.USER_DEFAULT_PERMISSIONS = [
     'activity_log.read',
     // My Hub — granted to every role by default
     'my_hub.overview.read', 'my_hub.apply_leave.read', 'my_hub.attendance.read', 'my_hub.escalation.read', 'my_hub.performance.read', 'my_hub.payslips.read', 'my_hub.profile.read', 'my_hub.claims.read',
+    // Hotspot
+    'hotspot.opening.read', 'hotspot.opening.create',
+    'hotspot.circulation.read', 'hotspot.circulation.create', 'hotspot.circulation.update', 'hotspot.circulation.delete', 'hotspot.circulation.pin',
+    'hotspot.blog.read', 'hotspot.blog.create', 'hotspot.blog.update', 'hotspot.blog.delete',
 ];
 //# sourceMappingURL=rbac.service.js.map

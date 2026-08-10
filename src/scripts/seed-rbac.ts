@@ -433,6 +433,18 @@ const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'my_hub.payslips.read': 'View own payslips from My Hub',
   'my_hub.profile.read': 'View own profile from My Hub',
   'my_hub.claims.read': 'View own claims from My Hub',
+
+  'hotspot.opening.read': 'View internal job openings on Hotspot',
+  'hotspot.opening.create': 'Apply to internal job openings',
+  'hotspot.circulation.read': 'View company-wide updates and notices',
+  'hotspot.circulation.create': 'Post company-wide updates',
+  'hotspot.circulation.update': 'Edit company-wide updates',
+  'hotspot.circulation.delete': 'Delete company-wide updates',
+  'hotspot.circulation.pin': 'Pin company-wide updates to the top',
+  'hotspot.blog.read': 'View internal blogs and articles',
+  'hotspot.blog.create': 'Post internal blogs and articles',
+  'hotspot.blog.update': 'Edit internal blogs and articles',
+  'hotspot.blog.delete': 'Delete internal blogs and articles',
 };
 
 // ─── Role permission maps ─────────────────────────────────────────────────────
