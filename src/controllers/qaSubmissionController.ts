@@ -582,7 +582,13 @@ export const getSubmissions = async (req: Request, res: Response) => {
     if (search) push('(s.submission_name ILIKE $$ OR sc.name ILIKE $$)', `%${search}%`);
     if (scopeId) push('s.scope_id = $$::uuid', scopeId);
     if (qaOwnerId) push('s.qa_owner_id = $$::uuid', qaOwnerId);
-    if (status) push('s.status = $$', status);
+    // Accepts one status or a comma-separated set — the Approvals list asks for
+    // every status that counts as "reported" in a single call.
+    if (status) {
+      const wanted = status.split(',').map((s) => s.trim()).filter(Boolean);
+      if (wanted.length === 1) push('s.status = $$', wanted[0]);
+      else if (wanted.length > 1) push('s.status = ANY($$::text[])', wanted);
+    }
     if (recommendation) push('s.qa_recommendation = $$', recommendation);
     // Filter on the submission date where there is one, otherwise creation —
     // a draft has no submitted_at but still belongs on a date-filtered list.
@@ -1289,11 +1295,13 @@ export const getSignoffPreview = async (req: Request, res: Response) => {
 
     const summary = await buildFullSummary(id, tenantId);
     const blockers: string[] = [];
+    if (submission.status !== 'Approved' && submission.status !== 'QA Signed-off') {
+      blockers.push('This submission must be approved before QA can sign it off.');
+    }
     if (!summary.runs.length) blockers.push('Link at least one Test Run before signing off.');
     if (!submission.qa_recommendation) blockers.push('A QA Recommendation is required before sign-off.');
-    if (!String(submission.qa_summary || '').replace(/<[^>]*>/g, '').trim()) {
-      blockers.push('A QA Summary is required before sign-off.');
-    }
+    // The QA Summary is no longer captured in the UI, so it cannot be a blocker
+    // — the recommendation and the linked runs carry the sign-off on their own.
 
     res.status(200).json({
       success: true,
@@ -1336,17 +1344,16 @@ export const signOffSubmission = async (req: Request, res: Response) => {
 
     const existing = await loadSubmissionRow(id, tenantId);
     if (!existing) return fail(res, 404, 'QA Submission not found');
-    if (existing.status === 'QA Signed-off' || existing.status === 'Approved') {
+    if (existing.status === 'QA Signed-off') {
       return fail(res, 409, 'This submission has already been signed off.');
     }
-    if (existing.status === 'Draft') {
-      return fail(res, 409, 'Submit the testing results before signing off.');
+    // Sign-off closes the record, and it only closes something the business has
+    // already accepted — so approval is the gate, not submission (§23).
+    if (existing.status !== 'Approved') {
+      return fail(res, 409, 'This submission must be approved before QA can sign it off.');
     }
     if (!existing.qa_recommendation) {
       return fail(res, 400, 'A QA Recommendation is required before sign-off.'); // §16
-    }
-    if (!String(existing.qa_summary || '').replace(/<[^>]*>/g, '').trim()) {
-      return fail(res, 400, 'A QA Summary is required before sign-off.'); // §18
     }
 
     const summary = await buildFullSummary(id, tenantId);
@@ -1419,7 +1426,15 @@ export const signOffSubmission = async (req: Request, res: Response) => {
   }
 };
 
-/** Approval (§26) — business acceptance, distinct from QA's recommendation. */
+/**
+ * Approval (§26) — business acceptance, distinct from QA's recommendation.
+ *
+ * Any submission that has actually been reported can be approved, not only a
+ * signed-off one: the approver works from the Approvals list, where a result
+ * they are willing to accept should not be held up waiting on a QA sign-off
+ * step. A Draft has nothing to accept yet, and an approved submission is
+ * already accepted — those are the only two states this refuses.
+ */
 export const approveSubmission = async (req: Request, res: Response) => {
   try {
     const { tenantId, userId } = auth(req);
@@ -1429,8 +1444,11 @@ export const approveSubmission = async (req: Request, res: Response) => {
     const { id } = req.params;
     const existing = await loadSubmissionRow(id, tenantId);
     if (!existing) return fail(res, 404, 'QA Submission not found');
-    if (existing.status !== 'QA Signed-off') {
-      return fail(res, 409, 'Only a QA signed-off submission can be approved.');
+    if (existing.status === 'Draft') {
+      return fail(res, 409, 'This submission has not been submitted yet.');
+    }
+    if (existing.status === 'Approved') {
+      return fail(res, 409, 'This submission has already been approved.');
     }
 
     const { rows } = await pool.query(
