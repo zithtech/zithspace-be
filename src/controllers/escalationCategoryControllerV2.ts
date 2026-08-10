@@ -49,7 +49,7 @@ export const createEscalationCategory = async (req: AuthRequest, res: Response):
         // ─── Activity log ───────────────────────────────────────────────
         recordTransaction({
             req,
-            section: Section.WORK,
+            section: Section.HR,
             module: Module.ESCALATIONS,
             page: Page.ESCALATION_SETTINGS,
             action: Action.CREATE,
@@ -228,7 +228,7 @@ export const updateEscalationCategory = async (req: AuthRequest, res: Response):
 
             recordTransaction({
                 req,
-                section: Section.WORK,
+                section: Section.HR,
                 module: Module.ESCALATIONS,
                 page: Page.ESCALATION_SETTINGS,
                 action: Action.UPDATE,
@@ -292,7 +292,7 @@ export const softDeleteEscalationCategory = async (req: AuthRequest, res: Respon
         // ─── Activity log ───────────────────────────────────────────────
         recordTransaction({
             req,
-            section: Section.WORK,
+            section: Section.HR,
             module: Module.ESCALATIONS,
             page: Page.ESCALATION_SETTINGS,
             action: Action.STATUS_CHANGE,
@@ -356,7 +356,7 @@ export const deleteEscalationCategory = async (req: AuthRequest, res: Response):
         // ─── Activity log ───────────────────────────────────────────────
         recordTransaction({
             req,
-            section: Section.WORK,
+            section: Section.HR,
             module: Module.ESCALATIONS,
             page: Page.ESCALATION_SETTINGS,
             action: Action.DELETE,

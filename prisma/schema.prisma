@@ -88,7 +88,6 @@ model Tenant {
   escalationPriorities      EscalationPriority[]
   escalationStatuses        EscalationStatus[]
   escalations               Escalation[]
-  companyLocations        CompanyLocation[] 
   openings                OpeningManagement[]
   buckets                 Bucket[]
   bucketMembers           BucketMember[]
@@ -246,8 +245,6 @@ model User {
   zoho_events_zoho_events_user_idTousers                   zoho_events[]                       @relation("zoho_events_user_idTousers")
   createdEscalations                                       Escalation[]                        @relation("EscalationCreator")
   escalationParticipations                                 EscalationMember[]
-  createdCompanyLocations CompanyLocation[] @relation("CompanyLocationCreatedBy")
-  updatedCompanyLocations CompanyLocation[] @relation("CompanyLocationUpdatedBy")
   openingsCreated        OpeningManagement[] @relation("OpeningCreatedBy")
   openingsUpdated        OpeningManagement[] @relation("OpeningUpdatedBy")
   createdBuckets                                           Bucket[]                            @relation("BucketCreator")
@@ -4659,26 +4656,11 @@ model TestAbinash {
   @@map("test_abinash")
 }
 
-model CompanyLocation {
-  id            String   @id @default(uuid())
-  tenantId      String   @map("tenant_id")
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  flatNumber    String?  @map("flat_number")
-  street        String?
-  area          String?
-  city          String?
-  state         String?
-  pincode       String?
-  country       String?
-  createdById   String   @map("created_by_id")
-  createdBy     User     @relation("CompanyLocationCreatedBy", fields: [createdById], references: [id])
-  updatedById   String   @map("updated_by_id")
-  updatedBy     User     @relation("CompanyLocationUpdatedBy", fields: [updatedById], references: [id])
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
-
-  @@map("company_locations")
-}
+// NOTE: CompanyLocation was removed. Company address data now lives in the
+// raw-SQL company-details module (cd_company_details / cd_company_branches),
+// managed by src/modules/company-details/db/migrate.ts. The physical
+// `company_locations` table is left in the database as a read-only leftover —
+// its rows were copied into cd_company_branches with their original ids.
 
 model DocumentCategory {
   id           String             @id @default(uuid())

@@ -153,7 +153,7 @@ export const createEscalation = async (req: AuthRequest, res: Response): Promise
         // ─── Activity log ───────────────────────────────────────────────
         recordTransaction({
             req,
-            section: Section.WORK,
+            section: Section.HR,
             module: Module.ESCALATIONS,
             page: Page.ESCALATION_LIST,
             action: Action.CREATE,
@@ -369,7 +369,7 @@ export const updateEscalation = async (req: AuthRequest, res: Response): Promise
 
             recordTransaction({
                 req,
-                section: Section.WORK,
+                section: Section.HR,
                 module: Module.ESCALATIONS,
                 page: Page.ESCALATION_LIST,
                 action: Action.UPDATE,
@@ -445,7 +445,7 @@ export const deleteEscalation = async (req: AuthRequest, res: Response): Promise
         // ─── Activity log ───────────────────────────────────────────────
         recordTransaction({
             req,
-            section: Section.WORK,
+            section: Section.HR,
             module: Module.ESCALATIONS,
             page: Page.ESCALATION_LIST,
             action: "move_to_trash",
@@ -550,7 +550,7 @@ export const restoreEscalation = async (req: AuthRequest, res: Response): Promis
         // ─── Activity log ───────────────────────────────────────────────
         recordTransaction({
             req,
-            section: Section.WORK,
+            section: Section.HR,
             module: Module.ESCALATIONS,
             page: Page.ESCALATIONS_TRASH,
             action: Action.RESTORE,
@@ -618,7 +618,7 @@ export const permanentDeleteEscalation = async (req: AuthRequest, res: Response)
         // ─── Activity log ───────────────────────────────────────────────
         recordTransaction({
             req,
-            section: Section.WORK,
+            section: Section.HR,
             module: Module.ESCALATIONS,
             page: Page.ESCALATIONS_TRASH,
             action: Action.PERMANENT_DELETE,
@@ -720,7 +720,7 @@ export const bulkRestoreEscalations = async (req: AuthRequest, res: Response): P
         // ─── Activity log ───────────────────────────────────────────────
         recordTransaction({
             req,
-            section: Section.WORK,
+            section: Section.HR,
             module: Module.ESCALATIONS,
             page: Page.ESCALATIONS_TRASH,
             action: Action.BULK_RESTORE,
@@ -789,7 +789,7 @@ export const bulkPermanentDeleteEscalations = async (req: AuthRequest, res: Resp
         // ─── Activity log ───────────────────────────────────────────────
         recordTransaction({
             req,
-            section: Section.WORK,
+            section: Section.HR,
             module: Module.ESCALATIONS,
             page: Page.ESCALATIONS_TRASH,
             action: Action.BULK_PERMANENT_DELETE,
