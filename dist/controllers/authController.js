@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -11,6 +44,7 @@ const crypto_1 = __importDefault(require("crypto"));
 const emailService_1 = require("@/utils/emailService");
 const jwt_1 = require("@/utils/jwt");
 const rbac_service_1 = require("@/modules/rbac/rbac.service");
+const companyDetailsService = __importStar(require("@/modules/company-details/services/companyDetails.service"));
 const transactionHistory_1 = require("../utils/transactionHistory");
 class AuthController {
     /**
@@ -571,7 +605,6 @@ class AuthController {
                                 subdomain: true,
                                 settings: true,
                                 generalSettings: { take: 1 },
-                                companyLocations: { take: 1 },
                             },
                         },
                     },
@@ -586,6 +619,14 @@ class AuthController {
             }
             // Load permissions
             const permSet = await rbac_service_1.RBACService.getUserPermissions(user.id, user.tenantId, user.role);
+            // Company details live in the raw-SQL company-details module, not Prisma.
+            // A tenant that has not filled the form in yet simply gets null.
+            const companyDetails = await companyDetailsService
+                .getCompany({ tenantId: user.tenantId, userId: user.id })
+                .catch((err) => {
+                console.error("Failed to load company details for profile:", err);
+                return null;
+            });
             res.status(200).json({
                 success: true,
                 data: {
@@ -610,7 +651,7 @@ class AuthController {
                         subdomain: user.tenant.subdomain,
                         logoUrl: user.tenant.settings?.logoUrl || null,
                         generalSettings: user.tenant.generalSettings?.[0] || null,
-                        companyLocation: user.tenant.companyLocations?.[0] || null,
+                        companyDetails,
                     },
                     createdAt: user.createdAt,
                     updatedAt: user.updatedAt,

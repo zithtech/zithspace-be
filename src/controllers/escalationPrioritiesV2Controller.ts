@@ -67,7 +67,7 @@ export const createEscalationPriority = async (req: AuthRequest, res: Response):
         // ─── Activity log ───────────────────────────────────────────────
         recordTransaction({
             req,
-            section: Section.WORK,
+            section: Section.HR,
             module: Module.ESCALATIONS,
             page: Page.ESCALATION_SETTINGS,
             action: Action.CREATE,
@@ -260,7 +260,7 @@ export const updateEscalationPriority = async (req: AuthRequest, res: Response):
 
             recordTransaction({
                 req,
-                section: Section.WORK,
+                section: Section.HR,
                 module: Module.ESCALATIONS,
                 page: Page.ESCALATION_SETTINGS,
                 action: Action.UPDATE,
@@ -324,7 +324,7 @@ export const softDeleteEscalationPriority = async (req: AuthRequest, res: Respon
         // ─── Activity log ───────────────────────────────────────────────
         recordTransaction({
             req,
-            section: Section.WORK,
+            section: Section.HR,
             module: Module.ESCALATIONS,
             page: Page.ESCALATION_SETTINGS,
             action: Action.STATUS_CHANGE,
@@ -388,7 +388,7 @@ export const deleteEscalationPriority = async (req: AuthRequest, res: Response):
         // ─── Activity log ───────────────────────────────────────────────
         recordTransaction({
             req,
-            section: Section.WORK,
+            section: Section.HR,
             module: Module.ESCALATIONS,
             page: Page.ESCALATION_SETTINGS,
             action: Action.DELETE,
