@@ -8,6 +8,8 @@
 
 import express, { NextFunction, Request, Response } from 'express';
 import multer, { MulterError } from 'multer';
+import { requirePermission } from '@/middleware/permission';
+import { Permissions } from '@/types/permissions';
 import { validateUuidParam } from '../http';
 import * as ctrl from '../controllers/circulation.controller';
 
@@ -50,20 +52,20 @@ router.param('categoryId', (req, res, next, value) =>
 // Categories. Creating one is open to anyone who may post: a category the
 // poster cannot create is a category they will not use. Removing one is
 // moderator-only and blocked while posts still reference it (see the service).
-router.get('/authors', ctrl.listAuthors);
-router.get('/categories', ctrl.listCategories);
-router.post('/categories', ctrl.createCategory);
-router.delete('/categories/:categoryId', ctrl.removeCategory);
+router.get('/authors', requirePermission(Permissions.HOTSPOT_CIRCULATION_READ), ctrl.listAuthors);
+router.get('/categories', requirePermission(Permissions.HOTSPOT_CIRCULATION_READ), ctrl.listCategories);
+router.post('/categories', requirePermission(Permissions.HOTSPOT_CIRCULATION_CREATE), ctrl.createCategory);
+router.delete('/categories/:categoryId', requirePermission(Permissions.HOTSPOT_CIRCULATION_DELETE), ctrl.removeCategory);
 
-router.get('/', ctrl.list);
-router.post('/', ctrl.create);
-router.get('/:id', ctrl.getOne);
-router.put('/:id', ctrl.update);
-router.delete('/:id', ctrl.remove);
+router.get('/', requirePermission(Permissions.HOTSPOT_CIRCULATION_READ), ctrl.list);
+router.post('/', requirePermission(Permissions.HOTSPOT_CIRCULATION_CREATE), ctrl.create);
+router.get('/:id', requirePermission(Permissions.HOTSPOT_CIRCULATION_READ), ctrl.getOne);
+router.put('/:id', requirePermission(Permissions.HOTSPOT_CIRCULATION_UPDATE), ctrl.update);
+router.delete('/:id', requirePermission(Permissions.HOTSPOT_CIRCULATION_DELETE), ctrl.remove);
 
-router.post('/:id/pin', ctrl.setPinned);
+router.post('/:id/pin', requirePermission(Permissions.HOTSPOT_CIRCULATION_PIN), ctrl.setPinned);
 
-router.post('/:id/attachments', upload.array('files'), uploadErrors, ctrl.uploadAttachments);
-router.delete('/:id/attachments/:attachmentId', ctrl.removeAttachment);
+router.post('/:id/attachments', requirePermission(Permissions.HOTSPOT_CIRCULATION_UPDATE), upload.array('files'), uploadErrors, ctrl.uploadAttachments);
+router.delete('/:id/attachments/:attachmentId', requirePermission(Permissions.HOTSPOT_CIRCULATION_UPDATE), ctrl.removeAttachment);
 
 export default router;

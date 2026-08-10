@@ -8,6 +8,8 @@
 
 import express, { NextFunction, Request, Response } from 'express';
 import multer, { MulterError } from 'multer';
+import { requirePermission } from '@/middleware/permission';
+import { Permissions } from '@/types/permissions';
 import { validateUuidParam } from '../http';
 import * as ctrl from '../controllers/blog.controller';
 
@@ -51,24 +53,24 @@ router.get('/mentionable-users', ctrl.mentionableUsers);
 
 // Comment-scoped actions live under /comments/:commentId so a comment can be
 // addressed without knowing which post it hangs off.
-router.put('/comments/:commentId', ctrl.updateComment);
-router.delete('/comments/:commentId', ctrl.removeComment);
-router.post('/comments/:commentId/reactions', ctrl.reactToComment);
+router.put('/comments/:commentId', requirePermission(Permissions.HOTSPOT_BLOG_READ), ctrl.updateComment);
+router.delete('/comments/:commentId', requirePermission(Permissions.HOTSPOT_BLOG_READ), ctrl.removeComment);
+router.post('/comments/:commentId/reactions', requirePermission(Permissions.HOTSPOT_BLOG_READ), ctrl.reactToComment);
 
-router.get('/', ctrl.list);
-router.post('/', ctrl.create);
-router.get('/:id', ctrl.getOne);
-router.put('/:id', ctrl.update);
-router.delete('/:id', ctrl.remove);
+router.get('/', requirePermission(Permissions.HOTSPOT_BLOG_READ), ctrl.list);
+router.post('/', requirePermission(Permissions.HOTSPOT_BLOG_CREATE), ctrl.create);
+router.get('/:id', requirePermission(Permissions.HOTSPOT_BLOG_READ), ctrl.getOne);
+router.put('/:id', requirePermission(Permissions.HOTSPOT_BLOG_UPDATE), ctrl.update);
+router.delete('/:id', requirePermission(Permissions.HOTSPOT_BLOG_DELETE), ctrl.remove);
 
-router.post('/:id/images', upload.array('files'), uploadErrors, ctrl.uploadImages);
-router.delete('/:id/images/:imageId', ctrl.removeImage);
+router.post('/:id/images', requirePermission(Permissions.HOTSPOT_BLOG_UPDATE), upload.array('files'), uploadErrors, ctrl.uploadImages);
+router.delete('/:id/images/:imageId', requirePermission(Permissions.HOTSPOT_BLOG_UPDATE), ctrl.removeImage);
 
-router.post('/:id/reactions', ctrl.reactToPost);
-router.delete('/:id/reactions', ctrl.clearPostReaction);
-router.get('/:id/reactions', ctrl.postReactors);
+router.post('/:id/reactions', requirePermission(Permissions.HOTSPOT_BLOG_READ), ctrl.reactToPost);
+router.delete('/:id/reactions', requirePermission(Permissions.HOTSPOT_BLOG_READ), ctrl.clearPostReaction);
+router.get('/:id/reactions', requirePermission(Permissions.HOTSPOT_BLOG_READ), ctrl.postReactors);
 
-router.get('/:id/comments', ctrl.listComments);
-router.post('/:id/comments', ctrl.addComment);
+router.get('/:id/comments', requirePermission(Permissions.HOTSPOT_BLOG_READ), ctrl.listComments);
+router.post('/:id/comments', requirePermission(Permissions.HOTSPOT_BLOG_READ), ctrl.addComment);
 
 export default router;
