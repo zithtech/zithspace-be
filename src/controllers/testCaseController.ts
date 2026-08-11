@@ -14,11 +14,17 @@ const ensureModuleFkDropped = async () => {
   }
 };
 
-// Utility to generate Test Case ID (e.g. TC-1001)
-const generateTestCaseId = async (tenantId: string) => {
-  const { rows } = await pool.query(`SELECT COUNT(*) FROM qa_test_cases WHERE tenant_id = $1`, [tenantId]);
-  const count = parseInt(rows[0].count, 10);
-  return `TC-${1000 + count + 1}`;
+// Utility to generate Test Case ID (e.g. TC-001 for parent-specific, TC-1001 for global)
+const generateTestCaseId = async (tenantId: string, parentId?: string | null) => {
+  if (parentId) {
+    const { rows } = await pool.query(`SELECT COUNT(*) FROM qa_test_cases WHERE tenant_id = $1 AND parent_test_case_id = $2`, [tenantId, parentId]);
+    const count = parseInt(rows[0].count, 10);
+    return `TC-${String(count + 1).padStart(3, '0')}`;
+  } else {
+    const { rows } = await pool.query(`SELECT COUNT(*) FROM qa_test_cases WHERE tenant_id = $1 AND parent_test_case_id IS NULL`, [tenantId]);
+    const count = parseInt(rows[0].count, 10);
+    return `TC-${1000 + count + 1}`;
+  }
 };
 
 export const getTestCases = async (req: Request, res: Response) => {
@@ -231,14 +237,14 @@ export const createTestCase = async (req: Request, res: Response) => {
     const userId = (req as any).user?.id;
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
-    const test_case_id = await generateTestCaseId(tenantId);
-
     const {
       parent_test_case_id, parent_id, name, module_id, feature, description, preconditions, steps_to_reproduce,
       expected_result, priority, severity, test_type, automation, status, owner, qa_owner
     } = req.body;
     const assignedOwner = owner || qa_owner || userId || null;
     const parentId = parent_test_case_id || parent_id || null;
+
+    const test_case_id = await generateTestCaseId(tenantId, parentId);
 
     const { rows } = await pool.query(
       `INSERT INTO qa_test_cases (

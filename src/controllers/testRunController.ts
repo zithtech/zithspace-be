@@ -364,11 +364,20 @@ export const addCaseToRun = async (req: Request, res: Response) => {
 
     await client.query('BEGIN');
 
-    const { rows: countRows } = await client.query(
-      `SELECT COUNT(*) FROM qa_test_cases WHERE tenant_id = $1`,
-      [tenantId]
-    );
-    const testCaseRef = `TC-${1000 + parseInt(countRows[0].count, 10) + 1}`;
+    let testCaseRef;
+    if (parent_test_case_id) {
+      const { rows: countRows } = await client.query(
+        `SELECT COUNT(*) FROM qa_test_cases WHERE tenant_id = $1 AND parent_test_case_id = $2`,
+        [tenantId, parent_test_case_id]
+      );
+      testCaseRef = `TC-${String(parseInt(countRows[0].count, 10) + 1).padStart(3, '0')}`;
+    } else {
+      const { rows: countRows } = await client.query(
+        `SELECT COUNT(*) FROM qa_test_cases WHERE tenant_id = $1 AND parent_test_case_id IS NULL`,
+        [tenantId]
+      );
+      testCaseRef = `TC-${1000 + parseInt(countRows[0].count, 10) + 1}`;
+    }
 
     const { rows: caseRows } = await client.query(
       `INSERT INTO qa_test_cases (
