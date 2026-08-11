@@ -1462,7 +1462,7 @@ class UserController {
                 return;
             }
             const { role, position } = req.query;
-            const whereClauses = ['u.tenant_id = $1', 'u.is_active = true'];
+            const whereClauses = ['u.tenant_id = $1', 'u.is_active = true', 'u.deleted_at IS NULL'];
             const values = [req.tenantId];
             let paramCount = 1;
             if (role) {
