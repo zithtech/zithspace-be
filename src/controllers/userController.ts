@@ -1700,7 +1700,7 @@ export class UserController {
 
       const { role, position } = req.query;
 
-      const whereClauses: string[] = ['u.tenant_id = $1', 'u.is_active = true'];
+      const whereClauses: string[] = ['u.tenant_id = $1', 'u.is_active = true', 'u.deleted_at IS NULL'];
       const values: any[] = [req.tenantId];
       let paramCount = 1;
 

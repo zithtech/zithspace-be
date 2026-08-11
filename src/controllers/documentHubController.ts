@@ -1,5 +1,9 @@
 import { Response } from "express";
-import { prisma } from "@/config/database";
+
+import pool from "@/config/dbpool";
+import { findHubByName, createDocumentHubModel, getDocumentHubById, getAllDocumentHubsModel, getDocumentHubStarsModel, updateDocumentHubModel } from "@/models/documentHub.model";
+import { createDocumentModel } from "@/models/document.model";
+import { createDocumentTreeModel, getLastNodePositionModel, getDocumentTreeByIdModel, updateDocumentTreeModel } from "@/models/documentTree.model";
 import {
   AuthRequest,
   ApiResponse,
@@ -228,13 +232,7 @@ export class DocumentHubController {
       }
 
       // Check if a document hub with the same name already exists
-      const existingHub = await prisma.documentHub.findFirst({
-        where: {
-          tenantId: req.tenantId,
-          name: name.trim(),
-          isDeleted: false,
-        },
-      });
+      const existingHub = await findHubByName(name.trim(), req.tenantId);
 
       if (existingHub) {
         res.status(400).json({
@@ -246,36 +244,24 @@ export class DocumentHubController {
 
       // Validate project if provided
       if (projectId) {
-        const project = await prisma.project.findFirst({
-          where: {
-            id: projectId,
-            tenantId: req.tenantId,
-          },
-        });
+        const projectQuery = await pool.query(
+          'SELECT id FROM projects WHERE id = $1 AND tenant_id = $2',
+          [projectId, req.tenantId]
+        );
 
-        if (!project) {
+        if (projectQuery.rows.length === 0) {
           throw new ValidationError("Project not found in this tenant");
         }
       }
       // Create documentHub
-      const documentHub = await prisma.documentHub.create({
-        data: {
-          tenantId: req.tenantId,
-          name,
-          projectId: projectId,
-          ticketId: ticketId,
-          createdById: req.user.id,
-          visibility: visibility as any,
-          shareToken: hubShareToken as any,
-        },
-        include: {
-          createdBy: {
-            select: { id: true, name: true, workEmail: true, avatarUrl: true },
-          },
-          project: {
-            select: { id: true, name: true, code: true },
-          },
-        },
+      const documentHub = await createDocumentHubModel({
+        tenantId: req.tenantId,
+        name,
+        projectId: projectId,
+        ticketId: ticketId,
+        createdById: req.user.id,
+        visibility: visibility as any,
+        shareToken: hubShareToken as any,
       });
 
       let docShareToken = null;
@@ -284,54 +270,45 @@ export class DocumentHubController {
       }
 
       // Create "Overview" document
-      const doc = await prisma.document.create({
-        data: {
-          tenantId: req.tenantId,
-          documentHubId: documentHub.id,
-          title: "Overview",
-          content: [
-            {
-              id: "overview-heading",
-              type: "heading",
-              props: { level: 1, textColor: "default", backgroundColor: "default", textAlignment: "left" },
-              content: [{ type: "text", text: "Overview", styles: {} }],
-              children: [],
-            },
-            {
-              id: "overview-p1",
-              type: "paragraph",
-              props: { textColor: "default", backgroundColor: "default", textAlignment: "left" },
-              content: [
-                {
-                  type: "text",
-                  text: "Welcome to your new documentation hub! Here is some placeholder text to get you started.",
-                  styles: {},
-                },
-              ],
-              children: [],
-            },
-          ],
-          createdById: req.user.id,
-          visibility: visibility as any,
-          shareToken: docShareToken as any,
-        },
+      const doc = await createDocumentModel({
+        tenantId: req.tenantId,
+        documentHubId: documentHub.id,
+        title: "Overview",
+        content: [
+          {
+            id: "overview-heading",
+            type: "heading",
+            props: { level: 1, textColor: "default", backgroundColor: "default", textAlignment: "left" },
+            content: [{ type: "text", text: "Overview", styles: {} }],
+            children: [],
+          },
+          {
+            id: "overview-p1",
+            type: "paragraph",
+            props: { textColor: "default", backgroundColor: "default", textAlignment: "left" },
+            content: [
+              {
+                type: "text",
+                text: "Welcome to your new documentation hub! Here is some placeholder text to get you started.",
+                styles: {},
+              },
+            ],
+            children: [],
+          },
+        ],
+        createdById: req.user.id,
+        visibility: visibility as any,
+        shareToken: docShareToken as any,
       });
 
-      const documentTree = await prisma.documentTree.create({
-        data: {
-          tenantId: req.tenantId,
-          documentHubId: documentHub.id,
-          createdById: req.user.id,
-          title: "Overview",
-          position: 0,
-          type: "file",
-          documentId: doc.id,
-        },
-        include: {
-          createdBy: {
-            select: { id: true, name: true },
-          },
-        },
+      const documentTree = await createDocumentTreeModel({
+        tenantId: req.tenantId,
+        documentHubId: documentHub.id,
+        createdById: req.user.id,
+        title: "Overview",
+        sequence: 0,
+        type: "file",
+        documentId: doc.id,
       });
 
       // Emit socket event
@@ -400,55 +377,7 @@ export class DocumentHubController {
 
       const { id } = req.params;
 
-      // Fetch accessible documents for this user
-      const accessibleDocs = await prisma.document.findMany({
-        where: {
-          documentHubId: id,
-          tenantId: req.tenantId,
-          isDeleted: false,
-          OR: [
-            { visibility: "public" },
-            { createdById: req.user.id },
-          ],
-        },
-        select: { id: true },
-      });
-      const accessibleDocIds = accessibleDocs.map((doc) => doc.id);
-
-      const documentHub = await prisma.documentHub.findFirst({
-        where: {
-          id,
-          tenantId: req.tenantId,
-          isDeleted: false,
-          OR: [
-            { visibility: "public" },
-            { createdById: req.user.id },
-          ],
-        },
-        include: {
-          treeNodes: {
-            where: {
-              isDeleted: false,
-              OR: [
-                { type: { not: "file" } },
-                { documentId: { in: accessibleDocIds } },
-              ],
-            },
-            orderBy: {
-              position: "asc",
-            },
-          },
-          project: {
-            select: { id: true, name: true, code: true },
-          },
-          ticket: {
-            select: { id: true, title: true, status: true, ticketNumber: true },
-          },
-          createdBy: {
-            select: { id: true, name: true, workEmail: true, avatarUrl: true },
-          },
-        },
-      });
+      const documentHub = await getDocumentHubById(id, req.tenantId, req.user.id);
 
       if (!documentHub) {
         res.status(404).json({
@@ -497,52 +426,34 @@ export class DocumentHubController {
       }
 
       // Find last position in the same level
-      const lastNode = await prisma.documentTree.findFirst({
-        where: {
-          tenantId: req.tenantId,
-          documentHubId,
-          parentId: parentId || null,
-          isDeleted: false,
-        },
-        orderBy: {
-          position: "desc",
-        },
-      });
-
-      const position = lastNode ? lastNode.position + 1 : 0;
+      const lastPosition = await getLastNodePositionModel(documentHubId, req.tenantId, parentId || null);
+      const position = lastPosition !== null ? lastPosition + 1 : 0;
 
       // Create document for all node types (files, folders, sections) so they can all have editable content
-      const doc = await prisma.document.create({
-        data: {
-          tenantId: req.tenantId,
-          documentHubId,
-          title,
-          content: [], // Default empty content for Blocknote
-          createdById: req.user.id,
-          visibility: "public",
-          shareToken: crypto.randomBytes(32).toString("hex"),
-        },
+      const doc = await createDocumentModel({
+        tenantId: req.tenantId,
+        documentHubId,
+        title,
+        content: [], // Default empty content for Blocknote
+        createdById: req.user.id,
+        visibility: "public",
+        shareToken: require("crypto").randomBytes(32).toString("hex"),
       });
       let documentId = doc.id;
 
-      const newNode = await prisma.documentTree.create({
-        data: {
-          tenantId: req.tenantId,
-          documentHubId,
-          parentId: parentId || null,
-          title,
-          type,
-          position,
-          createdById: req.user.id,
-          documentId,
-        },
+      const newNode = await createDocumentTreeModel({
+        tenantId: req.tenantId,
+        documentHubId,
+        parentId: parentId || null,
+        title,
+        type,
+        position,
+        createdById: req.user.id,
+        documentId,
       });
 
       // Update parent hub's updatedAt
-      await prisma.documentHub.update({
-        where: { id: documentHubId },
-        data: { updatedAt: new Date() },
-      });
+      await updateDocumentHubModel(documentHubId, req.tenantId, { updatedAt: new Date() });
 
       // Emit socket event
       socketService.emitToTenant(
@@ -552,10 +463,11 @@ export class DocumentHubController {
       );
 
       // Look up the hub name so the activity row reads "<thing> in <Hub Name>"
-      const hubForLog = await prisma.documentHub.findUnique({
-        where: { id: documentHubId },
-        select: { name: true },
-      });
+      const hubQuery = await pool.query(
+        'SELECT name FROM document_hub WHERE id = $1 AND "tenantId" = $2', 
+        [documentHubId, req.tenantId]
+      );
+      const hubForLog = hubQuery.rows.length > 0 ? hubQuery.rows[0] : null;
 
       recordTransaction({
         req,
@@ -614,14 +526,7 @@ export class DocumentHubController {
         return;
       }
 
-      const node = await prisma.documentTree.findFirst({
-        where: {
-          id,
-          tenantId: req.tenantId,
-          isDeleted: false,
-        },
-        include: { documentHub: { select: { name: true } } },
-      });
+      const node = await getDocumentTreeByIdModel(id, req.tenantId);
 
       if (!node) {
         res.status(404).json({
@@ -630,6 +535,13 @@ export class DocumentHubController {
         } as ApiResponse);
         return;
       }
+
+      // Fetch hub name for log
+      const hubQuery = await pool.query(
+        'SELECT name FROM document_hub WHERE id = $1 AND "tenantId" = $2', 
+        [node.documentHubId, req.tenantId]
+      );
+      const hubName = hubQuery.rows.length > 0 ? hubQuery.rows[0].name : "Unknown Hub";
 
       // --- Validate parentId move (drag-drop) ---
       if (parentId !== undefined) {
@@ -642,13 +554,7 @@ export class DocumentHubController {
         }
 
         if (parentId !== null) {
-          const parent = await prisma.documentTree.findFirst({
-            where: {
-              id: parentId,
-              tenantId: req.tenantId,
-              isDeleted: false,
-            },
-          });
+          const parent = await getDocumentTreeByIdModel(parentId, req.tenantId);
 
           if (!parent) {
             res.status(404).json({
@@ -686,13 +592,7 @@ export class DocumentHubController {
               return;
             }
             if (!cursor.parentId) break;
-            cursor = await prisma.documentTree.findFirst({
-              where: {
-                id: cursor.parentId,
-                tenantId: req.tenantId,
-                isDeleted: false,
-              },
-            });
+            cursor = await getDocumentTreeByIdModel(cursor.parentId, req.tenantId);
           }
         }
       }
@@ -701,10 +601,7 @@ export class DocumentHubController {
       if (title !== undefined) updateData.title = title;
       if (parentId !== undefined) updateData.parentId = parentId;
 
-      const updatedNode = await prisma.documentTree.update({
-        where: { id },
-        data: updateData,
-      });
+      const updatedNode = await updateDocumentTreeModel(id, req.tenantId, updateData);
 
       // If it's a file and has a documentId, update the document title too
       if (
@@ -712,17 +609,14 @@ export class DocumentHubController {
         node.type === "file" &&
         node.documentId
       ) {
-        await prisma.document.update({
-          where: { id: node.documentId },
-          data: { title },
-        });
+        await pool.query(
+          'UPDATE documents SET title = $1, "updatedAt" = NOW() WHERE id = $2', 
+          [title, node.documentId]
+        );
       }
 
       // Update parent hub's updatedAt
-      await prisma.documentHub.update({
-        where: { id: node.documentHubId },
-        data: { updatedAt: new Date() },
-      });
+      await updateDocumentHubModel(node.documentHubId, req.tenantId, { updatedAt: new Date() });
 
       // Emit socket event
       socketService.emitToTenant(
@@ -786,23 +680,13 @@ export class DocumentHubController {
 
       const { id } = req.params;
 
-      const document = await prisma.document.findFirst({
-        where: {
-          id,
-          tenantId: req.tenantId,
-          isDeleted: false,
-          OR: [
-            {
-              visibility: "public",
-            },
-            {
-              createdById: req.user.id,
-            },
-          ],
-        },
-      });
+      const documentQuery = await pool.query(
+        `SELECT * FROM documents WHERE id = $1 AND "tenantId" = $2 AND is_deleted = false
+         AND (visibility = 'public' OR "createdById" = $3 OR $3 = ANY(shared_with))`,
+        [id, req.tenantId, req.user.id]
+      );
 
-      if (!document) {
+      if (documentQuery.rows.length === 0) {
         res.status(404).json({
           success: false,
           error: "Document not found",
@@ -810,9 +694,38 @@ export class DocumentHubController {
         return;
       }
 
+      const document = documentQuery.rows[0];
+
+      // Manual visibility check
+      if (document.visibility !== "public" && document.createdById !== req.user.id) {
+        res.status(404).json({
+          success: false,
+          error: "Document not found",
+        } as ApiResponse);
+        return;
+      }
+
+      // Map keys to camelCase for the frontend
+      const mappedDocument = {
+        id: document.id,
+        tenantId: document.tenantId,
+        documentHubId: document.documentHubId,
+        title: document.title,
+        content: document.content,
+        version: document.version,
+        createdById: document.createdById,
+        createdAt: document.createdAt,
+        updatedAt: document.updatedAt,
+        deletedAt: document.deleted_at,
+        deletedById: document.deleted_by_id,
+        isDeleted: document.is_deleted,
+        visibility: document.visibility,
+        shareToken: document.share_token,
+      };
+
       res.status(200).json({
         success: true,
-        data: document,
+        data: mappedDocument,
       } as ApiResponse);
     } catch (error: any) {
       console.error("Get document error:", error);
@@ -840,22 +753,20 @@ export class DocumentHubController {
         expectedVersion?: number;
       };
 
-      const document = await prisma.document.findFirst({
-        where: {
-          id,
-          tenantId: req.tenantId,
-          isDeleted: false,
-        },
-        include: { documentHub: { select: { name: true } } },
-      });
+      const documentQuery = await pool.query(
+        'SELECT d.*, dh.name as hub_name FROM documents d JOIN document_hub dh ON d."documentHubId" = dh.id WHERE d.id = $1 AND d."tenantId" = $2 AND d.is_deleted = false',
+        [id, req.tenantId]
+      );
 
-      if (!document) {
+      if (documentQuery.rows.length === 0) {
         res.status(404).json({
           success: false,
           error: "Document not found",
         } as ApiResponse);
         return;
       }
+
+      const document = documentQuery.rows[0];
 
       // Check authorization (only creator can update private document)
       if (
@@ -876,14 +787,14 @@ export class DocumentHubController {
       if (
         expectedVersion !== undefined &&
         expectedVersion !== null &&
-        (document as any).version !== expectedVersion
+        Number(document.version) !== Number(expectedVersion)
       ) {
         res.status(409).json({
           success: false,
           error: "Document was modified by another session",
           data: {
-            currentVersion: (document as any).version,
-            expectedVersion,
+            currentVersion: Number(document.version),
+            expectedVersion: Number(expectedVersion),
             document,
           },
         } as ApiResponse);
@@ -892,31 +803,42 @@ export class DocumentHubController {
 
       // Atomic version check + bump in a single SQL statement so two concurrent
       // requests can't both pass the check above and then both overwrite.
-      // updateMany returns the affected row count; 0 means somebody else won.
-      const writeWhere: any = { id, tenantId: req.tenantId };
-      if (expectedVersion !== undefined && expectedVersion !== null) {
-        writeWhere.version = expectedVersion;
-      }
-      const updateResult = await prisma.document.updateMany({
-        where: writeWhere,
-        data: {
-          ...(content !== undefined ? { content } : {}),
-          ...(title !== undefined ? { title } : {}),
-          version: { increment: 1 },
-          updatedAt: new Date(),
-        },
-      });
+      let updateQueryStr = 'UPDATE documents SET version = version + 1, "updatedAt" = NOW()';
+      const queryParams: any[] = [id, req.tenantId];
+      let paramIndex = 3;
 
-      if (updateResult.count === 0) {
+      if (content !== undefined) {
+        updateQueryStr += `, content = $${paramIndex++}`;
+        queryParams.push(JSON.stringify(content));
+      }
+      if (title !== undefined) {
+        updateQueryStr += `, title = $${paramIndex++}`;
+        queryParams.push(title);
+      }
+
+      updateQueryStr += ` WHERE id = $1 AND "tenantId" = $2`;
+      
+      if (expectedVersion !== undefined && expectedVersion !== null) {
+        updateQueryStr += ` AND version = $${paramIndex++}`;
+        queryParams.push(Number(expectedVersion));
+      }
+
+      updateQueryStr += ' RETURNING *';
+
+      const updateResult = await pool.query(updateQueryStr, queryParams);
+
+      if (updateResult.rows.length === 0) {
         // Race lost — someone updated the document between our read and write.
-        const fresh = await prisma.document.findFirst({
-          where: { id, tenantId: req.tenantId, isDeleted: false },
-        });
+        const freshQuery = await pool.query(
+          'SELECT * FROM documents WHERE id = $1 AND "tenantId" = $2 AND is_deleted = false',
+          [id, req.tenantId]
+        );
+        const fresh = freshQuery.rows.length > 0 ? freshQuery.rows[0] : null;
         res.status(409).json({
           success: false,
           error: "Document was modified by another session",
           data: {
-            currentVersion: fresh ? (fresh as any).version : null,
+            currentVersion: fresh ? fresh.version : null,
             expectedVersion,
             document: fresh,
           },
@@ -924,27 +846,23 @@ export class DocumentHubController {
         return;
       }
 
-      const updatedDocument = await prisma.document.findFirst({
-        where: { id, tenantId: req.tenantId },
-      });
+      const updatedDocument = updateResult.rows[0];
 
       // Create history entry
       if (content !== undefined) {
-        await prisma.documentHistory.create({
-          data: {
-            documentId: id,
-            tenantId: req.tenantId,
-            content: content,
-            createdById: req.user.id,
-          },
-        });
+        await pool.query(
+          `INSERT INTO document_history (id, "documentId", "tenantId", content, "createdById", "createdAt") 
+           VALUES ($1, $2, $3, $4, $5, NOW())`,
+          [require('crypto').randomUUID(), id, req.tenantId, JSON.stringify(content), req.user.id]
+        );
       }
 
-      // Update parent hub's updatedAt
-      await prisma.documentHub.update({
-        where: { id: document.documentHubId },
-        data: { updatedAt: new Date() },
-      });
+      // Update parent hub's updatedAt (non-fatal if it fails)
+      try {
+        await updateDocumentHubModel(document.documentHubId, req.tenantId, { updatedAt: new Date() });
+      } catch (err) {
+        console.error("Failed to update hub updatedAt timestamp:", err);
+      }
 
       // Emit socket event
       socketService.emitToTenant(
@@ -978,9 +896,26 @@ export class DocumentHubController {
         });
       }
 
+      const mappedUpdatedDocument = {
+        id: updatedDocument.id,
+        tenantId: updatedDocument.tenantId,
+        documentHubId: updatedDocument.documentHubId,
+        title: updatedDocument.title,
+        content: updatedDocument.content,
+        version: updatedDocument.version,
+        createdById: updatedDocument.createdById,
+        createdAt: updatedDocument.createdAt,
+        updatedAt: updatedDocument.updatedAt,
+        deletedAt: updatedDocument.deleted_at,
+        deletedById: updatedDocument.deleted_by_id,
+        isDeleted: updatedDocument.is_deleted,
+        visibility: updatedDocument.visibility,
+        shareToken: updatedDocument.share_token,
+      };
+
       res.status(200).json({
         success: true,
-        data: updatedDocument,
+        data: mappedUpdatedDocument,
         message: "Document updated successfully",
       } as ApiResponse);
     } catch (error: any) {
@@ -1007,18 +942,11 @@ export class DocumentHubController {
       }
       const { id: hubId } = req.params;
 
-      // Verify the hub exists and belongs to this tenant before recording a
-      // star against it.
-      // The Prisma-managed `document_hub` table stores id/tenantId as TEXT,
-      // not UUID — so do NOT cast the parameters here.
-      const hubRows: Array<{ id: string }> = await prisma.$queryRaw`
-        SELECT id FROM document_hub
-        WHERE id = ${hubId}
-          AND "tenantId" = ${req.tenantId}
-          AND (is_deleted = false OR is_deleted IS NULL)
-        LIMIT 1
-      `;
-      if (!hubRows.length) {
+      const hubQuery = await pool.query(
+        `SELECT id FROM document_hub WHERE id = $1 AND "tenantId" = $2 AND (is_deleted = false OR is_deleted IS NULL) LIMIT 1`,
+        [hubId, req.tenantId]
+      );
+      if (hubQuery.rows.length === 0) {
         res.status(404).json({
           success: false,
           error: "Document hub not found",
@@ -1026,19 +954,12 @@ export class DocumentHubController {
         return;
       }
 
-      // Generate the UUID in Node so we don't depend on the pgcrypto extension
-      // being enabled on the database.
-      const newId = crypto.randomUUID();
-      await prisma.$executeRaw`
-        INSERT INTO document_hub_stars (id, user_id, hub_id, tenant_id)
-        VALUES (
-          ${newId}::uuid,
-          ${req.user.id}::uuid,
-          ${hubId}::uuid,
-          ${req.tenantId}::uuid
-        )
-        ON CONFLICT (user_id, hub_id) DO NOTHING
-      `;
+      const newId = require('crypto').randomUUID();
+      await pool.query(
+        `INSERT INTO document_hub_stars (id, user_id, hub_id, tenant_id) 
+         VALUES ($1, $2, $3, $4) ON CONFLICT (user_id, hub_id) DO NOTHING`,
+        [newId, req.user.id, hubId, req.tenantId]
+      );
 
       res.status(200).json({
         success: true,
@@ -1067,12 +988,10 @@ export class DocumentHubController {
       }
       const { id: hubId } = req.params;
 
-      await prisma.$executeRaw`
-        DELETE FROM document_hub_stars
-        WHERE user_id = ${req.user.id}::uuid
-          AND hub_id  = ${hubId}::uuid
-          AND tenant_id = ${req.tenantId}::uuid
-      `;
+      await pool.query(
+        `DELETE FROM document_hub_stars WHERE user_id = $1 AND hub_id = $2 AND tenant_id = $3`,
+        [req.user.id, hubId, req.tenantId]
+      );
 
       res.status(200).json({
         success: true,
@@ -1108,19 +1027,12 @@ export class DocumentHubController {
 
       const { id: documentId, historyId } = req.params;
 
-      // The Prisma-managed `document_history` table stores id/documentId/
-      // tenantId as TEXT — do NOT cast the parameters to ::uuid.
-      const rows: Array<{ id: string; created_at: Date }> =
-        await prisma.$queryRaw`
-          SELECT id, "createdAt" AS created_at
-          FROM document_history
-          WHERE id = ${historyId}
-            AND "documentId" = ${documentId}
-            AND "tenantId" = ${req.tenantId}
-          LIMIT 1
-        `;
+      const historyQuery = await pool.query(
+        `SELECT id, "createdAt" AS created_at FROM document_history WHERE id = $1 AND "documentId" = $2 AND "tenantId" = $3 LIMIT 1`,
+        [historyId, documentId, req.tenantId]
+      );
 
-      if (!rows.length) {
+      if (historyQuery.rows.length === 0) {
         res.status(404).json({
           success: false,
           error: "History entry not found",
@@ -1131,14 +1043,12 @@ export class DocumentHubController {
       // Refuse to delete the most-recent version — it represents the live
       // document state and removing it would leave the doc in an inconsistent
       // history.
-      const latest: Array<{ id: string }> = await prisma.$queryRaw`
-        SELECT id
-        FROM document_history
-        WHERE "documentId" = ${documentId}
-          AND "tenantId" = ${req.tenantId}
-        ORDER BY "createdAt" DESC
-        LIMIT 1
-      `;
+      const latestQuery = await pool.query(
+        `SELECT id FROM document_history WHERE "documentId" = $1 AND "tenantId" = $2 ORDER BY "createdAt" DESC LIMIT 1`,
+        [documentId, req.tenantId]
+      );
+      
+      const latest = latestQuery.rows;
       if (latest.length && latest[0].id === historyId) {
         res.status(400).json({
           success: false,
@@ -1147,12 +1057,10 @@ export class DocumentHubController {
         return;
       }
 
-      await prisma.$executeRaw`
-        DELETE FROM document_history
-        WHERE id = ${historyId}
-          AND "documentId" = ${documentId}
-          AND "tenantId" = ${req.tenantId}
-      `;
+      await pool.query(
+        `DELETE FROM document_history WHERE id = $1 AND "documentId" = $2 AND "tenantId" = $3`,
+        [historyId, documentId, req.tenantId]
+      );
 
       recordTransaction({
         req,
@@ -1165,7 +1073,7 @@ export class DocumentHubController {
         entityId: historyId,
         parentEntityType: EntityType.DOCUMENT,
         parentEntityId: documentId,
-        metadata: { versionCreatedAt: rows[0]?.created_at },
+        metadata: { versionCreatedAt: historyQuery.rows[0].created_at },
         statusCode: 200,
       });
 
@@ -1194,25 +1102,32 @@ export class DocumentHubController {
 
       const { id } = req.params;
 
-      const history = await (prisma.documentHistory as any).findMany({
-        where: {
-          documentId: id,
-          tenantId: req.tenantId,
-        },
-        include: {
-          createdBy: {
-            select: {
-              id: true,
-              name: true,
-              workEmail: true,
-              avatarUrl: true,
-            },
-          },
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-      });
+      const historyQuery = await pool.query(
+        `SELECT dh.id, dh."documentId", dh."tenantId", dh.content, dh."createdById", dh."createdAt",
+                u.name AS "createdByName",
+                u.work_email AS "createdByEmail",
+                u.avatar_url AS "createdByAvatar"
+         FROM document_history dh
+         LEFT JOIN users u ON dh."createdById" = u.id
+         WHERE dh."documentId" = $1 AND dh."tenantId" = $2
+         ORDER BY dh."createdAt" DESC`,
+        [id, req.tenantId]
+      );
+      
+      const history = historyQuery.rows.map(row => ({
+        id: row.id,
+        documentId: row.documentId,
+        tenantId: row.tenantId,
+        content: row.content,
+        createdById: row.createdById,
+        createdAt: row.createdAt,
+        createdBy: {
+          id: row.createdById,
+          name: row.createdByName,
+          workEmail: row.createdByEmail,
+          avatarUrl: row.createdByAvatar,
+        }
+      }));
 
       res.status(200).json({
         success: true,
@@ -1246,71 +1161,15 @@ export class DocumentHubController {
           : undefined;
 
       // Fetch all accessible document IDs in this tenant for the user
-      const accessibleDocs = await prisma.document.findMany({
-        where: {
-          tenantId: req.tenantId,
-          isDeleted: false,
-          OR: [
-            { visibility: "public" },
-            { createdById: req.user.id },
-          ],
-        },
-        select: { id: true },
-      });
-      const accessibleDocIds = accessibleDocs.map((doc) => doc.id);
+      const documentHubs = await getAllDocumentHubsModel(
+        req.tenantId,
+        req.user.id,
+        ticketIdFilter
+      );
 
-      const documentHubs = await prisma.documentHub.findMany({
-        where: {
-          tenantId: req.tenantId,
-          isDeleted: false,
-          ...(ticketIdFilter ? { ticketId: ticketIdFilter } : {}),
-          OR: [
-            { visibility: "public" },
-            { createdById: req.user.id },
-          ],
-        },
-        include: {
-          project: {
-            select: { id: true, name: true, code: true },
-          },
-          ticket: {
-            select: { id: true, title: true, status: true, ticketNumber: true },
-          },
-          createdBy: {
-            select: { id: true, name: true, workEmail: true, avatarUrl: true },
-          },
-          documents: {
-            where: { isDeleted: false },
-            select: { visibility: true, createdById: true }
-          },
-          treeNodes: {
-            where: {
-              isDeleted: false,
-              OR: [
-                { type: { not: "file" } },
-                { documentId: { in: accessibleDocIds } },
-              ],
-            },
-            select: { id: true, type: true, title: true, parentId: true, position: true },
-            orderBy: { position: "asc" },
-          },
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-      });
-
-      const filteredDocumentHubs = documentHubs;
-
-      // Fetch this user's stars in one shot via raw SQL and decorate the
-      // hubs with `isStarred`.
-      const starredRows: Array<{ hub_id: string }> = await prisma.$queryRaw`
-        SELECT hub_id FROM document_hub_stars
-        WHERE user_id = ${req.user.id}::uuid
-          AND tenant_id = ${req.tenantId}::uuid
-      `;
-      const starredSet = new Set(starredRows.map((r) => r.hub_id));
-      const enrichedHubs = filteredDocumentHubs.map((hub) => ({
+      const starredRows = await getDocumentHubStarsModel(req.user.id, req.tenantId);
+      const starredSet = new Set(starredRows.map((r: any) => r.hub_id));
+      const enrichedHubs = documentHubs.map((hub) => ({
         ...hub,
         isStarred: starredSet.has(hub.id),
       }));
@@ -1320,10 +1179,10 @@ export class DocumentHubController {
         data: enrichedHubs,
       } as ApiResponse);
     } catch (error: any) {
-      console.error("Get all document hubs error:", error);
+      console.error("Get document hubs error:", error);
       res.status(500).json({
         success: false,
-        error: "Failed to get all document hubs",
+        error: "Failed to get document hubs",
       } as ApiResponse);
     }
   }
@@ -1344,15 +1203,12 @@ export class DocumentHubController {
       const { id } = req.params;
       const isPermanent = req.query.permanent === 'true';
 
-      const documentHub = await prisma.documentHub.findFirst({
-        where: {
-          id,
-          tenantId: req.tenantId,
-          ...(isPermanent ? {} : { isDeleted: false }),
-        },
-      });
+      const hubQuery = await pool.query(
+        `SELECT * FROM document_hub WHERE id = $1 AND "tenantId" = $2` + (isPermanent ? '' : ' AND is_deleted = false'),
+        [id, req.tenantId]
+      );
 
-      if (!documentHub) {
+      if (hubQuery.rows.length === 0) {
         res.status(404).json({
           success: false,
           error: "Document Hub not found",
@@ -1360,14 +1216,24 @@ export class DocumentHubController {
         return;
       }
 
+      const documentHub = hubQuery.rows[0];
+
       if (isPermanent) {
-        await prisma.$transaction(async (tx) => {
-          await tx.$executeRaw`DELETE FROM document_hub_stars WHERE hub_id = ${id}::uuid`;
-          await tx.documentTree.deleteMany({ where: { documentHubId: id } });
-          await tx.$executeRaw`DELETE FROM document_history WHERE "documentId" IN (SELECT id FROM documents WHERE "documentHubId" = ${id})`;
-          await tx.document.deleteMany({ where: { documentHubId: id } });
-          await tx.documentHub.delete({ where: { id } });
-        });
+        const client = await pool.connect();
+        try {
+          await client.query('BEGIN');
+          await client.query('DELETE FROM document_hub_stars WHERE hub_id = $1', [id]);
+          await client.query('DELETE FROM document_tree WHERE "documentHubId" = $1', [id]);
+          await client.query('DELETE FROM document_history WHERE "documentId" IN (SELECT id FROM documents WHERE "documentHubId" = $1)', [id]);
+          await client.query('DELETE FROM documents WHERE "documentHubId" = $1', [id]);
+          await client.query('DELETE FROM document_hub WHERE id = $1', [id]);
+          await client.query('COMMIT');
+        } catch (e) {
+          await client.query('ROLLBACK');
+          throw e;
+        } finally {
+          client.release();
+        }
 
         socketService.emitToTenant(
           req.tenantId,
@@ -1395,13 +1261,10 @@ export class DocumentHubController {
         return;
       }
 
-      await prisma.documentHub.update({
-        where: { id },
-        data: {
-          isDeleted: true,
-          deletedAt: new Date(),
-          deletedById: req.user.id,
-        },
+      await updateDocumentHubModel(id, req.tenantId, {
+        isDeleted: true,
+        deletedAt: new Date(),
+        deletedById: req.user.id,
       });
 
       // Emit socket event
@@ -1421,10 +1284,6 @@ export class DocumentHubController {
         entityType: EntityType.DOCUMENT_HUB,
         entityId: id,
         entityLabel: documentHub.name,
-        beforeData: { isDeleted: false },
-        afterData: { isDeleted: true },
-        changedFields: ["isDeleted"],
-        metadata: { softDelete: true },
         statusCode: 200,
       });
 
@@ -1457,21 +1316,20 @@ export class DocumentHubController {
       const { id } = req.params;
       const { name, projectId, ticketId } = req.body;
 
-      const documentHub = await prisma.documentHub.findFirst({
-        where: {
-          id,
-          tenantId: req.tenantId,
-          isDeleted: false,
-        },
-      });
+      const hubQuery = await pool.query(
+        `SELECT * FROM document_hub WHERE id = $1 AND "tenantId" = $2 AND is_deleted = false`,
+        [id, req.tenantId]
+      );
 
-      if (!documentHub) {
+      if (hubQuery.rows.length === 0) {
         res.status(404).json({
           success: false,
           error: "Document Hub not found",
         } as ApiResponse);
         return;
       }
+      
+      const documentHub = hubQuery.rows[0];
 
       // Check authorization (only creator can update hub for now)
       if (documentHub.createdById !== req.user.id) {
@@ -1484,14 +1342,12 @@ export class DocumentHubController {
 
       // Validate project if provided
       if (projectId) {
-        const project = await prisma.project.findFirst({
-          where: {
-            id: projectId,
-            tenantId: req.tenantId,
-          },
-        });
+        const projectQuery = await pool.query(
+          `SELECT id FROM projects WHERE id = $1 AND tenant_id = $2`,
+          [projectId, req.tenantId]
+        );
 
-        if (!project) {
+        if (projectQuery.rows.length === 0) {
           throw new ValidationError("Project not found in this tenant");
         }
       }
@@ -1515,27 +1371,27 @@ export class DocumentHubController {
         updateData.ticketId = ticketId;
       }
 
-      const updatedDocumentHub = await prisma.documentHub.update({
-        where: { id },
-        data: updateData,
-        include: {
-          project: {
-            select: { id: true, name: true, code: true },
-          },
-          ticket: {
-            select: { id: true, title: true, status: true, ticketNumber: true },
-          },
-          createdBy: {
-            select: { id: true, name: true, workEmail: true, avatarUrl: true },
-          },
-        }
-      });
+      const updatedDocumentHub = await updateDocumentHubModel(id, req.tenantId, updateData);
+
+      const relatedQuery = await pool.query(`
+        SELECT dh.*,
+          json_build_object('id', p.id, 'name', p.name, 'code', p.code) as project,
+          json_build_object('id', t.id, 'title', t.title, 'status', t.status, 'ticketNumber', t.ticket_number) as ticket,
+          json_build_object('id', u.id, 'name', u.name, 'workEmail', u.work_email, 'avatarUrl', u.avatar_url) as "createdBy"
+        FROM document_hub dh
+        LEFT JOIN projects p ON dh."projectId" = p.id
+        LEFT JOIN tickets t ON dh."ticketId" = t.id
+        LEFT JOIN users u ON dh."createdById" = u.id
+        WHERE dh.id = $1
+      `, [id]);
+      
+      const socketPayload = relatedQuery.rows[0];
 
       // Emit socket event
       socketService.emitToTenant(
         req.tenantId,
         "documenthub:updated",
-        updatedDocumentHub,
+        socketPayload,
       );
 
       {
@@ -1556,8 +1412,8 @@ export class DocumentHubController {
             entityType: EntityType.DOCUMENT_HUB,
             entityId: id,
             entityLabel: updatedDocumentHub.name,
-            beforeData: diff.before,
-            afterData: diff.after,
+            beforeData: before,
+            afterData: after,
             changedFields: diff.changedFields,
             statusCode: 200,
           });
@@ -1566,24 +1422,11 @@ export class DocumentHubController {
 
       res.status(200).json({
         success: true,
-        data: updatedDocumentHub,
-        debug: {
-          receivedTicketId: ticketId,
-          updatedAt: updateData.updatedAt
-        },
+        data: socketPayload,
         message: "Document Hub updated successfully",
       } as ApiResponse);
     } catch (error: any) {
       console.error("Update document hub error:", error);
-
-      if (error instanceof ValidationError) {
-        res.status(400).json({
-          success: false,
-          error: error.message,
-        } as ApiResponse);
-        return;
-      }
-
       res.status(500).json({
         success: false,
         error: "Failed to update document hub",
@@ -1607,22 +1450,20 @@ export class DocumentHubController {
       const { id } = req.params;
       const isPermanent = req.query.permanent === 'true';
 
-      const node = await prisma.documentTree.findFirst({
-        where: {
-          id,
-          tenantId: req.tenantId,
-          ...(isPermanent ? {} : { isDeleted: false }),
-        },
-        include: { documentHub: { select: { name: true } } },
-      });
+      const nodeQuery = await pool.query(
+        `SELECT dt.*, dh.name as hub_name FROM document_tree dt JOIN document_hub dh ON dt."documentHubId" = dh.id WHERE dt.id = $1 AND dt."tenantId" = $2` + (isPermanent ? '' : ' AND dt.is_deleted = false'),
+        [id, req.tenantId]
+      );
 
-      if (!node) {
+      if (nodeQuery.rows.length === 0) {
         res.status(404).json({
           success: false,
           error: "Node not found",
         } as ApiResponse);
         return;
       }
+
+      const node = nodeQuery.rows[0];
 
       // Check ownership
       if (node.createdById !== req.user.id) {
@@ -1634,9 +1475,11 @@ export class DocumentHubController {
       }
 
       // Use a transaction for atomic recursive deletion
-      await prisma.$transaction(async (tx) => {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
         await DocumentHubController.deleteNodeRecursive(
-          tx,
+          client,
           id,
           req.tenantId,
           req.user!.id,
@@ -1644,13 +1487,16 @@ export class DocumentHubController {
           node.documentId,
           isPermanent
         );
-      });
+        await client.query('COMMIT');
+      } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+      } finally {
+        client.release();
+      }
 
       // Update parent hub's updatedAt
-      await prisma.documentHub.update({
-        where: { id: node.documentHubId },
-        data: { updatedAt: new Date() },
-      });
+      await updateDocumentHubModel(node.documentHubId, req.tenantId, { updatedAt: new Date() });
 
       // Emit socket event
       socketService.emitToTenant(
@@ -1660,7 +1506,7 @@ export class DocumentHubController {
       );
 
       {
-        const hubName = (node as any).documentHub?.name as string | undefined;
+        const hubName = node.hub_name;
         const inHub = hubName ? ` from ${hubName}` : "";
         recordTransaction({
           req,
@@ -1696,7 +1542,7 @@ export class DocumentHubController {
   }
 
   private static async deleteNodeRecursive(
-    tx: any, // Prisma transaction client
+    tx: any, // PoolClient
     nodeId: string,
     tenantId: string,
     deletedById: string,
@@ -1705,15 +1551,13 @@ export class DocumentHubController {
     isPermanent: boolean = false,
   ): Promise<void> {
     // 1. Get all children of this node
-    const children = await tx.documentTree.findMany({
-      where: {
-        parentId: nodeId,
-        tenantId,
-      },
-    });
+    const childrenQuery = await tx.query(
+      `SELECT id, type, "documentId" FROM document_tree WHERE "parentId" = $1 AND "tenantId" = $2`,
+      [nodeId, tenantId]
+    );
 
     // 2. Recursively delete each child
-    for (const child of children) {
+    for (const child of childrenQuery.rows) {
       await DocumentHubController.deleteNodeRecursive(
         tx,
         child.id,
@@ -1726,40 +1570,29 @@ export class DocumentHubController {
     }
 
     if (isPermanent) {
-      await tx.documentTree.delete({ where: { id: nodeId } });
+      await tx.query(`DELETE FROM document_tree WHERE id = $1`, [nodeId]);
       if (nodeType === "file" && documentId) {
         try {
-          await tx.$executeRaw`DELETE FROM document_history WHERE "documentId" = ${documentId}`;
-          await tx.document.delete({ where: { id: documentId } });
+          await tx.query(`DELETE FROM document_history WHERE "documentId" = $1`, [documentId]);
+          await tx.query(`DELETE FROM documents WHERE id = $1`, [documentId]);
         } catch (error) {
           console.error(`Failed to permanently delete document ${documentId}:`, error);
         }
       }
     } else {
       // 3. Mark current node as deleted using updateMany for robustness
-      await tx.documentTree.updateMany({
-        where: { id: nodeId, tenantId },
-        data: {
-          isDeleted: true,
-          deletedAt: new Date(),
-          deletedById,
-        },
-      });
+      await tx.query(
+        `UPDATE document_tree SET is_deleted = true, deleted_at = NOW(), deleted_by_id = $1 WHERE id = $2 AND "tenantId" = $3`,
+        [deletedById, nodeId, tenantId]
+      );
 
       // 4. If it's a file with an associated document, mark the document as deleted too
       if (nodeType === "file" && documentId) {
         try {
-          await tx.document.updateMany({
-            where: {
-              id: documentId,
-              tenantId,
-            },
-            data: {
-              isDeleted: true,
-              deletedAt: new Date(),
-              deletedById,
-            },
-          });
+          await tx.query(
+            `UPDATE documents SET is_deleted = true, deleted_at = NOW(), deleted_by_id = $1 WHERE id = $2 AND "tenantId" = $3`,
+            [deletedById, documentId, tenantId]
+          );
         } catch (error) {
           console.error(`Failed to soft-delete document ${documentId}:`, error);
           // We don't throw here to allow the tree node deletion to commit
@@ -1787,22 +1620,20 @@ export class DocumentHubController {
       const { id } = req.params;
       const isPermanent = req.query.permanent === 'true';
 
-      const document = await prisma.document.findFirst({
-        where: {
-          id,
-          tenantId: req.tenantId,
-          ...(isPermanent ? {} : { isDeleted: false }),
-        },
-        include: { documentHub: { select: { name: true } } },
-      });
+      const documentQuery = await pool.query(
+        `SELECT d.*, dh.name as hub_name FROM documents d JOIN document_hub dh ON d."documentHubId" = dh.id WHERE d.id = $1 AND d."tenantId" = $2` + (isPermanent ? '' : ' AND d.is_deleted = false'),
+        [id, req.tenantId]
+      );
 
-      if (!document) {
+      if (documentQuery.rows.length === 0) {
         res.status(404).json({
           success: false,
           error: "Document not found",
         } as ApiResponse);
         return;
       }
+      
+      const document = documentQuery.rows[0];
 
       // Check ownership
       if (document.createdById !== req.user.id) {
@@ -1814,16 +1645,21 @@ export class DocumentHubController {
       }
 
       if (isPermanent) {
-        await prisma.$transaction(async (tx) => {
-          await tx.documentTree.deleteMany({ where: { documentId: id } });
-          await tx.$executeRaw`DELETE FROM document_history WHERE "documentId" = ${id}`;
-          await tx.document.delete({ where: { id } });
-        });
+        const client = await pool.connect();
+        try {
+          await client.query('BEGIN');
+          await client.query(`DELETE FROM document_tree WHERE "documentId" = $1`, [id]);
+          await client.query(`DELETE FROM document_history WHERE "documentId" = $1`, [id]);
+          await client.query(`DELETE FROM documents WHERE id = $1`, [id]);
+          await client.query('COMMIT');
+        } catch (e) {
+          await client.query('ROLLBACK');
+          throw e;
+        } finally {
+          client.release();
+        }
 
-        await prisma.documentHub.update({
-          where: { id: document.documentHubId },
-          data: { updatedAt: new Date() },
-        });
+        await updateDocumentHubModel(document.documentHubId, req.tenantId, { updatedAt: new Date() });
 
         socketService.emitToTenant(
           req.tenantId,
@@ -1832,7 +1668,7 @@ export class DocumentHubController {
         );
 
         {
-          const hubName = (document as any).documentHub?.name as string | undefined;
+          const hubName = document.hub_name;
           recordTransaction({
             req,
             section: Section.WORK,
@@ -1858,34 +1694,19 @@ export class DocumentHubController {
       }
 
       // Soft delete the document
-      await prisma.document.update({
-        where: { id },
-        data: {
-          isDeleted: true,
-          deletedAt: new Date(),
-          deletedById: req.user.id,
-        },
-      });
+      await pool.query(
+        `UPDATE documents SET is_deleted = true, deleted_at = NOW(), deleted_by_id = $1 WHERE id = $2`,
+        [req.user.id, id]
+      );
 
       // Also soft delete associated tree node if it exists
-      await prisma.documentTree.updateMany({
-        where: {
-          documentId: id,
-          tenantId: req.tenantId,
-          isDeleted: false,
-        },
-        data: {
-          isDeleted: true,
-          deletedAt: new Date(),
-          deletedById: req.user.id,
-        },
-      });
+      await pool.query(
+        `UPDATE document_tree SET is_deleted = true, deleted_at = NOW(), deleted_by_id = $1 WHERE "documentId" = $2 AND "tenantId" = $3 AND is_deleted = false`,
+        [req.user.id, id, req.tenantId]
+      );
 
       // Update parent hub's updatedAt
-      await prisma.documentHub.update({
-        where: { id: document.documentHubId },
-        data: { updatedAt: new Date() },
-      });
+      await updateDocumentHubModel(document.documentHubId, req.tenantId, { updatedAt: new Date() });
 
       // Emit socket event
       socketService.emitToTenant(
@@ -1949,42 +1770,43 @@ export class DocumentHubController {
       let folders: any[] = [];
 
       if (!type || type === "hub") {
-        hubs = await prisma.documentHub.findMany({
-          where: {
-            tenantId: req.tenantId,
-            isDeleted: true,
-          },
-          include: {
-            deletedBy: {
-              select: { id: true, name: true, avatarUrl: true },
-            },
-            project: {
-              select: { id: true, name: true, code: true },
-            },
-          },
-          orderBy: {
-            deletedAt: "desc",
-          },
-        });
+        const hubsQuery = await pool.query(`
+          SELECT dh.*,
+            json_build_object('id', u.id, 'name', u.name, 'avatarUrl', u.avatar_url) as "deletedBy",
+            json_build_object('id', p.id, 'name', p.name, 'code', p.code) as project
+          FROM document_hub dh
+          LEFT JOIN users u ON dh.deleted_by_id = u.id
+          LEFT JOIN projects p ON dh."projectId" = p.id
+          WHERE dh."tenantId" = $1 AND dh.is_deleted = true
+          ORDER BY dh.deleted_at DESC
+        `, [req.tenantId]);
+        hubs = hubsQuery.rows.map(h => ({
+          ...h,
+          isDeleted: h.is_deleted,
+          deletedAt: h.deleted_at,
+          projectId: h.projectId,
+          ticketId: h.ticketId
+        }));
       }
 
       if (!type || type === "document" || type === "folder") {
         // Fetch all deleted nodes to filter root ones
-        const allDeletedNodes = await prisma.documentTree.findMany({
-          where: {
-            tenantId: req.tenantId,
-            isDeleted: true,
-          },
-          include: {
-            deletedBy: {
-              select: { id: true, name: true, avatarUrl: true },
-            },
-            documentHub: {
-              select: { id: true, name: true },
-            },
-            // For files, we need the document details
-          },
-        });
+        const allDeletedNodesQuery = await pool.query(`
+          SELECT dt.*,
+            json_build_object('id', u.id, 'name', u.name, 'avatarUrl', u.avatar_url) as "deletedBy",
+            json_build_object('id', dh.id, 'name', dh.name) as "documentHub"
+          FROM document_tree dt
+          LEFT JOIN users u ON dt.deleted_by_id = u.id
+          LEFT JOIN document_hub dh ON dt."documentHubId" = dh.id
+          WHERE dt."tenantId" = $1 AND dt.is_deleted = true
+        `, [req.tenantId]);
+        const allDeletedNodes = allDeletedNodesQuery.rows.map(dt => ({
+          ...dt,
+          parentId: dt.parentId,
+          documentId: dt.documentId,
+          isDeleted: dt.is_deleted,
+          deletedAt: dt.deleted_at
+        }));
 
         // Identify root level deleted items (parent is not deleted)
         const rootDeletedNodes = allDeletedNodes.filter(node => {
@@ -1995,14 +1817,24 @@ export class DocumentHubController {
         // Separate into documents and folders
         for (const node of rootDeletedNodes) {
           if (node.type === "file") {
-            const doc = await prisma.document.findUnique({
-              where: { id: node.documentId || '' },
-              include: {
-                deletedBy: { select: { id: true, name: true, avatarUrl: true } },
-                documentHub: { select: { id: true, name: true } }
-              }
-            });
-            if (doc) docsFromTree.push(doc);
+            const docQuery = await pool.query(`
+              SELECT d.*,
+                json_build_object('id', u.id, 'name', u.name, 'avatarUrl', u.avatar_url) as "deletedBy",
+                json_build_object('id', dh.id, 'name', dh.name) as "documentHub"
+              FROM documents d
+              LEFT JOIN users u ON d.deleted_by_id = u.id
+              LEFT JOIN document_hub dh ON d."documentHubId" = dh.id
+              WHERE d.id = $1
+            `, [node.documentId || '']);
+            if (docQuery.rows.length > 0) {
+              const doc = docQuery.rows[0];
+              docsFromTree.push({
+                ...doc,
+                isDeleted: doc.is_deleted,
+                deletedAt: doc.deleted_at,
+                documentHubId: doc.documentHubId
+              });
+            }
           } else {
             folders.push(node);
           }
@@ -2040,15 +1872,12 @@ export class DocumentHubController {
 
       const { id } = req.params;
 
-      const documentHub = await prisma.documentHub.findFirst({
-        where: {
-          id,
-          tenantId: req.tenantId,
-          isDeleted: true,
-        },
-      });
+      const hubQuery = await pool.query(
+        `SELECT * FROM document_hub WHERE id = $1 AND "tenantId" = $2 AND is_deleted = true`,
+        [id, req.tenantId]
+      );
 
-      if (!documentHub) {
+      if (hubQuery.rows.length === 0) {
         res.status(404).json({
           success: false,
           error: "Document Hub not found in trash",
@@ -2056,13 +1885,12 @@ export class DocumentHubController {
         return;
       }
 
-      await prisma.documentHub.update({
-        where: { id },
-        data: {
-          isDeleted: false,
-          deletedAt: null,
-          deletedById: null,
-        },
+      const documentHub = hubQuery.rows[0];
+
+      await updateDocumentHubModel(id, req.tenantId, {
+        isDeleted: false,
+        deletedAt: null,
+        deletedById: null,
       });
 
       // Emit socket event
@@ -2119,16 +1947,12 @@ export class DocumentHubController {
 
       const { id } = req.params;
 
-      const document = await prisma.document.findFirst({
-        where: {
-          id,
-          tenantId: req.tenantId,
-          isDeleted: true,
-        },
-        include: { documentHub: { select: { name: true } } },
-      });
+      const docQuery = await pool.query(
+        `SELECT d.*, dh.name as hub_name FROM documents d JOIN document_hub dh ON d."documentHubId" = dh.id WHERE d.id = $1 AND d."tenantId" = $2 AND d.is_deleted = true`,
+        [id, req.tenantId]
+      );
 
-      if (!document) {
+      if (docQuery.rows.length === 0) {
         res.status(404).json({
           success: false,
           error: "Document not found in trash",
@@ -2136,28 +1960,18 @@ export class DocumentHubController {
         return;
       }
 
-      await prisma.document.update({
-        where: { id },
-        data: {
-          isDeleted: false,
-          deletedAt: null,
-          deletedById: null,
-        },
-      });
+      const document = docQuery.rows[0];
+
+      await pool.query(
+        `UPDATE documents SET is_deleted = false, deleted_at = NULL, deleted_by_id = NULL WHERE id = $1`,
+        [id]
+      );
 
       // Also restore associated tree node if it exists
-      await prisma.documentTree.updateMany({
-        where: {
-          documentId: id,
-          tenantId: req.tenantId,
-          isDeleted: true,
-        },
-        data: {
-          isDeleted: false,
-          deletedAt: null,
-          deletedById: null,
-        },
-      });
+      await pool.query(
+        `UPDATE document_tree SET is_deleted = false, deleted_at = NULL, deleted_by_id = NULL WHERE "documentId" = $1 AND "tenantId" = $2 AND is_deleted = true`,
+        [id, req.tenantId]
+      );
 
       // Emit socket event
       socketService.emitToTenant(
@@ -2228,15 +2042,12 @@ export class DocumentHubController {
         return;
       }
 
-      const node = await prisma.documentTree.findFirst({
-        where: {
-          id,
-          tenantId: req.tenantId,
-          isDeleted: true,
-        },
-      });
+      const nodeQuery = await pool.query(
+        `SELECT * FROM document_tree WHERE id = $1 AND "tenantId" = $2 AND is_deleted = true`,
+        [id, req.tenantId]
+      );
 
-      if (!node) {
+      if (nodeQuery.rows.length === 0) {
         res.status(404).json({
           success: false,
           error: "Folder/Section not found in trash",
@@ -2244,17 +2055,27 @@ export class DocumentHubController {
         return;
       }
 
+      const node = nodeQuery.rows[0];
+
       // Use a transaction for atomic recursive restoration
-      await prisma.$transaction(async (tx) => {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
         // Restore recursively and move to target hub
         await DocumentHubController.restoreNodeRecursive(
-          tx,
+          client,
           id,
           req.tenantId,
           documentHubId,
           parentId || null // Move the root of the restored branch to the selected parent
         );
-      });
+        await client.query('COMMIT');
+      } catch (e) {
+        await client.query('ROLLBACK');
+        throw e;
+      } finally {
+        client.release();
+      }
 
       // Emit socket event
       socketService.emitToTenant(
@@ -2264,11 +2085,11 @@ export class DocumentHubController {
       );
 
       {
-        const hubForLog = await prisma.documentHub.findUnique({
-          where: { id: documentHubId },
-          select: { name: true },
-        });
-        const hubName = hubForLog?.name;
+        const hubForLogQuery = await pool.query(
+          `SELECT name FROM document_hub WHERE id = $1`,
+          [documentHubId]
+        );
+        const hubName = hubForLogQuery.rows.length > 0 ? hubForLogQuery.rows[0].name : undefined;
         recordTransaction({
           req,
           section: Section.WORK,
@@ -2310,54 +2131,38 @@ export class DocumentHubController {
     parentId: string | null = null
   ): Promise<void> {
     // 1. Get the current node to know its type and documentId
-    const node = await tx.documentTree.findUnique({
-      where: { id: nodeId }
-    });
+    const nodeQuery = await tx.query(
+      `SELECT type, "documentId" FROM document_tree WHERE id = $1`,
+      [nodeId]
+    );
 
-    if (!node) return;
+    if (nodeQuery.rows.length === 0) return;
+    const node = nodeQuery.rows[0];
 
     // 2. Restore current node and update its hub and parent
-    await tx.documentTree.update({
-      where: { id: nodeId },
-      data: {
-        isDeleted: false,
-        deletedAt: null,
-        deletedById: null,
-        documentHubId,
-        parentId,
-      },
-    });
+    await tx.query(
+      `UPDATE document_tree SET is_deleted = false, deleted_at = NULL, deleted_by_id = NULL, "documentHubId" = $1, "parentId" = $2 WHERE id = $3`,
+      [documentHubId, parentId, nodeId]
+    );
 
     // 3. If it's a file, restore the document and update its hub
     if (node.type === "file" && node.documentId) {
-      await tx.document.update({
-        where: { id: node.documentId },
-        data: {
-          isDeleted: false,
-          deletedAt: null,
-          deletedById: null,
-          documentHubId,
-        },
-      });
+      await tx.query(
+        `UPDATE documents SET is_deleted = false, deleted_at = NULL, deleted_by_id = NULL, "documentHubId" = $1 WHERE id = $2`,
+        [documentHubId, node.documentId]
+      );
     }
 
     // 4. Find all deleted children that WERE deleted (presumably as part of this branch)
-    const children = await tx.documentTree.findMany({
-      where: {
-        parentId: nodeId,
-        tenantId,
-        isDeleted: true, // Only restore those that are currently deleted
-      },
-    });
+    const childrenQuery = await tx.query(
+      `SELECT id FROM document_tree WHERE "parentId" = $1 AND "tenantId" = $2 AND is_deleted = true`,
+      [nodeId, tenantId]
+    );
 
     // 5. Recursively restore children, keeping the hierarchy but updating the hub
-    for (const child of children) {
+    for (const child of childrenQuery.rows) {
       await DocumentHubController.restoreNodeRecursive(
-        tx,
-        child.id,
-        tenantId,
-        documentHubId,
-        nodeId // Keep as child of the current restored node
+        tx, child.id, tenantId, documentHubId, nodeId
       );
     }
   }
@@ -2379,7 +2184,7 @@ export class DocumentHubController {
       }
 
       const { id } = req.params;
-      const { visibility } = req.body;
+      const { visibility, sharedWith = [] } = req.body;
 
       if (!['private', 'public'].includes(visibility)) {
         res.status(400).json({
@@ -2389,22 +2194,20 @@ export class DocumentHubController {
         return;
       }
 
-      const document = await prisma.document.findFirst({
-        where: {
-          id,
-          tenantId: req.tenantId,
-          isDeleted: false,
-        },
-        include: { documentHub: { select: { name: true } } },
-      });
+      const docQuery = await pool.query(
+        `SELECT d.*, dh.name as hub_name FROM documents d JOIN document_hub dh ON d."documentHubId" = dh.id WHERE d.id = $1 AND d."tenantId" = $2 AND d.is_deleted = false`,
+        [id, req.tenantId]
+      );
 
-      if (!document) {
+      if (docQuery.rows.length === 0) {
         res.status(404).json({
           success: false,
           error: "Document not found",
         } as ApiResponse);
         return;
       }
+
+      const document = docQuery.rows[0];
 
       // Check ownership
       if (document.createdById !== req.user.id) {
@@ -2415,7 +2218,7 @@ export class DocumentHubController {
         return;
       }
 
-      let shareToken = (document as any).shareToken;
+      let shareToken = document.shareToken;
 
       // Generate token if public and doesn't have one
       if (visibility === 'public') {
@@ -2426,13 +2229,11 @@ export class DocumentHubController {
         shareToken = null;
       }
 
-      const updatedDocument = await prisma.document.update({
-        where: { id },
-        data: {
-          visibility,
-          shareToken,
-        },
-      });
+      const updatedDocQuery = await pool.query(
+        `UPDATE documents SET visibility = $1, share_token = $2, shared_with = $3 WHERE id = $4 RETURNING *`,
+        [visibility, shareToken, sharedWith, id]
+      );
+      const updatedDocument = updatedDocQuery.rows[0];
 
       // Emit socket event
       socketService.emitToTenant(
@@ -2442,7 +2243,7 @@ export class DocumentHubController {
       );
 
       if (visibility !== document.visibility) {
-        const hubName = (document as any).documentHub?.name as string | undefined;
+        const hubName = document.hub_name;
         recordTransaction({
           req,
           section: Section.WORK,
@@ -2495,21 +2296,20 @@ export class DocumentHubController {
 
       const { id } = req.params;
 
-      const document = await prisma.document.findFirst({
-        where: {
-          id,
-          tenantId: req.tenantId,
-          isDeleted: false,
-        },
-      });
+      const docQuery = await pool.query(
+        `SELECT * FROM documents WHERE id = $1 AND "tenantId" = $2 AND is_deleted = false`,
+        [id, req.tenantId]
+      );
 
-      if (!document) {
+      if (docQuery.rows.length === 0) {
         res.status(404).json({
           success: false,
           error: "Document not found",
         } as ApiResponse);
         return;
       }
+
+      const document = docQuery.rows[0];
 
       // Check ownership
       if (document.createdById !== req.user.id) {
@@ -2520,13 +2320,10 @@ export class DocumentHubController {
         return;
       }
 
-      await prisma.document.update({
-        where: { id },
-        data: {
-          visibility: 'private',
-          shareToken: null,
-        },
-      });
+      await pool.query(
+        `UPDATE documents SET visibility = 'private', share_token = NULL WHERE id = $1`,
+        [id]
+      );
 
       // Emit socket event
       socketService.emitToTenant(
@@ -2555,27 +2352,17 @@ export class DocumentHubController {
     try {
       const { token } = req.params;
 
-      const document = await prisma.document.findFirst({
-        where: {
-          shareToken: token,
-          visibility: 'public',
-          isDeleted: false,
-        },
-        include: {
-          documentHub: {
-            select: {
-              name: true,
-              shareToken: true,
-              visibility: true
-            }
-          },
-          createdBy: {
-            select: { name: true, avatarUrl: true }
-          }
-        }
-      });
+      const docQuery = await pool.query(`
+        SELECT d.*, 
+          json_build_object('name', dh.name, 'shareToken', dh.share_token, 'visibility', dh.visibility) as "documentHub",
+          json_build_object('name', u.name, 'avatarUrl', u.avatar_url) as "createdBy"
+        FROM documents d
+        LEFT JOIN document_hub dh ON d."documentHubId" = dh.id
+        LEFT JOIN users u ON d."createdById" = u.id
+        WHERE d.share_token = $1 AND d.visibility = 'public' AND d.is_deleted = false
+      `, [token]);
 
-      if (!document) {
+      if (docQuery.rows.length === 0) {
         res.status(404).json({
           success: false,
           error: "Public document not found or access expired",
@@ -2585,7 +2372,7 @@ export class DocumentHubController {
 
       res.status(200).json({
         success: true,
-        data: document,
+        data: docQuery.rows[0],
       } as ApiResponse);
     } catch (error: any) {
       console.error("Get public document error:", error);
@@ -2613,7 +2400,7 @@ export class DocumentHubController {
       }
 
       const { id } = req.params;
-      const { visibility } = req.body;
+      const { visibility, sharedWith = [] } = req.body;
 
       if (!['private', 'public'].includes(visibility)) {
         res.status(400).json({
@@ -2623,21 +2410,20 @@ export class DocumentHubController {
         return;
       }
 
-      const hub = await prisma.documentHub.findFirst({
-        where: {
-          id,
-          tenantId: req.tenantId,
-          isDeleted: false,
-        },
-      });
+      const hubQuery = await pool.query(
+        `SELECT * FROM document_hub WHERE id = $1 AND "tenantId" = $2 AND is_deleted = false`,
+        [id, req.tenantId]
+      );
 
-      if (!hub) {
+      if (hubQuery.rows.length === 0) {
         res.status(404).json({
           success: false,
           error: "Document Hub not found",
         } as ApiResponse);
         return;
       }
+      
+      const hub = hubQuery.rows[0];
 
       // Check ownership
       if (hub.createdById !== req.user.id) {
@@ -2648,7 +2434,7 @@ export class DocumentHubController {
         return;
       }
 
-      let shareToken = (hub as any).shareToken;
+      let shareToken = hub.shareToken;
 
       // Generate token if public and doesn't have one
       if (visibility === 'public') {
@@ -2659,13 +2445,11 @@ export class DocumentHubController {
         shareToken = null;
       }
 
-      const updatedHub = await prisma.documentHub.update({
-        where: { id },
-        data: {
-          visibility: visibility as any,
-          shareToken: shareToken as any,
-        },
-      });
+      const updatedHubQuery = await pool.query(
+        `UPDATE document_hub SET visibility = $1, share_token = $2, shared_with = $3 WHERE id = $4 RETURNING *`,
+        [visibility, shareToken, sharedWith, id]
+      );
+      const updatedHub = updatedHubQuery.rows[0];
 
       // Emit socket event
       socketService.emitToTenant(
@@ -2723,21 +2507,20 @@ export class DocumentHubController {
 
       const { id } = req.params;
 
-      const hub = await prisma.documentHub.findFirst({
-        where: {
-          id,
-          tenantId: req.tenantId,
-          isDeleted: false,
-        },
-      });
+      const hubQuery = await pool.query(
+        `SELECT * FROM document_hub WHERE id = $1 AND "tenantId" = $2 AND is_deleted = false`,
+        [id, req.tenantId]
+      );
 
-      if (!hub) {
+      if (hubQuery.rows.length === 0) {
         res.status(404).json({
           success: false,
           error: "Document Hub not found",
         } as ApiResponse);
         return;
       }
+
+      const hub = hubQuery.rows[0];
 
       // Check ownership
       if (hub.createdById !== req.user.id) {
@@ -2748,13 +2531,10 @@ export class DocumentHubController {
         return;
       }
 
-      await prisma.documentHub.update({
-        where: { id },
-        data: {
-          visibility: 'private' as any,
-          shareToken: null as any,
-        },
-      });
+      await pool.query(
+        `UPDATE document_hub SET visibility = 'private', share_token = NULL WHERE id = $1`,
+        [id]
+      );
 
       // Emit socket event
       socketService.emitToTenant(
@@ -2801,30 +2581,33 @@ export class DocumentHubController {
     try {
       const { token } = req.params;
 
-      const hub = await prisma.documentHub.findFirst({
-        where: {
-          shareToken: token as any,
-          visibility: 'public' as any,
-          isDeleted: false,
-        },
-        include: {
-          createdBy: {
-            select: { name: true, avatarUrl: true }
-          },
-          treeNodes: {
-            where: { isDeleted: false },
-            orderBy: { position: "asc" }
-          }
-        }
-      });
+      const hubQuery = await pool.query(`
+        SELECT dh.*,
+          json_build_object('name', u.name, 'avatarUrl', u.avatar_url) as "createdBy"
+        FROM document_hub dh
+        LEFT JOIN users u ON dh."createdById" = u.id
+        WHERE dh.share_token = $1 AND dh.visibility = 'public' AND dh.is_deleted = false
+      `, [token]);
 
-      if (!hub) {
+      if (hubQuery.rows.length === 0) {
         res.status(404).json({
           success: false,
           error: "Public hub not found or access expired",
         } as ApiResponse);
         return;
       }
+      
+      const hub = hubQuery.rows[0];
+
+        const treeNodesQuery = await pool.query(`
+          SELECT dt.* FROM document_tree dt
+          LEFT JOIN documents d ON dt."documentId" = d.id
+          WHERE dt."documentHubId" = $1 AND dt.is_deleted = false
+            AND (dt.type != 'file' OR d.visibility = 'public')
+          ORDER BY dt.position ASC
+        `, [hub.id]);
+
+      hub.treeNodes = treeNodesQuery.rows;
 
       res.status(200).json({
         success: true,
@@ -2847,37 +2630,29 @@ export class DocumentHubController {
       const { token, documentId } = req.params;
 
       // 1. Verify the hub exists and is public
-      const hub = await prisma.documentHub.findFirst({
-        where: {
-          shareToken: token as any,
-          visibility: 'public' as any,
-          isDeleted: false,
-        },
-      });
+      const hubQuery = await pool.query(`
+        SELECT id FROM document_hub WHERE share_token = $1 AND visibility = 'public' AND is_deleted = false
+      `, [token]);
 
-      if (!hub) {
+      if (hubQuery.rows.length === 0) {
         res.status(404).json({
           success: false,
           error: "Public hub not found or access expired",
         } as ApiResponse);
         return;
       }
+      const hub = hubQuery.rows[0];
 
       // 2. Verify the document belongs to this hub
-      const document = await prisma.document.findFirst({
-        where: {
-          id: documentId,
-          documentHubId: hub.id,
-          isDeleted: false,
-        },
-        include: {
-          createdBy: {
-            select: { name: true, avatarUrl: true }
-          }
-        }
-      });
+      const docQuery = await pool.query(`
+        SELECT d.*,
+          json_build_object('name', u.name, 'avatarUrl', u.avatar_url) as "createdBy"
+        FROM documents d
+        LEFT JOIN users u ON d."createdById" = u.id
+        WHERE d.id = $1 AND d."documentHubId" = $2 AND d.is_deleted = false
+      `, [documentId, hub.id]);
 
-      if (!document) {
+      if (docQuery.rows.length === 0) {
         res.status(404).json({
           success: false,
           error: "Document not found in this hub",
@@ -2887,7 +2662,7 @@ export class DocumentHubController {
 
       res.status(200).json({
         success: true,
-        data: document,
+        data: docQuery.rows[0],
       } as ApiResponse);
     } catch (error: any) {
       console.error("Get public hub document content error:", error);
@@ -2908,15 +2683,17 @@ export class DocumentHubController {
         return;
       }
       const { id } = req.params; // documentId
-      const document = await prisma.document.findUnique({
-        where: { id, tenantId: req.tenantId }
-      });
+      const docQuery = await pool.query(
+        `SELECT content, title FROM documents WHERE id = $1 AND "tenantId" = $2`,
+        [id, req.tenantId]
+      );
 
-      if (!document) {
+      if (docQuery.rows.length === 0) {
         res.status(404).json({ success: false, error: "Document not found" } as ApiResponse);
         return;
       }
 
+      const document = docQuery.rows[0];
       // Convert BlockNote JSON content to HTML
       const blocks = (document.content as any[]) || [];
       const contentHtml = generateHtmlFromBlocks(blocks);
