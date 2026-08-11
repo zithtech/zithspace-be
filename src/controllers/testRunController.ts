@@ -1,15 +1,33 @@
 import { Request, Response } from 'express';
 import pool from '../config/dbpool';
 
+let runScopeColumnReady = false;
+/**
+ * Adds qa_test_runs.scope_id on first use, so no manual migration is needed —
+ * same pattern as the attachments and bug_id columns below. The column is what
+ * ties a run to the Test Scope a QA Submission reports on.
+ */
+const ensureRunScopeColumn = async () => {
+  if (runScopeColumnReady) return;
+  try {
+    await pool.query(`ALTER TABLE qa_test_runs ADD COLUMN IF NOT EXISTS scope_id UUID`);
+    runScopeColumnReady = true;
+  } catch (e) {
+    console.error('Failed to ensure scope_id column:', e);
+  }
+};
+
 export const getTestRuns = async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).user?.tenantId;
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
-    
-    const { suite_id, search, limit } = req.query;
-    
+
+    const { suite_id, scope_id, search, limit } = req.query;
+
+    await ensureRunScopeColumn();
+
     let query = `
-      SELECT tr.*, ts.suite_name as suite_name,
+      SELECT tr.*, ts.suite_name as suite_name, sc.name as scope_name,
       (SELECT COUNT(*) FROM qa_test_run_results trr WHERE trr.test_run_id = tr.id AND trr.status = 'Pass') as passed_count,
       (SELECT COUNT(*) FROM qa_test_run_results trr WHERE trr.test_run_id = tr.id AND trr.status = 'Fail') as failed_count,
       (SELECT COUNT(*) FROM qa_test_run_results trr WHERE trr.test_run_id = tr.id AND trr.status = 'Blocked') as blocked_count,
@@ -17,13 +35,18 @@ export const getTestRuns = async (req: Request, res: Response) => {
       (SELECT COUNT(*) FROM qa_test_run_results trr WHERE trr.test_run_id = tr.id) as total_cases
       FROM qa_test_runs tr
       LEFT JOIN qa_test_suites ts ON tr.suite_id = ts.id
+      LEFT JOIN qa_test_scopes sc ON tr.scope_id = sc.id
       WHERE tr.tenant_id = $1
     `;
     const params: any[] = [tenantId];
-    
+
     if (suite_id) {
       params.push(suite_id);
       query += ` AND tr.suite_id = $${params.length}`;
+    }
+    if (scope_id) {
+      params.push(scope_id);
+      query += ` AND tr.scope_id = $${params.length}`;
     }
     if (search) {
       params.push(`%${search}%`);
@@ -53,10 +76,13 @@ export const getTestRun = async (req: Request, res: Response) => {
     // Resolve the project through suite → scenario so bugs raised from this run
     // can be filed against the right project's bug list.
     await pool.query(`ALTER TABLE qa_parent_test_cases ADD COLUMN IF NOT EXISTS project_id TEXT`).catch(() => {});
+    await ensureRunScopeColumn();
     const { rows: runRows } = await pool.query(`
-      SELECT tr.*, ts.suite_name, ptc.project_id, ptc.title AS scenario_title, u.name as created_by_name
+      SELECT tr.*, ts.suite_name, ptc.project_id, ptc.title AS scenario_title, u.name as created_by_name,
+             sc.name AS scope_name
       FROM qa_test_runs tr
       LEFT JOIN qa_test_suites ts ON tr.suite_id = ts.id
+      LEFT JOIN qa_test_scopes sc ON tr.scope_id = sc.id
       LEFT JOIN qa_parent_test_cases ptc ON ts.parent_test_case_id::text = ptc.id::text
       LEFT JOIN users u ON tr.executed_by::text = u.id::text
       WHERE tr.id = $1 AND tr.tenant_id = $2
@@ -158,15 +184,34 @@ export const createTestRun = async (req: Request, res: Response) => {
     const userId = (req as any).user?.id;
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
     
-    const { run_name, suite_id, execution_type } = req.body;
-    
+    const { run_name, suite_id, execution_type, scope_id } = req.body;
+
+    // A run belongs to a scope: it's what lets a QA Submission report the run as
+    // testing evidence for that scope. Required on creation — runs that predate
+    // the column stay usable and are offered to submissions as unattributed.
+    await ensureRunScopeColumn();
+
+    if (!scope_id) {
+      return res.status(400).json({ success: false, error: 'Test Scope is required' });
+    }
+
+    // The id arrives from the client, so confirm it is this tenant's scope
+    // rather than trusting it into the row.
+    const { rows: scopeRows } = await client.query(
+      `SELECT id FROM qa_test_scopes WHERE id = $1 AND tenant_id = $2`,
+      [scope_id, tenantId]
+    );
+    if (!scopeRows.length) {
+      return res.status(404).json({ success: false, error: 'Test Scope not found' });
+    }
+
     await client.query('BEGIN');
-    
+
     // Create Run
     const { rows: runRows } = await client.query(
-      `INSERT INTO qa_test_runs (tenant_id, run_name, suite_id, execution_type, executed_by, started_at)
-       VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING *`,
-      [tenantId, run_name, suite_id, execution_type || null, userId]
+      `INSERT INTO qa_test_runs (tenant_id, run_name, suite_id, execution_type, scope_id, executed_by, started_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW()) RETURNING *`,
+      [tenantId, run_name, suite_id, execution_type || null, scope_id || null, userId]
     );
     const runId = runRows[0].id;
     
@@ -319,11 +364,20 @@ export const addCaseToRun = async (req: Request, res: Response) => {
 
     await client.query('BEGIN');
 
-    const { rows: countRows } = await client.query(
-      `SELECT COUNT(*) FROM qa_test_cases WHERE tenant_id = $1`,
-      [tenantId]
-    );
-    const testCaseRef = `TC-${1000 + parseInt(countRows[0].count, 10) + 1}`;
+    let testCaseRef;
+    if (parent_test_case_id) {
+      const { rows: countRows } = await client.query(
+        `SELECT COUNT(*) FROM qa_test_cases WHERE tenant_id = $1 AND parent_test_case_id = $2`,
+        [tenantId, parent_test_case_id]
+      );
+      testCaseRef = `TC-${String(parseInt(countRows[0].count, 10) + 1).padStart(3, '0')}`;
+    } else {
+      const { rows: countRows } = await client.query(
+        `SELECT COUNT(*) FROM qa_test_cases WHERE tenant_id = $1 AND parent_test_case_id IS NULL`,
+        [tenantId]
+      );
+      testCaseRef = `TC-${1000 + parseInt(countRows[0].count, 10) + 1}`;
+    }
 
     const { rows: caseRows } = await client.query(
       `INSERT INTO qa_test_cases (

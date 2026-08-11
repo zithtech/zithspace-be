@@ -69,7 +69,7 @@ export const createEscalationStatus = async (req: AuthRequest, res: Response): P
         // ─── Activity log ───────────────────────────────────────────────
         recordTransaction({
             req,
-            section: Section.WORK,
+            section: Section.HR,
             module: Module.ESCALATIONS,
             page: Page.ESCALATION_SETTINGS,
             action: Action.CREATE,
@@ -270,7 +270,7 @@ export const updateEscalationStatus = async (req: AuthRequest, res: Response): P
 
             recordTransaction({
                 req,
-                section: Section.WORK,
+                section: Section.HR,
                 module: Module.ESCALATIONS,
                 page: Page.ESCALATION_SETTINGS,
                 action: Action.UPDATE,
@@ -334,7 +334,7 @@ export const softDeleteEscalationStatus = async (req: AuthRequest, res: Response
         // ─── Activity log ───────────────────────────────────────────────
         recordTransaction({
             req,
-            section: Section.WORK,
+            section: Section.HR,
             module: Module.ESCALATIONS,
             page: Page.ESCALATION_SETTINGS,
             action: Action.STATUS_CHANGE,
@@ -398,7 +398,7 @@ export const deleteEscalationStatus = async (req: AuthRequest, res: Response): P
         // ─── Activity log ───────────────────────────────────────────────
         recordTransaction({
             req,
-            section: Section.WORK,
+            section: Section.HR,
             module: Module.ESCALATIONS,
             page: Page.ESCALATION_SETTINGS,
             action: Action.DELETE,

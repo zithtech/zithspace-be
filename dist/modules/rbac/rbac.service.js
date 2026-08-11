@@ -212,7 +212,9 @@ exports.ADMIN_DEFAULT_PERMISSIONS = [
     'project.create', 'project.read', 'project.update', 'project.delete', 'project.trash.read', 'project.trash.restore', 'project.trash.delete', 'project.manage',
     'ticket.create', 'ticket.read', 'ticket.update', 'ticket.delete', 'ticket.assign', 'ticket.bucket.read', 'ticket.bucket.create', 'ticket.bucket.update', 'ticket.bucket.delete', 'ticket.setting.read', 'ticket.setting.update', 'ticket.trash.read', 'ticket.trash.restore', 'ticket.trash.delete', 'ticket.archive.read', 'ticket.archive.restore', 'ticket.manage',
     'bug.create', 'bug.read', 'bug.update', 'bug.delete', 'bug.trash.read', 'bug.trash.restore', 'bug.trash.delete', 'bug.archive.read', 'bug.archive.restore', 'bug.manage',
-    'qa.scope.create', 'qa.scope.read', 'qa.scope.update', 'qa.scope.delete', 'qa.case.create', 'qa.case.read', 'qa.case.update', 'qa.case.delete', 'qa.suite.create', 'qa.suite.read', 'qa.suite.update', 'qa.suite.delete', 'qa.run.create', 'qa.run.read', 'qa.run.update', 'qa.run.delete', 'qa.manage',
+    'qa.scope.create', 'qa.scope.read', 'qa.scope.update', 'qa.scope.delete', 'qa.case.create', 'qa.case.read', 'qa.case.update', 'qa.case.delete', 'qa.suite.create', 'qa.suite.read', 'qa.suite.update', 'qa.suite.delete', 'qa.run.create', 'qa.run.read', 'qa.run.update', 'qa.run.delete',
+    'qa.submission.create', 'qa.submission.read', 'qa.submission.update', 'qa.submission.delete', 'qa.submission.submit', 'qa.submission.signoff',
+    'qa.approval.read', 'qa.approval.approve', 'qa.approval.send_back', 'qa.analytics.read', 'qa.manage',
     'attendance.create', 'attendance.read', 'attendance.update', 'attendance.delete', 'attendance.dashboard.read', 'attendance.clock.in_out',
     'leave.dashboard.read', 'leave.create', 'leave.read', 'leave.update', 'leave.delete', 'leave.approve', 'leave.manage',
     'leave.type.read', 'leave.type.create', 'leave.type.update', 'leave.type.delete',
@@ -275,6 +277,10 @@ exports.ADMIN_DEFAULT_PERMISSIONS = [
     'activity_log.read', 'activity_log.read_all',
     // My Hub — granted to every role by default
     'my_hub.overview.read', 'my_hub.apply_leave.read', 'my_hub.attendance.read', 'my_hub.escalation.read', 'my_hub.performance.read', 'my_hub.payslips.read', 'my_hub.profile.read', 'my_hub.claims.read',
+    // Hotspot
+    'hotspot.opening.read', 'hotspot.opening.create',
+    'hotspot.circulation.read', 'hotspot.circulation.create', 'hotspot.circulation.update', 'hotspot.circulation.delete', 'hotspot.circulation.pin',
+    'hotspot.blog.read', 'hotspot.blog.create', 'hotspot.blog.update', 'hotspot.blog.delete',
 ];
 exports.USER_DEFAULT_PERMISSIONS = [
     'dashboard.read',
@@ -283,6 +289,9 @@ exports.USER_DEFAULT_PERMISSIONS = [
     'ticket.create', 'ticket.read', 'ticket.update',
     'bug.create', 'bug.read', 'bug.update',
     'qa.scope.read', 'qa.case.create', 'qa.case.read', 'qa.case.update', 'qa.suite.create', 'qa.suite.read', 'qa.suite.update', 'qa.run.create', 'qa.run.read', 'qa.run.update',
+    // QA Engineer baseline — report testing results, but sign-off and PM approval
+    // are granted deliberately rather than by default (§32).
+    'qa.submission.create', 'qa.submission.read', 'qa.submission.update', 'qa.submission.submit', 'qa.approval.read',
     'attendance.read', 'attendance.update', 'attendance.dashboard.read', 'attendance.clock.in_out',
     'leave.dashboard.read', 'leave.create', 'leave.read', 'leave.update', 'leave.type.read',
     'invoice.read',
@@ -316,5 +325,9 @@ exports.USER_DEFAULT_PERMISSIONS = [
     'activity_log.read',
     // My Hub — granted to every role by default
     'my_hub.overview.read', 'my_hub.apply_leave.read', 'my_hub.attendance.read', 'my_hub.escalation.read', 'my_hub.performance.read', 'my_hub.payslips.read', 'my_hub.profile.read', 'my_hub.claims.read',
+    // Hotspot
+    'hotspot.opening.read', 'hotspot.opening.create',
+    'hotspot.circulation.read', 'hotspot.circulation.create', 'hotspot.circulation.update', 'hotspot.circulation.delete', 'hotspot.circulation.pin',
+    'hotspot.blog.read', 'hotspot.blog.create', 'hotspot.blog.update', 'hotspot.blog.delete',
 ];
 //# sourceMappingURL=rbac.service.js.map

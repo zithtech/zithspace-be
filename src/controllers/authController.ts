@@ -15,6 +15,7 @@ import {
   CreateUserData,
 } from "@/types";
 import { RBACService } from "@/modules/rbac/rbac.service";
+import * as companyDetailsService from "@/modules/company-details/services/companyDetails.service";
 import { recordTransaction, Section, Module, Page, Action, EntityType } from "../utils/transactionHistory";
 
 import { Request } from "express";
@@ -647,7 +648,6 @@ export class AuthController {
                   subdomain: true,
                   settings: true,
                   generalSettings: { take: 1 },
-                  companyLocations: { take: 1 },
                 },
               },
             },
@@ -669,6 +669,15 @@ export class AuthController {
         user.tenantId,
         user.role
       );
+
+      // Company details live in the raw-SQL company-details module, not Prisma.
+      // A tenant that has not filled the form in yet simply gets null.
+      const companyDetails = await companyDetailsService
+        .getCompany({ tenantId: user.tenantId, userId: user.id })
+        .catch((err) => {
+          console.error("Failed to load company details for profile:", err);
+          return null;
+        });
 
       res.status(200).json({
         success: true,
@@ -694,7 +703,7 @@ export class AuthController {
             subdomain: user.tenant.subdomain,
             logoUrl: (user.tenant.settings as any)?.logoUrl || null,
             generalSettings: (user.tenant as any).generalSettings?.[0] || null,
-            companyLocation: (user.tenant as any).companyLocations?.[0] || null,
+            companyDetails,
           },
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,

@@ -369,4 +369,73 @@ export class EmployeeOnboardingController {
       });
     }
   }
+
+  // ✅ PROMOTE Employee
+  static async promote(req: AuthRequest, res: Response) {
+    try {
+      const { employeeId } = req.params;
+      const { positionId, subDepartmentId, promotionDate } = req.body;
+      const tenantId = req.tenantId!;
+      const userId = req.user!.id;
+
+      if (!positionId || !promotionDate) {
+        return res.status(400).json({ success: false, message: "Position and Promotion Date are required." });
+      }
+
+      await withTenant(tenantId, async (db) => {
+        // 1. Get Employee
+        const empRes = await db.query(
+          `SELECT id, first_name, last_name, employee_code FROM employees WHERE id = $1 AND tenant_id = $2`,
+          [employeeId, tenantId]
+        );
+        if (empRes.rowCount === 0) throw new Error("Employee not found");
+        const emp = empRes.rows[0];
+
+        // 2. Get New Position Title
+        const posRes = await db.query(`SELECT title FROM positions WHERE id = $1`, [positionId]);
+        const newRoleName = posRes.rows[0]?.title || "Unknown Role";
+
+        // 3. Update Current Role History (set end_date)
+        await db.query(
+          `UPDATE employee_role_history 
+           SET end_date = $1 
+           WHERE employee_id = $2 AND end_date IS NULL`,
+          [promotionDate, employeeId]
+        );
+
+        // 4. Insert New Role History
+        await db.query(
+          `INSERT INTO employee_role_history (tenant_id, employee_id, role_name, start_date) 
+           VALUES ($1, $2, $3, $4)`,
+          [tenantId, employeeId, newRoleName, promotionDate]
+        );
+
+        // 5. Update Employment Details (Position & Sub Department)
+        await db.query(
+          `UPDATE employee_work_details 
+           SET position_id = $1, updated_by_id = $2, updated_at = now() 
+           WHERE employee_id = $3`,
+          [positionId, userId, employeeId]
+        );
+
+        // Record Activity
+        recordTransaction({
+          req,
+          module: Module.ONBOARDING,
+          page: Page.ONBOARDING_EMPLOYEES,
+          section: Section.HR,
+          action: Action.UPDATE,
+          actionLabel: `Promoted employee ${empLabel(emp)} to ${newRoleName}`,
+          entityType: EntityType.EMPLOYEE,
+          entityId: employeeId,
+          entityLabel: empLabel(emp),
+        });
+      });
+
+      res.status(200).json({ success: true, message: "Employee promoted successfully!" });
+    } catch (err: any) {
+      console.error("Promote Employee Error:", err);
+      res.status(500).json({ success: false, error: err.message || "Internal Server Error" });
+    }
+  }
 }

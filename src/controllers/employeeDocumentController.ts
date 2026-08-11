@@ -350,16 +350,28 @@ export async function getEmployeeDocuments(req: AuthRequest, employeeId: string)
       const { rows } = await db.query(
         `SELECT
             ed.*,
-            e.name AS employee_name,
+            COALESCE(e.name, NULLIF(TRIM(CONCAT(emp.first_name, ' ', emp.last_name)), '')) AS employee_name,
             u.name AS uploaded_by_name
           FROM employee_documents ed
           LEFT JOIN users e ON e.id::text = ed.employee_id::text
+          LEFT JOIN employees emp ON emp.id::text = ed.employee_id::text
           LEFT JOIN users u ON u.id::text = ed.created_by_id::text
           WHERE ed.deleted_at IS NULL AND ed.tenant_id = $1 AND ed.employee_id = $2
           ORDER BY ed.uploaded_at DESC`,
         [req.tenantId, employeeId],
       );
-      return rows.map(mapRow);
+      
+      const mapped = rows.map(mapRow);
+      return await Promise.all(mapped.map(async (doc) => {
+        if (doc.documentUrl) {
+          try {
+            doc.documentUrl = await generatePresignedUrl(doc.documentUrl);
+          } catch (e) {
+            console.error("Failed to generate presigned URL for document", doc.id, e);
+          }
+        }
+        return doc;
+      }));
     });
   } catch (err: any) {
     console.error("getEmployeeDocuments Error:", err);

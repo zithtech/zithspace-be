@@ -1,9 +1,11 @@
 import express from "express";
 import { EmployeeOnboardingController } from "@/controllers/employeeOnboardingController";
+import { getOrgHistory } from "@/controllers/employeeOrgHistoryController";
 import {
   createInvite,
   listInvites,
   revokeInvite,
+  regenerateInvite,
   activateEmployee,
   updateInviteContact,
 } from "@/controllers/onboardingInviteController";
@@ -42,6 +44,7 @@ router.use(requireAuth);
 router.post("/invite", requirePermission(Permissions.ONBOARDING_CREATE), asyncHandler(createInvite));
 router.get("/invites", requirePermission(Permissions.ONBOARDING_READ), asyncHandler(listInvites));
 router.post("/invite/:inviteId/revoke", requirePermission(Permissions.ONBOARDING_UPDATE), asyncHandler(revokeInvite));
+router.post("/invite/:inviteId/regenerate", requirePermission(Permissions.ONBOARDING_UPDATE), asyncHandler(regenerateInvite));
 router.put("/invite/:employeeId", requirePermission(Permissions.ONBOARDING_UPDATE), asyncHandler(updateInviteContact));
 router.post("/:employeeId/activate", requirePermission(Permissions.ONBOARDING_UPDATE), asyncHandler(activateEmployee));
 
@@ -68,7 +71,9 @@ router.get("/", requirePermission(Permissions.ONBOARDING_READ), asyncHandler(Emp
 // Must be placed before /:employeeId to prevent 'birthdays' from being treated as an employeeId parameter
 router.get("/birthdays", requirePermission(Permissions.ONBOARDING_READ), asyncHandler(EmployeeOnboardingController.getUpcomingBirthdays));
 router.get("/:employeeId", requirePermission(Permissions.ONBOARDING_READ), asyncHandler(EmployeeOnboardingController.getById));
+router.get("/:employeeId/org-history", requirePermission(Permissions.ONBOARDING_READ), asyncHandler(getOrgHistory));
 router.put("/:employeeId", requirePermission(Permissions.ONBOARDING_UPDATE), asyncHandler(EmployeeOnboardingController.update));
+router.post("/:employeeId/promote", requirePermission(Permissions.ONBOARDING_UPDATE), asyncHandler(EmployeeOnboardingController.promote));
 router.delete(
   "/:employeeId",
   requirePermission(Permissions.ONBOARDING_DELETE),

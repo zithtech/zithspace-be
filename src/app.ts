@@ -118,6 +118,7 @@ import performanceReportRoutes from "@/modules/performance-report/routes";
 import payrollV2Routes from "@/modules/payroll/routes";
 import reimbursementV2Routes from "@/modules/reimbursement-v2/routes";
 import openingManagementV2Routes from "@/modules/opening-management/routes";
+import hotspotRoutes from "@/modules/hotspot/routes";
 import { pipelineRouter } from "@/modules/pipeline/routes";
 
 import reimbursementConfigurationRoutes from "@/routes/reimbursementConfig";
@@ -134,7 +135,7 @@ import exitApprovalWorkflowRoutes from "@/routes/exitApprovalWorkflow.routes";
 import recruitmentStatusRoutes from "@/routes/recruitmentStatus.routes";
 import recruitmentActionRoutes from "@/routes/recruitmentAction.routes";
 import candidateRoutes from "@/routes/candidateRoutes";
-import companyLocationRoutes from "@/routes/companyLocationRoutes";
+import companyDetailsRoutes from "@/modules/company-details/routes";
 import openingManagementRoutes from "@/routes/openingManagementRoutes";
 import { rabbitMQService } from "@/utils/RabbitMQService";
 import { CalendarSyncWorker } from "@/workers/CalendarSyncWorker";
@@ -158,6 +159,8 @@ import projectOverviewRoutes from "./routes/projectOverviewRoutes";
 import { socketService } from "@/services/socketService";
 import { closeAttendancePool } from "@/db/attendancePool";
 import testScopeRoutes from "@/routes/testScopeRoutes";
+import qaSubmissionRoutes from "@/routes/qaSubmissionRoutes";
+import qaAnalyticsRoutes from "@/routes/qaAnalyticsRoutes";
 // Load environment
 dotenv.config();
 console.log("🚀 API Starting up...");
@@ -377,7 +380,7 @@ app.use("/api/sprint-report", sprintReportRoutes);
 app.use("/api/sprint-reports", sprintReportsRoutes);
 app.use("/api/companies", companyRoutes);
 app.use("/api/grades", gradeRoutes);
-app.use("/api/company-locations", companyLocationRoutes);
+app.use("/api/company-details", companyDetailsRoutes);
 app.use("/api/opening-management", openingManagementRoutes);
 app.use("/api/leads", leadRoutes);
 app.use("/api/lead-settings", leadSettingsRoutes);
@@ -408,10 +411,15 @@ app.use("/api/leave-request", leaveRequestRoutes);
 app.use("/api/leave-balances", leaveBalanceRoutes);
 app.use("/api/v2/leave", leaveV2Routes);
 app.use("/api/v2/qa/test-scopes", testScopeRoutes);
+// Must precede the /api/v2/qa mount below — testCaseRoutes claims "/:id",
+// which would otherwise swallow /api/v2/qa/submissions as a test case id.
+app.use("/api/v2/qa/submissions", qaSubmissionRoutes);
+app.use("/api/v2/qa/analytics", qaAnalyticsRoutes);
 app.use("/api/v2/qa", testCaseRoutes); // Registers /api/v2/qa/modules, /api/v2/qa/, /api/v2/qa/suites, /api/v2/qa/runs
 app.use("/api/v2/payroll", payrollV2Routes);
 app.use("/api/v2/reimbursement", reimbursementV2Routes);
 app.use("/api/v2/openings", openingManagementV2Routes);
+app.use("/api/v2/hotspot", hotspotRoutes);
 app.use("/api/performance-report", performanceReportRoutes);
 
 //Escalation
@@ -616,6 +624,14 @@ const startServer = async () => {
     const { runOpeningMigrations } = require("@/modules/opening-management/db/migrate");
     await runOpeningMigrations();
 
+    // Hotspot tables (raw-SQL module, forward-only migrations)
+    const { runHotspotMigrations } = require("@/modules/hotspot/db/migrate");
+    await runHotspotMigrations();
+
+    // Company Details tables (raw-SQL module, forward-only migrations)
+    const { runCompanyDetailsMigrations } = require("@/modules/company-details/db/migrate");
+    await runCompanyDetailsMigrations();
+
     // Connect RabbitMQ & Start Workers
     try {
       await rabbitMQService.connect();
@@ -691,6 +707,8 @@ const gracefulShutdown = async (signal: string) => {
       await disconnectDatabase();
       await rabbitMQService.close();
       await closeAttendancePool();
+      const { closeCompanyDetailsPool } = require("@/modules/company-details/db/pool");
+      await closeCompanyDetailsPool();
       console.log("Database and RabbitMQ connections closed");
     } catch (error) {
       console.error("Error closing connections:", error);

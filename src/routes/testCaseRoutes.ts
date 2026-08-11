@@ -30,6 +30,8 @@ router.delete('/parents/:id', requireAnyPermission(Permissions.QA_CASE_DELETE, P
 
 // --- Test Cases (Child) ---
 router.get('/', requireAnyPermission(Permissions.QA_CASE_READ, Permissions.QA_MANAGE), testCaseController.getTestCases);
+// Must stay above '/:id' — otherwise Express reads it as a test case id.
+router.get('/testing-types', requireAnyPermission(Permissions.QA_CASE_READ, Permissions.QA_MANAGE), testCaseController.getTestCaseTypeFacets);
 router.post('/generate-ai', requireAnyPermission(Permissions.QA_CASE_CREATE, Permissions.QA_MANAGE), testCaseController.generateTestCaseAI);
 router.post('/', requireAnyPermission(Permissions.QA_CASE_CREATE, Permissions.QA_MANAGE), testCaseController.createTestCase);
 router.get('/:id', requireAnyPermission(Permissions.QA_CASE_READ, Permissions.QA_MANAGE), testCaseController.getTestCase);

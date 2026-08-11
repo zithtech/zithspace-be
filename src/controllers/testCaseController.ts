@@ -14,11 +14,17 @@ const ensureModuleFkDropped = async () => {
   }
 };
 
-// Utility to generate Test Case ID (e.g. TC-1001)
-const generateTestCaseId = async (tenantId: string) => {
-  const { rows } = await pool.query(`SELECT COUNT(*) FROM qa_test_cases WHERE tenant_id = $1`, [tenantId]);
-  const count = parseInt(rows[0].count, 10);
-  return `TC-${1000 + count + 1}`;
+// Utility to generate Test Case ID (e.g. TC-001 for parent-specific, TC-1001 for global)
+const generateTestCaseId = async (tenantId: string, parentId?: string | null) => {
+  if (parentId) {
+    const { rows } = await pool.query(`SELECT COUNT(*) FROM qa_test_cases WHERE tenant_id = $1 AND parent_test_case_id = $2`, [tenantId, parentId]);
+    const count = parseInt(rows[0].count, 10);
+    return `TC-${String(count + 1).padStart(3, '0')}`;
+  } else {
+    const { rows } = await pool.query(`SELECT COUNT(*) FROM qa_test_cases WHERE tenant_id = $1 AND parent_test_case_id IS NULL`, [tenantId]);
+    const count = parseInt(rows[0].count, 10);
+    return `TC-${1000 + count + 1}`;
+  }
 };
 
 export const getTestCases = async (req: Request, res: Response) => {
@@ -28,7 +34,7 @@ export const getTestCases = async (req: Request, res: Response) => {
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
     // Allow filtering by module_id and parent_test_case_id
-    const { module_id, parent_test_case_id, parent_id, search, limit, offset, ids_only, paginated } = req.query;
+    const { module_id, parent_test_case_id, parent_id, search, test_type, limit, offset, ids_only, paginated } = req.query;
     const parentId = parent_test_case_id || parent_id;
 
     // Filters are built once so the count, the id-only and the full queries
@@ -48,12 +54,18 @@ export const getTestCases = async (req: Request, res: Response) => {
       params.push(`%${search}%`);
       where += ` AND (tc.name ILIKE $${params.length} OR tc.test_case_id ILIKE $${params.length})`;
     }
+    // Matched case-insensitively: the same type is often recorded as
+    // "Functional" in one case and "functional" in the next.
+    if (test_type) {
+      params.push(String(test_type));
+      where += ` AND LOWER(TRIM(COALESCE(tc.test_type, ''))) = LOWER(TRIM($${params.length}))`;
+    }
 
     // Cheap id-only mode, used by "select all" so the client can act on every
     // match without pulling the rows it hasn't scrolled to yet.
     if (ids_only === 'true' || ids_only === '1') {
       const { rows } = await pool.query(
-        `SELECT tc.id FROM qa_test_cases tc${where} ORDER BY tc.created_at DESC`,
+        `SELECT tc.id FROM qa_test_cases tc${where} ORDER BY tc.created_at DESC, tc.id DESC`,
         params
       );
       return res.status(200).json({ success: true, data: rows, total: rows.length });
@@ -80,7 +92,11 @@ export const getTestCases = async (req: Request, res: Response) => {
       LEFT JOIN users u_creator ON tc.created_by::text = u_creator.id::text
     ` + where;
 
-    query += ` ORDER BY tc.created_at DESC`;
+    // The id breaks ties. Cases written in one transaction share created_at to
+    // the microsecond, and without a total order Postgres is free to return
+    // them differently per query — which makes LIMIT/OFFSET paging repeat a row
+    // on page 2 and drop another entirely.
+    query += ` ORDER BY tc.created_at DESC, tc.id DESC`;
 
     const parsedLimit = limit ? parseInt(limit as string, 10) : null;
     const parsedOffset = offset ? parseInt(offset as string, 10) : 0;
@@ -120,6 +136,59 @@ export const getTestCases = async (req: Request, res: Response) => {
     res.status(200).json({ success: true, data: rows });
   } catch (error) {
     console.error('Error fetching test cases:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+};
+
+/**
+ * The testing types actually recorded on the cases in a scope, with a count
+ * each. Suite building filters by these, so offering the full standard list
+ * would mean picking "Security Testing" only to find no case carries it — the
+ * options here are exactly the ones that select something.
+ *
+ * Types differing only by case or spacing are folded together and reported
+ * under the spelling that appears most often.
+ */
+export const getTestCaseTypeFacets = async (req: Request, res: Response) => {
+  try {
+    await ensureModuleFkDropped();
+    const tenantId = (req as any).user?.tenantId;
+    if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+
+    const { module_id, parent_test_case_id, parent_id, search } = req.query;
+    const parentId = parent_test_case_id || parent_id;
+
+    const params: any[] = [tenantId];
+    let where = ` WHERE tc.tenant_id = $1 AND COALESCE(TRIM(tc.test_type), '') <> ''`;
+
+    if (module_id) {
+      params.push(module_id);
+      where += ` AND tc.module_id::text = $${params.length}::text`;
+    }
+    if (parentId) {
+      params.push(parentId);
+      where += ` AND tc.parent_test_case_id::text = $${params.length}::text`;
+    }
+    if (search) {
+      params.push(`%${search}%`);
+      where += ` AND (tc.name ILIKE $${params.length} OR tc.test_case_id ILIKE $${params.length})`;
+    }
+
+    const { rows } = await pool.query(
+      `SELECT (array_agg(t ORDER BY n DESC, t ASC))[1] AS test_type, SUM(n)::int AS count
+       FROM (
+         SELECT TRIM(tc.test_type) AS t, COUNT(*)::int AS n
+         FROM qa_test_cases tc${where}
+         GROUP BY TRIM(tc.test_type)
+       ) s
+       GROUP BY LOWER(t)
+       ORDER BY SUM(n) DESC, 1 ASC`,
+      params
+    );
+
+    res.status(200).json({ success: true, data: rows });
+  } catch (error) {
+    console.error('Error fetching testing type facets:', error);
     res.status(500).json({ success: false, error: 'Internal Server Error' });
   }
 };
@@ -168,14 +237,14 @@ export const createTestCase = async (req: Request, res: Response) => {
     const userId = (req as any).user?.id;
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
-    const test_case_id = await generateTestCaseId(tenantId);
-
     const {
       parent_test_case_id, parent_id, name, module_id, feature, description, preconditions, steps_to_reproduce,
       expected_result, priority, severity, test_type, automation, status, owner, qa_owner
     } = req.body;
     const assignedOwner = owner || qa_owner || userId || null;
     const parentId = parent_test_case_id || parent_id || null;
+
+    const test_case_id = await generateTestCaseId(tenantId, parentId);
 
     const { rows } = await pool.query(
       `INSERT INTO qa_test_cases (

@@ -38,7 +38,6 @@ export const Module = {
   BID_IQ: "BidIQ",
   PROPOSALS: "Proposals",
   SQUAD: "Squad",
-  ESCALATIONS: "Escalations",
   DAILY_UPDATES: "DailyUpdates",
   TIME_TRACKING: "TimeTracking",
   ORG_STRUCTURE: "OrgStructure",
@@ -50,6 +49,9 @@ export const Module = {
   ATTENDANCE: "Attendance",
   PERFORMANCE_REPORT: "PerformanceReport",
   RECRUITMENT: "Recruitment",
+  // Moved from WORK to HR — the module value stays "Escalations" so existing
+  // transaction_history rows keep resolving.
+  ESCALATIONS: "Escalations",
   // FINANCE
   ACCOUNTS: "Accounts",
   INVOICES: "Invoices",

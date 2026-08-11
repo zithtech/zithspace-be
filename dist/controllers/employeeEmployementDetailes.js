@@ -49,8 +49,15 @@ async function createEmploymentDetails(req, employeeId, client) {
                 employment.employeeJoiningDate || "",
                 employment.workLocation || null,
                 employment.workShift ?? null,
+                employment.workShift ?? null,
                 req.user?.id,
             ]);
+            if (employment.positionId) {
+                const posRes = await db.query(`SELECT title FROM positions WHERE id = $1`, [employment.positionId]);
+                const roleName = posRes.rows[0]?.title || 'Unknown Role';
+                const joiningDate = toDateOrNull(employment.employeeJoiningDate) || new Date();
+                await db.query(`INSERT INTO employee_role_history (tenant_id, employee_id, role_name, start_date) VALUES ($1, $2, $3, $4)`, [req.tenantId, employeeId, roleName, joiningDate]);
+            }
             await db.query(`INSERT INTO employee_additional_details
            (id, employee_id, employee_grade, promotion_status, created_by_id, updated_by_id, updated_at)
          VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, now())`, [
@@ -119,7 +126,27 @@ async function getEmploymentDetails(req, employeeId) {
             const timeline = timelineRes.rows[0];
             const projects = projectsRes.rows;
             if (!workDetails) {
-                throw new Error("Employment details not found");
+                return {
+                    positionId: null,
+                    department: null,
+                    team: null,
+                    employeeType: null,
+                    workLocation: null,
+                    workShift: null,
+                    workType: null,
+                    hybridMode: null,
+                    fixedDays: [],
+                    totalDays: null,
+                    totalHours: null,
+                    noticePeriod: null,
+                    employeeJoiningDate: null,
+                    employeeGrade: null,
+                    promotionStatus: null,
+                    joiningDate: null,
+                    trainingCompletion: null,
+                    projects: [],
+                    reportingManager: null,
+                };
             }
             let reportingManager = null;
             const managerId = projects[0]?.reporting_manager;
@@ -263,7 +290,7 @@ async function updateEmploymentDetails(req, employeeId, client) {
                 throw new Error("Employee not found");
             }
             // ✅ Update Work Details
-            const existingWorkRes = await db.query(`SELECT id FROM employee_work_details
+            const existingWorkRes = await db.query(`SELECT id, position_id FROM employee_work_details
           WHERE employee_id = $1
           ORDER BY created_at ASC
           LIMIT 1`, [employeeId]);
@@ -300,6 +327,12 @@ async function updateEmploymentDetails(req, employeeId, client) {
                     userId,
                     existingWorkDetails.id,
                 ]);
+                if (employment.positionId && existingWorkDetails.position_id !== employment.positionId) {
+                    const posRes = await db.query(`SELECT title FROM positions WHERE id = $1`, [employment.positionId]);
+                    const newRoleName = posRes.rows[0]?.title || 'Unknown Role';
+                    await db.query(`UPDATE employee_role_history SET end_date = CURRENT_DATE WHERE employee_id = $1 AND end_date IS NULL`, [employeeId]);
+                    await db.query(`INSERT INTO employee_role_history (tenant_id, employee_id, role_name, start_date) VALUES ($1, $2, $3, CURRENT_DATE)`, [tenantId, employeeId, newRoleName]);
+                }
             }
             else {
                 await db.query(`INSERT INTO employee_work_details
@@ -324,6 +357,12 @@ async function updateEmploymentDetails(req, employeeId, client) {
                         : null,
                     userId,
                 ]);
+                if (employment.positionId) {
+                    const posRes = await db.query(`SELECT title FROM positions WHERE id = $1`, [employment.positionId]);
+                    const roleName = posRes.rows[0]?.title || 'Unknown Role';
+                    const joiningDate = toDateOrNull(employment.employeeJoiningDate) || new Date();
+                    await db.query(`INSERT INTO employee_role_history (tenant_id, employee_id, role_name, start_date) VALUES ($1, $2, $3, $4)`, [tenantId, employeeId, roleName, joiningDate]);
+                }
             }
             // ✅ Update Additional Details
             const existingAdditionalRes = await db.query(`SELECT id FROM employee_additional_details
@@ -346,8 +385,8 @@ async function updateEmploymentDetails(req, employeeId, client) {
             }
             else {
                 await db.query(`INSERT INTO employee_additional_details
-             (employee_id, employee_grade, promotion_status, created_by_id, updated_by_id)
-           VALUES ($1, $2, $3, $4, $5)`, [
+             (id, employee_id, employee_grade, promotion_status, created_by_id, updated_by_id, updated_at)
+           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, now())`, [
                     employeeId,
                     employment.employeeGrade,
                     employment.promotionStatus,
@@ -376,8 +415,8 @@ async function updateEmploymentDetails(req, employeeId, client) {
             }
             else {
                 await db.query(`INSERT INTO employee_timelines
-             (employee_id, joining_date, training_completion_date, created_by_id, updated_by_id)
-           VALUES ($1, $2, $3, $4, $5)`, [
+             (id, employee_id, joining_date, training_completion_date, created_by_id, updated_by_id, updated_at)
+           VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, now())`, [
                     employeeId,
                     toDateOrNull(employment.joiningDate),
                     toDateOrNull(employment.trainingCompletion),

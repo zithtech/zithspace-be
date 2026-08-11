@@ -102,7 +102,7 @@ async function validateReferences(
   if (input.employmentTypeId)
     await assertBelongsToTenant(client, 'employment_types', input.employmentTypeId, 'Employment type');
   if (input.locationId)
-    await assertBelongsToTenant(client, 'company_locations', input.locationId, 'Location');
+    await assertBelongsToTenant(client, 'cd_company_branches', input.locationId, 'Location');
 
   const userIds: string[] = [];
   if (input.hiringManagerId) userIds.push(input.hiringManagerId);
