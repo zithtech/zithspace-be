@@ -12,9 +12,9 @@ import * as repo from '../repositories/leaveRequest.repo';
 import { computeWithdrawalPlan } from './leaveRequest.service';
 import { Actor, LeaveV2Error } from '../types';
 
-export async function listApprovals(actor: Actor, canManageAll: boolean) {
+export async function listApprovals(actor: Actor, canManageAll: boolean, opts?: repo.ApprovalOpts) {
   return withTenant(actor.tenantId, (client) =>
-    canManageAll ? repo.listAll(client) : repo.listForApprover(client, actor.userId)
+    canManageAll ? repo.listAll(client, opts) : repo.listForApprover(client, actor.userId, opts)
   );
 }
 

@@ -238,8 +238,11 @@ export async function getMyBalances(actor: Actor): Promise<BalanceItem[]> {
   });
 }
 
-export async function listMyRequests(actor: Actor) {
-  return withTenant(actor.tenantId, (client) => repo.listForUser(client, actor.userId));
+export async function listMyRequests(
+  actor: Actor,
+  opts?: { page?: number; limit?: number; search?: string; status?: string }
+) {
+  return withTenant(actor.tenantId, (client) => repo.listForUser(client, actor.userId, opts));
 }
 
 /** Active holiday dates (YYYY-MM-DD) — lets the apply-leave preview match the server. */

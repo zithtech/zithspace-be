@@ -32,7 +32,7 @@ export class BucketController {
         return;
       }
 
-      const { projectId, includeShared = true } = req.query;
+      const { projectId, includeShared = true, page, limit, search, visibility, size, owner, startDate, endDate } = req.query;
 
       // Build filter
       const where: any = {
@@ -73,7 +73,7 @@ export class BucketController {
       });
 
       // Filter out shared buckets user doesn't have access to (if not shared)
-      const filteredBuckets = buckets.filter((bucket) => {
+      let filteredBuckets = buckets.filter((bucket) => {
         // Owner always has access
         if (bucket.createdById === req.user!.id) return true;
 
@@ -87,6 +87,52 @@ export class BucketController {
 
         return false;
       });
+
+      // Apply other filters
+      if (search) {
+        const q = String(search).toLowerCase();
+        filteredBuckets = filteredBuckets.filter(b => b.name.toLowerCase().includes(q));
+      }
+      if (owner) {
+        filteredBuckets = filteredBuckets.filter(b => b.createdById === owner);
+      }
+      if (visibility === 'public') {
+        filteredBuckets = filteredBuckets.filter(b => b.isShared);
+      } else if (visibility === 'private') {
+        filteredBuckets = filteredBuckets.filter(b => !b.isShared);
+      }
+      if (size) {
+        filteredBuckets = filteredBuckets.filter(b => {
+          const count = b._count?.tickets || 0;
+          if (size === 'empty') return count === 0;
+          if (size === 'small') return count > 0 && count <= 10;
+          if (size === 'medium') return count > 10 && count <= 50;
+          if (size === 'large') return count > 50;
+          return true;
+        });
+      }
+      if (startDate && endDate) {
+        const start = new Date(String(startDate)).getTime();
+        const end = new Date(String(endDate)).getTime();
+        filteredBuckets = filteredBuckets.filter(b => {
+          const t = new Date(b.createdAt).getTime();
+          return t >= start && t <= end;
+        });
+      }
+
+      // Handle pagination
+      if (page && limit) {
+        const p = Number(page);
+        const l = Number(limit);
+        const total = filteredBuckets.length;
+        const paged = filteredBuckets.slice((p - 1) * l, p * l);
+        res.status(200).json({
+          success: true,
+          data: paged,
+          pagination: { total, page: p, limit: l }
+        } as ApiResponse);
+        return;
+      }
 
       res.status(200).json({
         success: true,

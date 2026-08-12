@@ -23,25 +23,86 @@ export class ProposalController {
 
       console.log('🔍 [PROPOSAL FETCH] Active Tenant:', tenantId);
 
-      let proposals = await ProposalModel.findAll(tenantId);
+      const {
+        page,
+        limit,
+        search,
+        view,
+        status,
+        client,
+        creator,
+        startDate,
+        endDate,
+        starredIds
+      } = req.query;
+
+      const pageNum = page ? parseInt(page as string, 10) : undefined;
+      const limitNum = limit ? parseInt(limit as string, 10) : undefined;
+      
+      let parsedStarredIds: string[] | undefined;
+      if (typeof starredIds === 'string' && starredIds.trim()) {
+        parsedStarredIds = starredIds.split(',').map(s => s.trim());
+      }
+
+      let result = await ProposalModel.findAll({
+        tenantId,
+        userId: req.user?.id,
+        page: pageNum,
+        limit: limitNum,
+        search: typeof search === 'string' ? search : undefined,
+        view: typeof view === 'string' ? view : undefined,
+        status: typeof status === 'string' ? status : undefined,
+        client: typeof client === 'string' ? client : undefined,
+        creator: typeof creator === 'string' ? creator : undefined,
+        startDate: typeof startDate === 'string' ? startDate : undefined,
+        endDate: typeof endDate === 'string' ? endDate : undefined,
+        starredIds: parsedStarredIds
+      });
 
       // DEVELOPMENT FALLBACK
-      if (proposals.length === 0 && process.env.NODE_ENV === 'development') {
+      if (result.data.length === 0 && process.env.NODE_ENV === 'development') {
         const fallbackId = 'b85c1b5b-77a3-4281-9147-51d6bd3ee94d';
         if (tenantId !== fallbackId) {
           console.log('⚠️ [DEV FALLBACK] No proposals for current tenant. Trying fallback:', fallbackId);
-          const fallbackProposals = await ProposalModel.findAll(fallbackId);
-          if (fallbackProposals.length > 0) {
-            proposals = fallbackProposals;
+          const fallbackResult = await ProposalModel.findAll({
+            tenantId: fallbackId,
+            userId: req.user?.id,
+            page: pageNum,
+            limit: limitNum,
+            search: typeof search === 'string' ? search : undefined,
+            view: typeof view === 'string' ? view : undefined,
+            status: typeof status === 'string' ? status : undefined,
+            client: typeof client === 'string' ? client : undefined,
+            creator: typeof creator === 'string' ? creator : undefined,
+            startDate: typeof startDate === 'string' ? startDate : undefined,
+            endDate: typeof endDate === 'string' ? endDate : undefined,
+            starredIds: parsedStarredIds
+          });
+          if (fallbackResult.data.length > 0) {
+            result = fallbackResult;
           }
         }
       }
 
-      res.status(200).json({
-        success: true,
-        data: proposals,
-        debug: { tenantId }
-      } as ApiResponse & { debug: any });
+      if (limitNum) {
+        res.status(200).json({
+          success: true,
+          data: result.data,
+          pagination: {
+            total: result.total,
+            page: pageNum || 1,
+            limit: limitNum,
+            totalPages: Math.ceil(result.total / limitNum)
+          },
+          debug: { tenantId }
+        } as ApiResponse & { debug: any });
+      } else {
+        res.status(200).json({
+          success: true,
+          data: result.data,
+          debug: { tenantId }
+        } as ApiResponse & { debug: any });
+      }
     } catch (error: any) {
       console.error('Error fetching proposals:', error);
       res.status(500).json({
@@ -260,12 +321,40 @@ export class ProposalController {
       const tenantId = req.tenantId;
       if (!tenantId) throw new ValidationError('Tenant context required');
 
-      let proposals = await ProposalModel.findTrashed(tenantId);
+      const { page, limit, search, status, client, creator, startDate, endDate } = req.query;
 
-      res.status(200).json({
-        success: true,
-        data: proposals
-      } as ApiResponse);
+      const pageNum = page ? parseInt(page as string, 10) : undefined;
+      const limitNum = limit ? parseInt(limit as string, 10) : undefined;
+
+      const result = await ProposalModel.findTrashed({
+        tenantId,
+        page: pageNum,
+        limit: limitNum,
+        search: typeof search === 'string' ? search : undefined,
+        status: typeof status === 'string' ? status : undefined,
+        client: typeof client === 'string' ? client : undefined,
+        creator: typeof creator === 'string' ? creator : undefined,
+        startDate: typeof startDate === 'string' ? startDate : undefined,
+        endDate: typeof endDate === 'string' ? endDate : undefined,
+      });
+
+      if (limitNum) {
+        res.status(200).json({
+          success: true,
+          data: result.data,
+          pagination: {
+            total: result.total,
+            page: pageNum || 1,
+            limit: limitNum,
+            totalPages: Math.ceil(result.total / limitNum)
+          }
+        } as ApiResponse);
+      } else {
+        res.status(200).json({
+          success: true,
+          data: result.data
+        } as ApiResponse);
+      }
     } catch (error: any) {
       console.error('Error fetching trashed proposals:', error);
       res.status(500).json({

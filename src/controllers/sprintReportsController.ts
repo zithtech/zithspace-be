@@ -27,6 +27,8 @@ export class SprintReportsController {
       }
 
       const projectId = (req.query.projectId as string) || "";
+      const { page, limit, search } = req.query;
+
       if (!projectId) {
         res.status(400).json({
           success: false,
@@ -88,7 +90,7 @@ export class SprintReportsController {
         rows = fallback.rows.map((r: any) => ({ ...r, has_report: false }));
       }
 
-      const reports = rows.map((r: any) => ({
+      let reports = rows.map((r: any) => ({
         sprintId: r.sprint_id,
         sprintName: r.sprint_name,
         sprintGoal: r.sprint_goal,
@@ -98,16 +100,38 @@ export class SprintReportsController {
         committedPoints: Number(r.committed_points ?? 0),
         completedPoints: Number(r.completed_points ?? 0),
         hasReport: !!r.has_report,
-        healthScore: r.health_score == null ? null : Number(r.health_score),
+        healthScore: r.health_score != null ? Number(r.health_score) : null,
         healthBand: r.health_band ?? null,
-        completionPct: r.completion_pct == null ? null : Number(r.completion_pct),
-        totalTickets: r.total_tickets == null ? null : Number(r.total_tickets),
-        completedTickets:
-          r.completed_tickets == null ? null : Number(r.completed_tickets),
+        completionPct: r.completion_pct != null ? Number(r.completion_pct) : null,
+        totalTickets: r.total_tickets != null ? Number(r.total_tickets) : null,
+        completedTickets: r.completed_tickets != null ? Number(r.completed_tickets) : null,
         generatedAt: r.generated_at ?? null,
         generatedById: r.generated_by_id ?? null,
         generatedByName: r.generated_by_name ?? null,
       }));
+
+      // Apply Search Filter
+      if (search) {
+        const q = String(search).toLowerCase();
+        reports = reports.filter((r: any) => 
+          (r.sprintName || "").toLowerCase().includes(q) ||
+          (r.sprintGoal || "").toLowerCase().includes(q)
+        );
+      }
+
+      // Handle pagination
+      if (page && limit) {
+        const p = Number(page);
+        const l = Number(limit);
+        const total = reports.length;
+        const paged = reports.slice((p - 1) * l, p * l);
+        res.status(200).json({
+          success: true,
+          data: paged,
+          pagination: { total, page: p, limit: l }
+        } as ApiResponse);
+        return;
+      }
 
       res.json({ success: true, data: reports } as ApiResponse);
     } catch (err) {

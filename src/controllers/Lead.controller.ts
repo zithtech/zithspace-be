@@ -264,13 +264,45 @@ export class LeadController {
         return res.status(400).json({ success: false, error: 'Tenant context required' });
       }
 
-      const leads = await LeadModel.findAll(tenantId);
+      const { page, limit, search, status, action, platform, createdBy, mailStatus, startDate, endDate, hasBidiq, bidiqView } = req.query;
 
-      return res.status(200).json({
-        success: true,
-        count: leads.length,
-        data: leads
+      const pageNum = page ? parseInt(page as string, 10) : undefined;
+      const limitNum = limit ? parseInt(limit as string, 10) : undefined;
+
+      const result = await LeadModel.findAll({
+        tenantId,
+        page: pageNum,
+        limit: limitNum,
+        search: typeof search === 'string' ? search : undefined,
+        status: typeof status === 'string' ? status : undefined,
+        action: typeof action === 'string' ? action : undefined,
+        platform: typeof platform === 'string' ? platform : undefined,
+        createdBy: typeof createdBy === 'string' ? createdBy : undefined,
+        mailStatus: typeof mailStatus === 'string' ? mailStatus : undefined,
+        startDate: typeof startDate === 'string' ? startDate : undefined,
+        endDate: typeof endDate === 'string' ? endDate : undefined,
+        hasBidiq: hasBidiq === 'true',
+        bidiqView: typeof bidiqView === 'string' ? bidiqView : undefined,
       });
+
+      if (limitNum) {
+        return res.status(200).json({
+          success: true,
+          data: result.data,
+          pagination: {
+            total: result.total,
+            page: pageNum || 1,
+            limit: limitNum,
+            totalPages: Math.ceil(result.total / limitNum)
+          }
+        });
+      } else {
+        return res.status(200).json({
+          success: true,
+          count: result.data.length,
+          data: result.data
+        });
+      }
     } catch (error: any) {
       console.error('Get Leads Error:', error);
       return res.status(500).json({

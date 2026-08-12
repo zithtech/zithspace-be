@@ -208,16 +208,51 @@ export async function updateRequest(client: TenantClient, id: string, d: InsertR
   return mapReq(rows[0]);
 }
 
-export async function listForUser(client: TenantClient, userId: string): Promise<LeaveRequestRow[]> {
-  const { rows } = await client.query(
-    `SELECT ${SELECT_REQ}
-       FROM lv2_leave_requests r
-       JOIN lv2_leave_types lt ON lt.id = r.leave_type_id
-      WHERE r.tenant_id = $1 AND r.user_id = $2
-      ORDER BY r.created_at DESC`,
-    [client.tenantId, userId]
-  );
-  return rows.map(mapReq);
+export async function listForUser(
+  client: TenantClient, 
+  userId: string,
+  opts?: { page?: number; limit?: number; search?: string; status?: string }
+): Promise<{ data: LeaveRequestRow[]; total: number }> {
+  let where = `WHERE r.tenant_id = $1 AND r.user_id = $2`;
+  const params: any[] = [client.tenantId, userId];
+
+  if (opts?.status && opts.status !== 'all') {
+    params.push(opts.status);
+    where += ` AND r.status = $${params.length}`;
+  }
+
+  if (opts?.search) {
+    params.push(`%${opts.search}%`);
+    where += ` AND (lt.name ILIKE $${params.length} OR r.reason ILIKE $${params.length})`;
+  }
+
+  const countRes = await client.query(`
+    SELECT COUNT(*) as total 
+    FROM lv2_leave_requests r
+    JOIN lv2_leave_types lt ON lt.id = r.leave_type_id
+    ${where}
+  `, params);
+  const total = parseInt(countRes.rows[0].total, 10);
+
+  let query = `
+    SELECT ${SELECT_REQ}
+    FROM lv2_leave_requests r
+    JOIN lv2_leave_types lt ON lt.id = r.leave_type_id
+    ${where}
+    ORDER BY r.created_at DESC
+  `;
+
+  if (opts?.limit) {
+    params.push(opts.limit);
+    query += ` LIMIT $${params.length}`;
+    if (opts?.page) {
+      params.push((opts.page - 1) * opts.limit);
+      query += ` OFFSET $${params.length}`;
+    }
+  }
+
+  const { rows } = await client.query(query, params);
+  return { data: rows.map(mapReq), total };
 }
 
 /** Cancel an own pending request. Returns true if a row changed. */
@@ -387,34 +422,80 @@ export async function confirmWithdrawalFull(
 }
 
 // ── Manager-facing (approvals) ────────────────────────────────────────────────
+export type ApprovalOpts = { page?: number; limit?: number; search?: string; status?: string; userId?: string; fromDate?: string; toDate?: string };
+
+async function _fetchApprovals(client: TenantClient, baseWhere: string, baseParams: any[], opts?: ApprovalOpts): Promise<{ data: LeaveRequestRow[]; total: number }> {
+  let where = baseWhere;
+  const params: any[] = [...baseParams];
+
+  if (opts?.status && opts.status !== 'all') {
+    if (opts.status === 'withdrawal_requests') {
+      where += ` AND r.withdrawal_status = 'requested'`;
+    } else {
+      params.push(opts.status);
+      where += ` AND r.status = $${params.length}`;
+    }
+  }
+
+  if (opts?.userId) {
+    params.push(opts.userId);
+    where += ` AND r.user_id::text = $${params.length}`;
+  }
+
+  if (opts?.search) {
+    params.push(`%${opts.search}%`);
+    where += ` AND (lt.name ILIKE $${params.length} OR u.name ILIKE $${params.length} OR u.email ILIKE $${params.length})`;
+  }
+
+  if (opts?.fromDate) {
+    params.push(opts.fromDate);
+    where += ` AND r.to_date >= $${params.length}::date`;
+  }
+  if (opts?.toDate) {
+    params.push(opts.toDate);
+    where += ` AND r.from_date <= $${params.length}::date`;
+  }
+
+  const countRes = await client.query(`
+    SELECT COUNT(*) as total 
+    FROM lv2_leave_requests r
+    JOIN lv2_leave_types lt ON lt.id = r.leave_type_id
+    JOIN users u ON u.id = r.user_id::text
+    ${where}
+  `, params);
+  const total = parseInt(countRes.rows[0].total, 10);
+
+  let query = `
+    SELECT ${SELECT_REQ_EMP}
+    FROM lv2_leave_requests r
+    JOIN lv2_leave_types lt ON lt.id = r.leave_type_id
+    JOIN users u ON u.id = r.user_id::text
+    ${JOIN_APPROVER}
+    ${where}
+    ORDER BY (r.status = 'pending') DESC, r.created_at DESC
+  `;
+
+  if (opts?.limit) {
+    params.push(opts.limit);
+    query += ` LIMIT $${params.length}`;
+    if (opts?.page) {
+      params.push((opts.page - 1) * opts.limit);
+      query += ` OFFSET $${params.length}`;
+    }
+  }
+
+  const { rows } = await client.query(query, params);
+  return { data: rows.map(mapReq), total };
+}
+
 /** All requests in the tenant with requester info; pending first. */
-export async function listAll(client: TenantClient): Promise<LeaveRequestRow[]> {
-  const { rows } = await client.query(
-    `SELECT ${SELECT_REQ_EMP}
-       FROM lv2_leave_requests r
-       JOIN lv2_leave_types lt ON lt.id = r.leave_type_id
-       JOIN users u ON u.id = r.user_id::text
-       ${JOIN_APPROVER}
-      WHERE r.tenant_id = $1
-      ORDER BY (r.status = 'pending') DESC, r.created_at DESC`,
-    [client.tenantId]
-  );
-  return rows.map(mapReq);
+export async function listAll(client: TenantClient, opts?: ApprovalOpts): Promise<{ data: LeaveRequestRow[]; total: number }> {
+  return _fetchApprovals(client, `WHERE r.tenant_id = $1`, [client.tenantId], opts);
 }
 
 /** Requests whose requester reports to `approverUserId`; pending first. */
-export async function listForApprover(client: TenantClient, approverUserId: string): Promise<LeaveRequestRow[]> {
-  const { rows } = await client.query(
-    `SELECT ${SELECT_REQ_EMP}
-       FROM lv2_leave_requests r
-       JOIN lv2_leave_types lt ON lt.id = r.leave_type_id
-       JOIN users u ON u.id = r.user_id::text
-       ${JOIN_APPROVER}
-      WHERE r.tenant_id = $1 AND u.reports_to_id = $2
-      ORDER BY (r.status = 'pending') DESC, r.created_at DESC`,
-    [client.tenantId, approverUserId]
-  );
-  return rows.map(mapReq);
+export async function listForApprover(client: TenantClient, approverUserId: string, opts?: ApprovalOpts): Promise<{ data: LeaveRequestRow[]; total: number }> {
+  return _fetchApprovals(client, `WHERE r.tenant_id = $1 AND u.reports_to_id = $2`, [client.tenantId, approverUserId], opts);
 }
 
 export async function findAnyById(client: TenantClient, id: string): Promise<LeaveRequestRow | null> {
