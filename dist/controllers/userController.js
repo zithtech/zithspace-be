@@ -410,6 +410,22 @@ class UserController {
                     throw new types_1.ValidationError("Assigned shift not found or inactive in this tenant");
                 }
             }
+            // Auto-resolve employeeId by workEmail if not provided
+            let targetEmployeeId = userData.employeeId || null;
+            if (!targetEmployeeId && userData.workEmail) {
+                try {
+                    const empMatch = await dbpool_1.default.query(`SELECT id FROM employees 
+               WHERE tenant_id = $1 AND (LOWER(work_email) = LOWER($2) OR (personal_email IS NOT NULL AND LOWER(personal_email) = LOWER($2))) 
+               ORDER BY (CASE WHEN date_of_birth IS NOT NULL AND date_of_birth::text NOT LIKE '1970-01-01%' THEN 0 ELSE 1 END) ASC, created_at ASC 
+               LIMIT 1`, [req.tenantId, userData.workEmail.trim()]);
+                    if (empMatch.rows[0]) {
+                        targetEmployeeId = empMatch.rows[0].id;
+                    }
+                }
+                catch (err) {
+                    console.error("Failed to auto-resolve employeeId by email in user create:", err);
+                }
+            }
             // Create user via UserModel using raw INSERT query
             const createdRaw = await user_model_1.UserModel.create({
                 tenantId: req.tenantId,
@@ -426,7 +442,7 @@ class UserController {
                 assignedShiftId: userData.assignedShiftId || null,
                 isActive: userData.isActive !== undefined ? userData.isActive : true,
                 minWorkingHours: userData.minWorkingHours !== undefined ? Number(userData.minWorkingHours) : 6,
-                employeeId: userData.employeeId || null,
+                employeeId: targetEmployeeId,
             });
             // Load the newly created member with relation details using raw SELECT query
             const newUser = await user_model_1.UserModel.findById(createdRaw.id, req.tenantId);
@@ -1262,8 +1278,23 @@ class UserController {
                     return;
                 }
             }
+            const existingUser = await user_model_1.UserModel.findById(userId, req.tenantId);
             await user_model_1.UserModel.update(userId, req.tenantId, updateData);
             const updatedUser = await user_model_1.UserModel.findById(userId, req.tenantId);
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.HR,
+                module: transactionHistory_1.Module.MY_PROFILE,
+                page: transactionHistory_1.Page.MY_PROFILE,
+                action: transactionHistory_1.Action.UPDATE,
+                actionLabel: "Updated profile details",
+                entityType: transactionHistory_1.EntityType.USER,
+                entityId: userId,
+                entityLabel: updatedUser?.name,
+                beforeData: existingUser,
+                afterData: updatedUser,
+                statusCode: 200,
+            });
             res.status(200).json({
                 success: true,
                 data: updatedUser,
@@ -1345,6 +1376,18 @@ class UserController {
             // Update password
             await user_model_1.UserModel.update(userId, req.tenantId, {
                 passwordHash: newPasswordHash,
+            });
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.HR,
+                module: transactionHistory_1.Module.MY_PROFILE,
+                page: transactionHistory_1.Page.MY_PROFILE,
+                action: transactionHistory_1.Action.UPDATE,
+                actionLabel: "Changed password",
+                entityType: transactionHistory_1.EntityType.USER,
+                entityId: userId,
+                entityLabel: req.user.name,
+                statusCode: 200,
             });
             res.status(200).json({
                 success: true,
@@ -1430,7 +1473,7 @@ class UserController {
                 return;
             }
             const { role, position } = req.query;
-            const whereClauses = ['u.tenant_id = $1', 'u.is_active = true'];
+            const whereClauses = ['u.tenant_id = $1', 'u.is_active = true', 'u.deleted_at IS NULL'];
             const values = [req.tenantId];
             let paramCount = 1;
             if (role) {

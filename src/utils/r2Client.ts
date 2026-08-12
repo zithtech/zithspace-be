@@ -299,6 +299,53 @@ export async function uploadEmployeeDocumentToR2(
 }
 
 /**
+ * Upload Exit Document (like resignation letter) to Cloudflare R2
+ * @param base64File - Base64 encoded file string
+ * @param fileName - Original file name
+ * @param tenantId - Tenant ID
+ * @param employeeId - Employee ID
+ * @returns Public URL of uploaded document
+ */
+export async function uploadExitDocumentToR2(
+  base64File: string,
+  fileName: string,
+  tenantId: string,
+  employeeId: string,
+): Promise<string> {
+  try {
+    const matches = base64File.match(/^data:([^;]+);base64,(.*)$/);
+    if (!matches) {
+      throw new Error("Invalid file format. Expected base64 encoded file.");
+    }
+
+    const contentType = matches[1];
+    const base64Data = matches[2];
+    const buffer = Buffer.from(base64Data, "base64");
+
+    const uniqueId = nanoid(12);
+    const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+    // Organize by tenant -> employee-exits -> employee ID -> document
+    const key = `${tenantId}/employee-exits/${employeeId}/documents/${uniqueId}_${sanitizedFileName}`;
+
+    const params = {
+      Bucket: BUCKET_NAME,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+    };
+
+    await s3Client.send(new PutObjectCommand(params));
+
+    const baseUrl =
+      PUBLIC_URL || "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+    return `${baseUrl}/${key}`;
+  } catch (error: any) {
+    console.error("R2 upload error (Exit Document):", error);
+    throw new Error(`Failed to upload exit document: ${error.message}`);
+  }
+}
+
+/**
  * Upload a generated performance report (PDF) to Cloudflare R2.
  * Accepts a base64 data URL; returns the public URL + the object key.
  */
@@ -448,6 +495,42 @@ export async function uploadEmployeeAssetToR2({
 }
 
 /**
+ * Upload a resume file (from disk path) to Cloudflare R2.
+ * Returns a public URL suitable for Google Docs Viewer.
+ * Path: {tenantId}/resumes/{uniqueId}_{fileName}
+ */
+export async function uploadResumeToR2(
+  filePath: string,
+  fileName: string,
+  tenantId: string,
+  mimeType: string,
+): Promise<string> {
+  const fs = await import('fs');
+  const buffer = fs.readFileSync(filePath);
+  const uniqueId = nanoid(12);
+  const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+  const key = `${tenantId}/resumes/${uniqueId}_${sanitizedFileName}`;
+
+  await s3Client.send(
+    new PutObjectCommand({
+      Bucket: BUCKET_NAME,
+      Key: key,
+      Body: buffer,
+      ContentType: mimeType,
+      ContentDisposition: 'inline',
+      CacheControl: 'public, max-age=31536000',
+    }),
+  );
+
+  let baseUrl = (PUBLIC_URL && !PUBLIC_URL.includes('r2.cloudflarestorage.com'))
+    ? PUBLIC_URL
+    : 'https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev';
+  if (baseUrl.endsWith('/')) baseUrl = baseUrl.slice(0, -1);
+
+  return `${baseUrl}/${key}`;
+}
+
+/**
  * Upload candidate document to Cloudflare R2
  * @param base64File - Base64 encoded file string
  * @param fileName - Original file name
@@ -486,8 +569,14 @@ export async function uploadCandidateDocumentToR2(
       }),
     );
 
-    const baseUrl =
-      PUBLIC_URL || "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+    let baseUrl = (PUBLIC_URL && !PUBLIC_URL.includes('r2.cloudflarestorage.com')) 
+      ? PUBLIC_URL 
+      : "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+    
+    // Remove trailing slash if present to avoid double slashes
+    if (baseUrl.endsWith('/')) {
+      baseUrl = baseUrl.slice(0, -1);
+    }
     return `${baseUrl}/${key}`;
   } catch (error: any) {
     console.error("R2 candidate document upload error:", error);
@@ -863,5 +952,148 @@ export async function uploadEscalationDocumentToR2(
   } catch (error: any) {
     console.error("R2 escalation document upload error:", error);
     throw new Error(`Failed to upload escalation document: ${error.message}`);
+  }
+}
+
+export async function uploadDocumentToR2(
+  buffer: Buffer,
+  fileName: string,
+  tenantId: string,
+  documentId: string,
+  contentType: string
+): Promise<string> {
+  try {
+    const fileExtension = fileName.split(".").pop() || "bin";
+    const uniqueId = nanoid(12);
+    const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+
+    const folderPath = `${tenantId}/documents/${documentId}`;
+    const storedFileName = `${folderPath}/${uniqueId}_${sanitizedFileName}`;
+
+    const params = {
+      Bucket: BUCKET_NAME,
+      Key: storedFileName,
+      Body: buffer,
+      ContentType: contentType,
+      CacheControl: "public, max-age=31536000",
+      ContentDisposition: `attachment; filename="${sanitizedFileName}"`,
+    };
+
+    await s3Client.send(new PutObjectCommand(params));
+
+    let baseUrl = (PUBLIC_URL && !PUBLIC_URL.includes('r2.cloudflarestorage.com')) 
+      ? PUBLIC_URL 
+      : "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+    
+    if (baseUrl.endsWith('/')) {
+      baseUrl = baseUrl.slice(0, -1);
+    }
+    
+    return `${baseUrl}/${storedFileName}`;
+  } catch (error: any) {
+    console.error("R2 document upload error:", error);
+    throw new Error(`Failed to upload document: ${error.message}`);
+  }
+}
+
+/**
+ * Upload an attachment captured while executing a test run (screenshot, log,
+ * recording) to Cloudflare R2, organised by tenant, run and result.
+ */
+export async function uploadRunAttachmentToR2(
+  base64File: string,
+  fileName: string,
+  tenantId: string,
+  runId: string,
+  resultId: string,
+): Promise<{ fileUrl: string; fileSize: number; fileType: string }> {
+  try {
+    const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+    if (!matches) {
+      throw new Error("Invalid file format. Expected a base64 data URI.");
+    }
+
+    const contentType = matches[1];
+    const buffer = Buffer.from(matches[2], "base64");
+
+    const fileSizeInBytes = buffer.length;
+    if (fileSizeInBytes / (1024 * 1024) > 10) {
+      throw new Error("File size exceeds the 10MB limit");
+    }
+
+    const uniqueId = nanoid(12);
+    const sanitizedFileName = (fileName || "attachment").replace(/[^a-zA-Z0-9.-]/g, "_");
+    const key = `${tenantId}/qa/test-runs/${runId}/${resultId}/${uniqueId}_${sanitizedFileName}`;
+
+    await s3Client.send(
+      new PutObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+        CacheControl: "public, max-age=31536000",
+      }),
+    );
+
+    let baseUrl = (PUBLIC_URL && !PUBLIC_URL.includes("r2.cloudflarestorage.com"))
+      ? PUBLIC_URL
+      : "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+    if (baseUrl.endsWith("/")) baseUrl = baseUrl.slice(0, -1);
+
+    return { fileUrl: `${baseUrl}/${key}`, fileSize: fileSizeInBytes, fileType: contentType };
+  } catch (error: any) {
+    console.error("R2 run attachment upload error:", error);
+    throw new Error(`Failed to upload attachment: ${error.message}`);
+  }
+}
+
+/**
+ * Upload supporting evidence attached to a QA Submission (test evidence,
+ * screenshots, reports, documents) to Cloudflare R2, organised by tenant and
+ * submission.
+ */
+export async function uploadSubmissionAttachmentToR2(
+  base64File: string,
+  fileName: string,
+  tenantId: string,
+  submissionId: string,
+): Promise<{ fileUrl: string; fileSize: number; fileType: string }> {
+  try {
+    const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+    if (!matches) {
+      throw new Error("Invalid file format. Expected a base64 data URI.");
+    }
+
+    const contentType = matches[1];
+    const buffer = Buffer.from(matches[2], "base64");
+
+    const fileSizeInBytes = buffer.length;
+    if (fileSizeInBytes / (1024 * 1024) > 10) {
+      throw new Error("File size exceeds the 10MB limit");
+    }
+
+    const uniqueId = nanoid(12);
+    const sanitizedFileName = (fileName || "attachment").replace(/[^a-zA-Z0-9.-]/g, "_");
+    const key = `${tenantId}/qa/submissions/${submissionId}/${uniqueId}_${sanitizedFileName}`;
+
+    await s3Client.send(
+      new PutObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+        CacheControl: "public, max-age=31536000",
+      }),
+    );
+
+    let baseUrl = (PUBLIC_URL && !PUBLIC_URL.includes("r2.cloudflarestorage.com"))
+      ? PUBLIC_URL
+      : "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+    if (baseUrl.endsWith("/")) baseUrl = baseUrl.slice(0, -1);
+
+    return { fileUrl: `${baseUrl}/${key}`, fileSize: fileSizeInBytes, fileType: contentType };
+  } catch (error: any) {
+    console.error("R2 submission attachment upload error:", error);
+    throw new Error(`Failed to upload attachment: ${error.message}`);
   }
 }

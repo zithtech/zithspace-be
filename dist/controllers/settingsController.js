@@ -795,7 +795,7 @@ class SettingsController {
                     actionLabel: `Tenant settings updated (${changedFields.join(', ')})`,
                     entityType: transactionHistory_1.EntityType.TENANT_SETTINGS,
                     entityId: req.tenantId,
-                    entityLabel: 'General Settings',
+                    entityLabel: 'System Settings',
                     beforeData: before,
                     afterData: after,
                     changedFields,

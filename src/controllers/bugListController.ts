@@ -5,6 +5,7 @@ import { AuthRequest } from "@/types";
 import {
   uploadBugAttachmentToR2,
   deleteBugAttachmentFromR2,
+  getFileBufferFromR2,
 } from "@/utils/r2Client";
 import { BugListAiService } from "@/services/bugListAiService";
 import { entitlementService, EntitlementError } from "@/services/EntitlementService";
@@ -19,6 +20,7 @@ import {
   Action,
   EntityType,
 } from "@/utils/transactionHistory";
+import { RBACService } from "@/modules/rbac/rbac.service";
 
 // ============================================================================
 // Helpers
@@ -63,6 +65,18 @@ const DEFAULT_BUG_TYPES: {
   { key: "functional", label: "Functional", sort: 20, isDefault: true },
   { key: "api", label: "API", sort: 30, isDefault: false },
 ];
+const DEFAULT_PRIORITIES: {
+  key: string;
+  label: string;
+  color: string;
+  sort: number;
+  isDefault: boolean;
+}[] = [
+  { key: "critical", label: "Critical", color: "#ef4444", sort: 10, isDefault: false },
+  { key: "high", label: "High", color: "#3b82f6", sort: 20, isDefault: false },
+  { key: "medium", label: "Medium", color: "#60a5fa", sort: 30, isDefault: true },
+  { key: "low", label: "Low", color: "#94a3b8", sort: 40, isDefault: false },
+];
 
 async function ensureSeveritySeeded(tenantId: string): Promise<void> {
   const existing = await pool.query(
@@ -77,6 +91,58 @@ async function ensureSeveritySeeded(tenantId: string): Promise<void> {
        VALUES ($1, $2, $3, $4, $5, $6, true)
        ON CONFLICT (tenant_id, key) DO NOTHING`,
       [tenantId, s.key, s.label, s.color, s.sort, s.isDefault],
+    );
+  }
+}
+
+/**
+ * Priority options are shared by the bug list and the QA workspace, so the
+ * table is created on demand rather than relying on the migration having run.
+ */
+let bugTestCaseColumnsReady = false;
+/** Link columns back to the QA test case a bug was raised from. */
+async function ensureBugTestCaseColumns(): Promise<void> {
+  if (bugTestCaseColumnsReady) return;
+  try {
+    await pool.query(`ALTER TABLE bugs ADD COLUMN IF NOT EXISTS test_case_id TEXT`);
+    await pool.query(`ALTER TABLE bugs ADD COLUMN IF NOT EXISTS test_case_ref TEXT`);
+    bugTestCaseColumnsReady = true;
+  } catch (e) {
+    console.error("Failed to ensure bug test-case columns:", e);
+  }
+}
+
+async function ensurePrioritySeeded(tenantId: string): Promise<void> {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS bug_priority_options (
+      id            TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      tenant_id     TEXT NOT NULL,
+      key           TEXT NOT NULL,
+      label         TEXT NOT NULL,
+      description   TEXT,
+      color         TEXT,
+      sort_order    INTEGER NOT NULL DEFAULT 0,
+      is_default    BOOLEAN NOT NULL DEFAULT false,
+      is_system     BOOLEAN NOT NULL DEFAULT false,
+      is_active     BOOLEAN NOT NULL DEFAULT true,
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (tenant_id, key)
+    )
+  `).catch(() => {});
+
+  const existing = await pool.query(
+    `SELECT 1 FROM bug_priority_options WHERE tenant_id = $1 LIMIT 1`,
+    [tenantId],
+  );
+  if (existing.rowCount && existing.rowCount > 0) return;
+  for (const p of DEFAULT_PRIORITIES) {
+    await pool.query(
+      `INSERT INTO bug_priority_options
+         (tenant_id, key, label, color, sort_order, is_default, is_system)
+       VALUES ($1, $2, $3, $4, $5, $6, true)
+       ON CONFLICT (tenant_id, key) DO NOTHING`,
+      [tenantId, p.key, p.label, p.color, p.sort, p.isDefault],
     );
   }
 }
@@ -145,6 +211,12 @@ interface AttachmentInput {
   fileSize?: number;
   fileType?: string;
   isNew?: boolean;
+  /**
+   * An already-hosted file (e.g. evidence captured during a test run). The
+   * server copies it into the bug's own storage so deleting one never removes
+   * the other's copy.
+   */
+  sourceUrl?: string;
 }
 
 interface ExternalLinkInput {
@@ -207,6 +279,37 @@ async function persistAttachments(
           uploaderId,
         ],
       );
+    }
+    // Copy an already-hosted file (run evidence) into this bug's own storage
+    else if (att.isNew && att.sourceUrl && /^https?:\/\//i.test(att.sourceUrl)) {
+      try {
+        const buffer = await getFileBufferFromR2(att.sourceUrl);
+        const mime = att.fileType || "application/octet-stream";
+        const dataUri = `data:${mime};base64,${buffer.toString("base64")}`;
+        const uploaded = await uploadBugAttachmentToR2(
+          dataUri,
+          att.fileName,
+          tenantId,
+          folderId,
+          sheetId,
+          bugId,
+        );
+        await pool.query(
+          `INSERT INTO bug_attachments
+             (bug_id, file_name, file_url, file_size, file_type, uploaded_by_id)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [bugId, att.fileName, uploaded.fileUrl, uploaded.fileSize, uploaded.fileType, uploaderId],
+        );
+      } catch (err) {
+        // Fall back to referencing the original so the evidence isn't lost
+        console.error("Attachment copy failed, linking source instead:", err);
+        await pool.query(
+          `INSERT INTO bug_attachments
+             (bug_id, file_name, file_url, file_size, file_type, uploaded_by_id)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [bugId, att.fileName, att.sourceUrl, att.fileSize || null, att.fileType || null, uploaderId],
+        );
+      }
     }
     // Existing rows are kept as-is; nothing to update for now.
   }
@@ -279,6 +382,11 @@ function shapeBug(row: any, attachments: any[], externalLinks: any[]) {
     ticketId: row.ticket_id,
     ticketNumber: row.ticket_number,
     ticketStatus: row.ticket_status,
+    isRecurring: row.is_recurring,
+    ticketHistory: row.ticket_history || [],
+    // Set when the bug was raised from a QA test run
+    testCaseId: row.test_case_id ?? null,
+    testCaseRef: row.test_case_ref ?? null,
     assigneeId: row.assignee_id,
     assignee: row.assignee_uid
       ? {
@@ -510,6 +618,15 @@ export class BugListController {
         return;
       }
       const currentStatus = owned.rows[0].status;
+      
+      if (currentStatus === 'archived') {
+        const allowed = await RBACService.hasAnyPermission(req.user!.id, req.tenantId!, ['bug.archive.delete', 'bug.manage'], req.user!.role);
+        if (!allowed) {
+          bad(res, 403, "Permission denied. You need archive delete permission.");
+          return;
+        }
+      }
+      
       const originalStatus = currentStatus === 'trash' ? null : currentStatus;
 
       const r = await pool.query(
@@ -679,12 +796,27 @@ export class BugListController {
     const { id } = req.params;
     try {
       const folderResult = await pool.query(
-        `SELECT original_status FROM bug_folders WHERE id = $1 AND tenant_id = $2 AND status IN ('trash', 'archived')`,
+        `SELECT original_status, status FROM bug_folders WHERE id = $1 AND tenant_id = $2 AND status IN ('trash', 'archived')`,
         [id, req.tenantId],
       );
       if (folderResult.rows.length === 0) {
         bad(res, 404, "Item not found in trash or archive");
         return;
+      }
+      
+      const currentStatus = folderResult.rows[0].status;
+      if (currentStatus === "archived") {
+        const allowed = await RBACService.hasAnyPermission(req.user!.id, req.tenantId!, ['bug.archive.restore', 'bug.manage'], req.user!.role);
+        if (!allowed) {
+          bad(res, 403, "Permission denied. You need archive restore permission.");
+          return;
+        }
+      } else if (currentStatus === "trash") {
+        const allowed = await RBACService.hasAnyPermission(req.user!.id, req.tenantId!, ['bug.trash.restore', 'bug.manage'], req.user!.role);
+        if (!allowed) {
+          bad(res, 403, "Permission denied. You need trash restore permission.");
+          return;
+        }
       }
       const originalStatus = folderResult.rows[0].original_status || 'active';
       await pool.query(
@@ -864,6 +996,51 @@ export class BugListController {
     } catch (err: any) {
       console.error("listProjectSheets error:", err);
       bad(res, 500, err.message || "Failed to load project sheets");
+    }
+  }
+
+  static async listAllSheets(req: AuthRequest, res: Response): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    try {
+      const { search, limit = 10 } = req.query;
+      let queryStr = `
+        SELECT s.*, f.name as folder_name 
+        FROM bug_sheets s
+        INNER JOIN bug_folders f ON s.folder_id = f.id
+        WHERE f.tenant_id = $1 
+          AND s.status NOT IN ('archived', 'trash')
+          AND f.status NOT IN ('archived', 'trash')
+      `;
+      const values: any[] = [req.tenantId];
+      let paramIndex = 2;
+
+      if (search) {
+        queryStr += ` AND s.name ILIKE $${paramIndex}`;
+        values.push(`%${search}%`);
+        paramIndex++;
+      }
+
+      queryStr += ` ORDER BY s.created_at DESC LIMIT $${paramIndex}`;
+      values.push(Number(limit));
+
+      const r = await pool.query(queryStr, values);
+      res.json({ 
+        success: true, 
+        data: r.rows.map(row => ({
+          id: row.id,
+          folderId: row.folder_id,
+          folderName: row.folder_name,
+          name: row.name,
+          description: row.description,
+          status: row.status,
+          createdById: row.created_by_id,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at
+        })) 
+      });
+    } catch (err: any) {
+      console.error("listAllSheets error:", err);
+      bad(res, 500, err.message || "Failed to load all sheets");
     }
   }
 
@@ -1073,11 +1250,25 @@ export class BugListController {
       bad(res, 400, "status must be one of: active, current, completed, archived");
       return;
     }
+    
+    // Explicitly require BUG_DELETE permission to archive a sheet
+    if (status === "archived") {
+      const allowed = await RBACService.hasAnyPermission(
+        req.user!.id,
+        req.tenantId!,
+        ['bug.delete', 'bug.manage'],
+        req.user!.role
+      );
+      if (!allowed) {
+        bad(res, 403, "Permission denied. You need delete permission to archive.");
+        return;
+      }
+    }
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
       const owned = await client.query(
-        `SELECT id, folder_id FROM bug_sheets WHERE id = $1 AND tenant_id = $2`,
+        `SELECT id, folder_id, status FROM bug_sheets WHERE id = $1 AND tenant_id = $2`,
         [id, req.tenantId],
       );
       if (owned.rows.length === 0) {
@@ -1086,6 +1277,22 @@ export class BugListController {
         return;
       }
       const folderId = owned.rows[0].folder_id;
+      const currentStatus = owned.rows[0].status;
+      
+      // Enforce restore from archive permission
+      if (currentStatus === "archived" && status !== "archived") {
+        const allowed = await RBACService.hasAnyPermission(
+          req.user!.id,
+          req.tenantId!,
+          ['bug.archive.restore', 'bug.manage'],
+          req.user!.role
+        );
+        if (!allowed) {
+          await client.query("ROLLBACK");
+          bad(res, 403, "Permission denied. You need archive restore permission.");
+          return;
+        }
+      }
       // 'current' is unique per folder — demote any existing current first.
       if (status === "current") {
         await client.query(
@@ -1181,6 +1388,15 @@ export class BugListController {
       }
       
       const currentStatus = sheetResult.rows[0].status;
+      
+      if (currentStatus === 'archived') {
+        const allowed = await RBACService.hasAnyPermission(req.user!.id, req.tenantId!, ['bug.archive.delete', 'bug.manage'], req.user!.role);
+        if (!allowed) {
+          bad(res, 403, "Permission denied. You need archive delete permission.");
+          return;
+        }
+      }
+      
       // Only preserve status if it's not already trash
       const originalStatus = currentStatus === 'trash' ? null : currentStatus;
       
@@ -1631,6 +1847,8 @@ export class BugListController {
       attachments,
       externalLinks,
       comments,
+      testCaseId,
+      testCaseRef,
     } = req.body;
 
     if (!description || typeof description !== "string") {
@@ -1644,14 +1862,14 @@ export class BugListController {
     if (severity) {
       const valid = await getValidSeverityKeys(req.tenantId!);
       if (!valid.has(severity)) {
-        bad(res, 400, "Invalid severity");
+        bad(res, 400, `Invalid severity "${severity}". Configured options: ${[...valid].join(", ") || "none"}`);
         return;
       }
     }
     if (bugType) {
       const valid = await getValidBugTypeKeys(req.tenantId!);
       if (!valid.has(bugType)) {
-        bad(res, 400, "Invalid bug type");
+        bad(res, 400, `Invalid bug type "${bugType}". Configured options: ${[...valid].join(", ") || "none"}`);
         return;
       }
     }
@@ -1687,11 +1905,15 @@ export class BugListController {
       }
       const bugNumber = `BUG-${String(nextNum).padStart(4, "0")}`;
 
+      // Bugs raised from a test run keep a link back to the case
+      await ensureBugTestCaseColumns();
+
       const insertRes = await pool.query(
         `INSERT INTO bugs
            (tenant_id, folder_id, sheet_id, bug_number, title, description, module,
-            bug_type, severity, status, bug_status, tags, assignee_id, created_by_id, comments)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14)
+            bug_type, severity, status, bug_status, tags, assignee_id, created_by_id, comments,
+            test_case_id, test_case_ref)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'new', $10, $11, $12, $13, $14, $15, $16)
          RETURNING id`,
         [
           req.tenantId,
@@ -1708,6 +1930,8 @@ export class BugListController {
           assigneeId || null,
           req.user!.id,
           comments || null,
+          testCaseId || null,
+          testCaseRef || null,
         ],
       );
       const bugId = insertRes.rows[0].id;
@@ -1781,14 +2005,14 @@ export class BugListController {
     if (severity !== undefined && severity !== null) {
       const valid = await getValidSeverityKeys(req.tenantId!);
       if (!valid.has(severity)) {
-        bad(res, 400, "Invalid severity");
+        bad(res, 400, `Invalid severity "${severity}". Configured options: ${[...valid].join(", ") || "none"}`);
         return;
       }
     }
     if (bugType !== undefined && bugType !== null) {
       const valid = await getValidBugTypeKeys(req.tenantId!);
       if (!valid.has(bugType)) {
-        bad(res, 400, "Invalid bug type");
+        bad(res, 400, `Invalid bug type "${bugType}". Configured options: ${[...valid].join(", ") || "none"}`);
         return;
       }
     }
@@ -1932,6 +2156,15 @@ export class BugListController {
       
       const bugRow = bugResult.rows[0];
       const currentStatus = bugRow.status;
+      
+      if (currentStatus === 'archived') {
+        const allowed = await RBACService.hasAnyPermission(req.user!.id, req.tenantId!, ['bug.archive.delete', 'bug.manage'], req.user!.role);
+        if (!allowed) {
+          bad(res, 403, "Permission denied. You need archive delete permission.");
+          return;
+        }
+      }
+      
       // Only preserve status if it's not already trash, using COALESCE logic
       const originalStatus = currentStatus === 'trash' ? bugRow.original_status : (bugRow.original_status || currentStatus);
       
@@ -2112,6 +2345,19 @@ export class BugListController {
       return;
     }
     try {
+      // Check for archived bugs
+      const archivedCheck = await pool.query(
+        `SELECT id FROM bugs WHERE id = ANY($1::text[]) AND tenant_id = $2 AND status = 'archived' LIMIT 1`,
+        [bugIds, req.tenantId]
+      );
+      if (archivedCheck.rows.length > 0) {
+        const allowed = await RBACService.hasAnyPermission(req.user!.id, req.tenantId!, ['bug.archive.delete', 'bug.manage'], req.user!.role);
+        if (!allowed) {
+          bad(res, 403, "Permission denied. You need archive delete permission to delete archived bugs.");
+          return;
+        }
+      }
+
       // Update all bugs to preserve their original status before moving to trash
       const r = await pool.query(
         `UPDATE bugs
@@ -3154,6 +3400,140 @@ export class BugListController {
     }
   }
 
+  static async markBugAsRecurring(req: AuthRequest, res: Response): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    const bugId = req.params.id;
+    const tenantId = req.tenantId!;
+    
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      // 1. Get current bug details
+      const bugRes = await client.query(
+        `SELECT b.*, t.ticket_number AS ticket_number, t.status AS ticket_status, 
+                p.code AS project_code
+         FROM bugs b
+         LEFT JOIN tickets t ON b.ticket_id = t.id
+         LEFT JOIN projects p ON t.project_id = p.id
+         WHERE b.id = $1 AND b.tenant_id = $2`,
+        [bugId, tenantId]
+      );
+      
+      if (bugRes.rows.length === 0) {
+        throw new Error("Bug not found");
+      }
+      
+      const bug = bugRes.rows[0];
+      if (!bug.ticket_id) {
+        throw new Error("Cannot mark as recurring: Bug does not have an active ticket");
+      }
+
+      // 2. Build ticket history entry
+      const historyEntry = {
+        ticketId: bug.ticket_id,
+        ticketNumber: bug.ticket_number,
+        status: bug.ticket_status,
+        timestamp: new Date().toISOString()
+      };
+      
+      const currentHistory = bug.ticket_history || [];
+      const newHistory = [...currentHistory, historyEntry];
+
+      // 3. Create new ticket
+      const oldTicketRes = await client.query(`SELECT project_id, sprint_plan_id, release_plan_id, epic_id FROM tickets WHERE id = $1`, [bug.ticket_id]);
+      if (oldTicketRes.rows.length === 0) throw new Error("Old ticket not found");
+      const projectId = oldTicketRes.rows[0].project_id;
+      const sprintPlanId = oldTicketRes.rows[0].sprint_plan_id || null;
+      const releasePlanId = oldTicketRes.rows[0].release_plan_id || null;
+      const epicId = oldTicketRes.rows[0].epic_id || null;
+      
+      const projectRes = await client.query(`SELECT code FROM projects WHERE id = $1`, [projectId]);
+      const rawCode = projectRes.rows.length > 0 ? projectRes.rows[0].code : "TCK";
+      const projectCode = rawCode ? rawCode.replace(`${tenantId}_`, '') : "TCK";
+
+      const seqRes = await client.query(
+        `SELECT COALESCE(
+                MAX((regexp_match(ticket_number, '-(\\d+)$'))[1]::int),
+                0
+              ) + 1 AS next_seq
+         FROM tickets
+         WHERE tenant_id = $1
+           AND project_id = $2
+           AND ticket_number ~ '-\\d+$'`,
+        [tenantId, projectId],
+      );
+      const nextSeq = seqRes.rows[0].next_seq;
+      const newTicketNumber = `${projectCode}-${String(nextSeq).padStart(4, "0")}`;
+      const newTicketId = randomUUID();
+
+      const title = `[Recurring] ${bug.title}`;
+      const finalDescription = `<p><strong>Recurring Bug</strong></p><p>Previously tracked under: ${bug.ticket_number}</p><hr/>${bug.description || ''}`;
+
+      await client.query(
+        `INSERT INTO tickets
+           (id, tenant_id, project_id, title, description, ticket_number, type, status,
+            priority, platform, task_level, story_point, estimate_hours,
+            created_by_id, assignee_id, parent_tickets, current_workflow_step, tags, metadata,
+            sprint_plan_id, release_plan_id, epic_id, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 'Bug', 'not_started',
+                 'Medium (P2)', 'Development', 'Medium', 1, 0,
+                 $7, $8, '{}', 'Scope Document', '{}', '{}'::jsonb,
+                 $9, $10, $11, NOW())`,
+        [
+          newTicketId,
+          tenantId,
+          projectId,
+          title,
+          finalDescription,
+          newTicketNumber,
+          req.user!.id,
+          bug.assignee_id || req.user!.id,
+          sprintPlanId,
+          releasePlanId,
+          epicId,
+        ]
+      );
+
+      // 4. Update bug with new ticket and history
+      await client.query(
+        `UPDATE bugs 
+         SET is_recurring = true, 
+             ticket_id = $1, 
+             ticket_history = $2::jsonb,
+             status = 'converted',
+             updated_at = NOW()
+         WHERE id = $3 AND tenant_id = $4`,
+        [newTicketId, JSON.stringify(newHistory), bugId, tenantId]
+      );
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_LIST,
+        action: Action.UPDATE,
+        actionLabel: "Bug marked as recurring, new ticket created",
+        entityType: EntityType.BUG,
+        entityId: bugId,
+        afterData: { isRecurring: true, ticketId: newTicketId, ticketHistory: newHistory, status: 'converted' },
+        changedFields: ["is_recurring", "ticket_id", "ticket_history", "status"],
+        statusCode: 200,
+      });
+
+      await client.query("COMMIT");
+      
+      const updatedBug = await loadBugWithChildren(bugId, tenantId);
+      res.json({ success: true, data: updatedBug });
+    } catch (err: any) {
+      await client.query("ROLLBACK");
+      console.error("markBugAsRecurring error:", err);
+      bad(res, 500, err.message || "Failed to mark bug as recurring");
+    } finally {
+      client.release();
+    }
+  }
+
   // ==========================================================================
   // Config: Severity options (CRUD, tenant-scoped, auto-seeded)
   // ==========================================================================
@@ -3616,6 +3996,183 @@ export class BugListController {
     } catch (err: any) {
       console.error("deleteTypeOption error:", err);
       bad(res, 500, err.message || "Failed to delete type option");
+    }
+  }
+
+  // ==================== Config: priority ====================
+  // Shared by the bug list and the QA workspace (test cases, runs).
+
+  static async listPriorityOptions(
+    req: AuthRequest,
+    res: Response,
+  ): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    try {
+      await ensurePrioritySeeded(req.tenantId!);
+      const r = await pool.query(
+        `SELECT id, key, label, description, color, sort_order, is_default, is_system, is_active,
+                created_at, updated_at
+           FROM bug_priority_options
+          WHERE tenant_id = $1
+          ORDER BY sort_order ASC, label ASC`,
+        [req.tenantId],
+      );
+      res.json({ success: true, data: r.rows.map(shapeOption) });
+    } catch (err: any) {
+      console.error("listPriorityOptions error:", err);
+      bad(res, 500, err.message || "Failed to load priority options");
+    }
+  }
+
+  static async createPriorityOption(
+    req: AuthRequest,
+    res: Response,
+  ): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    const { label, description, color, sortOrder, isDefault } = req.body;
+    let { key } = req.body;
+    if (!label || typeof label !== "string") {
+      bad(res, 400, "Label is required");
+      return;
+    }
+    if (!key) key = slugify(label);
+    if (!key) {
+      bad(res, 400, "A valid key could not be derived from the label");
+      return;
+    }
+    try {
+      await ensurePrioritySeeded(req.tenantId!);
+      let resolvedSortOrder: number | null =
+        typeof sortOrder === "number" ? sortOrder : null;
+      if (resolvedSortOrder === null) {
+        const maxRes = await pool.query(
+          `SELECT COALESCE(MAX(sort_order), 0)::int AS m
+             FROM bug_priority_options WHERE tenant_id = $1`,
+          [req.tenantId],
+        );
+        resolvedSortOrder = (maxRes.rows[0]?.m ?? 0) + 10;
+      }
+      const r = await pool.query(
+        `INSERT INTO bug_priority_options
+           (tenant_id, key, label, description, color, sort_order, is_default, is_system, is_active)
+         VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7, false), false, true)
+         RETURNING *`,
+        [
+          req.tenantId,
+          key,
+          label.trim(),
+          description || null,
+          color || null,
+          resolvedSortOrder,
+          !!isDefault,
+        ],
+      );
+      if (isDefault) {
+        await pool.query(
+          `UPDATE bug_priority_options SET is_default = false
+             WHERE tenant_id = $1 AND id <> $2`,
+          [req.tenantId, r.rows[0].id],
+        );
+      }
+      res.status(201).json({ success: true, data: shapeOption(r.rows[0]) });
+    } catch (err: any) {
+      if (err.code === "23505") {
+        bad(res, 409, `Priority "${key}" already exists`);
+        return;
+      }
+      console.error("createPriorityOption error:", err);
+      bad(res, 500, err.message || "Failed to create priority option");
+    }
+  }
+
+  static async updatePriorityOption(
+    req: AuthRequest,
+    res: Response,
+  ): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    const { id } = req.params;
+    const { label, description, color, sortOrder, isDefault, isActive } = req.body;
+    try {
+      const r = await pool.query(
+        `UPDATE bug_priority_options SET
+           label       = COALESCE($1, label),
+           description = COALESCE($2, description),
+           color       = COALESCE($3, color),
+           sort_order  = COALESCE($4, sort_order),
+           is_default  = COALESCE($5, is_default),
+           is_active   = COALESCE($6, is_active)
+         WHERE id = $7 AND tenant_id = $8
+         RETURNING *`,
+        [
+          label ?? null,
+          description ?? null,
+          color ?? null,
+          typeof sortOrder === "number" ? sortOrder : null,
+          typeof isDefault === "boolean" ? isDefault : null,
+          typeof isActive === "boolean" ? isActive : null,
+          id,
+          req.tenantId,
+        ],
+      );
+      if (r.rowCount === 0) {
+        bad(res, 404, "Priority option not found");
+        return;
+      }
+      if (isDefault === true) {
+        await pool.query(
+          `UPDATE bug_priority_options SET is_default = false
+             WHERE tenant_id = $1 AND id <> $2`,
+          [req.tenantId, id],
+        );
+      }
+      res.json({ success: true, data: shapeOption(r.rows[0]) });
+    } catch (err: any) {
+      console.error("updatePriorityOption error:", err);
+      bad(res, 500, err.message || "Failed to update priority option");
+    }
+  }
+
+  static async deletePriorityOption(
+    req: AuthRequest,
+    res: Response,
+  ): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    const { id } = req.params;
+    try {
+      // Priorities are shared with QA test cases, so check there too before removing
+      const row = await pool.query(
+        `SELECT key, label, is_system FROM bug_priority_options
+          WHERE id = $1 AND tenant_id = $2`,
+        [id, req.tenantId],
+      );
+      if (row.rowCount === 0) {
+        bad(res, 404, "Priority not found");
+        return;
+      }
+      const { key, is_system } = row.rows[0];
+      if (is_system) {
+        bad(res, 409, "Cannot delete a system priority");
+        return;
+      }
+
+      const inUse = await pool.query(
+        `SELECT 1 FROM qa_test_cases
+          WHERE tenant_id = $1 AND LOWER(priority) = LOWER($2) LIMIT 1`,
+        [req.tenantId, key],
+      ).catch(() => ({ rowCount: 0 } as any));
+      if (inUse.rowCount && inUse.rowCount > 0) {
+        bad(res, 409, "Cannot delete: priority is in use by existing test cases");
+        return;
+      }
+
+      await pool.query(
+        `DELETE FROM bug_priority_options WHERE id = $1 AND tenant_id = $2`,
+        [id, req.tenantId],
+      );
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("deletePriorityOption error:", err);
+      bad(res, 500, err.message || "Failed to delete priority option");
     }
   }
 }

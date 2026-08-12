@@ -1,4 +1,37 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -7,9 +40,12 @@ exports.AuthController = void 0;
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const axios_1 = __importDefault(require("axios"));
 const database_1 = require("@/config/database");
+const crypto_1 = __importDefault(require("crypto"));
+const emailService_1 = require("@/utils/emailService");
 const jwt_1 = require("@/utils/jwt");
 const rbac_service_1 = require("@/modules/rbac/rbac.service");
 const subscriptions_1 = require("@/modules/subscriptions");
+const companyDetailsService = __importStar(require("@/modules/company-details/services/companyDetails.service"));
 const transactionHistory_1 = require("../utils/transactionHistory");
 class AuthController {
     /**
@@ -18,7 +54,7 @@ class AuthController {
     static async extensionLogin(req, res) {
         console.log("extensionLogin hit:", req.body);
         try {
-            const { email, password } = req.body;
+            const { email, password, tenantSlug } = req.body;
             if (!email || !password) {
                 res.status(400).json({
                     success: false,
@@ -26,7 +62,31 @@ class AuthController {
                 });
                 return;
             }
-            // Global search for user across all tenants
+            // When the extension install is bound to a workspace, scope the lookup to
+            // that tenant. This enforces the pre-bound model and prevents a user whose
+            // email exists in multiple tenants from being resolved to the wrong one.
+            let boundTenantId;
+            if (tenantSlug) {
+                const boundTenant = await database_1.prisma.tenant.findFirst({
+                    where: {
+                        OR: [
+                            { subdomain: String(tenantSlug).toLowerCase() },
+                            { id: String(tenantSlug) },
+                        ],
+                        isActive: true,
+                    },
+                    select: { id: true },
+                });
+                if (!boundTenant) {
+                    res.status(404).json({
+                        success: false,
+                        error: "Workspace not found or inactive",
+                    });
+                    return;
+                }
+                boundTenantId = boundTenant.id;
+            }
+            // Search for the user, scoped to the bound tenant when provided.
             const user = await database_1.prisma.user.findFirst({
                 where: {
                     OR: [
@@ -34,6 +94,7 @@ class AuthController {
                         { personalEmail: email.toLowerCase() },
                     ],
                     isActive: true,
+                    ...(boundTenantId ? { tenantId: boundTenantId } : {}),
                 },
                 include: {
                     tenant: true,
@@ -92,6 +153,98 @@ class AuthController {
             res.status(500).json({
                 success: false,
                 error: "An unexpected error occurred during login",
+            });
+        }
+    }
+    /**
+     * Resolve a workspace by slug for the Chrome Extension activation screen.
+     * Public (no auth): only exposes whether the workspace exists + its display
+     * name, so the extension can bind an install to a tenant before login.
+     */
+    static async resolveWorkspace(req, res) {
+        try {
+            const slug = req.query.slug || "";
+            if (!slug) {
+                res.status(400).json({
+                    success: false,
+                    error: "Workspace slug is required",
+                });
+                return;
+            }
+            const tenant = await database_1.prisma.tenant.findFirst({
+                where: {
+                    OR: [{ subdomain: slug.toLowerCase() }, { id: slug }],
+                    isActive: true,
+                },
+                select: { id: true, name: true, subdomain: true },
+            });
+            if (!tenant) {
+                res.status(404).json({
+                    success: false,
+                    error: "Workspace not found or inactive",
+                });
+                return;
+            }
+            res.status(200).json({
+                success: true,
+                tenant: {
+                    name: tenant.name,
+                    slug: tenant.subdomain,
+                },
+            });
+        }
+        catch (error) {
+            console.error("Resolve workspace error:", error);
+            res.status(500).json({
+                success: false,
+                error: "An unexpected error occurred",
+            });
+        }
+    }
+    /**
+     * Redeem a one-time install key for the Chrome Extension activation screen.
+     * Unlike /resolve-tenant (which takes a public slug), the install key is a
+     * high-entropy secret provisioned per tenant — so this endpoint is not an
+     * existence oracle for workspace names. Returns the bound workspace on match.
+     */
+    static async redeemInstallKey(req, res) {
+        try {
+            const key = req.body?.key || "";
+            if (!key || key.trim().length < 8) {
+                res.status(400).json({
+                    success: false,
+                    error: "A valid install key is required",
+                });
+                return;
+            }
+            const tenant = await database_1.prisma.tenant.findFirst({
+                where: {
+                    isActive: true,
+                    settings: { path: ["extensionInstallKey"], equals: key.trim() },
+                },
+                select: { id: true, name: true, subdomain: true },
+            });
+            if (!tenant) {
+                // Generic message — never reveal whether a key "almost" matched.
+                res.status(404).json({
+                    success: false,
+                    error: "Invalid or expired install key",
+                });
+                return;
+            }
+            res.status(200).json({
+                success: true,
+                tenant: {
+                    name: tenant.name,
+                    slug: tenant.subdomain,
+                },
+            });
+        }
+        catch (error) {
+            console.error("Redeem install key error:", error);
+            res.status(500).json({
+                success: false,
+                error: "An unexpected error occurred",
             });
         }
     }
@@ -458,6 +611,7 @@ class AuthController {
                                 name: true,
                                 subdomain: true,
                                 settings: true,
+                                generalSettings: { take: 1 },
                             },
                         },
                     },
@@ -476,6 +630,14 @@ class AuthController {
             await subscriptions_1.subscriptionService.invalidateTenantSubscription(user.tenantId);
             const subscriptionFeatures = await subscriptions_1.featureResolverService.getTenantFeatures(user.tenantId);
             const navigation = await subscriptions_1.navigationService.buildNavigation(permSet, subscriptionFeatures);
+            // Company details live in the raw-SQL company-details module, not Prisma.
+            // A tenant that has not filled the form in yet simply gets null.
+            const companyDetails = await companyDetailsService
+                .getCompany({ tenantId: user.tenantId, userId: user.id })
+                .catch((err) => {
+                console.error("Failed to load company details for profile:", err);
+                return null;
+            });
             res.status(200).json({
                 success: true,
                 data: {
@@ -499,6 +661,8 @@ class AuthController {
                         name: user.tenant.name,
                         subdomain: user.tenant.subdomain,
                         logoUrl: user.tenant.settings?.logoUrl || null,
+                        generalSettings: user.tenant.generalSettings?.[0] || null,
+                        companyDetails,
                     },
                     createdAt: user.createdAt,
                     updatedAt: user.updatedAt,
@@ -1086,6 +1250,194 @@ class AuthController {
                 success: false,
                 error: "Microsoft login failed",
             });
+        }
+    }
+    static async forgotPassword(req, res) {
+        try {
+            const { email, tenantSubdomain } = req.body;
+            if (!email) {
+                res.status(400).json({ success: false, error: "Email is required" });
+                return;
+            }
+            let tenantCondition = {};
+            // Look up tenant based on subdomain if provided
+            if (tenantSubdomain) {
+                const tenant = await database_1.prisma.tenant.findFirst({
+                    where: { subdomain: String(tenantSubdomain).toLowerCase(), isActive: true }
+                });
+                if (tenant) {
+                    tenantCondition = { tenantId: tenant.id };
+                }
+            }
+            // We still use a generic success message to prevent email enumeration
+            const genericResponse = {
+                success: true,
+                message: "If an account with that email exists, a password reset link has been sent.",
+            };
+            const user = await database_1.prisma.user.findFirst({
+                where: {
+                    workEmail: email.toLowerCase(),
+                    isActive: true,
+                    ...tenantCondition
+                },
+                include: { tenant: true }
+            });
+            if (!user) {
+                res.status(200).json(genericResponse);
+                return;
+            }
+            // Invalidate existing unused tokens for this user
+            await database_1.prisma.password_reset_tokens.updateMany({
+                where: { user_id: user.id, used: false },
+                data: { used: true }
+            });
+            // Generate token
+            const rawToken = crypto_1.default.randomBytes(32).toString('hex');
+            const hashedToken = crypto_1.default.createHash('sha256').update(rawToken).digest('hex');
+            const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 mins
+            await database_1.prisma.password_reset_tokens.create({
+                data: {
+                    user_id: user.id,
+                    token: hashedToken,
+                    expires_at: expiresAt,
+                    used: false
+                }
+            });
+            // Send email
+            let frontendUrl = process.env.FRONTEND_URL || "http://localhost:3001";
+            if (user.tenant?.subdomain) {
+                try {
+                    const urlObj = new URL(frontendUrl);
+                    const parts = urlObj.hostname.split('.');
+                    if (parts[0] === 'app' || parts[0] === 'www') {
+                        parts[0] = user.tenant.subdomain;
+                        urlObj.hostname = parts.join('.');
+                    }
+                    else if (parts[0] === 'localhost' || parts[0] === '127') {
+                        urlObj.hostname = `${user.tenant.subdomain}.${urlObj.hostname}`;
+                    }
+                    else {
+                        parts.unshift(user.tenant.subdomain);
+                        urlObj.hostname = parts.join('.');
+                    }
+                    frontendUrl = urlObj.toString().replace(/\/$/, '');
+                }
+                catch (e) {
+                    // Fallback if URL parsing fails
+                }
+            }
+            const resetLink = `${frontendUrl}/reset-password?token=${rawToken}`;
+            const emailService = new emailService_1.EmailService();
+            await emailService.sendPasswordResetEmail({
+                to: user.workEmail,
+                displayName: user.name,
+                username: user.workEmail,
+                resetLink
+            }, user.tenantId);
+            // Audit Log
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.ADMIN,
+                module: transactionHistory_1.Module.AUTH,
+                page: transactionHistory_1.Page.LOGIN,
+                action: transactionHistory_1.Action.UPDATE,
+                actionLabel: `Password reset requested for ${user.workEmail}`,
+                entityType: "user",
+                entityId: user.id,
+                entityLabel: user.workEmail,
+                metadata: { ip: req.ip ?? null }
+            });
+            res.status(200).json(genericResponse);
+        }
+        catch (error) {
+            console.error("Forgot password error:", error);
+            res.status(500).json({ success: false, error: "Internal server error" });
+        }
+    }
+    static async validateResetToken(req, res) {
+        try {
+            const { token } = req.query;
+            if (!token || typeof token !== "string") {
+                res.status(400).json({ success: false, error: "Invalid token format" });
+                return;
+            }
+            const hashedToken = crypto_1.default.createHash('sha256').update(token).digest('hex');
+            const resetToken = await database_1.prisma.password_reset_tokens.findFirst({
+                where: { token: hashedToken, used: false, expires_at: { gt: new Date() } }
+            });
+            if (!resetToken) {
+                res.status(400).json({ success: false, error: "Invalid or expired token" });
+                return;
+            }
+            res.status(200).json({ success: true, message: "Token is valid" });
+        }
+        catch (error) {
+            console.error("Validate token error:", error);
+            res.status(500).json({ success: false, error: "Internal server error" });
+        }
+    }
+    static async resetPassword(req, res) {
+        try {
+            const { token, newPassword } = req.body;
+            if (!token || !newPassword) {
+                res.status(400).json({ success: false, error: "Token and new password are required" });
+                return;
+            }
+            // Strong password validation on backend
+            const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/;
+            if (!passwordRegex.test(newPassword)) {
+                res.status(400).json({ success: false, error: "Password must be at least 8 characters long and contain numbers and special characters." });
+                return;
+            }
+            const hashedToken = crypto_1.default.createHash('sha256').update(token).digest('hex');
+            const resetToken = await database_1.prisma.password_reset_tokens.findFirst({
+                where: { token: hashedToken, used: false, expires_at: { gt: new Date() } }
+            });
+            if (!resetToken || !resetToken.user_id) {
+                res.status(400).json({ success: false, error: "Invalid or expired token" });
+                return;
+            }
+            const user = await database_1.prisma.user.findUnique({
+                where: { id: resetToken.user_id }
+            });
+            if (!user) {
+                res.status(404).json({ success: false, error: "User not found" });
+                return;
+            }
+            // Update password
+            const newPasswordHash = await bcryptjs_1.default.hash(newPassword, 10);
+            await database_1.prisma.$transaction(async (tx) => {
+                await tx.user.update({
+                    where: { id: user.id },
+                    data: { passwordHash: newPasswordHash }
+                });
+                await tx.password_reset_tokens.update({
+                    where: { id: resetToken.id },
+                    data: { used: true }
+                });
+                // Revoke active sessions
+                await tx.refreshToken.deleteMany({
+                    where: { userId: user.id }
+                });
+            });
+            // Audit Log
+            (0, transactionHistory_1.recordTransaction)({
+                req,
+                section: transactionHistory_1.Section.ADMIN,
+                module: transactionHistory_1.Module.AUTH,
+                page: transactionHistory_1.Page.LOGIN,
+                action: transactionHistory_1.Action.UPDATE,
+                actionLabel: `Password successfully reset for ${user.workEmail}`,
+                entityType: "user",
+                entityId: user.id,
+                entityLabel: user.workEmail,
+                metadata: { ip: req.ip ?? null }
+            });
+            res.status(200).json({ success: true, message: "Password has been successfully reset" });
+        }
+        catch (error) {
+            console.error("Reset password error:", error);
+            res.status(500).json({ success: false, error: "Internal server error" });
         }
     }
 }

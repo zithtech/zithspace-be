@@ -122,7 +122,7 @@ async function assertLinkableAdvance(
 async function buildDetail(client: TenantClient, id: string): Promise<ClaimDetail> {
   const claim = await repo.findClaimById(client, id);
   if (!claim) throw ReimbursementV2Error.notFound('Claim');
-  
+
   const attachments = await repo.findAttachments(client, id);
   for (const attachment of attachments) {
     if (attachment.fileUrl) {
@@ -501,18 +501,18 @@ export async function submitClaim(actor: Actor, id: string): Promise<ClaimDetail
       const approverId = await repo.findReportsTo(client, actor.userId);
       await repo.setStatus(client, id, { status: 'pending', submittedAt: true, approverId }, actor.userId);
       await repo.insertApproval(client, id, actor.userId, 'submitted');
-      
+
       try {
         console.log(`[Reimbursement Email] Initiating email sequence for submitted claim: ${claim.claimNo}`);
         const uData = await repo.findUserBasic(client, actor.userId);
         const mId = approverId;
         const mData = mId ? await repo.findUserBasic(client, mId) : null;
         console.log(`[Reimbursement Email] Requester:`, uData?.email, `Manager:`, mData?.email);
-        
+
         if (uData) {
-          const mailConfig = await settingsRepo.getSettings(client);
+          const mailConfig = await settingsRepo.getSettings(client, actor.tenantId);
           console.log(`[Reimbursement Email] Mail Config:`, mailConfig);
-          
+
           let replyToEmail = uData.email;
           if (mailConfig.replyToMode === 'custom' && mailConfig.customReplyToEmail) {
             replyToEmail = mailConfig.customReplyToEmail;
@@ -553,8 +553,8 @@ export async function submitClaim(actor: Actor, id: string): Promise<ClaimDetail
               currency: claim.currency,
               itemCount: items.length,
             }, actor.tenantId)
-            .then(res => console.log(`[Reimbursement Email] sendClaimSubmissionEmail success:`, res))
-            .catch(err => console.error(`[Reimbursement Email] Failed to send submission email:`, err));
+              .then(res => console.log(`[Reimbursement Email] sendClaimSubmissionEmail success:`, res))
+              .catch(err => console.error(`[Reimbursement Email] Failed to send submission email:`, err));
           } else {
             console.log(`[Reimbursement Email] No TO recipients found, skipping email.`);
           }
@@ -577,7 +577,7 @@ export async function cancelClaim(actor: Actor, id: string, remarks?: string | n
     }
     await repo.setStatus(client, id, { status: 'cancelled', decidedAt: true, decisionNote: remarks ?? null }, actor.userId);
     await repo.insertApproval(client, id, actor.userId, 'cancelled', remarks ?? null);
-    
+
     try {
       console.log(`[Reimbursement Email] Initiating email sequence for cancelled claim: ${claim!.claimNo}`);
       const uData = await repo.findUserBasic(client, actor.userId);
@@ -595,13 +595,13 @@ export async function cancelClaim(actor: Actor, id: string, remarks?: string | n
           status: 'cancelled',
           remarks: remarks
         }, actor.tenantId)
-        .then(res => console.log(`[Reimbursement Email] sendClaimRejectionEmail success:`, res))
-        .catch(err => console.error(`[Reimbursement Email] Failed to send cancel email:`, err));
+          .then(res => console.log(`[Reimbursement Email] sendClaimRejectionEmail success:`, res))
+          .catch(err => console.error(`[Reimbursement Email] Failed to send cancel email:`, err));
       }
     } catch (mailErr) {
       console.error('[Reimbursement Email] Fatal error in cancel mail logic:', mailErr);
     }
-    
+
     return buildDetail(client, id);
   });
 }

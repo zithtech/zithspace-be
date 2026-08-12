@@ -1,4 +1,5 @@
-import { Response } from 'express';
+import { Response } from "express";
+import { recordTransaction, Section, Module, Page, Action, EntityType } from "@/utils/transactionHistory";
 import { 
   MailProvider,
   TestStatus,
@@ -268,6 +269,18 @@ export class MailConfigurationController {
       // Don't send the encrypted password back to the client
       mailConfig.smtpPassword = '';
 
+      recordTransaction({
+        req,
+        section: Section.ADMIN,
+        module: Module.GENERAL_SETTINGS,
+        page: Page.GENERAL_SETTINGS_VIEW,
+        action: Action.UPDATE,
+        actionLabel: `Mail configuration updated`,
+        entityType: "mail_configuration",
+        entityId: mailConfig.id,
+        entityLabel: "Mail Configuration",
+      });
+
       const response: ApiResponse = {
         success: true,
         message: 'Mail configuration updated successfully',
@@ -327,6 +340,18 @@ export class MailConfigurationController {
       if (!success) {
         throw new NotFoundError('Mail configuration not found');
       }
+
+      recordTransaction({
+        req,
+        section: Section.ADMIN,
+        module: Module.GENERAL_SETTINGS,
+        page: Page.GENERAL_SETTINGS_VIEW,
+        action: Action.DELETE,
+        actionLabel: `Mail configuration deleted`,
+        entityType: "mail_configuration",
+        entityId: id,
+        entityLabel: "Mail Configuration",
+      });
 
       const response: ApiResponse = {
         success: true,

@@ -355,12 +355,26 @@ This is an automated mail, please do not reply.`;
             // If yes, use the ZohoMailProvider (OAuth token-based) — no passwords needed.
             if (tenantId) {
                 try {
-                    const zohoAccount = await database_1.prisma.mail_accounts.findFirst({
-                        where: {
-                            tenant_id: tenantId,
-                            provider: 'ZOHO',
-                            is_active: true,
+                    let specificEmail = null;
+                    let extractedName = null;
+                    if (options.from) {
+                        const emailMatch = options.from.match(/<([^>]+)>/);
+                        specificEmail = emailMatch ? emailMatch[1].trim() : options.from.trim();
+                        const nameMatch = options.from.match(/^"([^"]+)"/);
+                        if (nameMatch) {
+                            extractedName = nameMatch[1];
                         }
+                    }
+                    const whereClause = {
+                        tenant_id: tenantId,
+                        provider: 'ZOHO',
+                        is_active: true,
+                    };
+                    if (specificEmail) {
+                        whereClause.email = specificEmail;
+                    }
+                    const zohoAccount = await database_1.prisma.mail_accounts.findFirst({
+                        where: whereClause
                     });
                     if (zohoAccount) {
                         console.log(`✅ Zoho Mail integration found: ${zohoAccount.email}. Sending via Zoho OAuth.`);
@@ -368,7 +382,7 @@ This is an automated mail, please do not reply.`;
                         const { ZohoMailProvider } = await Promise.resolve().then(() => __importStar(require('../services/mail/providers/ZohoMailProvider')));
                         const accessToken = await UnifiedAuthService.getValidAccessToken(zohoAccount.user_id, 'ZOHO');
                         const provider = new ZohoMailProvider();
-                        const fromName = process.env.SMTP_FROM_NAME || 'ZithSpace';
+                        const fromName = extractedName || process.env.SMTP_FROM_NAME || 'ZithSpace';
                         const fromAddress = zohoAccount.email;
                         await provider.sendMessage(accessToken, {
                             from: `"${fromName}" <${fromAddress}>`,
@@ -403,12 +417,11 @@ This is an automated mail, please do not reply.`;
                 console.log("---\n");
                 return true;
             }
-            // From address is always the system/office email (owner@zithtech.com)
-            // Reply-To is the employee's email so managers can reply directly to them
+            // If options.from is provided, use it (e.g. employee email), otherwise fallback to system email
             const fromAddress = process.env.SYSTEM_EMAIL || process.env.SMTP_FROM_EMAIL || "noreply@zithtech.com";
             const fromName = process.env.SMTP_FROM_NAME || "ZithSpace";
             const mailOptions = {
-                from: `"${fromName}" <${fromAddress}>`,
+                from: options.from || `"${fromName}" <${fromAddress}>`,
                 replyTo: options.replyTo,
                 to: options.to,
                 cc: options.cc,
@@ -544,7 +557,7 @@ ${data.reason}
 
 Please log in to review and approve/reject this request.
     `;
-        return this.sendEmail({ to: data.to, cc: data.cc, replyTo: data.replyTo, subject, html, text }, tenantId);
+        return this.sendEmail({ to: data.to, from: `"${data.employeeName}" <${data.employeeEmail}>`, cc: data.cc, replyTo: data.replyTo, subject, html, text }, tenantId);
     }
     async sendLeaveApprovalEmail(data, tenantId) {
         const subject = `✅ Your Leave Request has been Approved`;
@@ -746,7 +759,7 @@ If you have any questions or concerns, please contact your manager or HR departm
       </html>
     `;
         const text = `New Expense Claim from ${data.employeeName}\n\nClaim No: ${data.claimNo}\nEmployee: ${data.employeeName} (${data.employeeEmail})\nItems: ${data.itemCount}\nTotal: ${data.currency} ${data.totalAmount.toFixed(2)}\n\nPlease log in to approve or reject this claim.`;
-        return this.sendEmail({ to: data.to, cc: data.cc, replyTo: data.replyTo, subject, html, text }, tenantId);
+        return this.sendEmail({ to: data.to, from: `"${data.employeeName}" <${data.employeeEmail}>`, cc: data.cc, replyTo: data.replyTo, subject, html, text }, tenantId);
     }
     async sendClaimApprovalEmail(data, tenantId) {
         const subject = `✅ Your Expense Claim ${data.claimNo} has been Approved`;
@@ -869,7 +882,7 @@ If you have any questions or concerns, please contact your manager or HR departm
       </html>
     `;
         const text = `New Advance Request from ${data.employeeName}\n\nAdvance No: ${data.advanceNo}\nEmployee: ${data.employeeName} (${data.employeeEmail})\nAmount: ${data.currency} ${data.amount.toFixed(2)}\n${data.purpose ? `Purpose: ${data.purpose}\n` : ''}${data.neededBy ? `Needed By: ${data.neededBy}\n` : ''}\nPlease log in to approve or reject.`;
-        return this.sendEmail({ to: data.to, cc: data.cc, replyTo: data.replyTo, subject, html, text }, tenantId);
+        return this.sendEmail({ to: data.to, from: `"${data.employeeName}" <${data.employeeEmail}>`, cc: data.cc, replyTo: data.replyTo, subject, html, text }, tenantId);
     }
     async sendAdvanceApprovalEmail(data, tenantId) {
         const subject = `✅ Your Advance Request ${data.advanceNo} has been Approved`;
@@ -1507,6 +1520,97 @@ Password: ${data.temporaryPassword}
 
 Access your workspace here: ${portalUrlWithParams}
 
+This is an automated mail, please do not reply.`;
+        return this.sendCentralizedMail({ to: data.to, tenantId, subject, html, text });
+    }
+    async sendPasswordResetEmail(data, tenantId) {
+        const greetingName = data.displayName || data.username;
+        const branding = await this.resolveTenantMailBranding(tenantId);
+        const subject = `Reset your ${branding.companyName} password`;
+        const logoHtml = branding.companyLogo
+            ? `<img class="logo" src="${branding.companyLogo}" alt="${branding.companyName}" style="max-height: 50px; border-radius: 8px; margin-bottom: 8px;" />`
+            : "";
+        const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f8fafc; color: #1e293b; margin: 0; padding: 0; }
+          .wrapper { width: 100%; background-color: #f8fafc; padding: 40px 0; }
+          .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
+          .header { padding: 32px 40px; text-align: center; border-bottom: 1px solid #f1f5f9; background-color: #ffffff; }
+          .company-name { font-size: 20px; font-weight: 700; color: #0f172a; margin: 0; }
+          .content { padding: 40px 48px; }
+          .title { font-size: 26px; font-weight: 700; color: #0f172a; margin-top: 0; margin-bottom: 8px; text-align: center; }
+          .accent-bar { width: 32px; height: 3px; background-color: #0b57d0; margin: 8px auto 24px; border-radius: 2px; }
+          .welcome-greeting { text-align: center; font-size: 15px; color: #64748b; margin: 0 0 12px 0; }
+          .welcome-text { text-align: center; font-size: 14.5px; line-height: 1.6; color: #64748b; margin: 0 auto 32px; max-width: 480px; }
+          
+          .reset-button { display: inline-block; background-color: #0b57d0; color: #ffffff; text-decoration: none; font-size: 14.5px; font-weight: 600; padding: 12px 28px; border-radius: 8px; box-shadow: 0 2px 4px rgba(11, 87, 208, 0.1); margin: 0 auto; text-align: center; }
+          .reset-button:hover { background-color: #0842a0; }
+          
+          .footer { background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 24px 40px; text-align: center; }
+          .footer-text { font-size: 13px; color: #64748b; margin: 0 0 8px 0; line-height: 1.5; }
+          .warning-text { font-size: 12.5px; color: #94a3b8; margin: 0; font-style: italic; }
+        </style>
+      </head>
+      <body>
+        <div class="wrapper">
+          <div class="container">
+            <div class="header">
+              ${logoHtml}
+              ${!branding.companyLogo ? `<h1 class="company-name">${branding.companyName}</h1>` : ""}
+            </div>
+            
+            <div class="content">
+              <h2 class="title">Reset Your Password</h2>
+              <div class="accent-bar"></div>
+              
+              <p class="welcome-greeting">Hello ${greetingName},</p>
+              
+              <p class="welcome-text">
+                We received a request to reset the password for your ${branding.companyName} account associated with <strong>${data.username}</strong>. 
+                If you didn't make this request, you can safely ignore this email.
+              </p>
+              
+              <div style="text-align: center; margin-top: 32px; margin-bottom: 32px;">
+                <a href="${data.resetLink}" class="reset-button">Reset Password</a>
+              </div>
+
+              <p class="welcome-text" style="font-size: 13px;">
+                Or copy and paste this link into your browser:<br>
+                <a href="${data.resetLink}" style="color: #0b57d0; word-break: break-all;">${data.resetLink}</a>
+              </p>
+              
+              <p class="welcome-text" style="font-size: 13px; font-weight: 600; margin-bottom: 0;">
+                This link will expire in 30 minutes.
+              </p>
+            </div>
+            
+            <div class="footer">
+              <p class="footer-text">Powered by <strong>ZithSpace</strong></p>
+              <p class="warning-text">This is an automated message. Please do not reply directly to this email.</p>
+            </div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+        const text = `Reset your ${branding.companyName} password
+
+Hello ${greetingName},
+
+We received a request to reset the password for your ${branding.companyName} account associated with ${data.username}.
+
+Please click the following link to reset your password (or copy and paste it into your browser):
+${data.resetLink}
+
+This link will expire in 30 minutes.
+
+If you didn't request a password reset, you can safely ignore this email.
+
+Powered by ZithSpace
 This is an automated mail, please do not reply.`;
         return this.sendCentralizedMail({ to: data.to, tenantId, subject, html, text });
     }

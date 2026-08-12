@@ -7,6 +7,7 @@ import { LeadActivityLogModel } from "../models/LeadActivityLog.model";
 import { entitlementService, EntitlementError } from "../services/EntitlementService";
 import { AIPricingEngine } from "../ai/pricing/AIPricingEngine";
 import { AIFeature } from "../ai/types/AIFeature";
+import { recordTransaction, Section, Module, Page, Action, EntityType } from "../utils/transactionHistory";
 
 export class BidIQController {
   static async analyzeLead(req: AuthRequest, res: Response) {
@@ -79,6 +80,18 @@ export class BidIQController {
           performedBy: req.user.id,
           metadata: { score: intelligence.strategicScore }
         }).catch(() => {});
+        
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.BID_IQ,
+          page: Page.BID_IQ_DASHBOARD,
+          action: Action.CREATE,
+          actionLabel: `Generated BidIQ analysis for lead`,
+          entityType: EntityType.BID_IQ,
+          entityId: id,
+          entityLabel: lead.title || "Unknown Lead"
+        });
       }
 
       return res.status(200).json(bidiqResult);

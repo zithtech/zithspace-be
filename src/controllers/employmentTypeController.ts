@@ -72,7 +72,7 @@ export class EmploymentTypeController {
       // ─── Activity log ───────────────────────────────────────────────
       recordTransaction({
         req,
-        section: Section.WORK,
+        section: Section.ADMIN,
         module: Module.ORG_STRUCTURE,
         page: Page.ORG_STRUCTURE_EMPLOYMENT_TYPES,
         action: Action.CREATE,
@@ -243,7 +243,7 @@ export class EmploymentTypeController {
 
         recordTransaction({
           req,
-          section: Section.WORK,
+          section: Section.ADMIN,
           module: Module.ORG_STRUCTURE,
           page: Page.ORG_STRUCTURE_EMPLOYMENT_TYPES,
           action: Action.UPDATE,
@@ -290,7 +290,7 @@ export class EmploymentTypeController {
       if (employmentTypeToDelete) {
         recordTransaction({
           req,
-          section: Section.WORK,
+          section: Section.ADMIN,
           module: Module.ORG_STRUCTURE,
           page: Page.ORG_STRUCTURE_EMPLOYMENT_TYPES,
           action: Action.DELETE,

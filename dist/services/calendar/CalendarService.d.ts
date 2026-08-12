@@ -36,6 +36,8 @@ export declare class CalendarService {
         microsoftSubscriptionExpiry: Date | null;
         microsoftClientState: string | null;
         zohoLastSync: Date | null;
+        created_by: string | null;
+        updated_by: string | null;
         isSyncing: boolean;
         lastSyncStatus: string | null;
         lastSyncAt: Date | null;
@@ -78,6 +80,8 @@ export declare class CalendarService {
         provider: import(".prisma/client").$Enums.CalendarProvider;
         title: string;
         calendar: string | null;
+        provider: import(".prisma/client").$Enums.CalendarProvider;
+        calendarId: string | null;
         isDeleted: boolean;
         startTime: Date;
         endTime: Date;

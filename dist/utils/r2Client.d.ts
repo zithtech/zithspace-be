@@ -42,6 +42,15 @@ export declare function uploadRequisitionAttachmentToR2(base64File: string, file
  */
 export declare function uploadEmployeeDocumentToR2(base64File: string, fileName: string, tenantId: string, employeeId: string, documentType: string): Promise<string>;
 /**
+ * Upload Exit Document (like resignation letter) to Cloudflare R2
+ * @param base64File - Base64 encoded file string
+ * @param fileName - Original file name
+ * @param tenantId - Tenant ID
+ * @param employeeId - Employee ID
+ * @returns Public URL of uploaded document
+ */
+export declare function uploadExitDocumentToR2(base64File: string, fileName: string, tenantId: string, employeeId: string): Promise<string>;
+/**
  * Upload a generated performance report (PDF) to Cloudflare R2.
  * Accepts a base64 data URL; returns the public URL + the object key.
  */
@@ -76,6 +85,12 @@ export declare function uploadEmployeeAssetToR2({ base64, fileName, tenantId, em
     employeeId: string;
     folder?: string;
 }): Promise<string>;
+/**
+ * Upload a resume file (from disk path) to Cloudflare R2.
+ * Returns a public URL suitable for Google Docs Viewer.
+ * Path: {tenantId}/resumes/{uniqueId}_{fileName}
+ */
+export declare function uploadResumeToR2(filePath: string, fileName: string, tenantId: string, mimeType: string): Promise<string>;
 /**
  * Upload candidate document to Cloudflare R2
  * @param base64File - Base64 encoded file string
@@ -139,3 +154,23 @@ export declare function generatePresignedUrl(fileUrl: string, expiresIn?: number
  */
 export declare function getFileBufferFromR2(fileUrl: string): Promise<Buffer>;
 export declare function uploadEscalationDocumentToR2(base64File: string, fileName: string, tenantId: string, escalationId: string): Promise<string>;
+export declare function uploadDocumentToR2(buffer: Buffer, fileName: string, tenantId: string, documentId: string, contentType: string): Promise<string>;
+/**
+ * Upload an attachment captured while executing a test run (screenshot, log,
+ * recording) to Cloudflare R2, organised by tenant, run and result.
+ */
+export declare function uploadRunAttachmentToR2(base64File: string, fileName: string, tenantId: string, runId: string, resultId: string): Promise<{
+    fileUrl: string;
+    fileSize: number;
+    fileType: string;
+}>;
+/**
+ * Upload supporting evidence attached to a QA Submission (test evidence,
+ * screenshots, reports, documents) to Cloudflare R2, organised by tenant and
+ * submission.
+ */
+export declare function uploadSubmissionAttachmentToR2(base64File: string, fileName: string, tenantId: string, submissionId: string): Promise<{
+    fileUrl: string;
+    fileSize: number;
+    fileType: string;
+}>;

@@ -268,6 +268,9 @@ export const ADMIN_DEFAULT_PERMISSIONS: string[] = [
   'project.create', 'project.read', 'project.update', 'project.delete', 'project.trash.read', 'project.trash.restore', 'project.trash.delete', 'project.manage',
   'ticket.create', 'ticket.read', 'ticket.update', 'ticket.delete', 'ticket.assign', 'ticket.bucket.read', 'ticket.bucket.create', 'ticket.bucket.update', 'ticket.bucket.delete', 'ticket.setting.read', 'ticket.setting.update', 'ticket.trash.read', 'ticket.trash.restore', 'ticket.trash.delete', 'ticket.archive.read', 'ticket.archive.restore', 'ticket.manage',
   'bug.create', 'bug.read', 'bug.update', 'bug.delete', 'bug.trash.read', 'bug.trash.restore', 'bug.trash.delete', 'bug.archive.read', 'bug.archive.restore', 'bug.manage',
+  'qa.scope.create', 'qa.scope.read', 'qa.scope.update', 'qa.scope.delete', 'qa.case.create', 'qa.case.read', 'qa.case.update', 'qa.case.delete', 'qa.suite.create', 'qa.suite.read', 'qa.suite.update', 'qa.suite.delete', 'qa.run.create', 'qa.run.read', 'qa.run.update', 'qa.run.delete',
+  'qa.submission.create', 'qa.submission.read', 'qa.submission.update', 'qa.submission.delete', 'qa.submission.submit', 'qa.submission.signoff',
+  'qa.approval.read', 'qa.approval.approve', 'qa.approval.send_back', 'qa.analytics.read', 'qa.manage',
   'attendance.create', 'attendance.read', 'attendance.update', 'attendance.delete', 'attendance.dashboard.read', 'attendance.clock.in_out',
   'leave.dashboard.read', 'leave.create', 'leave.read', 'leave.update', 'leave.delete', 'leave.approve', 'leave.manage',
   'leave.type.read', 'leave.type.create', 'leave.type.update', 'leave.type.delete',
@@ -316,6 +319,7 @@ export const ADMIN_DEFAULT_PERMISSIONS: string[] = [
   'vendor.create', 'vendor.read', 'vendor.update', 'vendor.delete', 'vendor.manage',
   'escalation.create', 'escalation.read', 'escalation.update', 'escalation.delete', 'escalation.manage',
   'pipeline.create', 'pipeline.read', 'pipeline.update', 'pipeline.delete', 'pipeline.manage', 'pipeline.board.read', 'pipeline.board.create', 'pipeline.board.update', 'pipeline.board.delete', 'pipeline.deals.read', 'pipeline.deals.create', 'pipeline.deals.update', 'pipeline.deals.delete', 'pipeline.forecast.read', 'pipeline.setting.read', 'pipeline.setting.update',
+  'recruitment.create', 'recruitment.read', 'recruitment.update', 'recruitment.delete', 'recruitment.manage', 'recruitment.setting.read', 'recruitment.setting.create', 'recruitment.setting.update', 'recruitment.setting.delete',
   'exit.create', 'exit.read', 'exit.update', 'exit.manage', 'exit.config.read', 'exit.config.update',
   'opening.create', 'opening.read', 'opening.update', 'opening.delete', 'opening.manage',
   'profile.create', 'profile.read', 'profile.update', 'profile.delete', 'profile.manage',
@@ -329,6 +333,10 @@ export const ADMIN_DEFAULT_PERMISSIONS: string[] = [
   'activity_log.read', 'activity_log.read_all',
   // My Hub — granted to every role by default
   'my_hub.overview.read', 'my_hub.apply_leave.read', 'my_hub.attendance.read', 'my_hub.escalation.read', 'my_hub.performance.read', 'my_hub.payslips.read', 'my_hub.profile.read', 'my_hub.claims.read',
+  // Hotspot
+  'hotspot.opening.read', 'hotspot.opening.create',
+  'hotspot.circulation.read', 'hotspot.circulation.create', 'hotspot.circulation.update', 'hotspot.circulation.delete', 'hotspot.circulation.pin',
+  'hotspot.blog.read', 'hotspot.blog.create', 'hotspot.blog.update', 'hotspot.blog.delete',
 ];
 
 export const USER_DEFAULT_PERMISSIONS: string[] = [
@@ -336,6 +344,11 @@ export const USER_DEFAULT_PERMISSIONS: string[] = [
   'user.read',
   'project.read',
   'ticket.create', 'ticket.read', 'ticket.update',
+  'bug.create', 'bug.read', 'bug.update',
+  'qa.scope.read', 'qa.case.create', 'qa.case.read', 'qa.case.update', 'qa.suite.create', 'qa.suite.read', 'qa.suite.update', 'qa.run.create', 'qa.run.read', 'qa.run.update',
+  // QA Engineer baseline — report testing results, but sign-off and PM approval
+  // are granted deliberately rather than by default (§32).
+  'qa.submission.create', 'qa.submission.read', 'qa.submission.update', 'qa.submission.submit', 'qa.approval.read',
   'attendance.read', 'attendance.update', 'attendance.dashboard.read', 'attendance.clock.in_out',
   'leave.dashboard.read', 'leave.create', 'leave.read', 'leave.update', 'leave.type.read',
   'invoice.read',
@@ -355,6 +368,7 @@ export const USER_DEFAULT_PERMISSIONS: string[] = [
   'vendor.read',
   'escalation.read',
   'pipeline.read', 'pipeline.board.read', 'pipeline.deals.read',
+  'recruitment.read',
   'exit.read',
   'opening.read',
   'profile.read', 'profile.update',
@@ -368,4 +382,8 @@ export const USER_DEFAULT_PERMISSIONS: string[] = [
   'activity_log.read',
   // My Hub — granted to every role by default
   'my_hub.overview.read', 'my_hub.apply_leave.read', 'my_hub.attendance.read', 'my_hub.escalation.read', 'my_hub.performance.read', 'my_hub.payslips.read', 'my_hub.profile.read', 'my_hub.claims.read',
+  // Hotspot
+  'hotspot.opening.read', 'hotspot.opening.create',
+  'hotspot.circulation.read', 'hotspot.circulation.create', 'hotspot.circulation.update', 'hotspot.circulation.delete', 'hotspot.circulation.pin',
+  'hotspot.blog.read', 'hotspot.blog.create', 'hotspot.blog.update', 'hotspot.blog.delete',
 ];

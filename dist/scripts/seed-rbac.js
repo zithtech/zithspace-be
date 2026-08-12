@@ -267,6 +267,15 @@ const PERMISSION_DESCRIPTIONS = {
     'pipeline.forecast.read': 'Access sales forecast analytics',
     'pipeline.setting.read': 'View pipeline and deal settings',
     'pipeline.setting.update': 'Update pipeline and deal settings',
+    'recruitment.create': 'Create new candidates and applications',
+    'recruitment.read': 'View candidate pipeline, candidates, and interviews',
+    'recruitment.update': 'Update candidate status, interviews, and offers',
+    'recruitment.delete': 'Delete candidates or applications',
+    'recruitment.manage': 'Full candidate pipeline management',
+    'recruitment.setting.read': 'View candidate pipeline configuration',
+    'recruitment.setting.create': 'Create candidate pipeline configuration',
+    'recruitment.setting.update': 'Update candidate pipeline configuration',
+    'recruitment.setting.delete': 'Delete candidate pipeline configuration',
     'exit.create': 'Initiate employee exit process',
     'exit.read': 'View employee exit requests and status',
     'exit.update': 'Update exit process details',
@@ -282,7 +291,36 @@ const PERMISSION_DESCRIPTIONS = {
     'bug.trash.delete': 'Permanently delete bugs',
     'bug.archive.read': 'View archived bugs',
     'bug.archive.restore': 'Restore bugs from archive',
+    'bug.archive.delete': 'Delete archived bugs',
     'bug.manage': 'Manage bug list folders and sheets',
+    'qa.scope.create': 'Create test scopes and business requirements',
+    'qa.scope.read': 'View test scopes and details',
+    'qa.scope.update': 'Edit test scopes and configurations',
+    'qa.scope.delete': 'Delete test scopes',
+    'qa.scope.approve': 'Approve or reject test scopes',
+    'qa.case.create': 'Create test cases and scenarios',
+    'qa.case.read': 'View test cases and modules',
+    'qa.case.update': 'Edit test cases and steps',
+    'qa.case.delete': 'Delete test cases',
+    'qa.suite.create': 'Create test suites',
+    'qa.suite.read': 'View test suites and test case links',
+    'qa.suite.update': 'Edit test suites and configurations',
+    'qa.suite.delete': 'Delete test suites',
+    'qa.run.create': 'Start and create test runs',
+    'qa.run.read': 'View test runs and test results',
+    'qa.run.update': 'Record test execution results and update runs',
+    'qa.run.delete': 'Delete test runs',
+    'qa.submission.create': 'Create QA submissions',
+    'qa.submission.read': 'View QA submissions and testing results',
+    'qa.submission.update': 'Edit QA submissions and their linked test runs',
+    'qa.submission.delete': 'Delete QA submissions',
+    'qa.submission.submit': 'Submit testing results for review',
+    'qa.submission.signoff': 'Perform QA Sign-off and reopen signed-off submissions',
+    'qa.approval.read': 'View submissions awaiting PM approval',
+    'qa.approval.approve': 'Approve a QA signed-off submission',
+    'qa.approval.send_back': 'Send a QA submission back with a reason',
+    'qa.analytics.read': 'View QA reporting and analytics across all scopes',
+    'qa.manage': 'Full QA Space management and configuration',
     'squad.create': 'Create new team squads',
     'squad.read': 'View squads and their members',
     'squad.update': 'Edit squad details',
@@ -346,6 +384,17 @@ const PERMISSION_DESCRIPTIONS = {
     'my_hub.payslips.read': 'View own payslips from My Hub',
     'my_hub.profile.read': 'View own profile from My Hub',
     'my_hub.claims.read': 'View own claims from My Hub',
+    'hotspot.opening.read': 'View internal job openings on Hotspot',
+    'hotspot.opening.create': 'Apply to internal job openings',
+    'hotspot.circulation.read': 'View company-wide updates and notices',
+    'hotspot.circulation.create': 'Post company-wide updates',
+    'hotspot.circulation.update': 'Edit company-wide updates',
+    'hotspot.circulation.delete': 'Delete company-wide updates',
+    'hotspot.circulation.pin': 'Pin company-wide updates to the top',
+    'hotspot.blog.read': 'View internal blogs and articles',
+    'hotspot.blog.create': 'Post internal blogs and articles',
+    'hotspot.blog.update': 'Edit internal blogs and articles',
+    'hotspot.blog.delete': 'Delete internal blogs and articles',
 };
 // ─── Role permission maps ─────────────────────────────────────────────────────
 const ROLE_PERMISSIONS = {
@@ -372,9 +421,9 @@ async function main() {
     let skippedPerms = 0;
     for (const permName of permissions_1.ALL_PERMISSIONS) {
         let [resource, ...actionParts] = permName.split('.');
-        // Treat 'bug' as a sub-resource of 'ticket' for grouping
+        // Treat 'bug' as a sub-resource of 'qa' for grouping
         if (resource === 'bug') {
-            resource = 'ticket';
+            resource = 'qa';
         }
         const action = actionParts.join('.');
         const description = PERMISSION_DESCRIPTIONS[permName];

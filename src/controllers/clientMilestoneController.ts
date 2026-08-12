@@ -1,3 +1,4 @@
+import { recordTransaction, Section, Module, Page, Action, EntityType } from "@/utils/transactionHistory";
 import { Response } from "express";
 import pool from "@/config/dbpool";
 import { AuthRequest } from "@/types";
@@ -304,14 +305,27 @@ export class ClientMilestoneController {
     const r = await pool.query(
       `UPDATE client_milestones
           SET ${sets.join(", ")}, updated_at = NOW()
-        WHERE id = $${params.length - 1} AND tenant_id = $${params.length}`,
+        WHERE id = $${params.length - 1} AND tenant_id = $${params.length} RETURNING client_id`,
       params,
     );
     if (r.rowCount === 0) {
       res.status(404).json({ success: false, error: "Milestone not found" });
       return;
     }
-    res.json({ success: true });
+    
+    recordTransaction({
+      req,
+      parentEntityType: EntityType.CLIENT,
+      parentEntityId: (r.rows[0] as any).client_id,
+      section: Section.ADMIN,
+      module: Module.CLIENTS_V2,
+      page: Page.CLIENT_DETAIL,
+      action: Action.UPDATE,
+      actionLabel: `Updated milestone`,
+      entityType: "client_portal_data",
+      statusCode: 200,
+    });
+res.json({ success: true });
   }
 
   /** DELETE /api/milestones/:id */
@@ -319,13 +333,27 @@ export class ClientMilestoneController {
     const tenantId = req.tenantId!;
     const { id } = req.params;
     const r = await pool.query(
-      `DELETE FROM client_milestones WHERE id = $1 AND tenant_id = $2`,
+      `DELETE FROM client_milestones WHERE id = $1 AND tenant_id = $2 RETURNING client_id`,
       [id, tenantId],
     );
     if (r.rowCount === 0) {
       res.status(404).json({ success: false, error: "Milestone not found" });
       return;
     }
+
+    recordTransaction({
+      req,
+      parentEntityType: EntityType.CLIENT,
+      parentEntityId: (r.rows[0] as any).client_id,
+      section: Section.ADMIN,
+      module: Module.CLIENTS_V2,
+      page: Page.CLIENT_DETAIL,
+      action: Action.DELETE,
+      actionLabel: `Deleted milestone`,
+      entityType: "client_portal_data",
+      statusCode: 200,
+    });
+
     res.json({ success: true });
   }
 

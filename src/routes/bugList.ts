@@ -18,7 +18,7 @@ router.get("/folders/archived", requirePermission(Permissions.BUG_READ), BugList
 router.get("/folders/trashed", requirePermission(Permissions.BUG_READ), BugListController.listTrashedFolders);
 router.post("/folders", requirePermission(Permissions.BUG_CREATE), BugListController.createFolder);
 router.put("/folders/:id", requirePermission(Permissions.BUG_UPDATE), BugListController.updateFolder);
-router.patch("/folders/:id/archive", requirePermission(Permissions.BUG_UPDATE), BugListController.archiveFolder);
+router.patch("/folders/:id/archive", requirePermission(Permissions.BUG_DELETE), BugListController.archiveFolder);
 router.post("/folders/:id/restore", requirePermission(Permissions.BUG_UPDATE), BugListController.restoreFolder);
 router.delete("/folders/:id", requirePermission(Permissions.BUG_DELETE), BugListController.deleteFolder);
 router.delete("/folders/:id/permanent", requirePermission(Permissions.BUG_DELETE), BugListController.permanentDeleteFolder);
@@ -29,6 +29,7 @@ router.post("/folders/bulk-permanent-delete", requirePermission(Permissions.BUG_
 router.get("/folders/:folderId/sheets", requirePermission(Permissions.BUG_READ), BugListController.listSheets);
 router.get("/sheets/archived", requirePermission(Permissions.BUG_READ), BugListController.listArchivedSheets);
 router.get("/sheets/project", requirePermission(Permissions.BUG_READ), BugListController.listProjectSheets);
+router.get("/sheets/all", requirePermission(Permissions.BUG_READ), BugListController.listAllSheets);
 router.get("/sheets/trashed", requirePermission(Permissions.BUG_READ), BugListController.listTrashedSheets);
 router.post("/folders/:folderId/sheets", requirePermission(Permissions.BUG_CREATE), BugListController.createSheet);
 router.put("/sheets/:id", requirePermission(Permissions.BUG_UPDATE), BugListController.updateSheet);
@@ -60,6 +61,7 @@ router.delete("/bugs/:id/permanent", requirePermission(Permissions.BUG_DELETE), 
 router.post("/bugs/:id/restore", requirePermission(Permissions.BUG_UPDATE), BugListController.restoreBug);
 router.post("/bugs/:id/verify", requirePermission(Permissions.BUG_MANAGE), BugListController.verifyBug);
 router.post("/bugs/:id/reopen", requirePermission(Permissions.BUG_MANAGE), BugListController.reopenBug);
+router.put("/bugs/:id/recurring", requirePermission(Permissions.BUG_UPDATE), BugListController.markBugAsRecurring);
 
 // ─── AI ────────────────────────────────────────────────────────────────────
 router.post("/ai/review", requirePermission(Permissions.BUG_READ), requireAiAccess, BugListController.aiReview);
@@ -73,6 +75,12 @@ router.put("/config/severities/:id", requirePermission(Permissions.BUG_MANAGE), 
 router.delete("/config/severities/:id", requirePermission(Permissions.BUG_MANAGE), BugListController.deleteSeverityOption);
 
 // ─── Config: Type options ──────────────────────────────────────────────────
+// Priority options — shared with the QA workspace
+router.get("/config/priorities", requirePermission(Permissions.BUG_READ), BugListController.listPriorityOptions);
+router.post("/config/priorities", requirePermission(Permissions.BUG_MANAGE), BugListController.createPriorityOption);
+router.put("/config/priorities/:id", requirePermission(Permissions.BUG_MANAGE), BugListController.updatePriorityOption);
+router.delete("/config/priorities/:id", requirePermission(Permissions.BUG_MANAGE), BugListController.deletePriorityOption);
+
 router.get("/config/types", requirePermission(Permissions.BUG_READ), BugListController.listTypeOptions);
 router.post("/config/types", requirePermission(Permissions.BUG_MANAGE), BugListController.createTypeOption);
 router.put("/config/types/:id", requirePermission(Permissions.BUG_MANAGE), BugListController.updateTypeOption);

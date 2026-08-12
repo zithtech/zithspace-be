@@ -21,6 +21,7 @@ import bcrypt from "bcryptjs";
 // Import configurations
 import { connectDatabase, disconnectDatabase } from "@/config/database";
 import gradeRoutes from "@/routes/gradeRoutes";
+import testCaseRoutes from "./routes/testCaseRoutes";
 import companyRoutes from "./routes/companyRoutes";
 
 import authRoutes from "@/routes/auth";
@@ -56,6 +57,7 @@ import sprintReportRoutes from "@/routes/sprintReport";
 import sprintReportsRoutes from "@/routes/sprintReports";
 import fixedHolidayRoutes from "@/routes/fixedHolidays";
 import documentHubRoutes from "@/routes/documenthub";
+import lettersRoutes from "@/routes/letters.routes";
 import aiSettingsRoutes from "@/routes/aiSettings";
 import channelRoutes from "@/routes/channels";
 import messageRoutes from "@/routes/messages";
@@ -116,6 +118,10 @@ import performanceReportRoutes from "@/modules/performance-report/routes";
 import payrollV2Routes from "@/modules/payroll/routes";
 import reimbursementV2Routes from "@/modules/reimbursement-v2/routes";
 import { metadataRoutes } from "@/modules/metadata";
+import openingManagementV2Routes from "@/modules/opening-management/routes";
+import hotspotRoutes from "@/modules/hotspot/routes";
+import { pipelineRouter } from "@/modules/pipeline/routes";
+
 import reimbursementConfigurationRoutes from "@/routes/reimbursementConfig";
 import reimbursementsettingsRoutes from "@/routes/reimbursementsettingsRoutes";
 import reimbursementRoutes from "@/routes/reimbursementcreateRoutes";
@@ -130,7 +136,7 @@ import exitApprovalWorkflowRoutes from "@/routes/exitApprovalWorkflow.routes";
 import recruitmentStatusRoutes from "@/routes/recruitmentStatus.routes";
 import recruitmentActionRoutes from "@/routes/recruitmentAction.routes";
 import candidateRoutes from "@/routes/candidateRoutes";
-import companyLocationRoutes from "@/routes/companyLocationRoutes";
+import companyDetailsRoutes from "@/modules/company-details/routes";
 import openingManagementRoutes from "@/routes/openingManagementRoutes";
 import { rabbitMQService } from "@/utils/RabbitMQService";
 import { CalendarSyncWorker } from "@/workers/CalendarSyncWorker";
@@ -153,6 +159,9 @@ import proposalTemplateRoutes from "@/routes/proposalTemplates";
 import projectOverviewRoutes from "./routes/projectOverviewRoutes";
 import { socketService } from "@/services/socketService";
 import { closeAttendancePool } from "@/db/attendancePool";
+import testScopeRoutes from "@/routes/testScopeRoutes";
+import qaSubmissionRoutes from "@/routes/qaSubmissionRoutes";
+import qaAnalyticsRoutes from "@/routes/qaAnalyticsRoutes";
 // Load environment
 dotenv.config();
 console.log("🚀 API Starting up...");
@@ -204,6 +213,7 @@ app.use(
 // Body parsing middleware
 app.use(express.json({ limit: "30mb" }));
 app.use(express.urlencoded({ extended: true, limit: "30mb" }));
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
 
 app.use(
   session({
@@ -339,6 +349,7 @@ app.use("/api/milestones", milestoneRoutes);
 app.use("/api/milestone-items", milestoneItemRoutes);
 app.use("/api/client-releases", clientReleaseRoutes);
 app.use("/api/tickets", ticketRoutes);
+app.use("/api/pipeline", pipelineRouter);
 app.use("/api/recruitment", recruitmentRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/clients", clientRoutes);
@@ -376,7 +387,7 @@ app.use("/api/sprint-report", sprintReportRoutes);
 app.use("/api/sprint-reports", sprintReportsRoutes);
 app.use("/api/companies", companyRoutes);
 app.use("/api/grades", gradeRoutes);
-app.use("/api/company-locations", companyLocationRoutes);
+app.use("/api/company-details", companyDetailsRoutes);
 app.use("/api/opening-management", openingManagementRoutes);
 app.use("/api/leads", leadRoutes);
 app.use("/api/lead-settings", leadSettingsRoutes);
@@ -391,6 +402,7 @@ app.use("/api/sub-departments", subDepartmentRoutes);
 app.use("/api/positions", positionRoutes);
 app.use("/api/employment-types", employmentTypeRoutes);
 app.use("/api/documenthub", documentHubRoutes);
+app.use("/api/hrms/letters", lettersRoutes);
 app.use("/api/ai", aiSettingsRoutes);
 app.use("/api/channels", channelRoutes);
 app.use("/api/channels/:channelId/messages", messageRoutes);
@@ -405,8 +417,16 @@ app.use("/api/leave-allocation", leaveAllocationRoutes);
 app.use("/api/leave-request", leaveRequestRoutes);
 app.use("/api/leave-balances", leaveBalanceRoutes);
 app.use("/api/v2/leave", leaveV2Routes);
+app.use("/api/v2/qa/test-scopes", testScopeRoutes);
+// Must precede the /api/v2/qa mount below — testCaseRoutes claims "/:id",
+// which would otherwise swallow /api/v2/qa/submissions as a test case id.
+app.use("/api/v2/qa/submissions", qaSubmissionRoutes);
+app.use("/api/v2/qa/analytics", qaAnalyticsRoutes);
+app.use("/api/v2/qa", testCaseRoutes); // Registers /api/v2/qa/modules, /api/v2/qa/, /api/v2/qa/suites, /api/v2/qa/runs
 app.use("/api/v2/payroll", payrollV2Routes);
 app.use("/api/v2/reimbursement", reimbursementV2Routes);
+app.use("/api/v2/openings", openingManagementV2Routes);
+app.use("/api/v2/hotspot", hotspotRoutes);
 app.use("/api/performance-report", performanceReportRoutes);
 
 //Escalation
@@ -611,6 +631,18 @@ const startServer = async () => {
     const { runPayrollMigrations } = require("@/modules/payroll/db/migrate");
     await runPayrollMigrations();
 
+    // Opening Management tables (raw-SQL module, forward-only migrations)
+    const { runOpeningMigrations } = require("@/modules/opening-management/db/migrate");
+    await runOpeningMigrations();
+
+    // Hotspot tables (raw-SQL module, forward-only migrations)
+    const { runHotspotMigrations } = require("@/modules/hotspot/db/migrate");
+    await runHotspotMigrations();
+
+    // Company Details tables (raw-SQL module, forward-only migrations)
+    const { runCompanyDetailsMigrations } = require("@/modules/company-details/db/migrate");
+    await runCompanyDetailsMigrations();
+
     // Connect RabbitMQ & Start Workers
     try {
       await rabbitMQService.connect();
@@ -661,6 +693,11 @@ const startServer = async () => {
     const { startMailScheduledSendJob } = require("@/jobs/mailScheduledSend");
     startMailScheduledSendJob();
 
+    // Move openings from internal to external posting when the window elapses
+    // (disable with OPENING_AUTO_MOVE_ENABLED=false)
+    const { startPostingAutoMoveJob } = require("@/modules/opening-management/jobs/postingAutoMove");
+    startPostingAutoMoveJob();
+
   } catch (error) {
     console.error("Server startup failed:", error);
     process.exit(1);
@@ -681,6 +718,8 @@ const gracefulShutdown = async (signal: string) => {
       await disconnectDatabase();
       await rabbitMQService.close();
       await closeAttendancePool();
+      const { closeCompanyDetailsPool } = require("@/modules/company-details/db/pool");
+      await closeCompanyDetailsPool();
       console.log("Database and RabbitMQ connections closed");
     } catch (error) {
       console.error("Error closing connections:", error);

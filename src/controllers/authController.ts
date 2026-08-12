@@ -2,6 +2,8 @@ import { Response } from "express";
 import bcrypt from "bcryptjs";
 import axios from "axios";
 import { tenantAwarePrisma, prisma } from "@/config/database";
+import crypto from "crypto";
+import { EmailService } from "@/utils/emailService";
 import { JWTUtils } from "@/utils/jwt";
 import {
   AuthRequest,
@@ -14,6 +16,7 @@ import {
 } from "@/types";
 import { RBACService } from "@/modules/rbac/rbac.service";
 import { featureResolverService, navigationService, subscriptionService } from "@/modules/subscriptions";
+import * as companyDetailsService from "@/modules/company-details/services/companyDetails.service";
 import { recordTransaction, Section, Module, Page, Action, EntityType } from "../utils/transactionHistory";
 
 import { Request } from "express";
@@ -25,7 +28,7 @@ export class AuthController {
   static async extensionLogin(req: Request, res: Response): Promise<void> {
     console.log("extensionLogin hit:", req.body);
     try {
-      const { email, password } = req.body;
+      const { email, password, tenantSlug } = req.body;
 
       if (!email || !password) {
         res.status(400).json({
@@ -35,7 +38,34 @@ export class AuthController {
         return;
       }
 
-      // Global search for user across all tenants
+      // When the extension install is bound to a workspace, scope the lookup to
+      // that tenant. This enforces the pre-bound model and prevents a user whose
+      // email exists in multiple tenants from being resolved to the wrong one.
+      let boundTenantId: string | undefined;
+      if (tenantSlug) {
+        const boundTenant = await prisma.tenant.findFirst({
+          where: {
+            OR: [
+              { subdomain: String(tenantSlug).toLowerCase() },
+              { id: String(tenantSlug) },
+            ],
+            isActive: true,
+          },
+          select: { id: true },
+        });
+
+        if (!boundTenant) {
+          res.status(404).json({
+            success: false,
+            error: "Workspace not found or inactive",
+          } as ApiResponse);
+          return;
+        }
+
+        boundTenantId = boundTenant.id;
+      }
+
+      // Search for the user, scoped to the bound tenant when provided.
       const user = await prisma.user.findFirst({
         where: {
           OR: [
@@ -43,6 +73,7 @@ export class AuthController {
             { personalEmail: email.toLowerCase() },
           ],
           isActive: true,
+          ...(boundTenantId ? { tenantId: boundTenantId } : {}),
         },
         include: {
           tenant: true,
@@ -107,6 +138,104 @@ export class AuthController {
       res.status(500).json({
         success: false,
         error: "An unexpected error occurred during login",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Resolve a workspace by slug for the Chrome Extension activation screen.
+   * Public (no auth): only exposes whether the workspace exists + its display
+   * name, so the extension can bind an install to a tenant before login.
+   */
+  static async resolveWorkspace(req: Request, res: Response): Promise<void> {
+    try {
+      const slug = (req.query.slug as string) || "";
+      if (!slug) {
+        res.status(400).json({
+          success: false,
+          error: "Workspace slug is required",
+        } as ApiResponse);
+        return;
+      }
+
+      const tenant = await prisma.tenant.findFirst({
+        where: {
+          OR: [{ subdomain: slug.toLowerCase() }, { id: slug }],
+          isActive: true,
+        },
+        select: { id: true, name: true, subdomain: true },
+      });
+
+      if (!tenant) {
+        res.status(404).json({
+          success: false,
+          error: "Workspace not found or inactive",
+        } as ApiResponse);
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        tenant: {
+          name: tenant.name,
+          slug: tenant.subdomain,
+        },
+      });
+    } catch (error) {
+      console.error("Resolve workspace error:", error);
+      res.status(500).json({
+        success: false,
+        error: "An unexpected error occurred",
+      } as ApiResponse);
+    }
+  }
+
+  /**
+   * Redeem a one-time install key for the Chrome Extension activation screen.
+   * Unlike /resolve-tenant (which takes a public slug), the install key is a
+   * high-entropy secret provisioned per tenant — so this endpoint is not an
+   * existence oracle for workspace names. Returns the bound workspace on match.
+   */
+  static async redeemInstallKey(req: Request, res: Response): Promise<void> {
+    try {
+      const key = (req.body?.key as string) || "";
+      if (!key || key.trim().length < 8) {
+        res.status(400).json({
+          success: false,
+          error: "A valid install key is required",
+        } as ApiResponse);
+        return;
+      }
+
+      const tenant = await prisma.tenant.findFirst({
+        where: {
+          isActive: true,
+          settings: { path: ["extensionInstallKey"], equals: key.trim() },
+        },
+        select: { id: true, name: true, subdomain: true },
+      });
+
+      if (!tenant) {
+        // Generic message — never reveal whether a key "almost" matched.
+        res.status(404).json({
+          success: false,
+          error: "Invalid or expired install key",
+        } as ApiResponse);
+        return;
+      }
+
+      res.status(200).json({
+        success: true,
+        tenant: {
+          name: tenant.name,
+          slug: tenant.subdomain,
+        },
+      });
+    } catch (error) {
+      console.error("Redeem install key error:", error);
+      res.status(500).json({
+        success: false,
+        error: "An unexpected error occurred",
       } as ApiResponse);
     }
   }
@@ -526,6 +655,7 @@ export class AuthController {
                   name: true,
                   subdomain: true,
                   settings: true,
+                  generalSettings: { take: 1 },
                 },
               },
             },
@@ -552,6 +682,14 @@ export class AuthController {
       await subscriptionService.invalidateTenantSubscription(user.tenantId);
       const subscriptionFeatures = await featureResolverService.getTenantFeatures(user.tenantId);
       const navigation = await navigationService.buildNavigation(permSet, subscriptionFeatures);
+      // Company details live in the raw-SQL company-details module, not Prisma.
+      // A tenant that has not filled the form in yet simply gets null.
+      const companyDetails = await companyDetailsService
+        .getCompany({ tenantId: user.tenantId, userId: user.id })
+        .catch((err) => {
+          console.error("Failed to load company details for profile:", err);
+          return null;
+        });
 
       res.status(200).json({
         success: true,
@@ -576,6 +714,8 @@ export class AuthController {
             name: user.tenant.name,
             subdomain: user.tenant.subdomain,
             logoUrl: (user.tenant.settings as any)?.logoUrl || null,
+            generalSettings: (user.tenant as any).generalSettings?.[0] || null,
+            companyDetails,
           },
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
@@ -1237,6 +1377,222 @@ export class AuthController {
         success: false,
         error: "Microsoft login failed",
       } as ApiResponse);
+    }
+  }
+
+  static async forgotPassword(req: Request, res: Response): Promise<void> {
+    try {
+      const { email, tenantSubdomain } = req.body;
+      
+      if (!email) {
+        res.status(400).json({ success: false, error: "Email is required" });
+        return;
+      }
+
+      let tenantCondition: any = {};
+      
+      // Look up tenant based on subdomain if provided
+      if (tenantSubdomain) {
+        const tenant = await prisma.tenant.findFirst({
+          where: { subdomain: String(tenantSubdomain).toLowerCase(), isActive: true }
+        });
+        if (tenant) {
+          tenantCondition = { tenantId: tenant.id };
+        }
+      }
+
+      // We still use a generic success message to prevent email enumeration
+      const genericResponse = {
+        success: true,
+        message: "If an account with that email exists, a password reset link has been sent.",
+      };
+
+      const user = await prisma.user.findFirst({
+        where: { 
+          workEmail: email.toLowerCase(),
+          isActive: true,
+          ...tenantCondition
+        },
+        include: { tenant: true }
+      });
+
+      if (!user) {
+        res.status(200).json(genericResponse);
+        return;
+      }
+
+      // Invalidate existing unused tokens for this user
+      await prisma.password_reset_tokens.updateMany({
+        where: { user_id: user.id, used: false },
+        data: { used: true }
+      });
+
+      // Generate token
+      const rawToken = crypto.randomBytes(32).toString('hex');
+      const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
+      const expiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 mins
+
+      await prisma.password_reset_tokens.create({
+        data: {
+          user_id: user.id,
+          token: hashedToken,
+          expires_at: expiresAt,
+          used: false
+        }
+      });
+
+      // Send email
+      let frontendUrl = process.env.FRONTEND_URL || "http://localhost:3001";
+      if (user.tenant?.subdomain) {
+        try {
+          const urlObj = new URL(frontendUrl);
+          const parts = urlObj.hostname.split('.');
+          if (parts[0] === 'app' || parts[0] === 'www') {
+            parts[0] = user.tenant.subdomain;
+            urlObj.hostname = parts.join('.');
+          } else if (parts[0] === 'localhost' || parts[0] === '127') {
+            urlObj.hostname = `${user.tenant.subdomain}.${urlObj.hostname}`;
+          } else {
+            parts.unshift(user.tenant.subdomain);
+            urlObj.hostname = parts.join('.');
+          }
+          frontendUrl = urlObj.toString().replace(/\/$/, '');
+        } catch (e) {
+          // Fallback if URL parsing fails
+        }
+      }
+      
+      const resetLink = `${frontendUrl}/reset-password?token=${rawToken}`;
+      const emailService = new EmailService();
+
+      await emailService.sendPasswordResetEmail({
+        to: user.workEmail,
+        displayName: user.name,
+        username: user.workEmail,
+        resetLink
+      }, user.tenantId);
+
+      // Audit Log
+      recordTransaction({
+        req,
+        section: Section.ADMIN,
+        module: Module.AUTH,
+        page: Page.LOGIN,
+        action: Action.UPDATE,
+        actionLabel: `Password reset requested for ${user.workEmail}`,
+        entityType: "user" as any,
+        entityId: user.id,
+        entityLabel: user.workEmail,
+        metadata: { ip: req.ip ?? null }
+      });
+
+      res.status(200).json(genericResponse);
+    } catch (error) {
+      console.error("Forgot password error:", error);
+      res.status(500).json({ success: false, error: "Internal server error" });
+    }
+  }
+
+  static async validateResetToken(req: Request, res: Response): Promise<void> {
+    try {
+      const { token } = req.query;
+      if (!token || typeof token !== "string") {
+        res.status(400).json({ success: false, error: "Invalid token format" });
+        return;
+      }
+
+      const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+      
+      const resetToken = await prisma.password_reset_tokens.findFirst({
+        where: { token: hashedToken, used: false, expires_at: { gt: new Date() } }
+      });
+
+      if (!resetToken) {
+        res.status(400).json({ success: false, error: "Invalid or expired token" });
+        return;
+      }
+
+      res.status(200).json({ success: true, message: "Token is valid" });
+    } catch (error) {
+      console.error("Validate token error:", error);
+      res.status(500).json({ success: false, error: "Internal server error" });
+    }
+  }
+
+  static async resetPassword(req: Request, res: Response): Promise<void> {
+    try {
+      const { token, newPassword } = req.body;
+      
+      if (!token || !newPassword) {
+        res.status(400).json({ success: false, error: "Token and new password are required" });
+        return;
+      }
+
+      // Strong password validation on backend
+      const passwordRegex = /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*#?&])[A-Za-z\d@$!%*#?&]{8,}$/;
+      if (!passwordRegex.test(newPassword)) {
+        res.status(400).json({ success: false, error: "Password must be at least 8 characters long and contain numbers and special characters." });
+        return;
+      }
+
+      const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+      
+      const resetToken = await prisma.password_reset_tokens.findFirst({
+        where: { token: hashedToken, used: false, expires_at: { gt: new Date() } }
+      });
+
+      if (!resetToken || !resetToken.user_id) {
+        res.status(400).json({ success: false, error: "Invalid or expired token" });
+        return;
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { id: resetToken.user_id }
+      });
+
+      if (!user) {
+        res.status(404).json({ success: false, error: "User not found" });
+        return;
+      }
+
+      // Update password
+      const newPasswordHash = await bcrypt.hash(newPassword, 10);
+      
+      await prisma.$transaction(async (tx) => {
+        await tx.user.update({
+          where: { id: user.id },
+          data: { passwordHash: newPasswordHash }
+        });
+
+        await tx.password_reset_tokens.update({
+          where: { id: resetToken.id },
+          data: { used: true }
+        });
+
+        // Revoke active sessions
+        await tx.refreshToken.deleteMany({
+          where: { userId: user.id }
+        });
+      });
+
+      // Audit Log
+      recordTransaction({
+        req,
+        section: Section.ADMIN,
+        module: Module.AUTH,
+        page: Page.LOGIN,
+        action: Action.UPDATE,
+        actionLabel: `Password successfully reset for ${user.workEmail}`,
+        entityType: "user" as any,
+        entityId: user.id,
+        entityLabel: user.workEmail,
+        metadata: { ip: req.ip ?? null }
+      });
+
+      res.status(200).json({ success: true, message: "Password has been successfully reset" });
+    } catch (error) {
+      console.error("Reset password error:", error);
+      res.status(500).json({ success: false, error: "Internal server error" });
     }
   }
 }

@@ -53,7 +53,10 @@ export class LeadController {
    */
   static async createLead(req: AuthRequest, res: Response) {
     try {
-      const tenantId = req.tenantId;
+      // Tenant is derived from the authenticated identity (JWT), never from a
+      // client-supplied tenant id in the header or body. authenticateToken has
+      // already verified req.user.tenantId === req.tenantId at this point.
+      const tenantId = req.user?.tenantId || req.tenantId;
       if (!tenantId) {
         return res.status(400).json({ success: false, error: 'Tenant context required' });
       }

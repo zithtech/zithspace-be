@@ -23,6 +23,7 @@ const express_session_1 = __importDefault(require("express-session"));
 // Import configurations
 const database_1 = require("@/config/database");
 const gradeRoutes_1 = __importDefault(require("@/routes/gradeRoutes"));
+const testCaseRoutes_1 = __importDefault(require("./routes/testCaseRoutes"));
 const companyRoutes_1 = __importDefault(require("./routes/companyRoutes"));
 const auth_1 = __importDefault(require("@/routes/auth"));
 const tenants_1 = __importDefault(require("@/routes/tenants"));
@@ -57,6 +58,7 @@ const sprintReport_1 = __importDefault(require("@/routes/sprintReport"));
 const sprintReports_1 = __importDefault(require("@/routes/sprintReports"));
 const fixedHolidays_1 = __importDefault(require("@/routes/fixedHolidays"));
 const documenthub_1 = __importDefault(require("@/routes/documenthub"));
+const letters_routes_1 = __importDefault(require("@/routes/letters.routes"));
 const aiSettings_1 = __importDefault(require("@/routes/aiSettings"));
 const channels_1 = __importDefault(require("@/routes/channels"));
 const messages_1 = __importDefault(require("@/routes/messages"));
@@ -113,6 +115,9 @@ const routes_2 = __importDefault(require("@/modules/performance-report/routes"))
 const routes_3 = __importDefault(require("@/modules/payroll/routes"));
 const routes_4 = __importDefault(require("@/modules/reimbursement-v2/routes"));
 const metadata_1 = require("@/modules/metadata");
+const routes_5 = __importDefault(require("@/modules/opening-management/routes"));
+const routes_6 = __importDefault(require("@/modules/hotspot/routes"));
+const routes_7 = require("@/modules/pipeline/routes");
 const reimbursementConfig_1 = __importDefault(require("@/routes/reimbursementConfig"));
 const reimbursementsettingsRoutes_1 = __importDefault(require("@/routes/reimbursementsettingsRoutes"));
 const reimbursementcreateRoutes_1 = __importDefault(require("@/routes/reimbursementcreateRoutes"));
@@ -126,7 +131,7 @@ const exitApprovalWorkflow_routes_1 = __importDefault(require("@/routes/exitAppr
 const recruitmentStatus_routes_1 = __importDefault(require("@/routes/recruitmentStatus.routes"));
 const recruitmentAction_routes_1 = __importDefault(require("@/routes/recruitmentAction.routes"));
 const candidateRoutes_1 = __importDefault(require("@/routes/candidateRoutes"));
-const companyLocationRoutes_1 = __importDefault(require("@/routes/companyLocationRoutes"));
+const routes_8 = __importDefault(require("@/modules/company-details/routes"));
 const openingManagementRoutes_1 = __importDefault(require("@/routes/openingManagementRoutes"));
 const RabbitMQService_1 = require("@/utils/RabbitMQService");
 const CalendarSyncWorker_1 = require("@/workers/CalendarSyncWorker");
@@ -147,6 +152,9 @@ const proposalTemplates_1 = __importDefault(require("@/routes/proposalTemplates"
 const projectOverviewRoutes_1 = __importDefault(require("./routes/projectOverviewRoutes"));
 const socketService_1 = require("@/services/socketService");
 const attendancePool_1 = require("@/db/attendancePool");
+const testScopeRoutes_1 = __importDefault(require("@/routes/testScopeRoutes"));
+const qaSubmissionRoutes_1 = __importDefault(require("@/routes/qaSubmissionRoutes"));
+const qaAnalyticsRoutes_1 = __importDefault(require("@/routes/qaAnalyticsRoutes"));
 // Load environment
 dotenv_1.default.config();
 console.log("🚀 API Starting up...");
@@ -186,6 +194,7 @@ app.use((0, cors_1.default)({
 // Body parsing middleware
 app.use(express_1.default.json({ limit: "30mb" }));
 app.use(express_1.default.urlencoded({ extended: true, limit: "30mb" }));
+app.use("/uploads", express_1.default.static(path_1.default.join(process.cwd(), "uploads")));
 app.use((0, express_session_1.default)({
     secret: process.env.SESSION_SECRET || "your-fallback-secret-key",
     resave: false,
@@ -306,6 +315,7 @@ app.use("/api/milestones", milestones_1.default);
 app.use("/api/milestone-items", milestoneItems_1.default);
 app.use("/api/client-releases", clientReleases_1.default);
 app.use("/api/tickets", tickets_1.default);
+app.use("/api/pipeline", routes_7.pipelineRouter);
 app.use("/api/recruitment", jobRequisition_routes_1.default);
 app.use("/api/attendance", attendance_1.default);
 app.use("/api/clients", clients_1.default);
@@ -343,7 +353,7 @@ app.use("/api/sprint-report", sprintReport_1.default);
 app.use("/api/sprint-reports", sprintReports_1.default);
 app.use("/api/companies", companyRoutes_1.default);
 app.use("/api/grades", gradeRoutes_1.default);
-app.use("/api/company-locations", companyLocationRoutes_1.default);
+app.use("/api/company-details", routes_8.default);
 app.use("/api/opening-management", openingManagementRoutes_1.default);
 app.use("/api/leads", lead_routes_1.default);
 app.use("/api/lead-settings", leadSettings_routes_1.default);
@@ -355,6 +365,7 @@ app.use("/api/sub-departments", subDepartmentRoutes_1.default);
 app.use("/api/positions", positionRoutes_1.default);
 app.use("/api/employment-types", employmentTypeRoutes_1.default);
 app.use("/api/documenthub", documenthub_1.default);
+app.use("/api/hrms/letters", letters_routes_1.default);
 app.use("/api/ai", aiSettings_1.default);
 app.use("/api/channels", channels_1.default);
 app.use("/api/channels/:channelId/messages", messages_1.default);
@@ -369,8 +380,16 @@ app.use("/api/leave-allocation", leaveAllocationRoutes_1.default);
 app.use("/api/leave-request", leaveRequestRoutes_1.default);
 app.use("/api/leave-balances", leaveBalanceRoutes_1.default);
 app.use("/api/v2/leave", routes_1.default);
+app.use("/api/v2/qa/test-scopes", testScopeRoutes_1.default);
+// Must precede the /api/v2/qa mount below — testCaseRoutes claims "/:id",
+// which would otherwise swallow /api/v2/qa/submissions as a test case id.
+app.use("/api/v2/qa/submissions", qaSubmissionRoutes_1.default);
+app.use("/api/v2/qa/analytics", qaAnalyticsRoutes_1.default);
+app.use("/api/v2/qa", testCaseRoutes_1.default); // Registers /api/v2/qa/modules, /api/v2/qa/, /api/v2/qa/suites, /api/v2/qa/runs
 app.use("/api/v2/payroll", routes_3.default);
 app.use("/api/v2/reimbursement", routes_4.default);
+app.use("/api/v2/openings", routes_5.default);
+app.use("/api/v2/hotspot", routes_6.default);
 app.use("/api/performance-report", routes_2.default);
 //Escalation
 app.use("/api/escalation-categories", escalationCategoryV2_routes_1.default);
@@ -542,6 +561,15 @@ const startServer = async () => {
         // Payroll 2.0 tables (raw-SQL module, forward-only migrations)
         const { runPayrollMigrations } = require("@/modules/payroll/db/migrate");
         await runPayrollMigrations();
+        // Opening Management tables (raw-SQL module, forward-only migrations)
+        const { runOpeningMigrations } = require("@/modules/opening-management/db/migrate");
+        await runOpeningMigrations();
+        // Hotspot tables (raw-SQL module, forward-only migrations)
+        const { runHotspotMigrations } = require("@/modules/hotspot/db/migrate");
+        await runHotspotMigrations();
+        // Company Details tables (raw-SQL module, forward-only migrations)
+        const { runCompanyDetailsMigrations } = require("@/modules/company-details/db/migrate");
+        await runCompanyDetailsMigrations();
         // Connect RabbitMQ & Start Workers
         try {
             await RabbitMQService_1.rabbitMQService.connect();
@@ -586,6 +614,10 @@ const startServer = async () => {
         // Start scheduled email sender cron job
         const { startMailScheduledSendJob } = require("@/jobs/mailScheduledSend");
         startMailScheduledSendJob();
+        // Move openings from internal to external posting when the window elapses
+        // (disable with OPENING_AUTO_MOVE_ENABLED=false)
+        const { startPostingAutoMoveJob } = require("@/modules/opening-management/jobs/postingAutoMove");
+        startPostingAutoMoveJob();
     }
     catch (error) {
         console.error("Server startup failed:", error);
@@ -602,6 +634,8 @@ const gracefulShutdown = async (signal) => {
             await (0, database_1.disconnectDatabase)();
             await RabbitMQService_1.rabbitMQService.close();
             await (0, attendancePool_1.closeAttendancePool)();
+            const { closeCompanyDetailsPool } = require("@/modules/company-details/db/pool");
+            await closeCompanyDetailsPool();
             console.log("Database and RabbitMQ connections closed");
         }
         catch (error) {

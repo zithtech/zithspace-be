@@ -1,8 +1,42 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const ticketController_1 = require("@/controllers/ticketController");
 const ticketCodeController_1 = require("@/controllers/ticketCodeController");
+const TicketQaLinkController = __importStar(require("@/controllers/ticketQaLinkController"));
 const auth_1 = require("@/middleware/auth");
 const permission_1 = require("@/middleware/permission");
 const aiAccess_1 = require("@/middleware/aiAccess");
@@ -254,6 +288,31 @@ router.put("/:ticketId/links/:linkId", (0, permission_1.requirePermission)(permi
  * @param   linkId - Link ID
  */
 router.delete("/:ticketId/links/:linkId", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_UPDATE), ticketController_1.TicketController.deleteRelatedLink);
+/**
+ * @route   GET /api/tickets/:id/qa-links
+ * @desc    QA records (test scopes, scenarios, runs) linked to the ticket.
+ *          Names come denormalized so PMs without QA permissions can still
+ *          see and open what QA attached.
+ * @access  Private (ticket read)
+ * @param   id - Ticket ID
+ */
+router.get("/:id/qa-links", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_READ), TicketQaLinkController.getTicketQaLinks);
+/**
+ * @route   POST /api/tickets/:id/qa-links
+ * @desc    Link a QA record to the ticket (tenant-aware)
+ * @access  Private (ticket update)
+ * @param   id - Ticket ID
+ * @body    { entityType: 'scope' | 'case' | 'run', entityId: string }
+ */
+router.post("/:id/qa-links", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_UPDATE), TicketQaLinkController.addTicketQaLink);
+/**
+ * @route   DELETE /api/tickets/:ticketId/qa-links/:linkId
+ * @desc    Remove a QA link from the ticket (tenant-aware)
+ * @access  Private (ticket update)
+ * @param   ticketId - Ticket ID
+ * @param   linkId - QA link ID
+ */
+router.delete("/:ticketId/qa-links/:linkId", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_UPDATE), TicketQaLinkController.deleteTicketQaLink);
 /**
  * @route   POST /api/tickets/:id/attachments
  * @desc    Upload attachment to ticket (tenant-aware)

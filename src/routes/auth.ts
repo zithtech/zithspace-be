@@ -32,6 +32,12 @@ const generalAuthRateLimit = rateLimit({
   legacyHeaders: false,
 });
 
+// Extension workspace resolution - public, used by the activation/binding screen
+router.get("/resolve-tenant", generalAuthRateLimit, AuthController.resolveWorkspace);
+
+// Extension install-key redemption - public, high-entropy key (not an existence oracle)
+router.post("/redeem-install-key", authRateLimit, AuthController.redeemInstallKey);
+
 // Extension global login - doesn't require tenant context
 router.post("/extension-login", authRateLimit, AuthController.extensionLogin);
 
@@ -83,5 +89,10 @@ router.post(
   resolveTenant,
   AuthController.createUser,
 );
+
+// Password reset routes
+router.post("/forgot-password", authRateLimit, AuthController.forgotPassword);
+router.get("/reset-password/validate", generalAuthRateLimit, AuthController.validateResetToken);
+router.post("/reset-password", authRateLimit, AuthController.resetPassword);
 
 export default router;

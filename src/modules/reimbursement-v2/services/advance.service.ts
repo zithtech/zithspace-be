@@ -54,18 +54,18 @@ export async function requestAdvance(actor: Actor, input: CreateAdvanceInput): P
     // Route to the reporting manager (may be null → no approver).
     const approverId = await claimRepo.findReportsTo(client, actor.userId);
     const result = (await repo.setStatus(client, advance.id, { status: 'pending', approverId }, actor.userId)) as Advance;
-    
+
     try {
       console.log(`[Reimbursement Email] Initiating email sequence for advance request: ${advance.advanceNo}`);
       const uData = await claimRepo.findUserBasic(client, actor.userId);
       const mId = approverId;
       const mData = mId ? await claimRepo.findUserBasic(client, mId) : null;
       console.log(`[Reimbursement Email] Requester:`, uData?.email, `Manager:`, mData?.email);
-      
+
       if (uData) {
-        const mailConfig = await settingsRepo.getSettings(client);
+        const mailConfig = await settingsRepo.getSettings(client, actor.tenantId);
         console.log(`[Reimbursement Email] Mail Config:`, mailConfig);
-        
+
         let replyToEmail = uData.email;
         if (mailConfig.replyToMode === 'custom' && mailConfig.customReplyToEmail) {
           replyToEmail = mailConfig.customReplyToEmail;
@@ -104,8 +104,8 @@ export async function requestAdvance(actor: Actor, input: CreateAdvanceInput): P
             currency: advance.currency,
             neededBy: advance.neededBy,
           }, actor.tenantId)
-          .then(res => console.log(`[Reimbursement Email] sendAdvanceSubmissionEmail success:`, res))
-          .catch(err => console.error(`[Reimbursement Email] Failed to send submission email:`, err));
+            .then(res => console.log(`[Reimbursement Email] sendAdvanceSubmissionEmail success:`, res))
+            .catch(err => console.error(`[Reimbursement Email] Failed to send submission email:`, err));
         } else {
           console.log(`[Reimbursement Email] No TO recipients found, skipping email.`);
         }
@@ -113,7 +113,7 @@ export async function requestAdvance(actor: Actor, input: CreateAdvanceInput): P
     } catch (mailErr) {
       console.error('[Reimbursement Email] Fatal error in requestAdvance mail logic:', mailErr);
     }
-    
+
     return result;
   });
 }
@@ -138,7 +138,7 @@ export async function cancel(actor: Actor, id: string, remarks?: string | null):
       { status: 'cancelled', decidedAt: true, decisionNote: remarks ?? null },
       actor.userId
     )) as Advance;
-    
+
     try {
       console.log(`[Reimbursement Email] Initiating email sequence for cancelled advance: ${result.advanceNo}`);
       const uData = await claimRepo.findUserBasic(client, actor.userId);
@@ -154,13 +154,13 @@ export async function cancel(actor: Actor, id: string, remarks?: string | null):
           status: 'cancelled',
           remarks: remarks
         }, actor.tenantId)
-        .then(res => console.log(`[Reimbursement Email] sendAdvanceRejectionEmail success:`, res))
-        .catch(err => console.error(`[Reimbursement Email] Failed to send cancel email:`, err));
+          .then(res => console.log(`[Reimbursement Email] sendAdvanceRejectionEmail success:`, res))
+          .catch(err => console.error(`[Reimbursement Email] Failed to send cancel email:`, err));
       }
     } catch (mailErr) {
       console.error('[Reimbursement Email] Fatal error in cancel advance mail logic:', mailErr);
     }
-    
+
     return result;
   });
 }
@@ -181,7 +181,7 @@ export async function approve(actor: Actor, id: string, remarks: string | null, 
       { status: 'approved', decidedAt: true, decisionNote: remarks ?? null },
       actor.userId
     )) as Advance;
-    
+
     try {
       console.log(`[Reimbursement Email] Initiating email sequence for approved advance: ${result.advanceNo}`);
       const uData = await claimRepo.findUserBasic(client, result.userId);
@@ -198,13 +198,13 @@ export async function approve(actor: Actor, id: string, remarks: string | null, 
           currency: result.currency,
           remarks: remarks
         }, actor.tenantId)
-        .then(res => console.log(`[Reimbursement Email] sendAdvanceApprovalEmail success:`, res))
-        .catch(err => console.error(`[Reimbursement Email] Failed to send approval email:`, err));
+          .then(res => console.log(`[Reimbursement Email] sendAdvanceApprovalEmail success:`, res))
+          .catch(err => console.error(`[Reimbursement Email] Failed to send approval email:`, err));
       }
     } catch (mailErr) {
       console.error('[Reimbursement Email] Fatal error in advance approval mail logic:', mailErr);
     }
-    
+
     return result;
   });
 }
@@ -218,7 +218,7 @@ export async function reject(actor: Actor, id: string, remarks: string | null, c
       { status: 'rejected', decidedAt: true, decisionNote: remarks ?? null },
       actor.userId
     )) as Advance;
-    
+
     try {
       console.log(`[Reimbursement Email] Initiating email sequence for rejected advance: ${result.advanceNo}`);
       const uData = await claimRepo.findUserBasic(client, result.userId);
@@ -236,13 +236,13 @@ export async function reject(actor: Actor, id: string, remarks: string | null, c
           status: 'rejected',
           remarks: remarks
         }, actor.tenantId)
-        .then(res => console.log(`[Reimbursement Email] sendAdvanceRejectionEmail success:`, res))
-        .catch(err => console.error(`[Reimbursement Email] Failed to send rejection email:`, err));
+          .then(res => console.log(`[Reimbursement Email] sendAdvanceRejectionEmail success:`, res))
+          .catch(err => console.error(`[Reimbursement Email] Failed to send rejection email:`, err));
       }
     } catch (mailErr) {
       console.error('[Reimbursement Email] Fatal error in advance rejection mail logic:', mailErr);
     }
-    
+
     return result;
   });
 }

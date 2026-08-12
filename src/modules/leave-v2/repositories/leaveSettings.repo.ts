@@ -28,12 +28,13 @@ const DEFAULT_MAIL_CONFIG: MailConfig = {
   customCcEmails: []
 };
 
-export async function getSettings(client: any): Promise<MailConfig> {
+export async function getSettings(client: any, tenantId: string): Promise<MailConfig> {
   const result = await client.query(`
     SELECT mail_config
     FROM lv2_leave_settings
+    WHERE tenant_id = $1
     LIMIT 1
-  `);
+  `, [tenantId]);
 
   if (result.rows.length === 0) {
     return DEFAULT_MAIL_CONFIG;

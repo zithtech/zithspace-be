@@ -33,6 +33,10 @@ const generalAuthRateLimit = (0, express_rate_limit_1.default)({
     standardHeaders: true,
     legacyHeaders: false,
 });
+// Extension workspace resolution - public, used by the activation/binding screen
+router.get("/resolve-tenant", generalAuthRateLimit, authController_1.AuthController.resolveWorkspace);
+// Extension install-key redemption - public, high-entropy key (not an existence oracle)
+router.post("/redeem-install-key", authRateLimit, authController_1.AuthController.redeemInstallKey);
 // Extension global login - doesn't require tenant context
 router.post("/extension-login", authRateLimit, authController_1.AuthController.extensionLogin);
 // Login route - requires tenant context
@@ -53,5 +57,9 @@ router.get("/new", authController_1.AuthController.getNewProfile);
 router.get("/check", generalAuthRateLimit, auth_1.authenticateToken, authController_1.AuthController.check);
 // Create user route - requires tenant context (for testing/setup)
 router.post("/users", generalAuthRateLimit, tenantContext_1.resolveTenant, authController_1.AuthController.createUser);
+// Password reset routes
+router.post("/forgot-password", authRateLimit, authController_1.AuthController.forgotPassword);
+router.get("/reset-password/validate", generalAuthRateLimit, authController_1.AuthController.validateResetToken);
+router.post("/reset-password", authRateLimit, authController_1.AuthController.resetPassword);
 exports.default = router;
 //# sourceMappingURL=auth.js.map

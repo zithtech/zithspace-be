@@ -1,3 +1,4 @@
+import { recordTransaction, Section, Module, Page, Action, EntityType } from "@/utils/transactionHistory";
 import { Response } from "express";
 import pool from "@/config/dbpool";
 import { AuthRequest } from "@/types";
@@ -507,7 +508,7 @@ export class CrStaffController {
       return;
     }
     const t = await pool.query(
-      `SELECT 1 FROM portal_change_requests
+      `SELECT client_id FROM portal_change_requests
         WHERE id = $1 AND tenant_id = $2`,
       [id, tenantId],
     );
@@ -621,7 +622,7 @@ export class CrStaffController {
     const { id } = req.params;
 
     const cur = await pool.query(
-      `SELECT 1 FROM portal_change_requests
+      `SELECT client_id, status, assigned_staff_user_id FROM portal_change_requests
         WHERE id = $1 AND tenant_id = $2`,
       [id, tenantId],
     );
@@ -635,7 +636,20 @@ export class CrStaffController {
       [id, tenantId],
     );
 
-    res.json({ success: true });
+    
+    recordTransaction({
+      req,
+      parentEntityType: EntityType.CLIENT,
+      parentEntityId: (cur.rows[0] as any).client_id,
+      section: Section.ADMIN,
+      module: Module.CLIENTS_V2,
+      page: Page.CLIENT_DETAIL,
+      action: Action.DELETE,
+      actionLabel: `Deleted change request`,
+      entityType: "client_portal_data",
+      statusCode: 200,
+    });
+res.json({ success: true });
   }
 }
 
