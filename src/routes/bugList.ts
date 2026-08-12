@@ -61,6 +61,7 @@ router.delete("/bugs/:id/permanent", requirePermission(Permissions.BUG_DELETE), 
 router.post("/bugs/:id/restore", requirePermission(Permissions.BUG_UPDATE), BugListController.restoreBug);
 router.post("/bugs/:id/verify", requirePermission(Permissions.BUG_MANAGE), BugListController.verifyBug);
 router.post("/bugs/:id/reopen", requirePermission(Permissions.BUG_MANAGE), BugListController.reopenBug);
+router.put("/bugs/:id/recurring", requirePermission(Permissions.BUG_UPDATE), BugListController.markBugAsRecurring);
 
 // ─── AI ────────────────────────────────────────────────────────────────────
 router.post("/ai/review", requirePermission(Permissions.BUG_READ), requireAiAccess, BugListController.aiReview);
