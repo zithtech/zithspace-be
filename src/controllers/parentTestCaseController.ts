@@ -33,7 +33,42 @@ export const getParentTestCases = async (req: Request, res: Response) => {
     const tenantId = (req as any).user?.tenantId;
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
-    const { module_id, search, limit } = req.query;
+    const { module_id, search, limit, page = '1', pageSize = '10', status, automation, owner, quickFilter } = req.query;
+
+    const parsedLimit = limit ? parseInt(limit as string, 10) : parseInt(pageSize as string, 10) || 10;
+    const parsedPage = parseInt(page as string, 10) || 1;
+    const offset = (parsedPage - 1) * parsedLimit;
+
+    // Helper to build WHERE conditions
+    const applyFilters = (q: string, p: any[]) => {
+      let queryStr = q;
+      if (module_id) {
+        p.push(module_id);
+        queryStr += ` AND ptc.module_id::text = $${p.length}::text`;
+      }
+      if (search) {
+        p.push(`%${search}%`);
+        queryStr += ` AND (ptc.title ILIKE $${p.length} OR mv2.name ILIKE $${p.length} OR m.module_name ILIKE $${p.length} OR ptc.feature ILIKE $${p.length})`;
+      }
+      if (status) {
+        p.push(status);
+        queryStr += ` AND ptc.status = $${p.length}`;
+      }
+      if (automation) {
+        p.push(automation);
+        queryStr += ` AND ptc.automation = $${p.length}`;
+      }
+      if (owner) {
+        p.push(owner);
+        queryStr += ` AND (u_owner.name = $${p.length} OR u_creator.name = $${p.length})`;
+      }
+      if (quickFilter === 'ready') {
+        queryStr += ` AND (ptc.status = 'Ready' OR ptc.status = 'Active')`;
+      } else if (quickFilter === 'automated') {
+        queryStr += ` AND ptc.automation = 'Automated'`;
+      }
+      return queryStr;
+    };
 
     let query = `
       SELECT ptc.*, COALESCE(mv2.name, m.module_name, 'Unassigned') as module_name,
@@ -57,24 +92,41 @@ export const getParentTestCases = async (req: Request, res: Response) => {
       WHERE ptc.tenant_id = $1
     `;
     const params: any[] = [tenantId];
+    query = applyFilters(query, params);
 
-    if (module_id) {
-      params.push(module_id);
-      query += ` AND ptc.module_id::text = $${params.length}::text`;
-    }
-    if (search) {
-      params.push(`%${search}%`);
-      query += ` AND (ptc.title ILIKE $${params.length} OR mv2.name ILIKE $${params.length} OR m.module_name ILIKE $${params.length} OR ptc.feature ILIKE $${params.length})`;
-    }
+    let countQuery = `
+      SELECT COUNT(*) FROM qa_parent_test_cases ptc
+      LEFT JOIN qa_todo_modules m ON ptc.module_id::text = m.id::text
+      LEFT JOIN modules_v2 mv2 ON ptc.module_id::text = mv2.id::text
+      LEFT JOIN users u_owner ON ptc.owner::text = u_owner.id::text
+      LEFT JOIN users u_creator ON ptc.created_by::text = u_creator.id::text
+      WHERE ptc.tenant_id = $1
+    `;
+    const countParams: any[] = [tenantId];
+    countQuery = applyFilters(countQuery, countParams);
 
     query += ` ORDER BY ptc.updated_at DESC`;
-    if (limit) {
-      params.push(parseInt(limit as string, 10));
-      query += ` LIMIT $${params.length}`;
-    }
+    params.push(parsedLimit);
+    query += ` LIMIT $${params.length}`;
+    params.push(offset);
+    query += ` OFFSET $${params.length}`;
 
-    const { rows } = await pool.query(query, params);
-    res.status(200).json({ success: true, data: rows });
+    const [{ rows }, { rows: countRows }] = await Promise.all([
+      pool.query(query, params),
+      pool.query(countQuery, countParams)
+    ]);
+    const total = parseInt(countRows[0].count, 10);
+
+    res.status(200).json({ 
+      success: true, 
+      data: rows,
+      pagination: {
+        total,
+        page: parsedPage,
+        pageSize: parsedLimit,
+        totalPages: Math.ceil(total / parsedLimit)
+      }
+    });
   } catch (error) {
     console.error('Error fetching parent test cases:', error);
     res.status(500).json({ success: false, error: 'Internal Server Error' });

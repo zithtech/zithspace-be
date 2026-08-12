@@ -7,16 +7,90 @@ import { Permissions } from '../types/permissions';
 export const getTestScopes = async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).user?.tenantId;
+    const userName = (req as any).user?.name;
     if (!tenantId) {
       return res.status(401).json({ success: false, error: 'Unauthorized: No tenant found' });
     }
 
-    const { rows } = await pool.query(
-      `SELECT * FROM qa_test_scopes WHERE tenant_id = $1 ORDER BY created_at DESC`,
-      [tenantId]
-    );
+    const {
+      page = '1',
+      pageSize = '10',
+      search,
+      status,
+      priority,
+      qa_owner,
+      sortBy = 'created_at',
+      sortOrder = 'desc',
+      isApproval
+    } = req.query;
 
-    res.status(200).json({ success: true, data: rows });
+    const limit = parseInt(pageSize as string) || 10;
+    const offset = (parseInt(page as string) - 1) * limit;
+
+    let query = `SELECT * FROM qa_test_scopes WHERE tenant_id = $1`;
+    let countQuery = `SELECT COUNT(*) FROM qa_test_scopes WHERE tenant_id = $1`;
+    const params: any[] = [tenantId];
+    let paramIndex = 2;
+
+    if (isApproval === 'true') {
+      query += ` AND details->>'reviewer' = $${paramIndex}`;
+      countQuery += ` AND details->>'reviewer' = $${paramIndex}`;
+      params.push(userName);
+      paramIndex++;
+    }
+
+    if (status) {
+      query += ` AND LOWER(REPLACE(status, ' ', '_')) = LOWER(REPLACE($${paramIndex}, ' ', '_'))`;
+      countQuery += ` AND LOWER(REPLACE(status, ' ', '_')) = LOWER(REPLACE($${paramIndex}, ' ', '_'))`;
+      params.push(status);
+      paramIndex++;
+    }
+
+    if (priority) {
+      query += ` AND LOWER(REPLACE(priority, ' ', '_')) = LOWER(REPLACE($${paramIndex}, ' ', '_'))`;
+      countQuery += ` AND LOWER(REPLACE(priority, ' ', '_')) = LOWER(REPLACE($${paramIndex}, ' ', '_'))`;
+      params.push(priority);
+      paramIndex++;
+    }
+
+    if (qa_owner) {
+      query += ` AND qa_owner = $${paramIndex}`;
+      countQuery += ` AND qa_owner = $${paramIndex}`;
+      params.push(qa_owner);
+      paramIndex++;
+    }
+
+    if (search) {
+      const searchStr = `%${search}%`;
+      query += ` AND (name ILIKE $${paramIndex} OR type ILIKE $${paramIndex} OR details->>'product' ILIKE $${paramIndex})`;
+      countQuery += ` AND (name ILIKE $${paramIndex} OR type ILIKE $${paramIndex} OR details->>'product' ILIKE $${paramIndex})`;
+      params.push(searchStr);
+      paramIndex++;
+    }
+
+    const validSortCols = ['name', 'created_at', 'end_date'];
+    const orderCol = validSortCols.includes(sortBy as string) ? (sortBy as string) : 'created_at';
+    const orderDir = sortOrder === 'asc' ? 'ASC' : 'DESC';
+    const nullsOrder = orderDir === 'ASC' ? 'NULLS LAST' : 'NULLS LAST';
+    
+    query += ` ORDER BY ${orderCol} ${orderDir} ${nullsOrder} LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    
+    const queryParams = [...params, limit, offset];
+
+    const { rows } = await pool.query(query, queryParams);
+    const { rows: countRows } = await pool.query(countQuery, params);
+    const total = parseInt(countRows[0].count);
+
+    res.status(200).json({ 
+      success: true, 
+      data: rows,
+      pagination: {
+        total,
+        page: parseInt(page as string),
+        pageSize: limit,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
   } catch (error) {
     console.error('Error fetching test scopes:', error);
     res.status(500).json({ success: false, error: 'Internal Server Error' });
@@ -436,5 +510,61 @@ export const exportPdf = async (req: Request, res: Response) => {
       success: false,
       error: "Failed to generate PDF",
     });
+  }
+};
+
+export const getTestScopesStats = async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).user?.tenantId;
+    const userName = (req as any).user?.name;
+    
+    if (!tenantId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized' });
+    }
+
+    const { rows } = await pool.query(`SELECT * FROM qa_test_scopes WHERE tenant_id = $1`, [tenantId]);
+
+    const stats: any = {
+      totalScopes: rows.length,
+      approved: rows.filter(r => r.status === 'Approved').length,
+      inReview: rows.filter(r => r.status === 'In Review').length,
+      inDraft: rows.filter(r => r.status === 'Draft').length,
+      // pendingApprovals = scopes where THIS user is the reviewer (matches approvals tab)
+      pendingApprovals: rows.filter(r => r.details?.reviewer === userName).length,
+      routedForApproval: rows.filter(r => r.status === 'In Review').length,
+      draftNoDueDate: rows.filter(r => r.status === 'Draft' && !r.end_date).length,
+      overdueCount: rows.filter(r => {
+        if (!r.end_date) return false;
+        const end = new Date(r.end_date);
+        end.setHours(0,0,0,0);
+        const now = new Date();
+        now.setHours(0,0,0,0);
+        return end < now;
+      }).length,
+      yearlyScopesData: []
+    };
+
+    const currentYear = new Date().getFullYear();
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const yearlyScopesMap: Record<string, number> = {};
+    rows.forEach(r => {
+      if (r.created_at) {
+        const d = new Date(r.created_at);
+        if (d.getFullYear() === currentYear) {
+          const monthStr = months[d.getMonth()];
+          yearlyScopesMap[monthStr] = (yearlyScopesMap[monthStr] || 0) + 1;
+        }
+      }
+    });
+
+    stats.yearlyScopesData = months.map(month => ({
+      month,
+      scopes: yearlyScopesMap[month] || 0
+    }));
+
+    res.status(200).json({ success: true, data: stats });
+  } catch (error) {
+    console.error('Error fetching test scopes stats:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
   }
 };

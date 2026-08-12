@@ -34,7 +34,7 @@ export const getTestCases = async (req: Request, res: Response) => {
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
     // Allow filtering by module_id and parent_test_case_id
-    const { module_id, parent_test_case_id, parent_id, search, test_type, limit, offset, ids_only, paginated } = req.query;
+    const { module_id, parent_test_case_id, parent_id, search, test_type, limit, offset, ids_only, paginated, page, pageSize } = req.query;
     const parentId = parent_test_case_id || parent_id;
 
     // Filters are built once so the count, the id-only and the full queries
@@ -98,8 +98,10 @@ export const getTestCases = async (req: Request, res: Response) => {
     // on page 2 and drop another entirely.
     query += ` ORDER BY tc.created_at DESC, tc.id DESC`;
 
-    const parsedLimit = limit ? parseInt(limit as string, 10) : null;
-    const parsedOffset = offset ? parseInt(offset as string, 10) : 0;
+    const parsedPageSize = pageSize ? parseInt(pageSize as string, 10) : null;
+    const parsedPage = page ? parseInt(page as string, 10) : 1;
+    const parsedLimit = parsedPageSize || (limit ? parseInt(limit as string, 10) : null);
+    const parsedOffset = parsedPageSize ? (parsedPage - 1) * parsedPageSize : (offset ? parseInt(offset as string, 10) : 0);
     const pageParams = [...params];
 
     if (parsedLimit && parsedLimit > 0) {
@@ -112,6 +114,22 @@ export const getTestCases = async (req: Request, res: Response) => {
     }
 
     const { rows } = await pool.query(query, pageParams);
+
+    // Standard pagination envelope if page/pageSize is provided
+    if (page || pageSize) {
+      const countRes = await pool.query(`SELECT COUNT(*)::int AS total FROM qa_test_cases tc${where}`, params);
+      const total = countRes.rows[0]?.total ?? rows.length;
+      return res.status(200).json({
+        success: true,
+        data: rows,
+        pagination: {
+          total,
+          page: parsedPage,
+          pageSize: parsedLimit || 10,
+          totalPages: Math.ceil(total / (parsedLimit || 10))
+        }
+      });
+    }
 
     // Opt-in envelope: infinite-scroll callers need the total and a next-page
     // flag. Everyone else keeps receiving a bare array.
