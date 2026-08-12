@@ -24,8 +24,12 @@ export const getTestSuites = async (req: Request, res: Response) => {
     const tenantId = (req as any).user?.tenantId;
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
     
-    const { module_id, parent_test_case_id, parent_id, search, limit } = req.query;
+    const { module_id, parent_test_case_id, parent_id, search, limit, page = '1', pageSize = '10', coverageFilter } = req.query;
     const parentId = parent_test_case_id || parent_id;
+
+    const parsedLimit = limit ? parseInt(limit as string, 10) : parseInt(pageSize as string, 10) || 10;
+    const parsedPage = parseInt(page as string, 10) || 1;
+    const offset = (parsedPage - 1) * parsedLimit;
 
     let query = `
       SELECT ts.*, COALESCE(mv2.name, ptc_mv2.name, m.module_name, ptc_m.module_name, 'Unassigned') as module_name, ptc.title as parent_title,
@@ -43,27 +47,64 @@ export const getTestSuites = async (req: Request, res: Response) => {
     `;
     const params: any[] = [tenantId];
     
-    if (module_id) {
-      params.push(module_id);
-      query += ` AND (ts.module_id::text = $${params.length}::text OR ptc.module_id::text = $${params.length}::text)`;
-    }
-    if (parentId) {
-      params.push(parentId);
-      query += ` AND ts.parent_test_case_id::text = $${params.length}::text`;
-    }
-    if (search) {
-      params.push(`%${search}%`);
-      query += ` AND (ts.suite_name ILIKE $${params.length} OR ptc.title ILIKE $${params.length})`;
-    }
-    
-    query += ` ORDER BY ts.created_at DESC`;
-    if (limit) {
-      params.push(parseInt(limit as string, 10));
-      query += ` LIMIT $${params.length}`;
-    }
+    // Helper to build WHERE conditions
+    const applyFilters = (q: string, p: any[]) => {
+      let queryStr = q;
+      if (module_id) {
+        p.push(module_id);
+        queryStr += ` AND (ts.module_id::text = $${p.length}::text OR ptc.module_id::text = $${p.length}::text)`;
+      }
+      if (parentId) {
+        p.push(parentId);
+        queryStr += ` AND ts.parent_test_case_id::text = $${p.length}::text`;
+      }
+      if (search) {
+        p.push(`%${search}%`);
+        queryStr += ` AND (ts.suite_name ILIKE $${p.length} OR ptc.title ILIKE $${p.length})`;
+      }
+      if (coverageFilter) {
+        const caseCountSubquery = `(SELECT COUNT(*) FROM qa_test_suite_cases tsc WHERE tsc.test_suite_id::text = ts.id::text)`;
+        if (coverageFilter === 'linked') {
+          queryStr += ` AND ${caseCountSubquery} > 0`;
+        } else if (coverageFilter === 'empty') {
+          queryStr += ` AND ${caseCountSubquery} = 0`;
+        }
+      }
+      return queryStr;
+    };
 
-    const { rows } = await pool.query(query, params);
-    res.status(200).json({ success: true, data: rows });
+    query = applyFilters(query, params);
+    
+    let countQuery = `
+      SELECT COUNT(*) FROM qa_test_suites ts
+      LEFT JOIN qa_parent_test_cases ptc ON ts.parent_test_case_id::text = ptc.id::text
+      WHERE ts.tenant_id = $1
+    `;
+    const countParams: any[] = [tenantId];
+    countQuery = applyFilters(countQuery, countParams);
+
+    query += ` ORDER BY ts.created_at DESC`;
+    params.push(parsedLimit);
+    query += ` LIMIT $${params.length}`;
+    params.push(offset);
+    query += ` OFFSET $${params.length}`;
+
+    const [{ rows }, { rows: countRows }] = await Promise.all([
+      pool.query(query, params),
+      pool.query(countQuery, countParams)
+    ]);
+    const total = parseInt(countRows[0].count, 10);
+
+    res.status(200).json({ 
+      success: true, 
+      data: rows,
+      pagination: {
+        total,
+        page: parsedPage,
+        pageSize: parsedLimit,
+        totalPages: Math.ceil(total / parsedLimit)
+      }
+    });
   } catch (error) {
     console.error('Error fetching test suites:', error);
     res.status(500).json({ success: false, error: 'Internal Server Error' });
@@ -107,6 +148,80 @@ export const getTestSuite = async (req: Request, res: Response) => {
     res.status(200).json({ success: true, data: suite });
   } catch (error) {
     console.error('Error fetching test suite:', error);
+    res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+};
+
+export const getTestSuiteCases = async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).user?.tenantId;
+    if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
+    const { id } = req.params;
+    
+    const { search, test_type, priority, status, quickFilter, limit, page = '1', pageSize = '10' } = req.query;
+
+    const parsedLimit = limit ? parseInt(limit as string, 10) : parseInt(pageSize as string, 10) || 10;
+    const parsedPage = parseInt(page as string, 10) || 1;
+    const offset = (parsedPage - 1) * parsedLimit;
+
+    let baseQuery = `
+      FROM qa_test_suite_cases tsc
+      JOIN qa_test_cases tc ON tsc.test_case_id::text = tc.id::text
+      WHERE tsc.test_suite_id::text = $1 AND tsc.tenant_id = $2
+    `;
+    const params: any[] = [id, tenantId];
+
+    if (search) {
+      params.push(`%${search}%`);
+      baseQuery += ` AND (tc.name ILIKE $${params.length} OR tc.test_case_id ILIKE $${params.length})`;
+    }
+    if (test_type) {
+      params.push(String(test_type));
+      baseQuery += ` AND tc.test_type = $${params.length}`;
+    }
+    if (priority) {
+      params.push(String(priority));
+      baseQuery += ` AND tc.priority = $${params.length}`;
+    }
+    if (status) {
+      params.push(String(status));
+      baseQuery += ` AND tc.status = $${params.length}`;
+    }
+    if (quickFilter === 'active') {
+      baseQuery += ` AND (tc.status = 'Active' OR tc.status = 'Ready')`;
+    } else if (quickFilter === 'automated') {
+      baseQuery += ` AND tc.automation = 'Automated'`;
+    } else if (quickFilter === 'highPriority') {
+      baseQuery += ` AND (tc.priority = 'High' OR tc.priority = 'Critical')`;
+    }
+
+    const countQuery = `SELECT COUNT(*) ${baseQuery}`;
+    
+    let query = `SELECT tc.* ${baseQuery} ORDER BY tsc.created_at DESC`;
+    params.push(parsedLimit);
+    query += ` LIMIT $${params.length}`;
+    params.push(offset);
+    query += ` OFFSET $${params.length}`;
+
+    const [{ rows }, { rows: countRows }] = await Promise.all([
+      pool.query(query, params),
+      pool.query(countQuery, params.slice(0, params.length - 2))
+    ]);
+
+    const total = parseInt(countRows[0].count, 10);
+
+    res.status(200).json({ 
+      success: true, 
+      data: rows,
+      pagination: {
+        total,
+        page: parsedPage,
+        pageSize: parsedLimit,
+        totalPages: Math.ceil(total / parsedLimit)
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching test suite cases:', error);
     res.status(500).json({ success: false, error: 'Internal Server Error' });
   }
 };

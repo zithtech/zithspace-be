@@ -9,7 +9,8 @@ import {
   enhanceScopeText,
   aiRewriteScopeSelection,
   exportPdf,
-  getHubDocuments
+  getHubDocuments,
+  getTestScopesStats
 } from '../controllers/testScopeController';
 import {
   getScopeSettings,
@@ -29,6 +30,7 @@ router.use(resolveTenant);
 router.use(authenticateToken);
 
 router.get('/', requireAnyPermission(Permissions.QA_SCOPE_READ, Permissions.QA_MANAGE), getTestScopes);
+router.get('/stats', requireAnyPermission(Permissions.QA_SCOPE_READ, Permissions.QA_MANAGE), getTestScopesStats);
 router.post('/', requireAnyPermission(Permissions.QA_SCOPE_CREATE, Permissions.QA_MANAGE), createTestScope);
 router.post('/generate-ai', requireAnyPermission(Permissions.QA_SCOPE_CREATE, Permissions.QA_MANAGE), generateScopeContentAI);
 router.get('/documents', requireAnyPermission(Permissions.QA_SCOPE_READ, Permissions.QA_MANAGE), getHubDocuments);

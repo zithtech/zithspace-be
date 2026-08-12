@@ -349,9 +349,9 @@ async function getFailedCases(id: string, tenantId: string) {
      SELECT e.test_case_id, e.status, e.notes, e.executed_at, e.run_id, e.run_role,
             tc.test_case_id AS case_ref, tc.name AS case_name, tc.severity, tc.priority,
             tr.run_name,
-            b.id AS bug_id, b.bug_number, b.status AS bug_status_key,
+            b.id AS bug_id, b.bug_number, b.title AS bug_title, b.status AS bug_status_key,
             b.bug_status AS bug_progress, b.severity AS bug_severity, b.sheet_id AS bug_sheet_id,
-            t.id AS ticket_id, t.ticket_number, t.status AS ticket_status
+            t.id AS ticket_id, t.ticket_number, t.title AS ticket_title, t.status AS ticket_status
        FROM effective e
        JOIN qa_test_cases tc ON tc.id = e.test_case_id
        LEFT JOIN qa_test_runs tr ON tr.id = e.run_id
