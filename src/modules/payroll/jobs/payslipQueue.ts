@@ -74,7 +74,7 @@ export async function enqueuePayslipJobs(runId: string, tenantId: string, reques
     employeeIds.map((employeeId) => ({
       name: 'payslip',
       data: { tenantId, runId, employeeId, requestedBy },
-      opts: { jobId: `${runId}:${employeeId}` },
+      opts: { jobId: `${runId}_${employeeId}` },
     }))
   );
 }
