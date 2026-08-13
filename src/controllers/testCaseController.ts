@@ -34,7 +34,7 @@ export const getTestCases = async (req: Request, res: Response) => {
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
     // Allow filtering by module_id and parent_test_case_id
-    const { module_id, parent_test_case_id, parent_id, search, test_type, limit, offset, ids_only, paginated, page, pageSize } = req.query;
+    const { module_id, parent_test_case_id, parent_id, search, test_type, priority, status, quickFilter, sort, limit, offset, ids_only, paginated, page, pageSize } = req.query;
     const parentId = parent_test_case_id || parent_id;
 
     // Filters are built once so the count, the id-only and the full queries
@@ -60,12 +60,27 @@ export const getTestCases = async (req: Request, res: Response) => {
       params.push(String(test_type));
       where += ` AND LOWER(TRIM(COALESCE(tc.test_type, ''))) = LOWER(TRIM($${params.length}))`;
     }
+    if (priority) {
+      params.push(String(priority));
+      where += ` AND LOWER(TRIM(COALESCE(tc.priority, ''))) = LOWER(TRIM($${params.length}))`;
+    }
+    if (status) {
+      params.push(String(status));
+      where += ` AND LOWER(TRIM(COALESCE(tc.status, ''))) = LOWER(TRIM($${params.length}))`;
+    }
+    if (quickFilter === 'ready') {
+      where += ` AND (tc.status = 'Ready' OR tc.status = 'Active')`;
+    } else if (quickFilter === 'automated') {
+      where += ` AND tc.automation = 'Automated'`;
+    }
+
+    const sortOrder = sort === 'desc' ? 'DESC' : 'ASC';
 
     // Cheap id-only mode, used by "select all" so the client can act on every
     // match without pulling the rows it hasn't scrolled to yet.
     if (ids_only === 'true' || ids_only === '1') {
       const { rows } = await pool.query(
-        `SELECT tc.id FROM qa_test_cases tc${where} ORDER BY tc.created_at DESC, tc.id DESC`,
+        `SELECT tc.id FROM qa_test_cases tc${where} ORDER BY tc.created_at ${sortOrder}, tc.id ${sortOrder}`,
         params
       );
       return res.status(200).json({ success: true, data: rows, total: rows.length });
@@ -96,7 +111,7 @@ export const getTestCases = async (req: Request, res: Response) => {
     // the microsecond, and without a total order Postgres is free to return
     // them differently per query — which makes LIMIT/OFFSET paging repeat a row
     // on page 2 and drop another entirely.
-    query += ` ORDER BY tc.created_at DESC, tc.id DESC`;
+    query += ` ORDER BY tc.created_at ${sortOrder}, tc.id ${sortOrder}`;
 
     const parsedPageSize = pageSize ? parseInt(pageSize as string, 10) : null;
     const parsedPage = page ? parseInt(page as string, 10) : 1;
