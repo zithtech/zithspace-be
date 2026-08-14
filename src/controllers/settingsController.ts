@@ -107,17 +107,12 @@ export class SettingsController {
         }),
 
         // Get all managed dropdown options
-        prisma.dropdownOption.findMany({
-          where: {
-            tenantId: req.tenantId,
-            isActive: true
-          },
-          orderBy: [
-            { category: 'asc' },
-            { order: 'asc' },
-            { label: 'asc' }
-          ]
-        })
+        prisma.$queryRawUnsafe<any[]>(`
+          SELECT id, tenant_id as "tenantId", category, value, label, description, color, "order", is_active as "isActive", created_at as "createdAt", updated_at as "updatedAt"
+          FROM dropdown_options
+          WHERE tenant_id = $1 AND is_active = true
+          ORDER BY category ASC, "order" ASC, label ASC
+        `, req.tenantId)
       ]);
 
       // Helper to extract options by category
@@ -1069,19 +1064,13 @@ export class SettingsController {
       const activeOnly = includeInactive !== 'true';
 
 
-      const where: any = { tenantId: req.tenantId };
-      if (activeOnly) {
-        where.isActive = true;
-      }
-
-      const options = await prisma.dropdownOption.findMany({
-        where,
-        orderBy: [
-          { category: 'asc' },
-          { order: 'asc' },
-          { label: 'asc' }
-        ]
-      });
+      const isActiveFilter = activeOnly ? `AND is_active = true` : '';
+      const options = await prisma.$queryRawUnsafe<any[]>(`
+        SELECT id, tenant_id as "tenantId", category, value, label, "order", is_active as "isActive", created_at as "createdAt", updated_at as "updatedAt", description, color
+        FROM dropdown_options
+        WHERE tenant_id = $1 ${isActiveFilter}
+        ORDER BY category ASC, "order" ASC, label ASC
+      `, req.tenantId);
 
       // Group by category (map to type for frontend compatibility)
       const grouped: Record<string, any[]> = {};
@@ -1097,6 +1086,8 @@ export class SettingsController {
           type: option.category, // For backward compatibility
           value: option.value,
           label: option.label,
+          description: option.description,
+          color: option.color,
           order: option.order,
           isActive: option.isActive,
           createdAt: option.createdAt,
@@ -1148,31 +1139,13 @@ export class SettingsController {
       const activeOnly = includeInactive !== 'true';
 
 
-      const where: any = {
-        tenantId: req.tenantId,
-        category: type
-      };
-      if (activeOnly) {
-        where.isActive = true;
-      }
-
-      const options = await prisma.dropdownOption.findMany({
-        where,
-        orderBy: [
-          { order: 'asc' },
-          { label: 'asc' }
-        ],
-        select: {
-          id: true,
-          category: true,
-          value: true,
-          label: true,
-          order: true,
-          isActive: true,
-          createdAt: true,
-          updatedAt: true
-        }
-      });
+      const isActiveFilter = activeOnly ? `AND is_active = true` : '';
+      const options = await prisma.$queryRawUnsafe<any[]>(`
+        SELECT id, tenant_id as "tenantId", category, value, label, "order", is_active as "isActive", created_at as "createdAt", updated_at as "updatedAt", description, color
+        FROM dropdown_options
+        WHERE tenant_id = $1 AND category = $2 ${isActiveFilter}
+        ORDER BY "order" ASC, label ASC
+      `, req.tenantId, type);
 
 
       // Format for frontend compatibility
@@ -1181,6 +1154,8 @@ export class SettingsController {
         type: option.category, // Map category to type
         value: option.value,
         label: option.label,
+        description: option.description,
+        color: option.color,
         order: option.order,
         isActive: option.isActive,
         createdAt: option.createdAt,
@@ -1234,22 +1209,19 @@ export class SettingsController {
 
 
       // Get the next order number for this type
-      const lastOption = await prisma.dropdownOption.findFirst({
-        where: { tenantId: req.tenantId, category: type },
-        orderBy: { order: 'desc' }
-      });
-      const order = lastOption ? lastOption.order + 1 : 1;
+      const lastOptions = await prisma.$queryRawUnsafe<any[]>(`
+        SELECT "order" FROM dropdown_options
+        WHERE tenant_id = $1 AND category = $2
+        ORDER BY "order" DESC LIMIT 1
+      `, req.tenantId, type);
+      const order = lastOptions.length > 0 ? lastOptions[0].order + 1 : 1;
 
-      const newOption = await prisma.dropdownOption.create({
-        data: {
-          tenantId: req.tenantId,
-          category: type,
-          value,
-          label,
-          order,
-          isActive: true
-        }
-      });
+      const newOptions = await prisma.$queryRawUnsafe<any[]>(`
+        INSERT INTO dropdown_options (id, tenant_id, category, value, label, description, color, "order", is_active, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+        RETURNING id, tenant_id as "tenantId", category, value, label, description, color, "order", is_active as "isActive", created_at as "createdAt", updated_at as "updatedAt"
+      `, randomUUID(), req.tenantId, type, value, label, description || null, color || null, order, true);
+      const newOption = newOptions[0];
 
 
       recordTransaction({
@@ -1278,6 +1250,8 @@ export class SettingsController {
           type: newOption.category,
           value: newOption.value,
           label: newOption.label,
+          description: newOption.description,
+          color: newOption.color,
           order: newOption.order,
           isActive: newOption.isActive,
           createdAt: newOption.createdAt,
@@ -1328,13 +1302,16 @@ export class SettingsController {
     console.log('Full body:', req.body);
 
     // Verify option exists
-    const existingOption = await prisma.dropdownOption.findFirst({
-      where: { id, tenantId: req.tenantId }
-    });
+    const existingOptions = await prisma.$queryRawUnsafe<any[]>(`
+      SELECT id, tenant_id as "tenantId", category, value, label, description, color, "order", is_active as "isActive", created_at as "createdAt", updated_at as "updatedAt"
+      FROM dropdown_options
+      WHERE id = $1 AND tenant_id = $2 LIMIT 1
+    `, id, req.tenantId);
 
-    if (!existingOption) {
+    if (existingOptions.length === 0) {
       throw new NotFoundError('Dropdown option not found');
     }
+    const existingOption = existingOptions[0];
 
     // ✅ CRITICAL FIX: Build update data dynamically
     const updateData: any = {};
@@ -1356,10 +1333,29 @@ export class SettingsController {
       return;
     }
 
-    const updatedOption = await prisma.dropdownOption.update({
-      where: { id },
-      data: updateData
-    });
+    // Build SET clause dynamically
+    const setClauses: string[] = [];
+    const values: any[] = [];
+    let paramIndex = 1;
+    for (const key of Object.keys(updateData)) {
+      if (key === 'isActive') setClauses.push(`is_active = $${paramIndex++}`);
+      else if (key === 'order') setClauses.push(`"order" = $${paramIndex++}`);
+      else setClauses.push(`"${key}" = $${paramIndex++}`);
+      values.push(updateData[key]);
+    }
+    setClauses.push(`updated_at = NOW()`);
+    
+    // Add id for WHERE clause
+    values.push(id);
+
+    const updatedOptions = await prisma.$queryRawUnsafe<any[]>(`
+      UPDATE dropdown_options
+      SET ${setClauses.join(', ')}
+      WHERE id = $${paramIndex}
+      RETURNING id, tenant_id as "tenantId", category, value, label, description, color, "order", is_active as "isActive", created_at as "createdAt", updated_at as "updatedAt"
+    `, ...values);
+    
+    const updatedOption = updatedOptions[0];
 
     {
       const beforeSnap: Record<string, any> = {};
@@ -1395,6 +1391,8 @@ export class SettingsController {
         type: updatedOption.category,
         value: updatedOption.value,
         label: updatedOption.label,
+        description: updatedOption.description,
+        color: updatedOption.color,
         order: updatedOption.order,
         isActive: updatedOption.isActive,
         createdAt: updatedOption.createdAt,
@@ -1443,17 +1441,21 @@ export class SettingsController {
 
 
       // Verify option exists and belongs to tenant
-      const existingOption = await prisma.dropdownOption.findFirst({
-        where: { id, tenantId: req.tenantId }
-      });
+      const existingOptions = await prisma.$queryRawUnsafe<any[]>(`
+        SELECT category, value, label, "order"
+        FROM dropdown_options
+        WHERE id = $1 AND tenant_id = $2 LIMIT 1
+      `, id, req.tenantId);
 
-      if (!existingOption) {
+      if (existingOptions.length === 0) {
         throw new NotFoundError('Dropdown option not found');
       }
+      const existingOption = existingOptions[0];
 
-      await prisma.dropdownOption.delete({
-        where: { id }
-      });
+      await prisma.$executeRawUnsafe(`
+        DELETE FROM dropdown_options
+        WHERE id = $1 AND tenant_id = $2
+      `, id, req.tenantId);
 
       recordTransaction({
         req,
@@ -1524,13 +1526,11 @@ export class SettingsController {
 
       // Update order for each item
       const updatePromises = items.map((item: { id: string; order: number }) =>
-        prisma.dropdownOption.updateMany({
-          where: {
-            id: item.id,
-            tenantId: req.tenantId
-          },
-          data: { order: item.order }
-        })
+        prisma.$executeRawUnsafe(`
+          UPDATE dropdown_options
+          SET "order" = $1, updated_at = NOW()
+          WHERE id = $2 AND tenant_id = $3
+        `, item.order, item.id, req.tenantId)
       );
 
       await Promise.all(updatePromises);
