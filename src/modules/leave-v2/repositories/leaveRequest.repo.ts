@@ -100,13 +100,19 @@ export interface BalanceRow {
 
 export async function getBalances(client: TenantClient, userId: string): Promise<BalanceRow[]> {
   const { rows } = await client.query(
-    `SELECT leave_type_id,
-            COALESCE(SUM(units), 0)                          AS available,
-            COALESCE(SUM(units) FILTER (WHERE units > 0), 0) AS credited,
-            COALESCE(-SUM(units) FILTER (WHERE units < 0), 0) AS used
-       FROM lv2_leave_ledger
-      WHERE tenant_id = $1 AND user_id = $2
-      GROUP BY leave_type_id`,
+    `SELECT l.leave_type_id,
+            COALESCE(SUM(l.units), 0) - COALESCE(MAX(p.pending_units), 0) AS available,
+            COALESCE(SUM(l.units) FILTER (WHERE l.units > 0), 0) AS credited,
+            COALESCE(-SUM(l.units) FILTER (WHERE l.units < 0), 0) AS used
+       FROM lv2_leave_ledger l
+       LEFT JOIN (
+         SELECT leave_type_id, SUM(paid_units) as pending_units
+           FROM lv2_leave_requests
+          WHERE tenant_id = $1 AND user_id = $2 AND status = 'pending'
+          GROUP BY leave_type_id
+       ) p ON p.leave_type_id = l.leave_type_id
+      WHERE l.tenant_id = $1 AND l.user_id = $2
+      GROUP BY l.leave_type_id`,
     [client.tenantId, userId]
   );
   return rows.map((r) => ({
@@ -119,9 +125,15 @@ export async function getBalances(client: TenantClient, userId: string): Promise
 
 export async function getBalanceFor(client: TenantClient, userId: string, leaveTypeId: string): Promise<number> {
   const { rows } = await client.query(
-    `SELECT COALESCE(SUM(units), 0) AS available
-       FROM lv2_leave_ledger
-      WHERE tenant_id = $1 AND user_id = $2 AND leave_type_id = $3`,
+    `SELECT COALESCE(SUM(l.units), 0) - COALESCE(MAX(p.pending_units), 0) AS available
+       FROM lv2_leave_ledger l
+       LEFT JOIN (
+         SELECT leave_type_id, SUM(paid_units) as pending_units
+           FROM lv2_leave_requests
+          WHERE tenant_id = $1 AND user_id = $2 AND leave_type_id = $3 AND status = 'pending'
+          GROUP BY leave_type_id
+       ) p ON p.leave_type_id = l.leave_type_id
+      WHERE l.tenant_id = $1 AND l.user_id = $2 AND l.leave_type_id = $3`,
     [client.tenantId, userId, leaveTypeId]
   );
   return Number(rows[0].available);

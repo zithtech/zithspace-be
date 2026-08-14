@@ -6,6 +6,7 @@ import { Response } from 'express';
 import { actorOf, handle, ok } from '../http';
 import { LeaveV2Error } from '../types';
 import * as accrual from '../services/accrual.service';
+import * as lapsing from '../services/lapsing.service';
 import { recordTransaction, Section, Module, Page, Action, EntityType } from '@/utils/transactionHistory';
 
 export const getSettings = handle(async (req: AuthRequest, res: Response) => {
@@ -51,6 +52,14 @@ export const run = handle(async (req: AuthRequest, res: Response) => {
     asOf = { year, month };
   }
   const dryRun = req.body?.dryRun === true || req.query?.dryRun === 'true';
+
+  // Calculate the 'asOf' date for lapsing (the day before the accrual run date)
+  const now = new Date();
+  const runDate = new Date(Date.UTC(asOf?.year ?? now.getUTCFullYear(), (asOf?.month ?? now.getUTCMonth() + 1) - 1, 1));
+  const yesterday = new Date(runDate.getTime());
+  yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+  
+  await lapsing.runLapsingForTenant(tenantId, { year: yesterday.getUTCFullYear(), month: yesterday.getUTCMonth() + 1, day: yesterday.getUTCDate() }, { dryRun });
   const result = await accrual.runAccrualForTenant(tenantId, asOf, { dryRun });
   // Only real runs mutate the ledger — dry-runs are previews and not logged.
   if (!dryRun) {

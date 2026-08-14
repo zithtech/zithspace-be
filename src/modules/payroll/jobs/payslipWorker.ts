@@ -19,18 +19,6 @@ import { buildPayslipDataForEmployee } from '../services/payslip.service';
 import { buildPayslipHtml } from '../services/payslipHtml';
 import { renderAndUploadOne } from '../services/payslipPdf';
 
-let worker: Worker<PayslipJobData> | null = null;
-let browser: Browser | null = null;
-
-async function getBrowser(): Promise<Browser> {
-  if (browser) return browser;
-  browser = await puppeteer.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-  });
-  browser.on('disconnected', () => { browser = null; });
-  return browser;
-}
 
 async function processJob(job: Job<PayslipJobData>): Promise<any> {
   const { tenantId, runId, employeeId, requestedBy } = job.data;
@@ -44,13 +32,19 @@ async function processJob(job: Job<PayslipJobData>): Promise<any> {
   });
   if (!built) return { skipped: true };
 
+  let browser: Browser | null = null;
   try {
     // 2) Render + upload OUTSIDE any transaction (slow work).
     const html = buildPayslipHtml(built.data);
-    const b = await getBrowser();
-    const { fileUrl, fileKey } = await renderAndUploadOne(b, html, {
+    browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+    });
+    const { fileUrl, fileKey } = await renderAndUploadOne(browser, html, {
       tenantId, year: built.run.year, month: built.run.month, employeeId,
     });
+    await browser.close();
+    browser = null;
 
     // 3) Persist the payslip + mark the item done.
     await withTenant(tenantId, async (client) => {
@@ -69,8 +63,12 @@ async function processJob(job: Job<PayslipJobData>): Promise<any> {
       await jobRepo.refreshHeader(client, runId);
     });
     throw err; // let BullMQ retry with backoff
+  } finally {
+    if (browser) await browser.close().catch(() => {});
   }
 }
+
+let worker: Worker<PayslipJobData> | null = null;
 
 export function startPayslipWorker(): Worker<PayslipJobData> {
   if (worker) return worker;
@@ -86,5 +84,4 @@ export function startPayslipWorker(): Worker<PayslipJobData> {
 
 export async function stopPayslipWorker(): Promise<void> {
   if (worker) { await worker.close(); worker = null; }
-  if (browser) { await browser.close().catch(() => {}); browser = null; }
 }

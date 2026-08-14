@@ -88,6 +88,8 @@ export interface AccrualLine {
   accrualMethod: AccrualMethod;
   countPerPeriod: number;
   allocation: number;
+  carryForward: boolean;
+  carryForwardMax: number | null;
 }
 export interface AccrualPolicy {
   id: string;
@@ -113,7 +115,7 @@ export async function loadActivePolicies(client: TenantClient): Promise<AccrualP
     [client.tenantId, ids]
   );
   const { rows: lRows } = await client.query(
-    `SELECT policy_id, leave_type_id, accrual_method, count_per_period, allocation
+    `SELECT policy_id, leave_type_id, accrual_method, count_per_period, allocation, carry_forward, carry_forward_max
        FROM lv2_leave_policy_lines
       WHERE tenant_id = $1 AND policy_id = ANY($2::uuid[])`,
     [client.tenantId, ids]
@@ -124,13 +126,16 @@ export async function loadActivePolicies(client: TenantClient): Promise<AccrualP
     byId.set(p.id, { id: p.id, termCycle: p.term_cycle, lopOnExhaustion: p.lop_on_exhaustion, assignments: [], lines: [] });
   }
   for (const a of aRows) byId.get(a.policy_id)?.assignments.push({ scopeType: a.scope_type, scopeId: a.scope_id });
-  for (const l of lRows)
+  for (const l of lRows) {
     byId.get(l.policy_id)?.lines.push({
       leaveTypeId: l.leave_type_id,
       accrualMethod: l.accrual_method,
       countPerPeriod: Number(l.count_per_period),
       allocation: Number(l.allocation),
+      carryForward: l.carry_forward,
+      carryForwardMax: l.carry_forward_max == null ? null : Number(l.carry_forward_max),
     });
+  }
 
   // Only policies that actually grant something.
   return [...byId.values()].filter((p) => p.lines.length > 0 && p.assignments.length > 0);
