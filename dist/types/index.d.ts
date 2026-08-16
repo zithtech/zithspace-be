@@ -255,6 +255,8 @@ export interface LoginResponse {
         avatarUrl: any | null;
         isActive: boolean;
         permissions: string[];
+        subscriptionFeatures: string[];
+        navigation: any[];
     };
     message: string;
 }

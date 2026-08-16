@@ -8,6 +8,9 @@ import {
   getFileBufferFromR2,
 } from "@/utils/r2Client";
 import { BugListAiService } from "@/services/bugListAiService";
+import { entitlementService, EntitlementError } from "@/services/EntitlementService";
+import { AIPricingEngine } from "@/ai/pricing/AIPricingEngine";
+import { AIFeature } from "@/ai/types/AIFeature";
 import {
   recordTransaction,
   diffShallow,
@@ -2871,6 +2874,8 @@ export class BugListController {
       return;
     }
     try {
+      await entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
+
       const rows = await pool.query(
         `SELECT id, description, module, severity, bug_type
            FROM bugs WHERE id = ANY($1::text[]) AND tenant_id = $2`,
@@ -2883,9 +2888,17 @@ export class BugListController {
         severity: r.severity,
         bugType: r.bug_type,
       }));
-      const data = await BugListAiService.review(bugs, req.tenantId);
+      const aiResponse = await BugListAiService.review(bugs, req.tenantId);
+      const data = aiResponse.data;
+      const pricingResult = await AIPricingEngine.calculate(aiResponse);
+
+      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature.BUG_ANALYSIS, pricingResult);
       res.json({ success: true, data });
     } catch (err: any) {
+      if (err instanceof EntitlementError) {
+        bad(res, 403, "AI limit reached");
+        return;
+      }
       console.error("aiReview error:", err);
       bad(res, 500, err.message || "AI review failed");
     }
@@ -2903,9 +2916,19 @@ export class BugListController {
       return;
     }
     try {
-      const enhanced = await BugListAiService.enhanceText(text, req.tenantId);
+      await entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
+
+      const aiResponse = await BugListAiService.enhanceText(text, req.tenantId);
+      const enhanced = aiResponse.data;
+      const pricingResult = await AIPricingEngine.calculate(aiResponse);
+
+      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature.BUG_ANALYSIS, pricingResult);
       res.json({ success: true, data: { text: enhanced } });
     } catch (err: any) {
+      if (err instanceof EntitlementError) {
+        bad(res, 403, "AI limit reached");
+        return;
+      }
       console.error("aiEnhanceText error:", err);
       bad(res, 500, err.message || "Grammar enhancement failed");
     }
@@ -2922,6 +2945,8 @@ export class BugListController {
       return;
     }
     try {
+      await entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
+
       const rows = await pool.query(
         `SELECT id, description, module, severity, bug_type
            FROM bugs WHERE id = ANY($1::text[]) AND tenant_id = $2`,
@@ -2934,9 +2959,17 @@ export class BugListController {
         severity: r.severity,
         bugType: r.bug_type,
       }));
-      const data = await BugListAiService.suggestGroups(bugs, req.tenantId);
+      const aiResponse = await BugListAiService.suggestGroups(bugs, req.tenantId);
+      const data = aiResponse.data;
+      const pricingResult = await AIPricingEngine.calculate(aiResponse);
+
+      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature.BUG_ANALYSIS, pricingResult);
       res.json({ success: true, data });
     } catch (err: any) {
+      if (err instanceof EntitlementError) {
+        bad(res, 403, "AI limit reached");
+        return;
+      }
       console.error("aiSuggestGroups error:", err);
       bad(res, 500, err.message || "AI grouping failed");
     }

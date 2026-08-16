@@ -12,6 +12,7 @@ const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const r2Client_1 = require("@/utils/r2Client");
 const emailService_1 = require("@/utils/emailService");
 const transactionHistory_1 = require("@/utils/transactionHistory");
+const EntitlementService_1 = require("@/services/EntitlementService");
 class UserController {
     /**
      * Get all members/users with filtering and pagination (tenant-aware)
@@ -325,6 +326,16 @@ class UserController {
                 return;
             }
             const userData = req.body;
+            try {
+                await EntitlementService_1.entitlementService.checkLimit(req.tenantId, 'members');
+            }
+            catch (err) {
+                if (err instanceof EntitlementService_1.EntitlementError) {
+                    res.status(403).json({ success: false, error: err.message, details: { current: err.current, allowed: err.allowed } });
+                    return;
+                }
+                throw err;
+            }
             // Validate required fields
             if (!userData.name ||
                 !userData.workEmail ||

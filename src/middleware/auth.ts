@@ -90,7 +90,22 @@ export const authenticateToken = async (
       sessionId: decoded.sessionId,
     };
 
-    next();
+    // Phase 7B: Validate Subscription Status before proceeding
+    const { validateSubscriptionStatus } = await import('../modules/subscriptions/subscription.middleware');
+    let subscriptionValid = false;
+    await new Promise<void>((resolve, reject) => {
+      validateSubscriptionStatus(req, res, ((err?: any) => {
+        if (err) reject(err);
+        else {
+          subscriptionValid = true;
+          resolve();
+        }
+      }) as NextFunction);
+    });
+
+    if (subscriptionValid) {
+      next();
+    }
   } catch (error) {
 
     if (error instanceof AuthenticationError || error instanceof AuthorizationError) {

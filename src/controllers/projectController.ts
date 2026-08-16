@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { prisma } from "@/config/database";
 import pool from "@/config/dbpool";
+import { entitlementService, EntitlementError } from "@/services/EntitlementService";
 import {
   AuthRequest,
   ApiResponse,
@@ -309,6 +310,16 @@ export class ProjectController {
           error: "Tenant context and authentication required",
         } as ApiResponse);
         return;
+      }
+
+      try {
+        await entitlementService.checkLimit(req.tenantId, 'projects');
+      } catch (err: any) {
+        if (err instanceof EntitlementError) {
+          res.status(403).json({ success: false, error: err.message, details: { current: err.current, allowed: err.allowed } });
+          return;
+        }
+        throw err;
       }
 
       const {

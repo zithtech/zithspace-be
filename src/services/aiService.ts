@@ -1,10 +1,11 @@
 import { getAIProviderForTenant } from "./ai/resolver";
+import { AIResponse } from "../ai/interfaces/AIResponse";
 import dotenv from "dotenv";
 
 dotenv.config();
 
 export class AIService {
-  static async analyzeLead(leadData: any, tenantId?: string) {
+  static async analyzeLead(leadData: any, tenantId?: string): Promise<AIResponse<any>> {
     const prompt = `
       Act as a Freelancer Bidding Coach & Market Analyst. Analyze the following lead data and provide a comprehensive "Bid-to-Win" strategy.
       
@@ -58,17 +59,25 @@ export class AIService {
 
     try {
       const provider = await getAIProviderForTenant(tenantId);
-      const text = await provider.generateText(prompt);
+      const res = await provider.generateText(prompt, { json: true });
       // Extract JSON from potential markdown blocks
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      return jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+      const jsonMatch = res.text.match(/\{[\s\S]*\}/);
+      const data = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+      
+      return {
+          data,
+          provider: provider.name,
+          model: res.model,
+          usage: res.usage,
+          metadata: {}
+      };
     } catch (error) {
-      console.error("Gemini AI Analysis Error:", error);
+      console.error("AI Analysis Error:", error);
       throw new Error("Failed to analyze lead with AI");
     }
   }
 
-  static async composeProposal(leadData: any, preferences?: any, tenantId?: string) {
+  static async composeProposal(leadData: any, preferences?: any, tenantId?: string): Promise<AIResponse<any>> {
     const components = preferences?.components || ['cover', 'text', 'scope', 'timeline', 'pricing', 'image', 'gallery', 'video', 'quote', 'callout', 'cta', 'signature'];
     const customCost = preferences?.cost;
     const customDuration = preferences?.duration;
@@ -271,7 +280,8 @@ export class AIService {
 
     try {
       const provider = await getAIProviderForTenant(tenantId);
-      let text = (await provider.generateText(prompt)).trim();
+      const res = await provider.generateText(prompt, { json: true });
+      let text = res.text.trim();
 
       // CLEANUP: AI often wraps results in ```json ... ``` blocks
       // We must strip these to parse the raw JSON correctly.
@@ -282,23 +292,29 @@ export class AIService {
         }
       }
 
+      let data: any = text;
       // Try to parse as JSON if it looks like it
       if (text.startsWith('{') || text.startsWith('[')) {
         try {
-          return JSON.parse(text);
+          data = JSON.parse(text);
         } catch (e) {
           console.warn('JSON Parse failed after cleanup, returning raw text');
-          return text;
         }
       }
 
-      return text;
+      return {
+          data,
+          provider: provider.name,
+          model: res.model,
+          usage: res.usage,
+          metadata: {}
+      };
     } catch (error: any) {
-      console.error("Gemini AI Proposal Compose Error:", error);
+      console.error("AI Proposal Compose Error:", error);
       throw new Error("Failed to compose proposal with AI");
     }
   }
-  static async refineProposalBlock(currentData: any, userPrompt: string, blockType: string, tenantId?: string) {
+  static async refineProposalBlock(currentData: any, userPrompt: string, blockType: string, tenantId?: string): Promise<AIResponse<any>> {
     const prompt = `
       Act as a Professional Document Editor. Your goal is to rewrite or improve a SPECIFIC sub-section of a proposal block based on user instructions.
       
@@ -319,7 +335,8 @@ export class AIService {
 
     try {
       const provider = await getAIProviderForTenant(tenantId);
-      let text = (await provider.generateText(prompt, { disableSafety: true })).trim();
+      const res = await provider.generateText(prompt, { disableSafety: true });
+      let text = res.text.trim();
 
       // Fix: Some AI responses include markdown code blocks
       if (text.includes('```')) {
@@ -329,24 +346,29 @@ export class AIService {
         }
       }
 
+      let data: any = text;
       // Try to parse as JSON object/array
       const jsonMatch = text.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
       if (jsonMatch) {
         try {
-          return JSON.parse(jsonMatch[0]);
+          data = JSON.parse(jsonMatch[0]);
         } catch (e) {
           // If JSON parse fails, fall through to text return
         }
+      } else if (text.startsWith('"') && text.endsWith('"')) {
+        // If it's a quoted string, strip quotes
+        data = text.substring(1, text.length - 1);
       }
 
-      // If it's a quoted string, strip quotes
-      if (text.startsWith('"') && text.endsWith('"')) {
-        return text.substring(1, text.length - 1);
-      }
-
-      return text;
+      return {
+          data,
+          provider: provider.name,
+          model: res.model,
+          usage: res.usage,
+          metadata: {}
+      };
     } catch (error) {
-      console.error("Gemini AI Block Refinement Error:", error);
+      console.error("AI Block Refinement Error:", error);
       throw new Error("Failed to refine block with AI");
     }
   }
@@ -375,10 +397,10 @@ export class AIService {
 
     try {
       const provider = await getAIProviderForTenant(tenantId);
-      const text = await provider.generateText(prompt);
+      const result = await provider.generateText(prompt);
 
       // Clean up markdown wrappers if the LLM includes them
-      let html = text.trim();
+      let html = result.text.trim();
       if (html.startsWith('\`\`\`html')) {
         html = html.substring(7);
       } else if (html.startsWith('\`\`\`')) {

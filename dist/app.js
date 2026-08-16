@@ -114,6 +114,7 @@ const routes_1 = __importDefault(require("@/modules/leave-v2/routes"));
 const routes_2 = __importDefault(require("@/modules/performance-report/routes"));
 const routes_3 = __importDefault(require("@/modules/payroll/routes"));
 const routes_4 = __importDefault(require("@/modules/reimbursement-v2/routes"));
+const metadata_1 = require("@/modules/metadata");
 const routes_5 = __importDefault(require("@/modules/opening-management/routes"));
 const routes_6 = __importDefault(require("@/modules/hotspot/routes"));
 const routes_7 = require("@/modules/pipeline/routes");
@@ -287,8 +288,12 @@ app.get("/api/direct-test", (req, res) => {
     res.json({ success: true, message: "Direct app.get works" });
 });
 app.get("/api/debug-ping-unique", (req, res) => res.json({ success: true, message: "Debug route is active" }));
+// System/Metadata routes (must be before wildcard /api routers)
+app.use("/api/system", metadata_1.metadataRoutes);
+const payments_1 = require("./modules/payments");
 app.use("/api", proxyRoutes_1.default);
 app.use("/api/auth", auth_1.default);
+app.use("/api/payments", payments_1.paymentRoutes);
 app.use("/api/generate", generate_routes_1.default);
 app.use("/api/projects", projects_1.default);
 app.use("/api/tenants", tenants_1.default);
@@ -539,6 +544,9 @@ const startServer = async () => {
     try {
         // Connect PostgreSQL
         await (0, database_1.connectDatabase)();
+        // Initialize Metadata System Tables (raw-SQL module, idempotent)
+        const { metadataRepository } = require("@/modules/metadata/metadata.repository");
+        await metadataRepository.initializeTables();
         // Initialize Tables
         const { BidIQModel } = require("./models/BidIQ.model");
         await BidIQModel.initTable();

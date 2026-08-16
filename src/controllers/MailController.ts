@@ -5,6 +5,9 @@ import { prisma } from "../config/database";
 import { AuthRequest, ApiResponse } from "../types";
 import { MailService } from "../services/mail/MailService";
 import { MailAiService } from "../services/mailAiService";
+import { entitlementService, EntitlementError } from "../services/EntitlementService";
+import { AIPricingEngine } from "../ai/pricing/AIPricingEngine";
+import { AIFeature } from "../ai/types/AIFeature";
 import { MailSyncProducer } from "../services/mail/MailSyncProducer";
 import { syncLogger } from "../utils/logger";
 import { s3Client } from "../utils/r2Client";
@@ -1231,6 +1234,9 @@ export class MailController {
      */
     static async aiEnhanceContent(req: AuthRequest, res: Response) {
         try {
+            const tenantId = req.tenantId;
+            await entitlementService.checkLimit(tenantId!, 'ai_credits_month');
+
             const { subject, body, context } = req.body || {};
             if (!body || typeof body !== "string") {
                 return res.status(400).json({
@@ -1238,12 +1244,19 @@ export class MailController {
                     error: "body is required"
                 });
             }
-            const enhanced = await MailAiService.enhanceContent({ subject, body, context }, req.tenantId);
+            const aiResponse = await MailAiService.enhanceContent({ subject, body, context }, req.tenantId);
+            const enhanced = aiResponse.data;
+            const pricingResult = await AIPricingEngine.calculate(aiResponse);
+
+            await entitlementService.incrementUsage(tenantId!, 'ai_credits_month', AIFeature.MAIL_ASSISTANT, pricingResult);
             return res.json({
                 success: true,
                 data: { body: enhanced }
             });
         } catch (error: any) {
+            if (error instanceof EntitlementError) {
+                return res.status(403).json({ success: false, error: 'AI limit reached', details: { current: error.current, allowed: error.allowed } });
+            }
             console.error("[MailController] aiEnhanceContent error:", error);
             return res.status(500).json({
                 success: false,
@@ -1257,6 +1270,9 @@ export class MailController {
      */
     static async aiCorrectGrammar(req: AuthRequest, res: Response) {
         try {
+            const tenantId = req.tenantId;
+            await entitlementService.checkLimit(tenantId!, 'ai_credits_month');
+
             const { body } = req.body || {};
             if (!body || typeof body !== "string") {
                 return res.status(400).json({
@@ -1264,12 +1280,19 @@ export class MailController {
                     error: "body is required"
                 });
             }
-            const corrected = await MailAiService.correctGrammar(body, req.tenantId);
+            const aiResponse = await MailAiService.correctGrammar(body, req.tenantId);
+            const corrected = aiResponse.data;
+            const pricingResult = await AIPricingEngine.calculate(aiResponse);
+
+            await entitlementService.incrementUsage(tenantId!, 'ai_credits_month', AIFeature.MAIL_ASSISTANT, pricingResult);
             return res.json({
                 success: true,
                 data: { body: corrected }
             });
         } catch (error: any) {
+            if (error instanceof EntitlementError) {
+                return res.status(403).json({ success: false, error: 'AI limit reached', details: { current: error.current, allowed: error.allowed } });
+            }
             console.error("[MailController] aiCorrectGrammar error:", error);
             return res.status(500).json({
                 success: false,

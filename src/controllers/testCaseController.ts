@@ -402,7 +402,7 @@ Write 3 to 8 steps. Cover the validation and error paths the tester mentioned.
 
     const raw = await provider.generateText(aiPrompt, { temperature: 0.5, maxOutputTokens: 2048 });
 
-    const cleaned = (raw || '')
+    const cleaned = (raw?.text || '')
       .replace(/^```[a-zA-Z]*\s*/i, '')
       .replace(/\s*```$/i, '')
       .trim();

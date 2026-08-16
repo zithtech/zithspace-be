@@ -12,7 +12,7 @@ import {
   HarmBlockThreshold,
 } from "@google/generative-ai";
 import axios from "axios";
-import { AIProvider, AICredentials, GenerateOptions } from "./types";
+import { AIProvider, AICredentials, GenerateOptions, AIGenerateResult } from "./types";
 
 /** Hard ceiling on retry sleep — quota errors can suggest hours/days. */
 const MAX_RETRY_DELAY_MS = 15_000;
@@ -70,7 +70,7 @@ export class GeminiProvider implements AIProvider {
     return this.client;
   }
 
-  async generateText(prompt: string, opts: GenerateOptions = {}): Promise<string> {
+  async generateText(prompt: string, opts: GenerateOptions = {}): Promise<AIGenerateResult> {
     const model = this.getClient().getGenerativeModel({
       model: this.creds.model,
       ...(opts.systemInstruction ? { systemInstruction: opts.systemInstruction } : {}),
@@ -83,7 +83,15 @@ export class GeminiProvider implements AIProvider {
     });
 
     const result = await this.generateWithRetry(model, prompt);
-    return result.response.text() ?? "";
+    const usageMetadata = result.response.usageMetadata || { promptTokenCount: 0, candidatesTokenCount: 0 };
+    return {
+      text: result.response.text() ?? "",
+      usage: {
+        promptTokens: usageMetadata.promptTokenCount || 0,
+        completionTokens: usageMetadata.candidatesTokenCount || 0,
+      },
+      model: this.creds.model,
+    };
   }
 
   /** Gemini has no listModels in the SDK — hit the REST endpoint. */

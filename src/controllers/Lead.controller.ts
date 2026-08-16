@@ -13,6 +13,7 @@ import { Readable } from 'stream';
 import { LeadActivityLogModel } from '../models/LeadActivityLog.model';
 import { LeadMailModel } from '../models/LeadMail.model';
 import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from '../utils/transactionHistory';
+import { entitlementService, EntitlementError } from '../services/EntitlementService';
 
 /**
  * Built-in platform metadata. Keys are the lowercase normalised name of the
@@ -58,6 +59,15 @@ export class LeadController {
       const tenantId = req.user?.tenantId || req.tenantId;
       if (!tenantId) {
         return res.status(400).json({ success: false, error: 'Tenant context required' });
+      }
+
+      try {
+        await entitlementService.checkLimit(tenantId, 'leads');
+      } catch (err: any) {
+        if (err instanceof EntitlementError) {
+          return res.status(403).json({ success: false, error: err.message, details: { current: err.current, allowed: err.allowed } });
+        }
+        throw err;
       }
 
       const clientPhone = req.body.clientPhone;

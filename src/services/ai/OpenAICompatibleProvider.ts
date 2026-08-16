@@ -8,7 +8,7 @@
  */
 
 import OpenAI from "openai";
-import { AIProvider, AIProviderName, AICredentials, GenerateOptions } from "./types";
+import { AIProvider, AIProviderName, AICredentials, GenerateOptions, AIGenerateResult } from "./types";
 
 export class OpenAICompatibleProvider implements AIProvider {
   readonly name: AIProviderName;
@@ -35,7 +35,7 @@ export class OpenAICompatibleProvider implements AIProvider {
     return this.client;
   }
 
-  async generateText(prompt: string, opts: GenerateOptions = {}): Promise<string> {
+  async generateText(prompt: string, opts: GenerateOptions = {}): Promise<AIGenerateResult> {
     const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [];
     if (opts.systemInstruction) {
       messages.push({ role: "system", content: opts.systemInstruction });
@@ -49,7 +49,14 @@ export class OpenAICompatibleProvider implements AIProvider {
     if (opts.maxOutputTokens != null) params.max_tokens = opts.maxOutputTokens;
 
     const res = await this.getClient().chat.completions.create(params);
-    return res.choices?.[0]?.message?.content ?? "";
+    return {
+      text: res.choices?.[0]?.message?.content ?? "",
+      usage: {
+        promptTokens: res.usage?.prompt_tokens ?? 0,
+        completionTokens: res.usage?.completion_tokens ?? 0,
+      },
+      model: this.creds.model,
+    };
   }
 
   async listModels(): Promise<string[]> {

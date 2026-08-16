@@ -375,7 +375,7 @@ Format it nicely using HTML tags like <p>, <ul>, <li>, <strong>.
       maxOutputTokens: 2048,
     });
 
-    const cleaned = result
+    const cleaned = (result?.text || '')
       .replace(/^```[a-zA-Z]*\s*/i, '')
       .replace(/\s*```$/i, '')
       .trim();
@@ -424,7 +424,7 @@ Text:
 ${input}
 `.trim();
 
-    const out = (await provider.generateText(prompt, { temperature: 0.2, maxOutputTokens: 2048 }) || '').trim();
+    const out = ((await provider.generateText(prompt, { temperature: 0.2, maxOutputTokens: 2048 }))?.text || '').trim();
     const corrected = out
       .replace(/^```[a-zA-Z]*\n?/, '')
       .replace(/```$/, '')

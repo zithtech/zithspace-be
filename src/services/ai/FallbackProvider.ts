@@ -8,7 +8,7 @@
  * needing to know a fallback happened.
  */
 
-import { AIProvider, GenerateOptions } from "./types";
+import { AIProvider, GenerateOptions, AIGenerateResult } from "./types";
 
 export class FallbackProvider implements AIProvider {
   readonly name: AIProvider["name"];
@@ -26,7 +26,7 @@ export class FallbackProvider implements AIProvider {
     return this.primary.isConfigured() || this.fallback.isConfigured();
   }
 
-  async generateText(prompt: string, opts?: GenerateOptions): Promise<string> {
+  async generateText(prompt: string, opts?: GenerateOptions): Promise<AIGenerateResult> {
     try {
       return await this.primary.generateText(prompt, opts);
     } catch (err: any) {

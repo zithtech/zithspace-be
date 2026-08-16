@@ -32,6 +32,24 @@ async function uniqueSubdomain(base: string): Promise<string> {
   }
 }
 
+/**
+ * Builds the tenant workspace URL from FRONTEND_URL env var.
+ * Works correctly in both local dev and production.
+ * e.g. FRONTEND_URL=http://localhost:3005  → http://srvsh.localhost:3005
+ *      FRONTEND_URL=https://app.zukvo.com  → https://srvsh.zukvo.com
+ */
+function buildWorkspaceUrl(subdomain: string): string {
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3005';
+  try {
+    const u = new URL(frontendUrl);
+    // Strip any leading "app." prefix so we replace it with the tenant subdomain
+    const baseDomain = u.hostname.replace(/^app\./, '');
+    return `${u.protocol}//${subdomain}.${baseDomain}${u.port ? `:${u.port}` : ''}`;
+  } catch {
+    return `https://${subdomain}.zukvo.com`;
+  }
+}
+
 export class LandingSignupController {
   static async signup(req: Request, res: Response): Promise<void> {
     try {
@@ -263,7 +281,27 @@ export class LandingSignupController {
       const subdomain = await uniqueSubdomain(baseSlug || "workspace");
 
       const planConfig = record.plan_config || {};
-      const planType = planConfig.tier || "basic";
+      let planId = parseInt(planConfig.tier);
+      let actualPlanName = "Basic";
+
+      const adminUrl = process.env.ADMIN_API_URL || 'http://localhost:5000';
+      try {
+        const plansRes = await axios.get(`${adminUrl}/api/plans`);
+        const allPlans = Array.isArray(plansRes.data) ? plansRes.data : (plansRes.data?.data || []);
+        
+        if (isNaN(planId)) {
+          const trialPlan = allPlans.find((p: any) => p.plan_type === 'TRIAL' || p.trial_days > 0);
+          planId = trialPlan ? trialPlan.id : 1;
+        }
+        
+        const selectedPlan = allPlans.find((p: any) => p.id === planId);
+        if (selectedPlan) {
+          actualPlanName = selectedPlan.name;
+        }
+      } catch (plansError) {
+        console.error("Failed to fetch plans from Admin backend:", plansError);
+        if (isNaN(planId)) planId = 1;
+      }
 
       const tenantName =
         record.type === "team"
@@ -271,6 +309,7 @@ export class LandingSignupController {
           : record.name;
 
       const client = await pool.connect();
+      let adminAction: any = { action: 'UNKNOWN' };
       try {
         await client.query("BEGIN");
 
@@ -278,7 +317,7 @@ export class LandingSignupController {
           `INSERT INTO tenants (id, name, subdomain, plan_type, max_users, is_active, is_setup_complete, settings, web_inquiry_secret_key, created_at, updated_at)
            VALUES (gen_random_uuid(), $1, $2, $3, 10, true, false, '{}', $4, now(), now())
            RETURNING id`,
-          [tenantName, subdomain, planType, `${crypto.randomInt(10000, 100000)}/secretkey/${subdomain}`]
+          [tenantName, subdomain, actualPlanName, `${crypto.randomInt(10000, 100000)}/secretkey/${subdomain}`]
         );
 
         const tenantId = tenantResult.rows[0].id;
@@ -296,6 +335,20 @@ export class LandingSignupController {
 
         await client.query("COMMIT");
         await RBACService.setupDefaultRolesForTenant(tenantId);
+
+        try {
+          const response = await axios.post(`${adminUrl}/api/subscriptions/onboard`, {
+            tenantId,
+            planId,
+            billingCycle: (planConfig.billing || 'monthly').toUpperCase()
+          });
+          
+          adminAction = response.data?.data || { action: 'ERROR' };
+        } catch (adminError: any) {
+          console.error("Failed to call Admin Backend select-plan API:", adminError);
+          const errorMsg = adminError.response?.data?.error || adminError.response?.data?.message || adminError.message || 'Unknown error';
+          adminAction = { action: 'API_ERROR', message: errorMsg };
+        }
       } catch (txError) {
         await client.query("ROLLBACK");
         throw txError;
@@ -303,15 +356,26 @@ export class LandingSignupController {
         client.release();
       }
 
+      // Send workspace welcome email (fire-and-forget)
+      const workspaceUrl = buildWorkspaceUrl(subdomain);
+      LandingSignupController.sendWorkspaceWelcomeEmail({
+        to: decoded.email,
+        name: record.name,
+        planName: actualPlanName,
+        workspaceUrl,
+      }).catch(err => console.error('Welcome email error:', err));
+
       res.status(200).json({
         success: true,
         tenantSubdomain: subdomain,
         email: decoded.email,
         name: record.name,
+        decision: adminAction
       });
-    } catch (error) {
-      console.error("Complete registration error:", error);
-      res.status(500).json({ success: false, error: "Something went wrong. Please try again." });
+    } catch (error: any) {
+      console.error("Complete registration error:", error?.message || error);
+      console.error("Complete registration stack:", error?.stack);
+      res.status(500).json({ success: false, error: error?.message || "Something went wrong. Please try again." });
     }
   }
 
@@ -363,7 +427,22 @@ export class LandingSignupController {
       const baseSlug = accountType === "team" ? slugify(companyName || name) : slugify(name);
       const subdomain = await uniqueSubdomain(baseSlug || "workspace");
       const tenantName = accountType === "team" ? (companyName || name) : name;
-      const planType = planConfig?.tier || "basic";
+      let planId = parseInt(planConfig?.tier);
+      let actualPlanName = 'Free Trial';
+
+      const adminUrlG = process.env.ADMIN_API_URL || 'http://localhost:5000';
+      try {
+        const plansRes = await axios.get(`${adminUrlG}/api/plans`);
+        const allPlans = Array.isArray(plansRes.data) ? plansRes.data : (plansRes.data?.data || []);
+        if (isNaN(planId)) {
+          const trialPlan = allPlans.find((p: any) => p.trial_days > 0);
+          planId = trialPlan ? trialPlan.id : 1;
+        }
+        const selectedPlan = allPlans.find((p: any) => p.id === planId);
+        if (selectedPlan) actualPlanName = selectedPlan.name;
+      } catch { /* use default */ }
+
+      const planType = actualPlanName;
 
       const safePlanConfig = {
         tier: planConfig?.tier ?? null,
@@ -426,6 +505,30 @@ export class LandingSignupController {
         dbClient.release();
       }
 
+      // Send workspace welcome email (fire-and-forget)
+      const googleWorkspaceUrl = buildWorkspaceUrl(subdomain);
+      LandingSignupController.sendWorkspaceWelcomeEmail({
+        to: email,
+        name: name,
+        planName: actualPlanName,
+        workspaceUrl: googleWorkspaceUrl,
+      }).catch(err => console.error('Welcome email error (Google):', err));
+
+      let adminAction: any = { action: 'UNKNOWN' };
+      try {
+        const adminUrlG2 = process.env.ADMIN_API_URL || 'http://localhost:5000';
+        const onboardRes = await axios.post(`${adminUrlG2}/api/subscriptions/onboard`, {
+          tenantId,
+          planId,
+          billingCycle: (safePlanConfig.billing || 'monthly').toUpperCase()
+        });
+        adminAction = onboardRes.data?.data || { action: 'ERROR' };
+      } catch (onboardErr: any) {
+        console.error('Google signup: onboard API error', onboardErr);
+        const errorMsg = onboardErr.response?.data?.error || onboardErr.response?.data?.message || onboardErr.message || 'Unknown error';
+        adminAction = { action: 'API_ERROR', message: errorMsg };
+      }
+
       // Fetch the newly created user to generate auth tokens (auto-login after signup)
       const newUserResult = await pool.query(
         `SELECT u.id, u.tenant_id, u.name, u.work_email, u.role
@@ -459,14 +562,14 @@ export class LandingSignupController {
       res.status(200).json({
         success: true,
         tenantSubdomain: subdomain,
-        email: email,
-        name: name,
-        // accessToken allows the LP to auto-login the user and skip the login page
+        email,
+        name,
         accessToken: accessToken ?? null,
+        decision: adminAction,
       });
-    } catch (error) {
-      console.error("Google signup error:", error);
-      res.status(500).json({ success: false, error: "Something went wrong. Please try again." });
+    } catch (error: any) {
+      console.error("Google signup error:", error?.message || error);
+      res.status(500).json({ success: false, error: error?.message || "Something went wrong. Please try again." });
     }
   }
 
@@ -518,7 +621,22 @@ export class LandingSignupController {
       const baseSlug = accountType === "team" ? slugify(companyName || name) : slugify(name);
       const subdomain = await uniqueSubdomain(baseSlug || "workspace");
       const tenantName = accountType === "team" ? (companyName || name) : name;
-      const planType = planConfig?.tier || "basic";
+      let msPlanId = parseInt(planConfig?.tier);
+      let msActualPlanName = 'Free Trial';
+
+      const adminUrlMs = process.env.ADMIN_API_URL || 'http://localhost:5000';
+      try {
+        const plansRes = await axios.get(`${adminUrlMs}/api/plans`);
+        const allPlans = Array.isArray(plansRes.data) ? plansRes.data : (plansRes.data?.data || []);
+        if (isNaN(msPlanId)) {
+          const trialPlan = allPlans.find((p: any) => p.trial_days > 0);
+          msPlanId = trialPlan ? trialPlan.id : 1;
+        }
+        const selectedPlan = allPlans.find((p: any) => p.id === msPlanId);
+        if (selectedPlan) msActualPlanName = selectedPlan.name;
+      } catch { /* use default */ }
+
+      const planType = msActualPlanName;
 
       const safePlanConfig = {
         tier: planConfig?.tier ?? null,
@@ -581,6 +699,30 @@ export class LandingSignupController {
         dbClient.release();
       }
 
+      // Send workspace welcome email (fire-and-forget)
+      const msWorkspaceUrl = buildWorkspaceUrl(subdomain);
+      LandingSignupController.sendWorkspaceWelcomeEmail({
+        to: email,
+        name: name,
+        planName: planType,
+        workspaceUrl: msWorkspaceUrl,
+      }).catch(err => console.error('Welcome email error (Microsoft):', err));
+
+      let msAdminAction: any = { action: 'UNKNOWN' };
+      try {
+        const adminUrlMs2 = process.env.ADMIN_API_URL || 'http://localhost:5000';
+        const onboardResMs = await axios.post(`${adminUrlMs2}/api/subscriptions/onboard`, {
+          tenantId,
+          planId: msPlanId,
+          billingCycle: (safePlanConfig.billing || 'monthly').toUpperCase()
+        });
+        msAdminAction = onboardResMs.data?.data || { action: 'ERROR' };
+      } catch (onboardErr: any) {
+        console.error('Microsoft signup: onboard API error', onboardErr);
+        const errorMsg = onboardErr.response?.data?.error || onboardErr.response?.data?.message || onboardErr.message || 'Unknown error';
+        msAdminAction = { action: 'API_ERROR', message: errorMsg };
+      }
+
       // Fetch the newly created user to generate auth tokens (auto-login after signup)
       const newUserResult = await pool.query(
         `SELECT u.id, u.tenant_id, u.name, u.work_email, u.role
@@ -614,13 +756,76 @@ export class LandingSignupController {
       res.status(200).json({
         success: true,
         tenantSubdomain: subdomain,
-        email: email,
-        name: name,
+        email,
+        name,
         accessToken: accessToken ?? null,
+        decision: msAdminAction,
       });
-    } catch (error) {
-      console.error("Microsoft signup error:", error);
-      res.status(500).json({ success: false, error: "Something went wrong. Please try again." });
+    } catch (error: any) {
+      console.error("Microsoft signup error:", error?.message || error);
+      res.status(500).json({ success: false, error: error?.message || "Something went wrong. Please try again." });
     }
+  }
+
+  private static async sendWorkspaceWelcomeEmail(opts: {
+    to: string;
+    name: string;
+    planName: string;
+    workspaceUrl: string;
+  }): Promise<void> {
+    const { to, name, planName, workspaceUrl } = opts;
+    const firstName = name.split(' ')[0];
+
+    const html = `
+      <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 580px; margin: 0 auto; background: #ffffff;">
+        <!-- Header -->
+        <div style="background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%); padding: 40px 40px 50px; border-radius: 16px 16px 0 0; text-align: center;">
+          <div style="font-size: 28px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px; margin-bottom: 8px;">Zukvo</div>
+          <div style="font-size: 15px; color: rgba(255,255,255,0.8);">Your workspace is ready 🎉</div>
+        </div>
+
+        <!-- Body -->
+        <div style="padding: 40px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 16px 16px;">
+          <h1 style="font-size: 22px; font-weight: 700; color: #111827; margin: 0 0 12px;">Congratulations, ${firstName}!</h1>
+          <p style="font-size: 15px; color: #6b7280; line-height: 1.7; margin: 0 0 28px;">
+            Your Zukvo workspace has been successfully created. Here are your workspace details:
+          </p>
+
+          <!-- Details Card -->
+          <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px; margin-bottom: 28px;">
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="padding: 8px 0; font-size: 13px; color: #9ca3af; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; width: 40%;">Plan</td>
+                <td style="padding: 8px 0; font-size: 14px; color: #111827; font-weight: 600;">${planName}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; font-size: 13px; color: #9ca3af; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em;">Email</td>
+                <td style="padding: 8px 0; font-size: 14px; color: #111827; font-weight: 600;">${to}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; font-size: 13px; color: #9ca3af; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em;">Workspace</td>
+                <td style="padding: 8px 0; font-size: 14px; color: #6366f1; font-weight: 600;">${workspaceUrl}</td>
+              </tr>
+            </table>
+          </div>
+
+          <!-- CTA -->
+          <div style="text-align: center; margin-bottom: 28px;">
+            <a href="${workspaceUrl}" style="display: inline-block; background: linear-gradient(135deg, #6366F1, #8B5CF6); color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 10px; font-size: 15px; font-weight: 600; letter-spacing: -0.2px;">Open My Workspace →</a>
+          </div>
+
+          <p style="font-size: 13px; color: #9ca3af; text-align: center; line-height: 1.6; margin: 0;">
+            If you have any questions, reply to this email or contact us at <a href="mailto:support@zukvo.com" style="color: #6366f1; text-decoration: none;">support@zukvo.com</a>.
+          </p>
+        </div>
+      </div>
+    `;
+
+    await emailService.sendCentralizedMail({
+      to,
+      subject: `🎉 Your Zukvo workspace is ready, ${firstName}!`,
+      html,
+      text: `Hi ${firstName}, your Zukvo workspace is ready! Plan: ${planName} | Email: ${to} | Access it here: ${workspaceUrl}`,
+    });
   }
 }

@@ -396,7 +396,7 @@ Return ONLY plain text — no markdown, no headings, no preamble.
       maxOutputTokens: 1024,
     });
 
-    const cleaned = (raw || '')
+    const cleaned = (raw?.text || '')
       .replace(/^```[a-zA-Z]*\s*/i, '')
       .replace(/\s*```$/i, '')
       .replace(/<[^>]*>/g, '')
