@@ -84,6 +84,13 @@ class TicketController {
                             avatarUrl: true,
                         },
                     },
+                    reportTo: {
+                        select: {
+                            name: true,
+                            position: true,
+                            avatarUrl: true,
+                        },
+                    },
                     comments: {
                         include: {
                             user: {
@@ -166,7 +173,15 @@ class TicketController {
                 updatedAt: ticket.updatedAt,
                 project: ticket.project,
                 assignee: ticket.assignee,
+                reportTo: ticket.reportTo,
                 createdBy: ticket.createdBy,
+                platform: ticket.platform,
+                taskLevel: ticket.taskLevel,
+                storyPoint: ticket.storyPoint,
+                estimateHours: ticket.estimateHours,
+                startDate: ticket.startDate,
+                endDate: ticket.endDate,
+                dueDate: ticket.dueDate,
                 comments: ticket.comments.map(c => ({
                     id: c.id,
                     comment: c.comment,
