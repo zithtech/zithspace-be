@@ -1814,7 +1814,7 @@ Write 2-4 short paragraphs of plain prose stating what was tested, what the resu
 `.trim();
 
     const raw = await provider.generateText(prompt, { temperature: 0.4, maxOutputTokens: 1200 });
-    const text = (raw || '')
+    const text = (raw?.text || '')
       .replace(/^```[a-zA-Z]*\s*/i, '')
       .replace(/\s*```$/i, '')
       .trim();
@@ -1856,7 +1856,7 @@ ${input}
 `.trim();
 
     const raw = await provider.generateText(prompt, { temperature: 0.2, maxOutputTokens: 2048 });
-    const corrected = (raw || '')
+    const corrected = (raw?.text || '')
       .replace(/^```[a-zA-Z]*\s*/i, '')
       .replace(/\s*```$/i, '')
       .trim() || input;

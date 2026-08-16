@@ -120,12 +120,13 @@ async function generate(
     );
   }
   try {
-    return await provider.generateText(prompt, {
+    const result = await provider.generateText(prompt, {
       systemInstruction: opts.systemInstruction,
       json: opts.json,
       temperature: opts.temperature,
       maxOutputTokens: opts.maxOutputTokens ?? 1600,
     });
+    return result.text;
   } catch (err: any) {
     console.error('[opening-management] AI generation failed:', err?.message ?? err);
     throw new OpeningError(502, 'AI_FAILED', 'The AI service did not respond — try again');

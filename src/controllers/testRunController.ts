@@ -358,7 +358,7 @@ ${input}
 `.trim();
 
     const raw = await provider.generateText(prompt, { temperature: 0.2, maxOutputTokens: 1024 });
-    const corrected = (raw || '')
+    const corrected = (raw?.text || '')
       .replace(/^```[a-zA-Z]*\s*/i, '')
       .replace(/\s*```$/i, '')
       .trim() || input;

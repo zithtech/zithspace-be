@@ -397,10 +397,10 @@ export class AIService {
 
     try {
       const provider = await getAIProviderForTenant(tenantId);
-      const text = await provider.generateText(prompt);
+      const result = await provider.generateText(prompt);
 
       // Clean up markdown wrappers if the LLM includes them
-      let html = text.trim();
+      let html = result.text.trim();
       if (html.startsWith('\`\`\`html')) {
         html = html.substring(7);
       } else if (html.startsWith('\`\`\`')) {
