@@ -104,7 +104,11 @@ class DocumentHubController {
                 });
                 return;
             }
-            const { draft, source, fallbackReason } = await (0, aiDocumentService_1.generateDocumentDraft)(seed, req.tenantId);
+            await EntitlementService_1.entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
+            const aiResponse = await (0, aiDocumentService_1.generateDocumentDraft)(seed, req.tenantId);
+            const draft = aiResponse.data;
+            const pricingResult = await AIPricingEngine_1.AIPricingEngine.calculate(aiResponse);
+            await EntitlementService_1.entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature_1.AIFeature.DOCUMENT_SUMMARY, pricingResult);
             res.status(200).json({
                 success: true,
                 data: { ...draft, source: aiResponse.provider, fallbackReason: aiResponse.metadata?.finishReason },

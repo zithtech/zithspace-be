@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ClientController = void 0;
 const types_1 = require("@/types");
+const EntitlementService_1 = require("@/services/EntitlementService");
 const client_model_1 = require("../models/client.model");
 class ClientController {
     /**
@@ -94,6 +95,8 @@ class ClientController {
                 return;
             }
             const clientData = req.body;
+            // Enforce Clients limit
+            await EntitlementService_1.entitlementService.checkLimit(req.tenantId, 'clients');
             // Validate required fields
             if (!clientData.name || !clientData.email) {
                 res.status(400).json({
@@ -119,6 +122,14 @@ class ClientController {
         }
         catch (error) {
             console.error('Create client error:', error);
+            if (error.name === 'EntitlementError') {
+                res.status(403).json({
+                    success: false,
+                    error: error.message,
+                    details: { current: error.current, allowed: error.allowed }
+                });
+                return;
+            }
             if (error instanceof types_1.ValidationError) {
                 res.status(400).json({
                     success: false,

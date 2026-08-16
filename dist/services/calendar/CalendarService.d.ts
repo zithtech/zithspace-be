@@ -22,8 +22,6 @@ export declare class CalendarService {
         userId: string;
         provider: import(".prisma/client").$Enums.CalendarProvider;
         accessToken: string | null;
-        created_by: string | null;
-        updated_by: string | null;
         calendarId: string | null;
         mail_account_id: string | null;
         tokenExpiry: Date | null;
@@ -79,14 +77,12 @@ export declare class CalendarService {
         userId: string;
         provider: import(".prisma/client").$Enums.CalendarProvider;
         title: string;
-        calendar: string | null;
-        provider: import(".prisma/client").$Enums.CalendarProvider;
         calendarId: string | null;
+        calendar: string | null;
         isDeleted: boolean;
         startTime: Date;
         endTime: Date;
         location: string | null;
-        calendarId: string | null;
         attendees: import("@prisma/client/runtime/library").JsonValue | null;
         isRecurring: boolean | null;
         externalId: string;
