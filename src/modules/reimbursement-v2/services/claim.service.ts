@@ -276,10 +276,16 @@ export async function validateClaimLimitsEndpoint(actor: Actor, input: CreateCla
 
 export async function listMyClaims(
   actor: Actor,
-  filter: { status?: ClaimStatus } = {}
-): Promise<Claim[]> {
+  filter: { status?: ClaimStatus; search?: string; page?: number; limit?: number } = {}
+): Promise<{ claims: Claim[]; total: number }> {
   return withTenant(actor.tenantId, (client) =>
-    repo.listClaims(client, { userId: actor.userId, status: filter.status })
+    repo.listClaims(client, {
+      userId: actor.userId,
+      status: filter.status,
+      search: filter.search,
+      page: filter.page,
+      limit: filter.limit,
+    })
   );
 }
 

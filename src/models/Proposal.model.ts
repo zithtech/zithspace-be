@@ -39,11 +39,80 @@ export class ProposalModel {
   }
 
   /**
-   * Find all proposals for a tenant. Embeds the creator user as a nested
-   * `createdBy` object so the table can render an avatar + name without a
-   * second round-trip.
+   * Find all proposals for a tenant with pagination and filters.
    */
-  static async findAll(tenantId: string): Promise<any[]> {
+  static async findAll(options: {
+    tenantId: string;
+    userId?: string;
+    page?: number;
+    limit?: number;
+    search?: string;
+    view?: string;
+    status?: string;
+    client?: string;
+    creator?: string;
+    startDate?: string;
+    endDate?: string;
+    starredIds?: string[];
+  }): Promise<{ data: any[]; total: number }> {
+    const { tenantId, userId, page, limit, search, view, status, client, creator, startDate, endDate, starredIds } = options;
+
+    let whereClause = `p.tenant_id = $1 AND p.deleted_at IS NULL`;
+    const values: any[] = [tenantId];
+    let paramIdx = 2;
+
+    if (view === 'mine' && userId) {
+      whereClause += ` AND p.created_by = $${paramIdx++}`;
+      values.push(userId);
+    } else if (view === 'sent') {
+      whereClause += ` AND p.status = 'sent'`;
+    } else if (view === 'starred' && starredIds && starredIds.length > 0) {
+      whereClause += ` AND p.id = ANY($${paramIdx++})`;
+      values.push(starredIds);
+    } else if (view === 'starred' && (!starredIds || starredIds.length === 0)) {
+      // If starred view but no starred ids, return nothing
+      whereClause += ` AND false`;
+    }
+
+    if (search) {
+      whereClause += ` AND (p.title ILIKE $${paramIdx} OR p.client_name ILIKE $${paramIdx})`;
+      values.push(`%${search}%`);
+      paramIdx++;
+    }
+
+    if (status && status !== 'all') {
+      whereClause += ` AND p.status = $${paramIdx++}`;
+      values.push(status);
+    }
+
+    if (client) {
+      whereClause += ` AND p.client_name = $${paramIdx++}`;
+      values.push(client);
+    }
+
+    if (creator) {
+      whereClause += ` AND p.created_by = $${paramIdx++}`;
+      values.push(creator);
+    }
+
+    if (startDate && endDate) {
+      whereClause += ` AND p.created_at >= $${paramIdx++} AND p.created_at <= $${paramIdx++}`;
+      values.push(startDate, endDate);
+    }
+
+    const countQuery = `SELECT COUNT(*) FROM proposals p WHERE ${whereClause}`;
+    const countResult = await pool.query(countQuery, values);
+    const total = parseInt(countResult.rows[0].count, 10);
+
+    let limitOffsetClause = "";
+    if (limit) {
+      limitOffsetClause = `LIMIT $${paramIdx++}`;
+      values.push(limit);
+      if (page) {
+        limitOffsetClause += ` OFFSET $${paramIdx++}`;
+        values.push((page - 1) * limit);
+      }
+    }
     const query = `
       SELECT
         p.id,
@@ -70,17 +139,74 @@ export class ProposalModel {
         WHERE tenant_id = $1
         GROUP BY lead_id
       ) lm ON p.lead_id = lm.lead_id
-      WHERE p.tenant_id = $1 AND p.deleted_at IS NULL
-      ORDER BY p.created_at DESC;
+      WHERE ${whereClause}
+      ORDER BY p.created_at DESC
+      ${limitOffsetClause};
     `;
-    const result = await pool.query(query, [tenantId]);
-    return result.rows;
+    const result = await pool.query(query, values);
+    return { data: result.rows, total };
   }
 
   /**
    * Find all trashed proposals for a tenant.
    */
-  static async findTrashed(tenantId: string): Promise<any[]> {
+  static async findTrashed(options: {
+    tenantId: string;
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: string;
+    client?: string;
+    creator?: string;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<{ data: any[]; total: number }> {
+    const { tenantId, page, limit, search, status, client, creator, startDate, endDate } = options;
+
+    let whereClause = `p.tenant_id = $1 AND p.deleted_at IS NOT NULL`;
+    const values: any[] = [tenantId];
+    let paramIdx = 2;
+
+    if (search) {
+      whereClause += ` AND (p.title ILIKE $${paramIdx} OR p.client_name ILIKE $${paramIdx})`;
+      values.push(`%${search}%`);
+      paramIdx++;
+    }
+
+    if (status && status !== 'all') {
+      whereClause += ` AND p.status = $${paramIdx++}`;
+      values.push(status);
+    }
+
+    if (client) {
+      whereClause += ` AND p.client_name = $${paramIdx++}`;
+      values.push(client);
+    }
+
+    if (creator) {
+      whereClause += ` AND p.created_by = $${paramIdx++}`;
+      values.push(creator);
+    }
+
+    if (startDate && endDate) {
+      whereClause += ` AND p.created_at >= $${paramIdx++} AND p.created_at <= $${paramIdx++}`;
+      values.push(startDate, endDate);
+    }
+
+    const countQuery = `SELECT COUNT(*) FROM proposals p WHERE ${whereClause}`;
+    const countResult = await pool.query(countQuery, values);
+    const total = parseInt(countResult.rows[0].count, 10);
+
+    let limitOffsetClause = "";
+    if (limit) {
+      limitOffsetClause = `LIMIT $${paramIdx++}`;
+      values.push(limit);
+      if (page) {
+        limitOffsetClause += ` OFFSET $${paramIdx++}`;
+        values.push((page - 1) * limit);
+      }
+    }
+
     const query = `
       SELECT
         p.id,
@@ -108,11 +234,12 @@ export class ProposalModel {
         WHERE tenant_id = $1
         GROUP BY lead_id
       ) lm ON p.lead_id = lm.lead_id
-      WHERE p.tenant_id = $1 AND p.deleted_at IS NOT NULL
-      ORDER BY p.deleted_at DESC;
+      WHERE ${whereClause}
+      ORDER BY p.deleted_at DESC
+      ${limitOffsetClause};
     `;
-    const result = await pool.query(query, [tenantId]);
-    return result.rows;
+    const result = await pool.query(query, values);
+    return { data: result.rows, total };
   }
 
   /**

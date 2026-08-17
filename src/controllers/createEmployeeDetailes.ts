@@ -360,20 +360,70 @@ export async function getPersonalDetails(req: AuthRequest, employeeId: string) {
 }
 
 // ✅ GET All Employees (List)
-export async function getAllEmployees(req: AuthRequest) {
+export async function getAllEmployees(
+  req: AuthRequest, 
+  opts?: { search?: string; limit?: number; offset?: number; status?: string }
+) {
   try {
     if (!req.user?.id || !req.tenantId) throw new Error("Unauthorized");
 
     return await withTenant(req.tenantId, async (db) => {
-      const employeesRes = await db.query(
-        `SELECT * FROM employees
-          WHERE tenant_id = $1 AND status = true
-          ORDER BY created_at DESC`,
-        [req.tenantId],
+      // 1. Fetch global stats
+      const statsRes = await db.query(
+        `SELECT 
+          COUNT(*) as total,
+          SUM(CASE WHEN status = true THEN 1 ELSE 0 END) as active,
+          SUM(CASE WHEN status = false THEN 1 ELSE 0 END) as inactive
+         FROM employees WHERE tenant_id = $1`,
+        [req.tenantId]
       );
+      
+      const stats = {
+        total: Number(statsRes.rows[0].total) || 0,
+        active: Number(statsRes.rows[0].active) || 0,
+        inactive: Number(statsRes.rows[0].inactive) || 0,
+      };
+
+      // 2. Build filtered query
+      const conditions = ["tenant_id = $1"];
+      const params: any[] = [req.tenantId];
+
+      if (opts?.status === 'true') {
+        conditions.push("status = true");
+      } else if (opts?.status === 'false') {
+        conditions.push("status = false");
+      }
+
+      if (opts?.search) {
+        params.push(`%${opts.search}%`);
+        conditions.push(`(first_name ILIKE $${params.length} OR last_name ILIKE $${params.length} OR employee_code ILIKE $${params.length} OR (first_name || ' ' || last_name) ILIKE $${params.length})`);
+      }
+
+      const whereClause = `WHERE ${conditions.join(" AND ")}`;
+
+      // 3. Get total count for pagination
+      const countRes = await db.query(
+        `SELECT COUNT(*) FROM employees ${whereClause}`,
+        params
+      );
+      const total = Number(countRes.rows[0].count) || 0;
+
+      // 4. Fetch page of employees
+      let sql = `SELECT * FROM employees ${whereClause} ORDER BY created_at DESC`;
+
+      if (opts?.limit !== undefined) {
+        params.push(opts.limit);
+        sql += ` LIMIT $${params.length}`;
+      }
+      if (opts?.offset !== undefined) {
+        params.push(opts.offset);
+        sql += ` OFFSET $${params.length}`;
+      }
+
+      const employeesRes = await db.query(sql, params);
       const employees = employeesRes.rows;
 
-      if (employees.length === 0) return [];
+      if (employees.length === 0) return { data: [], total, stats };
 
       const employeeIds = employees.map((e: any) => e.id);
 
@@ -436,7 +486,7 @@ export async function getAllEmployees(req: AuthRequest) {
         if (!managerByEmp.has(p.employee_id)) managerByEmp.set(p.employee_id, p.reporting_manager);
       }
 
-      return employees.map((employee: any) => {
+      const mapped = employees.map((employee: any) => {
         const addresses = addrByEmp.get(employee.id) || [];
         const currentAddress = addresses.find(
           (addr: any) => addr.address_type === "CURRENT",
@@ -503,6 +553,8 @@ export async function getAllEmployees(req: AuthRequest) {
           created_at: employee.created_at,
         };
       });
+
+      return { data: mapped, total, stats };
     });
   } catch (error: any) {
     console.error("Error in getAllEmployees:", error);

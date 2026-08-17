@@ -145,8 +145,8 @@ export async function updateStructure(
 
 export async function listStructures(
   actor: Actor,
-  opts: { includeInactive?: boolean } = {}
-): Promise<PayStructureListItem[]> {
+  opts: { includeInactive?: boolean; page?: number; limit?: number; search?: string } = {}
+): Promise<{ data: PayStructureListItem[]; total: number }> {
   return withTenant(actor.tenantId, (client) => repo.listStructures(client, opts));
 }
 

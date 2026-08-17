@@ -86,20 +86,68 @@ export class PositionController {
         return;
       }
 
-      const positions = await prisma.position.findMany({
-        where: { tenantId: req.tenantId },
-        include: {
-          department: { select: { id: true, name: true } },
-          subDepartment: { select: { id: true, name: true } },
-          grade: { select: { id: true, name: true } },
-          createdBy: {
-            select: { name: true },
-          },
-        },
-        orderBy: { createdAt: "desc" },
-      });
+      const { page, limit, search, departmentId, subDepartmentId } = req.query;
+      const pageNum = page ? parseInt(page as string, 10) : undefined;
+      const limitNum = limit ? parseInt(limit as string, 10) : undefined;
+      
+      const where: any = { tenantId: req.tenantId };
+      
+      if (typeof search === 'string' && search.trim()) {
+        where.OR = [
+          { title: { contains: search, mode: 'insensitive' } },
+          { code: { contains: search, mode: 'insensitive' } },
+          { description: { contains: search, mode: 'insensitive' } },
+        ];
+      }
 
-      res.status(200).json({ success: true, data: positions } as ApiResponse);
+      if (typeof departmentId === 'string' && departmentId.trim()) {
+        where.departmentId = departmentId;
+      }
+
+      if (typeof subDepartmentId === 'string' && subDepartmentId.trim()) {
+        where.subDepartmentId = subDepartmentId;
+      }
+
+      const include = {
+        department: { select: { id: true, name: true } },
+        subDepartment: { select: { id: true, name: true } },
+        grade: { select: { id: true, name: true } },
+        createdBy: {
+          select: { name: true },
+        },
+      };
+
+      if (limitNum) {
+        const skip = pageNum ? (pageNum - 1) * limitNum : 0;
+        const [positions, total] = await Promise.all([
+          prisma.position.findMany({
+            where,
+            include,
+            orderBy: { createdAt: "desc" },
+            skip,
+            take: limitNum
+          }),
+          prisma.position.count({ where })
+        ]);
+
+        res.status(200).json({ 
+          success: true, 
+          data: positions,
+          pagination: {
+            total,
+            page: pageNum || 1,
+            limit: limitNum,
+            pages: Math.ceil(total / limitNum)
+          }
+        } as ApiResponse);
+      } else {
+        const positions = await prisma.position.findMany({
+          where,
+          include,
+          orderBy: { createdAt: "desc" },
+        });
+        res.status(200).json({ success: true, data: positions } as ApiResponse);
+      }
     } catch (error: any) {
       console.error("Error fetching positions:", error);
       res.status(500).json({ success: false, error: "Failed to fetch positions" } as ApiResponse);

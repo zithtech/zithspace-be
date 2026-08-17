@@ -333,6 +333,7 @@ export interface ApiResponse<T = any> {
   error?: string;
   message?: string;
   serverTime?: string;
+  total?: number;
   meta?: {
     pagination?: PaginationMeta;
     total?: number;

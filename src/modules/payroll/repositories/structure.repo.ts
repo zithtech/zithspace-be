@@ -85,20 +85,42 @@ export async function findStructureById(client: TenantClient, id: string): Promi
 
 export async function listStructures(
   client: TenantClient,
-  opts: { includeInactive?: boolean } = {}
-): Promise<PayStructureListItem[]> {
+  opts: { includeInactive?: boolean; page?: number; limit?: number; search?: string } = {}
+): Promise<{ data: PayStructureListItem[]; total: number }> {
   const conditions = ['s.tenant_id = $1', 's.deleted_at IS NULL'];
-  if (!opts.includeInactive) conditions.push('s.is_active = true');
+  const params: any[] = [client.tenantId];
+
+  if (!opts.includeInactive) {
+    conditions.push('s.is_active = true');
+  }
+
+  if (opts.search) {
+    params.push(`%${opts.search}%`);
+    conditions.push(`(s.name ILIKE $${params.length} OR s.code ILIKE $${params.length})`);
+  }
+
+  const countResult = await client.query(
+    `SELECT COUNT(*) AS total FROM pay_structures s WHERE ${conditions.join(' AND ')}`,
+    params
+  );
+  const total = parseInt(countResult.rows[0].total, 10);
+
+  const page = opts.page ?? 1;
+  const limit = opts.limit ?? 20;
+  const offset = (page - 1) * limit;
+
+  params.push(limit, offset);
 
   const { rows } = await client.query(
     `SELECT ${STRUCT_COLS.split(',').map((c) => 's.' + c.trim()).join(', ')},
             (SELECT count(*) FROM pay_structure_components c WHERE c.structure_id = s.id) AS component_count
        FROM pay_structures s
       WHERE ${conditions.join(' AND ')}
-      ORDER BY s.name ASC`,
-    [client.tenantId]
+      ORDER BY s.name ASC
+      LIMIT $${params.length - 1} OFFSET $${params.length}`,
+    params
   );
-  return rows.map((r) => ({ ...mapStructure(r), componentCount: Number(r.component_count) }));
+  return { data: rows.map((r) => ({ ...mapStructure(r), componentCount: Number(r.component_count) })), total };
 }
 
 export async function existsByCode(

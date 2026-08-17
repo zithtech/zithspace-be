@@ -1253,20 +1253,20 @@ class InvoiceController {
             if (!req.tenantId) {
                 throw new types_1.ValidationError('Tenant context required');
             }
-            const { page = 1, limit = 20, search, sortBy = 'deletedAt', sortOrder = 'desc' } = req.query;
+            const { page = 1, limit = 20, search, status, startDate, endDate, sortBy = 'deletedAt', sortOrder = 'desc' } = req.query;
             console.log(`GET DELETED INVOICES - Page: ${page}, Limit: ${limit}`);
             const options = {
                 page: Number(page),
                 limit: Number(limit),
-                status: 'all', // Get all invoices including deleted ones
+                status: status || 'all',
                 customerId: undefined,
                 search: search,
                 sortBy: sortBy,
-                sortOrder: sortOrder
+                sortOrder: sortOrder,
+                startDate: startDate ? new Date(startDate) : undefined,
+                endDate: endDate ? new Date(endDate) : undefined
             };
-            const { invoices, total } = await (0, invoice_model_1.getDeletedInvoices)(req.tenantId, options);
-            // Filter to only show deleted invoices
-            const deletedInvoices = invoices.filter(inv => inv.deletedAt !== null);
+            const { invoices: deletedInvoices, total } = await (0, invoice_model_1.getDeletedInvoices)(req.tenantId, options);
             const totalPages = Math.ceil(total / Number(limit));
             console.log(`Retrieved ${deletedInvoices.length} deleted invoices out of ${total} total`);
             res.status(200).json({
@@ -1275,7 +1275,7 @@ class InvoiceController {
                 pagination: {
                     page: Number(page),
                     limit: Number(limit),
-                    total: deletedInvoices.length,
+                    total: total,
                     pages: totalPages
                 }
             });

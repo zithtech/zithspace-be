@@ -42,18 +42,43 @@ export async function findPtStateById(client: TenantClient, id: string): Promise
   return rows[0] ? mapPtState(rows[0]) : null;
 }
 
-export async function listPtStates(client: TenantClient, includeInactive: boolean): Promise<PtStateListItem[]> {
+export async function listPtStates(
+  client: TenantClient,
+  opts: { includeInactive?: boolean; page?: number; limit?: number; search?: string } = {}
+): Promise<{ data: PtStateListItem[]; total: number }> {
   const conditions = ['s.tenant_id = $1', 's.deleted_at IS NULL'];
-  if (!includeInactive) conditions.push('s.is_active = true');
+  const params: any[] = [client.tenantId];
+
+  if (!opts.includeInactive) {
+    conditions.push('s.is_active = true');
+  }
+
+  if (opts.search) {
+    params.push(`%${opts.search}%`);
+    conditions.push(`s.state ILIKE $${params.length}`);
+  }
+
+  const countResult = await client.query(
+    `SELECT COUNT(*) AS total FROM pay_pt_states s WHERE ${conditions.join(' AND ')}`,
+    params
+  );
+  const total = parseInt(countResult.rows[0].total, 10);
+
+  const page = opts.page ?? 1;
+  const limit = opts.limit ?? 20;
+  const offset = (page - 1) * limit;
+  params.push(limit, offset);
+
   const { rows } = await client.query(
     `SELECT ${PT_COLS.split(',').map((c) => 's.' + c.trim()).join(', ')},
             (SELECT count(*) FROM pay_pt_slabs sl WHERE sl.pt_state_id = s.id) AS slab_count
        FROM pay_pt_states s
       WHERE ${conditions.join(' AND ')}
-      ORDER BY s.state ASC`,
-    [client.tenantId]
+      ORDER BY s.state ASC
+      LIMIT $${params.length - 1} OFFSET $${params.length}`,
+    params
   );
-  return rows.map((r) => ({ ...mapPtState(r), slabCount: Number(r.slab_count) }));
+  return { data: rows.map((r) => ({ ...mapPtState(r), slabCount: Number(r.slab_count) })), total };
 }
 
 export async function ptStateExistsByName(client: TenantClient, state: string, excludeId?: string): Promise<boolean> {
@@ -143,14 +168,41 @@ export async function findLwfById(client: TenantClient, id: string): Promise<Lwf
   return rows[0] ? mapLwf(rows[0]) : null;
 }
 
-export async function listLwf(client: TenantClient, includeInactive: boolean): Promise<LwfState[]> {
+export async function listLwf(
+  client: TenantClient,
+  opts: { includeInactive?: boolean; page?: number; limit?: number; search?: string } = {}
+): Promise<{ data: LwfState[]; total: number }> {
   const conditions = ['tenant_id = $1', 'deleted_at IS NULL'];
-  if (!includeInactive) conditions.push('is_active = true');
-  const { rows } = await client.query(
-    `SELECT ${LWF_COLS} FROM pay_lwf_states WHERE ${conditions.join(' AND ')} ORDER BY state ASC`,
-    [client.tenantId]
+  const params: any[] = [client.tenantId];
+
+  if (!opts.includeInactive) {
+    conditions.push('is_active = true');
+  }
+
+  if (opts.search) {
+    params.push(`%${opts.search}%`);
+    conditions.push(`state ILIKE $${params.length}`);
+  }
+
+  const countResult = await client.query(
+    `SELECT COUNT(*) AS total FROM pay_lwf_states WHERE ${conditions.join(' AND ')}`,
+    params
   );
-  return rows.map(mapLwf);
+  const total = parseInt(countResult.rows[0].total, 10);
+
+  const page = opts.page ?? 1;
+  const limit = opts.limit ?? 20;
+  const offset = (page - 1) * limit;
+  params.push(limit, offset);
+
+  const { rows } = await client.query(
+    `SELECT ${LWF_COLS} FROM pay_lwf_states
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY state ASC
+      LIMIT $${params.length - 1} OFFSET $${params.length}`,
+    params
+  );
+  return { data: rows.map(mapLwf), total };
 }
 
 export async function lwfExistsByName(client: TenantClient, state: string, excludeId?: string): Promise<boolean> {

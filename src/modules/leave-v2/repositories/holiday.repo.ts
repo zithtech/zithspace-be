@@ -46,8 +46,8 @@ function mapRow(r: any): Holiday {
 
 export async function findAll(
   client: TenantClient,
-  opts: { year?: number; includeInactive?: boolean } = {}
-): Promise<Holiday[]> {
+  opts: { year?: number; includeInactive?: boolean; search?: string; type?: string; limit?: number; offset?: number } = {}
+): Promise<{ data: Holiday[]; total: number }> {
   const conditions = ['tenant_id = $1', 'deleted_at IS NULL'];
   const params: any[] = [client.tenantId];
   if (!opts.includeInactive) conditions.push('is_active = true');
@@ -55,11 +55,41 @@ export async function findAll(
     params.push(opts.year);
     conditions.push(`EXTRACT(YEAR FROM from_date) = $${params.length}`);
   }
-  const { rows } = await client.query(
-    `SELECT ${COLS} FROM lv2_holidays WHERE ${conditions.join(' AND ')} ORDER BY from_date ASC`,
-    params
-  );
-  return rows.map(mapRow);
+  if (opts.search) {
+    params.push(`%${opts.search}%`);
+    conditions.push(`name ILIKE $${params.length}`);
+  }
+  
+  if (opts.type) {
+    if (opts.type === 'National') {
+      params.push('ALL');
+      conditions.push(`type = $${params.length}`);
+    } else {
+      params.push(opts.type);
+      conditions.push(`type = $${params.length}`);
+    }
+  }
+
+  const where = `WHERE ${conditions.join(' AND ')}`;
+
+  // Get total count
+  const countRes = await client.query(`SELECT COUNT(*) FROM lv2_holidays ${where}`, params);
+  const total = parseInt(countRes.rows[0].count, 10);
+
+  // Build main query
+  let sql = `SELECT ${COLS} FROM lv2_holidays ${where} ORDER BY from_date ASC`;
+
+  if (opts.limit !== undefined) {
+    params.push(opts.limit);
+    sql += ` LIMIT $${params.length}`;
+  }
+  if (opts.offset !== undefined) {
+    params.push(opts.offset);
+    sql += ` OFFSET $${params.length}`;
+  }
+
+  const { rows } = await client.query(sql, params);
+  return { data: rows.map(mapRow), total };
 }
 
 export async function findById(client: TenantClient, id: string): Promise<Holiday | null> {

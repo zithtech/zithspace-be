@@ -341,21 +341,73 @@ export async function regenerateInvite(req: AuthRequest, res: Response) {
 export async function listInvites(req: AuthRequest, res: Response) {
   try {
     if (!req.user?.id || !req.tenantId) throw new Error("Unauthorized");
+    const { search, limit, offset, status } = req.query;
 
-    const data = await withTenant(req.tenantId, async (db) => {
-      const { rows } = await db.query(
-        `SELECT i.id, i.employee_id, i.status, i.sections,
+    const payload = await withTenant(req.tenantId, async (db) => {
+      // 1. Fetch global stats
+      const statsRes = await db.query(
+        `SELECT 
+          COUNT(*) as total,
+          SUM(CASE WHEN status = 'invited' THEN 1 ELSE 0 END) as invited,
+          SUM(CASE WHEN status = 'employee_submitted' THEN 1 ELSE 0 END) as submitted,
+          SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed
+         FROM employee_onboarding_invites WHERE tenant_id = $1 AND status <> 'revoked'`,
+        [req.tenantId]
+      );
+      
+      const stats = {
+        total: Number(statsRes.rows[0].total) || 0,
+        invited: Number(statsRes.rows[0].invited) || 0,
+        submitted: Number(statsRes.rows[0].submitted) || 0,
+        completed: Number(statsRes.rows[0].completed) || 0,
+      };
+
+      // 2. Build filtered query
+      const conditions = ["i.tenant_id = $1", "i.status <> 'revoked'"];
+      const params: any[] = [req.tenantId];
+
+      if (typeof status === 'string' && status !== 'all') {
+        params.push(status);
+        conditions.push(`i.status = $${params.length}`);
+      }
+
+      if (typeof search === 'string' && search.trim() !== '') {
+        params.push(`%${search}%`);
+        conditions.push(`(e.first_name ILIKE $${params.length} OR e.last_name ILIKE $${params.length} OR e.employee_code ILIKE $${params.length} OR (e.first_name || ' ' || e.last_name) ILIKE $${params.length})`);
+      }
+
+      const whereClause = `WHERE ${conditions.join(" AND ")}`;
+
+      // 3. Get total count for pagination
+      const countRes = await db.query(
+        `SELECT COUNT(*) FROM employee_onboarding_invites i JOIN employees e ON e.id = i.employee_id ${whereClause}`,
+        params
+      );
+      const total = Number(countRes.rows[0].count) || 0;
+
+      // 4. Fetch page of invites
+      let sql = `SELECT i.id, i.employee_id, i.status, i.sections,
                 i.expires_at, i.created_at, i.submitted_at, i.completed_at,
                 (i.expires_at < now()) AS is_expired,
                 e.first_name, e.last_name, e.employee_code, e.work_email,
                 e.personal_email, e.status AS employee_active
            FROM employee_onboarding_invites i
            JOIN employees e ON e.id = i.employee_id
-          WHERE i.tenant_id = $1 AND i.status <> 'revoked'
-          ORDER BY i.created_at DESC`,
-        [req.tenantId],
-      );
-      return rows.map((r: any) => ({
+           ${whereClause}
+           ORDER BY i.created_at DESC`;
+
+      if (typeof limit === 'string') {
+        params.push(parseInt(limit, 10));
+        sql += ` LIMIT $${params.length}`;
+      }
+      if (typeof offset === 'string') {
+        params.push(parseInt(offset, 10));
+        sql += ` OFFSET $${params.length}`;
+      }
+
+      const { rows } = await db.query(sql, params);
+
+      const data = rows.map((r: any) => ({
         inviteId: r.id,
         employeeId: r.employee_id,
         employeeCode: r.employee_code,
@@ -371,9 +423,11 @@ export async function listInvites(req: AuthRequest, res: Response) {
         completedAt: r.completed_at,
         createdAt: r.created_at,
       }));
+
+      return { data, total, stats };
     });
 
-    return res.status(200).json({ success: true, data });
+    return res.status(200).json({ success: true, ...payload });
   } catch (err: any) {
     console.error("listInvites error:", err);
     return res.status(500).json({ success: false, error: err.message || "Internal Server Error" });

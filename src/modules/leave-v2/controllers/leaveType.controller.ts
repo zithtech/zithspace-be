@@ -45,8 +45,16 @@ export const create = handle(async (req: AuthRequest, res: Response) => {
 });
 
 export const list = handle(async (req: AuthRequest, res: Response) => {
-  const includeInactive = req.query.includeInactive === 'true';
-  const leaveTypes = await service.listLeaveTypes(actorOf(req), { includeInactive });
+  const opts = {
+    includeInactive: req.query.includeInactive === 'true',
+    search: req.query.search as string,
+    unit: req.query.unit as string,
+    paid: req.query.paid as string,
+    status: req.query.status as string,
+    limit: req.query.pageSize ? Number(req.query.pageSize) : undefined,
+    offset: (req.query.page && req.query.pageSize) ? (Number(req.query.page) - 1) * Number(req.query.pageSize) : undefined,
+  };
+  const leaveTypes = await service.listLeaveTypes(actorOf(req), opts);
   ok(res, leaveTypes);
 });
 

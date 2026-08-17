@@ -124,25 +124,46 @@ export async function insert(client: TenantClient, data: CreateComponentData): P
 
 export async function findAll(
   client: TenantClient,
-  opts: { includeInactive?: boolean; category?: ComponentCategory } = {}
-): Promise<PayComponent[]> {
+  opts: { status?: 'all' | 'active' | 'inactive'; category?: ComponentCategory; page?: number; limit?: number; search?: string } = {}
+): Promise<{ data: PayComponent[]; total: number }> {
   const conditions = ['tenant_id = $1', 'deleted_at IS NULL'];
   const params: any[] = [client.tenantId];
-  if (!opts.includeInactive) {
+
+  if (opts.status === 'active' || opts.status === undefined) {
     conditions.push('is_active = true');
+  } else if (opts.status === 'inactive') {
+    conditions.push('is_active = false');
   }
   if (opts.category) {
     params.push(opts.category);
     conditions.push(`category = $${params.length}`);
   }
+  if (opts.search) {
+    params.push(`%${opts.search}%`);
+    conditions.push(`(name ILIKE $${params.length} OR code ILIKE $${params.length})`);
+  }
+  
+  const countResult = await client.query(
+    `SELECT COUNT(*) AS total FROM pay_components WHERE ${conditions.join(' AND ')}`,
+    params
+  );
+  const total = parseInt(countResult.rows[0].total, 10);
+
+  const page = opts.page ?? 1;
+  const limit = opts.limit ?? 20;
+  const offset = (page - 1) * limit;
+
+  params.push(limit, offset);
+
   const { rows } = await client.query<ComponentRow>(
     `SELECT ${SELECT_COLS}
        FROM pay_components
       WHERE ${conditions.join(' AND ')}
-      ORDER BY display_order ASC, name ASC`,
+      ORDER BY display_order ASC, name ASC
+      LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params
   );
-  return rows.map(mapRow);
+  return { data: rows.map(mapRow), total };
 }
 
 export async function findById(client: TenantClient, id: string): Promise<PayComponent | null> {
