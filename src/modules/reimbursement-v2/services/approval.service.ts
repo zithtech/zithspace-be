@@ -81,9 +81,9 @@ async function loadDecidable(client: TenantClient, id: string, actor: Actor, can
   return claim;
 }
 
-export async function listPending(actor: Actor, canManageAll: boolean): Promise<ApprovalInboxItem[]> {
+export async function listPending(actor: Actor, canManageAll: boolean, filter: { page?: number; limit?: number } = {}): Promise<{ data: ApprovalInboxItem[]; total: number }> {
   return withTenant(actor.tenantId, (client) =>
-    canManageAll ? repo.findAllPending(client) : repo.findPendingForApprover(client, actor.userId)
+    canManageAll ? repo.findAllPending(client, filter) : repo.findPendingForApprover(client, actor.userId, filter)
   );
 }
 

@@ -77,17 +77,49 @@ export async function insertEntry(client: TenantClient, d: InsertEntryData): Pro
   return mapAdj(rows[0]);
 }
 
-export async function listAdjustments(client: TenantClient): Promise<AdjustmentRow[]> {
-  const { rows } = await client.query(
-    `SELECT ${SELECT_ADJ}
-       FROM lv2_leave_ledger lg
-       JOIN lv2_leave_types lt ON lt.id = lg.leave_type_id
-       JOIN users u ON u.id = lg.user_id::text
-      WHERE lg.tenant_id = $1 AND lg.source = 'manual_adjustment'
-      ORDER BY lg.created_at DESC`,
-    [client.tenantId]
-  );
-  return rows.map(mapAdj);
+export async function listAdjustments(
+  client: TenantClient,
+  opts: { search?: string; dir?: string; limit?: number; offset?: number } = {}
+): Promise<{ data: AdjustmentRow[]; total: number }> {
+  const conditions = ["lg.tenant_id = $1", "lg.source = 'manual_adjustment'"];
+  const params: any[] = [client.tenantId];
+  
+  if (opts.search) {
+    params.push(`%${opts.search}%`);
+    conditions.push(`(u.name ILIKE $${params.length} OR lt.name ILIKE $${params.length})`);
+  }
+  
+  if (opts.dir === 'credit') {
+    conditions.push("lg.units > 0");
+  } else if (opts.dir === 'debit') {
+    conditions.push("lg.units < 0");
+  }
+  
+  const joins = `
+    FROM lv2_leave_ledger lg
+    JOIN lv2_leave_types lt ON lt.id = lg.leave_type_id
+    JOIN users u ON u.id = lg.user_id::text
+  `;
+  const where = `WHERE ${conditions.join(' AND ')}`;
+  
+  // Get total count
+  const countRes = await client.query(`SELECT COUNT(*) ${joins} ${where}`, params);
+  const total = parseInt(countRes.rows[0].count, 10);
+  
+  // Build main query
+  let sql = `SELECT ${SELECT_ADJ} ${joins} ${where} ORDER BY lg.created_at DESC`;
+  
+  if (opts.limit !== undefined) {
+    params.push(opts.limit);
+    sql += ` LIMIT $${params.length}`;
+  }
+  if (opts.offset !== undefined) {
+    params.push(opts.offset);
+    sql += ` OFFSET $${params.length}`;
+  }
+  
+  const { rows } = await client.query(sql, params);
+  return { data: rows.map(mapAdj), total };
 }
 
 export interface EmployeeOption {

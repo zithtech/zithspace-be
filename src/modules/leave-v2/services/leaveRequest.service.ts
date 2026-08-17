@@ -221,7 +221,7 @@ export async function getMyBalances(actor: Actor): Promise<BalanceItem[]> {
     const types = await leaveTypeRepo.findAll(client, { includeInactive: false });
     const balances = await repo.getBalances(client, actor.userId);
     const byType = new Map(balances.map((b) => [b.leaveTypeId, b]));
-    return types.map((t) => {
+    return types.data.map((t) => {
       const b = byType.get(t.id);
       return {
         leaveTypeId: t.id,

@@ -122,20 +122,44 @@ export async function insert(
 
 export async function findAll(
   client: TenantClient,
-  opts: { includeInactive?: boolean } = {}
-): Promise<ExpenseCategory[]> {
+  opts: { includeInactive?: boolean; page?: number; limit?: number; search?: string } = {}
+): Promise<{ data: ExpenseCategory[]; total: number }> {
   const conditions = ['tenant_id = $1', 'deleted_at IS NULL'];
+  const params: any[] = [client.tenantId];
+
   if (!opts.includeInactive) {
     conditions.push('is_active = true');
   }
+
+  if (opts.search) {
+    params.push(`%${opts.search}%`);
+    conditions.push(`(name ILIKE $${params.length} OR code ILIKE $${params.length})`);
+  }
+
+  const countResult = await client.query(
+    `SELECT COUNT(*) AS total FROM rb2_expense_categories WHERE ${conditions.join(' AND ')}`,
+    params
+  );
+  const total = parseInt(countResult.rows[0].total, 10);
+
+  const page = opts.page ?? 1;
+  const limit = opts.limit ?? 20;
+  const offset = (page - 1) * limit;
+
+  params.push(limit, offset);
+
   const { rows } = await client.query<CategoryRow>(
     `SELECT ${SELECT_COLS}
        FROM rb2_expense_categories
       WHERE ${conditions.join(' AND ')}
-      ORDER BY name ASC`,
-    [client.tenantId]
+      ORDER BY name ASC
+      LIMIT $${params.length - 1} OFFSET $${params.length}`,
+    params
   );
-  return rows.map(mapRow);
+  return {
+    data: rows.map(mapRow),
+    total,
+  };
 }
 
 export async function findById(

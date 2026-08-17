@@ -107,8 +107,8 @@ export async function findById(client: TenantClient, id: string): Promise<Advanc
 
 export async function list(
   client: TenantClient,
-  filter: { userId?: string; status?: AdvanceStatus } = {}
-): Promise<Advance[]> {
+  filter: { userId?: string; status?: AdvanceStatus; search?: string; page?: number; limit?: number } = {}
+): Promise<{ advances: Advance[]; total: number }> {
   const conditions = ['tenant_id = $1', 'deleted_at IS NULL'];
   const params: any[] = [client.tenantId];
   if (filter.userId) {
@@ -119,13 +119,32 @@ export async function list(
     params.push(filter.status);
     conditions.push(`status = $${params.length}`);
   }
-  const { rows } = await client.query(
-    `SELECT ${COLS} FROM rb2_advances
-      WHERE ${conditions.join(' AND ')}
-      ORDER BY created_at DESC`,
+  if (filter.search) {
+    params.push(`%${filter.search}%`);
+    conditions.push(`(advance_no ILIKE $${params.length} OR purpose ILIKE $${params.length})`);
+  }
+
+  const where = conditions.join(' AND ');
+
+  const countResult = await client.query(
+    `SELECT COUNT(*) AS total FROM rb2_advances WHERE ${where}`,
     params
   );
-  return rows.map(mapRow);
+  const total = parseInt(countResult.rows[0].total, 10);
+
+  const page = filter.page ?? 1;
+  const limit = filter.limit ?? 20;
+  const offset = (page - 1) * limit;
+
+  const listParams = [...params, limit, offset];
+  const { rows } = await client.query(
+    `SELECT ${COLS} FROM rb2_advances
+      WHERE ${where}
+      ORDER BY created_at DESC
+      LIMIT $${listParams.length - 1} OFFSET $${listParams.length}`,
+    listParams
+  );
+  return { advances: rows.map(mapRow), total };
 }
 
 export interface AdvanceStatusData {
@@ -221,48 +240,72 @@ export async function recomputeReconciliation(
 async function inbox(
   client: TenantClient,
   where: string,
-  params: any[]
-): Promise<AdvanceInboxItem[]> {
+  params: any[],
+  filter: { page?: number; limit?: number } = {}
+): Promise<{ data: AdvanceInboxItem[]; total: number }> {
+  const countResult = await client.query(
+    `SELECT COUNT(*) AS total
+       FROM rb2_advances a
+       JOIN users u ON u.id = a.user_id::text
+      WHERE ${where}`,
+    params
+  );
+  const total = parseInt(countResult.rows[0].total, 10);
+
+  const page = filter.page ?? 1;
+  const limit = filter.limit ?? 20;
+  const offset = (page - 1) * limit;
+
+  const listParams = [...params, limit, offset];
+
   const { rows } = await client.query(
     `SELECT ${COLS.split(',').map((c) => 'a.' + c.trim()).join(', ')},
             u.name AS requester_name, u.work_email AS requester_email
        FROM rb2_advances a
        JOIN users u ON u.id = a.user_id::text
       WHERE ${where}
-      ORDER BY a.created_at ASC`,
-    params
+      ORDER BY a.created_at ASC
+      LIMIT $${listParams.length - 1} OFFSET $${listParams.length}`,
+    listParams
   );
-  return rows.map((r) => ({
-    ...mapRow(r),
-    requesterName: r.requester_name ?? null,
-    requesterEmail: r.requester_email ?? null,
-  }));
+  return {
+    data: rows.map((r) => ({
+      ...mapRow(r),
+      requesterName: r.requester_name ?? null,
+      requesterEmail: r.requester_email ?? null,
+    })),
+    total,
+  };
 }
 
 export function findPendingForApprover(
   client: TenantClient,
-  approverUserId: string
-): Promise<AdvanceInboxItem[]> {
+  approverUserId: string,
+  filter: { page?: number; limit?: number } = {}
+): Promise<{ data: AdvanceInboxItem[]; total: number }> {
   return inbox(
     client,
     `a.tenant_id = $1 AND a.deleted_at IS NULL AND a.status = 'pending' AND u.reports_to_id = $2`,
-    [client.tenantId, approverUserId]
+    [client.tenantId, approverUserId],
+    filter
   );
 }
 
 /** ALL pending advances (for HR/admin/manage-all users, not scoped to reports). */
-export function findAllPending(client: TenantClient): Promise<AdvanceInboxItem[]> {
+export function findAllPending(client: TenantClient, filter: { page?: number; limit?: number } = {}): Promise<{ data: AdvanceInboxItem[]; total: number }> {
   return inbox(
     client,
     `a.tenant_id = $1 AND a.deleted_at IS NULL AND a.status = 'pending'`,
-    [client.tenantId]
+    [client.tenantId],
+    filter
   );
 }
 
-export function findPayable(client: TenantClient): Promise<AdvanceInboxItem[]> {
+export async function findPayable(client: TenantClient, filter: { page?: number; limit?: number } = {}): Promise<{ data: AdvanceInboxItem[]; total: number }> {
   return inbox(
     client,
     `a.tenant_id = $1 AND a.deleted_at IS NULL AND a.status = 'approved'`,
-    [client.tenantId]
+    [client.tenantId],
+    filter
   );
 }

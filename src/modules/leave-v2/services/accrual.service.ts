@@ -153,7 +153,7 @@ export async function runAccrualForTenant(
     const employees = await repo.resolveEmployees(client);
     const policies = await repo.loadActivePolicies(client);
     const leaveTypes = await leaveTypeRepo.findAll(client, { includeInactive: true });
-    const nameOf = new Map(leaveTypes.map((t) => [t.id, t.name]));
+    const nameOf = new Map(leaveTypes.data.map((t) => [t.id, t.name]));
     const existing = dryRun ? await repo.getExistingAccrualKeys(client) : null;
 
     let credited = 0;

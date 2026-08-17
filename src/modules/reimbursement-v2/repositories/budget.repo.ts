@@ -139,15 +139,38 @@ export async function findDuplicate(
 
 export async function list(
   client: TenantClient,
-  opts: { includeInactive?: boolean } = {}
-): Promise<Budget[]> {
+  opts: { includeInactive?: boolean; page?: number; limit?: number; search?: string } = {}
+): Promise<{ data: Budget[]; total: number }> {
   const conditions = ['tenant_id = $1', 'deleted_at IS NULL'];
+  const params: any[] = [client.tenantId];
+
   if (!opts.includeInactive) conditions.push('is_active = true');
-  const { rows } = await client.query(
-    `SELECT ${COLS} FROM rb2_budgets WHERE ${conditions.join(' AND ')} ORDER BY period_start DESC, name ASC`,
-    [client.tenantId]
+
+  if (opts.search) {
+    params.push(`%${opts.search}%`);
+    conditions.push(`name ILIKE $${params.length}`);
+  }
+
+  const countResult = await client.query(
+    `SELECT COUNT(*) AS total FROM rb2_budgets WHERE ${conditions.join(' AND ')}`,
+    params
   );
-  return rows.map(mapRow);
+  const total = parseInt(countResult.rows[0].total, 10);
+
+  const page = opts.page ?? 1;
+  const limit = opts.limit ?? 20;
+  const offset = (page - 1) * limit;
+
+  params.push(limit, offset);
+
+  const { rows } = await client.query(
+    `SELECT ${COLS} FROM rb2_budgets WHERE ${conditions.join(' AND ')} ORDER BY period_start DESC, name ASC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+    params
+  );
+  return {
+    data: rows.map(mapRow),
+    total,
+  };
 }
 
 export async function softDelete(client: TenantClient, id: string, actorId: string): Promise<boolean> {

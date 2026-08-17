@@ -32,13 +32,26 @@ export const create = handle(async (req: AuthRequest, res: Response) => {
 });
 
 export const list = handle(async (req: AuthRequest, res: Response) => {
-  const includeInactive = req.query.includeInactive === 'true';
+  const statusParam = req.query.status as string | undefined;
+  const status = ['all', 'active', 'inactive'].includes(statusParam || '') 
+    ? (statusParam as 'all' | 'active' | 'inactive') 
+    : (req.query.includeInactive === 'true' ? 'all' : 'active'); // Fallback for backwards compatibility
+
   const categoryParam = req.query.category as string | undefined;
   const category = CATEGORIES.includes(categoryParam as ComponentCategory)
     ? (categoryParam as ComponentCategory)
     : undefined;
-  const components = await service.listComponents(actorOf(req), { includeInactive, category });
-  ok(res, components);
+
+  const page = req.query.page ? Number(req.query.page) : 1;
+  const limit = req.query.limit ? Number(req.query.limit) : 20;
+  const search = req.query.search ? String(req.query.search) : undefined;
+
+  const { data, total } = await service.listComponents(actorOf(req), { status, category, page, limit, search });
+  res.json({
+    success: true,
+    data,
+    pagination: { total, page, limit, pages: Math.ceil(total / limit) },
+  });
 });
 
 export const getOne = handle(async (req: AuthRequest, res: Response) => {

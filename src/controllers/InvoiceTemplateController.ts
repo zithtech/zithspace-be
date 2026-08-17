@@ -76,7 +76,11 @@ export class InvoiceTemplateController {
     try {
       if (!req.tenantId) throw new ValidationError('Tenant context required');
 
-      const templates = await InvoiceTemplateModel.getTemplates(req.tenantId);
+      const { page, limit } = req.query;
+      const parsedLimit = limit ? parseInt(limit as string) : undefined;
+      const parsedOffset = page && parsedLimit ? (parseInt(page as string) - 1) * parsedLimit : undefined;
+
+      const { templates, total } = await InvoiceTemplateModel.getTemplates(req.tenantId, parsedLimit, parsedOffset);
 
       // Get fields for each template
       const templatesWithFields = await Promise.all(
@@ -92,7 +96,15 @@ export class InvoiceTemplateController {
 
       res.status(200).json({
         success: true,
-        data: templatesWithFields
+        data: templatesWithFields,
+        ...(parsedLimit ? {
+          pagination: {
+            page: parseInt(page as string) || 1,
+            limit: parsedLimit,
+            total,
+            pages: Math.ceil(total / parsedLimit)
+          }
+        } : { total })
       } as ApiResponse);
 
     } catch (error: any) {

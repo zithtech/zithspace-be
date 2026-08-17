@@ -26,8 +26,14 @@ async function canManageAll(req: AuthRequest): Promise<boolean> {
 }
 
 export const listPending = handle(async (req: AuthRequest, res: Response) => {
-  const claims = await service.listPending(actorOf(req), await canManageAll(req));
-  ok(res, claims);
+  const page = req.query.page ? Number(req.query.page) : 1;
+  const limit = req.query.limit ? Number(req.query.limit) : 20;
+  const { data, total } = await service.listPending(actorOf(req), await canManageAll(req), { page, limit });
+  res.json({
+    success: true,
+    data,
+    pagination: { total, page, limit, pages: Math.ceil(total / limit) },
+  });
 });
 
 export const getOne = handle(async (req: AuthRequest, res: Response) => {

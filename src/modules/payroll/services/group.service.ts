@@ -30,8 +30,8 @@ export async function createGroup(actor: Actor, input: CreateGroupInput): Promis
 
 export async function listGroups(
   actor: Actor,
-  opts: { includeInactive?: boolean } = {}
-): Promise<PayGroupListItem[]> {
+  opts: { includeInactive?: boolean; page?: number; limit?: number; search?: string } = {}
+): Promise<{ data: PayGroupListItem[]; total: number }> {
   return withTenant(actor.tenantId, (client) => repo.findAll(client, opts));
 }
 

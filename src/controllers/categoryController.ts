@@ -31,12 +31,16 @@ export class CategoryController {
 
       console.log(`GET CATEGORIES - Tenant: ${req.tenantId}`);
       
-      const categories = await getCategories(req.tenantId);
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+      const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : undefined;
+
+      const { data, total } = await getCategories(req.tenantId, limit, offset);
       
       res.status(200).json({
         success: true,
-        data: categories,
-        count: categories.length
+        data: data,
+        total: total,
+        count: data.length
       } as ApiResponse);
 
     } catch (error: any) {

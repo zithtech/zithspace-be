@@ -78,8 +78,8 @@ export async function updatePolicy(
 
 export async function listPolicies(
   actor: Actor,
-  opts: { includeInactive?: boolean } = {}
-): Promise<ReimbursementPolicyListItem[]> {
+  opts: { includeInactive?: boolean; page?: number; limit?: number; search?: string } = {}
+): Promise<{ data: ReimbursementPolicyListItem[]; total: number }> {
   return withTenant(actor.tenantId, (client) => repo.listPolicies(client, opts));
 }
 

@@ -44,8 +44,23 @@ export async function createAdjustment(actor: Actor, input: CreateAdjustmentInpu
   });
 }
 
-export async function listAdjustments(actor: Actor) {
-  return withTenant(actor.tenantId, (client) => repo.listAdjustments(client));
+export async function listAdjustments(actor: Actor, opts: { search?: string; dir?: string; limit?: number; offset?: number }) {
+  return withTenant(actor.tenantId, async (client) => {
+    const { data, total } = await repo.listAdjustments(client, opts);
+    
+    // For stats, fetch without pagination
+    const allData = (await repo.listAdjustments(client, { search: opts.search, dir: opts.dir })).data;
+    const credited = allData.filter((r) => r.units > 0).reduce((s, r) => s + r.units, 0);
+    const debited = allData.filter((r) => r.units < 0).reduce((s, r) => s + Math.abs(r.units), 0);
+    const stats = {
+      total: allData.length,
+      credited,
+      debited,
+      net: credited - debited,
+    };
+    
+    return { data, total, stats };
+  });
 }
 
 /** Delete a manual adjustment; the resulting balance is recomputed from the ledger. */

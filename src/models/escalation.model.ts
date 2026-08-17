@@ -96,30 +96,14 @@ export async function createEscalation(data: CreateEscalationData): Promise<any>
  * If userId is provided and isAdmin is false, only escalations where the user
  * is the creator or a target team member are returned.
  */
-export async function getEscalations(tenantId: string, userId?: string, isAdmin?: boolean): Promise<any[]> {
-    let query = `
-        SELECT e.*, 
-               ec.displayname as category_name, ec.visualcolor as category_color,
-               ep.displayname as priority_name, ep.visualcolor as priority_color, ep.priorityweight as priority_weight,
-               es.displayname as status_name, es.visualcolor as status_color,
-               (SELECT json_build_object('name', p.name) FROM projects p WHERE p.id = e.project_id) as project,
-               (SELECT json_build_object('id', u.id, 'name', u.name, 'avatarUrl', u.avatar_url) FROM users u WHERE u.id = e.created_by_id) as "createdBy",
-               (
-                   SELECT json_agg(json_build_object(
-                       'user', json_build_object('id', u_m.id, 'name', u_m.name, 'avatarUrl', u_m.avatar_url)
-                   ))
-                   FROM escalation_team_members etm
-                   JOIN users u_m ON etm.user_id = u_m.id
-                   WHERE etm.escalation_id = e.id
-               ) as "targetMembers",
-               (
-                   SELECT json_agg(json_build_object(
-                       'ticket', json_build_object('id', t.id, 'ticketNumber', t.ticket_number, 'title', t.title)
-                   ))
-                   FROM escalation_tickets et
-                   JOIN tickets t ON et.ticket_id = t.id
-                   WHERE et.escalation_id = e.id
-               ) as tickets
+export async function getEscalations(
+    tenantId: string, 
+    userId?: string, 
+    isAdmin?: boolean,
+    limit?: number,
+    offset?: number
+): Promise<{ data: any[], total: number }> {
+    let baseQuery = `
         FROM escalation e
         LEFT JOIN escalationcategories ec ON e.escalation_category_id = ec.id
         LEFT JOIN escalation_priorities ep ON e.escalation_priority_id = ep.id
@@ -128,27 +112,17 @@ export async function getEscalations(tenantId: string, userId?: string, isAdmin?
     `;
 
     const values: any[] = [tenantId];
+    let queryIndex = 2;
 
     if (userId && !isAdmin) {
-        query += ` AND (e.created_by_id = $2 OR EXISTS (
+        baseQuery += ` AND (e.created_by_id = $${queryIndex} OR EXISTS (
             SELECT 1 FROM escalation_team_members etm 
-            WHERE etm.escalation_id = e.id AND etm.user_id = $2
+            WHERE etm.escalation_id = e.id AND etm.user_id = $${queryIndex}
         ))`;
         values.push(userId);
+        queryIndex++;
     }
 
-    query += ` ORDER BY e.created_at DESC;`;
-
-    const result = await pool.query(query, values);
-    return result.rows;
-}
-
-/**
- * Get all trashed escalations for a tenant.
- * If userId is provided and isAdmin is false, only escalations where the user
- * is the creator or a target team member are returned.
- */
-export async function getTrashEscalations(tenantId: string, userId?: string, isAdmin?: boolean): Promise<any[]> {
     let query = `
         SELECT e.*, 
                ec.displayname as category_name, ec.visualcolor as category_color,
@@ -171,7 +145,42 @@ export async function getTrashEscalations(tenantId: string, userId?: string, isA
                    FROM escalation_tickets et
                    JOIN tickets t ON et.ticket_id = t.id
                    WHERE et.escalation_id = e.id
-               ) as tickets
+               ) as tickets,
+               COUNT(*) OVER() as total_count
+        ${baseQuery}
+        ORDER BY e.created_at DESC
+    `;
+
+    if (limit !== undefined && offset !== undefined) {
+        query += ` LIMIT $${queryIndex} OFFSET $${queryIndex + 1}`;
+        values.push(limit, offset);
+    }
+
+    const result = await pool.query(query, values);
+    const total = result.rows.length > 0 ? parseInt(result.rows[0].total_count) : 0;
+    
+    // Remove total_count from each row
+    const data = result.rows.map(row => {
+        const { total_count, ...rest } = row;
+        return rest;
+    });
+
+    return { data, total };
+}
+
+/**
+ * Get all trashed escalations for a tenant.
+ * If userId is provided and isAdmin is false, only escalations where the user
+ * is the creator or a target team member are returned.
+ */
+export async function getTrashEscalations(
+    tenantId: string, 
+    userId?: string, 
+    isAdmin?: boolean,
+    limit?: number,
+    offset?: number
+): Promise<{ data: any[], total: number }> {
+    let baseQuery = `
         FROM escalation e
         LEFT JOIN escalationcategories ec ON e.escalation_category_id = ec.id
         LEFT JOIN escalation_priorities ep ON e.escalation_priority_id = ep.id
@@ -180,19 +189,59 @@ export async function getTrashEscalations(tenantId: string, userId?: string, isA
     `;
 
     const values: any[] = [tenantId];
+    let queryIndex = 2;
 
     if (userId && !isAdmin) {
-        query += ` AND (e.created_by_id = $2 OR EXISTS (
+        baseQuery += ` AND (e.created_by_id = $${queryIndex} OR EXISTS (
             SELECT 1 FROM escalation_team_members etm 
-            WHERE etm.escalation_id = e.id AND etm.user_id = $2
+            WHERE etm.escalation_id = e.id AND etm.user_id = $${queryIndex}
         ))`;
         values.push(userId);
+        queryIndex++;
     }
 
-    query += ` ORDER BY e.deleted_at DESC;`;
+    let query = `
+        SELECT e.*, 
+               ec.displayname as category_name, ec.visualcolor as category_color,
+               ep.displayname as priority_name, ep.visualcolor as priority_color, ep.priorityweight as priority_weight,
+               es.displayname as status_name, es.visualcolor as status_color,
+               (SELECT json_build_object('name', p.name) FROM projects p WHERE p.id = e.project_id) as project,
+               (SELECT json_build_object('id', u.id, 'name', u.name, 'avatarUrl', u.avatar_url) FROM users u WHERE u.id = e.created_by_id) as "createdBy",
+               (
+                   SELECT json_agg(json_build_object(
+                       'user', json_build_object('id', u_m.id, 'name', u_m.name, 'avatarUrl', u_m.avatar_url)
+                   ))
+                   FROM escalation_team_members etm
+                   JOIN users u_m ON etm.user_id = u_m.id
+                   WHERE etm.escalation_id = e.id
+               ) as "targetMembers",
+               (
+                   SELECT json_agg(json_build_object(
+                       'ticket', json_build_object('id', t.id, 'ticketNumber', t.ticket_number, 'title', t.title)
+                   ))
+                   FROM escalation_tickets et
+                   JOIN tickets t ON et.ticket_id = t.id
+                   WHERE et.escalation_id = e.id
+               ) as tickets,
+               COUNT(*) OVER() as total_count
+        ${baseQuery}
+        ORDER BY e.updated_at DESC
+    `;
+
+    if (limit !== undefined && offset !== undefined) {
+        query += ` LIMIT $${queryIndex} OFFSET $${queryIndex + 1}`;
+        values.push(limit, offset);
+    }
 
     const result = await pool.query(query, values);
-    return result.rows;
+    const total = result.rows.length > 0 ? parseInt(result.rows[0].total_count) : 0;
+    
+    const data = result.rows.map(row => {
+        const { total_count, ...rest } = row;
+        return rest;
+    });
+
+    return { data, total };
 }
 
 /**
