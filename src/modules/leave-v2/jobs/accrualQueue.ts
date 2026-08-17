@@ -73,7 +73,7 @@ export async function enqueueTenantAccrual(tenantId: string, year: number, month
   await getAccrualQueue().add(
     'tenant',
     { tenantId, year, month },
-    { jobId: `accrual:${tenantId}:${year}-${String(month).padStart(2, '0')}` }
+    { jobId: `accrual_${tenantId}_${year}_${String(month).padStart(2, '0')}` }
   );
 }
 

@@ -34,7 +34,7 @@ export const getTestCases = async (req: Request, res: Response) => {
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
     // Allow filtering by module_id and parent_test_case_id
-    const { module_id, parent_test_case_id, parent_id, search, test_type, limit, offset, ids_only, paginated } = req.query;
+    const { module_id, parent_test_case_id, parent_id, search, test_type, priority, status, quickFilter, sort, limit, offset, ids_only, paginated, page, pageSize } = req.query;
     const parentId = parent_test_case_id || parent_id;
 
     // Filters are built once so the count, the id-only and the full queries
@@ -60,12 +60,27 @@ export const getTestCases = async (req: Request, res: Response) => {
       params.push(String(test_type));
       where += ` AND LOWER(TRIM(COALESCE(tc.test_type, ''))) = LOWER(TRIM($${params.length}))`;
     }
+    if (priority) {
+      params.push(String(priority));
+      where += ` AND LOWER(TRIM(COALESCE(tc.priority, ''))) = LOWER(TRIM($${params.length}))`;
+    }
+    if (status) {
+      params.push(String(status));
+      where += ` AND LOWER(TRIM(COALESCE(tc.status, ''))) = LOWER(TRIM($${params.length}))`;
+    }
+    if (quickFilter === 'ready') {
+      where += ` AND (tc.status = 'Ready' OR tc.status = 'Active')`;
+    } else if (quickFilter === 'automated') {
+      where += ` AND tc.automation = 'Automated'`;
+    }
+
+    const sortOrder = sort === 'desc' ? 'DESC' : 'ASC';
 
     // Cheap id-only mode, used by "select all" so the client can act on every
     // match without pulling the rows it hasn't scrolled to yet.
     if (ids_only === 'true' || ids_only === '1') {
       const { rows } = await pool.query(
-        `SELECT tc.id FROM qa_test_cases tc${where} ORDER BY tc.created_at DESC, tc.id DESC`,
+        `SELECT tc.id FROM qa_test_cases tc${where} ORDER BY tc.created_at ${sortOrder}, tc.id ${sortOrder}`,
         params
       );
       return res.status(200).json({ success: true, data: rows, total: rows.length });
@@ -96,10 +111,12 @@ export const getTestCases = async (req: Request, res: Response) => {
     // the microsecond, and without a total order Postgres is free to return
     // them differently per query — which makes LIMIT/OFFSET paging repeat a row
     // on page 2 and drop another entirely.
-    query += ` ORDER BY tc.created_at DESC, tc.id DESC`;
+    query += ` ORDER BY tc.created_at ${sortOrder}, tc.id ${sortOrder}`;
 
-    const parsedLimit = limit ? parseInt(limit as string, 10) : null;
-    const parsedOffset = offset ? parseInt(offset as string, 10) : 0;
+    const parsedPageSize = pageSize ? parseInt(pageSize as string, 10) : null;
+    const parsedPage = page ? parseInt(page as string, 10) : 1;
+    const parsedLimit = parsedPageSize || (limit ? parseInt(limit as string, 10) : null);
+    const parsedOffset = parsedPageSize ? (parsedPage - 1) * parsedPageSize : (offset ? parseInt(offset as string, 10) : 0);
     const pageParams = [...params];
 
     if (parsedLimit && parsedLimit > 0) {
@@ -112,6 +129,22 @@ export const getTestCases = async (req: Request, res: Response) => {
     }
 
     const { rows } = await pool.query(query, pageParams);
+
+    // Standard pagination envelope if page/pageSize is provided
+    if (page || pageSize) {
+      const countRes = await pool.query(`SELECT COUNT(*)::int AS total FROM qa_test_cases tc${where}`, params);
+      const total = countRes.rows[0]?.total ?? rows.length;
+      return res.status(200).json({
+        success: true,
+        data: rows,
+        pagination: {
+          total,
+          page: parsedPage,
+          pageSize: parsedLimit || 10,
+          totalPages: Math.ceil(total / (parsedLimit || 10))
+        }
+      });
+    }
 
     // Opt-in envelope: infinite-scroll callers need the total and a next-page
     // flag. Everyone else keeps receiving a bare array.
@@ -369,7 +402,7 @@ Write 3 to 8 steps. Cover the validation and error paths the tester mentioned.
 
     const raw = await provider.generateText(aiPrompt, { temperature: 0.5, maxOutputTokens: 2048 });
 
-    const cleaned = (raw || '')
+    const cleaned = (raw?.text || '')
       .replace(/^```[a-zA-Z]*\s*/i, '')
       .replace(/\s*```$/i, '')
       .trim();

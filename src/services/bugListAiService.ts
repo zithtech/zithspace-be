@@ -1,4 +1,5 @@
 import { getAIProviderForTenant } from "./ai/resolver";
+import { AIResponse } from "../ai/interfaces/AIResponse";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -42,8 +43,8 @@ function extractJson<T>(text: string): T | null {
 }
 
 export class BugListAiService {
-  static async review(bugs: RawBug[], tenantId?: string): Promise<AiReviewResult[]> {
-    if (bugs.length === 0) return [];
+  static async review(bugs: RawBug[], tenantId?: string): Promise<AIResponse<AiReviewResult[]>> {
+    if (bugs.length === 0) return { data: [], provider: "mock", model: "mock", usage: { promptTokens: 0, completionTokens: 0 }, metadata: {} };
     const prompt = `
 You are a senior QA lead. Clean and structure each raw bug below.
 Return ONLY a JSON array. One object per input bug, in the same order.
@@ -74,17 +75,24 @@ ${JSON.stringify(
 `.trim();
 
     const provider = await getAIProviderForTenant(tenantId);
-    const text = await provider.generateText(prompt);
-    const parsed = extractJson<AiReviewResult[]>(text);
+    const res = await provider.generateText(prompt);
+    const parsed = extractJson<AiReviewResult[]>(res.text);
     if (!Array.isArray(parsed)) {
       throw new Error("AI returned an unexpected shape for review");
     }
-    return parsed;
+
+    return {
+        data: parsed,
+        provider: provider.name,
+        model: res.model,
+        usage: res.usage,
+        metadata: {}
+    };
   }
 
-  static async enhanceText(text: string, tenantId?: string): Promise<string> {
+  static async enhanceText(text: string, tenantId?: string): Promise<AIResponse<string>> {
     const input = (text || "").trim();
-    if (!input) return "";
+    if (!input) return { data: "", provider: "mock", model: "mock", usage: { promptTokens: 0, completionTokens: 0 }, metadata: {} };
     const prompt = `
 You are a light-touch copy editor. Make ONLY minimal changes to the text below:
 - Fix spelling, grammar, punctuation, capitalisation, and obvious typos.
@@ -98,15 +106,24 @@ ${input}
 `.trim();
 
     const provider = await getAIProviderForTenant(tenantId);
-    const out = (await provider.generateText(prompt) || "").trim();
-    return out
+    const res = await provider.generateText(prompt);
+    const out = (res.text || "").trim();
+    const data = out
       .replace(/^```[a-zA-Z]*\n?/, "")
       .replace(/```$/, "")
       .trim() || input;
+      
+    return {
+        data,
+        provider: provider.name,
+        model: res.model,
+        usage: res.usage,
+        metadata: {}
+    };
   }
 
-  static async suggestGroups(bugs: RawBug[], tenantId?: string): Promise<AiGroupSuggestion[]> {
-    if (bugs.length === 0) return [];
+  static async suggestGroups(bugs: RawBug[], tenantId?: string): Promise<AIResponse<AiGroupSuggestion[]>> {
+    if (bugs.length === 0) return { data: [], provider: "mock", model: "mock", usage: { promptTokens: 0, completionTokens: 0 }, metadata: {} };
     const prompt = `
 You are a senior QA lead. Group the bugs below into logical clusters that
 each map to a single developer ticket. Group by feature/module/context, NOT
@@ -138,11 +155,18 @@ ${JSON.stringify(
 `.trim();
 
     const provider = await getAIProviderForTenant(tenantId);
-    const text = await provider.generateText(prompt);
-    const parsed = extractJson<AiGroupSuggestion[]>(text);
+    const res = await provider.generateText(prompt);
+    const parsed = extractJson<AiGroupSuggestion[]>(res.text);
     if (!Array.isArray(parsed)) {
       throw new Error("AI returned an unexpected shape for grouping");
     }
-    return parsed;
+    
+    return {
+        data: parsed,
+        provider: provider.name,
+        model: res.model,
+        usage: res.usage,
+        metadata: {}
+    };
   }
 }

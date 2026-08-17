@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS usage_events (
+    id SERIAL PRIMARY KEY,
+    tenant_id VARCHAR(255) NOT NULL,
+    feature VARCHAR(100) NOT NULL,
+    credits NUMERIC NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

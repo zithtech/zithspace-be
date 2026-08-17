@@ -22,7 +22,11 @@ export const getTestRuns = async (req: Request, res: Response) => {
     const tenantId = (req as any).user?.tenantId;
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
-    const { suite_id, scope_id, search, limit } = req.query;
+    const { suite_id, scope_id, search, limit, page = '1', pageSize = '10', progress } = req.query;
+
+    const parsedLimit = limit ? parseInt(limit as string, 10) : parseInt(pageSize as string, 10) || 10;
+    const parsedPage = parseInt(page as string, 10) || 1;
+    const offset = (parsedPage - 1) * parsedLimit;
 
     await ensureRunScopeColumn();
 
@@ -40,27 +44,71 @@ export const getTestRuns = async (req: Request, res: Response) => {
     `;
     const params: any[] = [tenantId];
 
-    if (suite_id) {
-      params.push(suite_id);
-      query += ` AND tr.suite_id = $${params.length}`;
-    }
-    if (scope_id) {
-      params.push(scope_id);
-      query += ` AND tr.scope_id = $${params.length}`;
-    }
-    if (search) {
-      params.push(`%${search}%`);
-      query += ` AND tr.run_name ILIKE $${params.length}`;
-    }
-    
-    query += ` ORDER BY tr.created_at DESC`;
-    if (limit) {
-      params.push(parseInt(limit as string, 10));
-      query += ` LIMIT $${params.length}`;
-    }
+    // Helper to build WHERE conditions
+    const applyFilters = (q: string, p: any[]) => {
+      let queryStr = q;
+      if (suite_id) {
+        p.push(suite_id);
+        queryStr += ` AND tr.suite_id = $${p.length}`;
+      }
+      if (scope_id) {
+        p.push(scope_id);
+        queryStr += ` AND tr.scope_id = $${p.length}`;
+      }
+      if (search) {
+        p.push(`%${search}%`);
+        queryStr += ` AND tr.run_name ILIKE $${p.length}`;
+      }
+      if (progress) {
+        // total_cases = (SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id)
+        // executed = total_cases - (SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id AND status = 'Not Executed')
+        const totalSubquery = `(SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id)`;
+        const executedSubquery = `(${totalSubquery} - (SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id AND status = 'Not Executed'))`;
+        
+        if (progress === 'notStarted') {
+          queryStr += ` AND (${totalSubquery} = 0 OR ${executedSubquery} = 0)`;
+        } else if (progress === 'completed') {
+          queryStr += ` AND ${totalSubquery} > 0 AND ${executedSubquery} >= ${totalSubquery}`;
+        } else if (progress === 'active') {
+          queryStr += ` AND ${totalSubquery} > 0 AND ${executedSubquery} > 0 AND ${executedSubquery} < ${totalSubquery}`;
+        }
+      }
+      return queryStr;
+    };
 
-    const { rows } = await pool.query(query, params);
-    res.status(200).json({ success: true, data: rows });
+    query = applyFilters(query, params);
+    
+    let countQuery = `
+      SELECT COUNT(*) FROM qa_test_runs tr
+      LEFT JOIN qa_test_suites ts ON tr.suite_id = ts.id
+      LEFT JOIN qa_test_scopes sc ON tr.scope_id = sc.id
+      WHERE tr.tenant_id = $1
+    `;
+    const countParams: any[] = [tenantId];
+    countQuery = applyFilters(countQuery, countParams);
+
+    query += ` ORDER BY tr.created_at DESC`;
+    params.push(parsedLimit);
+    query += ` LIMIT $${params.length}`;
+    params.push(offset);
+    query += ` OFFSET $${params.length}`;
+
+    const [{ rows }, { rows: countRows }] = await Promise.all([
+      pool.query(query, params),
+      pool.query(countQuery, countParams)
+    ]);
+    const total = parseInt(countRows[0].count, 10);
+
+    res.status(200).json({ 
+      success: true, 
+      data: rows,
+      pagination: {
+        total,
+        page: parsedPage,
+        pageSize: parsedLimit,
+        totalPages: Math.ceil(total / parsedLimit)
+      }
+    });
   } catch (error) {
     console.error('Error fetching test runs:', error);
     res.status(500).json({ success: false, error: 'Internal Server Error' });
@@ -310,7 +358,7 @@ ${input}
 `.trim();
 
     const raw = await provider.generateText(prompt, { temperature: 0.2, maxOutputTokens: 1024 });
-    const corrected = (raw || '')
+    const corrected = (raw?.text || '')
       .replace(/^```[a-zA-Z]*\s*/i, '')
       .replace(/\s*```$/i, '')
       .trim() || input;

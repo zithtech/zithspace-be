@@ -23,6 +23,7 @@ import {
   Action,
   EntityType,
 } from "@/utils/transactionHistory";
+import { entitlementService, EntitlementError } from "@/services/EntitlementService";
 
 export class UserController {
   /**
@@ -383,6 +384,16 @@ export class UserController {
       }
 
       const userData: any = req.body;
+
+      try {
+        await entitlementService.checkLimit(req.tenantId, 'members');
+      } catch (err) {
+        if (err instanceof EntitlementError) {
+          res.status(403).json({ success: false, error: err.message, details: { current: err.current, allowed: err.allowed } });
+          return;
+        }
+        throw err;
+      }
 
       // Validate required fields
       if (

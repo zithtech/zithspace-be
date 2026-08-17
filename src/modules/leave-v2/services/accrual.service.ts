@@ -43,7 +43,7 @@ function assignmentMatches(emp: repo.ResolvedEmployee, a: { scopeType: string; s
 }
 
 /** Highest specificity rank at which this policy matches the employee, or -1 if it doesn't. */
-function policyRankFor(emp: repo.ResolvedEmployee, policy: repo.AccrualPolicy): number {
+export function policyRankFor(emp: repo.ResolvedEmployee, policy: repo.AccrualPolicy): number {
   let best = -1;
   for (const a of policy.assignments) {
     if (assignmentMatches(emp, a)) best = Math.max(best, SCOPE_RANK[a.scopeType] ?? 0);

@@ -44,6 +44,7 @@ const crypto_1 = __importDefault(require("crypto"));
 const emailService_1 = require("@/utils/emailService");
 const jwt_1 = require("@/utils/jwt");
 const rbac_service_1 = require("@/modules/rbac/rbac.service");
+const subscriptions_1 = require("@/modules/subscriptions");
 const companyDetailsService = __importStar(require("@/modules/company-details/services/companyDetails.service"));
 const transactionHistory_1 = require("../utils/transactionHistory");
 class AuthController {
@@ -356,6 +357,10 @@ class AuthController {
             });
             // Load permissions
             const permSet = await rbac_service_1.RBACService.getUserPermissions(user.id, user.tenantId, user.role);
+            // Fetch subscription features and build dynamic navigation
+            await subscriptions_1.subscriptionService.invalidateTenantSubscription(user.tenantId);
+            const subscriptionFeatures = await subscriptions_1.featureResolverService.getTenantFeatures(user.tenantId);
+            const navigation = await subscriptions_1.navigationService.buildNavigation(permSet, subscriptionFeatures);
             // Return user data and access token
             const loginResponse = {
                 success: true,
@@ -374,6 +379,8 @@ class AuthController {
                     avatarUrl: user.avatarUrl,
                     isActive: user.isActive,
                     permissions: Array.from(permSet),
+                    subscriptionFeatures,
+                    navigation,
                 },
                 message: "Login successful",
             };
@@ -619,6 +626,10 @@ class AuthController {
             }
             // Load permissions
             const permSet = await rbac_service_1.RBACService.getUserPermissions(user.id, user.tenantId, user.role);
+            // Fetch subscription features and build dynamic navigation
+            await subscriptions_1.subscriptionService.invalidateTenantSubscription(user.tenantId);
+            const subscriptionFeatures = await subscriptions_1.featureResolverService.getTenantFeatures(user.tenantId);
+            const navigation = await subscriptions_1.navigationService.buildNavigation(permSet, subscriptionFeatures);
             // Company details live in the raw-SQL company-details module, not Prisma.
             // A tenant that has not filled the form in yet simply gets null.
             const companyDetails = await companyDetailsService
@@ -656,6 +667,8 @@ class AuthController {
                     createdAt: user.createdAt,
                     updatedAt: user.updatedAt,
                     permissions: Array.from(permSet),
+                    subscriptionFeatures,
+                    navigation,
                 },
             });
         }
@@ -847,6 +860,10 @@ class AuthController {
             }
             // Load effective permissions from RBAC service (cached)
             const permSet = await rbac_service_1.RBACService.getUserPermissions(user.id, user.tenantId, user.role);
+            // Fetch subscription features and build dynamic navigation
+            await subscriptions_1.subscriptionService.invalidateTenantSubscription(user.tenantId);
+            const subscriptionFeatures = await subscriptions_1.featureResolverService.getTenantFeatures(user.tenantId);
+            const navigation = await subscriptions_1.navigationService.buildNavigation(permSet, subscriptionFeatures);
             res.status(200).json({
                 success: true,
                 data: {
@@ -870,6 +887,8 @@ class AuthController {
                     createdAt: user.createdAt,
                     updatedAt: user.updatedAt,
                     permissions: Array.from(permSet),
+                    subscriptionFeatures,
+                    navigation,
                 },
             });
         }
@@ -996,6 +1015,10 @@ class AuthController {
             });
             // Load permissions
             const permSet = await rbac_service_1.RBACService.getUserPermissions(user.id, user.tenantId, user.role);
+            // Fetch subscription features and build dynamic navigation
+            await subscriptions_1.subscriptionService.invalidateTenantSubscription(user.tenantId);
+            const subscriptionFeatures = await subscriptions_1.featureResolverService.getTenantFeatures(user.tenantId);
+            const navigation = await subscriptions_1.navigationService.buildNavigation(permSet, subscriptionFeatures);
             // Return user data and access token
             const loginResponse = {
                 success: true,
@@ -1014,6 +1037,8 @@ class AuthController {
                     avatarUrl: user.avatarUrl,
                     isActive: user.isActive,
                     permissions: Array.from(permSet),
+                    subscriptionFeatures,
+                    navigation,
                 },
                 message: "Login successful",
             };
@@ -1166,6 +1191,10 @@ class AuthController {
             });
             // Load permissions
             const permSet = await rbac_service_1.RBACService.getUserPermissions(user.id, user.tenantId, user.role);
+            // Fetch subscription features and build dynamic navigation
+            await subscriptions_1.subscriptionService.invalidateTenantSubscription(user.tenantId);
+            const subscriptionFeatures = await subscriptions_1.featureResolverService.getTenantFeatures(user.tenantId);
+            const navigation = await subscriptions_1.navigationService.buildNavigation(permSet, subscriptionFeatures);
             // Return user data and access token
             const loginResponse = {
                 success: true,
@@ -1184,6 +1213,8 @@ class AuthController {
                     avatarUrl: user.avatarUrl,
                     isActive: user.isActive,
                     permissions: Array.from(permSet),
+                    subscriptionFeatures,
+                    navigation,
                 },
                 message: "Login successful",
             };

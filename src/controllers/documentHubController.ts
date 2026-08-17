@@ -12,6 +12,9 @@ import {
 } from "@/types";
 import { socketService } from "@/services/socketService";
 import { generateDocumentDraft, rewriteSelection } from "@/services/aiDocumentService";
+import { entitlementService, EntitlementError } from "@/services/EntitlementService";
+import { AIPricingEngine } from "@/ai/pricing/AIPricingEngine";
+import { AIFeature } from "@/ai/types/AIFeature";
 import puppeteer from "puppeteer";
 import crypto from "crypto";
 import {
@@ -111,14 +114,22 @@ export class DocumentHubController {
         return;
       }
 
-      const { draft, source, fallbackReason } = await generateDocumentDraft(seed, req.tenantId);
+      await entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
+      const aiResponse = await generateDocumentDraft(seed, req.tenantId);
+      const draft = aiResponse.data;
+      const pricingResult = await AIPricingEngine.calculate(aiResponse);
+      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature.DOCUMENT_SUMMARY, pricingResult);
 
       res.status(200).json({
         success: true,
-        data: { ...draft, source, fallbackReason },
+        data: { ...draft, source: aiResponse.provider, fallbackReason: aiResponse.metadata?.finishReason },
         message: "Document draft generated",
       } as ApiResponse);
     } catch (error: any) {
+      if (error instanceof EntitlementError) {
+        res.status(403).json({ success: false, error: 'AI limit reached', details: { current: error.current, allowed: error.allowed } } as ApiResponse);
+        return;
+      }
       console.error("AI generate document error:", error);
       res.status(500).json({
         success: false,
@@ -178,14 +189,22 @@ export class DocumentHubController {
         return;
       }
 
-      const result = await rewriteSelection(cleanText, cleanInstruction, req.tenantId);
+      await entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
+      const aiResponse = await rewriteSelection(cleanText, cleanInstruction, req.tenantId);
+      const result = aiResponse.data;
+      const pricingResult = await AIPricingEngine.calculate(aiResponse);
+      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature.DOCUMENT_SUMMARY, pricingResult);
 
       res.status(200).json({
         success: true,
-        data: result,
+        data: { ...result, source: aiResponse.provider, fallbackReason: aiResponse.metadata?.finishReason },
         message: "Selection rewritten",
       } as ApiResponse);
     } catch (error: any) {
+      if (error instanceof EntitlementError) {
+        res.status(403).json({ success: false, error: 'AI limit reached', details: { current: error.current, allowed: error.allowed } } as ApiResponse);
+        return;
+      }
       console.error("AI rewrite selection error:", error);
       res.status(500).json({
         success: false,

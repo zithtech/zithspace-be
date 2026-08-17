@@ -8,6 +8,9 @@ import {
   getFileBufferFromR2,
 } from "@/utils/r2Client";
 import { BugListAiService } from "@/services/bugListAiService";
+import { entitlementService, EntitlementError } from "@/services/EntitlementService";
+import { AIPricingEngine } from "@/ai/pricing/AIPricingEngine";
+import { AIFeature } from "@/ai/types/AIFeature";
 import {
   recordTransaction,
   diffShallow,
@@ -379,6 +382,8 @@ function shapeBug(row: any, attachments: any[], externalLinks: any[]) {
     ticketId: row.ticket_id,
     ticketNumber: row.ticket_number,
     ticketStatus: row.ticket_status,
+    isRecurring: row.is_recurring,
+    ticketHistory: row.ticket_history || [],
     // Set when the bug was raised from a QA test run
     testCaseId: row.test_case_id ?? null,
     testCaseRef: row.test_case_ref ?? null,
@@ -2869,6 +2874,8 @@ export class BugListController {
       return;
     }
     try {
+      await entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
+
       const rows = await pool.query(
         `SELECT id, description, module, severity, bug_type
            FROM bugs WHERE id = ANY($1::text[]) AND tenant_id = $2`,
@@ -2881,9 +2888,17 @@ export class BugListController {
         severity: r.severity,
         bugType: r.bug_type,
       }));
-      const data = await BugListAiService.review(bugs, req.tenantId);
+      const aiResponse = await BugListAiService.review(bugs, req.tenantId);
+      const data = aiResponse.data;
+      const pricingResult = await AIPricingEngine.calculate(aiResponse);
+
+      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature.BUG_ANALYSIS, pricingResult);
       res.json({ success: true, data });
     } catch (err: any) {
+      if (err instanceof EntitlementError) {
+        bad(res, 403, "AI limit reached");
+        return;
+      }
       console.error("aiReview error:", err);
       bad(res, 500, err.message || "AI review failed");
     }
@@ -2901,9 +2916,19 @@ export class BugListController {
       return;
     }
     try {
-      const enhanced = await BugListAiService.enhanceText(text, req.tenantId);
+      await entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
+
+      const aiResponse = await BugListAiService.enhanceText(text, req.tenantId);
+      const enhanced = aiResponse.data;
+      const pricingResult = await AIPricingEngine.calculate(aiResponse);
+
+      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature.BUG_ANALYSIS, pricingResult);
       res.json({ success: true, data: { text: enhanced } });
     } catch (err: any) {
+      if (err instanceof EntitlementError) {
+        bad(res, 403, "AI limit reached");
+        return;
+      }
       console.error("aiEnhanceText error:", err);
       bad(res, 500, err.message || "Grammar enhancement failed");
     }
@@ -2920,6 +2945,8 @@ export class BugListController {
       return;
     }
     try {
+      await entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
+
       const rows = await pool.query(
         `SELECT id, description, module, severity, bug_type
            FROM bugs WHERE id = ANY($1::text[]) AND tenant_id = $2`,
@@ -2932,9 +2959,17 @@ export class BugListController {
         severity: r.severity,
         bugType: r.bug_type,
       }));
-      const data = await BugListAiService.suggestGroups(bugs, req.tenantId);
+      const aiResponse = await BugListAiService.suggestGroups(bugs, req.tenantId);
+      const data = aiResponse.data;
+      const pricingResult = await AIPricingEngine.calculate(aiResponse);
+
+      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature.BUG_ANALYSIS, pricingResult);
       res.json({ success: true, data });
     } catch (err: any) {
+      if (err instanceof EntitlementError) {
+        bad(res, 403, "AI limit reached");
+        return;
+      }
       console.error("aiSuggestGroups error:", err);
       bad(res, 500, err.message || "AI grouping failed");
     }
@@ -3362,6 +3397,140 @@ export class BugListController {
     } catch (err: any) {
       console.error("reopenBug error:", err);
       bad(res, 500, err.message || "Failed to reopen bug");
+    }
+  }
+
+  static async markBugAsRecurring(req: AuthRequest, res: Response): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    const bugId = req.params.id;
+    const tenantId = req.tenantId!;
+    
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+
+      // 1. Get current bug details
+      const bugRes = await client.query(
+        `SELECT b.*, t.ticket_number AS ticket_number, t.status AS ticket_status, 
+                p.code AS project_code
+         FROM bugs b
+         LEFT JOIN tickets t ON b.ticket_id = t.id
+         LEFT JOIN projects p ON t.project_id = p.id
+         WHERE b.id = $1 AND b.tenant_id = $2`,
+        [bugId, tenantId]
+      );
+      
+      if (bugRes.rows.length === 0) {
+        throw new Error("Bug not found");
+      }
+      
+      const bug = bugRes.rows[0];
+      if (!bug.ticket_id) {
+        throw new Error("Cannot mark as recurring: Bug does not have an active ticket");
+      }
+
+      // 2. Build ticket history entry
+      const historyEntry = {
+        ticketId: bug.ticket_id,
+        ticketNumber: bug.ticket_number,
+        status: bug.ticket_status,
+        timestamp: new Date().toISOString()
+      };
+      
+      const currentHistory = bug.ticket_history || [];
+      const newHistory = [...currentHistory, historyEntry];
+
+      // 3. Create new ticket
+      const oldTicketRes = await client.query(`SELECT project_id, sprint_plan_id, release_plan_id, epic_id FROM tickets WHERE id = $1`, [bug.ticket_id]);
+      if (oldTicketRes.rows.length === 0) throw new Error("Old ticket not found");
+      const projectId = oldTicketRes.rows[0].project_id;
+      const sprintPlanId = oldTicketRes.rows[0].sprint_plan_id || null;
+      const releasePlanId = oldTicketRes.rows[0].release_plan_id || null;
+      const epicId = oldTicketRes.rows[0].epic_id || null;
+      
+      const projectRes = await client.query(`SELECT code FROM projects WHERE id = $1`, [projectId]);
+      const rawCode = projectRes.rows.length > 0 ? projectRes.rows[0].code : "TCK";
+      const projectCode = rawCode ? rawCode.replace(`${tenantId}_`, '') : "TCK";
+
+      const seqRes = await client.query(
+        `SELECT COALESCE(
+                MAX((regexp_match(ticket_number, '-(\\d+)$'))[1]::int),
+                0
+              ) + 1 AS next_seq
+         FROM tickets
+         WHERE tenant_id = $1
+           AND project_id = $2
+           AND ticket_number ~ '-\\d+$'`,
+        [tenantId, projectId],
+      );
+      const nextSeq = seqRes.rows[0].next_seq;
+      const newTicketNumber = `${projectCode}-${String(nextSeq).padStart(4, "0")}`;
+      const newTicketId = randomUUID();
+
+      const title = `[Recurring] ${bug.title}`;
+      const finalDescription = `<p><strong>Recurring Bug</strong></p><p>Previously tracked under: ${bug.ticket_number}</p><hr/>${bug.description || ''}`;
+
+      await client.query(
+        `INSERT INTO tickets
+           (id, tenant_id, project_id, title, description, ticket_number, type, status,
+            priority, platform, task_level, story_point, estimate_hours,
+            created_by_id, assignee_id, parent_tickets, current_workflow_step, tags, metadata,
+            sprint_plan_id, release_plan_id, epic_id, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 'Bug', 'not_started',
+                 'Medium (P2)', 'Development', 'Medium', 1, 0,
+                 $7, $8, '{}', 'Scope Document', '{}', '{}'::jsonb,
+                 $9, $10, $11, NOW())`,
+        [
+          newTicketId,
+          tenantId,
+          projectId,
+          title,
+          finalDescription,
+          newTicketNumber,
+          req.user!.id,
+          bug.assignee_id || req.user!.id,
+          sprintPlanId,
+          releasePlanId,
+          epicId,
+        ]
+      );
+
+      // 4. Update bug with new ticket and history
+      await client.query(
+        `UPDATE bugs 
+         SET is_recurring = true, 
+             ticket_id = $1, 
+             ticket_history = $2::jsonb,
+             status = 'converted',
+             updated_at = NOW()
+         WHERE id = $3 AND tenant_id = $4`,
+        [newTicketId, JSON.stringify(newHistory), bugId, tenantId]
+      );
+
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.BUG_LIST,
+        page: Page.BUG_LIST,
+        action: Action.UPDATE,
+        actionLabel: "Bug marked as recurring, new ticket created",
+        entityType: EntityType.BUG,
+        entityId: bugId,
+        afterData: { isRecurring: true, ticketId: newTicketId, ticketHistory: newHistory, status: 'converted' },
+        changedFields: ["is_recurring", "ticket_id", "ticket_history", "status"],
+        statusCode: 200,
+      });
+
+      await client.query("COMMIT");
+      
+      const updatedBug = await loadBugWithChildren(bugId, tenantId);
+      res.json({ success: true, data: updatedBug });
+    } catch (err: any) {
+      await client.query("ROLLBACK");
+      console.error("markBugAsRecurring error:", err);
+      bad(res, 500, err.message || "Failed to mark bug as recurring");
+    } finally {
+      client.release();
     }
   }
 

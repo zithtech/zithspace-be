@@ -14,6 +14,9 @@ const htmlSanitizer_1 = require("@/utils/htmlSanitizer");
 const socketService_1 = require("@/services/socketService");
 const cacheService_1 = __importDefault(require("@/utils/cacheService"));
 const aiTicketService_1 = require("@/services/aiTicketService");
+const EntitlementService_1 = require("@/services/EntitlementService");
+const AIPricingEngine_1 = require("@/ai/pricing/AIPricingEngine");
+const AIFeature_1 = require("@/ai/types/AIFeature");
 const transactionHistory_1 = require("@/utils/transactionHistory");
 const crypto_1 = require("crypto");
 class TicketController {
@@ -78,6 +81,13 @@ class TicketController {
                     createdBy: {
                         select: {
                             name: true,
+                            avatarUrl: true,
+                        },
+                    },
+                    reportTo: {
+                        select: {
+                            name: true,
+                            position: true,
                             avatarUrl: true,
                         },
                     },
@@ -163,7 +173,15 @@ class TicketController {
                 updatedAt: ticket.updatedAt,
                 project: ticket.project,
                 assignee: ticket.assignee,
+                reportTo: ticket.reportTo,
                 createdBy: ticket.createdBy,
+                platform: ticket.platform,
+                taskLevel: ticket.taskLevel,
+                storyPoint: ticket.storyPoint,
+                estimateHours: ticket.estimateHours,
+                startDate: ticket.startDate,
+                endDate: ticket.endDate,
+                dueDate: ticket.dueDate,
                 comments: ticket.comments.map(c => ({
                     id: c.id,
                     comment: c.comment,
@@ -558,14 +576,22 @@ class TicketController {
                 });
                 return;
             }
-            const { draft, source, fallbackReason } = await (0, aiTicketService_1.generateTicketDraft)(seed, req.tenantId);
+            await EntitlementService_1.entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
+            const aiResponse = await (0, aiTicketService_1.generateTicketDraft)(seed, req.tenantId);
+            const draft = aiResponse.data;
+            const pricingResult = await AIPricingEngine_1.AIPricingEngine.calculate(aiResponse);
+            await EntitlementService_1.entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature_1.AIFeature.TICKET_ANALYSIS, pricingResult);
             res.status(200).json({
                 success: true,
-                data: { ...draft, source, fallbackReason },
+                data: { ...draft, source: aiResponse.provider, fallbackReason: aiResponse.metadata?.finishReason },
                 message: "Ticket draft generated",
             });
         }
         catch (error) {
+            if (error instanceof EntitlementService_1.EntitlementError) {
+                res.status(403).json({ success: false, error: 'AI limit reached', details: { current: error.current, allowed: error.allowed } });
+                return;
+            }
             console.error("AI generate ticket error:", error);
             res.status(500).json({
                 success: false,
@@ -595,7 +621,11 @@ class TicketController {
                 });
                 return;
             }
-            const result = await (0, aiTicketService_1.generateSubtasks)({ description: seed, count, hoursEach }, req.tenantId);
+            await EntitlementService_1.entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
+            const aiResponse = await (0, aiTicketService_1.generateSubtasks)({ description: seed, count, hoursEach }, req.tenantId);
+            const result = aiResponse.data;
+            const pricingResult = await AIPricingEngine_1.AIPricingEngine.calculate(aiResponse);
+            await EntitlementService_1.entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature_1.AIFeature.TICKET_ANALYSIS, pricingResult);
             res.status(200).json({
                 success: true,
                 data: result,
@@ -603,6 +633,10 @@ class TicketController {
             });
         }
         catch (error) {
+            if (error instanceof EntitlementService_1.EntitlementError) {
+                res.status(403).json({ success: false, error: 'AI limit reached', details: { current: error.current, allowed: error.allowed } });
+                return;
+            }
             console.error("AI generate subtasks error:", error);
             res.status(500).json({
                 success: false,

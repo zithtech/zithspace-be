@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ProjectController = void 0;
 const database_1 = require("@/config/database");
 const dbpool_1 = __importDefault(require("@/config/dbpool"));
+const EntitlementService_1 = require("@/services/EntitlementService");
 const types_1 = require("@/types");
 const rbac_service_1 = require("@/modules/rbac/rbac.service");
 const permissions_1 = require("@/types/permissions");
@@ -267,6 +268,16 @@ class ProjectController {
                     error: "Tenant context and authentication required",
                 });
                 return;
+            }
+            try {
+                await EntitlementService_1.entitlementService.checkLimit(req.tenantId, 'projects');
+            }
+            catch (err) {
+                if (err instanceof EntitlementService_1.EntitlementError) {
+                    res.status(403).json({ success: false, error: err.message, details: { current: err.current, allowed: err.allowed } });
+                    return;
+                }
+                throw err;
             }
             const { name, code, description, status = "ACTIVE", startDate, endDate, projectManagerId, teamMemberIds = [], repositories = [], workflowTemplate = [], defaultPriority = "MEDIUM", } = req.body;
             // Validate required fields

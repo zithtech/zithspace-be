@@ -11,8 +11,9 @@
  * ("Implement X"), this one produces *reference documentation* prose.
  */
 
-import { AIProvider, AIProviderName } from "./ai";
+import { AIProvider, AIGenerateResult, AIProviderName } from "./ai";
 import { getAIProviderForTenant } from "./ai/resolver";
+import { AIResponse } from "../ai/interfaces/AIResponse";
 
 export interface AiDocumentDraft {
   /** Suggested name for the document hub. */
@@ -134,18 +135,18 @@ function safeParseJson(raw: string): any | null {
   }
 }
 
-async function callAi(prompt: string, provider: AIProvider): Promise<AiDocumentDraft | null> {
+async function callAi(prompt: string, provider: AIProvider): Promise<{ draft: AiDocumentDraft; res: any } | null> {
   if (!provider.isConfigured()) return null;
 
   lastAiError = null;
   try {
-    const text = await provider.generateText(USER_TEMPLATE(prompt), {
+    const res = await provider.generateText(USER_TEMPLATE(prompt), {
       systemInstruction: SYSTEM_PROMPT,
       json: true,
       temperature: 0.5,
       maxOutputTokens: 4096,
     });
-    const parsed = safeParseJson(text);
+    const parsed = safeParseJson(res.text);
     if (!parsed) {
       lastAiError = `${provider.name} returned non-JSON output`;
       return null;
@@ -155,7 +156,7 @@ async function callAi(prompt: string, provider: AIProvider): Promise<AiDocumentD
     const fileTitle = cleanTitle(String(parsed.fileTitle || ""), "Overview");
     const contentHtml = cleanHtml(String(parsed.contentHtml || ""));
 
-    return { hubName, fileTitle, contentHtml };
+    return { draft: { hubName, fileTitle, contentHtml }, res };
   } catch (err: any) {
     lastAiError = err?.message || `${provider.name} call failed`;
     console.error("[aiDocumentService] AI error:", err);
@@ -229,12 +230,12 @@ async function callAiRewrite(
   text: string,
   instruction: string,
   provider: AIProvider,
-): Promise<string | null> {
+): Promise<{ rewrittenHtml: string; res: AIGenerateResult } | null> {
   if (!provider.isConfigured()) return null;
 
   lastAiError = null;
   try {
-    const raw = await provider.generateText(
+    const res = await provider.generateText(
       REWRITE_USER_TEMPLATE(text, instruction),
       {
         systemInstruction: REWRITE_SYSTEM_PROMPT,
@@ -243,13 +244,12 @@ async function callAiRewrite(
         maxOutputTokens: 2048,
       },
     );
-    const parsed = safeParseJson(raw);
+    const parsed = safeParseJson(res.text);
     if (!parsed) {
       lastAiError = `${provider.name} returned non-JSON output`;
       return null;
     }
-    const html = String(parsed.rewrittenHtml || "");
-    return cleanHtml(html);
+    return { rewrittenHtml: cleanHtml(String(parsed.rewrittenHtml || "")), res };
   } catch (err: any) {
     lastAiError = err?.message || `${provider.name} call failed`;
     console.error("[aiDocumentService] AI rewrite error:", err);
@@ -276,39 +276,55 @@ export async function rewriteSelection(
   text: string,
   instruction: string,
   tenantId?: string,
-): Promise<{
-  rewrittenHtml: string;
-  source: AIProviderName | "mock";
-  fallbackReason?: string;
-}> {
+): Promise<AIResponse<{ rewrittenHtml: string }>> {
   const provider = await getAIProviderForTenant(tenantId);
   const fromAi = await callAiRewrite(text, instruction, provider);
-  if (fromAi) return { rewrittenHtml: fromAi, source: provider.name };
+  if (fromAi) {
+    return {
+        data: { rewrittenHtml: fromAi.rewrittenHtml },
+        provider: provider.name,
+        model: fromAi.res.model,
+        usage: fromAi.res.usage,
+        metadata: {}
+    };
+  }
 
   const reason = !provider.isConfigured()
     ? `${provider.name} is not configured`
     : (lastAiError || `${provider.name} call failed`);
 
   return {
-    rewrittenHtml: heuristicRewrite(text, instruction),
-    source: "mock",
-    fallbackReason: reason,
+    data: { rewrittenHtml: heuristicRewrite(text, instruction) },
+    provider: "mock",
+    model: "mock",
+    usage: { promptTokens: 0, completionTokens: 0 },
+    metadata: { finishReason: reason }
   };
 }
 
-export async function generateDocumentDraft(prompt: string, tenantId?: string): Promise<{
-  draft: AiDocumentDraft;
-  source: AIProviderName | "mock";
-  fallbackReason?: string;
-}> {
+export async function generateDocumentDraft(prompt: string, tenantId?: string): Promise<AIResponse<AiDocumentDraft>> {
   const provider = await getAIProviderForTenant(tenantId);
   const fromAi = await callAi(prompt, provider);
-  if (fromAi) return { draft: fromAi, source: provider.name };
+  if (fromAi) {
+    return {
+        data: fromAi.draft,
+        provider: provider.name,
+        model: fromAi.res.model,
+        usage: fromAi.res.usage,
+        metadata: {}
+    };
+  }
 
   const reason = !provider.isConfigured()
     ? `${provider.name} is not configured`
     : (lastAiError || `${provider.name} call failed`);
   console.warn(`[aiDocumentService] falling back to heuristic mock — ${reason}`);
 
-  return { draft: heuristicDraft(prompt), source: "mock", fallbackReason: reason };
+  return {
+      data: heuristicDraft(prompt),
+      provider: "mock",
+      model: "mock",
+      usage: { promptTokens: 0, completionTokens: 0 },
+      metadata: { finishReason: reason }
+  };
 }

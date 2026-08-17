@@ -7,7 +7,7 @@
  */
 
 import Anthropic from "@anthropic-ai/sdk";
-import { AIProvider, AICredentials, GenerateOptions } from "./types";
+import { AIProvider, AICredentials, GenerateOptions, AIGenerateResult } from "./types";
 
 const DEFAULT_MAX_TOKENS = 4096;
 
@@ -34,7 +34,7 @@ export class AnthropicProvider implements AIProvider {
     return this.client;
   }
 
-  async generateText(prompt: string, opts: GenerateOptions = {}): Promise<string> {
+  async generateText(prompt: string, opts: GenerateOptions = {}): Promise<AIGenerateResult> {
     const params: any = {
       model: this.creds.model,
       max_tokens: opts.maxOutputTokens ?? DEFAULT_MAX_TOKENS,
@@ -44,10 +44,19 @@ export class AnthropicProvider implements AIProvider {
     if (opts.temperature != null) params.temperature = opts.temperature;
 
     const res: any = await this.getClient().messages.create(params);
-    return (res?.content || [])
+    const text = (res?.content || [])
       .filter((b: any) => b.type === "text")
       .map((b: any) => b.text)
       .join("");
+      
+    return {
+      text,
+      usage: {
+        promptTokens: res?.usage?.input_tokens ?? 0,
+        completionTokens: res?.usage?.output_tokens ?? 0,
+      },
+      model: this.creds.model,
+    };
   }
 
   async listModels(): Promise<string[]> {

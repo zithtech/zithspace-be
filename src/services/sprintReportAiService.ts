@@ -1,3 +1,5 @@
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { AIResponse } from "../ai/interfaces/AIResponse";
 import { getAIProvider } from "./ai";
 import { getAIProviderForTenant } from "./ai/resolver";
 import dotenv from "dotenv";
@@ -173,7 +175,7 @@ export class SprintReportAiService {
     return buildDeterministicPredictions(ctx);
   }
 
-  static async generateNarrative(ctx: SprintAiContext, tenantId?: string): Promise<AiNarrative> {
+  static async generateNarrative(ctx: SprintAiContext, tenantId?: string): Promise<AIResponse<AiNarrative>> {
     const provider = await getAIProviderForTenant(tenantId);
     if (!provider.isConfigured()) {
       throw new Error(
@@ -218,7 +220,8 @@ ADDITIONAL DETERMINISTIC PREDICTIONS (include these in "predictions" plus any AI
 ${JSON.stringify(deterministicPredictions, null, 2)}
 `.trim();
 
-    const text = await provider.generateText(prompt);
+    const res = await provider.generateText(prompt, { json: true });
+    const text = res.text;
     const parsed = extractJson<AiNarrative>(text);
     if (!parsed) {
       throw new Error("AI returned an unparseable response.");
@@ -238,6 +241,12 @@ ${JSON.stringify(deterministicPredictions, null, 2)}
       }
     }
 
-    return parsed;
+    return {
+        data: parsed,
+        provider: provider.name,
+        model: res.model,
+        usage: res.usage,
+        metadata: {}
+    };
   }
 }

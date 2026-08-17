@@ -43,6 +43,7 @@ router.get('/suites/all', requireAnyPermission(Permissions.QA_SUITE_READ, Permis
 router.post('/suites/ai-text', requireAnyPermission(Permissions.QA_SUITE_CREATE, Permissions.QA_SUITE_UPDATE, Permissions.QA_MANAGE), testSuiteController.suiteAiText);
 router.post('/suites', requireAnyPermission(Permissions.QA_SUITE_CREATE, Permissions.QA_MANAGE), testSuiteController.createTestSuite);
 router.get('/suites/:id', requireAnyPermission(Permissions.QA_SUITE_READ, Permissions.QA_MANAGE), testSuiteController.getTestSuite);
+router.get('/suites/:id/cases', requireAnyPermission(Permissions.QA_SUITE_READ, Permissions.QA_MANAGE), testSuiteController.getTestSuiteCases);
 router.put('/suites/:id', requireAnyPermission(Permissions.QA_SUITE_UPDATE, Permissions.QA_MANAGE), testSuiteController.updateTestSuite);
 router.delete('/suites/:id', requireAnyPermission(Permissions.QA_SUITE_DELETE, Permissions.QA_MANAGE), testSuiteController.deleteTestSuite);
 

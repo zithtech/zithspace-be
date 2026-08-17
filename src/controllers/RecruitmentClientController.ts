@@ -1,7 +1,8 @@
 import { Response } from 'express';
 import { tenantAwarePrisma } from '@/config/database';
+import { AuthRequest } from '../types';
+import { entitlementService } from '@/services/EntitlementService';
 import {
-    AuthRequest,
     ApiResponse,
     CreateRecruitmentClientData,
     UpdateRecruitmentClientData
@@ -113,6 +114,10 @@ export class RecruitmentClientController {
             }
 
             const data = req.body;
+
+            // Enforce Clients limit
+            await entitlementService.checkLimit(req.tenantId, 'clients');
+
             const { businessDetails, hiringPreferences, contacts, ...basicInfo } = data;
 
             if (typeof basicInfo.implementationPartnerId === 'string') {
@@ -193,8 +198,12 @@ export class RecruitmentClientController {
             });
 
             res.status(201).json({ success: true, data: result, message: 'Recruitment client created successfully' } as ApiResponse);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Create Recruitment Client error:', error);
+            if (error.name === 'EntitlementError') {
+                res.status(403).json({ success: false, error: error.message, details: { current: error.current, allowed: error.allowed } } as any);
+                return;
+            }
             res.status(500).json({ success: false, error: 'Failed to create recruitment client' } as ApiResponse);
         }
     }

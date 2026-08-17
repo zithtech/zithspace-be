@@ -7,6 +7,7 @@ exports.ClientV2Controller = void 0;
 // [RAW QUERY] — tenantAwarePrisma fully removed; all DB calls use pool.query() (pg)
 const dbpool_1 = __importDefault(require("@/config/dbpool"));
 const r2Client_1 = require("@/utils/r2Client");
+const EntitlementService_1 = require("@/services/EntitlementService");
 const socketService_1 = require("@/services/socketService");
 const transactionHistory_1 = require("@/utils/transactionHistory");
 const crypto_1 = require("crypto");
@@ -630,6 +631,8 @@ class ClientV2Controller {
                 res.status(400).json({ success: false, error: 'companyName and clientType are required' });
                 return;
             }
+            // Enforce Clients limit
+            await EntitlementService_1.entitlementService.checkLimit(req.tenantId, 'clients');
             const validationError = validateGstVatTaxId(clientData.gstVatTaxId, clientData.country);
             if (validationError) {
                 res.status(400).json({ success: false, error: validationError });
@@ -792,6 +795,10 @@ class ClientV2Controller {
         }
         catch (error) {
             console.error('Create ClientV2 error:', error);
+            if (error instanceof EntitlementService_1.EntitlementError || error.name === 'EntitlementError') {
+                res.status(403).json({ success: false, error: error.message, details: { current: error.current, allowed: error.allowed } });
+                return;
+            }
             if (error.code === '23505') {
                 res.status(409).json({ success: false, error: 'A client with this company name or client code already exists' });
                 return;
