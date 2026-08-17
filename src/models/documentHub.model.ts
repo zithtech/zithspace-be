@@ -141,7 +141,7 @@ export async function getAllDocumentHubsModel(options: GetHubsOptions) {
   } else if (view === 'shared') {
     visibilityClause = `(dh."createdById" != $2 AND ($2 = ANY(dh.shared_with) OR dh.visibility = 'public'))`;
   } else if (view === 'public') {
-    visibilityClause = `(dh.visibility = 'public')`;
+    visibilityClause = `(dh.visibility = 'public' AND $2 = $2)`;
   }
   
   whereClause += ` AND ${visibilityClause}`;
