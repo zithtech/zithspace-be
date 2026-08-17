@@ -1011,11 +1011,51 @@ class ProjectController {
                 });
                 return;
             }
+            const { page, limit, search } = req.query;
+            const where = {
+                tenantId: req.tenantId,
+                status: "DELETED",
+            };
+            if (search) {
+                const q = String(search).trim();
+                where.OR = [
+                    { name: { contains: q, mode: "insensitive" } },
+                    { code: { contains: q, mode: "insensitive" } },
+                ];
+            }
+            if (page && limit) {
+                const p = Number(page);
+                const l = Number(limit);
+                const skip = (p - 1) * l;
+                const [projects, total] = await Promise.all([
+                    database_1.prisma.project.findMany({
+                        where,
+                        include: {
+                            projectManager: {
+                                select: { id: true, name: true, avatarUrl: true },
+                            },
+                        },
+                        orderBy: { updatedAt: "desc" },
+                        skip,
+                        take: l,
+                    }),
+                    database_1.prisma.project.count({ where }),
+                ]);
+                res.status(200).json({
+                    success: true,
+                    data: projects,
+                    pagination: {
+                        total,
+                        page: p,
+                        limit: l,
+                        pages: Math.ceil(total / l),
+                    }
+                });
+                return;
+            }
+            // Fallback for non-paginated requests
             const projects = await database_1.prisma.project.findMany({
-                where: {
-                    tenantId: req.tenantId,
-                    status: "DELETED"
-                },
+                where,
                 include: {
                     projectManager: {
                         select: { id: true, name: true, avatarUrl: true },

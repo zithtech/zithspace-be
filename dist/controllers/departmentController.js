@@ -89,16 +89,55 @@ class DepartmentController {
                 res.status(400).json({ success: false, error: "Tenant context missing" });
                 return;
             }
-            const departments = await database_1.prisma.department.findMany({
-                where: { tenantId: req.tenantId },
-                orderBy: { name: "asc" },
-                include: {
-                    head: { select: { id: true, name: true } },
-                    createdBy: { select: { id: true, name: true } },
-                    updatedBy: { select: { id: true, name: true } },
-                },
-            });
-            res.status(200).json({ success: true, data: departments });
+            const { page, limit, search } = req.query;
+            const pageNum = page ? parseInt(page, 10) : undefined;
+            const limitNum = limit ? parseInt(limit, 10) : undefined;
+            const where = { tenantId: req.tenantId };
+            if (typeof search === 'string' && search.trim()) {
+                where.OR = [
+                    { name: { contains: search, mode: 'insensitive' } },
+                    { code: { contains: search, mode: 'insensitive' } },
+                ];
+            }
+            if (limitNum) {
+                const skip = pageNum ? (pageNum - 1) * limitNum : 0;
+                const [departments, total] = await Promise.all([
+                    database_1.prisma.department.findMany({
+                        where,
+                        orderBy: { name: "asc" },
+                        include: {
+                            head: { select: { id: true, name: true } },
+                            createdBy: { select: { id: true, name: true } },
+                            updatedBy: { select: { id: true, name: true } },
+                        },
+                        skip,
+                        take: limitNum
+                    }),
+                    database_1.prisma.department.count({ where })
+                ]);
+                res.status(200).json({
+                    success: true,
+                    data: departments,
+                    pagination: {
+                        total,
+                        page: pageNum || 1,
+                        limit: limitNum,
+                        pages: Math.ceil(total / limitNum)
+                    }
+                });
+            }
+            else {
+                const departments = await database_1.prisma.department.findMany({
+                    where,
+                    orderBy: { name: "asc" },
+                    include: {
+                        head: { select: { id: true, name: true } },
+                        createdBy: { select: { id: true, name: true } },
+                        updatedBy: { select: { id: true, name: true } },
+                    },
+                });
+                res.status(200).json({ success: true, data: departments });
+            }
         }
         catch (error) {
             console.error("Error fetching departments:", error);

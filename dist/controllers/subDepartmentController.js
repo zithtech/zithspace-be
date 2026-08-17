@@ -79,16 +79,56 @@ class SubDepartmentController {
                 res.status(400).json({ success: false, error: "Tenant context missing" });
                 return;
             }
-            const subDepartments = await database_1.prisma.subDepartment.findMany({
-                where: { tenantId: req.tenantId },
-                include: {
-                    parentDepartment: { select: { id: true, name: true, code: true } },
-                    createdBy: { select: { id: true, name: true } },
-                    updatedBy: { select: { id: true, name: true } },
-                },
-                orderBy: { createdAt: 'desc' },
-            });
-            res.status(200).json({ success: true, data: subDepartments });
+            const { page, limit, search, parentDepartmentId } = req.query;
+            const pageNum = page ? parseInt(page, 10) : undefined;
+            const limitNum = limit ? parseInt(limit, 10) : undefined;
+            const where = { tenantId: req.tenantId };
+            if (typeof search === 'string' && search.trim()) {
+                where.OR = [
+                    { name: { contains: search, mode: 'insensitive' } },
+                    { code: { contains: search, mode: 'insensitive' } },
+                    { description: { contains: search, mode: 'insensitive' } },
+                ];
+            }
+            if (typeof parentDepartmentId === 'string' && parentDepartmentId.trim()) {
+                where.parentDepartmentId = parentDepartmentId;
+            }
+            const include = {
+                parentDepartment: { select: { id: true, name: true, code: true } },
+                createdBy: { select: { id: true, name: true } },
+                updatedBy: { select: { id: true, name: true } },
+            };
+            if (limitNum) {
+                const skip = pageNum ? (pageNum - 1) * limitNum : 0;
+                const [subDepartments, total] = await Promise.all([
+                    database_1.prisma.subDepartment.findMany({
+                        where,
+                        include,
+                        orderBy: { createdAt: 'desc' },
+                        skip,
+                        take: limitNum
+                    }),
+                    database_1.prisma.subDepartment.count({ where })
+                ]);
+                res.status(200).json({
+                    success: true,
+                    data: subDepartments,
+                    pagination: {
+                        total,
+                        page: pageNum || 1,
+                        limit: limitNum,
+                        pages: Math.ceil(total / limitNum)
+                    }
+                });
+            }
+            else {
+                const subDepartments = await database_1.prisma.subDepartment.findMany({
+                    where,
+                    include,
+                    orderBy: { createdAt: 'desc' },
+                });
+                res.status(200).json({ success: true, data: subDepartments });
+            }
         }
         catch (error) {
             console.error("Error fetching sub-departments:", error);
