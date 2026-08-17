@@ -7,8 +7,22 @@ import { HolidayInput } from '../validators/holiday.validator';
 
 const dedupKey = (name: string, fromDate: string) => `${name.trim().toLowerCase()}__${fromDate}`;
 
-export async function listHolidays(actor: Actor, opts: { year?: number; includeInactive?: boolean }) {
-  return withTenant(actor.tenantId, (client) => repo.findAll(client, opts));
+export async function listHolidays(actor: Actor, opts: { year?: number; includeInactive?: boolean; search?: string; type?: string; limit?: number; offset?: number }) {
+  return withTenant(actor.tenantId, async (client) => {
+    const { data, total } = await repo.findAll(client, opts);
+    
+    // For stats, we need all the rows matching the year/inactive filter but not paginated.
+    // So we fetch without pagination.
+    const allData = (await repo.findAll(client, { year: opts.year, includeInactive: opts.includeInactive })).data;
+    const stats = {
+      total: allData.length,
+      national: allData.filter((r) => r.type === 'National' || r.type === 'ALL').length,
+      state: allData.filter((r) => r.type === 'State').length,
+      active: allData.filter((r) => r.isActive).length,
+    };
+    
+    return { data, total, stats };
+  });
 }
 
 export async function getHoliday(actor: Actor, id: string) {
@@ -46,14 +60,31 @@ export async function getCatalogCountries(actor: Actor) {
 }
 
 /** Catalog entries for a country, each flagged whether the tenant already has it. */
-export async function listCatalog(actor: Actor, country: string) {
+export async function listCatalog(actor: Actor, country: string, query?: { search?: string; type?: string; limit?: number; offset?: number }) {
   return withTenant(actor.tenantId, async (client) => {
-    const [catalog, existing] = [
-      await catalogRepo.listByCountry(client, country),
-      await repo.findAll(client, { includeInactive: true }),
-    ];
+    const { data: catalog, total } = await catalogRepo.listByCountry(client, country, query);
+    
+    // We only need existing to check added status.
+    const { data: existing } = await repo.findAll(client, { includeInactive: true });
     const have = new Set(existing.map((h) => dedupKey(h.name, h.fromDate)));
-    return catalog.map((c) => ({ ...c, added: have.has(dedupKey(c.name, c.fromDate)) }));
+    
+    const data = catalog.map((c) => ({ ...c, added: have.has(dedupKey(c.name, c.fromDate)) }));
+    
+    // For stats, we need all the rows for this country matching the search/type but not paginated.
+    // Instead of doing another full query, wait, `GovernmentHolidaysPanel` stats:
+    // stats: { total: catalog.length, added, available: catalog.length - added, selected: selected.length }
+    // These stats are dependent on the FULL catalog for this country (not filtered by search/type in the UI).
+    // Let's just fetch all catalog rows for this country without search/type/pagination to compute stats.
+    const { data: allCatalog } = await catalogRepo.listByCountry(client, country);
+    const totalCatalog = allCatalog.length;
+    const addedCount = allCatalog.filter((c) => have.has(dedupKey(c.name, c.fromDate))).length;
+    const stats = {
+      total: totalCatalog,
+      added: addedCount,
+      available: totalCatalog - addedCount,
+    };
+    
+    return { data, total, stats };
   });
 }
 
@@ -61,7 +92,7 @@ export async function listCatalog(actor: Actor, country: string) {
 export async function addFromCatalog(actor: Actor, catalogIds: string[]) {
   return withTenant(actor.tenantId, async (client) => {
     const entries = await catalogRepo.getByIds(client, catalogIds);
-    const existing = await repo.findAll(client, { includeInactive: true });
+    const { data: existing } = await repo.findAll(client, { includeInactive: true });
     const have = new Set(existing.map((h) => dedupKey(h.name, h.fromDate)));
 
     let added = 0;
@@ -94,7 +125,7 @@ export async function addFromCatalog(actor: Actor, catalogIds: string[]) {
 export async function removeFromCatalog(actor: Actor, catalogIds: string[]) {
   return withTenant(actor.tenantId, async (client) => {
     const entries = await catalogRepo.getByIds(client, catalogIds);
-    const existing = await repo.findAll(client, { includeInactive: true });
+    const { data: existing } = await repo.findAll(client, { includeInactive: true });
     const byKey = new Map(existing.map((h) => [dedupKey(h.name, h.fromDate), h.id] as const));
 
     let removed = 0;

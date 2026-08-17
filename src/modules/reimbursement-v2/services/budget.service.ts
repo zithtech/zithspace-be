@@ -52,11 +52,12 @@ export async function updateBudget(
 
 export async function listBudgets(
   actor: Actor,
-  opts: { includeInactive?: boolean } = {}
-): Promise<BudgetWithSpend[]> {
+  opts: { includeInactive?: boolean; page?: number; limit?: number; search?: string } = {}
+): Promise<{ data: BudgetWithSpend[]; total: number }> {
   return withTenant(actor.tenantId, async (client) => {
-    const budgets = await repo.list(client, opts);
-    return Promise.all(budgets.map((b) => withSpend(client, b)));
+    const { data: budgets, total } = await repo.list(client, opts);
+    const data = await Promise.all(budgets.map((b) => withSpend(client, b)));
+    return { data, total };
   });
 }
 

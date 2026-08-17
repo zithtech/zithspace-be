@@ -84,19 +84,42 @@ export async function insert(client: TenantClient, data: CreateScheduleData): Pr
 
 export async function findAll(
   client: TenantClient,
-  opts: { includeInactive?: boolean } = {}
-): Promise<PayScheduleListItem[]> {
+  opts: { includeInactive?: boolean; page?: number; limit?: number; search?: string } = {}
+): Promise<{ data: PayScheduleListItem[]; total: number }> {
   const conditions = ['s.tenant_id = $1', 's.deleted_at IS NULL'];
-  if (!opts.includeInactive) conditions.push('s.is_active = true');
+  const params: any[] = [client.tenantId];
+
+  if (!opts.includeInactive) {
+    conditions.push('s.is_active = true');
+  }
+
+  if (opts.search) {
+    params.push(`%${opts.search}%`);
+    conditions.push(`(s.name ILIKE $${params.length} OR s.code ILIKE $${params.length})`);
+  }
+
+  const countResult = await client.query(
+    `SELECT COUNT(*) AS total FROM pay_schedules s WHERE ${conditions.join(' AND ')}`,
+    params
+  );
+  const total = parseInt(countResult.rows[0].total, 10);
+
+  const page = opts.page ?? 1;
+  const limit = opts.limit ?? 20;
+  const offset = (page - 1) * limit;
+
+  params.push(limit, offset);
+
   const { rows } = await client.query(
     `SELECT ${COLS.split(',').map((c) => 's.' + c.trim()).join(', ')},
             (SELECT count(*) FROM pay_groups g WHERE g.schedule_id = s.id AND g.deleted_at IS NULL) AS group_count
        FROM pay_schedules s
       WHERE ${conditions.join(' AND ')}
-      ORDER BY s.is_default DESC, s.name ASC`,
-    [client.tenantId]
+      ORDER BY s.is_default DESC, s.name ASC
+      LIMIT $${params.length - 1} OFFSET $${params.length}`,
+    params
   );
-  return rows.map((r) => ({ ...mapRow(r), groupCount: Number(r.group_count) }));
+  return { data: rows.map((r) => ({ ...mapRow(r), groupCount: Number(r.group_count) })), total };
 }
 
 export async function findById(client: TenantClient, id: string): Promise<PaySchedule | null> {

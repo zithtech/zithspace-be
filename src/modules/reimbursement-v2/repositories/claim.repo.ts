@@ -300,12 +300,15 @@ export async function setStatus(
 export interface ClaimListFilter {
   userId?: string;
   status?: ClaimStatus;
+  search?: string;
+  page?: number;
+  limit?: number;
 }
 
 export async function listClaims(
   client: TenantClient,
   filter: ClaimListFilter
-): Promise<Claim[]> {
+): Promise<{ claims: Claim[]; total: number }> {
   const conditions = ['tenant_id = $1', 'deleted_at IS NULL'];
   const params: any[] = [client.tenantId];
   if (filter.userId) {
@@ -316,13 +319,32 @@ export async function listClaims(
     params.push(filter.status);
     conditions.push(`status = $${params.length}`);
   }
-  const { rows } = await client.query(
-    `SELECT ${CLAIM_COLS} FROM rb2_claims
-      WHERE ${conditions.join(' AND ')}
-      ORDER BY created_at DESC`,
+  if (filter.search) {
+    params.push(`%${filter.search}%`);
+    conditions.push(`(claim_no ILIKE $${params.length} OR title ILIKE $${params.length})`);
+  }
+
+  const where = conditions.join(' AND ');
+
+  const countResult = await client.query(
+    `SELECT COUNT(*) AS total FROM rb2_claims WHERE ${where}`,
     params
   );
-  return rows.map(mapClaim);
+  const total = parseInt(countResult.rows[0].total, 10);
+
+  const page = filter.page ?? 1;
+  const limit = filter.limit ?? 20;
+  const offset = (page - 1) * limit;
+
+  const listParams = [...params, limit, offset];
+  const { rows } = await client.query(
+    `SELECT ${CLAIM_COLS} FROM rb2_claims
+      WHERE ${where}
+      ORDER BY created_at DESC
+      LIMIT $${listParams.length - 1} OFFSET $${listParams.length}`,
+    listParams
+  );
+  return { claims: rows.map(mapClaim), total };
 }
 
 export async function softDeleteClaim(
@@ -599,8 +621,25 @@ export async function autoApproveThreshold(
 // ── Manager inbox (claims whose owner reports to the approver) ──────────────
 export async function findPendingForApprover(
   client: TenantClient,
-  approverUserId: string
-): Promise<ApprovalInboxItem[]> {
+  approverUserId: string,
+  filter: { page?: number; limit?: number } = {}
+): Promise<{ data: ApprovalInboxItem[]; total: number }> {
+  const countResult = await client.query(
+    `SELECT COUNT(*) AS total
+       FROM rb2_claims c
+       JOIN users u ON u.id = c.user_id::text
+      WHERE c.tenant_id = $1
+        AND c.deleted_at IS NULL
+        AND c.status = 'pending'
+        AND u.reports_to_id = $2`,
+    [client.tenantId, approverUserId]
+  );
+  const total = parseInt(countResult.rows[0].total, 10);
+
+  const page = filter.page ?? 1;
+  const limit = filter.limit ?? 20;
+  const offset = (page - 1) * limit;
+
   const { rows } = await client.query(
     `SELECT ${CLAIM_COLS.split(',').map((c) => 'c.' + c.trim()).join(', ')},
             u.name       AS requester_name,
@@ -612,19 +651,37 @@ export async function findPendingForApprover(
         AND c.deleted_at IS NULL
         AND c.status = 'pending'
         AND u.reports_to_id = $2
-      ORDER BY c.submitted_at ASC NULLS LAST, c.created_at ASC`,
-    [client.tenantId, approverUserId]
+      ORDER BY c.submitted_at ASC NULLS LAST, c.created_at ASC
+      LIMIT $3 OFFSET $4`,
+    [client.tenantId, approverUserId, limit, offset]
   );
-  return rows.map((r) => ({
-    ...mapClaim(r),
-    requesterName: r.requester_name ?? null,
-    requesterEmail: r.requester_email ?? null,
-    itemCount: Number(r.item_count),
-  }));
+  return {
+    data: rows.map((r) => ({
+      ...mapClaim(r),
+      requesterName: r.requester_name ?? null,
+      requesterEmail: r.requester_email ?? null,
+      itemCount: Number(r.item_count),
+    })),
+    total,
+  };
 }
 
 /** ALL pending claims (for HR/admin/manage-all users, not scoped to reports). */
-export async function findAllPending(client: TenantClient): Promise<ApprovalInboxItem[]> {
+export async function findAllPending(client: TenantClient, filter: { page?: number; limit?: number } = {}): Promise<{ data: ApprovalInboxItem[]; total: number }> {
+  const countResult = await client.query(
+    `SELECT COUNT(*) AS total
+       FROM rb2_claims c
+      WHERE c.tenant_id = $1
+        AND c.deleted_at IS NULL
+        AND c.status = 'pending'`,
+    [client.tenantId]
+  );
+  const total = parseInt(countResult.rows[0].total, 10);
+
+  const page = filter.page ?? 1;
+  const limit = filter.limit ?? 20;
+  const offset = (page - 1) * limit;
+
   const { rows } = await client.query(
     `SELECT ${CLAIM_COLS.split(',').map((c) => 'c.' + c.trim()).join(', ')},
             u.name       AS requester_name,
@@ -635,19 +692,38 @@ export async function findAllPending(client: TenantClient): Promise<ApprovalInbo
       WHERE c.tenant_id = $1
         AND c.deleted_at IS NULL
         AND c.status = 'pending'
-      ORDER BY c.submitted_at ASC NULLS LAST, c.created_at ASC`,
-    [client.tenantId]
+      ORDER BY c.submitted_at ASC NULLS LAST, c.created_at ASC
+      LIMIT $2 OFFSET $3`,
+    [client.tenantId, limit, offset]
   );
-  return rows.map((r) => ({
-    ...mapClaim(r),
-    requesterName: r.requester_name ?? null,
-    requesterEmail: r.requester_email ?? null,
-    itemCount: Number(r.item_count),
-  }));
+  return {
+    data: rows.map((r) => ({
+      ...mapClaim(r),
+      requesterName: r.requester_name ?? null,
+      requesterEmail: r.requester_email ?? null,
+      itemCount: Number(r.item_count),
+    })),
+    total,
+  };
 }
 
 /** Claims approved (by anyone) and not yet paid — the finance payable queue. */
-export async function findPayable(client: TenantClient): Promise<ApprovalInboxItem[]> {
+export async function findPayable(client: TenantClient, filter: { page?: number; limit?: number } = {}): Promise<{ data: ApprovalInboxItem[]; total: number }> {
+  const countResult = await client.query(
+    `SELECT COUNT(*) AS total
+       FROM rb2_claims c
+       JOIN users u ON u.id = c.user_id::text
+      WHERE c.tenant_id = $1
+        AND c.deleted_at IS NULL
+        AND c.status = 'approved'`,
+    [client.tenantId]
+  );
+  const total = parseInt(countResult.rows[0].total, 10);
+
+  const page = filter.page ?? 1;
+  const limit = filter.limit ?? 20;
+  const offset = (page - 1) * limit;
+
   const { rows } = await client.query(
     `SELECT ${CLAIM_COLS.split(',').map((c) => 'c.' + c.trim()).join(', ')},
             u.name       AS requester_name,
@@ -658,15 +734,19 @@ export async function findPayable(client: TenantClient): Promise<ApprovalInboxIt
       WHERE c.tenant_id = $1
         AND c.deleted_at IS NULL
         AND c.status = 'approved'
-      ORDER BY c.decided_at ASC NULLS LAST, c.created_at ASC`,
-    [client.tenantId]
+      ORDER BY c.decided_at ASC NULLS LAST, c.created_at ASC
+      LIMIT $2 OFFSET $3`,
+    [client.tenantId, limit, offset]
   );
-  return rows.map((r) => ({
-    ...mapClaim(r),
-    requesterName: r.requester_name ?? null,
-    requesterEmail: r.requester_email ?? null,
-    itemCount: Number(r.item_count),
-  }));
+  return {
+    data: rows.map((r) => ({
+      ...mapClaim(r),
+      requesterName: r.requester_name ?? null,
+      requesterEmail: r.requester_email ?? null,
+      itemCount: Number(r.item_count),
+    })),
+    total,
+  };
 }
 
 // ── Approval audit trail ────────────────────────────────────────────────────

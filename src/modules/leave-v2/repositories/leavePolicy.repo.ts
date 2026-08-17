@@ -90,25 +90,66 @@ export async function findPolicyById(
 
 export async function listPolicies(
   client: TenantClient,
-  opts: { includeInactive?: boolean } = {}
-): Promise<LeavePolicyListItem[]> {
+  opts: {
+    includeInactive?: boolean;
+    search?: string;
+    status?: string;
+    limit?: number;
+    offset?: number;
+  } = {}
+): Promise<{ data: LeavePolicyListItem[]; total: number }> {
   const conditions = ['p.tenant_id = $1', 'p.deleted_at IS NULL'];
-  if (!opts.includeInactive) conditions.push('p.is_active = true');
+  const params: any[] = [client.tenantId];
 
-  const { rows } = await client.query(
-    `SELECT ${POLICY_COLS.split(',').map((c) => 'p.' + c.trim()).join(', ')},
+  // Old behavior compatibility for includeInactive if status is not explicitly provided
+  if (!opts.includeInactive && opts.status !== 'inactive' && opts.status !== 'all') {
+    conditions.push('p.is_active = true');
+  }
+
+  // Handle explicit filters
+  if (opts.status === 'active') {
+    conditions.push('p.is_active = true');
+  } else if (opts.status === 'inactive') {
+    conditions.push('p.is_active = false');
+  }
+
+  if (opts.search) {
+    params.push(`%${opts.search}%`);
+    conditions.push(`(p.name ILIKE $${params.length} OR p.code ILIKE $${params.length})`);
+  }
+
+  const where = `WHERE ${conditions.join(' AND ')}`;
+  
+  // Get total count
+  const countRes = await client.query(`SELECT COUNT(*) FROM lv2_leave_policies p ${where}`, params);
+  const total = parseInt(countRes.rows[0].count, 10);
+
+  // Build main query
+  let sql = `SELECT ${POLICY_COLS.split(',').map((c) => 'p.' + c.trim()).join(', ')},
             (SELECT count(*) FROM lv2_leave_policy_assignments a WHERE a.policy_id = p.id) AS assignment_count,
             (SELECT count(*) FROM lv2_leave_policy_lines l WHERE l.policy_id = p.id) AS line_count
        FROM lv2_leave_policies p
-      WHERE ${conditions.join(' AND ')}
-      ORDER BY p.name ASC`,
-    [client.tenantId]
-  );
-  return rows.map((r) => ({
+      ${where}
+      ORDER BY p.name ASC`;
+
+  if (opts.limit !== undefined) {
+    params.push(opts.limit);
+    sql += ` LIMIT $${params.length}`;
+  }
+  if (opts.offset !== undefined) {
+    params.push(opts.offset);
+    sql += ` OFFSET $${params.length}`;
+  }
+
+  const { rows } = await client.query(sql, params);
+  
+  const data = rows.map((r) => ({
     ...mapPolicy(r),
     assignmentCount: Number(r.assignment_count),
     lineCount: Number(r.line_count),
   }));
+
+  return { data, total };
 }
 
 export async function existsByCode(

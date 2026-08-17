@@ -88,10 +88,22 @@ class EmployeeOnboardingController {
     // ✅ GET All Employees (List View)
     static async getAll(req, res) {
         try {
-            const employees = await (0, createEmployeeDetailes_1.getAllEmployees)(req);
+            const { search, limit, offset, status } = req.query;
+            const opts = {};
+            if (typeof search === 'string' && search.trim() !== '')
+                opts.search = search;
+            if (typeof limit === 'string')
+                opts.limit = parseInt(limit, 10);
+            if (typeof offset === 'string')
+                opts.offset = parseInt(offset, 10);
+            if (typeof status === 'string')
+                opts.status = status;
+            const payload = await (0, createEmployeeDetailes_1.getAllEmployees)(req, opts);
             res.status(200).json({
                 success: true,
-                data: employees,
+                data: payload.data,
+                total: payload.total,
+                stats: payload.stats,
             });
         }
         catch (err) {

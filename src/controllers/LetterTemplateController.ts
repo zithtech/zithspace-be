@@ -11,17 +11,21 @@ export class LetterTemplateController {
         throw new ValidationError('Tenant context required');
       }
 
-      const { categoryId, designationId, status, search } = req.query;
-      const templates = await LetterTemplateService.getTemplates(req.tenantId, {
+      const { categoryId, designationId, status, search, limit, offset } = req.query;
+      const { data, total, stats } = await LetterTemplateService.getTemplates(req.tenantId, {
         categoryId: categoryId as string,
         designationId: designationId as string,
         status: status as string,
         search: search as string,
+        limit: limit ? parseInt(limit as string, 10) : undefined,
+        offset: offset ? parseInt(offset as string, 10) : undefined,
       });
 
       res.status(200).json({
         success: true,
-        data: templates,
+        data,
+        total,
+        stats,
       } as ApiResponse);
     } catch (error: any) {
       res.status(500).json({

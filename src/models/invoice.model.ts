@@ -766,6 +766,8 @@ export async function getDeletedInvoices(
     search?: string;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
+    startDate?: Date;
+    endDate?: Date;
   } = {}
 ): Promise<{ invoices: Invoice[]; total: number }> {
   const {
@@ -775,7 +777,9 @@ export async function getDeletedInvoices(
     customerId,
     search,
     sortBy = 'deleted_at',
-    sortOrder = 'desc'
+    sortOrder = 'desc',
+    startDate,
+    endDate
   } = options;
 
   const whereConditions: string[] = ['tenant_id = $1 AND deleted_at IS NOT NULL'];
@@ -795,6 +799,16 @@ export async function getDeletedInvoices(
   if (search) {
     whereConditions.push(`(invoice_number ILIKE $${paramIndex++} OR notes ILIKE $${paramIndex++})`);
     values.push(`%${search}%`, `%${search}%`);
+  }
+
+  if (startDate) {
+    whereConditions.push(`invoice_date >= $${paramIndex++}`);
+    values.push(startDate);
+  }
+
+  if (endDate) {
+    whereConditions.push(`invoice_date <= $${paramIndex++}`);
+    values.push(endDate);
   }
 
   // Map camelCase field names to snake_case database column names

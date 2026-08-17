@@ -60,8 +60,17 @@ export const create = handle(async (req: AuthRequest, res: Response) => {
 
 export const listMine = handle(async (req: AuthRequest, res: Response) => {
   const status = typeof req.query.status === 'string' ? (req.query.status as any) : undefined;
-  const claims = await service.listMyClaims(actorOf(req), { status });
-  ok(res, claims);
+  const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+  const page = req.query.page ? Number(req.query.page) : 1;
+  const limit = req.query.limit ? Number(req.query.limit) : 20;
+
+  const { claims, total } = await service.listMyClaims(actorOf(req), { status, search, page, limit });
+
+  res.json({
+    success: true,
+    data: claims,
+    pagination: { total, page, limit, pages: Math.ceil(total / limit) },
+  });
 });
 
 export const getOne = handle(async (req: AuthRequest, res: Response) => {

@@ -31,7 +31,13 @@ export const catalogCountries = handle(async (req: AuthRequest, res: Response) =
 
 export const catalog = handle(async (req: AuthRequest, res: Response) => {
   const country = (req.query.country as string) || 'IN';
-  ok(res, await service.listCatalog(actorOf(req), country));
+  const query = {
+    search: req.query.search as string,
+    type: req.query.type as string,
+    limit: req.query.pageSize ? Number(req.query.pageSize) : undefined,
+    offset: (req.query.page && req.query.pageSize) ? (Number(req.query.page) - 1) * Number(req.query.pageSize) : undefined,
+  };
+  ok(res, await service.listCatalog(actorOf(req), country, query));
 });
 
 export const catalogAdd = handle(async (req: AuthRequest, res: Response) => {
@@ -75,7 +81,15 @@ export const catalogRemove = handle(async (req: AuthRequest, res: Response) => {
 export const list = handle(async (req: AuthRequest, res: Response) => {
   const year = req.query.year ? Number(req.query.year) : undefined;
   const includeInactive = req.query.includeInactive === 'true';
-  ok(res, await service.listHolidays(actorOf(req), { year, includeInactive }));
+  const opts = {
+    year,
+    includeInactive,
+    search: req.query.search as string,
+    type: req.query.type as string,
+    limit: req.query.pageSize ? Number(req.query.pageSize) : undefined,
+    offset: (req.query.page && req.query.pageSize) ? (Number(req.query.page) - 1) * Number(req.query.pageSize) : undefined,
+  };
+  ok(res, await service.listHolidays(actorOf(req), opts));
 });
 
 export const getOne = handle(async (req: AuthRequest, res: Response) => {

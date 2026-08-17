@@ -33,7 +33,35 @@ export const myBalances = handle(async (req: AuthRequest, res: Response) => {
 });
 
 export const myRequests = handle(async (req: AuthRequest, res: Response) => {
-  ok(res, await service.listMyRequests(actorOf(req)));
+  const { page, limit, search, status } = req.query;
+  const pageNum = page ? parseInt(page as string, 10) : undefined;
+  const limitNum = limit ? parseInt(limit as string, 10) : undefined;
+
+  const result = await service.listMyRequests(actorOf(req), {
+    page: pageNum,
+    limit: limitNum,
+    search: search as string,
+    status: status as string
+  });
+
+  if (limitNum) {
+    const total = (result as any).total;
+    const data = (result as any).data;
+    res.status(200).json({
+      success: true,
+      data,
+      pagination: {
+        total,
+        page: pageNum || 1,
+        limit: limitNum,
+        pages: Math.ceil(total / limitNum)
+      }
+    });
+  } else {
+    // If not paginated (e.g. for stats), we can still return { data, total } 
+    // but the frontend `unwrap` expects the array directly, so we extract `data`.
+    ok(res, (result as any).data);
+  }
 });
 
 export const holidayDates = handle(async (req: AuthRequest, res: Response) => {
@@ -115,3 +143,5 @@ export const withdrawRequest = handle(async (req: AuthRequest, res: Response) =>
   });
   ok(res, { request, plan });
 });
+
+// Trigger restart
