@@ -246,6 +246,17 @@ export const APP_STRUCTURE: ICore[] = [
               { key: 'prime', name: 'Prime', featureType: 'PRIME' },
               { key: 'grid', name: 'Grid', featureType: 'GRID' }
             ]
+          },
+          {
+            key: 'hotspot',
+            name: 'Hotspot',
+            route: '/hotspot',
+            menu_title: 'Hotspot',
+            menu_order: 10,
+            features: [
+              { key: 'prime', name: 'Prime', featureType: 'PRIME' },
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
+            ]
           }
         ]
       }
