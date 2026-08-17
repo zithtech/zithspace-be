@@ -107,10 +107,29 @@ export async function findPolicyById(
 
 export async function listPolicies(
   client: TenantClient,
-  opts: { includeInactive?: boolean } = {}
-): Promise<ReimbursementPolicyListItem[]> {
+  opts: { includeInactive?: boolean; page?: number; limit?: number; search?: string } = {}
+): Promise<{ data: ReimbursementPolicyListItem[]; total: number }> {
   const conditions = ['p.tenant_id = $1', 'p.deleted_at IS NULL'];
+  const params: any[] = [client.tenantId];
+
   if (!opts.includeInactive) conditions.push('p.is_active = true');
+
+  if (opts.search) {
+    params.push(`%${opts.search}%`);
+    conditions.push(`(p.name ILIKE $${params.length} OR p.code ILIKE $${params.length})`);
+  }
+
+  const countResult = await client.query(
+    `SELECT COUNT(*) AS total FROM rb2_policies p WHERE ${conditions.join(' AND ')}`,
+    params
+  );
+  const total = parseInt(countResult.rows[0].total, 10);
+
+  const page = opts.page ?? 1;
+  const limit = opts.limit ?? 20;
+  const offset = (page - 1) * limit;
+
+  params.push(limit, offset);
 
   const { rows } = await client.query(
     `SELECT ${POLICY_COLS.split(',').map((c) => 'p.' + c.trim()).join(', ')},
@@ -118,14 +137,18 @@ export async function listPolicies(
             (SELECT count(*) FROM rb2_policy_lines l WHERE l.policy_id = p.id) AS line_count
        FROM rb2_policies p
       WHERE ${conditions.join(' AND ')}
-      ORDER BY p.name ASC`,
-    [client.tenantId]
+      ORDER BY p.name ASC
+      LIMIT $${params.length - 1} OFFSET $${params.length}`,
+    params
   );
-  return rows.map((r) => ({
-    ...mapPolicy(r),
-    assignmentCount: Number(r.assignment_count),
-    lineCount: Number(r.line_count),
-  }));
+  return {
+    data: rows.map((r) => ({
+      ...mapPolicy(r),
+      assignmentCount: Number(r.assignment_count),
+      lineCount: Number(r.line_count),
+    })),
+    total,
+  };
 }
 
 export async function existsByCode(

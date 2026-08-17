@@ -67,15 +67,53 @@ class GradeController {
                 res.status(400).json({ success: false, error: "Tenant context missing" });
                 return;
             }
-            const grades = await database_1.prisma.grade.findMany({
-                where: { tenantId: req.tenantId },
-                orderBy: { levelOrder: "asc" },
-                include: {
-                    createdBy: { select: { id: true, name: true } },
-                    updatedBy: { select: { id: true, name: true } }
-                }
-            });
-            res.status(200).json({ success: true, data: grades });
+            const { page, limit, search } = req.query;
+            const pageNum = page ? parseInt(page, 10) : undefined;
+            const limitNum = limit ? parseInt(limit, 10) : undefined;
+            const where = { tenantId: req.tenantId };
+            if (typeof search === 'string' && search.trim()) {
+                where.OR = [
+                    { name: { contains: search, mode: 'insensitive' } },
+                    { code: { contains: search, mode: 'insensitive' } },
+                ];
+            }
+            if (limitNum) {
+                const skip = pageNum ? (pageNum - 1) * limitNum : 0;
+                const [grades, total] = await Promise.all([
+                    database_1.prisma.grade.findMany({
+                        where,
+                        orderBy: { levelOrder: "asc" },
+                        include: {
+                            createdBy: { select: { id: true, name: true } },
+                            updatedBy: { select: { id: true, name: true } }
+                        },
+                        skip,
+                        take: limitNum
+                    }),
+                    database_1.prisma.grade.count({ where })
+                ]);
+                res.status(200).json({
+                    success: true,
+                    data: grades,
+                    pagination: {
+                        total,
+                        page: pageNum || 1,
+                        limit: limitNum,
+                        pages: Math.ceil(total / limitNum)
+                    }
+                });
+            }
+            else {
+                const grades = await database_1.prisma.grade.findMany({
+                    where,
+                    orderBy: { levelOrder: "asc" },
+                    include: {
+                        createdBy: { select: { id: true, name: true } },
+                        updatedBy: { select: { id: true, name: true } }
+                    }
+                });
+                res.status(200).json({ success: true, data: grades });
+            }
         }
         catch (error) {
             console.error("Error fetching grades:", error);

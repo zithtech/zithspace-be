@@ -113,8 +113,89 @@ export async function getDocumentHubById(id: string, tenantId: string, userId: s
   };
 }
 
-export async function getAllDocumentHubsModel(tenantId: string, userId: string, ticketIdFilter?: string) {
-  // Complex query to replicate Prisma's nested includes using jsonb_agg
+export interface GetHubsOptions {
+  tenantId: string;
+  userId: string;
+  ticketIdFilter?: string;
+  page?: number;
+  limit?: number;
+  search?: string;
+  view?: string;
+  projectId?: string;
+  createdById?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
+export async function getAllDocumentHubsModel(options: GetHubsOptions) {
+  const { tenantId, userId, ticketIdFilter, page, limit, search, view, projectId, createdById, startDate, endDate } = options;
+
+  let whereClause = `dh."tenantId" = $1 AND dh.is_deleted = false`;
+  const values: any[] = [tenantId, userId];
+  let paramIdx = 3;
+
+  let visibilityClause = `(dh.visibility = 'public' OR dh."createdById" = $2 OR $2 = ANY(dh.shared_with))`;
+  
+  if (view === 'mine') {
+    visibilityClause = `(dh."createdById" = $2)`;
+  } else if (view === 'shared') {
+    visibilityClause = `(dh."createdById" != $2 AND ($2 = ANY(dh.shared_with) OR dh.visibility = 'public'))`;
+  } else if (view === 'public') {
+    visibilityClause = `(dh.visibility = 'public' AND $2 = $2)`;
+  }
+  
+  whereClause += ` AND ${visibilityClause}`;
+
+  if (ticketIdFilter) {
+    whereClause += ` AND dh."ticketId" = $${paramIdx++}`;
+    values.push(ticketIdFilter);
+  }
+
+  if (search) {
+    whereClause += ` AND dh.name ILIKE $${paramIdx++}`;
+    values.push(`%${search}%`);
+  }
+
+  if (projectId) {
+    whereClause += ` AND dh."projectId" = $${paramIdx++}`;
+    values.push(projectId);
+  }
+
+  if (createdById) {
+    whereClause += ` AND dh."createdById" = $${paramIdx++}`;
+    values.push(createdById);
+  }
+
+  if (startDate && endDate) {
+    whereClause += ` AND (dh."createdAt" >= $${paramIdx} AND dh."createdAt" <= $${paramIdx + 1} OR dh."updatedAt" >= $${paramIdx} AND dh."updatedAt" <= $${paramIdx + 1})`;
+    values.push(startDate, endDate);
+    paramIdx += 2;
+  }
+
+  let joinStars = "";
+  if (view === 'starred') {
+    joinStars = `INNER JOIN document_hub_stars dhs ON dh.id = dhs.hub_id AND dhs.user_id = $2`;
+  }
+
+  const countQuery = `
+    SELECT COUNT(*) 
+    FROM document_hub dh
+    ${joinStars}
+    WHERE ${whereClause}
+  `;
+  const countResult = await pool.query(countQuery, values);
+  const total = parseInt(countResult.rows[0].count, 10);
+
+  let limitOffsetClause = "";
+  if (limit) {
+    limitOffsetClause = `LIMIT $${paramIdx++}`;
+    values.push(limit);
+    if (page) {
+      limitOffsetClause += ` OFFSET $${paramIdx++}`;
+      values.push((page - 1) * limit);
+    }
+  }
+
   const query = `
     WITH accessible_docs AS (
       SELECT id FROM documents
@@ -150,22 +231,17 @@ export async function getAllDocumentHubsModel(tenantId: string, userId: string, 
           AND (dt.type != 'file' OR dt."documentId" IN (SELECT id FROM accessible_docs))
       ) as tree_nodes
     FROM document_hub dh
+    ${joinStars}
     LEFT JOIN users u ON dh."createdById" = u.id
     LEFT JOIN projects p ON dh."projectId" = p.id
     LEFT JOIN tickets t ON dh."ticketId" = t.id
-    WHERE dh."tenantId" = $1 AND dh.is_deleted = false
-      AND (dh.visibility = 'public' OR dh."createdById" = $2 OR $2 = ANY(dh.shared_with))
-      ${ticketIdFilter ? 'AND dh."ticketId" = $3' : ''}
+    WHERE ${whereClause}
     ORDER BY dh."createdAt" DESC
+    ${limitOffsetClause}
   `;
 
-  const values: any[] = [tenantId, userId];
-  if (ticketIdFilter) {
-    values.push(ticketIdFilter);
-  }
-
   const result = await pool.query(query, values);
-  return result.rows.map(row => {
+  const data = result.rows.map(row => {
     const hub = mapRowToDocumentHub(row);
     return {
       ...hub,
@@ -173,6 +249,8 @@ export async function getAllDocumentHubsModel(tenantId: string, userId: string, 
       treeNodes: row.tree_nodes || [],
     };
   });
+
+  return { data, total };
 }
 
 export async function getDocumentHubStarsModel(userId: string, tenantId: string) {

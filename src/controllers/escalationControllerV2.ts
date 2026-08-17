@@ -199,12 +199,17 @@ export const getAllEscalations = async (req: AuthRequest, res: Response): Promis
         }
 
         const isAdmin = await checkIsAdmin(userId, tenantId, userRole);
-        const escalations = await EscalationDb.getEscalations(tenantId, userId, isAdmin);
+        
+        const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
+        const offset = req.query.offset ? parseInt(req.query.offset as string) : undefined;
+
+        const { data, total } = await EscalationDb.getEscalations(tenantId, userId, isAdmin, limit, offset);
 
         const response: ApiResponse = {
             success: true,
             message: "Escalations fetched successfully",
-            data: escalations,
+            data: data,
+            total: total,
         };
         res.status(200).json(response);
     } catch (error: any) {
@@ -485,11 +490,16 @@ export const getTrashEscalations = async (req: AuthRequest, res: Response): Prom
             return;
         }
         const isAdmin = await checkIsAdmin(userId, tenantId, userRole);
-        const escalations = await EscalationDb.getTrashEscalations(tenantId, userId, isAdmin);
+
+        const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
+        const offset = req.query.offset ? parseInt(req.query.offset as string) : undefined;
+
+        const { data, total } = await EscalationDb.getTrashEscalations(tenantId, userId, isAdmin, limit, offset);
         const response: ApiResponse = {
             success: true,
             message: "Trash escalations fetched successfully",
-            data: escalations,
+            data: data,
+            total: total,
         };
         res.status(200).json(response);
     } catch (error: any) {
@@ -523,7 +533,7 @@ export const restoreEscalation = async (req: AuthRequest, res: Response): Promis
         }
         // Verify the user is allowed to see this trashed escalation
         const isAdmin = await checkIsAdmin(userId, tenantId, userRole);
-        const allowed = await EscalationDb.getTrashEscalations(tenantId, userId, isAdmin);
+        const { data: allowed } = await EscalationDb.getTrashEscalations(tenantId, userId, isAdmin);
         const canAccess = allowed.some((e: any) => e.id === id);
         if (!canAccess) {
             const response: ApiResponse = {
@@ -591,7 +601,7 @@ export const permanentDeleteEscalation = async (req: AuthRequest, res: Response)
         }
         // Verify the user is allowed to see this trashed escalation
         const isAdmin = await checkIsAdmin(userId, tenantId, userRole);
-        const allowed = await EscalationDb.getTrashEscalations(tenantId, userId, isAdmin);
+        const { data: allowed } = await EscalationDb.getTrashEscalations(tenantId, userId, isAdmin);
         const canAccess = allowed.some((e: any) => e.id === id);
         if (!canAccess) {
             const response: ApiResponse = {
@@ -699,7 +709,7 @@ export const bulkRestoreEscalations = async (req: AuthRequest, res: Response): P
         }
         // Filter incoming IDs to only those the user may access
         const isAdmin = await checkIsAdmin(userId, tenantId, userRole);
-        const allowed = await EscalationDb.getTrashEscalations(tenantId, userId, isAdmin);
+        const { data: allowed } = await EscalationDb.getTrashEscalations(tenantId, userId, isAdmin);
         const allowedIds = allowed.map((e: any) => e.id);
         const filteredIds = ids.filter((id: string) => allowedIds.includes(id));
         if (filteredIds.length === 0) {
@@ -768,7 +778,7 @@ export const bulkPermanentDeleteEscalations = async (req: AuthRequest, res: Resp
         }
         // Filter incoming IDs to only those the user may access
         const isAdmin = await checkIsAdmin(userId, tenantId, userRole);
-        const allowed = await EscalationDb.getTrashEscalations(tenantId, userId, isAdmin);
+        const { data: allowed } = await EscalationDb.getTrashEscalations(tenantId, userId, isAdmin);
         const allowedIds = allowed.map((e: any) => e.id);
         const filteredIds = ids.filter((id: string) => allowedIds.includes(id));
         if (filteredIds.length === 0) {

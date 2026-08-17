@@ -49,8 +49,11 @@ export async function updateWorkflow(actor: Actor, id: string, input: UpdateWork
   });
 }
 
-export async function listWorkflows(actor: Actor, includeInactive: boolean): Promise<ApprovalWorkflowListItem[]> {
-  return withTenant(actor.tenantId, (client) => repo.listWorkflows(client, includeInactive));
+export async function listWorkflows(
+  actor: Actor,
+  opts: { includeInactive?: boolean; page?: number; limit?: number; search?: string } = {}
+): Promise<{ data: ApprovalWorkflowListItem[]; total: number }> {
+  return withTenant(actor.tenantId, (client) => repo.listWorkflows(client, opts));
 }
 
 export async function getWorkflow(actor: Actor, id: string): Promise<ApprovalWorkflowDetail> {

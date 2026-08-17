@@ -1556,6 +1556,9 @@ export class InvoiceController {
         page = 1, 
         limit = 20, 
         search,
+        status,
+        startDate,
+        endDate,
         sortBy = 'deletedAt',
         sortOrder = 'desc'
       } = req.query;
@@ -1565,17 +1568,16 @@ export class InvoiceController {
       const options = {
         page: Number(page),
         limit: Number(limit),
-        status: 'all' as 'all' | InvoiceStatus, // Get all invoices including deleted ones
+        status: (status as string) || 'all',
         customerId: undefined,
         search: search as string,
         sortBy: sortBy as string,
-        sortOrder: sortOrder as 'asc' | 'desc'
+        sortOrder: sortOrder as 'asc' | 'desc',
+        startDate: startDate ? new Date(startDate as string) : undefined,
+        endDate: endDate ? new Date(endDate as string) : undefined
       };
 
-      const { invoices, total } = await getDeletedInvoices(req.tenantId, options);
-
-      // Filter to only show deleted invoices
-      const deletedInvoices = invoices.filter(inv => inv.deletedAt !== null);
+      const { invoices: deletedInvoices, total } = await getDeletedInvoices(req.tenantId, options);
 
       const totalPages = Math.ceil(total / Number(limit));
 
@@ -1587,7 +1589,7 @@ export class InvoiceController {
         pagination: { 
           page: Number(page), 
           limit: Number(limit), 
-          total: deletedInvoices.length, 
+          total: total, 
           pages: totalPages 
         } 
       } as ApiResponse);

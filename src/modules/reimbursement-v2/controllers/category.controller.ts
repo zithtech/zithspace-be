@@ -60,8 +60,16 @@ export const create = handle(async (req: AuthRequest, res: Response) => {
 
 export const list = handle(async (req: AuthRequest, res: Response) => {
   const includeInactive = req.query.includeInactive === 'true';
-  const categories = await service.listCategories(actorOf(req), { includeInactive });
-  ok(res, categories);
+  const page = req.query.page ? Number(req.query.page) : 1;
+  const limit = req.query.limit ? Number(req.query.limit) : 20;
+  const search = req.query.search ? String(req.query.search) : undefined;
+  
+  const { data, total } = await service.listCategories(actorOf(req), { includeInactive, page, limit, search });
+  res.json({
+    success: true,
+    data,
+    pagination: { total, page, limit, pages: Math.ceil(total / limit) },
+  });
 });
 
 export const getOne = handle(async (req: AuthRequest, res: Response) => {

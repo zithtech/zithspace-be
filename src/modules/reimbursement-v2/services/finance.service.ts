@@ -18,8 +18,8 @@ async function buildDetail(client: TenantClient, id: string): Promise<ClaimDetai
   };
 }
 
-export async function listPayable(actor: Actor): Promise<ApprovalInboxItem[]> {
-  return withTenant(actor.tenantId, (client) => repo.findPayable(client));
+export async function listPayable(actor: Actor, filter: { page?: number; limit?: number } = {}): Promise<{ data: ApprovalInboxItem[]; total: number }> {
+  return withTenant(actor.tenantId, (client) => repo.findPayable(client, filter));
 }
 
 export async function getClaim(actor: Actor, id: string): Promise<ClaimDetail> {

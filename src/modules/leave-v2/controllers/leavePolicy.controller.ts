@@ -45,8 +45,14 @@ export const create = handle(async (req: AuthRequest, res: Response) => {
 });
 
 export const list = handle(async (req: AuthRequest, res: Response) => {
-  const includeInactive = req.query.includeInactive === 'true';
-  const policies = await service.listPolicies(actorOf(req), { includeInactive });
+  const opts = {
+    includeInactive: req.query.includeInactive === 'true',
+    search: req.query.search as string,
+    status: req.query.status as string,
+    limit: req.query.pageSize ? Number(req.query.pageSize) : undefined,
+    offset: (req.query.page && req.query.pageSize) ? (Number(req.query.page) - 1) * Number(req.query.pageSize) : undefined,
+  };
+  const policies = await service.listPolicies(actorOf(req), opts);
   ok(res, policies);
 });
 

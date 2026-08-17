@@ -150,10 +150,20 @@ export class EmployeeOnboardingController {
   // ✅ GET All Employees (List View)
   static async getAll(req: AuthRequest, res: Response) {
     try {
-      const employees = await getAllEmployees(req);
+      const { search, limit, offset, status } = req.query;
+      
+      const opts: any = {};
+      if (typeof search === 'string' && search.trim() !== '') opts.search = search;
+      if (typeof limit === 'string') opts.limit = parseInt(limit, 10);
+      if (typeof offset === 'string') opts.offset = parseInt(offset, 10);
+      if (typeof status === 'string') opts.status = status;
+
+      const payload = await getAllEmployees(req, opts);
       res.status(200).json({
         success: true,
-        data: employees,
+        data: payload.data,
+        total: payload.total,
+        stats: payload.stats,
       });
     } catch (err: any) {
       console.error("Get All Employees Error:", err);

@@ -22,7 +22,13 @@ function adjustmentSnapshot(e: any) {
 }
 
 export const list = handle(async (req: AuthRequest, res: Response) => {
-  ok(res, await service.listAdjustments(actorOf(req)));
+  const opts = {
+    search: req.query.search as string,
+    dir: req.query.dir as string,
+    limit: req.query.pageSize ? Number(req.query.pageSize) : undefined,
+    offset: (req.query.page && req.query.pageSize) ? (Number(req.query.page) - 1) * Number(req.query.pageSize) : undefined,
+  };
+  ok(res, await service.listAdjustments(actorOf(req), opts));
 });
 
 export const employees = handle(async (req: AuthRequest, res: Response) => {

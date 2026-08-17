@@ -1171,37 +1171,69 @@ export class DocumentHubController {
         return;
       }
 
-      // Optional ticketId filter — used by the ticket detail drawer to list
-      // hubs linked to a specific ticket. Trim and validate as UUID-ish so
-      // a typo doesn't drop us into a query that surprisingly returns all rows.
+      const { 
+        ticketId, 
+        page, 
+        limit, 
+        search, 
+        view, 
+        projectId, 
+        userId, 
+        startDate, 
+        endDate 
+      } = req.query;
+
       const ticketIdFilter =
-        typeof req.query.ticketId === "string" && req.query.ticketId.trim()
-          ? req.query.ticketId.trim()
+        typeof ticketId === "string" && ticketId.trim()
+          ? ticketId.trim()
           : undefined;
 
-      // Fetch all accessible document IDs in this tenant for the user
-      const documentHubs = await getAllDocumentHubsModel(
-        req.tenantId,
-        req.user.id,
-        ticketIdFilter
-      );
+      const pageNum = page ? parseInt(page as string, 10) : undefined;
+      const limitNum = limit ? parseInt(limit as string, 10) : undefined;
+
+      const result = await getAllDocumentHubsModel({
+        tenantId: req.tenantId,
+        userId: req.user.id,
+        ticketIdFilter,
+        page: pageNum,
+        limit: limitNum,
+        search: typeof search === "string" ? search : undefined,
+        view: typeof view === "string" ? view : undefined,
+        projectId: typeof projectId === "string" ? projectId : undefined,
+        createdById: typeof userId === "string" ? userId : undefined,
+        startDate: typeof startDate === "string" ? startDate : undefined,
+        endDate: typeof endDate === "string" ? endDate : undefined
+      });
 
       const starredRows = await getDocumentHubStarsModel(req.user.id, req.tenantId);
       const starredSet = new Set(starredRows.map((r: any) => r.hub_id));
-      const enrichedHubs = documentHubs.map((hub) => ({
+      const enrichedHubs = result.data.map((hub: any) => ({
         ...hub,
         isStarred: starredSet.has(hub.id),
       }));
 
-      res.status(200).json({
-        success: true,
-        data: enrichedHubs,
-      } as ApiResponse);
+      if (limitNum) {
+        res.status(200).json({
+          success: true,
+          data: enrichedHubs,
+          pagination: {
+            total: result.total,
+            page: pageNum || 1,
+            limit: limitNum,
+            totalPages: Math.ceil(result.total / limitNum)
+          }
+        });
+      } else {
+        res.status(200).json({
+          success: true,
+          data: enrichedHubs,
+        });
+      }
     } catch (error: any) {
-      console.error("Get document hubs error:", error);
+      console.error("Get all document hubs error:", error);
       res.status(500).json({
         success: false,
-        error: "Failed to get document hubs",
+        error: "Failed to fetch document hubs",
       } as ApiResponse);
     }
   }

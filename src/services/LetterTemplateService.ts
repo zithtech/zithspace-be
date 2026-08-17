@@ -73,7 +73,26 @@ export class LetterTemplateService {
     }));
   }
 
-  static async getTemplates(tenantId: string, filters?: { categoryId?: string; designationId?: string; status?: string; search?: string }) {
+  static async getTemplates(tenantId: string, filters?: { categoryId?: string; designationId?: string; status?: string; search?: string; limit?: number; offset?: number; }) {
+    // 1. Global stats
+    const statsQuery = `
+      SELECT
+        COUNT(*) as total,
+        SUM(CASE WHEN tenant_id = 'GLOBAL' THEN 1 ELSE 0 END) as global_count,
+        SUM(CASE WHEN status = 'ACTIVE' THEN 1 ELSE 0 END) as active_count,
+        SUM(CASE WHEN created_at >= NOW() - INTERVAL '7 days' OR updated_at >= NOW() - INTERVAL '7 days' THEN 1 ELSE 0 END) as recent_count
+      FROM document_templates
+      WHERE tenant_id IN ($1, 'GLOBAL')
+    `;
+    const statsResult = await pool.query(statsQuery, [tenantId]);
+    const stats = {
+      total: Number(statsResult.rows[0].total) || 0,
+      globalCount: Number(statsResult.rows[0].global_count) || 0,
+      activeCount: Number(statsResult.rows[0].active_count) || 0,
+      recentCount: Number(statsResult.rows[0].recent_count) || 0,
+    };
+
+    // 2. Filter conditions
     const conditions = ["dt.tenant_id IN ($1, 'GLOBAL')"];
     const values: any[] = [tenantId];
     let paramIdx = 2;
@@ -96,7 +115,15 @@ export class LetterTemplateService {
       paramIdx++;
     }
 
-    const query = `
+    const whereClause = conditions.join(' AND ');
+
+    // 3. Total count for pagination
+    const countQuery = `SELECT COUNT(*) FROM document_templates dt WHERE ${whereClause}`;
+    const countResult = await pool.query(countQuery, values);
+    const total = Number(countResult.rows[0].count) || 0;
+
+    // 4. Paginated data
+    let query = `
       SELECT 
         dt.id, dt.tenant_id AS "tenantId", dt.template_name AS "templateName", 
         dt.description, dt.category_id AS "categoryId", dt.designation_id AS "designationId", 
@@ -114,11 +141,21 @@ export class LetterTemplateService {
           'generatedDocuments', (SELECT COUNT(*) FROM generated_documents gd WHERE gd.template_id = dt.id)::int
         ) AS "_count"
       FROM document_templates dt
-      WHERE ${conditions.join(' AND ')}
+      WHERE ${whereClause}
       ORDER BY dt.updated_at DESC
     `;
+
+    if (filters?.limit !== undefined) {
+      query += ` LIMIT $${paramIdx++}`;
+      values.push(filters.limit);
+    }
+    if (filters?.offset !== undefined) {
+      query += ` OFFSET $${paramIdx++}`;
+      values.push(filters.offset);
+    }
+
     const result = await pool.query(query, values);
-    return result.rows;
+    return { data: result.rows, total, stats };
   }
 
   static async getTemplateById(tenantId: string, id: string) {

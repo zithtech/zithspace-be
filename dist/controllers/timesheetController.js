@@ -151,6 +151,13 @@ class TimesheetController {
             if (forApproval === 'true') {
                 where.user = { reportsToId: req.user.id };
             }
+            if (req.query.search) {
+                const q = String(req.query.search).trim();
+                where.user = {
+                    ...where.user,
+                    name: { contains: q, mode: "insensitive" }
+                };
+            }
             // if (fromDate && toDate) {
             //   where.weekStart = {
             //     gte: new Date(fromDate as string),
