@@ -19,6 +19,8 @@ export const getTestScopes = async (req: Request, res: Response) => {
       status,
       priority,
       qa_owner,
+      product,
+      allowed_products,
       sortBy = 'created_at',
       sortOrder = 'desc',
       isApproval
@@ -57,6 +59,32 @@ export const getTestScopes = async (req: Request, res: Response) => {
       query += ` AND qa_owner = $${paramIndex}`;
       countQuery += ` AND qa_owner = $${paramIndex}`;
       params.push(qa_owner);
+      paramIndex++;
+    }
+
+    // Restrict visibility to scopes belonging to the user's accessible projects.
+    // The frontend passes allowed_products as a comma-separated list of project names
+    // the current user is a member of. Scopes with no product set are always visible.
+    if (allowed_products) {
+      const names = (allowed_products as string)
+        .split(',')
+        .map(n => n.trim().toLowerCase())
+        .filter(Boolean);
+      if (names.length > 0) {
+        // Build $2,$3,... placeholders for the IN clause
+        const placeholders = names.map(() => `$${paramIndex++}`).join(',');
+        // Show scope if its product matches one of the allowed names OR if no product is set
+        const clause = ` AND (details->>'product' IS NULL OR details->>'product' = '' OR LOWER(details->>'product') IN (${placeholders}))`;
+        query += clause;
+        countQuery += clause;
+        params.push(...names);
+      }
+    }
+
+    if (product) {
+      query += ` AND LOWER(details->>'product') = LOWER($${paramIndex})`;
+      countQuery += ` AND LOWER(details->>'product') = LOWER($${paramIndex})`;
+      params.push(product);
       paramIndex++;
     }
 
