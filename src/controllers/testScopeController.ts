@@ -3,11 +3,14 @@ import pool from '../config/dbpool';
 import { SprintReportExportService } from '../services/sprintReportExportService';
 import { RBACService } from '../modules/rbac/rbac.service';
 import { Permissions } from '../types/permissions';
+import { prisma } from '../config/database';
 
 export const getTestScopes = async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).user?.tenantId;
     const userName = (req as any).user?.name;
+    const userId = (req as any).user?.id;
+    const userRole = (req as any).user?.role;
     if (!tenantId) {
       return res.status(401).json({ success: false, error: 'Unauthorized: No tenant found' });
     }
@@ -27,10 +30,42 @@ export const getTestScopes = async (req: Request, res: Response) => {
     const limit = parseInt(pageSize as string) || 10;
     const offset = (parseInt(page as string) - 1) * limit;
 
+    // Determine inaccessible projects
+    const hasManagePermission = await RBACService.hasPermission(userId, tenantId, Permissions.PROJECT_MANAGE, userRole);
+    const userProjectsQuery: any = {
+      tenantId,
+      status: { notIn: ["ARCHIVED", "DELETED", "archived", "deleted"] },
+    };
+    if (!hasManagePermission) {
+      userProjectsQuery.OR = [
+        { projectManagerId: userId },
+        { members: { some: { userId } } },
+      ];
+    }
+    const userProjects = await prisma.project.findMany({
+      where: userProjectsQuery,
+      select: { id: true }
+    });
+    const userProjectIds = userProjects.map((p: any) => p.id);
+
+    const allProjects = await prisma.project.findMany({
+      where: { tenantId },
+      select: { id: true }
+    });
+    const allProjectIds = allProjects.map((p: any) => p.id);
+    const inaccessibleProjectIds = allProjectIds.filter((id: string) => !userProjectIds.includes(id));
+
     let query = `SELECT * FROM qa_test_scopes WHERE tenant_id = $1`;
     let countQuery = `SELECT COUNT(*) FROM qa_test_scopes WHERE tenant_id = $1`;
     const params: any[] = [tenantId];
     let paramIndex = 2;
+
+    if (inaccessibleProjectIds.length > 0) {
+      query += ` AND (details->>'product' IS NULL OR details->>'product' != ALL($${paramIndex}))`;
+      countQuery += ` AND (details->>'product' IS NULL OR details->>'product' != ALL($${paramIndex}))`;
+      params.push(inaccessibleProjectIds);
+      paramIndex++;
+    }
 
     if (isApproval === 'true') {
       query += ` AND details->>'reviewer' = $${paramIndex}`;
@@ -517,12 +552,49 @@ export const getTestScopesStats = async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).user?.tenantId;
     const userName = (req as any).user?.name;
+    const userId = (req as any).user?.id;
+    const userRole = (req as any).user?.role;
     
     if (!tenantId) {
       return res.status(401).json({ success: false, error: 'Unauthorized' });
     }
 
-    const { rows } = await pool.query(`SELECT * FROM qa_test_scopes WHERE tenant_id = $1`, [tenantId]);
+    // Determine inaccessible projects
+    const hasManagePermission = await RBACService.hasPermission(userId, tenantId, Permissions.PROJECT_MANAGE, userRole);
+    const userProjectsQuery: any = {
+      tenantId,
+      status: { notIn: ["ARCHIVED", "DELETED", "archived", "deleted"] },
+    };
+    if (!hasManagePermission) {
+      userProjectsQuery.OR = [
+        { projectManagerId: userId },
+        { members: { some: { userId } } },
+      ];
+    }
+    const userProjects = await prisma.project.findMany({
+      where: userProjectsQuery,
+      select: { id: true }
+    });
+    const userProjectIds = userProjects.map((p: any) => p.id);
+
+    const allProjects = await prisma.project.findMany({
+      where: { tenantId },
+      select: { id: true }
+    });
+    const allProjectIds = allProjects.map((p: any) => p.id);
+    const inaccessibleProjectIds = allProjectIds.filter((id: string) => !userProjectIds.includes(id));
+
+    let query = `SELECT * FROM qa_test_scopes WHERE tenant_id = $1`;
+    const params: any[] = [tenantId];
+    let paramIndex = 2;
+
+    if (inaccessibleProjectIds.length > 0) {
+      query += ` AND (details->>'product' IS NULL OR details->>'product' != ALL($${paramIndex}))`;
+      params.push(inaccessibleProjectIds);
+      paramIndex++;
+    }
+
+    const { rows } = await pool.query(query, params);
 
     const stats: any = {
       totalScopes: rows.length,
