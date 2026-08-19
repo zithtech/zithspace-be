@@ -198,7 +198,7 @@ export class TimeTrackingController {
         orderBy: { startTime: 'desc' }
       });
 
-      res.status(200).json({ success: true, data: entries } as ApiResponse);
+      res.status(200).json({ success: true, serverTime: new Date().toISOString(), data: entries } as ApiResponse);
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message } as ApiResponse);
     }
@@ -355,6 +355,7 @@ export class TimeTrackingController {
 
       res.status(200).json({
         success: true,
+        serverTime: new Date().toISOString(),
         data: { timezone: tz, summary, legend, rows },
       } as ApiResponse);
     } catch (error: any) {
@@ -611,7 +612,7 @@ export class TimeTrackingController {
         });
       }
 
-      res.status(200).json({ success: true, data: updatedEntry } as ApiResponse);
+      res.status(200).json({ success: true, serverTime: new Date().toISOString(), data: updatedEntry } as ApiResponse);
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message } as ApiResponse);
     }
@@ -675,7 +676,7 @@ export class TimeTrackingController {
         });
       }
 
-      res.status(200).json({ success: true, data: updatedEntry } as ApiResponse);
+      res.status(200).json({ success: true, serverTime: new Date().toISOString(), data: updatedEntry } as ApiResponse);
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message } as ApiResponse);
     }
@@ -758,7 +759,7 @@ export class TimeTrackingController {
         });
       }
 
-      res.status(200).json({ success: true, data: updatedEntry } as ApiResponse);
+      res.status(200).json({ success: true, serverTime: new Date().toISOString(), data: updatedEntry } as ApiResponse);
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message } as ApiResponse);
     }
@@ -936,7 +937,7 @@ export class TimeTrackingController {
         });
       }
 
-      res.status(200).json({ success: true, data: updatedEntry } as ApiResponse);
+      res.status(200).json({ success: true, serverTime: new Date().toISOString(), data: updatedEntry } as ApiResponse);
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message } as ApiResponse);
     }
@@ -977,7 +978,7 @@ export class TimeTrackingController {
         entityLabel: entry.description || "Time Entry",
       });
 
-      res.status(200).json({ success: true, message: "Entry deleted successfully" } as ApiResponse);
+      res.status(200).json({ success: true, serverTime: new Date().toISOString(), message: "Entry deleted successfully" } as ApiResponse);
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message } as ApiResponse);
     }
