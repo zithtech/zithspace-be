@@ -22,7 +22,7 @@ export const getTestRuns = async (req: Request, res: Response) => {
     const tenantId = (req as any).user?.tenantId;
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
-    const { suite_id, scope_id, search, limit, page = '1', pageSize = '10', progress } = req.query;
+    const { suite_id, scope_id, module_id, search, limit, page = '1', pageSize = '10', progress } = req.query;
 
     const parsedLimit = limit ? parseInt(limit as string, 10) : parseInt(pageSize as string, 10) || 10;
     const parsedPage = parseInt(page as string, 10) || 1;
@@ -51,6 +51,10 @@ export const getTestRuns = async (req: Request, res: Response) => {
         p.push(suite_id);
         queryStr += ` AND tr.suite_id = $${p.length}`;
       }
+      if (module_id) {
+        p.push(module_id);
+        queryStr += ` AND ts.module_id::text = $${p.length}::text`;
+      }
       if (scope_id) {
         p.push(scope_id);
         queryStr += ` AND tr.scope_id = $${p.length}`;
@@ -64,7 +68,7 @@ export const getTestRuns = async (req: Request, res: Response) => {
         // executed = total_cases - (SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id AND status = 'Not Executed')
         const totalSubquery = `(SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id)`;
         const executedSubquery = `(${totalSubquery} - (SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id AND status = 'Not Executed'))`;
-        
+
         if (progress === 'notStarted') {
           queryStr += ` AND (${totalSubquery} = 0 OR ${executedSubquery} = 0)`;
         } else if (progress === 'completed') {
@@ -77,7 +81,7 @@ export const getTestRuns = async (req: Request, res: Response) => {
     };
 
     query = applyFilters(query, params);
-    
+
     let countQuery = `
       SELECT COUNT(*) FROM qa_test_runs tr
       LEFT JOIN qa_test_suites ts ON tr.suite_id = ts.id
@@ -99,8 +103,8 @@ export const getTestRuns = async (req: Request, res: Response) => {
     ]);
     const total = parseInt(countRows[0].count, 10);
 
-    res.status(200).json({ 
-      success: true, 
+    res.status(200).json({
+      success: true,
       data: rows,
       pagination: {
         total,
@@ -120,10 +124,10 @@ export const getTestRun = async (req: Request, res: Response) => {
     const tenantId = (req as any).user?.tenantId;
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
     const { id } = req.params;
-    
+
     // Resolve the project through suite → scenario so bugs raised from this run
     // can be filed against the right project's bug list.
-    await pool.query(`ALTER TABLE qa_parent_test_cases ADD COLUMN IF NOT EXISTS project_id TEXT`).catch(() => {});
+    await pool.query(`ALTER TABLE qa_parent_test_cases ADD COLUMN IF NOT EXISTS project_id TEXT`).catch(() => { });
     await ensureRunScopeColumn();
     const { rows: runRows } = await pool.query(`
       SELECT tr.*, ts.suite_name, ptc.project_id, ptc.title AS scenario_title, u.name as created_by_name,
@@ -136,7 +140,7 @@ export const getTestRun = async (req: Request, res: Response) => {
       WHERE tr.id = $1 AND tr.tenant_id = $2
     `, [id, tenantId]);
     if (!runRows.length) return res.status(404).json({ success: false, error: 'Test Run not found' });
-    
+
     const run = runRows[0];
 
     // The execution list is paginated server-side — a long suite would
@@ -158,12 +162,12 @@ export const getTestRun = async (req: Request, res: Response) => {
              (COUNT(*) FILTER (WHERE trr.status = 'Fail'))::int AS fail,
              (COUNT(*) FILTER (WHERE trr.status = 'Blocked'))::int AS blocked,
              ${hasBugs
-               // Failures still missing a live bug — what "Add to Buglist" can act on
-               ? `(COUNT(*) FILTER (WHERE trr.status = 'Fail' AND NOT EXISTS (
+        // Failures still missing a live bug — what "Add to Buglist" can act on
+        ? `(COUNT(*) FILTER (WHERE trr.status = 'Fail' AND NOT EXISTS (
                      SELECT 1 FROM bugs b
                      WHERE b.id = trr.bug_id AND b.tenant_id = trr.tenant_id::text AND b.status <> 'trash'
                    )))::int`
-               : `(COUNT(*) FILTER (WHERE trr.status = 'Fail'))::int`} AS fail_unfiled
+        : `(COUNT(*) FILTER (WHERE trr.status = 'Fail'))::int`} AS fail_unfiled
       FROM qa_test_run_results trr
       WHERE trr.test_run_id = $1 AND trr.tenant_id = $2
     `, [id, tenantId]);
@@ -194,7 +198,7 @@ export const getTestRun = async (req: Request, res: Response) => {
              tc.severity, tc.automation, tc.status as case_status,
              tc.description, tc.preconditions, tc.steps_to_reproduce, tc.expected_result,
              ${hasBugs ? `b.bug_number, b.sheet_id AS bug_sheet_id, (b.id IS NOT NULL) AS bug_logged,`
-                       : `NULL::text AS bug_number, NULL::text AS bug_sheet_id, FALSE AS bug_logged,`}
+        : `NULL::text AS bug_number, NULL::text AS bug_sheet_id, FALSE AS bug_logged,`}
              (COUNT(*) OVER())::int AS filtered_total
       FROM qa_test_run_results trr
       JOIN qa_test_cases tc ON trr.test_case_id = tc.id
@@ -231,7 +235,7 @@ export const createTestRun = async (req: Request, res: Response) => {
     const tenantId = (req as any).user?.tenantId;
     const userId = (req as any).user?.id;
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
-    
+
     const { run_name, suite_id, execution_type, scope_id } = req.body;
 
     // A run belongs to a scope: it's what lets a QA Submission report the run as
@@ -262,7 +266,7 @@ export const createTestRun = async (req: Request, res: Response) => {
       [tenantId, run_name, suite_id, execution_type || null, scope_id || null, userId]
     );
     const runId = runRows[0].id;
-    
+
     // Copy test cases from suite to run results
     await client.query(
       `INSERT INTO qa_test_run_results (tenant_id, test_run_id, test_case_id)
@@ -270,7 +274,7 @@ export const createTestRun = async (req: Request, res: Response) => {
        WHERE test_suite_id = $3 AND tenant_id = $1`,
       [tenantId, runId, suite_id]
     );
-    
+
     await client.query('COMMIT');
     res.status(201).json({ success: true, data: runRows[0] });
   } catch (error) {
@@ -286,7 +290,7 @@ export const updateTestRunResult = async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).user?.tenantId;
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
-    
+
     const { runId, resultId } = req.params;
     const { status, notes } = req.body;
 
@@ -300,7 +304,7 @@ export const updateTestRunResult = async (req: Request, res: Response) => {
        WHERE id = $3 AND test_run_id = $4 AND tenant_id = $5 RETURNING *`,
       [status ?? null, notes ?? null, resultId, runId, tenantId]
     );
-    
+
     if (!rows.length) return res.status(404).json({ success: false, error: 'Result not found' });
     res.status(200).json({ success: true, data: rows[0] });
   } catch (error) {
@@ -314,7 +318,7 @@ export const deleteTestRun = async (req: Request, res: Response) => {
     const tenantId = (req as any).user?.tenantId;
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
     const { id } = req.params;
-    
+
     await pool.query(`DELETE FROM qa_test_runs WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
     res.status(200).json({ success: true, message: 'Deleted successfully' });
   } catch (error) {
@@ -478,7 +482,7 @@ export const addCaseToRun = async (req: Request, res: Response) => {
       },
     });
   } catch (error) {
-    await client.query('ROLLBACK').catch(() => {});
+    await client.query('ROLLBACK').catch(() => { });
     console.error('Error adding case to run:', error);
     res.status(500).json({ success: false, error: 'Failed to add the test case' });
   } finally {
