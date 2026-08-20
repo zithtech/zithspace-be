@@ -1574,15 +1574,15 @@ export class ProjectController {
       const userRole = req.user.role;
       const tenantId = req.tenantId;
 
-      const strict = req.query.strict === 'true';
-      const hasManagePermission = !strict && await RBACService.hasPermission(userId, tenantId, Permissions.PROJECT_MANAGE, userRole);
+      const explicitOnly = req.query.explicitOnly === 'true';
+      const hasManagePermission = await RBACService.hasPermission(userId, tenantId, Permissions.PROJECT_MANAGE, userRole);
 
       const whereClause: any = {
         tenantId,
         status: { notIn: ["ARCHIVED", "DELETED", "archived", "deleted"] },
       };
 
-      if (!hasManagePermission) {
+      if (explicitOnly || !hasManagePermission) {
         whereClause.OR = [
           { projectManagerId: userId },
           { members: { some: { userId } } },

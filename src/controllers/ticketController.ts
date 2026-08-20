@@ -567,7 +567,7 @@ export class TicketController {
               },
             },
           });
-          
+
           // If creation succeeded, break the retry loop
           break;
         } catch (error: any) {
@@ -817,7 +817,7 @@ export class TicketController {
           const ids = assigneeId.split(",").map((id) => id.trim());
           const hasUnassigned = ids.includes("null") || ids.includes("unassigned") || ids.includes("__unassigned__");
           const actualUserIds = ids.filter(id => id !== "null" && id !== "unassigned" && id !== "__unassigned__");
-          
+
           if (hasUnassigned) {
             if (actualUserIds.length > 0) {
               baseWhere.AND = [
@@ -1046,7 +1046,7 @@ export class TicketController {
           const ids = assigneeId.split(",").map((id) => id.trim());
           const hasUnassigned = ids.includes("null") || ids.includes("unassigned") || ids.includes("__unassigned__");
           const actualUserIds = ids.filter(id => id !== "null" && id !== "unassigned" && id !== "__unassigned__");
-          
+
           if (hasUnassigned) {
             if (actualUserIds.length > 0) {
               where.AND = [
@@ -1144,7 +1144,7 @@ export class TicketController {
 
       // Build sort object
       const orderBy: any = {};
-      
+
       let finalSortBy = sortBy as string;
       let finalSortOrder = sortOrder as string;
 
@@ -1619,7 +1619,7 @@ export class TicketController {
 
       // Map frontend field names to backend field names (like in createTicket)
       const mappedUpdates: any = { ...updates };
-      
+
       if (mappedUpdates.status) {
         mappedUpdates.status = mappedUpdates.status.toLowerCase();
       }
@@ -4064,7 +4064,7 @@ export class TicketController {
         } as ApiResponse);
         return;
       }
- // Calculate detailed progress
+      // Calculate detailed progress
       // Calculate detailed progress
       const totalStories = epic.stories.length;
       const completedStories = epic.stories.filter(

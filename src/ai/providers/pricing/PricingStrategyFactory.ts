@@ -1,6 +1,7 @@
 import { ProviderPricingStrategy } from './ProviderPricingStrategy';
 import { OpenAIPricingStrategy } from './OpenAIPricingStrategy';
 import { GeminiPricingStrategy } from './GeminiPricingStrategy';
+import { DeepSeekPricingStrategy } from './DeepSeekPricingStrategy';
 
 export class PricingStrategyFactory {
     static getStrategy(provider: string): ProviderPricingStrategy {
@@ -10,6 +11,9 @@ export class PricingStrategyFactory {
         }
         if (lowerProvider === 'gemini' || lowerProvider === 'google') {
             return new GeminiPricingStrategy();
+        }
+        if (lowerProvider === 'deepseek') {
+            return new DeepSeekPricingStrategy();
         }
         throw new Error(`No pricing strategy found for provider: ${provider}`);
     }
