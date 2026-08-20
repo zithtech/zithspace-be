@@ -455,7 +455,7 @@ class BucketController {
                 return;
             }
             const { id } = req.params;
-            const { name, description, color, isShared } = req.body;
+            const { name, description, color, isShared, projectId } = req.body;
             // Verify bucket exists and belongs to tenant
             const existingBucket = await database_1.prisma.bucket.findFirst({
                 where: {
@@ -474,20 +474,36 @@ class BucketController {
                 });
                 return;
             }
-            // Check for duplicate name if name is being changed
-            if (name && name !== existingBucket.name) {
+            // If projectId is changing, validate the new project
+            if (projectId !== undefined && projectId !== existingBucket.projectId) {
+                if (projectId !== null) {
+                    const project = await database_1.prisma.project.findFirst({
+                        where: {
+                            id: projectId,
+                            tenantId: req.tenantId,
+                        },
+                    });
+                    if (!project) {
+                        throw new types_1.ValidationError("Project not found in this tenant");
+                    }
+                }
+            }
+            const targetProjectId = projectId !== undefined ? (projectId || null) : existingBucket.projectId;
+            // Check for duplicate name if name is being changed or project is being changed
+            if ((name && name !== existingBucket.name) || targetProjectId !== existingBucket.projectId) {
+                const bucketName = name ? name.trim() : existingBucket.name;
                 const duplicateBucket = await database_1.prisma.bucket.findFirst({
                     where: {
                         tenantId: req.tenantId,
-                        projectId: existingBucket.projectId,
-                        name: name.trim(),
+                        projectId: targetProjectId,
+                        name: bucketName,
                         id: { not: id },
                     },
                 });
                 if (duplicateBucket) {
                     res.status(409).json({
                         success: false,
-                        error: `A bucket named "${name}" already exists in this ${existingBucket.projectId ? "project" : "workspace"}`,
+                        error: `A bucket named "${bucketName}" already exists in this ${targetProjectId ? "project" : "workspace"}`,
                     });
                     return;
                 }
@@ -502,6 +518,7 @@ class BucketController {
                         : existingBucket.description,
                     color: color || existingBucket.color,
                     isShared: isShared !== undefined ? isShared : existingBucket.isShared,
+                    projectId: targetProjectId,
                     updatedAt: new Date(),
                 },
                 include: {
@@ -521,12 +538,14 @@ class BucketController {
                     description: existingBucket.description,
                     color: existingBucket.color,
                     isShared: existingBucket.isShared,
+                    projectId: existingBucket.projectId,
                 };
                 const after = {
                     name: bucket.name,
                     description: bucket.description,
                     color: bucket.color,
                     isShared: bucket.isShared,
+                    projectId: bucket.projectId,
                 };
                 const { changedFields, before: b, after: a } = (0, transactionHistory_1.diffShallow)(before, after);
                 if (changedFields.length > 0) {
