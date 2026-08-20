@@ -9,6 +9,7 @@ import { createDocumentTreeModel, getLastNodePositionModel } from "@/models/docu
 import axios from "axios";
 import { recordTransaction, Section, Module, Page, Action, EntityType } from "@/utils/transactionHistory";
 import { FileExtractor } from "@/utils/FileExtractor";
+import { NotionAuthService } from "@/services/NotionAuthService";
 
 export class DocumentHubUploadController {
   
@@ -49,24 +50,8 @@ export class DocumentHubUploadController {
       }
     }
 
-    // Embed attachment metadata inside Blocknote JSON content
-    const blocknoteContent = [
-      {
-        id: `file_${Date.now()}`,
-        type: "file_attachment",
-        props: {
-          sourceType: fileMeta.sourceType,
-          externalFileId: fileMeta.externalFileId,
-          attachmentUrl: fileMeta.attachmentUrl,
-          mimeType: fileMeta.mimeType,
-          fileSize: fileMeta.fileSize,
-          fileName: fileMeta.fileName
-        },
-        content: [],
-        children: []
-      },
-      ...extractedBlocks
-    ];
+    // Use extracted blocks directly without embedding a file attachment link
+    const blocknoteContent = extractedBlocks.length > 0 ? extractedBlocks : [{ type: "paragraph", content: [] }];
 
     // Create Document record
     const doc = await createDocumentModel({
@@ -592,4 +577,187 @@ export class DocumentHubUploadController {
             res.status(statusCode).json({ success: false, error: error.response?.data?.error?.message || error.message } as ApiResponse);
         }
     }
-  }
+
+    static async listNotionFiles(req: AuthRequest, res: Response): Promise<void> {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({ success: false, error: "Context required" } as ApiResponse);
+                return;
+            }
+
+            const accessToken = await NotionAuthService.getValidAccessToken(req.user.id, req.tenantId);
+
+            const response = await axios.post("https://api.notion.com/v1/search", {
+                filter: {
+                    value: "page",
+                    property: "object"
+                },
+                sort: {
+                    direction: "descending",
+                    timestamp: "last_edited_time"
+                },
+                page_size: 100
+            }, {
+                headers: {
+                    "Authorization": `Bearer ${accessToken}`,
+                    "Notion-Version": "2022-06-28",
+                    "Content-Type": "application/json"
+                }
+            });
+
+            const files = response.data.results.map((page: any) => {
+                let title = "Untitled";
+                if (page.properties && page.properties.title && page.properties.title.title && page.properties.title.title.length > 0) {
+                    title = page.properties.title.title[0].plain_text;
+                } else if (page.properties && page.properties.Name && page.properties.Name.title && page.properties.Name.title.length > 0) {
+                    title = page.properties.Name.title[0].plain_text;
+                }
+                return {
+                    id: page.id,
+                    name: title,
+                    mimeType: "application/vnd.notion.page",
+                    size: 0
+                };
+            });
+
+            res.status(200).json({ success: true, data: files } as ApiResponse);
+        } catch (error: any) {
+            console.error("Notion list files error:", error.response?.data || error.message);
+            if (error.message === "Notion is not connected. Please connect your Notion account.") {
+                res.status(403).json({ success: false, error: error.message } as ApiResponse);
+                return;
+            }
+            res.status(500).json({ success: false, error: error.response?.data?.message || "Failed to list Notion files" } as ApiResponse);
+        }
+    }
+
+    static async importNotionFile(req: AuthRequest, res: Response): Promise<void> {
+        try {
+            if (!req.tenantId || !req.user) {
+                res.status(400).json({ success: false, error: "Context required" } as ApiResponse);
+                return;
+            }
+
+            const { hubId } = req.params;
+            const { fileId, fileName, mimeType, parentId } = req.body;
+
+            if (!fileId || !fileName) {
+                res.status(400).json({ success: false, error: "fileId and fileName are required" } as ApiResponse);
+                return;
+            }
+
+            const accessToken = await NotionAuthService.getValidAccessToken(req.user.id, req.tenantId);
+
+            let blocks: any[] = [];
+            let cursor = undefined;
+            do {
+                const response = await axios.get(`https://api.notion.com/v1/blocks/${fileId}/children`, {
+                    headers: { 
+                        "Authorization": `Bearer ${accessToken}`,
+                        "Notion-Version": "2022-06-28"
+                    },
+                    params: {
+                        page_size: 100,
+                        start_cursor: cursor
+                    }
+                });
+                blocks = blocks.concat(response.data.results);
+                cursor = response.data.next_cursor;
+            } while (cursor);
+
+            const extractedBlocks: any[] = [];
+            
+            const mapNotionRichText = (richTextArray: any[]) => {
+                if (!richTextArray || richTextArray.length === 0) return [];
+                return richTextArray.map(rt => {
+                    const styles: any = {};
+                    if (rt.annotations) {
+                        if (rt.annotations.bold) styles.bold = true;
+                        if (rt.annotations.italic) styles.italic = true;
+                        if (rt.annotations.strikethrough) styles.strike = true;
+                        if (rt.annotations.underline) styles.underline = true;
+                        if (rt.annotations.code) styles.code = true;
+                    }
+                    return {
+                        type: "text",
+                        text: rt.plain_text,
+                        styles
+                    };
+                });
+            };
+
+            for (const block of blocks) {
+                if (block.type === "paragraph" && block.paragraph.rich_text) {
+                    extractedBlocks.push({
+                        type: "paragraph",
+                        content: mapNotionRichText(block.paragraph.rich_text)
+                    });
+                } else if (block.type === "heading_1" && block.heading_1.rich_text) {
+                    extractedBlocks.push({
+                        type: "heading",
+                        props: { level: 1 },
+                        content: mapNotionRichText(block.heading_1.rich_text)
+                    });
+                } else if (block.type === "heading_2" && block.heading_2.rich_text) {
+                    extractedBlocks.push({
+                        type: "heading",
+                        props: { level: 2 },
+                        content: mapNotionRichText(block.heading_2.rich_text)
+                    });
+                } else if (block.type === "heading_3" && block.heading_3.rich_text) {
+                    extractedBlocks.push({
+                        type: "heading",
+                        props: { level: 3 },
+                        content: mapNotionRichText(block.heading_3.rich_text)
+                    });
+                } else if (block.type === "bulleted_list_item" && block.bulleted_list_item.rich_text) {
+                    extractedBlocks.push({
+                        type: "bulletListItem",
+                        content: mapNotionRichText(block.bulleted_list_item.rich_text)
+                    });
+                } else if (block.type === "numbered_list_item" && block.numbered_list_item.rich_text) {
+                    extractedBlocks.push({
+                        type: "numberedListItem",
+                        content: mapNotionRichText(block.numbered_list_item.rich_text)
+                    });
+                }
+            }
+
+            let textContent = "";
+            for (const b of extractedBlocks) {
+                const text = b.content ? b.content.map((c: any) => c.text).join("") : "";
+                if (b.type === "bulletListItem") textContent += "• " + text + "\n";
+                else if (b.type === "numberedListItem") textContent += "1. " + text + "\n";
+                else textContent += text + "\n\n";
+            }
+
+            const buffer = Buffer.from(textContent, "utf-8");
+            const r2Result = await uploadBufferToR2(
+                buffer,
+                "text/plain",
+                fileName + ".txt",
+                req.tenantId,
+                `external/notion/${hubId}`
+            );
+
+            const node = await DocumentHubUploadController.createExternalDocumentRecord(req, hubId, {
+                fileName: fileName + ".txt",
+                mimeType: "text/plain",
+                fileSize: buffer.length,
+                sourceType: "notion",
+                externalFileId: fileId,
+                attachmentUrl: r2Result.fileUrl
+            }, extractedBlocks, parentId || null);
+
+            res.status(201).json({ success: true, data: node } as ApiResponse);
+        } catch (error: any) {
+            console.error("Notion import error:", error.response?.data || error.message);
+            if (error.message === "Notion is not connected. Please connect your Notion account.") {
+                res.status(403).json({ success: false, error: error.message } as ApiResponse);
+                return;
+            }
+            const statusCode = error.response?.status || 500;
+            res.status(statusCode).json({ success: false, error: error.response?.data?.message || error.message } as ApiResponse);
+        }
+    }
+}

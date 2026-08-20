@@ -26,4 +26,8 @@ router.post("/:hubId/external/zoho/import", DocumentHubUploadController.importZo
 router.get("/:hubId/external/onedrive/files", DocumentHubUploadController.listOneDriveFiles);
 router.post("/:hubId/external/onedrive/import", DocumentHubUploadController.importOneDriveFile);
 
+// 5. Notion
+router.get("/:hubId/external/notion/files", DocumentHubUploadController.listNotionFiles);
+router.post("/:hubId/external/notion/import", DocumentHubUploadController.importNotionFile);
+
 export default router;
