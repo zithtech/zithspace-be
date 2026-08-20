@@ -22,7 +22,7 @@ export const getTestRuns = async (req: Request, res: Response) => {
     const tenantId = (req as any).user?.tenantId;
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
-    const { suite_id, scope_id, module_id, search, limit, page = '1', pageSize = '10', progress } = req.query;
+    const { suite_id, scope_id, module_id, search, limit, page = '1', pageSize = '10', progress, project_id, allowed_projects } = req.query;
 
     const parsedLimit = limit ? parseInt(limit as string, 10) : parseInt(pageSize as string, 10) || 10;
     const parsedPage = parseInt(page as string, 10) || 1;
@@ -39,6 +39,7 @@ export const getTestRuns = async (req: Request, res: Response) => {
       (SELECT COUNT(*) FROM qa_test_run_results trr WHERE trr.test_run_id = tr.id) as total_cases
       FROM qa_test_runs tr
       LEFT JOIN qa_test_suites ts ON tr.suite_id = ts.id
+      LEFT JOIN qa_parent_test_cases ptc ON ts.parent_test_case_id::text = ptc.id::text
       LEFT JOIN qa_test_scopes sc ON tr.scope_id = sc.id
       WHERE tr.tenant_id = $1
     `;
@@ -77,14 +78,45 @@ export const getTestRuns = async (req: Request, res: Response) => {
           queryStr += ` AND ${totalSubquery} > 0 AND ${executedSubquery} > 0 AND ${executedSubquery} < ${totalSubquery}`;
         }
       }
+      if (project_id) {
+        p.push(project_id);
+        queryStr += ` AND ptc.project_id::text = $${p.length}::text`;
+      }
+      if (allowed_projects) {
+        const ids = (allowed_projects as string)
+          .split(',')
+          .map(n => n.trim())
+          .filter(Boolean);
+        if (ids.length > 0) {
+          let idx = p.length + 1;
+          const placeholders = ids.map(() => `$${idx++}::text`);
+          p.push(...ids);
+          const userId = (req as any).user?.id || null;
+          p.push(userId);
+          queryStr += ` AND (ptc.project_id IS NULL OR ptc.project_id = '' OR ptc.project_id::text IN (${placeholders.join(',')}) OR tr.executed_by::text = $${p.length}::text)`;
+        }
+      }
       return queryStr;
     };
 
     query = applyFilters(query, params);
 
     let countQuery = `
-      SELECT COUNT(*) FROM qa_test_runs tr
+      SELECT 
+        COUNT(*) as count,
+        SUM(CASE 
+            WHEN (SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id) > 0 
+                 AND ((SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id) - (SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id AND status = 'Not Executed')) > 0
+                 AND ((SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id) - (SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id AND status = 'Not Executed')) < (SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id) 
+            THEN 1 ELSE 0 END) as active_runs,
+        SUM(CASE 
+            WHEN (SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id) > 0 
+                 AND ((SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id) - (SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id AND status = 'Not Executed')) >= (SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id) 
+            THEN 1 ELSE 0 END) as completed_runs,
+        SUM((SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id) - (SELECT COUNT(*) FROM qa_test_run_results WHERE test_run_id = tr.id AND status = 'Not Executed')) as total_executed_cases
+      FROM qa_test_runs tr
       LEFT JOIN qa_test_suites ts ON tr.suite_id = ts.id
+      LEFT JOIN qa_parent_test_cases ptc ON ts.parent_test_case_id::text = ptc.id::text
       LEFT JOIN qa_test_scopes sc ON tr.scope_id = sc.id
       WHERE tr.tenant_id = $1
     `;
@@ -101,11 +133,19 @@ export const getTestRuns = async (req: Request, res: Response) => {
       pool.query(query, params),
       pool.query(countQuery, countParams)
     ]);
-    const total = parseInt(countRows[0].count, 10);
+    const total = parseInt(countRows[0].count || '0', 10);
+    const activeRuns = parseInt(countRows[0].active_runs || '0', 10);
+    const completedRuns = parseInt(countRows[0].completed_runs || '0', 10);
+    const totalExecutedCases = parseInt(countRows[0].total_executed_cases || '0', 10);
 
     res.status(200).json({
       success: true,
       data: rows,
+      stats: {
+        activeRuns,
+        completedRuns,
+        totalExecutedCases
+      },
       pagination: {
         total,
         page: parsedPage,
