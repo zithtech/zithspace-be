@@ -412,10 +412,11 @@ export class DocumentHubController {
         data: documentHub,
       } as ApiResponse);
     } catch (error: any) {
-      console.error("Get document hub error:", error);
+      console.error("Get document hubs error Details:", error);
       res.status(500).json({
         success: false,
-        error: "Failed to get document hub",
+        error: "Failed to get document hubs",
+        details: error.message
       } as ApiResponse);
     }
   }
