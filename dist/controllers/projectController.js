@@ -1605,6 +1605,7 @@ class ProjectController {
                             name: true,
                             workEmail: true,
                             position: true,
+                            avatarUrl: true,
                         },
                     },
                     members: {
@@ -1615,6 +1616,7 @@ class ProjectController {
                                     name: true,
                                     workEmail: true,
                                     position: true,
+                                    avatarUrl: true,
                                 },
                             },
                         },
@@ -1631,6 +1633,7 @@ class ProjectController {
                     label: project.projectManager.name,
                     position: project.projectManager.position?.title || "N/A",
                     workEmail: project.projectManager.workEmail,
+                    avatarUrl: project.projectManager.avatarUrl,
                     isProjectManager: true,
                 },
                 ...project.members.map((member) => ({
@@ -1638,6 +1641,7 @@ class ProjectController {
                     label: member.user.name,
                     position: member.user.position?.title || "N/A",
                     workEmail: member.user.workEmail,
+                    avatarUrl: member.user.avatarUrl,
                     isProjectManager: false,
                 })),
             ];
