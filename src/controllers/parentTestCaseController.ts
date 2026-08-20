@@ -33,7 +33,7 @@ export const getParentTestCases = async (req: Request, res: Response) => {
     const tenantId = (req as any).user?.tenantId;
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
-    const { module_id, search, limit, page = '1', pageSize = '10', status, automation, owner, quickFilter } = req.query;
+    const { module_id, search, limit, page = '1', pageSize = '10', status, automation, owner, project_id, allowed_projects, quickFilter } = req.query;
 
     const parsedLimit = limit ? parseInt(limit as string, 10) : parseInt(pageSize as string, 10) || 10;
     const parsedPage = parseInt(page as string, 10) || 1;
@@ -61,6 +61,24 @@ export const getParentTestCases = async (req: Request, res: Response) => {
       if (owner) {
         p.push(owner);
         queryStr += ` AND (u_owner.name = $${p.length} OR u_creator.name = $${p.length})`;
+      }
+      if (project_id) {
+        p.push(project_id);
+        queryStr += ` AND ptc.project_id = $${p.length}`;
+      }
+      if (allowed_projects) {
+        const ids = (allowed_projects as string)
+          .split(',')
+          .map(n => n.trim())
+          .filter(Boolean);
+        if (ids.length > 0) {
+          let idx = p.length + 1;
+          const placeholders = ids.map(() => `$${idx++}::text`);
+          p.push(...ids);
+          const userId = (req as any).user?.id || null;
+          p.push(userId);
+          queryStr += ` AND (ptc.project_id IS NULL OR ptc.project_id = '' OR ptc.project_id::text IN (${placeholders.join(',')}) OR ptc.owner::text = $${p.length}::text OR ptc.created_by::text = $${p.length}::text)`;
+        }
       }
       if (quickFilter === 'ready') {
         queryStr += ` AND (ptc.status = 'Ready' OR ptc.status = 'Active')`;
@@ -95,7 +113,12 @@ export const getParentTestCases = async (req: Request, res: Response) => {
     query = applyFilters(query, params);
 
     let countQuery = `
-      SELECT COUNT(*) FROM qa_parent_test_cases ptc
+      SELECT 
+        COUNT(*) as count,
+        SUM(CASE WHEN ptc.status IN ('Ready', 'Active') THEN 1 ELSE 0 END) as ready_count,
+        SUM(CASE WHEN ptc.automation = 'Automated' THEN 1 ELSE 0 END) as automated_count,
+        SUM((SELECT COUNT(*) FROM qa_test_cases tc WHERE tc.parent_test_case_id::text = ptc.id::text)) as child_count
+      FROM qa_parent_test_cases ptc
       LEFT JOIN qa_todo_modules m ON ptc.module_id::text = m.id::text
       LEFT JOIN modules_v2 mv2 ON ptc.module_id::text = mv2.id::text
       LEFT JOIN users u_owner ON ptc.owner::text = u_owner.id::text
@@ -115,11 +138,19 @@ export const getParentTestCases = async (req: Request, res: Response) => {
       pool.query(query, params),
       pool.query(countQuery, countParams)
     ]);
-    const total = parseInt(countRows[0].count, 10);
+    const total = parseInt(countRows[0].count || '0', 10);
+    const readyCount = parseInt(countRows[0].ready_count || '0', 10);
+    const automatedCount = parseInt(countRows[0].automated_count || '0', 10);
+    const childCount = parseInt(countRows[0].child_count || '0', 10);
 
     res.status(200).json({ 
       success: true, 
       data: rows,
+      stats: {
+        readyCount,
+        automatedCount,
+        childCount
+      },
       pagination: {
         total,
         page: parsedPage,

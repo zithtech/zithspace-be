@@ -8,6 +8,7 @@ export const getTestScopes = async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).user?.tenantId;
     const userName = (req as any).user?.name;
+    const userId = (req as any).user?.id;
     if (!tenantId) {
       return res.status(401).json({ success: false, error: 'Unauthorized: No tenant found' });
     }
@@ -35,9 +36,9 @@ export const getTestScopes = async (req: Request, res: Response) => {
     let paramIndex = 2;
 
     if (isApproval === 'true') {
-      query += ` AND details->>'reviewer' = $${paramIndex}`;
-      countQuery += ` AND details->>'reviewer' = $${paramIndex}`;
-      params.push(userName);
+      query += ` AND details->'approvalWorkflow'->>'user' = $${paramIndex} AND status != 'Draft'`;
+      countQuery += ` AND details->'approvalWorkflow'->>'user' = $${paramIndex} AND status != 'Draft'`;
+      params.push(userId);
       paramIndex++;
     }
 
@@ -65,19 +66,25 @@ export const getTestScopes = async (req: Request, res: Response) => {
     // Restrict visibility to scopes belonging to the user's accessible projects.
     // The frontend passes allowed_products as a comma-separated list of project names
     // the current user is a member of. Scopes with no product set are always visible.
-    if (allowed_products) {
+    if (allowed_products && isApproval !== 'true') {
       const names = (allowed_products as string)
         .split(',')
         .map(n => n.trim().toLowerCase())
         .filter(Boolean);
       if (names.length > 0) {
-        // Build $2,$3,... placeholders for the IN clause
+        // Build placeholders for the IN clause
         const placeholders = names.map(() => `$${paramIndex++}`).join(',');
-        // Show scope if its product matches one of the allowed names OR if no product is set
-        const clause = ` AND (details->>'product' IS NULL OR details->>'product' = '' OR LOWER(details->>'product') IN (${placeholders}))`;
+        const clause = ` AND (
+          details->>'product' IS NULL OR 
+          details->>'product' = '' OR 
+          LOWER(details->>'product') IN (${placeholders}) OR
+          details->'approvalWorkflow'->>'user' = $${paramIndex} OR
+          LOWER(qa_owner) = LOWER($${paramIndex + 1})
+        )`;
         query += clause;
         countQuery += clause;
-        params.push(...names);
+        params.push(...names, userId, userName);
+        paramIndex += 2;
       }
     }
 
@@ -545,6 +552,7 @@ export const getTestScopesStats = async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).user?.tenantId;
     const userName = (req as any).user?.name;
+    const userId = (req as any).user?.id;
     
     if (!tenantId) {
       return res.status(401).json({ success: false, error: 'Unauthorized' });
@@ -557,8 +565,8 @@ export const getTestScopesStats = async (req: Request, res: Response) => {
       approved: rows.filter(r => r.status === 'Approved').length,
       inReview: rows.filter(r => r.status === 'In Review').length,
       inDraft: rows.filter(r => r.status === 'Draft').length,
-      // pendingApprovals = scopes where THIS user is the reviewer (matches approvals tab)
-      pendingApprovals: rows.filter(r => r.details?.reviewer === userName).length,
+      // pendingApprovals = scopes where THIS user is the approver (matches approvals tab)
+      pendingApprovals: rows.filter(r => r.details?.approvalWorkflow?.user === userId && r.status !== 'Draft').length,
       routedForApproval: rows.filter(r => r.status === 'In Review').length,
       draftNoDueDate: rows.filter(r => r.status === 'Draft' && !r.end_date).length,
       overdueCount: rows.filter(r => {
