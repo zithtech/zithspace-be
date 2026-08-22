@@ -174,7 +174,7 @@ export async function getAllDocumentHubsModel(options: GetHubsOptions) {
 
   let joinStars = "";
   if (view === 'starred') {
-    joinStars = `INNER JOIN document_hub_stars dhs ON dh.id = dhs.hub_id AND dhs.user_id = $2`;
+    joinStars = `INNER JOIN document_hub_stars dhs ON dh.id::text = dhs.hub_id::text AND dhs.user_id::text = $2::text`;
   }
 
   const countQuery = `

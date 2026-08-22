@@ -17,7 +17,7 @@ class ZohoProvider {
             response_type: "code",
             client_id: ZOHO_CLIENT_ID,
             redirect_uri: ZOHO_REDIRECT_URI,
-            scope: "ZohoCalendar.calendar.all,ZohoCalendar.event.all,ZohoMeeting.meeting.ALL",
+            scope: "ZohoCalendar.calendar.all,ZohoCalendar.event.all,ZohoMeeting.meeting.ALL,WorkDrive.files.ALL,WorkDrive.workspace.ALL",
             access_type: "offline",
             prompt: "consent",
             state: state,

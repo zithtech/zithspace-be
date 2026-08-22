@@ -1832,6 +1832,7 @@ export class ProjectController {
               name: true,
               workEmail: true,
               position: true,
+              avatarUrl: true,
             },
           },
           members: {
@@ -1842,6 +1843,7 @@ export class ProjectController {
                   name: true,
                   workEmail: true,
                   position: true,
+                  avatarUrl: true,
                 },
               },
             },
@@ -1860,6 +1862,7 @@ export class ProjectController {
           label: project.projectManager.name,
           position: (project.projectManager.position as any)?.title || "N/A",
           workEmail: project.projectManager.workEmail,
+          avatarUrl: project.projectManager.avatarUrl,
           isProjectManager: true,
         },
         ...project.members.map((member) => ({
@@ -1867,6 +1870,7 @@ export class ProjectController {
           label: member.user.name,
           position: (member.user.position as any)?.title || "N/A",
           workEmail: member.user.workEmail,
+          avatarUrl: member.user.avatarUrl,
           isProjectManager: false,
         })),
       ];

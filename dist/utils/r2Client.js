@@ -36,6 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.s3Client = exports.BUCKET_NAME = void 0;
 exports.uploadImageToR2 = uploadImageToR2;
 exports.uploadFileToR2 = uploadFileToR2;
+exports.uploadBufferToR2 = uploadBufferToR2;
 exports.uploadRequisitionAttachmentToR2 = uploadRequisitionAttachmentToR2;
 exports.uploadEmployeeDocumentToR2 = uploadEmployeeDocumentToR2;
 exports.uploadExitDocumentToR2 = uploadExitDocumentToR2;
@@ -205,6 +206,55 @@ async function uploadFileToR2(base64File, fileName, tenantId, ticketId) {
     catch (error) {
         console.error("R2 file upload error:", error);
         throw new Error(`Failed to upload file: ${error.message}`);
+    }
+}
+/**
+ * Upload a raw Buffer to Cloudflare R2 (optimized for external drive imports)
+ * @param buffer - Raw file buffer
+ * @param contentType - MIME type of the file
+ * @param fileName - Original file name
+ * @param tenantId - Tenant ID for multi-tenant isolation
+ * @param prefix - Folder prefix (e.g., 'document-hubs/{hubId}')
+ * @returns Object with file URL and metadata
+ */
+async function uploadBufferToR2(buffer, contentType, fileName, tenantId, prefix) {
+    try {
+        const fileSizeInBytes = buffer.length;
+        const fileSizeInMB = fileSizeInBytes / (1024 * 1024);
+        // Validate file size (e.g. max 50MB for document hub files)
+        if (fileSizeInMB > 50) {
+            throw new Error("File size exceeds 50MB limit");
+        }
+        const uniqueId = (0, nanoid_1.nanoid)(12);
+        const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+        // Organize by tenant and prefix
+        const folderPath = `${tenantId}/${prefix}`;
+        const storedFileName = `${folderPath}/${uniqueId}_${sanitizedFileName}`;
+        const params = {
+            Bucket: exports.BUCKET_NAME,
+            Key: storedFileName,
+            Body: buffer,
+            ContentType: contentType,
+            CacheControl: "public, max-age=31536000",
+            ContentDisposition: `attachment; filename="${sanitizedFileName}"`,
+        };
+        await exports.s3Client.send(new client_s3_1.PutObjectCommand(params));
+        let baseUrl = (PUBLIC_URL && !PUBLIC_URL.includes('r2.cloudflarestorage.com'))
+            ? PUBLIC_URL
+            : "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+        if (baseUrl.endsWith('/')) {
+            baseUrl = baseUrl.slice(0, -1);
+        }
+        const fileUrl = `${baseUrl}/${storedFileName}`;
+        return {
+            fileUrl,
+            fileSize: fileSizeInBytes,
+            fileType: contentType,
+        };
+    }
+    catch (error) {
+        console.error("R2 buffer upload error:", error);
+        throw new Error(`Failed to upload buffer: ${error.message}`);
     }
 }
 /**
