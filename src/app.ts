@@ -107,6 +107,7 @@ import departmentRoutes from "@/routes/departmentRoutes";
 import subDepartmentRoutes from "@/routes/subDepartmentRoutes";
 import positionRoutes from "@/routes/positionRoutes";
 import calendarRoutes from "@/routes/calendar";
+import linearRoutes from "@/routes/linearRoutes";
 import mailRoutes from "@/routes/mail";
 import notificationRoutes from "@/routes/notifications"; // Web push notification routes
 import mailConfigurationRoutes from "@/routes/mailConfigurationRoutes";
@@ -335,6 +336,7 @@ app.use("/api/projects", projectRoutes);
 app.use("/api/tenants", tenantRoutes);
 app.use("/api/landing", landingRoutes);
 app.use("/api/calendar", calendarRoutes);
+app.use("/api/integrations/linear", linearRoutes);
 app.use("/api/squads", squadRoutes);
 app.use("/api/public/tickets", publicTicketRoutes);
 app.use("/api/public/document", publicDocumentRoutes);

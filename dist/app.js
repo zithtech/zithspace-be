@@ -105,6 +105,7 @@ const departmentRoutes_1 = __importDefault(require("@/routes/departmentRoutes"))
 const subDepartmentRoutes_1 = __importDefault(require("@/routes/subDepartmentRoutes"));
 const positionRoutes_1 = __importDefault(require("@/routes/positionRoutes"));
 const calendar_1 = __importDefault(require("@/routes/calendar"));
+const linearRoutes_1 = __importDefault(require("@/routes/linearRoutes"));
 const mail_1 = __importDefault(require("@/routes/mail"));
 const notifications_1 = __importDefault(require("@/routes/notifications")); // Web push notification routes
 const employeeExit_routes_1 = __importDefault(require("@/routes/employeeExit.routes"));
@@ -301,6 +302,7 @@ app.use("/api/projects", projects_1.default);
 app.use("/api/tenants", tenants_1.default);
 app.use("/api/landing", landing_1.default);
 app.use("/api/calendar", calendar_1.default);
+app.use("/api/integrations/linear", linearRoutes_1.default);
 app.use("/api/squads", squad_1.default);
 app.use("/api/public/tickets", publicTickets_1.default);
 app.use("/api/public/document", publicDocuments_1.default);
