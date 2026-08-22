@@ -15,7 +15,7 @@ export class MicrosoftProvider implements ICalendarProvider {
             response_type: "code",
             redirect_uri: MICROSOFT_REDIRECT_URI,
             response_mode: "query",
-            scope: "offline_access Calendars.ReadWrite User.Read OnlineMeetings.ReadWrite",
+            scope: "offline_access Calendars.ReadWrite User.Read OnlineMeetings.ReadWrite Files.Read",
             state: state,
             prompt: "consent",
         });

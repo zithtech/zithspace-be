@@ -363,6 +363,18 @@ class TicketController {
                 if (!assignee) {
                     throw new types_1.ValidationError("Assignee not found in this tenant");
                 }
+                const isProjectMember = await database_1.prisma.projectMember.findUnique({
+                    where: {
+                        projectId_userId: {
+                            projectId,
+                            userId: assigneeId
+                        }
+                    }
+                });
+                // Also allow if the assignee is the project manager
+                if (!isProjectMember && project.projectManagerId !== assigneeId) {
+                    throw new types_1.ValidationError("Assignee must be a member of the project");
+                }
             }
             // Validate reportTo if provided
             if (reportToId) {
@@ -1519,6 +1531,29 @@ class TicketController {
             });
             if (!existingTicket) {
                 throw new types_1.NotFoundError("Ticket not found in this tenant");
+            }
+            // Validate assigneeId if it's being updated to a non-null value
+            if (mappedUpdates.assigneeId) {
+                const targetProjectId = mappedUpdates.projectId || existingTicket.projectId;
+                const assignee = await database_1.prisma.user.findFirst({
+                    where: { id: mappedUpdates.assigneeId, tenantId: req.tenantId, isActive: true },
+                });
+                if (!assignee) {
+                    throw new types_1.ValidationError("Assignee not found in this tenant");
+                }
+                const project = await database_1.prisma.project.findFirst({
+                    where: { id: targetProjectId, tenantId: req.tenantId }
+                });
+                if (project) {
+                    const isProjectMember = await database_1.prisma.projectMember.findUnique({
+                        where: {
+                            projectId_userId: { projectId: targetProjectId, userId: mappedUpdates.assigneeId }
+                        }
+                    });
+                    if (!isProjectMember && project.projectManagerId !== mappedUpdates.assigneeId) {
+                        throw new types_1.ValidationError("Assignee must be a member of the project");
+                    }
+                }
             }
             // Validate parentId if being updated - prevent nested subtasks
             if (mappedUpdates.parentId !== undefined && mappedUpdates.parentId !== null) {

@@ -191,6 +191,70 @@ export async function uploadFileToR2(
 }
 
 /**
+ * Upload a raw Buffer to Cloudflare R2 (optimized for external drive imports)
+ * @param buffer - Raw file buffer
+ * @param contentType - MIME type of the file
+ * @param fileName - Original file name
+ * @param tenantId - Tenant ID for multi-tenant isolation
+ * @param prefix - Folder prefix (e.g., 'document-hubs/{hubId}')
+ * @returns Object with file URL and metadata
+ */
+export async function uploadBufferToR2(
+  buffer: Buffer,
+  contentType: string,
+  fileName: string,
+  tenantId: string,
+  prefix: string,
+): Promise<{ fileUrl: string; fileSize: number; fileType: string }> {
+  try {
+    const fileSizeInBytes = buffer.length;
+    const fileSizeInMB = fileSizeInBytes / (1024 * 1024);
+    
+    // Validate file size (e.g. max 50MB for document hub files)
+    if (fileSizeInMB > 50) {
+      throw new Error("File size exceeds 50MB limit");
+    }
+
+    const uniqueId = nanoid(12);
+    const sanitizedFileName = fileName.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+
+    // Organize by tenant and prefix
+    const folderPath = `${tenantId}/${prefix}`;
+    const storedFileName = `${folderPath}/${uniqueId}_${sanitizedFileName}`;
+
+    const params = {
+      Bucket: BUCKET_NAME,
+      Key: storedFileName,
+      Body: buffer,
+      ContentType: contentType,
+      CacheControl: "public, max-age=31536000",
+      ContentDisposition: `attachment; filename="${sanitizedFileName}"`,
+    };
+
+    await s3Client.send(new PutObjectCommand(params));
+
+    let baseUrl = (PUBLIC_URL && !PUBLIC_URL.includes('r2.cloudflarestorage.com')) 
+      ? PUBLIC_URL 
+      : "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+    
+    if (baseUrl.endsWith('/')) {
+      baseUrl = baseUrl.slice(0, -1);
+    }
+    
+    const fileUrl = `${baseUrl}/${storedFileName}`;
+
+    return {
+      fileUrl,
+      fileSize: fileSizeInBytes,
+      fileType: contentType,
+    };
+  } catch (error: any) {
+    console.error("R2 buffer upload error:", error);
+    throw new Error(`Failed to upload buffer: ${error.message}`);
+  }
+}
+
+/**
  * Upload a job requisition attachment to Cloudflare R2
  * Stores under: {tenantId}/requisition_attachments/{requisitionId}/{category}/{uniqueId}_{fileName}
  */

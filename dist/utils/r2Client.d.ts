@@ -23,6 +23,20 @@ export declare function uploadFileToR2(base64File: string, fileName: string, ten
     fileType: string;
 }>;
 /**
+ * Upload a raw Buffer to Cloudflare R2 (optimized for external drive imports)
+ * @param buffer - Raw file buffer
+ * @param contentType - MIME type of the file
+ * @param fileName - Original file name
+ * @param tenantId - Tenant ID for multi-tenant isolation
+ * @param prefix - Folder prefix (e.g., 'document-hubs/{hubId}')
+ * @returns Object with file URL and metadata
+ */
+export declare function uploadBufferToR2(buffer: Buffer, contentType: string, fileName: string, tenantId: string, prefix: string): Promise<{
+    fileUrl: string;
+    fileSize: number;
+    fileType: string;
+}>;
+/**
  * Upload a job requisition attachment to Cloudflare R2
  * Stores under: {tenantId}/requisition_attachments/{requisitionId}/{category}/{uniqueId}_{fileName}
  */

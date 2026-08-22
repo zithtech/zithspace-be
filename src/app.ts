@@ -57,6 +57,8 @@ import sprintReportRoutes from "@/routes/sprintReport";
 import sprintReportsRoutes from "@/routes/sprintReports";
 import fixedHolidayRoutes from "@/routes/fixedHolidays";
 import documentHubRoutes from "@/routes/documenthub";
+import documentHubUploadRoutes from "@/routes/documentHubUploads";
+import notionAuthRoutes from "@/routes/notionAuthRoutes";
 import lettersRoutes from "@/routes/letters.routes";
 import aiSettingsRoutes from "@/routes/aiSettings";
 import channelRoutes from "@/routes/channels";
@@ -401,10 +403,13 @@ app.use("/api", skillExperienceRoutes);
 
 app.use("/api/departments", departmentRoutes);
 app.use("/api/sub-departments", subDepartmentRoutes);
-app.use("/api/positions", positionRoutes);
-app.use("/api/employment-types", employmentTypeRoutes);
-app.use("/api/documenthub", documentHubRoutes);
-app.use("/api/hrms/letters", lettersRoutes);
+  app.use("/api/positions", positionRoutes);
+  app.use("/api/employment-types", employmentTypeRoutes);
+  app.use("/api/documenthub", documentHubRoutes);
+  app.use("/api/v2/document-hubs", documentHubUploadRoutes);
+  app.use("/api/v2/auth/notion", notionAuthRoutes);
+  app.use("/api/v1/auth/notion", notionAuthRoutes); // Alias for v1
+  app.use("/api/hrms/letters", lettersRoutes);
 app.use("/api/ai", aiSettingsRoutes);
 app.use("/api/channels", channelRoutes);
 app.use("/api/channels/:channelId/messages", messageRoutes);

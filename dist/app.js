@@ -58,6 +58,8 @@ const sprintReport_1 = __importDefault(require("@/routes/sprintReport"));
 const sprintReports_1 = __importDefault(require("@/routes/sprintReports"));
 const fixedHolidays_1 = __importDefault(require("@/routes/fixedHolidays"));
 const documenthub_1 = __importDefault(require("@/routes/documenthub"));
+const documentHubUploads_1 = __importDefault(require("@/routes/documentHubUploads"));
+const notionAuthRoutes_1 = __importDefault(require("@/routes/notionAuthRoutes"));
 const letters_routes_1 = __importDefault(require("@/routes/letters.routes"));
 const aiSettings_1 = __importDefault(require("@/routes/aiSettings"));
 const channels_1 = __importDefault(require("@/routes/channels"));
@@ -365,6 +367,9 @@ app.use("/api/sub-departments", subDepartmentRoutes_1.default);
 app.use("/api/positions", positionRoutes_1.default);
 app.use("/api/employment-types", employmentTypeRoutes_1.default);
 app.use("/api/documenthub", documenthub_1.default);
+app.use("/api/v2/document-hubs", documentHubUploads_1.default);
+app.use("/api/v2/auth/notion", notionAuthRoutes_1.default);
+app.use("/api/v1/auth/notion", notionAuthRoutes_1.default); // Alias for v1
 app.use("/api/hrms/letters", letters_routes_1.default);
 app.use("/api/ai", aiSettings_1.default);
 app.use("/api/channels", channels_1.default);

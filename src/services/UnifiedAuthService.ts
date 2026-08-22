@@ -23,6 +23,7 @@ export class UnifiedAuthService {
                     "https://www.googleapis.com/auth/gmail.modify",
                     "https://www.googleapis.com/auth/userinfo.email",
                     "https://www.googleapis.com/auth/userinfo.profile",
+                    "https://www.googleapis.com/auth/drive.readonly",
                     "openid"
                 ];
                 googleMailScopes.forEach(s => {
@@ -46,7 +47,9 @@ export class UnifiedAuthService {
                 const zohoMailScopes = [
                     "ZohoMail.messages.ALL",
                     "ZohoMail.accounts.READ",
-                    "ZohoMail.folders.READ"
+                    "ZohoMail.folders.READ",
+                    "WorkDrive.files.READ",
+                    "WorkDrive.workspace.READ"
                 ];
                 // Zoho scopes must be comma-separated
                 zohoMailScopes.forEach(s => {
