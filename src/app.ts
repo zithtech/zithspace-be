@@ -97,6 +97,7 @@ import vendorRoutes from "@/routes/vendor";
 import timesheetRoutes from "@/routes/timesheet";
 import timeTrackingRoutes from "./routes/timeTracking";
 import proxyRoutes from "@/routes/proxyRoutes";
+import jiraRoutes from "@/modules/jira/jira.routes";
 
 import companyGovernmentHolidayRouter from "@/routes/companyGovernmentHoliday.routes";
 import leaveAdjustmentRoutes from "./routes/leaveAdjustmentRoutes";
@@ -470,6 +471,7 @@ app.use("/api/employee-timelines", employeeTimelineRoutes);
 
 app.use("/api/onboarding", employeeOnboardingRoutes);
 app.use("/api/reimbursement-configurations", reimbursementConfigurationRoutes);
+app.use("/api/integrations/jira", jiraRoutes);
 app.use("/api/reimbursement-settings", reimbursementsettingsRoutes);
 // Reimbursements (with file upload)
 app.use("/api/reimbursements", reimbursementRoutes);
@@ -665,17 +667,25 @@ const startServer = async () => {
     const { runCompanyDetailsMigrations } = require("@/modules/company-details/db/migrate");
     await runCompanyDetailsMigrations();
 
-    // Connect RabbitMQ & Start Workers
+    // Connect RabbitMQ & Start Workers (Calendar, Mail)
     try {
       await rabbitMQService.connect();
       await CalendarSyncWorker.start(); 
       await MailSyncWorker.start();
-      // await CentralMailWorker.start();
       console.log("🚀 RabbitMQ connected, Calendar & Mail Sync Workers started");
     } catch (mqError: any) {
       console.error("❌ RabbitMQ initialization failed:", mqError.message);
       // In a SaaS environment, we log and continue,
       // as the app might still handle HTTP requests while MQ recovers.
+    }
+
+    // Initialize Jira Migration Worker (BullMQ / Redis)
+    try {
+      const { JiraMigrationWorkers } = require("@/modules/jira/jira.migration.workers");
+      new JiraMigrationWorkers();
+      console.log("🚀 Redis connected, Jira Migration BullMQ Workers started");
+    } catch (bullmqError: any) {
+      console.error("❌ Jira BullMQ initialization failed:", bullmqError.message);
     }
 
     // Leave 2.0 accrual scheduler + worker (no-op unless LEAVE_ACCRUAL_ENABLED=true)
