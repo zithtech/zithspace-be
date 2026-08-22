@@ -31,6 +31,7 @@ export const s3Client = new S3Client({
   forcePathStyle: true
 });
 
+
 /**
  * Upload image to Cloudflare R2
  * @param base64Image - Base64 encoded image string (with data:image/... prefix)
