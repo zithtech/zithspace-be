@@ -22,6 +22,7 @@
     "db:sync-metadata:prod": "node dist/scripts/sync-metadata.js",
     "om:migrate": "npx ts-node -r tsconfig-paths/register src/modules/opening-management/db/migrate.ts",
     "cd:migrate": "npx ts-node -r tsconfig-paths/register src/modules/company-details/db/migrate.ts",
+    "yapiez:migrate": "npx ts-node -r tsconfig-paths/register src/modules/yapiez/db/migrate.ts",
     "qa:submissions:migrate": "npx ts-node -r tsconfig-paths/register src/scripts/createQaSubmissionTables.ts",
     "qa:submissions:verify": "node src/scripts/verify-qa-submission-math.js",
     "lint": "eslint src --ext .ts",
