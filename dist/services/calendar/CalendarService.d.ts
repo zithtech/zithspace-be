@@ -85,11 +85,11 @@ export declare class CalendarService {
         location: string | null;
         attendees: import("@prisma/client/runtime/library").JsonValue | null;
         isRecurring: boolean | null;
+        sourceType: string | null;
         externalId: string;
         isAllDay: boolean | null;
         rrule: string | null;
         exdate: import("@prisma/client/runtime/library").JsonValue | null;
-        sourceType: string | null;
         meetingLink: string | null;
         organizerEmail: string | null;
     }>;
