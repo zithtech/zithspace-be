@@ -73,16 +73,56 @@ export class GradeController {
         return;
       }
 
-      const grades = await prisma.grade.findMany({
-        where: { tenantId: req.tenantId },
-        orderBy: { levelOrder: "asc" },
-        include: {
-          createdBy: { select: { id: true, name: true } },
-          updatedBy: { select: { id: true, name: true } }
-        }
-      });
+      const { page, limit, search } = req.query;
+      const pageNum = page ? parseInt(page as string, 10) : undefined;
+      const limitNum = limit ? parseInt(limit as string, 10) : undefined;
+      
+      const where: any = { tenantId: req.tenantId };
+      
+      if (typeof search === 'string' && search.trim()) {
+        where.OR = [
+          { name: { contains: search, mode: 'insensitive' } },
+          { code: { contains: search, mode: 'insensitive' } },
+        ];
+      }
 
-      res.status(200).json({ success: true, data: grades } as ApiResponse);
+      if (limitNum) {
+        const skip = pageNum ? (pageNum - 1) * limitNum : 0;
+        const [grades, total] = await Promise.all([
+          prisma.grade.findMany({
+            where,
+            orderBy: { levelOrder: "asc" },
+            include: {
+              createdBy: { select: { id: true, name: true } },
+              updatedBy: { select: { id: true, name: true } }
+            },
+            skip,
+            take: limitNum
+          }),
+          prisma.grade.count({ where })
+        ]);
+        
+        res.status(200).json({ 
+          success: true, 
+          data: grades,
+          pagination: {
+            total,
+            page: pageNum || 1,
+            limit: limitNum,
+            pages: Math.ceil(total / limitNum)
+          }
+        } as ApiResponse);
+      } else {
+        const grades = await prisma.grade.findMany({
+          where,
+          orderBy: { levelOrder: "asc" },
+          include: {
+            createdBy: { select: { id: true, name: true } },
+            updatedBy: { select: { id: true, name: true } }
+          }
+        });
+        res.status(200).json({ success: true, data: grades } as ApiResponse);
+      }
     } catch (error: any) {
       console.error("Error fetching grades:", error);
       res.status(500).json({ success: false, error: "Failed to fetch grades" } as ApiResponse);

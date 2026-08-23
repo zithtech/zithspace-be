@@ -27,4 +27,29 @@ router.get('/proxy-logo', async (req, res) => {
   }
 });
 
+import { SUBSCRIPTION_CONSTANTS } from '../modules/subscriptions/subscription.constants';
+
+router.get('/plans', async (req, res) => {
+  try {
+    const adminApiUrl = SUBSCRIPTION_CONSTANTS.ADMIN_API_URL;
+    const response = await axios.get(`${adminApiUrl}/api/plans`);
+    res.json(response.data);
+  } catch (error) {
+    console.error('Proxy plans error:', error);
+    res.status(500).json({ success: false, error: 'Failed to proxy plans' });
+  }
+});
+
+router.get('/subscriptions/tenant/:tenantId', async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    const adminApiUrl = SUBSCRIPTION_CONSTANTS.ADMIN_API_URL;
+    const response = await axios.get(`${adminApiUrl}/api/subscriptions/tenant/${tenantId}`);
+    res.json(response.data);
+  } catch (error: any) {
+    console.error('Proxy subscription error:', error?.response?.data || error);
+    res.status(error?.response?.status || 500).json(error?.response?.data || { success: false, error: 'Failed to proxy subscription' });
+  }
+});
+
 export default router;

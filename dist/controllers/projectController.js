@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ProjectController = void 0;
 const database_1 = require("@/config/database");
 const dbpool_1 = __importDefault(require("@/config/dbpool"));
+const EntitlementService_1 = require("@/services/EntitlementService");
 const types_1 = require("@/types");
 const rbac_service_1 = require("@/modules/rbac/rbac.service");
 const permissions_1 = require("@/types/permissions");
@@ -267,6 +268,16 @@ class ProjectController {
                     error: "Tenant context and authentication required",
                 });
                 return;
+            }
+            try {
+                await EntitlementService_1.entitlementService.checkLimit(req.tenantId, 'projects');
+            }
+            catch (err) {
+                if (err instanceof EntitlementService_1.EntitlementError) {
+                    res.status(403).json({ success: false, error: err.message, details: { current: err.current, allowed: err.allowed } });
+                    return;
+                }
+                throw err;
             }
             const { name, code, description, status = "ACTIVE", startDate, endDate, projectManagerId, teamMemberIds = [], repositories = [], workflowTemplate = [], defaultPriority = "MEDIUM", } = req.body;
             // Validate required fields
@@ -1011,11 +1022,51 @@ class ProjectController {
                 });
                 return;
             }
+            const { page, limit, search } = req.query;
+            const where = {
+                tenantId: req.tenantId,
+                status: "DELETED",
+            };
+            if (search) {
+                const q = String(search).trim();
+                where.OR = [
+                    { name: { contains: q, mode: "insensitive" } },
+                    { code: { contains: q, mode: "insensitive" } },
+                ];
+            }
+            if (page && limit) {
+                const p = Number(page);
+                const l = Number(limit);
+                const skip = (p - 1) * l;
+                const [projects, total] = await Promise.all([
+                    database_1.prisma.project.findMany({
+                        where,
+                        include: {
+                            projectManager: {
+                                select: { id: true, name: true, avatarUrl: true },
+                            },
+                        },
+                        orderBy: { updatedAt: "desc" },
+                        skip,
+                        take: l,
+                    }),
+                    database_1.prisma.project.count({ where }),
+                ]);
+                res.status(200).json({
+                    success: true,
+                    data: projects,
+                    pagination: {
+                        total,
+                        page: p,
+                        limit: l,
+                        pages: Math.ceil(total / l),
+                    }
+                });
+                return;
+            }
+            // Fallback for non-paginated requests
             const projects = await database_1.prisma.project.findMany({
-                where: {
-                    tenantId: req.tenantId,
-                    status: "DELETED"
-                },
+                where,
                 include: {
                     projectManager: {
                         select: { id: true, name: true, avatarUrl: true },
@@ -1330,12 +1381,13 @@ class ProjectController {
             const userId = req.user.id;
             const userRole = req.user.role;
             const tenantId = req.tenantId;
+            const explicitOnly = req.query.explicitOnly === 'true';
             const hasManagePermission = await rbac_service_1.RBACService.hasPermission(userId, tenantId, permissions_1.Permissions.PROJECT_MANAGE, userRole);
             const whereClause = {
                 tenantId,
                 status: { notIn: ["ARCHIVED", "DELETED", "archived", "deleted"] },
             };
-            if (!hasManagePermission) {
+            if (explicitOnly || !hasManagePermission) {
                 whereClause.OR = [
                     { projectManagerId: userId },
                     { members: { some: { userId } } },
@@ -1553,6 +1605,7 @@ class ProjectController {
                             name: true,
                             workEmail: true,
                             position: true,
+                            avatarUrl: true,
                         },
                     },
                     members: {
@@ -1563,6 +1616,7 @@ class ProjectController {
                                     name: true,
                                     workEmail: true,
                                     position: true,
+                                    avatarUrl: true,
                                 },
                             },
                         },
@@ -1579,6 +1633,7 @@ class ProjectController {
                     label: project.projectManager.name,
                     position: project.projectManager.position?.title || "N/A",
                     workEmail: project.projectManager.workEmail,
+                    avatarUrl: project.projectManager.avatarUrl,
                     isProjectManager: true,
                 },
                 ...project.members.map((member) => ({
@@ -1586,6 +1641,7 @@ class ProjectController {
                     label: member.user.name,
                     position: member.user.position?.title || "N/A",
                     workEmail: member.user.workEmail,
+                    avatarUrl: member.user.avatarUrl,
                     isProjectManager: false,
                 })),
             ];

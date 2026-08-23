@@ -1,3 +1,5 @@
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { AIResponse } from "../ai/interfaces/AIResponse";
 import { getAIProviderForTenant } from "./ai/resolver";
 import dotenv from "dotenv";
 
@@ -19,9 +21,9 @@ export class MailAiService {
     subject?: string;
     body: string;
     context?: string;
-  }, tenantId?: string): Promise<string> {
+  }, tenantId?: string): Promise<AIResponse<string>> {
     const body = (params.body || "").trim();
-    if (!body) return "";
+    if (!body) return { data: "", provider: "mock", model: "mock", usage: { promptTokens: 0, completionTokens: 0 }, metadata: {} };
 
     const prompt = `
 You are an expert business writing assistant helping a sales/account manager
@@ -47,18 +49,26 @@ Return ONLY the rewritten HTML.
 `.trim();
 
     const provider = await getAIProviderForTenant(tenantId);
-    const raw = (await provider.generateText(prompt)) || "";
+    const res = await provider.generateText(prompt);
+    const raw = res.text || "";
     const cleaned = stripCodeFences(raw);
-    return cleaned || body;
+    
+    return {
+        data: cleaned || body,
+        provider: provider.name,
+        model: res.model,
+        usage: res.usage,
+        metadata: {}
+    };
   }
 
   /**
    * Light-touch grammar/spelling correction. Preserves HTML structure
    * and the author's voice — no rewriting, no expansion.
    */
-  static async correctGrammar(body: string, tenantId?: string): Promise<string> {
+  static async correctGrammar(body: string, tenantId?: string): Promise<AIResponse<string>> {
     const input = (body || "").trim();
-    if (!input) return "";
+    if (!input) return { data: "", provider: "mock", model: "mock", usage: { promptTokens: 0, completionTokens: 0 }, metadata: {} };
 
     const prompt = `
 You are a light-touch copy editor. Make ONLY minimal changes to the HTML email below:
@@ -75,8 +85,16 @@ Return ONLY the corrected HTML.
 `.trim();
 
     const provider = await getAIProviderForTenant(tenantId);
-    const raw = (await provider.generateText(prompt)) || "";
+    const res = await provider.generateText(prompt);
+    const raw = res.text || "";
     const cleaned = stripCodeFences(raw);
-    return cleaned || input;
+
+    return {
+        data: cleaned || input,
+        provider: provider.name,
+        model: res.model,
+        usage: res.usage,
+        metadata: {}
+    };
   }
 }

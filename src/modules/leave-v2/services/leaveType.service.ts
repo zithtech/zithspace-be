@@ -32,9 +32,23 @@ export async function createLeaveType(
 
 export async function listLeaveTypes(
   actor: Actor,
-  opts: { includeInactive?: boolean } = {}
-): Promise<LeaveType[]> {
-  return withTenant(actor.tenantId, (client) => repo.findAll(client, opts));
+  opts: { includeInactive?: boolean; search?: string; unit?: string; paid?: string; status?: string; limit?: number; offset?: number } = {}
+) {
+  return withTenant(actor.tenantId, async (client) => {
+    const { data, total } = await repo.findAll(client, opts);
+    
+    // For stats, we fetch everything (respecting includeInactive, but no other filters) to compute global stats
+    const allData = (await repo.findAll(client, { includeInactive: true })).data;
+    
+    const stats = {
+      total: allData.length,
+      active: allData.filter((r) => r.isActive).length,
+      paid: allData.filter((r) => r.isPaid).length,
+      approval: allData.filter((r) => r.requiresApproval).length,
+    };
+    
+    return { data, total, stats };
+  });
 }
 
 export async function getLeaveType(actor: Actor, id: string): Promise<LeaveType> {

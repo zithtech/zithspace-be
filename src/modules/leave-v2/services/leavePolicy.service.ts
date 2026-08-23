@@ -96,9 +96,29 @@ export async function updatePolicy(
 
 export async function listPolicies(
   actor: Actor,
-  opts: { includeInactive?: boolean } = {}
-): Promise<LeavePolicyListItem[]> {
-  return withTenant(actor.tenantId, (client) => repo.listPolicies(client, opts));
+  opts: {
+    includeInactive?: boolean;
+    search?: string;
+    status?: string;
+    limit?: number;
+    offset?: number;
+  } = {}
+) {
+  return withTenant(actor.tenantId, async (client) => {
+    const { data, total } = await repo.listPolicies(client, opts);
+    
+    // For stats, fetch everything (respecting includeInactive, but no other filters) to compute global stats
+    const allData = (await repo.listPolicies(client, { includeInactive: true })).data;
+    
+    const stats = {
+      total: allData.length,
+      active: allData.filter((r) => r.isActive).length,
+      allocations: allData.reduce((s, r) => s + r.lineCount, 0),
+      targets: allData.reduce((s, r) => s + r.assignmentCount, 0),
+    };
+    
+    return { data, total, stats };
+  });
 }
 
 export async function getPolicy(actor: Actor, id: string): Promise<LeavePolicyDetail> {

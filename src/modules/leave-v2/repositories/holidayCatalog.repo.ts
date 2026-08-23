@@ -43,12 +43,49 @@ export async function countries(client: TenantClient): Promise<string[]> {
   return rows.map((r) => r.country);
 }
 
-export async function listByCountry(client: TenantClient, country: string): Promise<CatalogHoliday[]> {
-  const { rows } = await client.query(
-    `SELECT ${COLS} FROM lv2_holiday_catalog WHERE country = $1 ORDER BY from_date ASC`,
-    [country]
-  );
-  return rows.map(mapRow);
+export async function listByCountry(
+  client: TenantClient,
+  country: string,
+  opts: { search?: string; type?: string; limit?: number; offset?: number } = {}
+): Promise<{ data: CatalogHoliday[]; total: number }> {
+  const conditions = ['country = $1'];
+  const params: any[] = [country];
+  
+  if (opts.search) {
+    params.push(`%${opts.search}%`);
+    conditions.push(`name ILIKE $${params.length}`);
+  }
+  
+  if (opts.type) {
+    if (opts.type === 'National') {
+      params.push('ALL');
+      conditions.push(`type = $${params.length}`);
+    } else {
+      params.push(opts.type);
+      conditions.push(`type = $${params.length}`);
+    }
+  }
+  
+  const where = `WHERE ${conditions.join(' AND ')}`;
+  
+  // Get total count
+  const countRes = await client.query(`SELECT COUNT(*) FROM lv2_holiday_catalog ${where}`, params);
+  const total = parseInt(countRes.rows[0].count, 10);
+  
+  // Build main query
+  let sql = `SELECT ${COLS} FROM lv2_holiday_catalog ${where} ORDER BY from_date ASC`;
+  
+  if (opts.limit !== undefined) {
+    params.push(opts.limit);
+    sql += ` LIMIT $${params.length}`;
+  }
+  if (opts.offset !== undefined) {
+    params.push(opts.offset);
+    sql += ` OFFSET $${params.length}`;
+  }
+  
+  const { rows } = await client.query(sql, params);
+  return { data: rows.map(mapRow), total };
 }
 
 export async function getByIds(client: TenantClient, ids: string[]): Promise<CatalogHoliday[]> {

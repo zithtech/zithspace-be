@@ -23,6 +23,7 @@ import {
   Action,
   EntityType,
 } from "@/utils/transactionHistory";
+import { entitlementService, EntitlementError } from "@/services/EntitlementService";
 
 export class UserController {
   /**
@@ -383,6 +384,16 @@ export class UserController {
       }
 
       const userData: any = req.body;
+
+      try {
+        await entitlementService.checkLimit(req.tenantId, 'members');
+      } catch (err) {
+        if (err instanceof EntitlementError) {
+          res.status(403).json({ success: false, error: err.message, details: { current: err.current, allowed: err.allowed } });
+          return;
+        }
+        throw err;
+      }
 
       // Validate required fields
       if (
@@ -897,8 +908,7 @@ export class UserController {
 
       // Ensure deleted_members lookup table exists (lazy init)
       await DeletedMemberModel.ensureTable();
-
-      const { search, page = 1, limit = 100 } = req.query;
+      const { search, page = 1, limit = 100, role, position, reportsTo } = req.query;
 
       const whereClauses: string[] = ['u.tenant_id = $1', 'u.is_active = false', 'u.id IN (SELECT user_id FROM deleted_members)'];
       const values: any[] = [req.tenantId];
@@ -908,6 +918,24 @@ export class UserController {
         paramCount++;
         whereClauses.push(`(u.name ILIKE $${paramCount} OR u.work_email ILIKE $${paramCount})`);
         values.push(`%${search}%`);
+      }
+
+      if (role && role !== 'all') {
+        paramCount++;
+        whereClauses.push(`u.role = $${paramCount}`);
+        values.push(role);
+      }
+
+      if (position && position !== 'all') {
+        paramCount++;
+        whereClauses.push(`(SELECT p.title FROM positions p WHERE p.id = u.position_id) = $${paramCount}`);
+        values.push(position);
+      }
+
+      if (reportsTo && reportsTo !== 'all') {
+        paramCount++;
+        whereClauses.push(`u.reports_to_id = $${paramCount}`);
+        values.push(reportsTo);
       }
 
       const skip = (Number(page) - 1) * Number(limit);

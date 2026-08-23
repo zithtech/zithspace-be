@@ -24,7 +24,7 @@ export const getTestSuites = async (req: Request, res: Response) => {
     const tenantId = (req as any).user?.tenantId;
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
     
-    const { module_id, parent_test_case_id, parent_id, search, limit, page = '1', pageSize = '10', coverageFilter } = req.query;
+    const { module_id, parent_test_case_id, parent_id, search, limit, page = '1', pageSize = '10', coverageFilter, project_id, allowed_projects } = req.query;
     const parentId = parent_test_case_id || parent_id;
 
     const parsedLimit = limit ? parseInt(limit as string, 10) : parseInt(pageSize as string, 10) || 10;
@@ -70,13 +70,36 @@ export const getTestSuites = async (req: Request, res: Response) => {
           queryStr += ` AND ${caseCountSubquery} = 0`;
         }
       }
+      if (project_id) {
+        p.push(project_id);
+        queryStr += ` AND ptc.project_id::text = $${p.length}::text`;
+      }
+      if (allowed_projects) {
+        const ids = (allowed_projects as string)
+          .split(',')
+          .map(n => n.trim())
+          .filter(Boolean);
+        if (ids.length > 0) {
+          let idx = p.length + 1;
+          const placeholders = ids.map(() => `$${idx++}::text`);
+          p.push(...ids);
+          const userId = (req as any).user?.id || null;
+          p.push(userId);
+          queryStr += ` AND (ptc.project_id IS NULL OR ptc.project_id = '' OR ptc.project_id::text IN (${placeholders.join(',')}) OR ts.created_by::text = $${p.length}::text)`;
+        }
+      }
       return queryStr;
     };
 
     query = applyFilters(query, params);
     
     let countQuery = `
-      SELECT COUNT(*) FROM qa_test_suites ts
+      SELECT 
+        COUNT(*) as count,
+        SUM((SELECT COUNT(*) FROM qa_test_suite_cases tsc WHERE tsc.test_suite_id::text = ts.id::text)) as total_cases,
+        COUNT(DISTINCT ts.parent_test_case_id) as unique_scenarios,
+        SUM(CASE WHEN (SELECT COUNT(*) FROM qa_test_suite_cases tsc WHERE tsc.test_suite_id::text = ts.id::text) = 0 THEN 1 ELSE 0 END) as empty_suites
+      FROM qa_test_suites ts
       LEFT JOIN qa_parent_test_cases ptc ON ts.parent_test_case_id::text = ptc.id::text
       WHERE ts.tenant_id = $1
     `;
@@ -93,11 +116,19 @@ export const getTestSuites = async (req: Request, res: Response) => {
       pool.query(query, params),
       pool.query(countQuery, countParams)
     ]);
-    const total = parseInt(countRows[0].count, 10);
+    const total = parseInt(countRows[0].count || '0', 10);
+    const totalLinkedCases = parseInt(countRows[0].total_cases || '0', 10);
+    const uniqueScenarios = parseInt(countRows[0].unique_scenarios || '0', 10);
+    const emptySuites = parseInt(countRows[0].empty_suites || '0', 10);
 
     res.status(200).json({ 
       success: true, 
       data: rows,
+      stats: {
+        totalLinkedCases,
+        uniqueScenarios,
+        emptySuites
+      },
       pagination: {
         total,
         page: parsedPage,
@@ -396,7 +427,7 @@ Return ONLY plain text — no markdown, no headings, no preamble.
       maxOutputTokens: 1024,
     });
 
-    const cleaned = (raw || '')
+    const cleaned = (raw?.text || '')
       .replace(/^```[a-zA-Z]*\s*/i, '')
       .replace(/\s*```$/i, '')
       .replace(/<[^>]*>/g, '')

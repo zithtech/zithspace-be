@@ -12,6 +12,7 @@ const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const r2Client_1 = require("@/utils/r2Client");
 const emailService_1 = require("@/utils/emailService");
 const transactionHistory_1 = require("@/utils/transactionHistory");
+const EntitlementService_1 = require("@/services/EntitlementService");
 class UserController {
     /**
      * Get all members/users with filtering and pagination (tenant-aware)
@@ -325,6 +326,16 @@ class UserController {
                 return;
             }
             const userData = req.body;
+            try {
+                await EntitlementService_1.entitlementService.checkLimit(req.tenantId, 'members');
+            }
+            catch (err) {
+                if (err instanceof EntitlementService_1.EntitlementError) {
+                    res.status(403).json({ success: false, error: err.message, details: { current: err.current, allowed: err.allowed } });
+                    return;
+                }
+                throw err;
+            }
             // Validate required fields
             if (!userData.name ||
                 !userData.workEmail ||
@@ -757,7 +768,7 @@ class UserController {
             }
             // Ensure deleted_members lookup table exists (lazy init)
             await deletedMember_model_1.DeletedMemberModel.ensureTable();
-            const { search, page = 1, limit = 100 } = req.query;
+            const { search, page = 1, limit = 100, role, position, reportsTo } = req.query;
             const whereClauses = ['u.tenant_id = $1', 'u.is_active = false', 'u.id IN (SELECT user_id FROM deleted_members)'];
             const values = [req.tenantId];
             let paramCount = 1;
@@ -765,6 +776,21 @@ class UserController {
                 paramCount++;
                 whereClauses.push(`(u.name ILIKE $${paramCount} OR u.work_email ILIKE $${paramCount})`);
                 values.push(`%${search}%`);
+            }
+            if (role && role !== 'all') {
+                paramCount++;
+                whereClauses.push(`u.role = $${paramCount}`);
+                values.push(role);
+            }
+            if (position && position !== 'all') {
+                paramCount++;
+                whereClauses.push(`(SELECT p.title FROM positions p WHERE p.id = u.position_id) = $${paramCount}`);
+                values.push(position);
+            }
+            if (reportsTo && reportsTo !== 'all') {
+                paramCount++;
+                whereClauses.push(`u.reports_to_id = $${paramCount}`);
+                values.push(reportsTo);
             }
             const skip = (Number(page) - 1) * Number(limit);
             paramCount++;

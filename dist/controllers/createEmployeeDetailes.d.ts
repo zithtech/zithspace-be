@@ -54,66 +54,79 @@ export declare function getPersonalDetails(req: AuthRequest, employeeId: string)
     employee_code: any;
     status: any;
 }>;
-export declare function getAllEmployees(req: AuthRequest): Promise<{
-    id: any;
-    firstName: any;
-    lastName: any;
-    name: string;
-    gender: any;
-    dob: any;
-    profile_pic: any;
-    bloodGroup: any;
-    mobile: any;
-    workEmail: any;
-    personalEmail: any;
-    departmentId: any;
-    departmentName: any;
-    positionTitle: any;
-    positionId: any;
-    reportsToId: string;
-    address: {
-        current: {
-            c_flat: any;
-            c_area: any;
-            c_city: any;
-            c_state: any;
-            c_country: any;
-            c_pincode: any;
-        } | {
-            c_flat?: undefined;
-            c_area?: undefined;
-            c_city?: undefined;
-            c_state?: undefined;
-            c_country?: undefined;
-            c_pincode?: undefined;
+export declare function getAllEmployees(req: AuthRequest, opts?: {
+    search?: string;
+    limit?: number;
+    offset?: number;
+    status?: string;
+}): Promise<{
+    data: {
+        id: any;
+        firstName: any;
+        lastName: any;
+        name: string;
+        gender: any;
+        dob: any;
+        profile_pic: any;
+        bloodGroup: any;
+        mobile: any;
+        workEmail: any;
+        personalEmail: any;
+        departmentId: any;
+        departmentName: any;
+        positionTitle: any;
+        positionId: any;
+        reportsToId: string;
+        address: {
+            current: {
+                c_flat: any;
+                c_area: any;
+                c_city: any;
+                c_state: any;
+                c_country: any;
+                c_pincode: any;
+            } | {
+                c_flat?: undefined;
+                c_area?: undefined;
+                c_city?: undefined;
+                c_state?: undefined;
+                c_country?: undefined;
+                c_pincode?: undefined;
+            };
+            permanent: {
+                p_flat: any;
+                p_area: any;
+                p_city: any;
+                p_state: any;
+                p_country: any;
+                p_pincode: any;
+            } | {
+                p_flat?: undefined;
+                p_area?: undefined;
+                p_city?: undefined;
+                p_state?: undefined;
+                p_country?: undefined;
+                p_pincode?: undefined;
+            };
         };
-        permanent: {
-            p_flat: any;
-            p_area: any;
-            p_city: any;
-            p_state: any;
-            p_country: any;
-            p_pincode: any;
-        } | {
-            p_flat?: undefined;
-            p_area?: undefined;
-            p_city?: undefined;
-            p_state?: undefined;
-            p_country?: undefined;
-            p_pincode?: undefined;
-        };
+        relationship: any;
+        relationName: any;
+        relationMobile: any;
+        aadhaar: string;
+        pan: string;
+        passport: string;
+        employeeCode: any;
+        employee_code: any;
+        status: any;
+        created_at: any;
+    }[];
+    total: number;
+    stats: {
+        total: number;
+        active: number;
+        inactive: number;
     };
-    relationship: any;
-    relationName: any;
-    relationMobile: any;
-    aadhaar: string;
-    pan: string;
-    passport: string;
-    employeeCode: any;
-    employee_code: any;
-    status: any;
-    created_at: any;
-}[]>;
+}>;
 export declare function getUpcomingBirthdays(req: AuthRequest): Promise<{
     id: any;
     firstName: any;

@@ -4,6 +4,9 @@ import { LeadModel } from "@/models/Lead.model";
 import { BidIQModel } from "../models/BidIQ.model";
 import { AIService } from "../services/aiService";
 import { LeadActivityLogModel } from "../models/LeadActivityLog.model";
+import { entitlementService, EntitlementError } from "../services/EntitlementService";
+import { AIPricingEngine } from "../ai/pricing/AIPricingEngine";
+import { AIFeature } from "../ai/types/AIFeature";
 import { recordTransaction, Section, Module, Page, Action, EntityType } from "../utils/transactionHistory";
 
 export class BidIQController {
@@ -28,10 +31,26 @@ export class BidIQController {
           return res.status(200).json(cachedData);
       }
 
-      // 2. Perform fresh AI analysis
-      const intelligence = await AIService.analyzeLead(lead, req.tenantId);
+      // 2. Check AI limits
+      try {
+        await entitlementService.checkLimit(tenantId, 'ai_credits_month');
+      } catch (err) {
+        if (err instanceof EntitlementError) {
+          return res.status(403).json(err);
+        }
+        throw err;
+      }
 
-      // 3. Store in the NEW separate table only
+      // 3. Perform fresh AI analysis
+      const aiResponse = await AIService.analyzeLead(lead, req.tenantId);
+      const intelligence = aiResponse.data;
+
+      const pricingResult = await AIPricingEngine.calculate(aiResponse);
+
+      // 4. Increment AI usage on success
+      await entitlementService.incrementUsage(tenantId, 'ai_credits_month', AIFeature.BID_IQ_ANALYSIS, pricingResult);
+
+      // 5. Store in the NEW separate table only
       const bidiqResult = await BidIQModel.upsert({
         lead_id: id,
         tenant_id: tenantId,

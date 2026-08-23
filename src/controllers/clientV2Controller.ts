@@ -14,6 +14,7 @@ import {
     UpdateEmployeeClientAllocationV2Data
 } from '@/types';
 import { uploadClientDocumentToR2, deleteFileFromR2, generatePresignedUrl, getFileBufferFromR2 } from '@/utils/r2Client';
+import { entitlementService, EntitlementError } from '@/services/EntitlementService';
 import { socketService } from '@/services/socketService';
 import {
     recordTransaction,
@@ -715,6 +716,9 @@ export class ClientV2Controller {
                 return;
             }
 
+            // Enforce Clients limit
+            await entitlementService.checkLimit(req.tenantId, 'clients');
+
             const validationError = validateGstVatTaxId(clientData.gstVatTaxId, clientData.country);
             if (validationError) { res.status(400).json({ success: false, error: validationError } as ApiResponse); return; }
 
@@ -877,6 +881,10 @@ export class ClientV2Controller {
             res.status(201).json({ success: true, data: newClient, message: 'Client created successfully' } as ApiResponse);
         } catch (error: any) {
             console.error('Create ClientV2 error:', error);
+            if (error instanceof EntitlementError || error.name === 'EntitlementError') {
+                res.status(403).json({ success: false, error: error.message, details: { current: error.current, allowed: error.allowed } } as any);
+                return;
+            }
             if (error.code === '23505') {
                 res.status(409).json({ success: false, error: 'A client with this company name or client code already exists' } as ApiResponse);
                 return;

@@ -58,6 +58,8 @@ import sprintReportRoutes from "@/routes/sprintReport";
 import sprintReportsRoutes from "@/routes/sprintReports";
 import fixedHolidayRoutes from "@/routes/fixedHolidays";
 import documentHubRoutes from "@/routes/documenthub";
+import documentHubUploadRoutes from "@/routes/documentHubUploads";
+import notionAuthRoutes from "@/routes/notionAuthRoutes";
 import lettersRoutes from "@/routes/letters.routes";
 import aiSettingsRoutes from "@/routes/aiSettings";
 import channelRoutes from "@/routes/channels";
@@ -106,6 +108,7 @@ import departmentRoutes from "@/routes/departmentRoutes";
 import subDepartmentRoutes from "@/routes/subDepartmentRoutes";
 import positionRoutes from "@/routes/positionRoutes";
 import calendarRoutes from "@/routes/calendar";
+import linearRoutes from "@/routes/linearRoutes";
 import mailRoutes from "@/routes/mail";
 import notificationRoutes from "@/routes/notifications"; // Web push notification routes
 import mailConfigurationRoutes from "@/routes/mailConfigurationRoutes";
@@ -118,6 +121,7 @@ import leaveV2Routes from "@/modules/leave-v2/routes";
 import performanceReportRoutes from "@/modules/performance-report/routes";
 import payrollV2Routes from "@/modules/payroll/routes";
 import reimbursementV2Routes from "@/modules/reimbursement-v2/routes";
+import { metadataRoutes } from "@/modules/metadata";
 import openingManagementV2Routes from "@/modules/opening-management/routes";
 import hotspotRoutes from "@/modules/hotspot/routes";
 import { pipelineRouter } from "@/modules/pipeline/routes";
@@ -334,13 +338,20 @@ app.get("/api/direct-test", (req, res) => {
 });
 app.get("/api/debug-ping-unique", (req, res) => res.json({ success: true, message: "Debug route is active" }));
 
+// System/Metadata routes (must be before wildcard /api routers)
+app.use("/api/system", metadataRoutes);
+
+import { paymentRoutes } from "./modules/payments";
+
 app.use("/api", proxyRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/payments", paymentRoutes);
 app.use("/api/generate", generateRoutes);
 app.use("/api/projects", projectRoutes);
 app.use("/api/tenants", tenantRoutes);
 app.use("/api/landing", landingRoutes);
 app.use("/api/calendar", calendarRoutes);
+app.use("/api/integrations/linear", linearRoutes);
 app.use("/api/squads", squadRoutes);
 app.use("/api/public/tickets", publicTicketRoutes);
 app.use("/api/public/document", publicDocumentRoutes);
@@ -407,10 +418,13 @@ app.use("/api", skillExperienceRoutes);
 
 app.use("/api/departments", departmentRoutes);
 app.use("/api/sub-departments", subDepartmentRoutes);
-app.use("/api/positions", positionRoutes);
-app.use("/api/employment-types", employmentTypeRoutes);
-app.use("/api/documenthub", documentHubRoutes);
-app.use("/api/hrms/letters", lettersRoutes);
+  app.use("/api/positions", positionRoutes);
+  app.use("/api/employment-types", employmentTypeRoutes);
+  app.use("/api/documenthub", documentHubRoutes);
+  app.use("/api/v2/document-hubs", documentHubUploadRoutes);
+  app.use("/api/v2/auth/notion", notionAuthRoutes);
+  app.use("/api/v1/auth/notion", notionAuthRoutes); // Alias for v1
+  app.use("/api/hrms/letters", lettersRoutes);
 app.use("/api/ai", aiSettingsRoutes);
 app.use("/api/channels", channelRoutes);
 app.use("/api/channels/:channelId/messages", messageRoutes);
@@ -616,6 +630,10 @@ const startServer = async () => {
   try {
     // Connect PostgreSQL
     await connectDatabase();
+
+    // Initialize Metadata System Tables (raw-SQL module, idempotent)
+    const { metadataRepository } = require("@/modules/metadata/metadata.repository");
+    await metadataRepository.initializeTables();
 
     // Initialize Tables
     const { BidIQModel } = require("./models/BidIQ.model");

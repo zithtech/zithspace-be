@@ -54,11 +54,30 @@ export async function listEmployeeDocuments(req: AuthRequest, res: Response) {
   try {
     if (!req.user?.id || !req.tenantId) throw new Error("Unauthorized");
 
-    const { employeeId, documentType, status, search } = req.query as Record<string, string>;
+    const { employeeId, documentType, status, search, limit, offset } = req.query as Record<string, string>;
 
-    const result = await withTenant(req.tenantId, async (db) => {
+    const payload = await withTenant(req.tenantId, async (db) => {
       await ensureColumns(db);
 
+      // 1. Global stats
+      const statsRes = await db.query(
+        `SELECT 
+          COUNT(*) as total,
+          SUM(CASE WHEN status = 'uploaded' THEN 1 ELSE 0 END) as uploaded,
+          SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+          SUM(CASE WHEN expiry_date IS NOT NULL AND expiry_date < current_date THEN 1 ELSE 0 END) as expired
+         FROM employee_documents WHERE tenant_id = $1 AND deleted_at IS NULL`,
+        [req.tenantId]
+      );
+      
+      const stats = {
+        total: Number(statsRes.rows[0].total) || 0,
+        uploaded: Number(statsRes.rows[0].uploaded) || 0,
+        pending: Number(statsRes.rows[0].pending) || 0,
+        expired: Number(statsRes.rows[0].expired) || 0,
+      };
+
+      // 2. Build filtered query
       const conditions: string[] = ["ed.deleted_at IS NULL", "ed.tenant_id = $1"];
       const params: any[] = [req.tenantId];
 
@@ -66,11 +85,11 @@ export async function listEmployeeDocuments(req: AuthRequest, res: Response) {
         params.push(employeeId);
         conditions.push(`ed.employee_id = $${params.length}`);
       }
-      if (documentType) {
+      if (documentType && documentType !== 'all') {
         params.push(documentType);
         conditions.push(`ed.document_type = $${params.length}`);
       }
-      if (status) {
+      if (status && status !== 'all') {
         params.push(status);
         conditions.push(`ed.status = $${params.length}`);
       }
@@ -83,8 +102,19 @@ export async function listEmployeeDocuments(req: AuthRequest, res: Response) {
       }
 
       const where = conditions.join(" AND ");
-      const { rows } = await db.query(
-        `SELECT
+
+      // 3. Count total for pagination
+      const countRes = await db.query(
+        `SELECT COUNT(*) FROM employee_documents ed 
+         LEFT JOIN users e ON e.id::text = ed.employee_id::text
+         LEFT JOIN employees emp ON emp.id::text = ed.employee_id::text
+         WHERE ${where}`,
+        params
+      );
+      const total = Number(countRes.rows[0].count) || 0;
+
+      // 4. Fetch page of documents
+      let sql = `SELECT
             ed.*,
             COALESCE(e.name, NULLIF(TRIM(CONCAT(emp.first_name, ' ', emp.last_name)), '')) AS employee_name,
             u.name AS uploaded_by_name
@@ -93,11 +123,21 @@ export async function listEmployeeDocuments(req: AuthRequest, res: Response) {
           LEFT JOIN employees emp ON emp.id::text = ed.employee_id::text
           LEFT JOIN users u ON u.id::text = ed.created_by_id::text
           WHERE ${where}
-          ORDER BY ed.uploaded_at DESC`,
-        params,
-      );
+          ORDER BY ed.uploaded_at DESC`;
+
+      if (typeof limit === 'string') {
+        params.push(parseInt(limit, 10));
+        sql += ` LIMIT $${params.length}`;
+      }
+      if (typeof offset === 'string') {
+        params.push(parseInt(offset, 10));
+        sql += ` OFFSET $${params.length}`;
+      }
+
+      const { rows } = await db.query(sql, params);
       const mapped = rows.map(mapRow);
-      return await Promise.all(mapped.map(async (doc) => {
+      
+      const data = await Promise.all(mapped.map(async (doc) => {
         if (doc.documentUrl) {
           try {
             doc.documentUrl = await generatePresignedUrl(doc.documentUrl, 86400, true);
@@ -107,18 +147,13 @@ export async function listEmployeeDocuments(req: AuthRequest, res: Response) {
         }
         return doc;
       }));
-    });
 
-    // Stats
-    const total = result.length;
-    const uploaded = result.filter((d: any) => d.status === "uploaded").length;
-    const pending = result.filter((d: any) => d.status === "pending").length;
-    const expired = result.filter((d: any) => d.expiryDate && new Date(d.expiryDate) < new Date()).length;
+      return { data, total, stats };
+    });
 
     return res.status(200).json({
       success: true,
-      data: result,
-      stats: { total, uploaded, pending, expired },
+      ...payload,
     });
   } catch (err: any) {
     console.error("listEmployeeDocuments error:", err);

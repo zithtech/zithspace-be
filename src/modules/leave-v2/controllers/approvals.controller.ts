@@ -23,8 +23,38 @@ async function canManageAll(req: AuthRequest): Promise<boolean> {
 }
 
 export const list = handle(async (req: AuthRequest, res: Response) => {
-  ok(res, await service.listApprovals(actorOf(req), await canManageAll(req)));
+  const { page, limit, search, status, userId, fromDate, toDate } = req.query;
+  const pageNum = page ? parseInt(page as string, 10) : undefined;
+  const limitNum = limit ? parseInt(limit as string, 10) : undefined;
+
+  const result = await service.listApprovals(actorOf(req), await canManageAll(req), {
+    page: pageNum,
+    limit: limitNum,
+    search: search as string,
+    status: status as string,
+    userId: userId as string,
+    fromDate: fromDate as string,
+    toDate: toDate as string
+  });
+
+  if (limitNum) {
+    const total = (result as any).total;
+    const data = (result as any).data;
+    res.status(200).json({
+      success: true,
+      data,
+      pagination: {
+        total,
+        page: pageNum || 1,
+        limit: limitNum,
+        pages: Math.ceil(total / limitNum)
+      }
+    });
+  } else {
+    ok(res, (result as any).data);
+  }
 });
+// Trigger restart
 
 export const approve = handle(async (req: AuthRequest, res: Response) => {
   const note = req.body?.note ?? null;

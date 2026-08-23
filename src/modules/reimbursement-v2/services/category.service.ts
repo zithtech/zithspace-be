@@ -40,8 +40,8 @@ export async function createCategory(
 
 export async function listCategories(
   actor: Actor,
-  opts: { includeInactive?: boolean } = {}
-): Promise<ExpenseCategory[]> {
+  opts: { includeInactive?: boolean; page?: number; limit?: number; search?: string } = {}
+): Promise<{ data: ExpenseCategory[]; total: number }> {
   return withTenant(actor.tenantId, (client) => repo.findAll(client, opts));
 }
 

@@ -16,8 +16,14 @@ import {
 } from '@/utils/transactionHistory';
 
 export const listPayable = handle(async (req: AuthRequest, res: Response) => {
-  const claims = await service.listPayable(actorOf(req));
-  ok(res, claims);
+  const page = req.query.page ? Number(req.query.page) : 1;
+  const limit = req.query.limit ? Number(req.query.limit) : 20;
+  const { data, total } = await service.listPayable(actorOf(req), { page, limit });
+  res.json({
+    success: true,
+    data,
+    pagination: { total, page, limit, pages: Math.ceil(total / limit) },
+  });
 });
 
 export const getOne = handle(async (req: AuthRequest, res: Response) => {

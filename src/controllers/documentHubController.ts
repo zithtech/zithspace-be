@@ -12,6 +12,9 @@ import {
 } from "@/types";
 import { socketService } from "@/services/socketService";
 import { generateDocumentDraft, rewriteSelection } from "@/services/aiDocumentService";
+import { entitlementService, EntitlementError } from "@/services/EntitlementService";
+import { AIPricingEngine } from "@/ai/pricing/AIPricingEngine";
+import { AIFeature } from "@/ai/types/AIFeature";
 import puppeteer from "puppeteer";
 import crypto from "crypto";
 import {
@@ -111,14 +114,22 @@ export class DocumentHubController {
         return;
       }
 
-      const { draft, source, fallbackReason } = await generateDocumentDraft(seed, req.tenantId);
+      await entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
+      const aiResponse = await generateDocumentDraft(seed, req.tenantId);
+      const draft = aiResponse.data;
+      const pricingResult = await AIPricingEngine.calculate(aiResponse);
+      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature.DOCUMENT_SUMMARY, pricingResult);
 
       res.status(200).json({
         success: true,
-        data: { ...draft, source, fallbackReason },
+        data: { ...draft, source: aiResponse.provider, fallbackReason: aiResponse.metadata?.finishReason },
         message: "Document draft generated",
       } as ApiResponse);
     } catch (error: any) {
+      if (error instanceof EntitlementError) {
+        res.status(403).json({ success: false, error: 'AI limit reached', details: { current: error.current, allowed: error.allowed } } as ApiResponse);
+        return;
+      }
       console.error("AI generate document error:", error);
       res.status(500).json({
         success: false,
@@ -178,14 +189,22 @@ export class DocumentHubController {
         return;
       }
 
-      const result = await rewriteSelection(cleanText, cleanInstruction, req.tenantId);
+      await entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
+      const aiResponse = await rewriteSelection(cleanText, cleanInstruction, req.tenantId);
+      const result = aiResponse.data;
+      const pricingResult = await AIPricingEngine.calculate(aiResponse);
+      await entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature.DOCUMENT_SUMMARY, pricingResult);
 
       res.status(200).json({
         success: true,
-        data: result,
+        data: { ...result, source: aiResponse.provider, fallbackReason: aiResponse.metadata?.finishReason },
         message: "Selection rewritten",
       } as ApiResponse);
     } catch (error: any) {
+      if (error instanceof EntitlementError) {
+        res.status(403).json({ success: false, error: 'AI limit reached', details: { current: error.current, allowed: error.allowed } } as ApiResponse);
+        return;
+      }
       console.error("AI rewrite selection error:", error);
       res.status(500).json({
         success: false,
@@ -393,10 +412,11 @@ export class DocumentHubController {
         data: documentHub,
       } as ApiResponse);
     } catch (error: any) {
-      console.error("Get document hub error:", error);
+      console.error("Get document hubs error Details:", error);
       res.status(500).json({
         success: false,
-        error: "Failed to get document hub",
+        error: "Failed to get document hubs",
+        details: error.message
       } as ApiResponse);
     }
   }
@@ -1152,37 +1172,69 @@ export class DocumentHubController {
         return;
       }
 
-      // Optional ticketId filter — used by the ticket detail drawer to list
-      // hubs linked to a specific ticket. Trim and validate as UUID-ish so
-      // a typo doesn't drop us into a query that surprisingly returns all rows.
+      const { 
+        ticketId, 
+        page, 
+        limit, 
+        search, 
+        view, 
+        projectId, 
+        userId, 
+        startDate, 
+        endDate 
+      } = req.query;
+
       const ticketIdFilter =
-        typeof req.query.ticketId === "string" && req.query.ticketId.trim()
-          ? req.query.ticketId.trim()
+        typeof ticketId === "string" && ticketId.trim()
+          ? ticketId.trim()
           : undefined;
 
-      // Fetch all accessible document IDs in this tenant for the user
-      const documentHubs = await getAllDocumentHubsModel(
-        req.tenantId,
-        req.user.id,
-        ticketIdFilter
-      );
+      const pageNum = page ? parseInt(page as string, 10) : undefined;
+      const limitNum = limit ? parseInt(limit as string, 10) : undefined;
+
+      const result = await getAllDocumentHubsModel({
+        tenantId: req.tenantId,
+        userId: req.user.id,
+        ticketIdFilter,
+        page: pageNum,
+        limit: limitNum,
+        search: typeof search === "string" ? search : undefined,
+        view: typeof view === "string" ? view : undefined,
+        projectId: typeof projectId === "string" ? projectId : undefined,
+        createdById: typeof userId === "string" ? userId : undefined,
+        startDate: typeof startDate === "string" ? startDate : undefined,
+        endDate: typeof endDate === "string" ? endDate : undefined
+      });
 
       const starredRows = await getDocumentHubStarsModel(req.user.id, req.tenantId);
       const starredSet = new Set(starredRows.map((r: any) => r.hub_id));
-      const enrichedHubs = documentHubs.map((hub) => ({
+      const enrichedHubs = result.data.map((hub: any) => ({
         ...hub,
         isStarred: starredSet.has(hub.id),
       }));
 
-      res.status(200).json({
-        success: true,
-        data: enrichedHubs,
-      } as ApiResponse);
+      if (limitNum) {
+        res.status(200).json({
+          success: true,
+          data: enrichedHubs,
+          pagination: {
+            total: result.total,
+            page: pageNum || 1,
+            limit: limitNum,
+            totalPages: Math.ceil(result.total / limitNum)
+          }
+        });
+      } else {
+        res.status(200).json({
+          success: true,
+          data: enrichedHubs,
+        });
+      }
     } catch (error: any) {
-      console.error("Get document hubs error:", error);
+      console.error("Get all document hubs error:", error);
       res.status(500).json({
         success: false,
-        error: "Failed to get document hubs",
+        error: "Failed to fetch document hubs",
       } as ApiResponse);
     }
   }
@@ -1223,7 +1275,7 @@ export class DocumentHubController {
         try {
           await client.query('BEGIN');
           await client.query('DELETE FROM document_hub_stars WHERE hub_id = $1', [id]);
-          await client.query('DELETE FROM document_tree WHERE "documentHubId" = $1', [id]);
+          await client.query('DELETE FROM documenttree WHERE "documentHubId" = $1', [id]);
           await client.query('DELETE FROM document_history WHERE "documentId" IN (SELECT id FROM documents WHERE "documentHubId" = $1)', [id]);
           await client.query('DELETE FROM documents WHERE "documentHubId" = $1', [id]);
           await client.query('DELETE FROM document_hub WHERE id = $1', [id]);
@@ -1451,7 +1503,7 @@ export class DocumentHubController {
       const isPermanent = req.query.permanent === 'true';
 
       const nodeQuery = await pool.query(
-        `SELECT dt.*, dh.name as hub_name FROM document_tree dt JOIN document_hub dh ON dt."documentHubId" = dh.id WHERE dt.id = $1 AND dt."tenantId" = $2` + (isPermanent ? '' : ' AND dt.is_deleted = false'),
+        `SELECT dt.*, dh.name as hub_name FROM documenttree dt JOIN document_hub dh ON dt."documentHubId" = dh.id WHERE dt.id = $1 AND dt."tenantId" = $2` + (isPermanent ? '' : ' AND dt.is_deleted = false'),
         [id, req.tenantId]
       );
 
@@ -1552,7 +1604,7 @@ export class DocumentHubController {
   ): Promise<void> {
     // 1. Get all children of this node
     const childrenQuery = await tx.query(
-      `SELECT id, type, "documentId" FROM document_tree WHERE "parentId" = $1 AND "tenantId" = $2`,
+      `SELECT id, type, "documentId" FROM documenttree WHERE "parentId" = $1 AND "tenantId" = $2`,
       [nodeId, tenantId]
     );
 
@@ -1570,7 +1622,7 @@ export class DocumentHubController {
     }
 
     if (isPermanent) {
-      await tx.query(`DELETE FROM document_tree WHERE id = $1`, [nodeId]);
+      await tx.query(`DELETE FROM documenttree WHERE id = $1`, [nodeId]);
       if (nodeType === "file" && documentId) {
         try {
           await tx.query(`DELETE FROM document_history WHERE "documentId" = $1`, [documentId]);
@@ -1582,7 +1634,7 @@ export class DocumentHubController {
     } else {
       // 3. Mark current node as deleted using updateMany for robustness
       await tx.query(
-        `UPDATE document_tree SET is_deleted = true, deleted_at = NOW(), deleted_by_id = $1 WHERE id = $2 AND "tenantId" = $3`,
+        `UPDATE documenttree SET is_deleted = true, deleted_at = NOW(), deleted_by_id = $1 WHERE id = $2 AND "tenantId" = $3`,
         [deletedById, nodeId, tenantId]
       );
 
@@ -1648,7 +1700,7 @@ export class DocumentHubController {
         const client = await pool.connect();
         try {
           await client.query('BEGIN');
-          await client.query(`DELETE FROM document_tree WHERE "documentId" = $1`, [id]);
+          await client.query(`DELETE FROM documenttree WHERE "documentId" = $1`, [id]);
           await client.query(`DELETE FROM document_history WHERE "documentId" = $1`, [id]);
           await client.query(`DELETE FROM documents WHERE id = $1`, [id]);
           await client.query('COMMIT');
@@ -1701,7 +1753,7 @@ export class DocumentHubController {
 
       // Also soft delete associated tree node if it exists
       await pool.query(
-        `UPDATE document_tree SET is_deleted = true, deleted_at = NOW(), deleted_by_id = $1 WHERE "documentId" = $2 AND "tenantId" = $3 AND is_deleted = false`,
+        `UPDATE documenttree SET is_deleted = true, deleted_at = NOW(), deleted_by_id = $1 WHERE "documentId" = $2 AND "tenantId" = $3 AND is_deleted = false`,
         [req.user.id, id, req.tenantId]
       );
 
@@ -1795,7 +1847,7 @@ export class DocumentHubController {
           SELECT dt.*,
             json_build_object('id', u.id, 'name', u.name, 'avatarUrl', u.avatar_url) as "deletedBy",
             json_build_object('id', dh.id, 'name', dh.name) as "documentHub"
-          FROM document_tree dt
+          FROM documenttree dt
           LEFT JOIN users u ON dt.deleted_by_id = u.id
           LEFT JOIN document_hub dh ON dt."documentHubId" = dh.id
           WHERE dt."tenantId" = $1 AND dt.is_deleted = true
@@ -1969,7 +2021,7 @@ export class DocumentHubController {
 
       // Also restore associated tree node if it exists
       await pool.query(
-        `UPDATE document_tree SET is_deleted = false, deleted_at = NULL, deleted_by_id = NULL WHERE "documentId" = $1 AND "tenantId" = $2 AND is_deleted = true`,
+        `UPDATE documenttree SET is_deleted = false, deleted_at = NULL, deleted_by_id = NULL WHERE "documentId" = $1 AND "tenantId" = $2 AND is_deleted = true`,
         [id, req.tenantId]
       );
 
@@ -2043,7 +2095,7 @@ export class DocumentHubController {
       }
 
       const nodeQuery = await pool.query(
-        `SELECT * FROM document_tree WHERE id = $1 AND "tenantId" = $2 AND is_deleted = true`,
+        `SELECT * FROM documenttree WHERE id = $1 AND "tenantId" = $2 AND is_deleted = true`,
         [id, req.tenantId]
       );
 
@@ -2132,7 +2184,7 @@ export class DocumentHubController {
   ): Promise<void> {
     // 1. Get the current node to know its type and documentId
     const nodeQuery = await tx.query(
-      `SELECT type, "documentId" FROM document_tree WHERE id = $1`,
+      `SELECT type, "documentId" FROM documenttree WHERE id = $1`,
       [nodeId]
     );
 
@@ -2141,7 +2193,7 @@ export class DocumentHubController {
 
     // 2. Restore current node and update its hub and parent
     await tx.query(
-      `UPDATE document_tree SET is_deleted = false, deleted_at = NULL, deleted_by_id = NULL, "documentHubId" = $1, "parentId" = $2 WHERE id = $3`,
+      `UPDATE documenttree SET is_deleted = false, deleted_at = NULL, deleted_by_id = NULL, "documentHubId" = $1, "parentId" = $2 WHERE id = $3`,
       [documentHubId, parentId, nodeId]
     );
 
@@ -2155,7 +2207,7 @@ export class DocumentHubController {
 
     // 4. Find all deleted children that WERE deleted (presumably as part of this branch)
     const childrenQuery = await tx.query(
-      `SELECT id FROM document_tree WHERE "parentId" = $1 AND "tenantId" = $2 AND is_deleted = true`,
+      `SELECT id FROM documenttree WHERE "parentId" = $1 AND "tenantId" = $2 AND is_deleted = true`,
       [nodeId, tenantId]
     );
 
@@ -2600,7 +2652,7 @@ export class DocumentHubController {
       const hub = hubQuery.rows[0];
 
         const treeNodesQuery = await pool.query(`
-          SELECT dt.* FROM document_tree dt
+          SELECT dt.* FROM documenttree dt
           LEFT JOIN documents d ON dt."documentId" = d.id
           WHERE dt."documentHubId" = $1 AND dt.is_deleted = false
             AND (dt.type != 'file' OR d.visibility = 'public')

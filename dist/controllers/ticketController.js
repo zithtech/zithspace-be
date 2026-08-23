@@ -14,6 +14,9 @@ const htmlSanitizer_1 = require("@/utils/htmlSanitizer");
 const socketService_1 = require("@/services/socketService");
 const cacheService_1 = __importDefault(require("@/utils/cacheService"));
 const aiTicketService_1 = require("@/services/aiTicketService");
+const EntitlementService_1 = require("@/services/EntitlementService");
+const AIPricingEngine_1 = require("@/ai/pricing/AIPricingEngine");
+const AIFeature_1 = require("@/ai/types/AIFeature");
 const transactionHistory_1 = require("@/utils/transactionHistory");
 const crypto_1 = require("crypto");
 class TicketController {
@@ -360,6 +363,18 @@ class TicketController {
                 if (!assignee) {
                     throw new types_1.ValidationError("Assignee not found in this tenant");
                 }
+                const isProjectMember = await database_1.prisma.projectMember.findUnique({
+                    where: {
+                        projectId_userId: {
+                            projectId,
+                            userId: assigneeId
+                        }
+                    }
+                });
+                // Also allow if the assignee is the project manager
+                if (!isProjectMember && project.projectManagerId !== assigneeId) {
+                    throw new types_1.ValidationError("Assignee must be a member of the project");
+                }
             }
             // Validate reportTo if provided
             if (reportToId) {
@@ -573,14 +588,22 @@ class TicketController {
                 });
                 return;
             }
-            const { draft, source, fallbackReason } = await (0, aiTicketService_1.generateTicketDraft)(seed, req.tenantId);
+            await EntitlementService_1.entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
+            const aiResponse = await (0, aiTicketService_1.generateTicketDraft)(seed, req.tenantId);
+            const draft = aiResponse.data;
+            const pricingResult = await AIPricingEngine_1.AIPricingEngine.calculate(aiResponse);
+            await EntitlementService_1.entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature_1.AIFeature.TICKET_ANALYSIS, pricingResult);
             res.status(200).json({
                 success: true,
-                data: { ...draft, source, fallbackReason },
+                data: { ...draft, source: aiResponse.provider, fallbackReason: aiResponse.metadata?.finishReason },
                 message: "Ticket draft generated",
             });
         }
         catch (error) {
+            if (error instanceof EntitlementService_1.EntitlementError) {
+                res.status(403).json({ success: false, error: 'AI limit reached', details: { current: error.current, allowed: error.allowed } });
+                return;
+            }
             console.error("AI generate ticket error:", error);
             res.status(500).json({
                 success: false,
@@ -610,7 +633,11 @@ class TicketController {
                 });
                 return;
             }
-            const result = await (0, aiTicketService_1.generateSubtasks)({ description: seed, count, hoursEach }, req.tenantId);
+            await EntitlementService_1.entitlementService.checkLimit(req.tenantId, 'ai_credits_month');
+            const aiResponse = await (0, aiTicketService_1.generateSubtasks)({ description: seed, count, hoursEach }, req.tenantId);
+            const result = aiResponse.data;
+            const pricingResult = await AIPricingEngine_1.AIPricingEngine.calculate(aiResponse);
+            await EntitlementService_1.entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature_1.AIFeature.TICKET_ANALYSIS, pricingResult);
             res.status(200).json({
                 success: true,
                 data: result,
@@ -618,6 +645,10 @@ class TicketController {
             });
         }
         catch (error) {
+            if (error instanceof EntitlementService_1.EntitlementError) {
+                res.status(403).json({ success: false, error: 'AI limit reached', details: { current: error.current, allowed: error.allowed } });
+                return;
+            }
             console.error("AI generate subtasks error:", error);
             res.status(500).json({
                 success: false,
@@ -1500,6 +1531,29 @@ class TicketController {
             });
             if (!existingTicket) {
                 throw new types_1.NotFoundError("Ticket not found in this tenant");
+            }
+            // Validate assigneeId if it's being updated to a non-null value
+            if (mappedUpdates.assigneeId) {
+                const targetProjectId = mappedUpdates.projectId || existingTicket.projectId;
+                const assignee = await database_1.prisma.user.findFirst({
+                    where: { id: mappedUpdates.assigneeId, tenantId: req.tenantId, isActive: true },
+                });
+                if (!assignee) {
+                    throw new types_1.ValidationError("Assignee not found in this tenant");
+                }
+                const project = await database_1.prisma.project.findFirst({
+                    where: { id: targetProjectId, tenantId: req.tenantId }
+                });
+                if (project) {
+                    const isProjectMember = await database_1.prisma.projectMember.findUnique({
+                        where: {
+                            projectId_userId: { projectId: targetProjectId, userId: mappedUpdates.assigneeId }
+                        }
+                    });
+                    if (!isProjectMember && project.projectManagerId !== mappedUpdates.assigneeId) {
+                        throw new types_1.ValidationError("Assignee must be a member of the project");
+                    }
+                }
             }
             // Validate parentId if being updated - prevent nested subtasks
             if (mappedUpdates.parentId !== undefined && mappedUpdates.parentId !== null) {

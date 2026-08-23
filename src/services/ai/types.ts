@@ -48,13 +48,24 @@ export interface GenerateOptions {
   disableSafety?: boolean;
 }
 
+export interface AIUsage {
+  promptTokens: number;
+  completionTokens: number;
+}
+
+export interface AIGenerateResult {
+  text: string;
+  usage: AIUsage;
+  model: string;
+}
+
 export interface AIProvider {
   /** Descriptive identifier, surfaced to callers as the response `source`. */
   readonly name: AIProviderName;
   /** True when the provider has the credentials it needs to run. */
   isConfigured(): boolean;
-  /** Single-turn generation. Returns the raw text; throws on failure. */
-  generateText(prompt: string, opts?: GenerateOptions): Promise<string>;
+  /** Single-turn generation. Returns the text, usage, and model; throws on failure. */
+  generateText(prompt: string, opts?: GenerateOptions): Promise<AIGenerateResult>;
   /** List model ids available to these credentials (for the settings UI). */
   listModels?(): Promise<string[]>;
 }

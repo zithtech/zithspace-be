@@ -66,15 +66,24 @@ export async function createCategory(data: CreateCategoryData): Promise<Category
 /**
  * Get all categories for a tenant
  */
-export async function getCategories(tenantId: string): Promise<Category[]> {
-  const query = `
-    SELECT * FROM expense_categories 
+export async function getCategories(tenantId: string, limit?: number, offset?: number): Promise<{ data: Category[], total: number }> {
+  let query = `
+    SELECT *, COUNT(*) OVER() as total_count FROM expense_categories 
     WHERE tenant_id = $1 AND deleted_at IS NULL
     ORDER BY created_at DESC
   `;
 
-  const result = await pool.query(query, [tenantId]);
-  return result.rows.map(mapRowToCategory);
+  const values: any[] = [tenantId];
+  if (limit !== undefined && offset !== undefined) {
+    query += ` LIMIT $2 OFFSET $3`;
+    values.push(limit, offset);
+  }
+
+  const result = await pool.query(query, values);
+  const data = result.rows.map(mapRowToCategory);
+  const total = result.rows.length > 0 ? parseInt(result.rows[0].total_count, 10) : 0;
+
+  return { data, total };
 }
 
 /**

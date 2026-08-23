@@ -21,7 +21,7 @@ export class SquadController {
         return;
       }
 
-      const { search, status, isArchived } = req.query;
+      const { search, status, isArchived, page, limit } = req.query;
 
       const where: any = {
         tenantId: req.tenantId,
@@ -43,8 +43,16 @@ export class SquadController {
         where.isArchived = isArchived === "true";
       }
 
+      const pageNum = page ? parseInt(page as string, 10) : undefined;
+      const limitNum = limit ? parseInt(limit as string, 10) : undefined;
+      const skip = pageNum && limitNum ? (pageNum - 1) * limitNum : undefined;
+
+      const total = await prisma.squad.count({ where });
+
       const squads = await prisma.squad.findMany({
         where,
+        take: limitNum,
+        skip,
         include: {
           squadMembers: {
             include: {
@@ -62,17 +70,28 @@ export class SquadController {
           createdBy: { select: { id: true, name: true } },
         },
         orderBy: [
-          { isArchived: "desc" }, // Archived squads at the top as requested? 
-          // Wait, prompt says: "if the archive funcion id true the squad are paced into the top of the grid design"
+          { isArchived: "desc" },
           { createdAt: "desc" },
         ],
       });
 
-
-      res.status(200).json({
-        success: true,
-        data: squads,
-      } as ApiResponse);
+      if (limitNum) {
+        res.status(200).json({
+          success: true,
+          data: squads,
+          pagination: {
+            total,
+            page: pageNum || 1,
+            limit: limitNum,
+            totalPages: Math.ceil(total / limitNum)
+          }
+        } as ApiResponse);
+      } else {
+        res.status(200).json({
+          success: true,
+          data: squads,
+        } as ApiResponse);
+      }
     } catch (error) {
       console.error("Get squads error:", error);
       res.status(500).json({ success: false, error: "Failed to fetch squads" });

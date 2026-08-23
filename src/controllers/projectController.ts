@@ -1,6 +1,7 @@
 import { Response } from "express";
 import { prisma } from "@/config/database";
 import pool from "@/config/dbpool";
+import { entitlementService, EntitlementError } from "@/services/EntitlementService";
 import {
   AuthRequest,
   ApiResponse,
@@ -309,6 +310,16 @@ export class ProjectController {
           error: "Tenant context and authentication required",
         } as ApiResponse);
         return;
+      }
+
+      try {
+        await entitlementService.checkLimit(req.tenantId, 'projects');
+      } catch (err: any) {
+        if (err instanceof EntitlementError) {
+          res.status(403).json({ success: false, error: err.message, details: { current: err.current, allowed: err.allowed } });
+          return;
+        }
+        throw err;
       }
 
       const {
@@ -1146,11 +1157,57 @@ export class ProjectController {
         return;
       }
 
+      const { page, limit, search } = req.query;
+
+      const where: any = {
+        tenantId: req.tenantId,
+        status: "DELETED",
+      };
+
+      if (search) {
+        const q = String(search).trim();
+        where.OR = [
+          { name: { contains: q, mode: "insensitive" } },
+          { code: { contains: q, mode: "insensitive" } },
+        ];
+      }
+
+      if (page && limit) {
+        const p = Number(page);
+        const l = Number(limit);
+        const skip = (p - 1) * l;
+
+        const [projects, total] = await Promise.all([
+          prisma.project.findMany({
+            where,
+            include: {
+              projectManager: {
+                select: { id: true, name: true, avatarUrl: true },
+              },
+            },
+            orderBy: { updatedAt: "desc" },
+            skip,
+            take: l,
+          }),
+          prisma.project.count({ where }),
+        ]);
+
+        res.status(200).json({
+          success: true,
+          data: projects,
+          pagination: {
+            total,
+            page: p,
+            limit: l,
+            pages: Math.ceil(total / l),
+          }
+        } as ApiResponse);
+        return;
+      }
+
+      // Fallback for non-paginated requests
       const projects = await prisma.project.findMany({
-        where: {
-          tenantId: req.tenantId,
-          status: "DELETED"
-        },
+        where,
         include: {
           projectManager: {
             select: { id: true, name: true, avatarUrl: true },
@@ -1517,6 +1574,7 @@ export class ProjectController {
       const userRole = req.user.role;
       const tenantId = req.tenantId;
 
+      const explicitOnly = req.query.explicitOnly === 'true';
       const hasManagePermission = await RBACService.hasPermission(userId, tenantId, Permissions.PROJECT_MANAGE, userRole);
 
       const whereClause: any = {
@@ -1524,7 +1582,7 @@ export class ProjectController {
         status: { notIn: ["ARCHIVED", "DELETED", "archived", "deleted"] },
       };
 
-      if (!hasManagePermission) {
+      if (explicitOnly || !hasManagePermission) {
         whereClause.OR = [
           { projectManagerId: userId },
           { members: { some: { userId } } },
@@ -1774,6 +1832,7 @@ export class ProjectController {
               name: true,
               workEmail: true,
               position: true,
+              avatarUrl: true,
             },
           },
           members: {
@@ -1784,6 +1843,7 @@ export class ProjectController {
                   name: true,
                   workEmail: true,
                   position: true,
+                  avatarUrl: true,
                 },
               },
             },
@@ -1802,6 +1862,7 @@ export class ProjectController {
           label: project.projectManager.name,
           position: (project.projectManager.position as any)?.title || "N/A",
           workEmail: project.projectManager.workEmail,
+          avatarUrl: project.projectManager.avatarUrl,
           isProjectManager: true,
         },
         ...project.members.map((member) => ({
@@ -1809,6 +1870,7 @@ export class ProjectController {
           label: member.user.name,
           position: (member.user.position as any)?.title || "N/A",
           workEmail: member.user.workEmail,
+          avatarUrl: member.user.avatarUrl,
           isProjectManager: false,
         })),
       ];

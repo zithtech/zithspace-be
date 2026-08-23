@@ -42,8 +42,8 @@ export async function createComponent(
 
 export async function listComponents(
   actor: Actor,
-  opts: { includeInactive?: boolean; category?: ComponentCategory } = {}
-): Promise<PayComponent[]> {
+  opts: { status?: 'all' | 'active' | 'inactive'; category?: ComponentCategory; page?: number; limit?: number; search?: string } = {}
+): Promise<{ data: PayComponent[]; total: number }> {
   return withTenant(actor.tenantId, (client) => repo.findAll(client, opts));
 }
 

@@ -32,7 +32,7 @@ export class BucketController {
         return;
       }
 
-      const { projectId, includeShared = true } = req.query;
+      const { projectId, includeShared = true, page, limit, search, visibility, size, owner, startDate, endDate } = req.query;
 
       // Build filter
       const where: any = {
@@ -73,7 +73,7 @@ export class BucketController {
       });
 
       // Filter out shared buckets user doesn't have access to (if not shared)
-      const filteredBuckets = buckets.filter((bucket) => {
+      let filteredBuckets = buckets.filter((bucket) => {
         // Owner always has access
         if (bucket.createdById === req.user!.id) return true;
 
@@ -87,6 +87,52 @@ export class BucketController {
 
         return false;
       });
+
+      // Apply other filters
+      if (search) {
+        const q = String(search).toLowerCase();
+        filteredBuckets = filteredBuckets.filter(b => b.name.toLowerCase().includes(q));
+      }
+      if (owner) {
+        filteredBuckets = filteredBuckets.filter(b => b.createdById === owner);
+      }
+      if (visibility === 'public') {
+        filteredBuckets = filteredBuckets.filter(b => b.isShared);
+      } else if (visibility === 'private') {
+        filteredBuckets = filteredBuckets.filter(b => !b.isShared);
+      }
+      if (size) {
+        filteredBuckets = filteredBuckets.filter(b => {
+          const count = b._count?.tickets || 0;
+          if (size === 'empty') return count === 0;
+          if (size === 'small') return count > 0 && count <= 10;
+          if (size === 'medium') return count > 10 && count <= 50;
+          if (size === 'large') return count > 50;
+          return true;
+        });
+      }
+      if (startDate && endDate) {
+        const start = new Date(String(startDate)).getTime();
+        const end = new Date(String(endDate)).getTime();
+        filteredBuckets = filteredBuckets.filter(b => {
+          const t = new Date(b.createdAt).getTime();
+          return t >= start && t <= end;
+        });
+      }
+
+      // Handle pagination
+      if (page && limit) {
+        const p = Number(page);
+        const l = Number(limit);
+        const total = filteredBuckets.length;
+        const paged = filteredBuckets.slice((p - 1) * l, p * l);
+        res.status(200).json({
+          success: true,
+          data: paged,
+          pagination: { total, page: p, limit: l }
+        } as ApiResponse);
+        return;
+      }
 
       res.status(200).json({
         success: true,
@@ -464,7 +510,7 @@ export class BucketController {
       }
 
       const { id } = req.params;
-      const { name, description, color, isShared } = req.body;
+      const { name, description, color, isShared, projectId } = req.body;
 
       // Verify bucket exists and belongs to tenant
       const existingBucket = await prisma.bucket.findFirst({
@@ -487,13 +533,32 @@ export class BucketController {
         return;
       }
 
-      // Check for duplicate name if name is being changed
-      if (name && name !== existingBucket.name) {
+      // If projectId is changing, validate the new project
+      if (projectId !== undefined && projectId !== existingBucket.projectId) {
+        if (projectId !== null) {
+          const project = await prisma.project.findFirst({
+            where: {
+              id: projectId,
+              tenantId: req.tenantId,
+            },
+          });
+
+          if (!project) {
+            throw new ValidationError("Project not found in this tenant");
+          }
+        }
+      }
+
+      const targetProjectId = projectId !== undefined ? (projectId || null) : existingBucket.projectId;
+
+      // Check for duplicate name if name is being changed or project is being changed
+      if ((name && name !== existingBucket.name) || targetProjectId !== existingBucket.projectId) {
+        const bucketName = name ? name.trim() : existingBucket.name;
         const duplicateBucket = await prisma.bucket.findFirst({
           where: {
             tenantId: req.tenantId,
-            projectId: existingBucket.projectId,
-            name: name.trim(),
+            projectId: targetProjectId,
+            name: bucketName,
             id: { not: id },
           },
         });
@@ -501,7 +566,7 @@ export class BucketController {
         if (duplicateBucket) {
           res.status(409).json({
             success: false,
-            error: `A bucket named "${name}" already exists in this ${existingBucket.projectId ? "project" : "workspace"
+            error: `A bucket named "${bucketName}" already exists in this ${targetProjectId ? "project" : "workspace"
               }`,
           } as ApiResponse);
           return;
@@ -519,6 +584,7 @@ export class BucketController {
               : existingBucket.description,
           color: color || existingBucket.color,
           isShared: isShared !== undefined ? isShared : existingBucket.isShared,
+          projectId: targetProjectId,
           updatedAt: new Date(),
         },
         include: {
@@ -540,12 +606,14 @@ export class BucketController {
           description: existingBucket.description,
           color: existingBucket.color,
           isShared: existingBucket.isShared,
+          projectId: existingBucket.projectId,
         };
         const after = {
           name: bucket.name,
           description: bucket.description,
           color: bucket.color,
           isShared: bucket.isShared,
+          projectId: bucket.projectId,
         };
         const { changedFields, before: b, after: a } = diffShallow(before, after);
         if (changedFields.length > 0) {

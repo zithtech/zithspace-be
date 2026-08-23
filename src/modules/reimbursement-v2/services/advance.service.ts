@@ -118,8 +118,8 @@ export async function requestAdvance(actor: Actor, input: CreateAdvanceInput): P
   });
 }
 
-export async function listMine(actor: Actor, filter: { status?: any } = {}): Promise<Advance[]> {
-  return withTenant(actor.tenantId, (client) => repo.list(client, { userId: actor.userId, status: filter.status }));
+export async function listMine(actor: Actor, filter: { status?: any; search?: string; page?: number; limit?: number } = {}): Promise<{ advances: Advance[]; total: number }> {
+  return withTenant(actor.tenantId, (client) => repo.list(client, { userId: actor.userId, status: filter.status, search: filter.search, page: filter.page, limit: filter.limit }));
 }
 
 export async function getMine(actor: Actor, id: string): Promise<Advance> {
@@ -166,9 +166,9 @@ export async function cancel(actor: Actor, id: string, remarks?: string | null):
 }
 
 // ── manager ─────────────────────────────────────────────────────────────────
-export async function listPending(actor: Actor, canManageAll: boolean): Promise<AdvanceInboxItem[]> {
+export async function listPending(actor: Actor, canManageAll: boolean, filter: { page?: number; limit?: number } = {}): Promise<{ data: AdvanceInboxItem[]; total: number }> {
   return withTenant(actor.tenantId, (client) =>
-    canManageAll ? repo.findAllPending(client) : repo.findPendingForApprover(client, actor.userId)
+    canManageAll ? repo.findAllPending(client, filter) : repo.findPendingForApprover(client, actor.userId, filter)
   );
 }
 
@@ -248,8 +248,8 @@ export async function reject(actor: Actor, id: string, remarks: string | null, c
 }
 
 // ── finance ─────────────────────────────────────────────────────────────────
-export async function listPayable(actor: Actor): Promise<AdvanceInboxItem[]> {
-  return withTenant(actor.tenantId, (client) => repo.findPayable(client));
+export async function listPayable(actor: Actor, filter: { page?: number; limit?: number } = {}): Promise<{ data: AdvanceInboxItem[]; total: number }> {
+  return withTenant(actor.tenantId, (client) => repo.findPayable(client, filter));
 }
 
 export async function markPaid(

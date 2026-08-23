@@ -114,7 +114,7 @@ async function loadSubmissionRow(id: string, tenantId: string) {
             sc.priority AS scope_priority, sc.qa_owner AS scope_qa_owner,
             sc.start_date AS scope_start_date, sc.end_date AS scope_end_date,
             sc.details AS scope_details,
-            owner.name    AS qa_owner_name,    owner.avatar_url    AS qa_owner_avatar,
+            owner.name    AS qa_owner_name,    owner.avatar_url    AS qa_owner_avatar, owner.reports_to_id AS owner_reports_to_id,
             reviewer.name AS reviewer_name,    reviewer.avatar_url AS reviewer_avatar,
             signer.name   AS signed_off_by_name,
             approver.name AS approved_by_name,
@@ -567,6 +567,7 @@ export const getSubmissions = async (req: Request, res: Response) => {
     const recommendation = String(req.query.recommendation ?? '').trim();
     const fromDate = String(req.query.from ?? '').trim();
     const toDate = String(req.query.to ?? '').trim();
+    const projectName = String(req.query.projectName ?? '').trim();
     const sortBy = LIST_SORTABLE[String(req.query.sortBy ?? '')] || 's.updated_at';
     const sortDir = String(req.query.sortDir ?? 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
 
@@ -594,6 +595,7 @@ export const getSubmissions = async (req: Request, res: Response) => {
     // a draft has no submitted_at but still belongs on a date-filtered list.
     if (fromDate) push('COALESCE(s.submitted_at, s.created_at) >= $$::timestamptz', fromDate);
     if (toDate) push('COALESCE(s.submitted_at, s.created_at) < ($$::timestamptz + INTERVAL \'1 day\')', toDate);
+    if (projectName) push('LOWER(sc.details->>\'product\') = LOWER($$)', projectName);
 
     const { rows: countRows } = await pool.query(
       `SELECT COUNT(*)::int AS total
@@ -1437,7 +1439,7 @@ export const signOffSubmission = async (req: Request, res: Response) => {
  */
 export const approveSubmission = async (req: Request, res: Response) => {
   try {
-    const { tenantId, userId } = auth(req);
+    const { tenantId, userId, role } = auth(req);
     if (!tenantId) return fail(res, 401, 'Unauthorized');
     await ensureQaSubmissionSchema();
 
@@ -1449,6 +1451,9 @@ export const approveSubmission = async (req: Request, res: Response) => {
     }
     if (existing.status === 'Approved') {
       return fail(res, 409, 'This submission has already been approved.');
+    }
+    if (existing.owner_reports_to_id !== userId) {
+      return fail(res, 403, 'Only the QA owner\'s manager can approve this submission.');
     }
 
     const { rows } = await pool.query(
@@ -1814,7 +1819,7 @@ Write 2-4 short paragraphs of plain prose stating what was tested, what the resu
 `.trim();
 
     const raw = await provider.generateText(prompt, { temperature: 0.4, maxOutputTokens: 1200 });
-    const text = (raw || '')
+    const text = (raw?.text || '')
       .replace(/^```[a-zA-Z]*\s*/i, '')
       .replace(/\s*```$/i, '')
       .trim();
@@ -1856,7 +1861,7 @@ ${input}
 `.trim();
 
     const raw = await provider.generateText(prompt, { temperature: 0.2, maxOutputTokens: 2048 });
-    const corrected = (raw || '')
+    const corrected = (raw?.text || '')
       .replace(/^```[a-zA-Z]*\s*/i, '')
       .replace(/\s*```$/i, '')
       .trim() || input;

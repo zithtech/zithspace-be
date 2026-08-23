@@ -33,8 +33,8 @@ export async function createSchedule(actor: Actor, input: CreateScheduleInput): 
 
 export async function listSchedules(
   actor: Actor,
-  opts: { includeInactive?: boolean } = {}
-): Promise<PayScheduleListItem[]> {
+  opts: { includeInactive?: boolean; page?: number; limit?: number; search?: string } = {}
+): Promise<{ data: PayScheduleListItem[]; total: number }> {
   return withTenant(actor.tenantId, (client) => repo.findAll(client, opts));
 }
 

@@ -5,6 +5,7 @@ import { authenticateToken, requireAuth } from '@/middleware/auth';
 import { resolveTenant } from '@/middleware/tenantContext';
 import { InvoiceController } from '@/controllers/InvoiceController';
 import { requirePermission } from '@/middleware/permission';
+import { requireSubscriptionFeature } from '@/modules/subscriptions';
 import { Permissions } from '@/types/permissions';
 
 const router = Router();
@@ -13,6 +14,7 @@ const router = Router();
 router.use(resolveTenant);
 router.use(authenticateToken);
 router.use(requireAuth);
+router.use(requireSubscriptionFeature('page.finance.invoice.invoices'));
 
 
 

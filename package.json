@@ -18,6 +18,8 @@
     "lv2:migrate": "npx ts-node -r tsconfig-paths/register src/modules/leave-v2/db/migrate.ts",
     "pay:migrate": "npx ts-node -r tsconfig-paths/register src/modules/payroll/db/migrate.ts",
     "rb2:migrate": "npx ts-node -r tsconfig-paths/register src/modules/reimbursement-v2/db/migrate.ts",
+    "db:sync-metadata": "npx ts-node -r tsconfig-paths/register src/scripts/sync-metadata.ts",
+    "db:sync-metadata:prod": "node dist/scripts/sync-metadata.js",
     "om:migrate": "npx ts-node -r tsconfig-paths/register src/modules/opening-management/db/migrate.ts",
     "cd:migrate": "npx ts-node -r tsconfig-paths/register src/modules/company-details/db/migrate.ts",
     "provision": "npx ts-node -r tsconfig-paths/register src/scripts/provisionProduct.ts",
@@ -45,7 +47,7 @@
     "node": "22.x"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.112.3",
+    "@anthropic-ai/sdk": "^0.112.4",
     "@aws-sdk/client-s3": "^3.937.0",
     "@aws-sdk/s3-request-presigner": "^3.1020.0",
     "@google/generative-ai": "^0.24.1",

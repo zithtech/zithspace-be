@@ -7,6 +7,7 @@ import {
   CreateClientData,
   UpdateClientData
 } from '@/types';
+import { entitlementService } from '@/services/EntitlementService';
 import {
   getClients as modelGetClients,
   getClientById as modelGetClientById,
@@ -128,6 +129,9 @@ export class ClientController {
 
       const clientData: CreateClientData = req.body;
 
+      // Enforce Clients limit
+      await entitlementService.checkLimit(req.tenantId, 'clients');
+
       // Validate required fields
       if (!clientData.name || !clientData.email) {
         res.status(400).json({
@@ -155,6 +159,15 @@ export class ClientController {
       } as ApiResponse);
     } catch (error: any) {
       console.error('Create client error:', error);
+      
+      if (error.name === 'EntitlementError') {
+        res.status(403).json({
+          success: false,
+          error: error.message,
+          details: { current: error.current, allowed: error.allowed }
+        } as any);
+        return;
+      }
       
       if (error instanceof ValidationError) {
         res.status(400).json({

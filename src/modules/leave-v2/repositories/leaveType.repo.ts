@@ -91,20 +91,67 @@ export async function insert(
 
 export async function findAll(
   client: TenantClient,
-  opts: { includeInactive?: boolean } = {}
-): Promise<LeaveType[]> {
+  opts: { 
+    includeInactive?: boolean; 
+    search?: string;
+    unit?: string;
+    paid?: string;
+    status?: string;
+    limit?: number;
+    offset?: number;
+  } = {}
+): Promise<{ data: LeaveType[]; total: number }> {
   const conditions = ['tenant_id = $1', 'deleted_at IS NULL'];
-  if (!opts.includeInactive) {
+  const params: any[] = [client.tenantId];
+
+  // Old behavior compatibility for includeInactive if status is not explicitly provided
+  if (!opts.includeInactive && opts.status !== 'inactive' && opts.status !== 'all') {
     conditions.push('is_active = true');
   }
-  const { rows } = await client.query<LeaveTypeRow>(
-    `SELECT ${SELECT_COLS}
-       FROM lv2_leave_types
-      WHERE ${conditions.join(' AND ')}
-      ORDER BY name ASC`,
-    [client.tenantId]
-  );
-  return rows.map(mapRow);
+
+  // Handle explicit filters
+  if (opts.status === 'active') {
+    conditions.push('is_active = true');
+  } else if (opts.status === 'inactive') {
+    conditions.push('is_active = false');
+  }
+
+  if (opts.unit && opts.unit !== 'all') {
+    params.push(opts.unit);
+    conditions.push(`unit = $${params.length}`);
+  }
+
+  if (opts.paid === 'paid') {
+    conditions.push('is_paid = true');
+  } else if (opts.paid === 'unpaid') {
+    conditions.push('is_paid = false');
+  }
+
+  if (opts.search) {
+    params.push(`%${opts.search}%`);
+    conditions.push(`(name ILIKE $${params.length} OR code ILIKE $${params.length})`);
+  }
+
+  const where = `WHERE ${conditions.join(' AND ')}`;
+  
+  // Get total count
+  const countRes = await client.query(`SELECT COUNT(*) FROM lv2_leave_types ${where}`, params);
+  const total = parseInt(countRes.rows[0].count, 10);
+  
+  // Build main query
+  let sql = `SELECT ${SELECT_COLS} FROM lv2_leave_types ${where} ORDER BY name ASC`;
+  
+  if (opts.limit !== undefined) {
+    params.push(opts.limit);
+    sql += ` LIMIT $${params.length}`;
+  }
+  if (opts.offset !== undefined) {
+    params.push(opts.offset);
+    sql += ` OFFSET $${params.length}`;
+  }
+  
+  const { rows } = await client.query<LeaveTypeRow>(sql, params);
+  return { data: rows.map(mapRow), total };
 }
 
 export async function findById(

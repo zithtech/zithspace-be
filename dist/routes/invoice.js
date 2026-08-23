@@ -5,12 +5,14 @@ const auth_1 = require("@/middleware/auth");
 const tenantContext_1 = require("@/middleware/tenantContext");
 const InvoiceController_1 = require("@/controllers/InvoiceController");
 const permission_1 = require("@/middleware/permission");
+const subscriptions_1 = require("@/modules/subscriptions");
 const permissions_1 = require("@/types/permissions");
 const router = (0, express_1.Router)();
 // Apply middleware
 router.use(tenantContext_1.resolveTenant);
 router.use(auth_1.authenticateToken);
 router.use(auth_1.requireAuth);
+router.use((0, subscriptions_1.requireSubscriptionFeature)('page.finance.invoice.invoices'));
 // ==================== INVOICE ROUTES ====================
 // Get all invoices (non-deleted)
 router.get('/', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_READ), (req, res) => InvoiceController_1.InvoiceController.getInvoices(req, res));

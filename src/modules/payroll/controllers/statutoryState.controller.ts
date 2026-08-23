@@ -15,7 +15,17 @@ import { recordTransaction, Section, Module, Page, Action, EntityType } from '@/
 
 // ── Professional Tax ─────────────────────────────────────────────────────────
 export const listPt = handle(async (req: AuthRequest, res: Response) => {
-  ok(res, await service.listPtStates(actorOf(req), req.query.includeInactive === 'true'));
+  const includeInactive = req.query.includeInactive === 'true';
+  const page = req.query.page ? Number(req.query.page) : 1;
+  const limit = req.query.limit ? Number(req.query.limit) : 20;
+  const search = req.query.search ? String(req.query.search) : undefined;
+
+  const { data, total } = await service.listPtStates(actorOf(req), { includeInactive, page, limit, search });
+  res.json({
+    success: true,
+    data,
+    pagination: { total, page, limit, pages: Math.ceil(total / limit) },
+  });
 });
 export const getPt = handle(async (req: AuthRequest, res: Response) => {
   ok(res, await service.getPtState(actorOf(req), req.params.id));
@@ -65,7 +75,17 @@ export const removePt = handle(async (req: AuthRequest, res: Response) => {
 
 // ── LWF ──────────────────────────────────────────────────────────────────────
 export const listLwf = handle(async (req: AuthRequest, res: Response) => {
-  ok(res, await service.listLwf(actorOf(req), req.query.includeInactive === 'true'));
+  const includeInactive = req.query.includeInactive === 'true';
+  const page = req.query.page ? Number(req.query.page) : 1;
+  const limit = req.query.limit ? Number(req.query.limit) : 20;
+  const search = req.query.search ? String(req.query.search) : undefined;
+
+  const { data, total } = await service.listLwf(actorOf(req), { includeInactive, page, limit, search });
+  res.json({
+    success: true,
+    data,
+    pagination: { total, page, limit, pages: Math.ceil(total / limit) },
+  });
 });
 export const createLwf = handle(async (req: AuthRequest, res: Response) => {
   const lwf = await service.createLwf(actorOf(req), createLwfStateSchema.parse(req.body));

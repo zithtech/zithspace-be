@@ -87,17 +87,61 @@ export class SubDepartmentController {
         return;
       }
 
-      const subDepartments = await prisma.subDepartment.findMany({
-        where: { tenantId: req.tenantId },
-        include: {
-          parentDepartment: { select: { id: true, name: true, code: true } },
-          createdBy: { select: { id: true, name: true } },
-          updatedBy: { select: { id: true, name: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-      });
+      const { page, limit, search, parentDepartmentId } = req.query;
+      const pageNum = page ? parseInt(page as string, 10) : undefined;
+      const limitNum = limit ? parseInt(limit as string, 10) : undefined;
+      
+      const where: any = { tenantId: req.tenantId };
+      
+      if (typeof search === 'string' && search.trim()) {
+        where.OR = [
+          { name: { contains: search, mode: 'insensitive' } },
+          { code: { contains: search, mode: 'insensitive' } },
+          { description: { contains: search, mode: 'insensitive' } },
+        ];
+      }
 
-      res.status(200).json({ success: true, data: subDepartments } as ApiResponse);
+      if (typeof parentDepartmentId === 'string' && parentDepartmentId.trim()) {
+        where.parentDepartmentId = parentDepartmentId;
+      }
+
+      const include = {
+        parentDepartment: { select: { id: true, name: true, code: true } },
+        createdBy: { select: { id: true, name: true } },
+        updatedBy: { select: { id: true, name: true } },
+      };
+
+      if (limitNum) {
+        const skip = pageNum ? (pageNum - 1) * limitNum : 0;
+        const [subDepartments, total] = await Promise.all([
+          prisma.subDepartment.findMany({
+            where,
+            include,
+            orderBy: { createdAt: 'desc' },
+            skip,
+            take: limitNum
+          }),
+          prisma.subDepartment.count({ where })
+        ]);
+
+        res.status(200).json({ 
+          success: true, 
+          data: subDepartments,
+          pagination: {
+            total,
+            page: pageNum || 1,
+            limit: limitNum,
+            pages: Math.ceil(total / limitNum)
+          }
+        } as ApiResponse);
+      } else {
+        const subDepartments = await prisma.subDepartment.findMany({
+          where,
+          include,
+          orderBy: { createdAt: 'desc' },
+        });
+        res.status(200).json({ success: true, data: subDepartments } as ApiResponse);
+      }
     } catch (error: any) {
       console.error("Error fetching sub-departments:", error);
       res.status(500).json({ success: false, error: "Failed to fetch sub-departments" } as ApiResponse);

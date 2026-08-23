@@ -42,7 +42,17 @@ export const request = handle(async (req: AuthRequest, res: Response) => {
 
 export const listMine = handle(async (req: AuthRequest, res: Response) => {
   const status = typeof req.query.status === 'string' ? (req.query.status as any) : undefined;
-  ok(res, await service.listMine(actorOf(req), { status }));
+  const search = typeof req.query.search === 'string' ? req.query.search : undefined;
+  const page = req.query.page ? Number(req.query.page) : 1;
+  const limit = req.query.limit ? Number(req.query.limit) : 20;
+
+  const { advances, total } = await service.listMine(actorOf(req), { status, search, page, limit });
+
+  res.json({
+    success: true,
+    data: advances,
+    pagination: { total, page, limit, pages: Math.ceil(total / limit) },
+  });
 });
 
 export const getMine = handle(async (req: AuthRequest, res: Response) => {
@@ -66,7 +76,14 @@ async function canManageAll(req: AuthRequest): Promise<boolean> {
 
 // manager
 export const listPending = handle(async (req: AuthRequest, res: Response) => {
-  ok(res, await service.listPending(actorOf(req), await canManageAll(req)));
+  const page = req.query.page ? Number(req.query.page) : 1;
+  const limit = req.query.limit ? Number(req.query.limit) : 20;
+  const { data, total } = await service.listPending(actorOf(req), await canManageAll(req), { page, limit });
+  res.json({
+    success: true,
+    data,
+    pagination: { total, page, limit, pages: Math.ceil(total / limit) },
+  });
 });
 
 export const approve = handle(async (req: AuthRequest, res: Response) => {
@@ -85,7 +102,14 @@ export const reject = handle(async (req: AuthRequest, res: Response) => {
 
 // finance
 export const listPayable = handle(async (req: AuthRequest, res: Response) => {
-  ok(res, await service.listPayable(actorOf(req)));
+  const page = req.query.page ? Number(req.query.page) : 1;
+  const limit = req.query.limit ? Number(req.query.limit) : 20;
+  const { data, total } = await service.listPayable(actorOf(req), { page, limit });
+  res.json({
+    success: true,
+    data,
+    pagination: { total, page, limit, pages: Math.ceil(total / limit) },
+  });
 });
 
 export const markPaid = handle(async (req: AuthRequest, res: Response) => {

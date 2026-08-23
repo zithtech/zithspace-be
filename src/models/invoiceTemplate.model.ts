@@ -172,15 +172,27 @@ export class InvoiceTemplateModel {
   /**
    * Get all templates for a tenant
    */
-  static async getTemplates(tenantId: string): Promise<InvoiceTemplate[]> {
-    const query = `
-      SELECT * FROM invoice_templates 
+  static async getTemplates(tenantId: string, limit?: number, offset?: number): Promise<{ templates: InvoiceTemplate[], total: number }> {
+    const hasPagination = limit !== undefined && offset !== undefined;
+    let query = `
+      SELECT *, COUNT(*) OVER() as total_count FROM invoice_templates 
       WHERE tenant_id = $1 
       ORDER BY created_at DESC
     `;
     
-    const result = await pool.query(query, [tenantId]);
-    return result.rows.map(mapRowToInvoiceTemplate);
+    const params: any[] = [tenantId];
+    if (hasPagination) {
+      query += ` LIMIT $2 OFFSET $3`;
+      params.push(limit, offset);
+    }
+
+    const result = await pool.query(query, params);
+    const total = result.rows.length > 0 ? parseInt(result.rows[0].total_count) : 0;
+    
+    return {
+      templates: result.rows.map(mapRowToInvoiceTemplate),
+      total
+    };
   }
 
   /**

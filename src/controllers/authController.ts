@@ -15,6 +15,7 @@ import {
   CreateUserData,
 } from "@/types";
 import { RBACService } from "@/modules/rbac/rbac.service";
+import { featureResolverService, navigationService, subscriptionService } from "@/modules/subscriptions";
 import * as companyDetailsService from "@/modules/company-details/services/companyDetails.service";
 import * as entitlementsService from "@/modules/entitlements/entitlements.service";
 import { brandForRequest, productFromRequest, tenantOrigin } from "@/config/brand";
@@ -388,6 +389,11 @@ export class AuthController {
         user.role
       );
 
+      // Fetch subscription features and build dynamic navigation
+      await subscriptionService.invalidateTenantSubscription(user.tenantId);
+      const subscriptionFeatures = await featureResolverService.getTenantFeatures(user.tenantId);
+      const navigation = await navigationService.buildNavigation(permSet, subscriptionFeatures);
+
       // Return user data and access token
       const loginResponse: LoginResponse = {
         success: true,
@@ -406,6 +412,8 @@ export class AuthController {
           avatarUrl: user.avatarUrl,
           isActive: user.isActive,
           permissions: Array.from(permSet),
+          subscriptionFeatures,
+          navigation,
         },
         message: "Login successful",
       };
@@ -689,6 +697,10 @@ export class AuthController {
         user.role
       );
 
+      // Fetch subscription features and build dynamic navigation
+      await subscriptionService.invalidateTenantSubscription(user.tenantId);
+      const subscriptionFeatures = await featureResolverService.getTenantFeatures(user.tenantId);
+      const navigation = await navigationService.buildNavigation(permSet, subscriptionFeatures);
       // Company details live in the raw-SQL company-details module, not Prisma.
       // A tenant that has not filled the form in yet simply gets null.
       const companyDetails = await companyDetailsService
@@ -743,6 +755,8 @@ export class AuthController {
           permissions: Array.from(permSet),
           products: entitlements.products,
           capabilities: entitlements.capabilities,
+          subscriptionFeatures,
+          navigation,
         },
       } as ApiResponse);
     } catch (error) {
@@ -958,6 +972,11 @@ export class AuthController {
         user.role,
       );
 
+      // Fetch subscription features and build dynamic navigation
+      await subscriptionService.invalidateTenantSubscription(user.tenantId);
+      const subscriptionFeatures = await featureResolverService.getTenantFeatures(user.tenantId);
+      const navigation = await navigationService.buildNavigation(permSet, subscriptionFeatures);
+
       res.status(200).json({
         success: true,
         data: {
@@ -981,6 +1000,8 @@ export class AuthController {
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
           permissions: Array.from(permSet),
+          subscriptionFeatures,
+          navigation,
         },
       } as ApiResponse);
     } catch (error) {
@@ -1128,6 +1149,11 @@ export class AuthController {
         user.role
       );
 
+      // Fetch subscription features and build dynamic navigation
+      await subscriptionService.invalidateTenantSubscription(user.tenantId);
+      const subscriptionFeatures = await featureResolverService.getTenantFeatures(user.tenantId);
+      const navigation = await navigationService.buildNavigation(permSet, subscriptionFeatures);
+
       // Return user data and access token
       const loginResponse: LoginResponse = {
         success: true,
@@ -1146,6 +1172,8 @@ export class AuthController {
           avatarUrl: user.avatarUrl,
           isActive: user.isActive,
           permissions: Array.from(permSet),
+          subscriptionFeatures,
+          navigation,
         },
         message: "Login successful",
       };
@@ -1322,6 +1350,11 @@ export class AuthController {
         user.role
       );
 
+      // Fetch subscription features and build dynamic navigation
+      await subscriptionService.invalidateTenantSubscription(user.tenantId);
+      const subscriptionFeatures = await featureResolverService.getTenantFeatures(user.tenantId);
+      const navigation = await navigationService.buildNavigation(permSet, subscriptionFeatures);
+
       // Return user data and access token
       const loginResponse: LoginResponse = {
         success: true,
@@ -1340,6 +1373,8 @@ export class AuthController {
           avatarUrl: user.avatarUrl,
           isActive: user.isActive,
           permissions: Array.from(permSet),
+          subscriptionFeatures,
+          navigation,
         },
         message: "Login successful",
       };

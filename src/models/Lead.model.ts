@@ -139,7 +139,117 @@ export class LeadModel {
   /**
    * Find all leads for a specific tenant
    */
-  static async findAll(tenantId: string): Promise<any[]> {
+  static async findAll(options: {
+    tenantId: string;
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: string;
+    action?: string;
+    platform?: string;
+    createdBy?: string;
+    mailStatus?: string;
+    startDate?: string;
+    endDate?: string;
+    hasBidiq?: boolean;
+    bidiqView?: string;
+  }): Promise<{ data: any[]; total: number }> {
+    const { tenantId, page, limit, search, status, action, platform, createdBy, mailStatus, startDate, endDate, hasBidiq, bidiqView } = options;
+
+    let whereClause = `l.tenant_id = $1 AND l.is_deleted = false`;
+    const values: any[] = [tenantId];
+    let paramIdx = 2;
+
+    if (search) {
+      whereClause += ` AND (l.title ILIKE $${paramIdx} OR l.client_name ILIKE $${paramIdx} OR l.company ILIKE $${paramIdx})`;
+      values.push(`%${search}%`);
+      paramIdx++;
+    }
+
+    if (status && status !== 'all') {
+      whereClause += ` AND l.status = $${paramIdx++}`;
+      values.push(status);
+    }
+
+    if (action && action !== 'all') {
+      whereClause += ` AND l.actions_item = $${paramIdx++}`;
+      values.push(action);
+    }
+
+    if (platform && platform !== 'all') {
+      whereClause += ` AND l.platform = $${paramIdx++}`;
+      values.push(platform);
+    }
+
+    if (createdBy && createdBy !== 'all') {
+      whereClause += ` AND l.created_by = $${paramIdx++}`;
+      values.push(createdBy);
+    }
+
+    if (mailStatus && mailStatus !== 'all') {
+      if (mailStatus === 'sent') {
+        whereClause += ` AND (lm.last_mail_at IS NOT NULL OR l.is_mail_sent = true)`;
+      } else if (mailStatus === 'not_sent') {
+        whereClause += ` AND lm.last_mail_at IS NULL AND COALESCE(l.is_mail_sent, false) = false`;
+      }
+    }
+
+    if (startDate) {
+      whereClause += ` AND l.created_at >= $${paramIdx++}`;
+      values.push(startDate);
+    }
+
+    if (endDate) {
+      whereClause += ` AND l.created_at <= $${paramIdx++}`;
+      values.push(endDate);
+    }
+
+    if (hasBidiq) {
+      whereClause += ` AND (l.ai_score > 0 OR l.skill_analysis IS NOT NULL OR l.ai_summary IS NOT NULL)`;
+    }
+
+    if (bidiqView) {
+      if (bidiqView === 'hot') {
+        whereClause += ` AND COALESCE(l.ai_score, 0) >= 80`;
+      } else if (bidiqView === 'warm') {
+        whereClause += ` AND COALESCE(l.ai_score, 0) >= 50 AND COALESCE(l.ai_score, 0) < 80`;
+      } else if (bidiqView === 'cold') {
+        whereClause += ` AND COALESCE(l.ai_score, 0) < 50`;
+      } else if (bidiqView === 'with_proposal') {
+        whereClause += ` AND (p.id IS NOT NULL OR l.proposal_text IS NOT NULL)`;
+      }
+    }
+
+    const countQuery = `
+      SELECT COUNT(*) as total
+      FROM leads l
+      LEFT JOIN (
+        SELECT DISTINCT ON (lead_id) id, lead_id
+        FROM proposals
+        WHERE tenant_id = $1
+        ORDER BY lead_id, created_at DESC
+      ) p ON l.id = p.lead_id
+      LEFT JOIN (
+        SELECT lead_id, MAX(sent_at) as last_mail_at
+        FROM lead_mails
+        WHERE tenant_id = $1
+        GROUP BY lead_id
+      ) lm ON l.id = lm.lead_id
+      WHERE ${whereClause}
+    `;
+    const countResult = await pool.query(countQuery, values);
+    const total = parseInt(countResult.rows[0].count, 10);
+
+    let limitOffsetClause = "";
+    if (limit) {
+      limitOffsetClause = `LIMIT $${paramIdx++}`;
+      values.push(limit);
+      if (page) {
+        limitOffsetClause += ` OFFSET $${paramIdx++}`;
+        values.push((page - 1) * limit);
+      }
+    }
+
     const query = `
       SELECT
         l.*,
@@ -160,11 +270,12 @@ export class LeadModel {
         GROUP BY lead_id
       ) lm ON l.id = lm.lead_id
       LEFT JOIN users u ON u.id = l.created_by
-      WHERE l.tenant_id = $1 AND l.is_deleted = false
-      ORDER BY l.created_at DESC;
+      WHERE ${whereClause}
+      ORDER BY l.created_at DESC
+      ${limitOffsetClause};
     `;
-    const result = await pool.query(query, [tenantId]);
-    return result.rows;
+    const result = await pool.query(query, values);
+    return { data: result.rows, total };
   }
 
   /**

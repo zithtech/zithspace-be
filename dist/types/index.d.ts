@@ -255,6 +255,8 @@ export interface LoginResponse {
         avatarUrl: any | null;
         isActive: boolean;
         permissions: string[];
+        subscriptionFeatures: string[];
+        navigation: any[];
     };
     message: string;
 }
@@ -281,6 +283,8 @@ export interface ApiResponse<T = any> {
     data?: T;
     error?: string;
     message?: string;
+    serverTime?: string;
+    total?: number;
     meta?: {
         pagination?: PaginationMeta;
         total?: number;

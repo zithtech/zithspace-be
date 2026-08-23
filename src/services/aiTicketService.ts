@@ -9,6 +9,7 @@
 
 import { AIProvider, AIProviderName } from "./ai";
 import { getAIProviderForTenant } from "./ai/resolver";
+import { AIResponse } from "../ai/interfaces/AIResponse";
 
 export type AiTicketPriority = "Low" | "Medium" | "High";
 
@@ -69,7 +70,7 @@ const USER_TEMPLATE = (input: string) => `User input:\n${input}\n\nReturn JSON o
 // Transport-level retry / quota handling lives in the provider (see services/ai).
 let lastAiError: string | null = null;
 
-async function callAi(description: string, provider: AIProvider): Promise<AiTicketDraft | null> {
+async function callAi(description: string, provider: AIProvider): Promise<{ draft: AiTicketDraft; res: any } | null> {
   if (!provider.isConfigured()) return null;
 
   lastAiError = null;
@@ -84,7 +85,7 @@ async function callAi(description: string, provider: AIProvider): Promise<AiTick
           ? USER_TEMPLATE(description)
           : `${USER_TEMPLATE(description)}\n\nIMPORTANT: Return ONLY a single valid JSON object. No prose, no markdown, no trailing commas. Make sure every string and brace is properly closed.`;
 
-      const text = (await provider.generateText(userPrompt, {
+      const res = await provider.generateText(userPrompt, {
         systemInstruction: SYSTEM_PROMPT,
         // Forces parseable JSON instead of prose/fences.
         json: true,
@@ -92,7 +93,8 @@ async function callAi(description: string, provider: AIProvider): Promise<AiTick
         // 4096 leaves enough headroom for ~6 subtasks + HTML description without
         // the response getting truncated mid-JSON.
         maxOutputTokens: 4096,
-      }))?.trim();
+      });
+      const text = res.text.trim();
       if (!text) {
         lastAiError = `${provider.name} returned an empty response`;
         console.error(lastAiError);
@@ -101,7 +103,7 @@ async function callAi(description: string, provider: AIProvider): Promise<AiTick
       }
 
       const parsed = parseAiJson(text);
-      if (parsed) return parsed;
+      if (parsed) return { draft: parsed, res };
 
       lastAiError = `${provider.name} response was not valid JSON`;
       console.error(`${lastAiError} (attempt ${attempt}/2)`, "raw:", text.slice(0, 600));
@@ -463,22 +465,31 @@ function capitalize(s: string) {
 /**
  * Public entry point. Always resolves to a valid AiTicketDraft.
  */
-export async function generateTicketDraft(description: string, tenantId?: string): Promise<{
-  draft: AiTicketDraft;
-  source: AIProviderName | "mock";
-  /** Populated only when source === "mock", explains why we fell back. */
-  fallbackReason?: string;
-}> {
+export async function generateTicketDraft(description: string, tenantId?: string): Promise<AIResponse<AiTicketDraft>> {
   const provider = await getAIProviderForTenant(tenantId);
   const fromAi = await callAi(description, provider);
-  if (fromAi) return { draft: fromAi, source: provider.name };
+  if (fromAi) {
+    return { 
+        data: fromAi.draft, 
+        provider: provider.name,
+        model: fromAi.res.model,
+        usage: fromAi.res.usage,
+        metadata: {} 
+    };
+  }
 
   const reason = !provider.isConfigured()
     ? `${provider.name} is not configured`
     : (lastAiError || `${provider.name} call failed`);
   console.warn(`[aiTicketService] falling back to heuristic mock — ${reason}`);
 
-  return { draft: heuristicDraft(description), source: "mock", fallbackReason: reason };
+  return { 
+      data: heuristicDraft(description), 
+      provider: "mock", 
+      model: "mock",
+      usage: { promptTokens: 0, completionTokens: 0 },
+      metadata: { finishReason: reason } 
+  };
 }
 
 /* ------------------------------------------------------------------------ */
@@ -515,21 +526,22 @@ async function callAiForSubtasks(
   count: number,
   hoursEach: number,
   provider: AIProvider,
-): Promise<AiSubtask[] | null> {
+): Promise<{ subtasks: AiSubtask[]; res: any } | null> {
   if (!provider.isConfigured()) return null;
 
   lastAiError = null;
   const prompt = `Ticket description:\n${description}\n\nReturn EXACTLY ${count} subtasks, each ~${hoursEach} hours.`;
 
   try {
-    const text = (await provider.generateText(prompt, {
+    const res = await provider.generateText(prompt, {
       systemInstruction: SUBTASK_SYSTEM_PROMPT,
       json: true,
       temperature: 0.4,
       // Bumped from 1024 — long subtask lists with hours can otherwise
       // truncate and produce invalid JSON.
       maxOutputTokens: 2048,
-    }))?.trim();
+    });
+    const text = res.text.trim();
     if (!text) return null;
 
     // Try the same lenient parser used for the main flow. Falls back to a
@@ -559,7 +571,7 @@ async function callAiForSubtasks(
     // Reuse the same normalizer as the main flow, then enforce the requested
     // hoursEach so callers can trust the shape.
     const items = normalizeSubtasks(parsed?.subtasks, count * hoursEach);
-    return items.slice(0, count).map((s) => ({ title: s.title, hours: hoursEach }));
+    return { subtasks: items.slice(0, count).map((s) => ({ title: s.title, hours: hoursEach })), res };
   } catch (err: any) {
     lastAiError = String(err?.message || err || "Unknown AI error");
     console.error("AI subtasks call failed:", err);
@@ -581,11 +593,7 @@ function heuristicSubtasks(description: string, count: number, hoursEach: number
   }));
 }
 
-export async function generateSubtasks(input: GenerateSubtasksInput, tenantId?: string): Promise<{
-  subtasks: AiSubtask[];
-  source: AIProviderName | "mock";
-  fallbackReason?: string;
-}> {
+export async function generateSubtasks(input: GenerateSubtasksInput, tenantId?: string): Promise<AIResponse<AiSubtask[]>> {
   const description = String(input.description || "").trim();
   // Clamp inputs into safe ranges so a bad client can't ask for 1000 subtasks.
   const count = clamp(Math.round(input.count ?? 5), 2, 12);
@@ -593,8 +601,14 @@ export async function generateSubtasks(input: GenerateSubtasksInput, tenantId?: 
 
   const provider = await getAIProviderForTenant(tenantId);
   const fromAi = await callAiForSubtasks(description, count, hoursEach, provider);
-  if (fromAi && fromAi.length > 0) {
-    return { subtasks: fromAi, source: provider.name };
+  if (fromAi && fromAi.subtasks.length > 0) {
+    return { 
+        data: fromAi.subtasks, 
+        provider: provider.name,
+        model: fromAi.res.model,
+        usage: fromAi.res.usage,
+        metadata: {} 
+    };
   }
 
   const reason = !provider.isConfigured()
@@ -602,9 +616,11 @@ export async function generateSubtasks(input: GenerateSubtasksInput, tenantId?: 
     : (lastAiError || `${provider.name} call failed`);
 
   return {
-    subtasks: heuristicSubtasks(description, count, hoursEach),
-    source: "mock",
-    fallbackReason: reason,
+    data: heuristicSubtasks(description, count, hoursEach),
+    provider: "mock",
+    model: "mock",
+    usage: { promptTokens: 0, completionTokens: 0 },
+    metadata: { finishReason: reason }
   };
 }
 

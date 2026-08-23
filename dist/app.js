@@ -58,6 +58,8 @@ const sprintReport_1 = __importDefault(require("@/routes/sprintReport"));
 const sprintReports_1 = __importDefault(require("@/routes/sprintReports"));
 const fixedHolidays_1 = __importDefault(require("@/routes/fixedHolidays"));
 const documenthub_1 = __importDefault(require("@/routes/documenthub"));
+const documentHubUploads_1 = __importDefault(require("@/routes/documentHubUploads"));
+const notionAuthRoutes_1 = __importDefault(require("@/routes/notionAuthRoutes"));
 const letters_routes_1 = __importDefault(require("@/routes/letters.routes"));
 const aiSettings_1 = __importDefault(require("@/routes/aiSettings"));
 const channels_1 = __importDefault(require("@/routes/channels"));
@@ -103,6 +105,7 @@ const departmentRoutes_1 = __importDefault(require("@/routes/departmentRoutes"))
 const subDepartmentRoutes_1 = __importDefault(require("@/routes/subDepartmentRoutes"));
 const positionRoutes_1 = __importDefault(require("@/routes/positionRoutes"));
 const calendar_1 = __importDefault(require("@/routes/calendar"));
+const linearRoutes_1 = __importDefault(require("@/routes/linearRoutes"));
 const mail_1 = __importDefault(require("@/routes/mail"));
 const notifications_1 = __importDefault(require("@/routes/notifications")); // Web push notification routes
 const employeeExit_routes_1 = __importDefault(require("@/routes/employeeExit.routes"));
@@ -114,6 +117,7 @@ const routes_1 = __importDefault(require("@/modules/leave-v2/routes"));
 const routes_2 = __importDefault(require("@/modules/performance-report/routes"));
 const routes_3 = __importDefault(require("@/modules/payroll/routes"));
 const routes_4 = __importDefault(require("@/modules/reimbursement-v2/routes"));
+const metadata_1 = require("@/modules/metadata");
 const routes_5 = __importDefault(require("@/modules/opening-management/routes"));
 const routes_6 = __importDefault(require("@/modules/hotspot/routes"));
 const routes_7 = require("@/modules/pipeline/routes");
@@ -287,13 +291,18 @@ app.get("/api/direct-test", (req, res) => {
     res.json({ success: true, message: "Direct app.get works" });
 });
 app.get("/api/debug-ping-unique", (req, res) => res.json({ success: true, message: "Debug route is active" }));
+// System/Metadata routes (must be before wildcard /api routers)
+app.use("/api/system", metadata_1.metadataRoutes);
+const payments_1 = require("./modules/payments");
 app.use("/api", proxyRoutes_1.default);
 app.use("/api/auth", auth_1.default);
+app.use("/api/payments", payments_1.paymentRoutes);
 app.use("/api/generate", generate_routes_1.default);
 app.use("/api/projects", projects_1.default);
 app.use("/api/tenants", tenants_1.default);
 app.use("/api/landing", landing_1.default);
 app.use("/api/calendar", calendar_1.default);
+app.use("/api/integrations/linear", linearRoutes_1.default);
 app.use("/api/squads", squad_1.default);
 app.use("/api/public/tickets", publicTickets_1.default);
 app.use("/api/public/document", publicDocuments_1.default);
@@ -360,6 +369,9 @@ app.use("/api/sub-departments", subDepartmentRoutes_1.default);
 app.use("/api/positions", positionRoutes_1.default);
 app.use("/api/employment-types", employmentTypeRoutes_1.default);
 app.use("/api/documenthub", documenthub_1.default);
+app.use("/api/v2/document-hubs", documentHubUploads_1.default);
+app.use("/api/v2/auth/notion", notionAuthRoutes_1.default);
+app.use("/api/v1/auth/notion", notionAuthRoutes_1.default); // Alias for v1
 app.use("/api/hrms/letters", letters_routes_1.default);
 app.use("/api/ai", aiSettings_1.default);
 app.use("/api/channels", channels_1.default);
@@ -539,6 +551,9 @@ const startServer = async () => {
     try {
         // Connect PostgreSQL
         await (0, database_1.connectDatabase)();
+        // Initialize Metadata System Tables (raw-SQL module, idempotent)
+        const { metadataRepository } = require("@/modules/metadata/metadata.repository");
+        await metadataRepository.initializeTables();
         // Initialize Tables
         const { BidIQModel } = require("./models/BidIQ.model");
         await BidIQModel.initTable();

@@ -55,8 +55,11 @@ export async function updatePtState(actor: Actor, id: string, input: UpdatePtSta
   });
 }
 
-export async function listPtStates(actor: Actor, includeInactive: boolean): Promise<PtStateListItem[]> {
-  return withTenant(actor.tenantId, (client) => repo.listPtStates(client, includeInactive));
+export async function listPtStates(
+  actor: Actor,
+  opts: { includeInactive?: boolean; page?: number; limit?: number; search?: string } = {}
+): Promise<{ data: PtStateListItem[]; total: number }> {
+  return withTenant(actor.tenantId, (client) => repo.listPtStates(client, opts));
 }
 
 export async function getPtState(actor: Actor, id: string): Promise<PtStateDetail> {
@@ -104,8 +107,11 @@ export async function updateLwf(actor: Actor, id: string, input: UpdateLwfStateI
   });
 }
 
-export async function listLwf(actor: Actor, includeInactive: boolean): Promise<LwfState[]> {
-  return withTenant(actor.tenantId, (client) => repo.listLwf(client, includeInactive));
+export async function listLwf(
+  actor: Actor,
+  opts: { includeInactive?: boolean; page?: number; limit?: number; search?: string } = {}
+): Promise<{ data: LwfState[]; total: number }> {
+  return withTenant(actor.tenantId, (client) => repo.listLwf(client, opts));
 }
 
 export async function deleteLwf(actor: Actor, id: string): Promise<void> {
