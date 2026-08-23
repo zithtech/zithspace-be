@@ -1,107 +1,38 @@
 // src/modules/entitlements/entitlements.middleware.ts
 //
-// Gates a route group on what the TENANT bought.
+// Blocks whole modules a tenant's PLAN does not include, by path prefix.
 //
-// MOUNT AT THE ROUTER LEVEL, NEVER PER-HANDLER:
+// SOURCE OF TRUTH IS THE ADMIN CATALOGUE, NOT THIS FILE.
+//   The keys below are admin_feature_catalog ids (hrms, work_proposals,
+//   admin_clients_v2). What a plan grants, and what a product sells, are both
+//   edited in the admin — never redeployed. This map only records which URL
+//   space corresponds to which catalogue entry, which is a property of the
+//   routing table and does belong in code.
 //
-//     router.use(authenticate, resolveTenant, requireCapability('qa'));
-//
-// Per-handler mounting is how a route gets missed, and a missed route is worse
-// than no gate at all: the nav hides the feature while the API still serves it,
-// so the hole is invisible until someone finds it.
-//
-// This runs AFTER resolveTenant (needs req.tenantId) and alongside — not
-// instead of — the RBAC permission checks. Entitlement asks "did this company
-// buy it"; permissions ask "is this person allowed". Both must pass.
+// WHY A PREFIX GATE INSTEAD OF PER-ROUTER MOUNTS:
+//   HRMS and Finance are spread across ~25 separate app.use() mounts. Adding a
+//   check to each router means 25 chances to miss one, and a missed route is
+//   the worst outcome — the nav hides the feature while the API still serves
+//   it, so the hole is invisible until somebody finds it. One gate mounted
+//   ahead of the routers cannot be partially applied, and this list is
+//   auditable in a single read.
 
 import { Response, NextFunction } from 'express';
 import { AuthRequest } from '@/types';
 import { JWTUtils } from '@/utils/jwt';
-import { Capability, ENFORCING, hasCapability } from './entitlements.service';
-
-export const requireCapability = (capability: Capability) => {
-  return async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const tenantId = req.tenantId ?? req.user?.tenantId;
-
-      if (!tenantId) {
-        res.status(400).json({
-          success: false,
-          error: 'Tenant context is required',
-          code: 'TENANT_REQUIRED',
-        });
-        return;
-      }
-
-      if (await hasCapability(tenantId, capability)) {
-        next();
-        return;
-      }
-
-      if (!ENFORCING) {
-        console.warn(
-          `[entitlements] would block tenant=${tenantId} capability=${capability} ` +
-            `${req.method} ${req.originalUrl} (enforcement off)`
-        );
-        next();
-        return;
-      }
-
-      // Deliberately vague: the caller learns their plan lacks this, not which
-      // other products exist or who else has them.
-      res.status(403).json({
-        success: false,
-        error: 'This feature is not included in your plan',
-        code: 'ENTITLEMENT_REQUIRED',
-      });
-    } catch (error) {
-      console.error('[entitlements] capability check failed:', error);
-
-      // The kill switch has to cover THIS path too, not just the deny path.
-      // The likeliest reason a check throws is that ent_tenant_entitlements
-      // does not exist yet — i.e. this deployed before anyone ran
-      // db/ddl/tenant_entitlements.sql by hand.
-      // If enforcement is off and a lookup failure still 500'd, the switch
-      // would fail exactly when it is most needed.
-      if (!ENFORCING) {
-        console.warn(
-          `[entitlements] check errored but enforcement is off — allowing ` +
-            `${req.method} ${req.originalUrl}`
-        );
-        next();
-        return;
-      }
-
-      // Enforcing: fail CLOSED. An access gate that opens when the database
-      // hiccups is not an access gate.
-      res.status(500).json({
-        success: false,
-        error: 'Entitlement check failed',
-        code: 'ENTITLEMENT_CHECK_ERROR',
-      });
-    }
-  };
-};
+import { ENFORCING } from './entitlements.service';
+import { featureResolverService } from '@/modules/subscriptions';
+import { productFromRequest } from '@/config/brand';
 
 /**
- * Path-prefix → capability map for WHOLE modules a product may not include.
+ * URL prefix → the catalogue entry it belongs to.
  *
- * WHY A PREFIX GATE INSTEAD OF PER-ROUTER MOUNTS:
- *   HRMS and Finance are spread across ~25 separate `app.use()` mounts. Adding
- *   requireCapability() to each router means 25 chances to miss one, and a
- *   missed route is the worst outcome — the nav hides the feature while the API
- *   still serves it, so the hole is invisible until someone finds it. One
- *   prefix-driven gate mounted ahead of the routers cannot be partially
- *   applied, and this list is auditable in a single read.
- *
- *   The capability keys here are the SAME ones the nav config attaches to
- *   modules and items (see zukvo-fe/src/lib/product.ts). That is the point of
- *   the shared vocabulary: hiding something in the nav and blocking its API
- *   cannot drift apart, because both read the same key.
+ * Recruitment lives under hrms in the catalogue (hrms_candidate_pipeline,
+ * hrms_openings), so gating hrms covers it — there is no separate key.
  *
  * Longest prefix wins, so a more specific entry can override a broader one.
  */
-const MODULE_PREFIX_CAPABILITIES: ReadonlyArray<readonly [string, Capability]> = [
+const MODULE_PREFIX_FEATURES: ReadonlyArray<readonly [string, string]> = [
   // ── Finance ──
   ['/api/invoices', 'finance'],
   ['/api/invoicesetting', 'finance'],
@@ -115,7 +46,7 @@ const MODULE_PREFIX_CAPABILITIES: ReadonlyArray<readonly [string, Capability]> =
   ['/api/reimbursement-configurations', 'finance'],
   ['/api/reimbursement-settings', 'finance'],
 
-  // ── HRMS ──
+  // ── HRMS (recruitment included) ──
   ['/api/leave', 'hrms'],
   ['/api/leaves', 'hrms'],
   ['/api/leave-types', 'hrms'],
@@ -134,55 +65,63 @@ const MODULE_PREFIX_CAPABILITIES: ReadonlyArray<readonly [string, Capability]> =
   ['/api/profile/new', 'hrms'],
   ['/api/employee-exit', 'hrms'],
   ['/api/letters-docs', 'hrms'],
-
-  // ── Recruitment ──
-  ['/api/pipeline', 'rec_suite'],
-  ['/api/opening-management', 'rec_suite'],
-  ['/api/recruitment', 'rec_suite'],
-  ['/api/position-configuration', 'rec_suite'],
+  ['/api/pipeline', 'hrms'],
+  ['/api/opening-management', 'hrms'],
+  ['/api/recruitment', 'hrms'],
 
   // ── My Hub (personal HR surface) ──
   ['/api/my-hub', 'my_hub'],
 
-  // ── Features INSIDE Work that are sold separately ──
-  ['/api/proposals', 'proposals'],
-  ['/api/proposal-sections', 'proposals'],
-  ['/api/proposal-templates', 'proposals'],
+  // ── Features inside Work sold separately ──
+  ['/api/proposals', 'work_proposals'],
+  ['/api/proposal-sections', 'work_proposals'],
+  ['/api/proposal-templates', 'work_proposals'],
   // BidIq has no mount of its own — it is POST /api/leads/:id/analyze — so
-  // gating leads covers it. That is also why the BidIq nav item asks for
-  // 'leads' rather than a capability of its own: a separate key would suggest
-  // an API boundary that does not exist.
-  ['/api/leads', 'leads'],
-  ['/api/lead-settings', 'leads'],
-  ['/api/squads', 'squads'],
-  ['/api/timesheets', 'timesheet'],
-  ['/api/daily-updates', 'daily_updates'],
+  // gating lead management covers it.
+  ['/api/leads', 'work_lead_management'],
+  ['/api/lead-settings', 'work_lead_management'],
+  ['/api/squads', 'work_squads'],
+  ['/api/timesheets', 'work_timesheet'],
+  ['/api/daily-updates', 'work_daily_updates'],
 
   // ── Features inside Admin ──
-  ['/api/clients-v2', 'clients'],
+  ['/api/clients-v2', 'admin_clients_v2'],
 
   // ── Standalone ──
-  // Mounted under the bare `app.use("/api", skillExperienceRoutes)`, so the
-  // real paths are /api/skills and /api/experience.
-  ['/api/skills', 'skills'],
-  ['/api/experience', 'skills'],
+  ['/api/skills', 'home_home_general_skills'],
+  ['/api/experience', 'home_home_general_skills'],
 
   // NOT LISTED, deliberately:
-  //   chat       — runs through the Stream SDK, not this API. Hiding the UI is
-  //                the whole control; there is no prefix here to gate.
-  //   bookmarks  — stored in localStorage under `nav_shortcuts`. No backend.
+  //   chat      — runs through the Stream SDK, not this API. Hiding the UI is
+  //               the whole control; there is no prefix here to gate.
+  //   bookmarks — stored in localStorage under nav_shortcuts. No backend.
 ];
 
-function capabilityForPath(pathname: string): Capability | null {
+function featureForPath(pathname: string): string | null {
   let bestLen = -1;
-  let best: Capability | null = null;
-  for (const [prefix, capability] of MODULE_PREFIX_CAPABILITIES) {
-    if ((pathname === prefix || pathname.startsWith(`${prefix}/`)) && prefix.length > bestLen) {
+  let best: string | null = null;
+  for (const [prefix, feature] of MODULE_PREFIX_FEATURES) {
+    if ((pathname === prefix || pathname.startsWith(prefix + '/')) && prefix.length > bestLen) {
       bestLen = prefix.length;
-      best = capability;
+      best = feature;
     }
   }
   return best;
+}
+
+/**
+ * Does the granted set satisfy this requirement?
+ *
+ * Matches the hierarchy the catalogue ids encode, the same way the client's
+ * hasAnySubscriptionFeature does: holding hrms_leaves_v2 satisfies a
+ * requirement of hrms, and holding hrms satisfies hrms_leaves_v2. Plans are
+ * written at whichever level is convenient, so an exact-match check would
+ * reject perfectly valid grants.
+ */
+function satisfies(granted: readonly string[], required: string): boolean {
+  return granted.some(
+    (f) => f === required || f.startsWith(required + '_') || required.startsWith(f + '_')
+  );
 }
 
 /**
@@ -190,10 +129,10 @@ function capabilityForPath(pathname: string): Capability | null {
  *
  * This gate is mounted ahead of the routers, so neither resolveTenant nor
  * authenticateToken has run yet. It reads the tenant from the same places they
- * would and stays deliberately lenient: if it cannot work out who is calling,
- * it defers rather than rejecting — the router's own auth will refuse an
- * unauthenticated caller a moment later, and a gate that 400s on requests auth
- * would have rejected anyway just produces confusing errors.
+ * would and stays deliberately lenient: if it cannot work out who is calling it
+ * defers, because the router's own auth will refuse an unauthenticated caller a
+ * moment later, and a gate that 400s on requests auth would reject anyway just
+ * produces confusing errors.
  */
 function tenantIdFromRequest(req: AuthRequest): string | null {
   const header = req.headers['x-tenant-id'];
@@ -209,17 +148,13 @@ function tenantIdFromRequest(req: AuthRequest): string | null {
   }
 }
 
-/**
- * Blocks whole modules a tenant's products do not include, by path prefix.
- * Mount ONCE in app.ts, before the route mounts.
- */
 export const moduleEntitlementGate = async (
   req: AuthRequest,
   res: Response,
   next: NextFunction
 ): Promise<void> => {
-  const capability = capabilityForPath(req.path);
-  if (!capability) {
+  const required = featureForPath(req.path);
+  if (!required) {
     next();
     return;
   }
@@ -231,15 +166,29 @@ export const moduleEntitlementGate = async (
   }
 
   try {
-    if (await hasCapability(tenantId, capability)) {
+    const product = productFromRequest(req);
+    const granted = await featureResolverService.getTenantFeatures(
+      tenantId,
+      product ? product.toUpperCase() : undefined
+    );
+
+    // NO FEATURES MEANS UNMANAGED, NOT ENTITLED TO NOTHING.
+    //
+    // The same rule the entitlements service applies to absent grants, and for
+    // the same reason: a tenant with no subscription must behave exactly as it
+    // did before any of this existed. It also covers the Admin API being
+    // unreachable — the resolver returns an empty list on failure, and locking
+    // every tenant out of HRMS and Finance because a control-plane call timed
+    // out would be a far worse failure than serving the request.
+    if (granted.length === 0 || satisfies(granted, required)) {
       next();
       return;
     }
 
     if (!ENFORCING) {
       console.warn(
-        `[entitlements] would block tenant=${tenantId} capability=${capability} ` +
-          `${req.method} ${req.originalUrl} (enforcement off)`
+        '[entitlements] would block tenant=' + tenantId + ' feature=' + required +
+        ' ' + req.method + ' ' + req.originalUrl + ' (enforcement off)'
       );
       next();
       return;
@@ -252,16 +201,10 @@ export const moduleEntitlementGate = async (
     });
   } catch (error) {
     console.error('[entitlements] module gate failed:', error);
-    if (!ENFORCING) {
-      next();
-      return;
-    }
-    res.status(500).json({
-      success: false,
-      error: 'Entitlement check failed',
-      code: 'ENTITLEMENT_CHECK_ERROR',
-    });
+    // Never block on an infrastructure fault: this gate sits in front of the
+    // whole API, and a control-plane wobble must not take the product down.
+    next();
   }
 };
 
-export default { requireCapability, moduleEntitlementGate };
+export default { moduleEntitlementGate };

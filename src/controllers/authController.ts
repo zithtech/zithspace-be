@@ -722,18 +722,15 @@ export class AuthController {
           return null;
         });
 
-      // Entitlements also live outside Prisma. These drive which modules the
-      // shell renders — the real gate is requireCapability() on the API, so a
-      // failure here degrades the nav rather than opening anything up.
-      const entitlements = await entitlementsService
+      // Which products this tenant holds. NOT what they can use — that is
+      // `subscriptionFeatures` above, resolved from the admin control plane and
+      // scoped to the brand door this request came through. `products` is here
+      // so the client can tell which door it is on, nothing more.
+      const products = await entitlementsService
         .getProducts(user.tenantId)
-        .then((products) => ({
-          products,
-          capabilities: entitlementsService.capabilitiesForProducts(products),
-        }))
         .catch((err) => {
           console.error("Failed to load entitlements for profile:", err);
-          return { products: [], capabilities: entitlementsService.capabilitiesForProducts([]) };
+          return [] as Awaited<ReturnType<typeof entitlementsService.getProducts>>;
         });
 
       res.status(200).json({
@@ -765,8 +762,7 @@ export class AuthController {
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
           permissions: Array.from(permSet),
-          products: entitlements.products,
-          capabilities: entitlements.capabilities,
+          products,
           subscriptionFeatures,
           navigation,
         },

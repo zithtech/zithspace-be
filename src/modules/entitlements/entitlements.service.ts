@@ -1,24 +1,27 @@
 // src/modules/entitlements/entitlements.service.ts
 //
-// Resolves what a tenant is allowed to reach.
+// WHICH BRAND DOOR MAY THIS TENANT ENTER?
 //
-// TWO LEVELS, deliberately kept apart:
+// That is the whole job now, and it is the one question nothing else models.
 //
-//   PRODUCT     a sellable SKU, stored as rows in ent_tenant_entitlements.
-//               'zukvo' (full suite) | 'testiez' (standalone QA).
+//   PRODUCT   a sellable application: 'zukvo' | 'testiez'. Stored as rows in
+//             ent_tenant_entitlements. Used by the two public resolve
+//             endpoints so acme.testiez.com only resolves for a tenant that
+//             actually holds Testiez.
 //
-//   CAPABILITY  a functional area the app gates on — mirrors the top-level
-//               nav modules. Derived from products by the map below.
+// WHAT THEY CAN USE is a different question, and this module no longer answers
+// it. That is the admin control plane: admin_feature_catalog says what exists,
+// product_features says what each product sells, plan_features says what a plan
+// grants, and modules/subscriptions resolves the intersection per request. This
+// file used to carry a hand-written product → capability map, which meant the
+// same fact lived in TypeScript and in editable data; the two drifted the first
+// time somebody changed a plan.
 //
-// Products are DATA (they change when someone buys something). The product →
-// capability map is CODE (it changes when you re-package what a SKU includes).
-// Keeping them separate means re-packaging never needs a data migration, and
-// granting a product is always a single INSERT.
+// UNMANAGED MEANS FULL ACCESS. A tenant with no grants is unconstrained, not
+// locked out — entitlements are opt-in. See hasProduct().
 //
-// This module answers "what did they buy". It does NOT answer "what is this
-// user allowed to do" — that stays with RBAC/permissions, which is a per-user
-// question. Both must pass: entitlement gates the tenant, permissions gate the
-// person.
+// None of this answers "may this USER do it" — that stays with RBAC. Both must
+// pass: entitlement gates the tenant, permission gates the person.
 
 import { withTenant } from './db/pool';
 
@@ -36,90 +39,6 @@ import { withTenant } from './db/pool';
 export const ENFORCING = process.env.ENTITLEMENTS_ENFORCEMENT !== 'off';
 
 export type Product = 'zukvo' | 'testiez';
-
-/**
- * THE single vocabulary for "what may this tenant reach".
- *
- * One list drives three things that must never disagree:
- *   · which nav modules and items render          (client)
- *   · which URLs the route guard permits          (client)
- *   · which API prefixes are served               (server, authoritative)
- *
- * Before this was unified there were two vocabularies — a `products` field on
- * nav items and these capabilities — and only one of them reached the API. The
- * result was that hiding a feature from the nav removed its route guard while
- * leaving its API wide open. One vocabulary makes that class of bug impossible.
- *
- * KEEP IN SYNC with `Capability` in zukvo-fe/src/lib/product.ts.
- *
- * Two tiers, same namespace:
- *   MODULE   a top-level nav module (home, work, hrms, …)
- *   FEATURE  something inside a module that is sold separately, because the SKU
- *            boundary cuts THROUGH Work and Admin — Testiez has Tickets and
- *            Projects but not Proposals or Leads.
- *
- * Anything with no capability attached is available wherever its module is;
- * only exclusions need naming.
- */
-export type Capability =
-  // ── Modules ──
-  | 'home'
-  | 'my_hub'
-  | 'work'
-  | 'hrms'
-  | 'finance'
-  | 'admin'
-  | 'rec_suite'
-  // ── Features inside Work ──
-  | 'proposals'
-  | 'leads'
-  | 'squads'
-  | 'timesheet'
-  | 'daily_updates'
-  // ── Features inside Admin ──
-  | 'clients'
-  | 'chrome_extension'
-  // ── Standalone ──
-  | 'chat'
-  | 'skills'
-  | 'bookmarks';
-
-/**
- * Capabilities every tenant gets regardless of product. Somewhere to land after
- * login is table stakes; My Hub is NOT baseline — it is the personal HR surface
- * (payslips, leave, claims) and belongs to the suite, not to Testiez.
- */
-const BASELINE_CAPABILITIES: readonly Capability[] = ['home'];
-
-/**
- * What each SKU includes.
- *
- * Note there is no 'qa' capability: BOTH products ship QA Space, so gating on it
- * would gate nothing. Testiez is a delivery product — Tickets, Projects,
- * Document Hub, Time Tracking and QA Space — minus the people-and-money half of
- * the suite and the commercial pieces of Work.
- */
-const PRODUCT_CAPABILITIES: Record<Product, readonly Capability[]> = {
-  zukvo: [
-    'my_hub',
-    'work',
-    'hrms',
-    'finance',
-    'admin',
-    'rec_suite',
-    'proposals',
-    'leads',
-    'squads',
-    'timesheet',
-    'daily_updates',
-    'clients',
-    'chrome_extension',
-    'chat',
-    'skills',
-    'bookmarks',
-  ],
-  testiez: ['work', 'admin'],
-};
 
 export interface Entitlement {
   product: Product;
@@ -140,7 +59,6 @@ const CACHE_TTL_MS = 60_000;
 
 interface CacheEntry {
   products: Product[];
-  capabilities: Set<Capability>;
   expiresAtMs: number;
 }
 
@@ -194,12 +112,9 @@ async function load(tenantId: string): Promise<CacheEntry> {
 
   const products = await fetchActiveProducts(tenantId);
 
-  // Same rule as capabilitiesFor(): no grants means unmanaged, not restricted.
-  const capabilities = new Set<Capability>(capabilitiesFor(products));
 
   const entry: CacheEntry = {
     products,
-    capabilities,
     expiresAtMs: Date.now() + CACHE_TTL_MS,
   };
   cache.set(tenantId, entry);
@@ -209,15 +124,6 @@ async function load(tenantId: string): Promise<CacheEntry> {
 /** Products the tenant currently holds. */
 export async function getProducts(tenantId: string): Promise<Product[]> {
   return (await load(tenantId)).products;
-}
-
-/** Every capability the tenant's products add up to, baseline included. */
-export async function getCapabilities(tenantId: string): Promise<Capability[]> {
-  return [...(await load(tenantId)).capabilities];
-}
-
-export async function hasCapability(tenantId: string, capability: Capability): Promise<boolean> {
-  return (await load(tenantId)).capabilities.has(capability);
 }
 
 /**
@@ -287,40 +193,3 @@ export async function revokeProduct(tenantId: string, product: Product): Promise
 
 export const ALL_PRODUCTS: readonly Product[] = ['zukvo', 'testiez'];
 
-/**
- * ALL capabilities. What an UNMANAGED tenant gets — see capabilitiesFor().
- */
-const ALL_CAPABILITIES: readonly Capability[] = [
-  'home', 'my_hub', 'work', 'hrms', 'finance', 'admin', 'rec_suite',
-  'proposals', 'leads', 'squads', 'timesheet', 'daily_updates',
-  'clients', 'chrome_extension', 'chat', 'skills', 'bookmarks',
-];
-
-/**
- * Capabilities for a set of granted products.
- *
- * NO GRANTS MEANS FULL ACCESS, NOT NO ACCESS. This is the single most important
- * rule in this module.
- *
- * Entitlements are opt-in: a tenant is constrained only once somebody has
- * deliberately granted it products. Tenants that predate this table — and, more
- * importantly, every tenant created by signup, which does not yet write grants —
- * must behave exactly as they did before entitlements existed. Treating an
- * absent row as "entitled to nothing" silently 403'd new Zukvo tenants out of
- * HRMS and Finance, the opposite of what an additive feature should do.
- *
- * Fail-closed still applies to a lookup that ERRORS (see the middleware); this
- * is about a lookup that succeeds and finds nothing.
- */
-export function capabilitiesFor(products: Product[]): Capability[] {
-  if (products.length === 0) return [...ALL_CAPABILITIES];
-
-  const set = new Set<Capability>(BASELINE_CAPABILITIES);
-  for (const product of products) {
-    for (const capability of PRODUCT_CAPABILITIES[product] ?? []) set.add(capability);
-  }
-  return [...set];
-}
-
-/** Legacy name kept for existing call sites. */
-export const capabilitiesForProducts = capabilitiesFor;
