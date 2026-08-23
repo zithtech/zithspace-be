@@ -194,12 +194,8 @@ async function load(tenantId: string): Promise<CacheEntry> {
 
   const products = await fetchActiveProducts(tenantId);
 
-  const capabilities = new Set<Capability>(BASELINE_CAPABILITIES);
-  for (const product of products) {
-    for (const capability of PRODUCT_CAPABILITIES[product] ?? []) {
-      capabilities.add(capability);
-    }
-  }
+  // Same rule as capabilitiesFor(): no grants means unmanaged, not restricted.
+  const capabilities = new Set<Capability>(capabilitiesFor(products));
 
   const entry: CacheEntry = {
     products,
@@ -224,8 +220,19 @@ export async function hasCapability(tenantId: string, capability: Capability): P
   return (await load(tenantId)).capabilities.has(capability);
 }
 
+/**
+ * Does the tenant hold this product?
+ *
+ * An UNMANAGED tenant (no grants at all) holds every product, for the same
+ * reason it holds every capability — entitlements are opt-in. This matters most
+ * at the two public resolve endpoints: without it, a Zukvo tenant created by
+ * signup would 404 on its own zukvo.com subdomain, because it has no grant row
+ * proving it is allowed through that door.
+ */
 export async function hasProduct(tenantId: string, product: Product): Promise<boolean> {
-  return (await load(tenantId)).products.includes(product);
+  const { products } = await load(tenantId);
+  if (products.length === 0) return true;
+  return products.includes(product);
 }
 
 // ── Writes ──────────────────────────────────────────────────────────────────
@@ -280,10 +287,40 @@ export async function revokeProduct(tenantId: string, product: Product): Promise
 
 export const ALL_PRODUCTS: readonly Product[] = ['zukvo', 'testiez'];
 
-export function capabilitiesForProducts(products: Product[]): Capability[] {
+/**
+ * ALL capabilities. What an UNMANAGED tenant gets — see capabilitiesFor().
+ */
+const ALL_CAPABILITIES: readonly Capability[] = [
+  'home', 'my_hub', 'work', 'hrms', 'finance', 'admin', 'rec_suite',
+  'proposals', 'leads', 'squads', 'timesheet', 'daily_updates',
+  'clients', 'chrome_extension', 'chat', 'skills', 'bookmarks',
+];
+
+/**
+ * Capabilities for a set of granted products.
+ *
+ * NO GRANTS MEANS FULL ACCESS, NOT NO ACCESS. This is the single most important
+ * rule in this module.
+ *
+ * Entitlements are opt-in: a tenant is constrained only once somebody has
+ * deliberately granted it products. Tenants that predate this table — and, more
+ * importantly, every tenant created by signup, which does not yet write grants —
+ * must behave exactly as they did before entitlements existed. Treating an
+ * absent row as "entitled to nothing" silently 403'd new Zukvo tenants out of
+ * HRMS and Finance, the opposite of what an additive feature should do.
+ *
+ * Fail-closed still applies to a lookup that ERRORS (see the middleware); this
+ * is about a lookup that succeeds and finds nothing.
+ */
+export function capabilitiesFor(products: Product[]): Capability[] {
+  if (products.length === 0) return [...ALL_CAPABILITIES];
+
   const set = new Set<Capability>(BASELINE_CAPABILITIES);
   for (const product of products) {
     for (const capability of PRODUCT_CAPABILITIES[product] ?? []) set.add(capability);
   }
   return [...set];
 }
+
+/** Legacy name kept for existing call sites. */
+export const capabilitiesForProducts = capabilitiesFor;
