@@ -3,6 +3,7 @@ import { Transporter } from "nodemailer";
 import { getActiveMailConfiguration } from "../models/mailConfiguration.model";
 import { decrypt } from "../utils/encryption";
 import { prisma } from "../config/database";
+import { DEFAULT_BRAND, brandForTenant } from "../config/brand";
 // import { rabbitMQService } from "./RabbitMQService";
 // import { CENTRAL_MAIL_EXCHANGE, CENTRAL_MAIL_ROUTING_KEY } from "../config/rabbitmq";
 
@@ -164,9 +165,15 @@ export class EmailService {
   }
 
   public async resolveTenantMailBranding(tenantId?: string) {
-    let companyName = "Zukvo";
+    // Product brand is the FALLBACK identity, used when the tenant has no name
+    // of its own. It also decides the reply-to address, which the tenant never
+    // overrides: a Testiez customer replying to a system email must reach
+    // Testiez support, not an address on the other brand's domain.
+    const brand = tenantId ? await brandForTenant(tenantId) : DEFAULT_BRAND;
+
+    let companyName = brand.name;
     let companyLogo = "";
-    let replyToEmail = process.env.SYSTEM_EMAIL || "support@zukvo.com";
+    let replyToEmail = brand.supportEmail;
     let subdomain = "";
 
     if (tenantId) {
@@ -188,7 +195,7 @@ export class EmailService {
       }
     }
 
-    return { companyName, companyLogo, replyToEmail, subdomain };
+    return { companyName, companyLogo, replyToEmail, subdomain, brand };
   }
 
   public async sendCentralizedMail(options: {
@@ -213,7 +220,7 @@ export class EmailService {
         return true;
       }
 
-      const fromEmail = process.env.SYSTEM_EMAIL || process.env.SMTP_USER || "system@zukvo.com";
+      const fromEmail = branding.brand.systemEmail;
       const fromName = branding.companyName;
 
       const mailOptions = {

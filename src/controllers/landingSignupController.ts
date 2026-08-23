@@ -447,12 +447,20 @@ export class LandingSignupController {
         const tokens = JWTUtils.generateTokenPair(authUser);
         accessToken = tokens.accessToken;
 
-        // Set refresh token as httpOnly cookie (same as login flow)
+        // Set refresh token as httpOnly cookie — genuinely the same options as
+        // the login flow now. It previously used sameSite "lax", which the
+        // browser drops here: signup is submitted from the marketing site to the
+        // API on a different registrable domain, so the response is cross-site
+        // and only "none" is stored. The result was a refresh cookie that
+        // silently never existed, ending the session at the first access-token
+        // expiry instead of after seven days. `path` is set for the same reason
+        // login sets it — so the cookie is sent for every API path.
         res.cookie("refreshToken", tokens.refreshToken, {
           httpOnly: true,
           secure: process.env.NODE_ENV === "production",
-          sameSite: "lax",
+          sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
           maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+          path: "/",
         });
       }
 
@@ -602,12 +610,20 @@ export class LandingSignupController {
         const tokens = JWTUtils.generateTokenPair(authUser);
         accessToken = tokens.accessToken;
 
-        // Set refresh token as httpOnly cookie (same as login flow)
+        // Set refresh token as httpOnly cookie — genuinely the same options as
+        // the login flow now. It previously used sameSite "lax", which the
+        // browser drops here: signup is submitted from the marketing site to the
+        // API on a different registrable domain, so the response is cross-site
+        // and only "none" is stored. The result was a refresh cookie that
+        // silently never existed, ending the session at the first access-token
+        // expiry instead of after seven days. `path` is set for the same reason
+        // login sets it — so the cookie is sent for every API path.
         res.cookie("refreshToken", tokens.refreshToken, {
           httpOnly: true,
           secure: process.env.NODE_ENV === "production",
-          sameSite: "lax",
+          sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
           maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+          path: "/",
         });
       }
 

@@ -16,6 +16,8 @@ import {
 } from "@/types";
 import { RBACService } from "@/modules/rbac/rbac.service";
 import * as companyDetailsService from "@/modules/company-details/services/companyDetails.service";
+import * as entitlementsService from "@/modules/entitlements/entitlements.service";
+import { brandForRequest, productFromRequest, tenantOrigin } from "@/config/brand";
 import { recordTransaction, Section, Module, Page, Action, EntityType } from "../utils/transactionHistory";
 
 import { Request } from "express";
@@ -165,7 +167,24 @@ export class AuthController {
         select: { id: true, name: true, subdomain: true },
       });
 
-      if (!tenant) {
+      // Same reasoning as GET /api/tenants/resolve: unauthenticated, and it
+      // hands back a real company name. It must not confirm that a workspace
+      // exists on the brand the caller is NOT asking through, so the 404 below
+      // is identical for "no such workspace" and "exists on the other product".
+      let entitled = true;
+      const product = productFromRequest(req);
+      if (tenant && product) {
+        try {
+          entitled = await entitlementsService.hasProduct(tenant.id, product);
+        } catch (err) {
+          // Entitlements table may not exist yet — honour the same kill switch
+          // the middleware uses rather than making every workspace unresolvable.
+          console.error("[auth/resolve-tenant] entitlement check failed:", err);
+          entitled = !entitlementsService.ENFORCING;
+        }
+      }
+
+      if (!tenant || !entitled) {
         res.status(404).json({
           success: false,
           error: "Workspace not found or inactive",
@@ -679,6 +698,20 @@ export class AuthController {
           return null;
         });
 
+      // Entitlements also live outside Prisma. These drive which modules the
+      // shell renders — the real gate is requireCapability() on the API, so a
+      // failure here degrades the nav rather than opening anything up.
+      const entitlements = await entitlementsService
+        .getProducts(user.tenantId)
+        .then((products) => ({
+          products,
+          capabilities: entitlementsService.capabilitiesForProducts(products),
+        }))
+        .catch((err) => {
+          console.error("Failed to load entitlements for profile:", err);
+          return { products: [], capabilities: entitlementsService.capabilitiesForProducts([]) };
+        });
+
       res.status(200).json({
         success: true,
         data: {
@@ -708,6 +741,8 @@ export class AuthController {
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
           permissions: Array.from(permSet),
+          products: entitlements.products,
+          capabilities: entitlements.capabilities,
         },
       } as ApiResponse);
     } catch (error) {
@@ -1406,27 +1441,16 @@ export class AuthController {
         }
       });
 
-      // Send email
-      let frontendUrl = process.env.FRONTEND_URL || "http://localhost:3001";
-      if (user.tenant?.subdomain) {
-        try {
-          const urlObj = new URL(frontendUrl);
-          const parts = urlObj.hostname.split('.');
-          if (parts[0] === 'app' || parts[0] === 'www') {
-            parts[0] = user.tenant.subdomain;
-            urlObj.hostname = parts.join('.');
-          } else if (parts[0] === 'localhost' || parts[0] === '127') {
-            urlObj.hostname = `${user.tenant.subdomain}.${urlObj.hostname}`;
-          } else {
-            parts.unshift(user.tenant.subdomain);
-            urlObj.hostname = parts.join('.');
-          }
-          frontendUrl = urlObj.toString().replace(/\/$/, '');
-        } catch (e) {
-          // Fallback if URL parsing fails
-        }
-      }
-      
+      // Send email.
+      //
+      // The reset link has to land on the brand the user was actually looking
+      // at when they asked — someone who hit "forgot password" on
+      // acme.testiez.com and receives a zukvo.com link will assume it is
+      // phishing and not click it. brandForRequest() reads the Origin; the
+      // subdomain still comes from the tenant so the link reaches their own
+      // workspace either way.
+      const frontendUrl = tenantOrigin(user.tenant?.subdomain, brandForRequest(req));
+
       const resetLink = `${frontendUrl}/reset-password?token=${rawToken}`;
       const emailService = new EmailService();
 
