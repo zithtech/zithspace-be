@@ -6,6 +6,8 @@ import { EmailService } from "@/utils/emailService";
 import pool from "@/config/dbpool";
 import crypto from "crypto";
 import { RBACService } from "@/modules/rbac/rbac.service";
+import { grantProduct } from "@/modules/entitlements/entitlements.service";
+import { productFromRequest } from "@/config/brand";
 
 const emailService = new EmailService();
 
@@ -336,6 +338,17 @@ export class LandingSignupController {
         await client.query("COMMIT");
         await RBACService.setupDefaultRolesForTenant(tenantId);
 
+        // Record which brand door this signup came through. Without it the
+        // tenant is "unmanaged", which means full access -- safe for Zukvo but
+        // wrong for Testiez, which would get the entire suite. Best-effort:
+        // a failure here must not fail an otherwise complete signup, but it
+        // is loud because the tenant is over-provisioned until it is fixed.
+        try {
+          await grantProduct(tenantId, productFromRequest(req) ?? "zukvo", { source: "signup" });
+        } catch (grantErr) {
+          console.error(`[signup] tenant ${tenantId} created WITHOUT a product grant -- it will behave as unmanaged (full access) until granted:`, grantErr);
+        }
+
         try {
           const response = await axios.post(`${adminUrl}/api/subscriptions/onboard`, {
             tenantId,
@@ -498,6 +511,17 @@ export class LandingSignupController {
 
         await dbClient.query("COMMIT");
         await RBACService.setupDefaultRolesForTenant(tenantId);
+
+        // Record which brand door this signup came through. Without it the
+        // tenant is "unmanaged", which means full access -- safe for Zukvo but
+        // wrong for Testiez, which would get the entire suite. Best-effort:
+        // a failure here must not fail an otherwise complete signup, but it
+        // is loud because the tenant is over-provisioned until it is fixed.
+        try {
+          await grantProduct(tenantId, productFromRequest(req) ?? "zukvo", { source: "signup" });
+        } catch (grantErr) {
+          console.error(`[signup] tenant ${tenantId} created WITHOUT a product grant -- it will behave as unmanaged (full access) until granted:`, grantErr);
+        }
       } catch (txError) {
         await dbClient.query("ROLLBACK");
         throw txError;
@@ -700,6 +724,17 @@ export class LandingSignupController {
 
         await dbClient.query("COMMIT");
         await RBACService.setupDefaultRolesForTenant(tenantId);
+
+        // Record which brand door this signup came through. Without it the
+        // tenant is "unmanaged", which means full access -- safe for Zukvo but
+        // wrong for Testiez, which would get the entire suite. Best-effort:
+        // a failure here must not fail an otherwise complete signup, but it
+        // is loud because the tenant is over-provisioned until it is fixed.
+        try {
+          await grantProduct(tenantId, productFromRequest(req) ?? "zukvo", { source: "signup" });
+        } catch (grantErr) {
+          console.error(`[signup] tenant ${tenantId} created WITHOUT a product grant -- it will behave as unmanaged (full access) until granted:`, grantErr);
+        }
       } catch (txError) {
         await dbClient.query("ROLLBACK");
         throw txError;
