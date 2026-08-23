@@ -7,10 +7,10 @@ export class SubscriptionCacheService {
   /**
    * Get the subscription from Redis cache
    */
-  async get(tenantId: string): Promise<CachedTenantSubscription | null> {
+  async get(tenantId: string, productCode?: string): Promise<CachedTenantSubscription | null> {
     try {
       const client = await redisService.getClient();
-      const key = SUBSCRIPTION_CONSTANTS.getCacheKey(tenantId);
+      const key = SUBSCRIPTION_CONSTANTS.getCacheKey(tenantId, productCode);
       
       const cached = await client.get(key);
       if (!cached) {
@@ -29,10 +29,10 @@ export class SubscriptionCacheService {
   /**
    * Write the full subscription response to Redis cache
    */
-  async set(tenantId: string, data: TenantSubscriptionPayload): Promise<void> {
+  async set(tenantId: string, data: TenantSubscriptionPayload, productCode?: string): Promise<void> {
     try {
       const client = await redisService.getClient();
-      const key = SUBSCRIPTION_CONSTANTS.getCacheKey(tenantId);
+      const key = SUBSCRIPTION_CONSTANTS.getCacheKey(tenantId, productCode);
       
       const cacheData: CachedTenantSubscription = {
         ...data,

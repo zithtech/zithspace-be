@@ -391,7 +391,13 @@ export class AuthController {
 
       // Fetch subscription features and build dynamic navigation
       await subscriptionService.invalidateTenantSubscription(user.tenantId);
-      const subscriptionFeatures = await featureResolverService.getTenantFeatures(user.tenantId);
+      // Scope to the brand door this request came through, so a tenant holding
+      // both subscriptions gets the shell they actually asked for.
+      const requestProduct = productFromRequest(req);
+      const subscriptionFeatures = await featureResolverService.getTenantFeatures(
+        user.tenantId,
+        requestProduct ? requestProduct.toUpperCase() : undefined,
+      );
       const navigation = await navigationService.buildNavigation(permSet, subscriptionFeatures);
 
       // Return user data and access token
@@ -699,7 +705,13 @@ export class AuthController {
 
       // Fetch subscription features and build dynamic navigation
       await subscriptionService.invalidateTenantSubscription(user.tenantId);
-      const subscriptionFeatures = await featureResolverService.getTenantFeatures(user.tenantId);
+      // Scope to the brand door this request came through, so a tenant holding
+      // both subscriptions gets the shell they actually asked for.
+      const requestProduct = productFromRequest(req);
+      const subscriptionFeatures = await featureResolverService.getTenantFeatures(
+        user.tenantId,
+        requestProduct ? requestProduct.toUpperCase() : undefined,
+      );
       const navigation = await navigationService.buildNavigation(permSet, subscriptionFeatures);
       // Company details live in the raw-SQL company-details module, not Prisma.
       // A tenant that has not filled the form in yet simply gets null.
@@ -974,7 +986,13 @@ export class AuthController {
 
       // Fetch subscription features and build dynamic navigation
       await subscriptionService.invalidateTenantSubscription(user.tenantId);
-      const subscriptionFeatures = await featureResolverService.getTenantFeatures(user.tenantId);
+      // Scope to the brand door this request came through, so a tenant holding
+      // both subscriptions gets the shell they actually asked for.
+      const requestProduct = productFromRequest(req);
+      const subscriptionFeatures = await featureResolverService.getTenantFeatures(
+        user.tenantId,
+        requestProduct ? requestProduct.toUpperCase() : undefined,
+      );
       const navigation = await navigationService.buildNavigation(permSet, subscriptionFeatures);
 
       res.status(200).json({
@@ -1151,7 +1169,13 @@ export class AuthController {
 
       // Fetch subscription features and build dynamic navigation
       await subscriptionService.invalidateTenantSubscription(user.tenantId);
-      const subscriptionFeatures = await featureResolverService.getTenantFeatures(user.tenantId);
+      // Scope to the brand door this request came through, so a tenant holding
+      // both subscriptions gets the shell they actually asked for.
+      const requestProduct = productFromRequest(req);
+      const subscriptionFeatures = await featureResolverService.getTenantFeatures(
+        user.tenantId,
+        requestProduct ? requestProduct.toUpperCase() : undefined,
+      );
       const navigation = await navigationService.buildNavigation(permSet, subscriptionFeatures);
 
       // Return user data and access token
@@ -1352,7 +1376,13 @@ export class AuthController {
 
       // Fetch subscription features and build dynamic navigation
       await subscriptionService.invalidateTenantSubscription(user.tenantId);
-      const subscriptionFeatures = await featureResolverService.getTenantFeatures(user.tenantId);
+      // Scope to the brand door this request came through, so a tenant holding
+      // both subscriptions gets the shell they actually asked for.
+      const requestProduct = productFromRequest(req);
+      const subscriptionFeatures = await featureResolverService.getTenantFeatures(
+        user.tenantId,
+        requestProduct ? requestProduct.toUpperCase() : undefined,
+      );
       const navigation = await navigationService.buildNavigation(permSet, subscriptionFeatures);
 
       // Return user data and access token
