@@ -78,6 +78,46 @@ export class NotionAuthController {
     }
 
     /**
+     * GET /api/v2/auth/notion/status
+     * Whether this user has a Notion connection in this tenant.
+     */
+    static async status(req: AuthRequest, res: Response): Promise<void> {
+        try {
+            const status = await NotionAuthService.getStatus(
+                req.user.id,
+                req.tenantId || req.user.tenantId
+            );
+            res.status(200).json({ success: true, data: status });
+        } catch (error) {
+            console.error("Notion status error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to get Notion status",
+            });
+        }
+    }
+
+    /**
+     * DELETE /api/v2/auth/notion/disconnect
+     * Removes the stored Notion token for this user.
+     */
+    static async disconnect(req: AuthRequest, res: Response): Promise<void> {
+        try {
+            await NotionAuthService.disconnect(
+                req.user.id,
+                req.tenantId || req.user.tenantId
+            );
+            res.status(200).json({ success: true, data: { connected: false } });
+        } catch (error) {
+            console.error("Notion disconnect error:", error);
+            res.status(500).json({
+                success: false,
+                error: "Failed to disconnect Notion",
+            });
+        }
+    }
+
+    /**
      * GET /api/v2/auth/notion/callback
      * Handles the OAuth callback from Notion.
      */
