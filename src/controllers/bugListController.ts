@@ -975,7 +975,8 @@ export class BugListController {
     }
     try {
       const r = await pool.query(
-        `SELECT s.*, f.name as folder_name 
+        `SELECT s.*, f.name as folder_name,
+                (SELECT COUNT(*)::int FROM bugs b WHERE b.sheet_id = s.id) AS bug_count
          FROM bug_sheets s
          INNER JOIN bug_folders f ON s.folder_id = f.id
          WHERE f.project_id = $1 AND f.tenant_id = $2 
@@ -995,7 +996,8 @@ export class BugListController {
           status: row.status,
           createdById: row.created_by_id,
           createdAt: row.created_at,
-          updatedAt: row.updated_at
+          updatedAt: row.updated_at,
+          _count: { bugs: row.bug_count }
         })) 
       });
     } catch (err: any) {

@@ -107,4 +107,45 @@ export class NotionAuthService {
 
         return result.rows[0].access_token;
     }
+
+    /**
+     * Connection status for the Integrations page — no Notion API call, just
+     * whether we hold a token for this user in this tenant.
+     */
+    static async getStatus(
+        userId: string,
+        tenantId: string
+    ): Promise<{ connected: boolean; workspaceName: string | null; connectedAt: string | null }> {
+        await this.ensureTableExists();
+
+        const result = await pool.query(
+            `SELECT workspace_name, updated_at
+               FROM notion_integrations
+              WHERE user_id = $1 AND tenant_id = $2`,
+            [userId, tenantId]
+        );
+
+        if (result.rows.length === 0) {
+            return { connected: false, workspaceName: null, connectedAt: null };
+        }
+
+        return {
+            connected: true,
+            workspaceName: result.rows[0].workspace_name ?? null,
+            connectedAt: result.rows[0].updated_at ?? null,
+        };
+    }
+
+    /**
+     * Drop the stored token. Notion has no token-revocation endpoint, so this
+     * only clears our side of the connection.
+     */
+    static async disconnect(userId: string, tenantId: string): Promise<void> {
+        await this.ensureTableExists();
+
+        await pool.query(
+            `DELETE FROM notion_integrations WHERE user_id = $1 AND tenant_id = $2`,
+            [userId, tenantId]
+        );
+    }
 }
