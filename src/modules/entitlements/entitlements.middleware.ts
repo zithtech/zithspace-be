@@ -112,16 +112,21 @@ function featureForPath(pathname: string): string | null {
 /**
  * Does the granted set satisfy this requirement?
  *
- * Matches the hierarchy the catalogue ids encode, the same way the client's
- * hasAnySubscriptionFeature does: holding hrms_leaves_v2 satisfies a
- * requirement of hrms, and holding hrms satisfies hrms_leaves_v2. Plans are
- * written at whichever level is convenient, so an exact-match check would
- * reject perfectly valid grants.
+ * UPWARD ONLY: an exact match, or a granted DESCENDANT. Holding
+ * hrms_leaves_v2 satisfies a requirement of hrms — you clearly have some HRMS.
+ *
+ * Deliberately NOT the reverse. A product holds CORE rows (work, admin, home)
+ * purely as nav containers while selling only some of the modules beneath
+ * them, so treating a container as a grant let a Testiez tenant through to
+ * /api/proposals, /api/leads, /api/squads and the rest — every item-level
+ * exclusion defeated by one row.
+ *
+ * Safe for existing plans: Zukvo plans grant only leaf FEATURE rows, never
+ * parents, so the downward direction never fired for them. Verified across all
+ * seven — identical results before and after.
  */
 function satisfies(granted: readonly string[], required: string): boolean {
-  return granted.some(
-    (f) => f === required || f.startsWith(required + '_') || required.startsWith(f + '_')
-  );
+  return granted.some((f) => f === required || f.startsWith(required + '_'));
 }
 
 /**
