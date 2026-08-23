@@ -688,6 +688,15 @@ const startServer = async () => {
       console.error("❌ Jira BullMQ initialization failed:", bullmqError.message);
     }
 
+    // Initialize Linear Migration Worker (BullMQ / Redis)
+    try {
+      const { LinearMigrationWorkers } = require("@/modules/linear/linear.migration.workers");
+      new LinearMigrationWorkers();
+      console.log("🚀 Linear Migration BullMQ Workers started");
+    } catch (bullmqError: any) {
+      console.error("❌ Linear BullMQ initialization failed:", bullmqError.message);
+    }
+
     // Leave 2.0 accrual scheduler + worker (no-op unless LEAVE_ACCRUAL_ENABLED=true)
     const { initLeaveAccrual } = require("@/modules/leave-v2/jobs");
     await initLeaveAccrual();

@@ -75,4 +75,61 @@ router.post(
   LinearIntegrationController.createIssue
 );
 
+
+// GET /api/integrations/linear/projects
+router.get(
+  '/projects',
+  resolveTenant,
+  authenticateToken,
+  requireAuth,
+  LinearIntegrationController.getProjects
+);
+
+// GET /api/integrations/linear/states
+router.get(
+  '/states',
+  resolveTenant,
+  authenticateToken,
+  requireAuth,
+  LinearIntegrationController.getStates
+);
+
+// GET /api/integrations/linear/cycles
+router.get(
+  '/cycles',
+  resolveTenant,
+  authenticateToken,
+  requireAuth,
+  LinearIntegrationController.getCycles
+);
+
+// POST /api/integrations/linear/migrations
+router.post(
+  '/migrations',
+  resolveTenant,
+  authenticateToken,
+  requireAuth,
+  LinearIntegrationController.startMigration
+);
+
+// GET /api/integrations/linear/migrations/:id
+router.get(
+  '/migrations/:id',
+  resolveTenant,
+  authenticateToken,
+  requireAuth,
+  LinearIntegrationController.getMigrationProgress
+);
+
+
+// POST /api/integrations/linear/tickets/preview
+router.post(
+  '/tickets/preview',
+  resolveTenant,
+  authenticateToken,
+  requireAuth,
+  LinearIntegrationController.getPreviewTickets
+);
+
 export default router;
+
