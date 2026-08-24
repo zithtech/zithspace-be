@@ -1,9 +1,28 @@
 import { Queue } from 'bullmq';
 
-const connection = {
-  host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT || '6379', 10),
-};
+export function buildConnection() {
+  const base = { maxRetriesPerRequest: null as null };
+  const url = process.env.REDIS_URL;
+  if (url) {
+    const u = new URL(url);
+    return {
+      ...base,
+      host: u.hostname,
+      port: parseInt(u.port || '6379'),
+      username: u.username ? decodeURIComponent(u.username) : undefined,
+      password: u.password ? decodeURIComponent(u.password) : undefined,
+      ...(u.protocol === 'rediss:' ? { tls: {} } : {}),
+    };
+  }
+  return {
+    ...base,
+    host: process.env.REDIS_HOST || '127.0.0.1',
+    port: parseInt(process.env.REDIS_PORT || '6379'),
+    password: process.env.REDIS_PASSWORD || undefined,
+  };
+}
+
+export const connection = buildConnection();
 
 export const LINEAR_QUEUES = {
   INIT: 'linear-migration-init',

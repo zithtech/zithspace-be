@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import { JIRA_QUEUES, jiraBullMQService } from './jira.bullmq.service';
+import { JIRA_QUEUES, jiraBullMQService, connection } from './jira.bullmq.service';
 import { PrismaClient } from '@prisma/client';
 import { JiraApiService } from './jira.api.service';
 import { JiraOAuthService } from './jira.oauth.service';
@@ -8,10 +8,7 @@ const prisma = new PrismaClient();
 const jiraApiService = new JiraApiService();
 const jiraOAuthService = new JiraOAuthService();
 
-const connection = {
-  host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT || '6379', 10),
-};
+
 
 export class JiraMigrationWorkers {
   private initWorker: Worker;
