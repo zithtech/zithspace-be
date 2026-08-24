@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import pool from '../config/dbpool';
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from '../utils/transactionHistory';
 
 let schemaFixed = false;
 const ensureModuleFkDropped = async () => {
@@ -291,6 +292,20 @@ export const createTestCase = async (req: Request, res: Response) => {
         status || 'Draft', assignedOwner, userId
       ]
     );
+
+    recordTransaction({
+      req: req as any,
+      section: Section.WORK,
+      module: Module.QA_WORKSPACE,
+      page: Page.QA_CASE_LIST,
+      action: Action.CREATE,
+      actionLabel: "Test Case created",
+      entityType: EntityType.QA_CASE,
+      entityId: rows[0].id,
+      entityLabel: rows[0].test_case_id,
+      afterData: rows[0],
+    });
+
     res.status(201).json({ success: true, data: rows[0] });
   } catch (error) {
     console.error('Error creating test case:', error);
@@ -313,6 +328,21 @@ export const updateTestCase = async (req: Request, res: Response) => {
     const assignedOwner = owner || qa_owner || null;
     const parentId = parent_test_case_id || parent_id || null;
 
+    const queryStr = `
+      SELECT tc.*, COALESCE(mv2.name, m.module_name, 'Unassigned') as module_name, 
+      u_owner.name as owner_name, u_creator.name as creator_name
+      FROM qa_test_cases tc
+      LEFT JOIN qa_todo_modules m ON tc.module_id::text = m.id::text
+      LEFT JOIN modules_v2 mv2 ON tc.module_id::text = mv2.id::text
+      LEFT JOIN users u_owner ON tc.owner::text = u_owner.id::text
+      LEFT JOIN users u_creator ON tc.created_by::text = u_creator.id::text
+      WHERE tc.id = $1 AND tc.tenant_id = $2
+    `;
+
+    const { rows: oldRows } = await pool.query(queryStr, [id, tenantId]);
+    if (!oldRows.length) return res.status(404).json({ success: false, error: 'Test Case not found' });
+    const oldCase = oldRows[0];
+
     const { rows } = await pool.query(
       `UPDATE qa_test_cases SET 
         parent_test_case_id = COALESCE($1, parent_test_case_id), name = $2, module_id = $3, feature = $4, description = $5, preconditions = $6,
@@ -327,6 +357,40 @@ export const updateTestCase = async (req: Request, res: Response) => {
     );
 
     if (!rows.length) return res.status(404).json({ success: false, error: 'Test Case not found' });
+
+    const { rows: newRows } = await pool.query(queryStr, [id, tenantId]);
+    const updatedCase = newRows[0];
+
+    const mapForDiff = (row: any) => ({
+      Name: row.name,
+      Module: row.module_name,
+      Feature: row.feature || 'None',
+      Type: row.test_type,
+      Automation: row.automation,
+      Priority: row.priority,
+      Severity: row.severity,
+      Status: row.status,
+      Owner: row.owner_name || 'Unassigned',
+    });
+
+    const diff = diffShallow(mapForDiff(oldCase), mapForDiff(updatedCase));
+    if (diff.changedFields.length > 0) {
+      recordTransaction({
+        req: req as any,
+        section: Section.WORK,
+        module: Module.QA_WORKSPACE,
+        page: Page.QA_CASE_DETAIL,
+        action: Action.UPDATE,
+        actionLabel: "Test Case updated",
+        entityType: EntityType.QA_CASE,
+        entityId: id,
+        entityLabel: updatedCase.test_case_id,
+        beforeData: diff.before,
+        afterData: diff.after,
+        changedFields: diff.changedFields,
+      });
+    }
+
     res.status(200).json({ success: true, data: rows[0] });
   } catch (error) {
     console.error('Error updating test case:', error);
@@ -340,7 +404,25 @@ export const deleteTestCase = async (req: Request, res: Response) => {
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
     const { id } = req.params;
 
+    const { rows: oldRows } = await pool.query(`SELECT * FROM qa_test_cases WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
+    if (!oldRows.length) return res.status(404).json({ success: false, error: 'Test Case not found' });
+    const oldCase = oldRows[0];
+
     await pool.query(`DELETE FROM qa_test_cases WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
+
+    recordTransaction({
+      req: req as any,
+      section: Section.WORK,
+      module: Module.QA_WORKSPACE,
+      page: Page.QA_CASE_LIST,
+      action: Action.DELETE,
+      actionLabel: "Test Case deleted",
+      entityType: EntityType.QA_CASE,
+      entityId: id,
+      entityLabel: oldCase.test_case_id,
+      beforeData: oldCase,
+    });
+
     res.status(200).json({ success: true, message: 'Deleted successfully' });
   } catch (error) {
     console.error('Error deleting test case:', error);

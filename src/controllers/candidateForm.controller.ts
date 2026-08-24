@@ -3,6 +3,15 @@ import { AuthRequest } from "@/types";
 import { uploadCandidateDocumentToR2 } from "@/utils/r2Client";
 import { Response } from "express";
 import { randomUUID as uuidv4 } from "crypto";
+import {
+  recordTransaction,
+  Section,
+  Module,
+  Page,
+  Action,
+  EntityType,
+  diffShallow,
+} from '@/utils/transactionHistory';
 
 // ✅ CREATE Candidate
 export async function submitCandidateForm(req: AuthRequest, res: Response) {
@@ -129,6 +138,19 @@ export async function submitCandidateForm(req: AuthRequest, res: Response) {
       }
 
       return candidate;
+    });
+
+    recordTransaction({
+      req: req as any,
+      section: Section.HR,
+      module: Module.RECRUITMENT,
+      page: Page.CANDIDATE_PIPELINE_LIST,
+      action: Action.CREATE,
+      actionLabel: `Candidate Form submitted for "${result.fullName}"`,
+      entityType: EntityType.CANDIDATE_FORM,
+      entityId: result.id,
+      entityLabel: result.fullName,
+      afterData: { email: result.email, contactNo: result.contactNo },
     });
 
     return res.status(201).json({
@@ -353,6 +375,27 @@ export async function updateCandidate(req: AuthRequest, res: Response) {
       return candidate;
     });
 
+    const before = await prisma.candidateDetails.findFirst({ where: { id, tenantId } });
+    if (before) {
+      const diff = diffShallow(before, result);
+      if (diff.changedFields.length > 0) {
+        recordTransaction({
+          req: req as any,
+          section: Section.HR,
+          module: Module.RECRUITMENT,
+          page: Page.CANDIDATE_PIPELINE_DETAIL,
+          action: Action.UPDATE,
+          actionLabel: `Updated Candidate Form for "${result.fullName}"`,
+          entityType: EntityType.CANDIDATE_FORM,
+          entityId: result.id,
+          entityLabel: result.fullName,
+          beforeData: diff.before,
+          afterData: diff.after,
+          changedFields: diff.changedFields,
+        });
+      }
+    }
+
     return res.status(200).json({
       success: true,
       message: "Candidate updated successfully",
@@ -376,6 +419,8 @@ export async function deleteCandidate(req: AuthRequest, res: Response) {
     const tenantId = req.tenantId;
 
     // Delete related records first (if not handled by cascade which Prisma doesn't do by default unless specified)
+    const existing = await prisma.candidateDetails.findFirst({ where: { id, tenantId } });
+
     await prisma.$transaction(async (tx) => {
       await (tx as any).candidateAvailability.deleteMany({ where: { candidateId: id } });
       await tx.currentEmployerContact.deleteMany({ where: { candidateId: id } });
@@ -384,6 +429,21 @@ export async function deleteCandidate(req: AuthRequest, res: Response) {
       await tx.candidateDocuments.deleteMany({ where: { candidateId: id } });
       await tx.candidateDetails.delete({ where: { id, tenantId } });
     });
+
+    if (existing) {
+      recordTransaction({
+        req: req as any,
+        section: Section.HR,
+        module: Module.RECRUITMENT,
+        page: Page.CANDIDATE_PIPELINE_LIST,
+        action: Action.DELETE,
+        actionLabel: `Deleted Candidate Form for "${existing.fullName}"`,
+        entityType: EntityType.CANDIDATE_FORM,
+        entityId: id,
+        entityLabel: existing.fullName,
+        beforeData: existing,
+      });
+    }
 
     return res.status(200).json({
       success: true,
