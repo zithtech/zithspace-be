@@ -237,7 +237,7 @@ export class JiraController {
           await prisma.$executeRaw`
             UPDATE "jira_integrations" 
             SET "cloud_id" = ${cloud_id}
-            WHERE "tenant_id" = ${tenantId}::uuid;
+            WHERE "tenant_id" = ${tenantId}::uuid AND "user_id" = ${(req as any).user?.id}::uuid;
           `;
         } else {
           return res.status(400).json({ success: false, error: "No accessible Jira sites found for this token." });
@@ -521,7 +521,7 @@ export class JiraController {
         return res.status(400).json({ success: false, error: "projectId is required" });
       }
       const oauthService = new (require('./jira.oauth.service').JiraOAuthService)();
-      const { accessToken, cloudId } = await oauthService.getAccessTokenByTenantId(tenantId);
+      const { accessToken, cloudId } = await oauthService.getAccessTokenByTenantId(tenantId, (req as any).user?.id);
       
       const issueTypes = await this.apiService.getIssueTypes(accessToken, cloudId, projectId as string);
       res.json({ success: true, data: issueTypes });
@@ -541,7 +541,7 @@ export class JiraController {
       }
       
       const oauthService = new (require('./jira.oauth.service').JiraOAuthService)();
-      const { accessToken, cloudId } = await oauthService.getAccessTokenByTenantId(tenantId);
+      const { accessToken, cloudId } = await oauthService.getAccessTokenByTenantId(tenantId, (req as any).user?.id);
       
       let finalDescription = description || '';
 

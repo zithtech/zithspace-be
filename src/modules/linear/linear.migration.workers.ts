@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import { LINEAR_QUEUES, linearBullMQService } from './linear.bullmq.service';
+import { LINEAR_QUEUES, linearBullMQService, connection } from './linear.bullmq.service';
 import { LinearIntegrationService } from '../../services/LinearIntegrationService';
 import { LinearAuthService } from '../../services/LinearAuthService';
 import pool from '../../config/dbpool';
@@ -7,10 +7,7 @@ import crypto from 'crypto';
 
 const linearAuthService = new LinearAuthService();
 
-const connection = {
-  host: process.env.REDIS_HOST || 'localhost',
-  port: parseInt(process.env.REDIS_PORT || '6379', 10),
-};
+
 
 export class LinearMigrationWorkers {
   private initWorker: Worker;
