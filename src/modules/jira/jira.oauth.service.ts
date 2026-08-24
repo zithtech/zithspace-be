@@ -9,7 +9,7 @@ export class JiraOAuthService {
   private readonly callbackUrl = process.env.JIRA_CALLBACK_URL!;
 
   public getAuthorizationUrl(tenantId: string, userId: string, returnUrl?: string): string {
-    const scopes = ["read:jira-work", "read:jira-user", "read:board-scope:jira-software", "read:sprint:jira-software", "read:project:jira", "offline_access"];
+    const scopes = ["read:jira-work", "write:jira-work", "read:jira-user", "read:board-scope:jira-software", "read:sprint:jira-software", "read:project:jira", "offline_access"];
     const stateObj: any = { tenantId, userId };
     if (returnUrl) {
       stateObj.returnUrl = returnUrl;
@@ -36,7 +36,7 @@ export class JiraOAuthService {
     const expiresAt = new Date(Date.now() + expires_in * 1000);
 
     // TODO: Encrypt tokens before storing
-    const encryptedAccessToken = access_token; 
+    const encryptedAccessToken = access_token;
     const encryptedRefreshToken = refresh_token;
 
     // We are using raw query as per the requirement

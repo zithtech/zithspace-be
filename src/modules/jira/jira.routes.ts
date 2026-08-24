@@ -16,6 +16,8 @@ router.use(requireAuth);
 router.get("/connect", controller.connect.bind(controller));
 router.get("/status", controller.getStatus.bind(controller));
 router.get("/projects", controller.getProjects.bind(controller));
+router.get("/issue-types", controller.getIssueTypes.bind(controller));
+router.post("/issue", controller.createIssue.bind(controller));
 router.get("/filters", controller.getFilters.bind(controller));
 router.get("/statuses", controller.getStatuses.bind(controller));
 router.get("/users", controller.getUsers.bind(controller));

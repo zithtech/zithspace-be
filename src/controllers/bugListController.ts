@@ -389,6 +389,9 @@ function shapeBug(row: any, attachments: any[], externalLinks: any[]) {
     linearIssueId: row.linear_issue_id ?? null,
     linearIssueUrl: row.linear_issue_url ?? null,
     linearIssueIdentifier: row.linear_issue_identifier ?? null,
+    jiraIssueId: row.jira_issue_id ?? null,
+    jiraIssueUrl: row.jira_issue_url ?? null,
+    jiraIssueKey: row.jira_issue_key ?? null,
     // Set when the bug was raised from a QA test run
     testCaseId: row.test_case_id ?? null,
     testCaseRef: row.test_case_ref ?? null,
@@ -3430,7 +3433,7 @@ export class BugListController {
       if (bugRes.rows.length === 0) {
         throw new Error("Bug not found");
       }      const bug = bugRes.rows[0];
-      if (!bug.ticket_id && !bug.linear_issue_identifier) {
+      if (!bug.ticket_id && !bug.linear_issue_identifier && !bug.jira_issue_key) {
         throw new Error("Cannot mark as recurring: Bug does not have an active ticket");
       }
 
@@ -3494,6 +3497,87 @@ export class BugListController {
           entityId: bugId,
           afterData: { isRecurring: true, linearIssueId: newIssue.id, ticketHistory: newHistory, status: 'converted' },
           changedFields: ["is_recurring", "linear_issue_id", "linear_issue_identifier", "linear_issue_url", "ticket_history", "status"],
+          statusCode: 200,
+        });
+
+      } else if (bug.jira_issue_key) {
+        // Handle Jira Recurring Flow
+        const JiraOAuthService = require('../modules/jira/jira.oauth.service').JiraOAuthService;
+        const JiraApiService = require('../modules/jira/jira.api.service').JiraApiService;
+        const oauthService = new JiraOAuthService();
+        const apiService = new JiraApiService();
+        const { accessToken, cloudId } = await oauthService.getAccessTokenByTenantId(tenantId);
+        
+        const url = `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/issue/${bug.jira_issue_key}`;
+        const axios = require('axios');
+        const oldIssueRes = await axios.get(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+        const oldIssue = oldIssueRes.data;
+
+        const title = `[Recurring] ${oldIssue.fields.summary}`;
+        const finalDescription = `**Recurring Bug**\nPreviously tracked under: ${bug.jira_issue_key}\n\n---\n`;
+
+        const adfDescription = {
+          type: "doc",
+          version: 1,
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                { type: "text", text: finalDescription }
+              ]
+            }
+          ]
+        };
+
+        const payload: any = {
+          fields: {
+            project: { id: oldIssue.fields.project.id },
+            summary: title,
+            description: adfDescription,
+            issuetype: { id: oldIssue.fields.issuetype.id }
+          }
+        };
+
+        if (oldIssue.fields.assignee) {
+          payload.fields.assignee = { id: oldIssue.fields.assignee.accountId };
+        }
+
+        const newIssue = await apiService.createIssue(accessToken, cloudId, payload);
+
+        const historyEntry = {
+          ticketId: bug.jira_issue_id,
+          ticketNumber: bug.jira_issue_key,
+          status: "Jira Issue",
+          timestamp: new Date().toISOString(),
+          url: bug.jira_issue_url
+        };
+        const currentHistory = bug.ticket_history || [];
+        const newHistory = [...currentHistory, historyEntry];
+
+        await client.query(
+          `UPDATE bugs 
+           SET is_recurring = true, 
+               jira_issue_id = $1, 
+               jira_issue_key = $2, 
+               jira_issue_url = $3,
+               ticket_history = $4::jsonb,
+               status = 'converted',
+               updated_at = NOW()
+           WHERE id = $5 AND tenant_id = $6`,
+          [newIssue.id, newIssue.key, newIssue.self, JSON.stringify(newHistory), bugId, tenantId]
+        );
+
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.BUG_LIST,
+          page: Page.BUG_LIST,
+          action: Action.UPDATE,
+          actionLabel: "Bug marked as recurring, new Jira issue created",
+          entityType: EntityType.BUG,
+          entityId: bugId,
+          afterData: { isRecurring: true, jiraIssueId: newIssue.id, ticketHistory: newHistory, status: 'converted' },
+          changedFields: ["is_recurring", "jira_issue_id", "jira_issue_key", "jira_issue_url", "ticket_history", "status"],
           statusCode: 200,
         });
 

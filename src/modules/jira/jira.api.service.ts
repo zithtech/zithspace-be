@@ -161,4 +161,43 @@ export class JiraApiService {
     });
     return response.data;
   }
+
+  public async getIssueTypes(accessToken: string, cloudId: string, projectId: string) {
+    const url = `${this.baseUrl}/${cloudId}/rest/api/3/issuetype/project?projectId=${projectId}`;
+    const response = await axios.get(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json"
+      }
+    });
+    return response.data;
+  }
+
+  public async createIssue(accessToken: string, cloudId: string, payload: any) {
+    const url = `${this.baseUrl}/${cloudId}/rest/api/3/issue`;
+    const response = await axios.post(url, payload, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
+        "Content-Type": "application/json"
+      }
+    });
+    return response.data;
+  }
+
+  public async uploadAttachment(accessToken: string, cloudId: string, issueIdOrKey: string, fileStream: any, filename: string) {
+    const url = `${this.baseUrl}/${cloudId}/rest/api/3/issue/${issueIdOrKey}/attachments`;
+    const FormData = require('form-data');
+    const form = new FormData();
+    form.append('file', fileStream, filename);
+
+    const response = await axios.post(url, form, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'X-Atlassian-Token': 'no-check',
+        ...form.getHeaders()
+      }
+    });
+    return response.data;
+  }
 }
