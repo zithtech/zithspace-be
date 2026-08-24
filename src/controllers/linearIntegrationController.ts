@@ -3,11 +3,92 @@ import { AuthRequest } from '../types';
 import { LinearAuthService } from '../services/LinearAuthService';
 import { LinearIntegrationService } from '../services/LinearIntegrationService';
 import pool from '../config/dbpool';
+import { LinearMigrationService } from '../modules/linear/linear.migration.service';
 
 const linearAuthService = new LinearAuthService();
+const linearMigrationService = new LinearMigrationService();
 
 export class LinearIntegrationController {
   
+  
+  static getProjects = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      if (!req.tenantId || !req.user?.id) { res.status(401).json({ success: false, error: 'Unauthorized' }); return; }
+      const token = await linearAuthService.getToken(req.tenantId, req.user.id);
+      if (!token) { res.status(403).json({ success: false, error: 'Linear is not connected' }); return; }
+      const projects = await LinearIntegrationService.getProjects(token);
+      res.json({ success: true, data: projects });
+    } catch (error: any) { res.status(500).json({ success: false, error: error.message || 'Failed' }); }
+  };
+
+  static getStates = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      if (!req.tenantId || !req.user?.id) { res.status(401).json({ success: false, error: 'Unauthorized' }); return; }
+      const token = await linearAuthService.getToken(req.tenantId, req.user.id);
+      if (!token) { res.status(403).json({ success: false, error: 'Linear is not connected' }); return; }
+      const states = await LinearIntegrationService.getWorkflowStates(token);
+      res.json({ success: true, data: states });
+    } catch (error: any) { res.status(500).json({ success: false, error: error.message || 'Failed' }); }
+  };
+
+  static getCycles = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      if (!req.tenantId || !req.user?.id) { res.status(401).json({ success: false, error: 'Unauthorized' }); return; }
+      const token = await linearAuthService.getToken(req.tenantId, req.user.id);
+      if (!token) { res.status(403).json({ success: false, error: 'Linear is not connected' }); return; }
+      const cycles = await LinearIntegrationService.getCycles(token);
+      res.json({ success: true, data: cycles });
+    } catch (error: any) { res.status(500).json({ success: false, error: error.message || 'Failed' }); }
+  };
+
+  static startMigration = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      if (!req.tenantId || !req.user?.id) { res.status(401).json({ success: false, error: 'Unauthorized' }); return; }
+      const { integrationId, projectIds, teamIds, cycleIds, stateIds, userIds, statusMapping, userMapping } = req.body;
+      
+      const token = await linearAuthService.getToken(req.tenantId, req.user.id);
+      if (!token) { res.status(403).json({ success: false, error: 'Linear is not connected' }); return; }
+      
+      const result = await linearMigrationService.startMigration(
+        req.tenantId,
+        integrationId,
+        projectIds || [],
+        teamIds || [],
+        cycleIds || [],
+        stateIds || [],
+        userIds || [],
+        statusMapping || {},
+        userMapping || {},
+        req.user.id
+      );
+      res.json(result);
+    } catch (error: any) { res.status(500).json({ success: false, error: error.message || 'Failed' }); }
+  };
+
+  
+  static getPreviewTickets = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      if (!req.tenantId || !req.user?.id) { res.status(401).json({ success: false, error: 'Unauthorized' }); return; }
+      
+      const { projectIds, teamIds, cycleIds, stateIds, userIds, cursor } = req.body;
+      const token = await linearAuthService.getToken(req.tenantId, req.user.id);
+      if (!token) { res.status(403).json({ success: false, error: 'Linear is not connected' }); return; }
+      
+      const issues = await LinearIntegrationService.previewIssues(token, projectIds || [], teamIds || [], cycleIds || [], stateIds || [], userIds || [], cursor);
+      res.json({ success: true, data: issues });
+    } catch (error: any) { res.status(500).json({ success: false, error: error.message || 'Failed' }); }
+  };
+
+
+  static getMigrationProgress = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      if (!req.tenantId || !req.user?.id) { res.status(401).json({ success: false, error: 'Unauthorized' }); return; }
+      const { id } = req.params;
+      const result = await linearMigrationService.getMigrationProgress(id, req.tenantId);
+      res.json(result);
+    } catch (error: any) { res.status(500).json({ success: false, error: error.message || 'Failed' }); }
+  };
+
   static getTeams = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       if (!req.tenantId || !req.user?.id) {

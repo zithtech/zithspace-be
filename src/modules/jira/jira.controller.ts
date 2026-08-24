@@ -47,20 +47,18 @@ function getAbsoluteReturnUrl(inputUrl: string | undefined, frontendUrl: string,
 export class JiraController {
   public async connect(req: Request, res: Response) {
     try {
-      // @ts-ignore
-      const tenantId = req.user?.tenantId || req.tenant?.id; // Assumes auth middleware sets this
-      // @ts-ignore
-      const subdomain = req.tenant?.subdomain;
-      
-      if (!tenantId) {
-        return res.status(401).json({ error: "Unauthorized: Tenant ID missing" });
-      }
+      const tenantId = (req as any).user?.tenantId || (req as any).tenant?.id;
+      const userId = (req as any).user?.id;
+      const subdomain = (req as any).tenant?.subdomain;
+
+      if (!tenantId) return res.status(401).json({ error: "Unauthorized: Tenant ID missing" });
+      if (!userId) return res.status(401).json({ error: "Unauthorized: User ID missing" });
 
       const returnUrl = req.query.returnUrl as string;
       const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
       const targetReturnUrl = getAbsoluteReturnUrl(returnUrl, frontendUrl, subdomain);
-      
-      const url = oauthService.getAuthorizationUrl(tenantId, targetReturnUrl);
+
+      const url = oauthService.getAuthorizationUrl(tenantId, userId, targetReturnUrl);
       res.json({ success: true, data: { url } });
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message });
@@ -73,9 +71,10 @@ export class JiraController {
       const stateStr = req.query.state as string;
       const state = JSON.parse(decodeURIComponent(stateStr));
       const tenantId = state.tenantId;
+      const userId = state.userId;
       const returnUrl = state.returnUrl;
 
-      await oauthService.exchangeCodeForToken(code, tenantId);
+      await oauthService.exchangeCodeForToken(code, tenantId, userId);
       
       // Redirect back to frontend integration page
       let redirectUrl = process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}/integrations` : "http://localhost:3000/integrations";
@@ -101,12 +100,16 @@ export class JiraController {
 
   public async getStatus(req: Request, res: Response) {
     try {
-      // @ts-ignore
-      const tenantId = req.user?.tenantId || req.tenant?.id;
-      
+      const tenantId = (req as any).user?.tenantId || (req as any).tenant?.id;
+      const userId = (req as any).user?.id;
+
+      if (!tenantId || !userId) {
+        return res.json({ success: true, data: { connected: false } });
+      }
+
       const integration = await prisma.$queryRaw<Array<{ status: string }>>`
         SELECT "status" FROM "jira_integrations"
-        WHERE "tenant_id" = ${tenantId}::uuid
+        WHERE "tenant_id" = ${tenantId}::uuid AND "user_id" = ${userId}::uuid
         LIMIT 1;
       `;
 
@@ -122,11 +125,15 @@ export class JiraController {
 
   public async disconnect(req: Request, res: Response) {
     try {
-      // @ts-ignore
-      const tenantId = req.user?.tenantId || req.tenant?.id;
-      
+      const tenantId = (req as any).user?.tenantId || (req as any).tenant?.id;
+      const userId = (req as any).user?.id;
+
+      if (!tenantId || !userId) {
+        return res.status(401).json({ success: false, error: "Unauthorized" });
+      }
+
       await prisma.$executeRaw`
-        DELETE FROM "jira_integrations" WHERE "tenant_id" = ${tenantId}::uuid;
+        DELETE FROM "jira_integrations" WHERE "tenant_id" = ${tenantId}::uuid AND "user_id" = ${userId}::uuid;
       `;
 
       res.json({ success: true, data: { message: "Disconnected" } });
@@ -138,14 +145,14 @@ export class JiraController {
   public async startMigration(req: Request, res: Response) {
     try {
       // @ts-ignore
-      const tenantId = req.user?.tenantId || req.tenant?.id;
+      const tenantId = (req as any).user?.tenantId || req.tenant?.id;
       const { projectKeys, statusMapping, userMapping } = req.body;
       const jql = req.body.jql || "";
 
       // Get integration ID
       const integration = await prisma.$queryRaw<Array<{ id: string }>>`
         SELECT "id" FROM "jira_integrations"
-        WHERE "tenant_id" = ${tenantId}::uuid
+        WHERE "tenant_id" = ${tenantId}::uuid AND "user_id" = ${(req as any).user?.id || (req as any).user?.userId || (req as any).tenant?.id}::uuid
         LIMIT 1;
       `;
 
@@ -155,12 +162,12 @@ export class JiraController {
 
       const integrationId = integration[0].id;
       // @ts-ignore
-      const migratedBy = req.user?.id || req.user?.userId;
+      const migratedBy = (req as any).user?.id || (req as any).user?.userId;
       
       let expandedStatusMapping = statusMapping || {};
       try {
         const oauthService = new (require('./jira.oauth.service').JiraOAuthService)();
-        const { accessToken, cloudId } = await oauthService.getAccessTokenByTenantId(tenantId);
+        const { accessToken, cloudId } = await oauthService.getAccessTokenByTenantId(tenantId, (req as any).user?.id);
         const apiService = new (require('./jira.api.service').JiraApiService)();
         const statuses = await apiService.getStatuses(accessToken, cloudId);
         
@@ -207,14 +214,14 @@ export class JiraController {
   public async getProjects(req: Request, res: Response) {
     try {
       // @ts-ignore
-      const tenantId = req.user?.tenantId || req.tenant?.id;
+      const tenantId = (req as any).user?.tenantId || req.tenant?.id;
       
       const oauthService = new (require('./jira.oauth.service').JiraOAuthService)();
       const apiService = new (require('./jira.api.service').JiraApiService)();
 
       let access_token, cloud_id;
       try {
-        const creds = await oauthService.getAccessTokenByTenantId(tenantId);
+        const creds = await oauthService.getAccessTokenByTenantId(tenantId, (req as any).user?.id);
         access_token = creds.accessToken;
         cloud_id = creds.cloudId;
       } catch (err: any) {
@@ -248,7 +255,7 @@ export class JiraController {
   public async getMigrationProgress(req: Request, res: Response) {
     try {
       // @ts-ignore
-      const tenantId = req.user?.tenantId || req.tenant?.id;
+      const tenantId = (req as any).user?.tenantId || req.tenant?.id;
       const { migrationId } = req.params;
 
       const migration = await prisma.$queryRaw<any[]>`
@@ -292,9 +299,9 @@ export class JiraController {
   public async getFilters(req: Request, res: Response) {
     try {
       // @ts-ignore
-      const tenantId = req.user?.tenantId || req.tenant?.id;
+      const tenantId = (req as any).user?.tenantId || req.tenant?.id;
       const oauthService = new (require('./jira.oauth.service').JiraOAuthService)();
-      const { accessToken, cloudId } = await oauthService.getAccessTokenByTenantId(tenantId);
+      const { accessToken, cloudId } = await oauthService.getAccessTokenByTenantId(tenantId, (req as any).user?.id);
       
       const filters = await this.apiService.getFilters(accessToken, cloudId);
       res.json({ success: true, data: filters });
@@ -306,9 +313,9 @@ export class JiraController {
   public async getStatuses(req: Request, res: Response) {
     try {
       // @ts-ignore
-      const tenantId = req.user?.tenantId || req.tenant?.id;
+      const tenantId = (req as any).user?.tenantId || req.tenant?.id;
       const oauthService = new (require('./jira.oauth.service').JiraOAuthService)();
-      const { accessToken, cloudId } = await oauthService.getAccessTokenByTenantId(tenantId);
+      const { accessToken, cloudId } = await oauthService.getAccessTokenByTenantId(tenantId, (req as any).user?.id);
       
       const statuses = await this.apiService.getStatuses(accessToken, cloudId);
       
@@ -331,9 +338,9 @@ export class JiraController {
   public async getUsers(req: Request, res: Response) {
     try {
       // @ts-ignore
-      const tenantId = req.user?.tenantId || req.tenant?.id;
+      const tenantId = (req as any).user?.tenantId || req.tenant?.id;
       const oauthService = new (require('./jira.oauth.service').JiraOAuthService)();
-      const { accessToken, cloudId } = await oauthService.getAccessTokenByTenantId(tenantId);
+      const { accessToken, cloudId } = await oauthService.getAccessTokenByTenantId(tenantId, (req as any).user?.id);
       
       let users = await this.apiService.getUsers(accessToken, cloudId);
       
@@ -351,11 +358,11 @@ export class JiraController {
   public async getSprints(req: Request, res: Response) {
     try {
       // @ts-ignore
-      const tenantId = req.user?.tenantId || req.tenant?.id;
+      const tenantId = (req as any).user?.tenantId || req.tenant?.id;
       const projectKeys = req.body.projectKeys || [];
       
       const oauthService = new (require('./jira.oauth.service').JiraOAuthService)();
-      const { accessToken, cloudId } = await oauthService.getAccessTokenByTenantId(tenantId);
+      const { accessToken, cloudId } = await oauthService.getAccessTokenByTenantId(tenantId, (req as any).user?.id);
       
       let allSprints: any[] = [];
       const boardIds = new Set<number>();
@@ -438,10 +445,10 @@ export class JiraController {
   public async previewTickets(req: Request, res: Response) {
     try {
       // @ts-ignore
-      const tenantId = req.user?.tenantId || req.tenant?.id;
+      const tenantId = (req as any).user?.tenantId || req.tenant?.id;
       const { jql, nextPageToken, maxResults = 50 } = req.body;
       const oauthService = new (require('./jira.oauth.service').JiraOAuthService)();
-      const { accessToken, cloudId } = await oauthService.getAccessTokenByTenantId(tenantId);
+      const { accessToken, cloudId } = await oauthService.getAccessTokenByTenantId(tenantId, (req as any).user?.id);
       
       const issues = await this.apiService.searchIssues(accessToken, cloudId, jql || "", nextPageToken, maxResults);
       
@@ -459,7 +466,7 @@ export class JiraController {
   public async getZukvoStatuses(req: Request, res: Response) {
     try {
       // @ts-ignore
-      const tenantId = req.user?.tenantId || req.tenant?.id;
+      const tenantId = (req as any).user?.tenantId || req.tenant?.id;
       
       const statuses = await prisma.$queryRawUnsafe<any[]>(`
         SELECT value as id, label as name
@@ -493,7 +500,7 @@ export class JiraController {
   public async getZukvoUsers(req: Request, res: Response) {
     try {
       // @ts-ignore
-      const tenantId = req.user?.tenantId || req.tenant?.id;
+      const tenantId = (req as any).user?.tenantId || req.tenant?.id;
       const users = await prisma.$queryRaw<Array<{ id: string, name: string, email: string }>>`
         SELECT "id", "name", "work_email" as email
         FROM "users"
