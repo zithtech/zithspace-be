@@ -14,6 +14,22 @@ router.get(
     NotionAuthController.connect
 );
 
+router.get(
+    "/status",
+    resolveTenant,
+    authenticateToken,
+    requireAuth,
+    NotionAuthController.status
+);
+
+router.delete(
+    "/disconnect",
+    resolveTenant,
+    authenticateToken,
+    requireAuth,
+    NotionAuthController.disconnect
+);
+
 // Callback doesn't have auth middleware because it's called by Notion
 router.get("/callback", NotionAuthController.callback);
 
