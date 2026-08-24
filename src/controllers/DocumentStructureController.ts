@@ -1,6 +1,15 @@
 import { Response } from 'express';
 import { AuthRequest } from '../types';
 import pool from '../config/dbpool';
+import {
+  recordTransaction,
+  Section,
+  Module,
+  Page,
+  Action,
+  EntityType,
+  diffShallow,
+} from '../utils/transactionHistory';
 
 export class DocumentStructureController {
   static async getStructures(req: AuthRequest, res: Response) {
@@ -51,6 +60,18 @@ export class DocumentStructureController {
       `, [tenantId, name, htmlContent, userId]);
       
       const structure = result.rows[0];
+
+      recordTransaction({
+        req: req as any,
+        section: Section.HR,
+        module: Module.DOCS_AND_LETTERS,
+        page: Page.DOCUMENT_STRUCTURES,
+        action: Action.CREATE,
+        actionLabel: `Created document structure "${structure.name}"`,
+        entityType: EntityType.DOCUMENT_STRUCTURE,
+        entityId: structure.id,
+        entityLabel: structure.name,
+      });
 
       return res.status(201).json({
         success: true,
@@ -104,6 +125,24 @@ export class DocumentStructureController {
       
       const updated = updateRes.rows[0];
 
+      const diff = diffShallow(existing, updated);
+      if (diff.changedFields.length > 0) {
+        recordTransaction({
+          req: req as any,
+          section: Section.HR,
+          module: Module.DOCS_AND_LETTERS,
+          page: Page.DOCUMENT_STRUCTURES,
+          action: Action.UPDATE,
+          actionLabel: `Updated document structure "${updated.name}"`,
+          entityType: EntityType.DOCUMENT_STRUCTURE,
+          entityId: updated.id,
+          entityLabel: updated.name,
+          beforeData: diff.before,
+          afterData: diff.after,
+          changedFields: diff.changedFields,
+        });
+      }
+
       return res.status(200).json({
         success: true,
         data: updated,
@@ -140,6 +179,17 @@ export class DocumentStructureController {
       }
 
       await pool.query(`DELETE FROM document_structures WHERE id = $1`, [id]);
+
+      recordTransaction({
+        req: req as any,
+        section: Section.HR,
+        module: Module.DOCS_AND_LETTERS,
+        page: Page.DOCUMENT_STRUCTURES,
+        action: Action.DELETE,
+        actionLabel: `Deleted document structure`,
+        entityType: EntityType.DOCUMENT_STRUCTURE,
+        entityId: id,
+      });
 
       return res.status(200).json({
         success: true,

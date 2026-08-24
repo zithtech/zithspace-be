@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import pool from '../config/dbpool';
+import { recordTransaction, Section, Module, Page, Action, EntityType } from '../utils/transactionHistory';
 
 /**
  * QA links on a ticket — the QA team attaches test scopes, business scenarios
@@ -129,12 +130,28 @@ export const addTicketQaLink = async (req: Request, res: Response) => {
     }
 
     // Re-linking something already on the ticket is a no-op, not an error.
-    await pool.query(
+    const result = await pool.query(
       `INSERT INTO ticket_qa_links (tenant_id, ticket_id, entity_type, entity_id, linked_by_id)
        VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (ticket_id, entity_type, entity_id) DO NOTHING`,
+       ON CONFLICT (ticket_id, entity_type, entity_id) DO NOTHING RETURNING *`,
       [tenantId, id, entityType, entityId, userId || null]
     );
+
+    if (result.rowCount && result.rowCount > 0) {
+      recordTransaction({
+        req: req as any,
+        section: Section.WORK,
+        module: Module.TICKETS,
+        page: Page.TICKET_DETAIL,
+        action: Action.CREATE,
+        actionLabel: `QA ${entityType} linked`,
+        entityType: EntityType.TICKET_QA_LINK,
+        entityId: result.rows[0].id,
+        parentEntityType: EntityType.TICKET,
+        parentEntityId: id,
+        afterData: result.rows[0],
+      });
+    }
 
     const { rows } = await pool.query(LINKS_QUERY, [id, tenantId]);
     return res.status(201).json({ success: true, data: rows });
@@ -152,13 +169,35 @@ export const deleteTicketQaLink = async (req: Request, res: Response) => {
     await ensureTable();
     const { ticketId, linkId } = req.params;
 
-    const { rowCount } = await pool.query(
+    const { rows: oldRows } = await pool.query(
+      `SELECT * FROM ticket_qa_links WHERE id = $1 AND ticket_id = $2 AND tenant_id = $3`,
+      [linkId, ticketId, tenantId]
+    );
+
+    if (oldRows.length === 0) {
+      return res.status(404).json({ success: false, error: 'QA link not found' });
+    }
+    
+    const oldLink = oldRows[0];
+
+    await pool.query(
       `DELETE FROM ticket_qa_links WHERE id = $1 AND ticket_id = $2 AND tenant_id = $3`,
       [linkId, ticketId, tenantId]
     );
-    if (rowCount === 0) {
-      return res.status(404).json({ success: false, error: 'QA link not found' });
-    }
+
+    recordTransaction({
+      req: req as any,
+      section: Section.WORK,
+      module: Module.TICKETS,
+      page: Page.TICKET_DETAIL,
+      action: Action.DELETE,
+      actionLabel: `QA ${oldLink.entity_type} unlinked`,
+      entityType: EntityType.TICKET_QA_LINK,
+      entityId: linkId,
+      parentEntityType: EntityType.TICKET,
+      parentEntityId: ticketId,
+      beforeData: oldLink,
+    });
 
     return res.status(200).json({ success: true, message: 'QA link removed' });
   } catch (error) {

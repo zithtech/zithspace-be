@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import pool from '../config/dbpool';
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from '../utils/transactionHistory';
 
 let schemaFixed = false;
 const ensureModuleFkDropped = async () => {
@@ -289,6 +290,19 @@ export const createTestSuite = async (req: Request, res: Response) => {
         );
       }
     }
+
+    recordTransaction({
+      req: req as any,
+      section: Section.WORK,
+      module: Module.QA_WORKSPACE,
+      page: Page.QA_SUITE_LIST,
+      action: Action.CREATE,
+      actionLabel: "Test Suite created",
+      entityType: EntityType.QA_SUITE,
+      entityId: suiteId,
+      entityLabel: suite_name,
+      afterData: suiteRows[0],
+    });
     
     await client.query('COMMIT');
     res.status(201).json({ success: true, data: suiteRows[0] });
@@ -342,9 +356,24 @@ export const updateTestSuite = async (req: Request, res: Response) => {
         );
       }
     }
+
+    const updatedSuite = suiteRows[0];
+    
+    recordTransaction({
+      req: req as any,
+      section: Section.WORK,
+      module: Module.QA_WORKSPACE,
+      page: Page.QA_SUITE_DETAIL,
+      action: Action.UPDATE,
+      actionLabel: "Test Suite updated",
+      entityType: EntityType.QA_SUITE,
+      entityId: id,
+      entityLabel: updatedSuite.suite_name,
+      afterData: updatedSuite,
+    });
     
     await client.query('COMMIT');
-    res.status(200).json({ success: true, data: suiteRows[0] });
+    res.status(200).json({ success: true, data: updatedSuite });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Error updating test suite:', error);
@@ -359,8 +388,25 @@ export const deleteTestSuite = async (req: Request, res: Response) => {
     const tenantId = (req as any).user?.tenantId;
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
     const { id } = req.params;
-    
+    const { rows: oldRows } = await pool.query(`SELECT * FROM qa_test_suites WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
+    if (!oldRows.length) return res.status(404).json({ success: false, error: 'Test Suite not found' });
+    const oldSuite = oldRows[0];
+
     await pool.query(`DELETE FROM qa_test_suites WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
+
+    recordTransaction({
+      req: req as any,
+      section: Section.WORK,
+      module: Module.QA_WORKSPACE,
+      page: Page.QA_SUITE_LIST,
+      action: Action.DELETE,
+      actionLabel: "Test Suite deleted",
+      entityType: EntityType.QA_SUITE,
+      entityId: id,
+      entityLabel: oldSuite.suite_name,
+      beforeData: oldSuite,
+    });
+
     res.status(200).json({ success: true, message: 'Deleted successfully' });
   } catch (error) {
     console.error('Error deleting test suite:', error);
