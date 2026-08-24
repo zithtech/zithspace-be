@@ -504,4 +504,127 @@ export class JiraController {
       res.status(500).json({ success: false, error: error.message });
     }
   }
+
+    public async getIssueTypes(req: Request, res: Response) {
+    try {
+      // @ts-ignore
+      const tenantId = req.user?.tenantId || req.tenant?.id;
+      const { projectId } = req.query;
+      if (!projectId) {
+        return res.status(400).json({ success: false, error: "projectId is required" });
+      }
+      const oauthService = new (require('./jira.oauth.service').JiraOAuthService)();
+      const { accessToken, cloudId } = await oauthService.getAccessTokenByTenantId(tenantId);
+      
+      const issueTypes = await this.apiService.getIssueTypes(accessToken, cloudId, projectId as string);
+      res.json({ success: true, data: issueTypes });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  }
+
+  public async createIssue(req: Request, res: Response) {
+    try {
+      // @ts-ignore
+      const tenantId = req.user?.tenantId || req.tenant?.id;
+      const { title, description, projectId, issueTypeId, assigneeId, bugIds } = req.body;
+      
+      if (!title || !projectId || !issueTypeId) {
+        return res.status(400).json({ success: false, error: 'Title, Project ID, and Issue Type ID are required' });
+      }
+      
+      const oauthService = new (require('./jira.oauth.service').JiraOAuthService)();
+      const { accessToken, cloudId } = await oauthService.getAccessTokenByTenantId(tenantId);
+      
+      let finalDescription = description || '';
+
+      if (bugIds && Array.isArray(bugIds) && bugIds.length > 0) {
+        const bugsRes = await prisma.$queryRawUnsafe<any[]>(
+          `SELECT bug_number, title, description FROM bugs WHERE id = ANY($1) AND tenant_id = $2`, 
+          bugIds, tenantId
+        );
+        
+        if (bugsRes.length > 0) {
+          if (finalDescription) finalDescription += '\n\n';
+          finalDescription += '### Linked Bugs:\n';
+          for (const bug of bugsRes) {
+            finalDescription += `**${bug.bug_number || 'Bug'} - ${bug.title || 'Untitled'}**\n`;
+            if (bug.description) {
+              let cleanedDesc = bug.description
+                .replace(/<p[^>]*>/g, '')
+                .replace(/<\/p>/g, '\n')
+                .replace(/<br\s*\/?>/g, '\n')
+                .replace(/<[^>]*>?/gm, '');
+              finalDescription += `${cleanedDesc.trim()}\n\n`;
+            }
+          }
+        }
+      }
+
+      const adfDescription = {
+        type: "doc",
+        version: 1,
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              {
+                type: "text",
+                text: finalDescription || "No description provided."
+              }
+            ]
+          }
+        ]
+      };
+
+      const payload: any = {
+        fields: {
+          project: { id: projectId },
+          summary: title,
+          description: adfDescription,
+          issuetype: { id: issueTypeId }
+        }
+      };
+
+      if (assigneeId) {
+        payload.fields.assignee = { id: assigneeId };
+      }
+
+      const issue = await this.apiService.createIssue(accessToken, cloudId, payload);
+      
+      if (bugIds && Array.isArray(bugIds) && bugIds.length > 0) {
+        await prisma.$executeRawUnsafe(
+          `UPDATE bugs SET jira_issue_id = $1, jira_issue_key = $2, jira_issue_url = $3, status = 'completed', updated_at = NOW() WHERE id = ANY($4) AND tenant_id = $5`,
+          issue.id, issue.key, issue.self, bugIds, tenantId
+        );
+
+        // Upload attachments
+        try {
+          const attachmentsRes = await prisma.$queryRawUnsafe<any[]>(
+            `SELECT file_name, file_url FROM bug_attachments WHERE bug_id = ANY($1)`, 
+            bugIds
+          );
+          if (attachmentsRes.length > 0) {
+            const axios = require('axios');
+            for (const att of attachmentsRes) {
+               if (!att.file_url) continue;
+               try {
+                 const fileRes = await axios.get(att.file_url, { responseType: 'stream' });
+                 await this.apiService.uploadAttachment(accessToken, cloudId, issue.id, fileRes.data, att.file_name);
+               } catch (attErr) {
+                 console.error("Failed to upload attachment to Jira", att.file_name, attErr);
+               }
+            }
+          }
+        } catch (err) {
+          console.error("Failed to process attachments", err);
+        }
+      }
+      
+      res.json({ success: true, data: issue });
+    } catch (error: any) {
+      console.error('Error creating Jira issue:', error?.response?.data || error);
+      res.status(500).json({ success: false, error: error.message || 'Failed to create Jira issue', details: error?.response?.data });
+    }
+  }
 }

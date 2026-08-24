@@ -9,7 +9,7 @@ export class JiraOAuthService {
   private readonly callbackUrl = process.env.JIRA_CALLBACK_URL!;
 
   public getAuthorizationUrl(tenantId: string, returnUrl?: string): string {
-    const scopes = ["read:jira-work", "read:jira-user", "read:board-scope:jira-software", "read:sprint:jira-software", "read:project:jira", "offline_access"];
+    const scopes = ["read:jira-work", "write:jira-work", "read:jira-user", "read:board-scope:jira-software", "read:sprint:jira-software", "read:project:jira", "offline_access"];
     const stateObj: any = { tenantId };
     if (returnUrl) {
       stateObj.returnUrl = returnUrl;
