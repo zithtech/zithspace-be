@@ -93,7 +93,10 @@ export class LinearIntegrationService {
             id
             name
             description
+            content
             state
+            startDate
+            targetDate
             lead { id }
             teams {
               nodes {
@@ -257,7 +260,7 @@ export class LinearIntegrationService {
             assignee { id name email }
             creator { id name email }
             project { id name }
-            cycle { id name startsAt endsAt }
+            cycle { id name startsAt endsAt completedAt isActive isFuture }
             labels { nodes { id name color } }
             comments { nodes { id body createdAt user { id name } } }
             attachments { nodes { id title url } }
