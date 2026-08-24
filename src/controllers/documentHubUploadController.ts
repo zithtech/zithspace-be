@@ -587,35 +587,59 @@ export class DocumentHubUploadController {
 
             const accessToken = await NotionAuthService.getValidAccessToken(req.user.id, req.tenantId);
 
-            const response = await axios.post("https://api.notion.com/v1/search", {
-                filter: {
-                    value: "page",
-                    property: "object"
-                },
-                sort: {
-                    direction: "descending",
-                    timestamp: "last_edited_time"
-                },
-                page_size: 100
-            }, {
-                headers: {
-                    "Authorization": `Bearer ${accessToken}`,
-                    "Notion-Version": "2022-06-28",
-                    "Content-Type": "application/json"
-                }
-            });
+            const allResults: any[] = [];
+            let cursor = undefined;
+            let hasMore = true;
 
-            const files = response.data.results.map((page: any) => {
-                let title = "Untitled";
-                if (page.properties && page.properties.title && page.properties.title.title && page.properties.title.title.length > 0) {
-                    title = page.properties.title.title[0].plain_text;
-                } else if (page.properties && page.properties.Name && page.properties.Name.title && page.properties.Name.title.length > 0) {
-                    title = page.properties.Name.title[0].plain_text;
+            while (hasMore) {
+                const response = await axios.post("https://api.notion.com/v1/search", {
+                    sort: {
+                        direction: "descending",
+                        timestamp: "last_edited_time"
+                    },
+                    page_size: 100,
+                    ...(cursor ? { start_cursor: cursor } : {})
+                }, {
+                    headers: {
+                        "Authorization": `Bearer ${accessToken}`,
+                        "Notion-Version": "2022-06-28",
+                        "Content-Type": "application/json"
+                    }
+                });
+
+                allResults.push(...response.data.results);
+                hasMore = response.data.has_more;
+                cursor = response.data.next_cursor;
+                
+                // Safety limit to prevent infinite loops / too many pages (e.g. max 1000)
+                if (allResults.length >= 1000) {
+                    hasMore = false;
                 }
+            }
+
+            const files = allResults.map((page: any) => {
+                let title = "Untitled";
+                
+                // Notion properties can be named anything, but typically 'title' or 'Name' 
+                // contains the title array. Let's find any property of type 'title'
+                if (page.properties) {
+                    const titleProp = Object.values(page.properties).find((p: any) => p.type === 'title') as any;
+                    if (titleProp && titleProp.title && titleProp.title.length > 0) {
+                        title = titleProp.title.map((t: any) => t.plain_text).join("");
+                    } else if (page.properties.title && page.properties.title.title && page.properties.title.title.length > 0) {
+                        title = page.properties.title.title[0].plain_text;
+                    } else if (page.properties.Name && page.properties.Name.title && page.properties.Name.title.length > 0) {
+                        title = page.properties.Name.title[0].plain_text;
+                    }
+                } else if (page.title && page.title.length > 0) {
+                    // Sometimes title is direct on the database object
+                    title = page.title.map((t: any) => t.plain_text).join("");
+                }
+
                 return {
                     id: page.id,
                     name: title,
-                    mimeType: "application/vnd.notion.page",
+                    mimeType: page.object === "database" ? "application/vnd.notion.database" : "application/vnd.notion.page",
                     size: 0
                 };
             });
