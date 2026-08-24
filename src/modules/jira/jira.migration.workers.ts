@@ -255,7 +255,13 @@ export class JiraMigrationWorkers {
             "id", "tenant_id", "project_id", "version", "description", "status", "type", "created_by_id", "start_date", "end_date", "updated_at"
           ) VALUES (
             ${sprintId}, ${tenantId}, ${zukvoProjectId}, ${sprintObj.name}, '', ${sprintObj.state === 'active' ? 'active' : 'planning'}, 'sprint_plan', ${migratedBy}, ${startDate}, ${endDate}, CURRENT_TIMESTAMP
-          ) RETURNING id
+          )
+          ON CONFLICT ("tenant_id", "project_id", "version") DO UPDATE SET 
+            "status" = EXCLUDED."status",
+            "start_date" = EXCLUDED."start_date",
+            "end_date" = EXCLUDED."end_date",
+            "updated_at" = CURRENT_TIMESTAMP
+          RETURNING id
         `;
         sprintPlanId = newSprint[0].id;
         
