@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { registerModuleNames } from './qaModuleController';
 import pool from '../config/dbpool';
 import { SprintReportExportService } from '../services/sprintReportExportService';
 import { RBACService } from '../modules/rbac/rbac.service';
@@ -204,6 +205,11 @@ export const createTestScope = async (req: Request, res: Response) => {
       [tenantId, name, type, priority, status, qa_owner, start_date || null, end_date || null, details || {}]
     );
 
+    // The modules named on a scope are the workspace's module list — keep the
+    // two in step rather than making someone add them twice.
+    await registerModuleNames(tenantId, details?.modules).catch(err =>
+      console.error('Failed to register scope modules:', err));
+
     res.status(201).json({ success: true, data: rows[0] });
   } catch (error) {
     console.error('Error creating test scope:', error);
@@ -258,6 +264,10 @@ export const updateTestScope = async (req: Request, res: Response) => {
     if (rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Test Scope not found' });
     }
+
+    // Modules added while editing join the workspace's module list too.
+    await registerModuleNames(tenantId, details?.modules).catch(err =>
+      console.error('Failed to register scope modules:', err));
 
     res.status(200).json({ success: true, data: rows[0] });
   } catch (error) {
@@ -635,6 +645,7 @@ export const getTestScopesStats = async (req: Request, res: Response) => {
       approved: rows.filter(r => r.status === 'Approved').length,
       inReview: rows.filter(r => r.status === 'In Review').length,
       inDraft: rows.filter(r => r.status === 'Draft').length,
+      rejected: rows.filter(r => r.status === 'Rejected').length,
       // pendingApprovals = scopes where THIS user is the approver (matches approvals tab)
       pendingApprovals: rows.filter(r => r.details?.approvalWorkflow?.user === userId && r.status !== 'Draft').length,
       routedForApproval: rows.filter(r => r.status === 'In Review').length,
