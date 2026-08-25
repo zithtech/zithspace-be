@@ -617,7 +617,29 @@ export class DocumentHubUploadController {
                 }
             }
 
-            const files = allResults.map((page: any) => {
+            const folderId = (req.query.folderId as string) || "root";
+            const allIds = new Set(allResults.map(p => p.id));
+
+            let filteredResults = [];
+            if (folderId === "root") {
+                filteredResults = allResults.filter(page => {
+                    const parent = page.parent;
+                    if (!parent) return true;
+                    if (parent.type === "workspace") return true;
+                    const pId = parent.page_id || parent.database_id || parent.block_id;
+                    if (!pId) return true;
+                    return !allIds.has(pId);
+                });
+            } else {
+                filteredResults = allResults.filter(page => {
+                    const parent = page.parent;
+                    if (!parent) return false;
+                    const pId = parent.page_id || parent.database_id || parent.block_id;
+                    return pId === folderId;
+                });
+            }
+
+            const files = filteredResults.map((page: any) => {
                 let title = "Untitled";
                 
                 // Notion properties can be named anything, but typically 'title' or 'Name' 
@@ -636,10 +658,23 @@ export class DocumentHubUploadController {
                     title = page.title.map((t: any) => t.plain_text).join("");
                 }
 
+                const hasChildren = allResults.some(child => {
+                    const childParent = child.parent;
+                    if (!childParent) return false;
+                    const childPId = childParent.page_id || childParent.database_id || childParent.block_id;
+                    return childPId === page.id;
+                });
+
+                let finalMimeType = page.object === "database" ? "application/vnd.notion.database" : "application/vnd.notion.page";
+                if (finalMimeType === "application/vnd.notion.page" && hasChildren) {
+                    // Treat pages that have sub-pages as folders so the user can navigate into them
+                    finalMimeType = "folder";
+                }
+
                 return {
                     id: page.id,
                     name: title,
-                    mimeType: page.object === "database" ? "application/vnd.notion.database" : "application/vnd.notion.page",
+                    mimeType: finalMimeType,
                     size: 0
                 };
             });
