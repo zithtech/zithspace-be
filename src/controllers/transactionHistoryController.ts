@@ -430,6 +430,7 @@ export class TransactionHistoryController {
         { section: "HOME", module: "Skills" },
         { section: "HOME", module: "Messages" },
         { section: "HOME", module: "Bookmarks" },
+        { section: "HOME", module: "Hotspot" },
         { section: "ADMIN", module: "Auth" },
         { section: "FINANCE", module: "Accounts" },
         { section: "FINANCE", module: "Invoices" },
@@ -496,6 +497,9 @@ export class TransactionHistoryController {
         { module: "GeneralSettings", page: "GeneralSettingsView" },
         { module: "Members", page: "MemberList" },
         { module: "RoleAndPermissions", page: "RoleList" },
+        { module: "Hotspot", page: "Circulation" },
+        { module: "Hotspot", page: "Blogs" },
+        { module: "Hotspot", page: "Openings" },
         { module: "Auth", page: "Login" },
         { module: "Accounts", page: "AccountsDashboard" },
         { module: "Accounts", page: "AccountsSettings" },
@@ -549,7 +553,8 @@ export class TransactionHistoryController {
         "qa_submission", "qa_parent_case", "qa_case", "qa_suite", "qa_run", "qa_scope", "qa_settings", "qa_analytics", "qa_module",
         "leave_holiday", "leave_accrual_run", "leave_settings",
         "employee", "onboarding_invite", "onboarding_document_type",
-        "attendance_record", "performance_report"
+        "attendance_record", "performance_report",
+        "circulation", "blog", "opening"
       ];
 
       // Union distinct db rows with predefined constants
