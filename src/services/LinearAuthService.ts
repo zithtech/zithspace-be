@@ -81,14 +81,14 @@ export class LinearAuthService {
     await pool.query(query, [tenantId, userId, token]);
   }
 
-  public async getStatus(tenantId: string, userId: string): Promise<boolean> {
+  public async getStatus(tenantId: string, userId: string): Promise<string | null> {
     const query = `
       SELECT id FROM linear_integrations 
       WHERE tenant_id = $1 AND user_id = $2
       LIMIT 1
     `;
     const result = await pool.query(query, [tenantId, userId]);
-    return result.rows.length > 0;
+    return result.rows.length > 0 ? result.rows[0].id : null;
   }
 
   public async getToken(tenantId: string, userId: string): Promise<string | null> {
