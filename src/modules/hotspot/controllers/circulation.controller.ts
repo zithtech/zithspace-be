@@ -22,6 +22,7 @@ import {
   updatePostSchema,
 } from '../validators/circulation.validator';
 import * as service from '../services/circulation.service';
+import { recordTransaction, Section, Module, Page, Action, EntityType } from '@/utils/transactionHistory';
 
 /** Images render inline in the post gallery; everything else is a download. */
 function kindOf(mimeType: string): NewAttachment['kind'] {
@@ -59,12 +60,34 @@ export const getOne = handle(async (req: AuthRequest, res: Response) => {
 
 export const create = handle(async (req: AuthRequest, res: Response) => {
   const input = createPostSchema.parse(req.body ?? {});
-  ok(res, await service.create(actorOf(req), input), 201);
+  const result = await service.create(actorOf(req), input);
+  recordTransaction({
+    req,
+    section: Section.HOME,
+    module: Module.HOTSPOT,
+    page: Page.CIRCULATION,
+    action: Action.CREATE,
+    entityType: EntityType.CIRCULATION,
+    entityId: result.id,
+    entityLabel: input.title ?? 'Circulation Post',
+  });
+  ok(res, result, 201);
 });
 
 export const update = handle(async (req: AuthRequest, res: Response) => {
   const patch = updatePostSchema.parse(req.body ?? {});
-  ok(res, await service.update(actorOf(req), req.params.id, patch));
+  const result = await service.update(actorOf(req), req.params.id, patch);
+  recordTransaction({
+    req,
+    section: Section.HOME,
+    module: Module.HOTSPOT,
+    page: Page.CIRCULATION,
+    action: Action.UPDATE,
+    entityType: EntityType.CIRCULATION,
+    entityId: req.params.id,
+    entityLabel: patch.title ?? 'Circulation Post',
+  });
+  ok(res, result);
 });
 
 export const setPinned = handle(async (req: AuthRequest, res: Response) => {
@@ -74,6 +97,16 @@ export const setPinned = handle(async (req: AuthRequest, res: Response) => {
 
 export const remove = handle(async (req: AuthRequest, res: Response) => {
   await service.remove(actorOf(req), req.params.id);
+  recordTransaction({
+    req,
+    section: Section.HOME,
+    module: Module.HOTSPOT,
+    page: Page.CIRCULATION,
+    action: Action.DELETE,
+    entityType: EntityType.CIRCULATION,
+    entityId: req.params.id,
+    entityLabel: 'Circulation Post',
+  });
   ok(res, { id: req.params.id });
 });
 

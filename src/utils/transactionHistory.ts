@@ -24,6 +24,7 @@ export const Module = {
   SKILLS: "Skills",
   MESSAGES: "Messages",
   BOOKMARKS: "Bookmarks",
+  HOTSPOT: "Hotspot",
   // WORK
   TICKETS: "Tickets",
   BUG_LIST: "BugList",
@@ -80,6 +81,8 @@ export const Page = {
   SKILLS_VIEW: "SkillsView",
   MESSAGES_VIEW: "MessagesView",
   BOOKMARKS_VIEW: "BookmarksView",
+  CIRCULATION: "Circulation",
+  BLOGS: "Blogs",
   // Tickets module
   TICKET_LIST: "TicketList",
   TICKET_DETAIL: "TicketDetail",
@@ -224,6 +227,7 @@ export const Page = {
   OPENING_APPROVAL_WORKFLOWS: "OpeningApprovalWorkflows",
   OPENING_POSTINGS: "OpeningPostings",
   OPENING_CANDIDATES: "OpeningCandidates",
+  OPENINGS: "Openings",
   // Candidate Pipeline pages
   CANDIDATE_PIPELINE_LIST: "CandidatePipelineList",
   CANDIDATE_PIPELINE_DETAIL: "CandidatePipelineDetail",
@@ -299,6 +303,8 @@ export const EntityType = {
   WORKFLOW_TEMPLATE: "workflow_template",
   DROPDOWN_OPTION: "dropdown_option",
   DOCUMENT_HUB: "document_hub",
+  CIRCULATION: "circulation",
+  BLOG: "blog",
   DOCUMENT_TREE_NODE: "document_tree_node",
   DOCUMENT: "document",
   DOCUMENT_HISTORY_ENTRY: "document_history_entry",
