@@ -223,6 +223,10 @@ export async function updateCandidate(req: AuthRequest, res: Response) {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(400).json({ success: false, message: "Tenant ID required" });
 
+    // Verify the candidate belongs to this tenant before any nested writes.
+    const owned = await prisma.candidateDetails.findFirst({ where: { id, tenantId }, select: { id: true } });
+    if (!owned) return res.status(404).json({ success: false, message: "Candidate not found" });
+
     const {
       personalInfo,
       currentEmployer,

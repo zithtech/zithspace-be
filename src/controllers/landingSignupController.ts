@@ -6,8 +6,17 @@ import { EmailService } from "@/utils/emailService";
 import pool from "@/config/dbpool";
 import crypto from "crypto";
 import { RBACService } from "@/modules/rbac/rbac.service";
-import { grantProduct } from "@/modules/entitlements/entitlements.service";
-import { productFromRequest } from "@/config/brand";
+import {
+  invalidateTenant,
+  Product,
+  ALL_PRODUCTS,
+} from "@/modules/entitlements/entitlements.service";
+import {
+  productFromRequest,
+  brandForRequest,
+  tenantOrigin,
+  Brand,
+} from "@/config/brand";
 
 const emailService = new EmailService();
 
@@ -34,25 +43,236 @@ async function uniqueSubdomain(base: string): Promise<string> {
   }
 }
 
-/**
- * Builds the tenant workspace URL from FRONTEND_URL env var.
- * Works correctly in both local dev and production.
- * e.g. FRONTEND_URL=http://localhost:3005  → http://srvsh.localhost:3005
- *      FRONTEND_URL=https://app.zukvo.com  → https://srvsh.zukvo.com
- */
-function buildWorkspaceUrl(subdomain: string): string {
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3005';
-  try {
-    const u = new URL(frontendUrl);
-    // Strip any leading "app." prefix so we replace it with the tenant subdomain
-    const baseDomain = u.hostname.replace(/^app\./, '');
-    return `${u.protocol}//${subdomain}.${baseDomain}${u.port ? `:${u.port}` : ''}`;
-  } catch {
-    return `https://${subdomain}.zukvo.com`;
-  }
+interface PlanConfig {
+  tier?: string | number | null;
+  sets?: string[];
+  ai?: string[];
+  billing?: string;
+  currency?: string;
+}
+
+/** Normalise whatever the pricing page posted into a stable shape. */
+function safePlanConfig(planConfig: any): PlanConfig {
+  return {
+    tier: planConfig?.tier ?? null,
+    sets: Array.isArray(planConfig?.sets) ? planConfig.sets : [],
+    ai: Array.isArray(planConfig?.ai) ? planConfig.ai : [],
+    billing: planConfig?.billing ?? "yearly",
+    currency: planConfig?.currency ?? "USD",
+  };
 }
 
 export class LandingSignupController {
+  // ───────────────────────────────────────────────────────────────────────────
+  // SHARED PROVISIONING CORE
+  //
+  // One place creates a tenant. The three signup entry points (email/password,
+  // Google, Microsoft) differ only in how they establish identity; everything
+  // after that — subdomain, plan, the tenant + super-admin rows, the brand-door
+  // grant, RBAC, the Admin onboard call and the welcome email — is identical and
+  // lives here. Previously this block was copy-pasted three times and drifted.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  /** Resolve the chosen plan against the Admin control plane. */
+  private static async resolvePlan(
+    planConfig: PlanConfig
+  ): Promise<{ planId: number; planName: string }> {
+    let planId = parseInt(String(planConfig?.tier));
+    let planName = "Free Trial";
+
+    const adminUrl = process.env.ADMIN_API_URL || "http://localhost:5000";
+    try {
+      const plansRes = await axios.get(`${adminUrl}/api/plans`);
+      const allPlans = Array.isArray(plansRes.data)
+        ? plansRes.data
+        : plansRes.data?.data || [];
+
+      if (isNaN(planId)) {
+        const trialPlan = allPlans.find(
+          (p: any) => p.plan_type === "TRIAL" || p.trial_days > 0
+        );
+        planId = trialPlan ? trialPlan.id : 1;
+      }
+      const selected = allPlans.find((p: any) => p.id === planId);
+      if (selected) planName = selected.name;
+    } catch (err) {
+      console.error("[signup] failed to fetch plans from Admin backend:", err);
+      if (isNaN(planId)) planId = 1;
+    }
+
+    return { planId, planName };
+  }
+
+  /**
+   * Create a tenant + its super-admin, grant the brand door, seed RBAC, attach
+   * the subscription and send the welcome email.
+   *
+   * THE BRAND-DOOR GRANT IS A HARD, ATOMIC STEP. `ent_tenant_entitlements` is
+   * RLS-protected, so we set `app.current_tenant_id` transaction-locally before
+   * inserting into it, inside the SAME transaction as the tenant/user rows. If
+   * the grant fails for any reason the whole signup rolls back — a tenant is
+   * never left "unmanaged", which would silently mean full access to every
+   * product (fine for Zukvo, catastrophic for Testiez).
+   */
+  private static async provisionTenant(
+    req: Request,
+    opts: {
+      email: string;
+      name: string;
+      passwordHash: string;
+      accountType: "team" | "freelancer";
+      companyName?: string | null;
+      planConfig: PlanConfig;
+      /** When set, the pending_registrations row is marked completed in-tx. */
+      completePendingId?: string;
+    }
+  ): Promise<{
+    tenantId: string;
+    userId: string;
+    subdomain: string;
+    planId: number;
+    planName: string;
+    product: Product;
+    brand: Brand;
+    adminAction: any;
+  }> {
+    const { email, name, passwordHash, accountType, companyName, planConfig } =
+      opts;
+
+    const tenantName =
+      accountType === "team" ? companyName || name : name;
+    const baseSlug =
+      accountType === "team" ? slugify(companyName || name) : slugify(name);
+    const subdomain = await uniqueSubdomain(baseSlug || "workspace");
+
+    const { planId, planName } = await LandingSignupController.resolvePlan(
+      planConfig
+    );
+
+    // Which brand door did this signup arrive through? Fall back to Zukvo only
+    // when the origin is unrecognised (e.g. local dev). Validated against the
+    // known product set rather than trusting the value blindly.
+    const detected = productFromRequest(req);
+    const product: Product =
+      detected && ALL_PRODUCTS.includes(detected) ? detected : "zukvo";
+    const brand = brandForRequest(req);
+
+    const client = await pool.connect();
+    let tenantId = "";
+    let userId = "";
+    try {
+      await client.query("BEGIN");
+
+      const tenantResult = await client.query(
+        `INSERT INTO tenants (id, name, subdomain, plan_type, max_users, is_active, is_setup_complete, settings, web_inquiry_secret_key, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, 10, true, false, '{}', $4, now(), now())
+         RETURNING id`,
+        [
+          tenantName,
+          subdomain,
+          planName,
+          `${crypto.randomInt(10000, 100000)}/secretkey/${subdomain}`,
+        ]
+      );
+      tenantId = tenantResult.rows[0].id;
+
+      const userResult = await client.query(
+        `INSERT INTO users (id, tenant_id, name, work_email, personal_email, phone, password_hash, role, is_active, work_days, created_at, updated_at)
+         VALUES (gen_random_uuid(), $1, $2, $3, $3, '', $4, 'super_admin', true, '{1,2,3,4,5}', now(), now())
+         RETURNING id`,
+        [tenantId, name, email, passwordHash]
+      );
+      userId = userResult.rows[0].id;
+
+      if (opts.completePendingId) {
+        await client.query(
+          "UPDATE pending_registrations SET is_completed = true, updated_at = now() WHERE id = $1",
+          [opts.completePendingId]
+        );
+      }
+
+      // Grant the brand door in-transaction. ent_tenant_entitlements enforces
+      // RLS (tenant_id must equal app.current_tenant_id), so set the GUC first.
+      // Mirrors grantProduct() in entitlements.service, but atomic with the
+      // tenant/user rows so it can never be silently skipped.
+      await client.query(
+        "SELECT set_config('app.current_tenant_id', $1, true)",
+        [tenantId]
+      );
+      await client.query(
+        `INSERT INTO ent_tenant_entitlements (tenant_id, product, status, source, expires_at)
+              VALUES ($1, $2, 'active', 'signup', NULL)
+         ON CONFLICT (tenant_id, product) DO UPDATE
+              SET status = 'active', source = EXCLUDED.source, expires_at = EXCLUDED.expires_at, updated_at = now()`,
+        [tenantId, product]
+      );
+
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    // The write happened on a pooled connection; drop any cached entitlement so
+    // this instance sees the grant immediately.
+    invalidateTenant(tenantId);
+
+    await RBACService.setupDefaultRolesForTenant(tenantId);
+
+    // Attach the plan in the Admin control plane. Best-effort: the account
+    // exists and is entitled even if this call fails, and Admin reconciles later.
+    let adminAction: any = { action: "UNKNOWN" };
+    try {
+      const adminUrl = process.env.ADMIN_API_URL || "http://localhost:5000";
+      const resp = await axios.post(`${adminUrl}/api/subscriptions/onboard`, {
+        tenantId,
+        planId,
+        billingCycle: (planConfig?.billing || "monthly").toUpperCase(),
+      });
+      adminAction = resp.data?.data || { action: "ERROR" };
+    } catch (adminErr: any) {
+      console.error(
+        "[signup] Admin onboard API error:",
+        adminErr?.message || adminErr
+      );
+      adminAction = {
+        action: "API_ERROR",
+        message:
+          adminErr?.response?.data?.error ||
+          adminErr?.response?.data?.message ||
+          adminErr?.message ||
+          "Unknown error",
+      };
+    }
+
+    // Welcome email on the correct brand (fire-and-forget).
+    const workspaceUrl = tenantOrigin(subdomain, brand);
+    LandingSignupController.sendWorkspaceWelcomeEmail({
+      to: email,
+      name,
+      planName,
+      workspaceUrl,
+      brand,
+    }).catch((e) => console.error("[signup] welcome email error:", e));
+
+    return {
+      tenantId,
+      userId,
+      subdomain,
+      planId,
+      planName,
+      product,
+      brand,
+      adminAction,
+    };
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // ENTRY POINT 1 — email / password (two-step: verify email, then complete)
+  // ───────────────────────────────────────────────────────────────────────────
+
   static async signup(req: Request, res: Response): Promise<void> {
     try {
       const { email, name, password, planConfig, type, companyName } = req.body;
@@ -95,14 +315,6 @@ export class LandingSignupController {
       const verificationToken = JWTUtils.createTemporaryToken({ email: normalizedEmail }, "24h");
       const verificationExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-      const safePlanConfig = {
-        tier: planConfig?.tier ?? null,
-        sets: Array.isArray(planConfig?.sets) ? planConfig.sets : [],
-        ai: Array.isArray(planConfig?.ai) ? planConfig.ai : [],
-        billing: planConfig?.billing ?? "yearly",
-        currency: planConfig?.currency ?? "USD",
-      };
-
       await pool.query(
         `INSERT INTO pending_registrations
            (email, name, password_hash, verification_token, verification_expires_at, plan_config, type, company_name, updated_at)
@@ -124,19 +336,20 @@ export class LandingSignupController {
           passwordHash,
           verificationToken,
           verificationExpiresAt,
-          JSON.stringify(safePlanConfig),
+          JSON.stringify(safePlanConfig(planConfig)),
           accountType,
           companyName?.trim() || null,
         ]
       );
 
+      const brand = brandForRequest(req);
       const landingUrl = process.env.LANDING_URL || "http://localhost:3000";
       const verifyLink = `${landingUrl}/verify-email?token=${verificationToken}`;
 
       const html = `
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 0 auto; padding: 40px 24px; color: #111;">
           <div style="margin-bottom: 32px;">
-            <span style="font-size: 22px; font-weight: 700; letter-spacing: -0.5px;">Zukov</span>
+            <span style="font-size: 22px; font-weight: 700; letter-spacing: -0.5px;">${brand.name}</span>
           </div>
           <h1 style="font-size: 24px; font-weight: 600; margin: 0 0 12px;">Verify your email</h1>
           <p style="font-size: 15px; color: #555; line-height: 1.6; margin: 0 0 28px;">
@@ -155,7 +368,7 @@ export class LandingSignupController {
       try {
         await emailService.sendCentralizedMail({
           to: normalizedEmail,
-          subject: "Verify your Zukov account",
+          subject: `Verify your ${brand.name} account`,
           html,
           text: `Hi ${name.trim()}, verify your email by visiting: ${verifyLink}`,
         });
@@ -275,121 +488,114 @@ export class LandingSignupController {
         return;
       }
 
-      const baseSlug =
-        record.type === "team"
-          ? slugify(record.company_name || record.name)
-          : slugify(record.name);
+      const accountType = record.type === "team" ? "team" : "freelancer";
 
-      const subdomain = await uniqueSubdomain(baseSlug || "workspace");
-
-      const planConfig = record.plan_config || {};
-      let planId = parseInt(planConfig.tier);
-      let actualPlanName = "Basic";
-
-      const adminUrl = process.env.ADMIN_API_URL || 'http://localhost:5000';
-      try {
-        const plansRes = await axios.get(`${adminUrl}/api/plans`);
-        const allPlans = Array.isArray(plansRes.data) ? plansRes.data : (plansRes.data?.data || []);
-        
-        if (isNaN(planId)) {
-          const trialPlan = allPlans.find((p: any) => p.plan_type === 'TRIAL' || p.trial_days > 0);
-          planId = trialPlan ? trialPlan.id : 1;
-        }
-        
-        const selectedPlan = allPlans.find((p: any) => p.id === planId);
-        if (selectedPlan) {
-          actualPlanName = selectedPlan.name;
-        }
-      } catch (plansError) {
-        console.error("Failed to fetch plans from Admin backend:", plansError);
-        if (isNaN(planId)) planId = 1;
-      }
-
-      const tenantName =
-        record.type === "team"
-          ? (record.company_name || record.name)
-          : record.name;
-
-      const client = await pool.connect();
-      let adminAction: any = { action: 'UNKNOWN' };
-      try {
-        await client.query("BEGIN");
-
-        const tenantResult = await client.query(
-          `INSERT INTO tenants (id, name, subdomain, plan_type, max_users, is_active, is_setup_complete, settings, web_inquiry_secret_key, created_at, updated_at)
-           VALUES (gen_random_uuid(), $1, $2, $3, 10, true, false, '{}', $4, now(), now())
-           RETURNING id`,
-          [tenantName, subdomain, actualPlanName, `${crypto.randomInt(10000, 100000)}/secretkey/${subdomain}`]
-        );
-
-        const tenantId = tenantResult.rows[0].id;
-
-        await client.query(
-          `INSERT INTO users (id, tenant_id, name, work_email, personal_email, phone, password_hash, role, is_active, work_days, created_at, updated_at)
-           VALUES (gen_random_uuid(), $1, $2, $3, $3, '', $4, 'super_admin', true, '{1,2,3,4,5}', now(), now())`,
-          [tenantId, record.name, decoded.email, record.password_hash]
-        );
-
-        await client.query(
-          "UPDATE pending_registrations SET is_completed = true, updated_at = now() WHERE id = $1",
-          [record.id]
-        );
-
-        await client.query("COMMIT");
-        await RBACService.setupDefaultRolesForTenant(tenantId);
-
-        // Record which brand door this signup came through. Without it the
-        // tenant is "unmanaged", which means full access -- safe for Zukvo but
-        // wrong for Testiez, which would get the entire suite. Best-effort:
-        // a failure here must not fail an otherwise complete signup, but it
-        // is loud because the tenant is over-provisioned until it is fixed.
-        try {
-          await grantProduct(tenantId, productFromRequest(req) ?? "zukvo", { source: "signup" });
-        } catch (grantErr) {
-          console.error(`[signup] tenant ${tenantId} created WITHOUT a product grant -- it will behave as unmanaged (full access) until granted:`, grantErr);
-        }
-
-        try {
-          const response = await axios.post(`${adminUrl}/api/subscriptions/onboard`, {
-            tenantId,
-            planId,
-            billingCycle: (planConfig.billing || 'monthly').toUpperCase()
-          });
-          
-          adminAction = response.data?.data || { action: 'ERROR' };
-        } catch (adminError: any) {
-          console.error("Failed to call Admin Backend select-plan API:", adminError);
-          const errorMsg = adminError.response?.data?.error || adminError.response?.data?.message || adminError.message || 'Unknown error';
-          adminAction = { action: 'API_ERROR', message: errorMsg };
-        }
-      } catch (txError) {
-        await client.query("ROLLBACK");
-        throw txError;
-      } finally {
-        client.release();
-      }
-
-      // Send workspace welcome email (fire-and-forget)
-      const workspaceUrl = buildWorkspaceUrl(subdomain);
-      LandingSignupController.sendWorkspaceWelcomeEmail({
-        to: decoded.email,
-        name: record.name,
-        planName: actualPlanName,
-        workspaceUrl,
-      }).catch(err => console.error('Welcome email error:', err));
+      const { subdomain, adminAction } =
+        await LandingSignupController.provisionTenant(req, {
+          email: decoded.email,
+          name: record.name,
+          passwordHash: record.password_hash,
+          accountType,
+          companyName: record.company_name,
+          planConfig: record.plan_config || {},
+          completePendingId: record.id,
+        });
 
       res.status(200).json({
         success: true,
         tenantSubdomain: subdomain,
         email: decoded.email,
         name: record.name,
-        decision: adminAction
+        decision: adminAction,
       });
     } catch (error: any) {
       console.error("Complete registration error:", error?.message || error);
       console.error("Complete registration stack:", error?.stack);
       res.status(500).json({ success: false, error: error?.message || "Something went wrong. Please try again." });
     }
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // ENTRY POINT 2 & 3 — OAuth (Google / Microsoft), one-shot with auto-login
+  // ───────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Shared tail for the OAuth flows: record a pre-verified pending row, provision
+   * the tenant, and auto-login by returning an access token + refresh cookie.
+   */
+  private static async completeOAuthSignup(
+    req: Request,
+    res: Response,
+    identity: { email: string; name: string; accountType: "team" | "freelancer"; companyName?: string | null; planConfig: any }
+  ): Promise<void> {
+    const { email, name, accountType, companyName, planConfig } = identity;
+
+    const cfg = safePlanConfig(planConfig);
+    const tenantName = accountType === "team" ? companyName || name : name;
+    const dummyPasswordHash = await bcrypt.hash(Math.random().toString(36), 12);
+    const verificationToken = JWTUtils.createTemporaryToken({ email }, "24h");
+    const verificationExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    // Record a pending row already marked verified + completed, for parity with
+    // the email flow's audit trail.
+    await pool.query(
+      `INSERT INTO pending_registrations
+         (email, name, password_hash, verification_token, verification_expires_at, is_verified, is_completed, plan_config, type, company_name, updated_at)
+       VALUES ($1, $2, $3, $4, $5, true, true, $6, $7, $8, now())
+       ON CONFLICT (email) DO UPDATE SET
+         name = EXCLUDED.name,
+         password_hash = EXCLUDED.password_hash,
+         verification_token = EXCLUDED.verification_token,
+         verification_expires_at = EXCLUDED.verification_expires_at,
+         is_verified = true,
+         is_completed = true,
+         plan_config = EXCLUDED.plan_config,
+         type = EXCLUDED.type,
+         company_name = EXCLUDED.company_name,
+         updated_at = now()`,
+      [email, name.trim(), dummyPasswordHash, verificationToken, verificationExpiresAt, JSON.stringify(cfg), accountType, tenantName]
+    );
+
+    const { tenantId, userId, subdomain, adminAction } =
+      await LandingSignupController.provisionTenant(req, {
+        email,
+        name,
+        passwordHash: dummyPasswordHash,
+        accountType,
+        companyName,
+        planConfig: cfg,
+      });
+
+    // Auto-login: mint tokens for the freshly created super-admin.
+    const authUser = {
+      id: userId,
+      tenantId,
+      email,
+      role: "super_admin",
+      position: null,
+      name,
+    };
+    const tokens = JWTUtils.generateTokenPair(authUser as any);
+
+    // Refresh token as an httpOnly cookie — same options as the login flow.
+    // sameSite "none" in production because signup is submitted cross-site from
+    // the marketing domain to the API domain, and only "none" is stored there.
+    res.cookie("refreshToken", tokens.refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: "/",
+    });
+
+    res.status(200).json({
+      success: true,
+      tenantSubdomain: subdomain,
+      email,
+      name,
+      accessToken: tokens.accessToken,
+      decision: adminAction,
+    });
   }
 
   static async googleSignup(req: Request, res: Response): Promise<void> {
@@ -401,10 +607,10 @@ export class LandingSignupController {
         return;
       }
 
-      let googleUser;
+      let googleUser: any;
       try {
         const response = await axios.get("https://www.googleapis.com/oauth2/v3/userinfo", {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { Authorization: `Bearer ${token}` },
         });
         googleUser = response.data;
       } catch (err) {
@@ -421,7 +627,6 @@ export class LandingSignupController {
       const email = googleUser.email.toLowerCase().trim();
       const name = googleUser.name || "Google User";
 
-      // Check if user already exists
       const existingUser = await pool.query(
         "SELECT id FROM users WHERE work_email = $1 OR personal_email = $1 LIMIT 1",
         [email]
@@ -437,167 +642,12 @@ export class LandingSignupController {
         return;
       }
 
-      const baseSlug = accountType === "team" ? slugify(companyName || name) : slugify(name);
-      const subdomain = await uniqueSubdomain(baseSlug || "workspace");
-      const tenantName = accountType === "team" ? (companyName || name) : name;
-      let planId = parseInt(planConfig?.tier);
-      let actualPlanName = 'Free Trial';
-
-      const adminUrlG = process.env.ADMIN_API_URL || 'http://localhost:5000';
-      try {
-        const plansRes = await axios.get(`${adminUrlG}/api/plans`);
-        const allPlans = Array.isArray(plansRes.data) ? plansRes.data : (plansRes.data?.data || []);
-        if (isNaN(planId)) {
-          const trialPlan = allPlans.find((p: any) => p.trial_days > 0);
-          planId = trialPlan ? trialPlan.id : 1;
-        }
-        const selectedPlan = allPlans.find((p: any) => p.id === planId);
-        if (selectedPlan) actualPlanName = selectedPlan.name;
-      } catch { /* use default */ }
-
-      const planType = actualPlanName;
-
-      const safePlanConfig = {
-        tier: planConfig?.tier ?? null,
-        sets: Array.isArray(planConfig?.sets) ? planConfig.sets : [],
-        ai: Array.isArray(planConfig?.ai) ? planConfig.ai : [],
-        billing: planConfig?.billing ?? "yearly",
-        currency: planConfig?.currency ?? "USD",
-      };
-
-      const dummyPasswordHash = await bcrypt.hash(Math.random().toString(36), 12);
-      const verificationToken = JWTUtils.createTemporaryToken({ email }, "24h");
-      const verificationExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-
-      let tenantId: string = "";
-      const dbClient = await pool.connect();
-      try {
-        await dbClient.query("BEGIN");
-
-        // Insert pending registration (already completed & verified)
-        await dbClient.query(
-          `INSERT INTO pending_registrations
-             (email, name, password_hash, verification_token, verification_expires_at, is_verified, is_completed, plan_config, type, company_name, updated_at)
-           VALUES ($1, $2, $3, $4, $5, true, true, $6, $7, $8, now())
-           ON CONFLICT (email) DO UPDATE SET
-             name = EXCLUDED.name,
-             password_hash = EXCLUDED.password_hash,
-             verification_token = EXCLUDED.verification_token,
-             verification_expires_at = EXCLUDED.verification_expires_at,
-             is_verified = true,
-             is_completed = true,
-             plan_config = EXCLUDED.plan_config,
-             type = EXCLUDED.type,
-             company_name = EXCLUDED.company_name,
-             updated_at = now()`,
-          [email, name.trim(), dummyPasswordHash, verificationToken, verificationExpiresAt, JSON.stringify(safePlanConfig), accountType, tenantName]
-        );
-
-        // Create Tenant
-        const tenantResult = await dbClient.query(
-          `INSERT INTO tenants (id, name, subdomain, plan_type, max_users, is_active, is_setup_complete, settings, web_inquiry_secret_key, created_at, updated_at)
-           VALUES (gen_random_uuid(), $1, $2, $3, 10, true, false, '{}', $4, now(), now())
-           RETURNING id`,
-          [tenantName, subdomain, planType, `${crypto.randomInt(10000, 100000)}/secretkey/${subdomain}`]
-        );
-        tenantId = tenantResult.rows[0].id;
-
-        // Create User
-        await dbClient.query(
-          `INSERT INTO users (id, tenant_id, name, work_email, personal_email, phone, password_hash, role, is_active, work_days, created_at, updated_at)
-           VALUES (gen_random_uuid(), $1, $2, $3, $3, '', $4, 'super_admin', true, '{1,2,3,4,5}', now(), now())`,
-          [tenantId, name.trim(), email, dummyPasswordHash]
-        );
-
-        await dbClient.query("COMMIT");
-        await RBACService.setupDefaultRolesForTenant(tenantId);
-
-        // Record which brand door this signup came through. Without it the
-        // tenant is "unmanaged", which means full access -- safe for Zukvo but
-        // wrong for Testiez, which would get the entire suite. Best-effort:
-        // a failure here must not fail an otherwise complete signup, but it
-        // is loud because the tenant is over-provisioned until it is fixed.
-        try {
-          await grantProduct(tenantId, productFromRequest(req) ?? "zukvo", { source: "signup" });
-        } catch (grantErr) {
-          console.error(`[signup] tenant ${tenantId} created WITHOUT a product grant -- it will behave as unmanaged (full access) until granted:`, grantErr);
-        }
-      } catch (txError) {
-        await dbClient.query("ROLLBACK");
-        throw txError;
-      } finally {
-        dbClient.release();
-      }
-
-      // Send workspace welcome email (fire-and-forget)
-      const googleWorkspaceUrl = buildWorkspaceUrl(subdomain);
-      LandingSignupController.sendWorkspaceWelcomeEmail({
-        to: email,
-        name: name,
-        planName: actualPlanName,
-        workspaceUrl: googleWorkspaceUrl,
-      }).catch(err => console.error('Welcome email error (Google):', err));
-
-      let adminAction: any = { action: 'UNKNOWN' };
-      try {
-        const adminUrlG2 = process.env.ADMIN_API_URL || 'http://localhost:5000';
-        const onboardRes = await axios.post(`${adminUrlG2}/api/subscriptions/onboard`, {
-          tenantId,
-          planId,
-          billingCycle: (safePlanConfig.billing || 'monthly').toUpperCase()
-        });
-        adminAction = onboardRes.data?.data || { action: 'ERROR' };
-      } catch (onboardErr: any) {
-        console.error('Google signup: onboard API error', onboardErr);
-        const errorMsg = onboardErr.response?.data?.error || onboardErr.response?.data?.message || onboardErr.message || 'Unknown error';
-        adminAction = { action: 'API_ERROR', message: errorMsg };
-      }
-
-      // Fetch the newly created user to generate auth tokens (auto-login after signup)
-      const newUserResult = await pool.query(
-        `SELECT u.id, u.tenant_id, u.name, u.work_email, u.role
-         FROM users u WHERE u.tenant_id = $1 AND u.work_email = $2 LIMIT 1`,
-        [tenantId, email]
-      );
-
-      let accessToken: string | undefined;
-      if (newUserResult.rows.length > 0) {
-        const newUser = newUserResult.rows[0];
-        const authUser = {
-          id: newUser.id,
-          tenantId: newUser.tenant_id,
-          email: newUser.work_email,
-          role: newUser.role,
-          position: null,
-          name: newUser.name,
-        };
-        const tokens = JWTUtils.generateTokenPair(authUser);
-        accessToken = tokens.accessToken;
-
-        // Set refresh token as httpOnly cookie — genuinely the same options as
-        // the login flow now. It previously used sameSite "lax", which the
-        // browser drops here: signup is submitted from the marketing site to the
-        // API on a different registrable domain, so the response is cross-site
-        // and only "none" is stored. The result was a refresh cookie that
-        // silently never existed, ending the session at the first access-token
-        // expiry instead of after seven days. `path` is set for the same reason
-        // login sets it — so the cookie is sent for every API path.
-        res.cookie("refreshToken", tokens.refreshToken, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-          maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-          path: "/",
-        });
-      }
-
-      res.status(200).json({
-        success: true,
-        tenantSubdomain: subdomain,
+      await LandingSignupController.completeOAuthSignup(req, res, {
         email,
         name,
-        accessToken: accessToken ?? null,
-        decision: adminAction,
+        accountType,
+        companyName: accountType === "team" ? companyName?.trim() : null,
+        planConfig,
       });
     } catch (error: any) {
       console.error("Google signup error:", error?.message || error);
@@ -614,10 +664,10 @@ export class LandingSignupController {
         return;
       }
 
-      let msUser;
+      let msUser: any;
       try {
         const response = await axios.get("https://graph.microsoft.com/v1.0/me", {
-          headers: { Authorization: `Bearer ${token}` }
+          headers: { Authorization: `Bearer ${token}` },
         });
         msUser = response.data;
       } catch (err) {
@@ -634,7 +684,6 @@ export class LandingSignupController {
       const email = (msUser.mail || msUser.userPrincipalName).toLowerCase().trim();
       const name = msUser.displayName || msUser.givenName || "Microsoft User";
 
-      // Check if user already exists
       const existingUser = await pool.query(
         "SELECT id FROM users WHERE work_email = $1 OR personal_email = $1 LIMIT 1",
         [email]
@@ -650,167 +699,12 @@ export class LandingSignupController {
         return;
       }
 
-      const baseSlug = accountType === "team" ? slugify(companyName || name) : slugify(name);
-      const subdomain = await uniqueSubdomain(baseSlug || "workspace");
-      const tenantName = accountType === "team" ? (companyName || name) : name;
-      let msPlanId = parseInt(planConfig?.tier);
-      let msActualPlanName = 'Free Trial';
-
-      const adminUrlMs = process.env.ADMIN_API_URL || 'http://localhost:5000';
-      try {
-        const plansRes = await axios.get(`${adminUrlMs}/api/plans`);
-        const allPlans = Array.isArray(plansRes.data) ? plansRes.data : (plansRes.data?.data || []);
-        if (isNaN(msPlanId)) {
-          const trialPlan = allPlans.find((p: any) => p.trial_days > 0);
-          msPlanId = trialPlan ? trialPlan.id : 1;
-        }
-        const selectedPlan = allPlans.find((p: any) => p.id === msPlanId);
-        if (selectedPlan) msActualPlanName = selectedPlan.name;
-      } catch { /* use default */ }
-
-      const planType = msActualPlanName;
-
-      const safePlanConfig = {
-        tier: planConfig?.tier ?? null,
-        sets: Array.isArray(planConfig?.sets) ? planConfig.sets : [],
-        ai: Array.isArray(planConfig?.ai) ? planConfig.ai : [],
-        billing: planConfig?.billing ?? "yearly",
-        currency: planConfig?.currency ?? "USD",
-      };
-
-      const dummyPasswordHash = await bcrypt.hash(Math.random().toString(36), 12);
-      const verificationToken = JWTUtils.createTemporaryToken({ email }, "24h");
-      const verificationExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-
-      let tenantId: string = "";
-      const dbClient = await pool.connect();
-      try {
-        await dbClient.query("BEGIN");
-
-        // Insert pending registration (already completed & verified)
-        await dbClient.query(
-          `INSERT INTO pending_registrations
-             (email, name, password_hash, verification_token, verification_expires_at, is_verified, is_completed, plan_config, type, company_name, updated_at)
-           VALUES ($1, $2, $3, $4, $5, true, true, $6, $7, $8, now())
-           ON CONFLICT (email) DO UPDATE SET
-             name = EXCLUDED.name,
-             password_hash = EXCLUDED.password_hash,
-             verification_token = EXCLUDED.verification_token,
-             verification_expires_at = EXCLUDED.verification_expires_at,
-             is_verified = true,
-             is_completed = true,
-             plan_config = EXCLUDED.plan_config,
-             type = EXCLUDED.type,
-             company_name = EXCLUDED.company_name,
-             updated_at = now()`,
-          [email, name.trim(), dummyPasswordHash, verificationToken, verificationExpiresAt, JSON.stringify(safePlanConfig), accountType, tenantName]
-        );
-
-        // Create Tenant
-        const tenantResult = await dbClient.query(
-          `INSERT INTO tenants (id, name, subdomain, plan_type, max_users, is_active, is_setup_complete, settings, web_inquiry_secret_key, created_at, updated_at)
-           VALUES (gen_random_uuid(), $1, $2, $3, 10, true, false, '{}', $4, now(), now())
-           RETURNING id`,
-          [tenantName, subdomain, planType, `${crypto.randomInt(10000, 100000)}/secretkey/${subdomain}`]
-        );
-        tenantId = tenantResult.rows[0].id;
-
-        // Create User
-        await dbClient.query(
-          `INSERT INTO users (id, tenant_id, name, work_email, personal_email, phone, password_hash, role, is_active, work_days, created_at, updated_at)
-           VALUES (gen_random_uuid(), $1, $2, $3, $3, '', $4, 'super_admin', true, '{1,2,3,4,5}', now(), now())`,
-          [tenantId, name.trim(), email, dummyPasswordHash]
-        );
-
-        await dbClient.query("COMMIT");
-        await RBACService.setupDefaultRolesForTenant(tenantId);
-
-        // Record which brand door this signup came through. Without it the
-        // tenant is "unmanaged", which means full access -- safe for Zukvo but
-        // wrong for Testiez, which would get the entire suite. Best-effort:
-        // a failure here must not fail an otherwise complete signup, but it
-        // is loud because the tenant is over-provisioned until it is fixed.
-        try {
-          await grantProduct(tenantId, productFromRequest(req) ?? "zukvo", { source: "signup" });
-        } catch (grantErr) {
-          console.error(`[signup] tenant ${tenantId} created WITHOUT a product grant -- it will behave as unmanaged (full access) until granted:`, grantErr);
-        }
-      } catch (txError) {
-        await dbClient.query("ROLLBACK");
-        throw txError;
-      } finally {
-        dbClient.release();
-      }
-
-      // Send workspace welcome email (fire-and-forget)
-      const msWorkspaceUrl = buildWorkspaceUrl(subdomain);
-      LandingSignupController.sendWorkspaceWelcomeEmail({
-        to: email,
-        name: name,
-        planName: planType,
-        workspaceUrl: msWorkspaceUrl,
-      }).catch(err => console.error('Welcome email error (Microsoft):', err));
-
-      let msAdminAction: any = { action: 'UNKNOWN' };
-      try {
-        const adminUrlMs2 = process.env.ADMIN_API_URL || 'http://localhost:5000';
-        const onboardResMs = await axios.post(`${adminUrlMs2}/api/subscriptions/onboard`, {
-          tenantId,
-          planId: msPlanId,
-          billingCycle: (safePlanConfig.billing || 'monthly').toUpperCase()
-        });
-        msAdminAction = onboardResMs.data?.data || { action: 'ERROR' };
-      } catch (onboardErr: any) {
-        console.error('Microsoft signup: onboard API error', onboardErr);
-        const errorMsg = onboardErr.response?.data?.error || onboardErr.response?.data?.message || onboardErr.message || 'Unknown error';
-        msAdminAction = { action: 'API_ERROR', message: errorMsg };
-      }
-
-      // Fetch the newly created user to generate auth tokens (auto-login after signup)
-      const newUserResult = await pool.query(
-        `SELECT u.id, u.tenant_id, u.name, u.work_email, u.role
-         FROM users u WHERE u.tenant_id = $1 AND u.work_email = $2 LIMIT 1`,
-        [tenantId, email]
-      );
-
-      let accessToken: string | undefined;
-      if (newUserResult.rows.length > 0) {
-        const newUser = newUserResult.rows[0];
-        const authUser = {
-          id: newUser.id,
-          tenantId: newUser.tenant_id,
-          email: newUser.work_email,
-          role: newUser.role,
-          position: null,
-          name: newUser.name,
-        };
-        const tokens = JWTUtils.generateTokenPair(authUser);
-        accessToken = tokens.accessToken;
-
-        // Set refresh token as httpOnly cookie — genuinely the same options as
-        // the login flow now. It previously used sameSite "lax", which the
-        // browser drops here: signup is submitted from the marketing site to the
-        // API on a different registrable domain, so the response is cross-site
-        // and only "none" is stored. The result was a refresh cookie that
-        // silently never existed, ending the session at the first access-token
-        // expiry instead of after seven days. `path` is set for the same reason
-        // login sets it — so the cookie is sent for every API path.
-        res.cookie("refreshToken", tokens.refreshToken, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === "production",
-          sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-          maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-          path: "/",
-        });
-      }
-
-      res.status(200).json({
-        success: true,
-        tenantSubdomain: subdomain,
+      await LandingSignupController.completeOAuthSignup(req, res, {
         email,
         name,
-        accessToken: accessToken ?? null,
-        decision: msAdminAction,
+        accountType,
+        companyName: accountType === "team" ? companyName?.trim() : null,
+        planConfig,
       });
     } catch (error: any) {
       console.error("Microsoft signup error:", error?.message || error);
@@ -818,20 +712,23 @@ export class LandingSignupController {
     }
   }
 
+  // ───────────────────────────────────────────────────────────────────────────
+
   private static async sendWorkspaceWelcomeEmail(opts: {
     to: string;
     name: string;
     planName: string;
     workspaceUrl: string;
+    brand: Brand;
   }): Promise<void> {
-    const { to, name, planName, workspaceUrl } = opts;
-    const firstName = name.split(' ')[0];
+    const { to, name, planName, workspaceUrl, brand } = opts;
+    const firstName = name.split(" ")[0];
 
     const html = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 580px; margin: 0 auto; background: #ffffff;">
         <!-- Header -->
         <div style="background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%); padding: 40px 40px 50px; border-radius: 16px 16px 0 0; text-align: center;">
-          <div style="font-size: 28px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px; margin-bottom: 8px;">Zukvo</div>
+          <div style="font-size: 28px; font-weight: 800; color: #ffffff; letter-spacing: -0.5px; margin-bottom: 8px;">${brand.name}</div>
           <div style="font-size: 15px; color: rgba(255,255,255,0.8);">Your workspace is ready 🎉</div>
         </div>
 
@@ -839,7 +736,7 @@ export class LandingSignupController {
         <div style="padding: 40px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 16px 16px;">
           <h1 style="font-size: 22px; font-weight: 700; color: #111827; margin: 0 0 12px;">Congratulations, ${firstName}!</h1>
           <p style="font-size: 15px; color: #6b7280; line-height: 1.7; margin: 0 0 28px;">
-            Your Zukvo workspace has been successfully created. Here are your workspace details:
+            Your ${brand.name} workspace has been successfully created. Here are your workspace details:
           </p>
 
           <!-- Details Card -->
@@ -866,7 +763,7 @@ export class LandingSignupController {
           </div>
 
           <p style="font-size: 13px; color: #9ca3af; text-align: center; line-height: 1.6; margin: 0;">
-            If you have any questions, reply to this email or contact us at <a href="mailto:support@zukvo.com" style="color: #6366f1; text-decoration: none;">support@zukvo.com</a>.
+            If you have any questions, reply to this email or contact us at <a href="mailto:${brand.supportEmail}" style="color: #6366f1; text-decoration: none;">${brand.supportEmail}</a>.
           </p>
         </div>
       </div>
@@ -874,9 +771,9 @@ export class LandingSignupController {
 
     await emailService.sendCentralizedMail({
       to,
-      subject: `🎉 Your Zukvo workspace is ready, ${firstName}!`,
+      subject: `🎉 Your ${brand.name} workspace is ready, ${firstName}!`,
       html,
-      text: `Hi ${firstName}, your Zukvo workspace is ready! Plan: ${planName} | Email: ${to} | Access it here: ${workspaceUrl}`,
+      text: `Hi ${firstName}, your ${brand.name} workspace is ready! Plan: ${planName} | Email: ${to} | Access it here: ${workspaceUrl}`,
     });
   }
 }

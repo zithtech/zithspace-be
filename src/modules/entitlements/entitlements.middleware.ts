@@ -20,7 +20,7 @@
 import { Response, NextFunction } from 'express';
 import { AuthRequest } from '@/types';
 import { JWTUtils } from '@/utils/jwt';
-import { ENFORCING } from './entitlements.service';
+import { ENFORCING, FAIL_OPEN } from './entitlements.service';
 import { featureResolverService } from '@/modules/subscriptions';
 import { productFromRequest } from '@/config/brand';
 
@@ -206,9 +206,19 @@ export const moduleEntitlementGate = async (
     });
   } catch (error) {
     console.error('[entitlements] module gate failed:', error);
-    // Never block on an infrastructure fault: this gate sits in front of the
-    // whole API, and a control-plane wobble must not take the product down.
-    next();
+    // Control-plane fault. The behaviour is a deliberate, env-controlled choice
+    // (see FAIL_OPEN): open by default so a wobble does not take the whole API
+    // down; set ENTITLEMENTS_FAIL_OPEN=false to fail closed where a missed
+    // entitlement check is worse than an outage.
+    if (FAIL_OPEN || !ENFORCING) {
+      next();
+      return;
+    }
+    res.status(503).json({
+      success: false,
+      error: 'Entitlement service temporarily unavailable',
+      code: 'ENTITLEMENT_UNAVAILABLE',
+    });
   }
 };
 

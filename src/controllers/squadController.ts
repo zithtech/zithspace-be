@@ -342,7 +342,11 @@ export class SquadController {
       const squad = await prisma.squad.findFirst({
         where: { id, tenantId: req.tenantId as string },
       });
-      const squadName = squad ? squad.squadName : id;
+      if (!squad) {
+        res.status(404).json({ success: false, error: "Squad not found" });
+        return;
+      }
+      const squadName = squad.squadName;
 
       await prisma.squad.update({
         where: { id },
@@ -376,6 +380,15 @@ export class SquadController {
     try {
       const { id } = req.params;
       const { isArchived } = req.body;
+
+      const owned = await prisma.squad.findFirst({
+        where: { id, tenantId: req.tenantId as string },
+        select: { id: true },
+      });
+      if (!owned) {
+        res.status(404).json({ success: false, error: "Squad not found" });
+        return;
+      }
 
       const squad = await prisma.squad.update({
         where: { id },

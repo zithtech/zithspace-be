@@ -38,6 +38,20 @@ import { withTenant } from './db/pool';
  */
 export const ENFORCING = process.env.ENTITLEMENTS_ENFORCEMENT !== 'off';
 
+/**
+ * What happens when the control plane is UNREACHABLE (an exception, not a
+ * definite "not entitled").
+ *
+ *   FAIL_OPEN (default) — serve the request. Availability over strictness: a
+ *     gate in front of the whole API must not take the product down when a
+ *     control-plane call times out.
+ *   fail closed — set ENTITLEMENTS_FAIL_OPEN=false to refuse instead, for
+ *     environments where a missed entitlement check is worse than an outage.
+ *
+ * A deliberate, per-environment decision — read once at import, like ENFORCING.
+ */
+export const FAIL_OPEN = process.env.ENTITLEMENTS_FAIL_OPEN !== 'false';
+
 export type Product = 'zukvo' | 'testiez';
 
 export interface Entitlement {

@@ -902,9 +902,12 @@ static async create(req: AuthRequest, res: Response): Promise<void> {
 
       console.log(`📎 Total files to process: ${uploadedFiles.length}`);
 
-      // 1. Check if reimbursement exists
-      const existing = await prisma.reimbursement.findUnique({
-        where: { id },
+      // 1. Check if reimbursement exists (scoped to the caller's tenant)
+      const tenantId = req.tenantId;
+      if (!tenantId) throw new NotFoundError("Reimbursement not found");
+
+      const existing = await prisma.reimbursement.findFirst({
+        where: { id, tenantId },
         include: {
           items: {
             include: {
@@ -1224,9 +1227,11 @@ static async create(req: AuthRequest, res: Response): Promise<void> {
   static async delete(req: AuthRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
+      const tenantId = req.tenantId;
+      if (!tenantId) throw new NotFoundError("Reimbursement not found");
 
-      const existing = await prisma.reimbursement.findUnique({
-        where: { id },
+      const existing = await prisma.reimbursement.findFirst({
+        where: { id, tenantId },
       });
 
       if (!existing) throw new NotFoundError("Reimbursement not found");
@@ -3333,9 +3338,10 @@ static async reject(req: AuthRequest, res: Response) {
       if (!id) throw new Error("Reimbursement item ID is required");
       if (!req.user) throw new Error("User not authenticated");
 
-      // 1️⃣ Find the reimbursement item
-      const item = await prisma.reimbursementItem.findUnique({
-        where: { id },
+      // 1️⃣ Find the reimbursement item (scoped to the caller's tenant via its parent)
+      const tenantId = req.tenantId;
+      const item = await prisma.reimbursementItem.findFirst({
+        where: { id, reimbursement: { tenantId } },
         select: { id: true, status: true, reimbursementId: true },
       });
 
