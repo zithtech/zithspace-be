@@ -587,35 +587,94 @@ export class DocumentHubUploadController {
 
             const accessToken = await NotionAuthService.getValidAccessToken(req.user.id, req.tenantId);
 
-            const response = await axios.post("https://api.notion.com/v1/search", {
-                filter: {
-                    value: "page",
-                    property: "object"
-                },
-                sort: {
-                    direction: "descending",
-                    timestamp: "last_edited_time"
-                },
-                page_size: 100
-            }, {
-                headers: {
-                    "Authorization": `Bearer ${accessToken}`,
-                    "Notion-Version": "2022-06-28",
-                    "Content-Type": "application/json"
-                }
-            });
+            const allResults: any[] = [];
+            let cursor = undefined;
+            let hasMore = true;
 
-            const files = response.data.results.map((page: any) => {
-                let title = "Untitled";
-                if (page.properties && page.properties.title && page.properties.title.title && page.properties.title.title.length > 0) {
-                    title = page.properties.title.title[0].plain_text;
-                } else if (page.properties && page.properties.Name && page.properties.Name.title && page.properties.Name.title.length > 0) {
-                    title = page.properties.Name.title[0].plain_text;
+            while (hasMore) {
+                const response = await axios.post("https://api.notion.com/v1/search", {
+                    sort: {
+                        direction: "descending",
+                        timestamp: "last_edited_time"
+                    },
+                    page_size: 100,
+                    ...(cursor ? { start_cursor: cursor } : {})
+                }, {
+                    headers: {
+                        "Authorization": `Bearer ${accessToken}`,
+                        "Notion-Version": "2022-06-28",
+                        "Content-Type": "application/json"
+                    }
+                });
+
+                allResults.push(...response.data.results);
+                hasMore = response.data.has_more;
+                cursor = response.data.next_cursor;
+                
+                // Safety limit to prevent infinite loops / too many pages (e.g. max 1000)
+                if (allResults.length >= 1000) {
+                    hasMore = false;
                 }
+            }
+
+            const folderId = (req.query.folderId as string) || "root";
+            const allIds = new Set(allResults.map(p => p.id));
+
+            let filteredResults = [];
+            if (folderId === "root") {
+                filteredResults = allResults.filter(page => {
+                    const parent = page.parent;
+                    if (!parent) return true;
+                    if (parent.type === "workspace") return true;
+                    const pId = parent.page_id || parent.database_id || parent.block_id;
+                    if (!pId) return true;
+                    return !allIds.has(pId);
+                });
+            } else {
+                filteredResults = allResults.filter(page => {
+                    const parent = page.parent;
+                    if (!parent) return false;
+                    const pId = parent.page_id || parent.database_id || parent.block_id;
+                    return pId === folderId;
+                });
+            }
+
+            const files = filteredResults.map((page: any) => {
+                let title = "Untitled";
+                
+                // Notion properties can be named anything, but typically 'title' or 'Name' 
+                // contains the title array. Let's find any property of type 'title'
+                if (page.properties) {
+                    const titleProp = Object.values(page.properties).find((p: any) => p.type === 'title') as any;
+                    if (titleProp && titleProp.title && titleProp.title.length > 0) {
+                        title = titleProp.title.map((t: any) => t.plain_text).join("");
+                    } else if (page.properties.title && page.properties.title.title && page.properties.title.title.length > 0) {
+                        title = page.properties.title.title[0].plain_text;
+                    } else if (page.properties.Name && page.properties.Name.title && page.properties.Name.title.length > 0) {
+                        title = page.properties.Name.title[0].plain_text;
+                    }
+                } else if (page.title && page.title.length > 0) {
+                    // Sometimes title is direct on the database object
+                    title = page.title.map((t: any) => t.plain_text).join("");
+                }
+
+                const hasChildren = allResults.some(child => {
+                    const childParent = child.parent;
+                    if (!childParent) return false;
+                    const childPId = childParent.page_id || childParent.database_id || childParent.block_id;
+                    return childPId === page.id;
+                });
+
+                let finalMimeType = page.object === "database" ? "application/vnd.notion.database" : "application/vnd.notion.page";
+                if (finalMimeType === "application/vnd.notion.page" && hasChildren) {
+                    // Treat pages that have sub-pages as folders so the user can navigate into them
+                    finalMimeType = "folder";
+                }
+
                 return {
                     id: page.id,
                     name: title,
-                    mimeType: "application/vnd.notion.page",
+                    mimeType: finalMimeType,
                     size: 0
                 };
             });
