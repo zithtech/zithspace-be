@@ -3543,6 +3543,17 @@ export class BugListController {
         }
 
         const newIssue = await apiService.createIssue(accessToken, cloudId, payload);
+        
+        let webUrl = newIssue.self;
+        try {
+          const resources = await apiService.getAccessibleResources(accessToken);
+          const resource = resources.find((r: any) => r.id === cloudId);
+          if (resource && resource.url) {
+            webUrl = `${resource.url}/browse/${newIssue.key}`;
+          }
+        } catch (err) {
+          console.error("Failed to get Jira site URL", err);
+        }
 
         const historyEntry = {
           ticketId: bug.jira_issue_id,
@@ -3564,7 +3575,7 @@ export class BugListController {
                status = 'converted',
                updated_at = NOW()
            WHERE id = $5 AND tenant_id = $6`,
-          [newIssue.id, newIssue.key, newIssue.self, JSON.stringify(newHistory), bugId, tenantId]
+          [newIssue.id, newIssue.key, webUrl, JSON.stringify(newHistory), bugId, tenantId]
         );
 
         recordTransaction({
