@@ -3,6 +3,7 @@ import pool from '../config/dbpool';
 import { ensureQaSubmissionSchema } from '../db/qaSubmissionSchema';
 import { getAIProviderForTenant } from '../services/ai/resolver';
 import { uploadSubmissionAttachmentToR2, deleteFileFromR2 } from '../utils/r2Client';
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from '../utils/transactionHistory';
 
 /**
  * QA Submissions — the formal reporting layer that sits after Test Runs and the
@@ -1014,6 +1015,19 @@ export const createSubmission = async (req: Request, res: Response) => {
       client,
     );
 
+    recordTransaction({
+      req: req as any,
+      section: Section.WORK,
+      module: Module.QA_WORKSPACE,
+      page: Page.QA_SUBMISSION_LIST,
+      action: Action.CREATE,
+      actionLabel: "QA Submission created",
+      entityType: EntityType.QA_SUBMISSION,
+      entityId: submission.id,
+      entityLabel: submission.submission_name,
+      afterData: submission,
+    });
+
     await client.query('COMMIT');
     res.status(201).json({ success: true, data: submission });
   } catch (error: any) {
@@ -1113,8 +1127,27 @@ export const updateSubmission = async (req: Request, res: Response) => {
       );
     }
 
+    const updatedSubmission = rows[0];
+    const diff = diffShallow(existing, updatedSubmission);
+    if (diff.changedFields.length > 0) {
+      recordTransaction({
+        req: req as any,
+        section: Section.WORK,
+        module: Module.QA_WORKSPACE,
+        page: Page.QA_SUBMISSION_DETAIL,
+        action: Action.UPDATE,
+        actionLabel: "QA Submission updated",
+        entityType: EntityType.QA_SUBMISSION,
+        entityId: updatedSubmission.id,
+        entityLabel: updatedSubmission.submission_name,
+        beforeData: diff.before,
+        afterData: diff.after,
+        changedFields: diff.changedFields,
+      });
+    }
+
     await client.query('COMMIT');
-    res.status(200).json({ success: true, data: rows[0] });
+    res.status(200).json({ success: true, data: updatedSubmission });
   } catch (error: any) {
     await client.query('ROLLBACK').catch(() => {});
     if (error?.status === 400) return fail(res, 400, error.message);
@@ -1139,6 +1172,20 @@ export const deleteSubmission = async (req: Request, res: Response) => {
     }
 
     await pool.query(`DELETE FROM qa_submissions WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
+    
+    recordTransaction({
+      req: req as any,
+      section: Section.WORK,
+      module: Module.QA_WORKSPACE,
+      page: Page.QA_SUBMISSION_LIST,
+      action: Action.DELETE,
+      actionLabel: "QA Submission deleted",
+      entityType: EntityType.QA_SUBMISSION,
+      entityId: existing.id,
+      entityLabel: existing.submission_name,
+      beforeData: existing,
+    });
+    
     res.status(200).json({ success: true, message: 'QA Submission deleted' });
   } catch (error) {
     console.error('Error deleting QA submission:', error);
@@ -1229,6 +1276,19 @@ export const submitSubmission = async (req: Request, res: Response) => {
       client,
     );
 
+    recordTransaction({
+      req: req as any,
+      section: Section.WORK,
+      module: Module.QA_WORKSPACE,
+      page: Page.QA_SUBMISSION_DETAIL,
+      action: Action.SUBMIT,
+      actionLabel: isResubmission ? "QA Submission resubmitted" : "QA Submission submitted",
+      entityType: EntityType.QA_SUBMISSION,
+      entityId: id,
+      entityLabel: existing.submission_name,
+      afterData: rows[0],
+    });
+
     await client.query('COMMIT');
     res.status(200).json({ success: true, data: rows[0] });
   } catch (error) {
@@ -1275,6 +1335,21 @@ export const changeSubmissionStatus = async (req: Request, res: Response) => {
     await addHistory(id, tenantId, userId, 'status', `Status changed to ${status}`, req.body?.comment || null, {
       from: existing.status,
       to: status,
+    });
+
+    recordTransaction({
+      req: req as any,
+      section: Section.WORK,
+      module: Module.QA_WORKSPACE,
+      page: Page.QA_SUBMISSION_DETAIL,
+      action: Action.STATUS_CHANGE,
+      actionLabel: `QA Submission status changed to ${status}`,
+      entityType: EntityType.QA_SUBMISSION,
+      entityId: id,
+      entityLabel: existing.submission_name,
+      beforeData: existing,
+      afterData: rows[0],
+      changedFields: ['status'],
     });
 
     res.status(200).json({ success: true, data: rows[0] });
@@ -1417,6 +1492,21 @@ export const signOffSubmission = async (req: Request, res: Response) => {
       client,
     );
 
+    recordTransaction({
+      req: req as any,
+      section: Section.WORK,
+      module: Module.QA_WORKSPACE,
+      page: Page.QA_SUBMISSION_DETAIL,
+      action: "signoff",
+      actionLabel: "QA Submission signed off",
+      entityType: EntityType.QA_SUBMISSION,
+      entityId: id,
+      entityLabel: existing.submission_name,
+      beforeData: { status: existing.status },
+      afterData: { status: 'QA Signed-off' },
+      changedFields: ['status'],
+    });
+
     await client.query('COMMIT');
     res.status(200).json({ success: true, data: rows[0] });
   } catch (error) {
@@ -1464,6 +1554,21 @@ export const approveSubmission = async (req: Request, res: Response) => {
       [userId || null, req.body?.comment || null, id, tenantId],
     );
     await addHistory(id, tenantId, userId, 'approved', 'Approved', req.body?.comment || null);
+
+    recordTransaction({
+      req: req as any,
+      section: Section.WORK,
+      module: Module.QA_WORKSPACE,
+      page: Page.QA_SUBMISSION_DETAIL,
+      action: Action.APPROVE,
+      actionLabel: "QA Submission approved",
+      entityType: EntityType.QA_SUBMISSION,
+      entityId: id,
+      entityLabel: existing.submission_name,
+      beforeData: { status: existing.status },
+      afterData: { status: 'Approved' },
+      changedFields: ['status'],
+    });
 
     res.status(200).json({ success: true, data: rows[0] });
   } catch (error) {
@@ -1526,6 +1631,21 @@ export const sendBackSubmission = async (req: Request, res: Response) => {
       { stage, from: existing.status },
     );
 
+    recordTransaction({
+      req: req as any,
+      section: Section.WORK,
+      module: Module.QA_WORKSPACE,
+      page: Page.QA_SUBMISSION_DETAIL,
+      action: "send_back",
+      actionLabel: stage === 'approver' ? "Approver sent the submission back" : "Submission sent back to QA",
+      entityType: EntityType.QA_SUBMISSION,
+      entityId: id,
+      entityLabel: existing.submission_name,
+      beforeData: { status: existing.status },
+      afterData: { status: 'Sent Back' },
+      changedFields: ['status'],
+    });
+
     res.status(200).json({ success: true, data: rows[0] });
   } catch (error) {
     console.error('Error sending QA submission back:', error);
@@ -1575,6 +1695,21 @@ export const reopenSubmission = async (req: Request, res: Response) => {
       from: existing.status,
       preservedVersion: int(existing.version),
     }, client);
+
+    recordTransaction({
+      req: req as any,
+      section: Section.WORK,
+      module: Module.QA_WORKSPACE,
+      page: Page.QA_SUBMISSION_DETAIL,
+      action: Action.REOPEN,
+      actionLabel: "QA Submission reopened",
+      entityType: EntityType.QA_SUBMISSION,
+      entityId: id,
+      entityLabel: existing.submission_name,
+      beforeData: { status: existing.status },
+      afterData: { status: 'Retesting' },
+      changedFields: ['status'],
+    });
 
     await client.query('COMMIT');
     res.status(200).json({ success: true, data: rows[0] });

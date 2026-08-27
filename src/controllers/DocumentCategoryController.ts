@@ -1,6 +1,15 @@
 import { Response } from 'express';
 import { AuthRequest, ApiResponse, ValidationError } from '../types';
 import { DocumentCategoryService } from '../services/DocumentCategoryService';
+import {
+  recordTransaction,
+  Section,
+  Module,
+  Page,
+  Action,
+  EntityType,
+  diffShallow,
+} from '../utils/transactionHistory';
 
 export class DocumentCategoryController {
   static async getCategories(req: AuthRequest, res: Response): Promise<void> {
@@ -66,6 +75,19 @@ export class DocumentCategoryController {
         status,
       });
 
+      recordTransaction({
+        req: req as any,
+        section: Section.HR,
+        module: Module.DOCS_AND_LETTERS,
+        page: Page.DOCUMENT_CATEGORIES,
+        action: Action.CREATE,
+        actionLabel: `Created document category "${category.categoryName}"`,
+        entityType: EntityType.DOCUMENT_CATEGORY,
+        entityId: category.id,
+        entityLabel: category.categoryName,
+        afterData: { status: category.status, description: category.description },
+      });
+
       res.status(201).json({
         success: true,
         data: category,
@@ -86,7 +108,28 @@ export class DocumentCategoryController {
       }
 
       const { id } = req.params;
+      const before = await DocumentCategoryService.getCategoryById(req.tenantId, id);
       const category = await DocumentCategoryService.updateCategory(req.tenantId, id, req.body);
+
+      if (before) {
+        const diff = diffShallow(before, category);
+        if (diff.changedFields.length > 0) {
+          recordTransaction({
+            req: req as any,
+            section: Section.HR,
+            module: Module.DOCS_AND_LETTERS,
+            page: Page.DOCUMENT_CATEGORIES,
+            action: Action.UPDATE,
+            actionLabel: `Updated document category "${category.categoryName}"`,
+            entityType: EntityType.DOCUMENT_CATEGORY,
+            entityId: category.id,
+            entityLabel: category.categoryName,
+            beforeData: diff.before,
+            afterData: diff.after,
+            changedFields: diff.changedFields,
+          });
+        }
+      }
 
       res.status(200).json({
         success: true,
@@ -108,7 +151,23 @@ export class DocumentCategoryController {
       }
 
       const { id } = req.params;
+      const existing = await DocumentCategoryService.getCategoryById(req.tenantId, id).catch(() => null);
       await DocumentCategoryService.deleteCategory(req.tenantId, id);
+
+      if (existing) {
+        recordTransaction({
+          req: req as any,
+          section: Section.HR,
+          module: Module.DOCS_AND_LETTERS,
+          page: Page.DOCUMENT_CATEGORIES,
+          action: Action.DELETE,
+          actionLabel: `Deleted document category "${existing.categoryName}"`,
+          entityType: EntityType.DOCUMENT_CATEGORY,
+          entityId: existing.id,
+          entityLabel: existing.categoryName,
+          beforeData: { status: existing.status, description: existing.description },
+        });
+      }
 
       res.status(200).json({
         success: true,

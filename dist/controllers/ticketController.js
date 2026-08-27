@@ -224,6 +224,7 @@ class TicketController {
                 });
                 return;
             }
+            // Force nodemon restart for archivedCount changes
             const currentDate = new Date();
             const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
             const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
@@ -245,6 +246,16 @@ class TicketController {
                 },
                 _count: true,
             });
+            // Project-specific archived statistics
+            const projectArchivedStats = await database_1.prisma.ticket.groupBy({
+                by: ["projectId"],
+                where: {
+                    tenantId: req.tenantId,
+                    isDeleted: false,
+                    isArchived: true,
+                },
+                _count: true,
+            });
             const totalTickets = generalStats.reduce((sum, stat) => sum + stat._count, 0);
             const statusCounts = {
                 total: totalTickets,
@@ -257,20 +268,27 @@ class TicketController {
                 live: generalStats.find((s) => s.status === "live")?._count || 0,
                 blocked: generalStats.find((s) => s.status === "blocked")?._count || 0,
             };
-            // Format projectStats as expected by the frontend: { id: projectId, statuses: [{ status, count }] }
+            // Format projectStats as expected by the frontend: { id: projectId, statuses: [{ status, count }], archivedCount: number }
             const projectStatsMap = new Map();
             projectWiseStats.forEach((stat) => {
                 if (!projectStatsMap.has(stat.projectId)) {
-                    projectStatsMap.set(stat.projectId, []);
+                    projectStatsMap.set(stat.projectId, { statuses: [], archivedCount: 0 });
                 }
-                projectStatsMap.get(stat.projectId).push({
+                projectStatsMap.get(stat.projectId).statuses.push({
                     status: stat.status,
                     count: stat._count,
                 });
             });
-            const projectStats = Array.from(projectStatsMap.entries()).map(([id, statuses]) => ({
+            projectArchivedStats.forEach((stat) => {
+                if (!projectStatsMap.has(stat.projectId)) {
+                    projectStatsMap.set(stat.projectId, { statuses: [], archivedCount: 0 });
+                }
+                projectStatsMap.get(stat.projectId).archivedCount = stat._count;
+            });
+            const projectStats = Array.from(projectStatsMap.entries()).map(([id, data]) => ({
                 id,
-                statuses,
+                statuses: data.statuses,
+                archivedCount: data.archivedCount,
             }));
             const stats = {
                 generalStats: statusCounts,
@@ -2105,6 +2123,7 @@ class TicketController {
                     isArchived: false,
                     archivedAt: null,
                     archivedById: null,
+                    sprintPlanId: null, // Ensure ticket returns to the backlog
                     updatedAt: new Date(),
                 },
             });

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import pool from '../config/dbpool';
+import { recordTransaction, Section, Module, Page, Action, EntityType } from '../utils/transactionHistory';
 
 let runScopeColumnReady = false;
 /**
@@ -322,6 +323,19 @@ export const createTestRun = async (req: Request, res: Response) => {
       [tenantId, runId, suite_id]
     );
 
+    recordTransaction({
+      req: req as any,
+      section: Section.WORK,
+      module: Module.QA_WORKSPACE,
+      page: Page.QA_RUN_LIST,
+      action: Action.CREATE,
+      actionLabel: "Test Run created",
+      entityType: EntityType.QA_RUN,
+      entityId: runId,
+      entityLabel: run_name,
+      afterData: runRows[0],
+    });
+
     await client.query('COMMIT');
     res.status(201).json({ success: true, data: runRows[0] });
   } catch (error) {
@@ -366,7 +380,25 @@ export const deleteTestRun = async (req: Request, res: Response) => {
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
     const { id } = req.params;
 
+    const { rows: oldRows } = await pool.query(`SELECT * FROM qa_test_runs WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
+    if (!oldRows.length) return res.status(404).json({ success: false, error: 'Test Run not found' });
+    const oldRun = oldRows[0];
+
     await pool.query(`DELETE FROM qa_test_runs WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
+
+    recordTransaction({
+      req: req as any,
+      section: Section.WORK,
+      module: Module.QA_WORKSPACE,
+      page: Page.QA_RUN_LIST,
+      action: Action.DELETE,
+      actionLabel: "Test Run deleted",
+      entityType: EntityType.QA_RUN,
+      entityId: id,
+      entityLabel: oldRun.run_name,
+      beforeData: oldRun,
+    });
+
     res.status(200).json({ success: true, message: 'Deleted successfully' });
   } catch (error) {
     console.error('Error deleting test run:', error);

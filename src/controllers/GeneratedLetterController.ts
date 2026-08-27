@@ -2,6 +2,15 @@ import { getFileBufferFromR2 } from '../utils/r2Client';
 import { Response } from 'express';
 import { AuthRequest, ApiResponse, ValidationError } from '../types';
 import { GeneratedLetterService } from '../services/GeneratedLetterService';
+import {
+  recordTransaction,
+  Section,
+  Module,
+  Page,
+  Action,
+  EntityType,
+  diffShallow,
+} from '../utils/transactionHistory';
 
 export class GeneratedLetterController {
   static async getGeneratedLetters(req: AuthRequest, res: Response): Promise<void> {
@@ -108,6 +117,19 @@ export class GeneratedLetterController {
         ipAddress
       );
 
+      recordTransaction({
+        req: req as any,
+        section: Section.HR,
+        module: Module.DOCS_AND_LETTERS,
+        page: Page.GENERATED_LETTERS,
+        action: Action.CREATE,
+        actionLabel: `Generated document "${doc.documentName || doc.documentNumber}"`,
+        entityType: EntityType.GENERATED_LETTER,
+        entityId: doc.id,
+        entityLabel: doc.documentName || doc.documentNumber,
+        afterData: { status: doc.status, documentNumber: doc.documentNumber },
+      });
+
       res.status(201).json({
         success: true,
         data: doc,
@@ -149,6 +171,19 @@ export class GeneratedLetterController {
         req.user.id,
         ipAddress
       );
+
+      recordTransaction({
+        req: req as any,
+        section: Section.HR,
+        module: Module.DOCS_AND_LETTERS,
+        page: Page.GENERATED_LETTERS,
+        action: Action.UPDATE,
+        actionLabel: `Updated generated document "${doc.documentName || doc.documentNumber}"`,
+        entityType: EntityType.GENERATED_LETTER,
+        entityId: doc.id,
+        entityLabel: doc.documentName || doc.documentNumber,
+        afterData: { status: doc.status, documentNumber: doc.documentNumber },
+      });
 
       res.status(200).json({
         success: true,
@@ -233,7 +268,24 @@ export class GeneratedLetterController {
 
       const { id } = req.params;
       const ipAddress = req.ip || req.socket.remoteAddress || undefined;
+
+      const existing = await GeneratedLetterService.getGeneratedLetterById(req.tenantId, id).catch(() => null);
+
       await GeneratedLetterService.deleteGeneratedLetter(req.tenantId, id, req.user.id, ipAddress);
+
+      if (existing) {
+        recordTransaction({
+          req: req as any,
+          section: Section.HR,
+          module: Module.DOCS_AND_LETTERS,
+          page: Page.GENERATED_LETTERS,
+          action: Action.DELETE,
+          actionLabel: `Deleted generated document "${existing.documentName || existing.documentNumber}"`,
+          entityType: EntityType.GENERATED_LETTER,
+          entityId: existing.id,
+          entityLabel: existing.documentName || existing.documentNumber,
+        });
+      }
 
       res.status(200).json({
         success: true,

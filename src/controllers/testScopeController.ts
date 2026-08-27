@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { registerModuleNames } from './qaModuleController';
 import pool from '../config/dbpool';
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from '../utils/transactionHistory';
 import { SprintReportExportService } from '../services/sprintReportExportService';
 import { RBACService } from '../modules/rbac/rbac.service';
 import { Permissions } from '../types/permissions';
@@ -205,6 +206,18 @@ export const createTestScope = async (req: Request, res: Response) => {
       [tenantId, name, type, priority, status, qa_owner, start_date || null, end_date || null, details || {}]
     );
 
+    recordTransaction({
+      req: req as any,
+      section: Section.WORK,
+      module: Module.QA_WORKSPACE,
+      page: Page.QA_SCOPE_LIST,
+      action: Action.CREATE,
+      actionLabel: "Test Scope created",
+      entityType: EntityType.QA_SCOPE,
+      entityId: rows[0].id,
+      entityLabel: name,
+      afterData: rows[0],
+    });
     // The modules named on a scope are the workspace's module list — keep the
     // two in step rather than making someone add them twice. They are filed
     // under the scope's own product, since a module belongs to a project.
@@ -259,6 +272,12 @@ export const updateTestScope = async (req: Request, res: Response) => {
     ];
     console.log('Executing query with params:', params);
 
+    const { rows: oldRows } = await pool.query(`SELECT * FROM qa_test_scopes WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
+    if (oldRows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Test Scope not found' });
+    }
+    const oldScope = oldRows[0];
+
     const { rows } = await pool.query(query, params);
     console.log('Update result rows:', rows.length);
 
@@ -266,6 +285,30 @@ export const updateTestScope = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: 'Test Scope not found' });
     }
 
+    const updatedScope = rows[0];
+    const diff = diffShallow(oldScope, updatedScope);
+    if (diff.changedFields.length > 0) {
+      let action = Action.UPDATE as string;
+      if (status === 'Approved') action = Action.APPROVE;
+      else if (status === 'Rejected') action = Action.REJECT;
+
+      recordTransaction({
+        req: req as any,
+        section: Section.WORK,
+        module: Module.QA_WORKSPACE,
+        page: Page.QA_SCOPE_DETAIL,
+        action,
+        actionLabel: "Test Scope updated",
+        entityType: EntityType.QA_SCOPE,
+        entityId: id,
+        entityLabel: updatedScope.name,
+        beforeData: diff.before,
+        afterData: diff.after,
+        changedFields: diff.changedFields,
+      });
+    }
+
+    res.status(200).json({ success: true, data: updatedScope });
     // Modules added while editing join the workspace's module list too.
     await registerModuleNames(tenantId, details?.modules, details?.product).catch(err =>
       console.error('Failed to register scope modules:', err));
@@ -284,14 +327,29 @@ export const deleteTestScope = async (req: Request, res: Response) => {
     
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
+    const { rows: oldRows } = await pool.query(`SELECT * FROM qa_test_scopes WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
+    if (oldRows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Test Scope not found' });
+    }
+    const oldScope = oldRows[0];
+
     const { rows } = await pool.query(
       `DELETE FROM qa_test_scopes WHERE id = $1 AND tenant_id = $2 RETURNING *`,
       [id, tenantId]
     );
 
-    if (rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Test Scope not found' });
-    }
+    recordTransaction({
+      req: req as any,
+      section: Section.WORK,
+      module: Module.QA_WORKSPACE,
+      page: Page.QA_SCOPE_LIST,
+      action: Action.DELETE,
+      actionLabel: "Test Scope deleted",
+      entityType: EntityType.QA_SCOPE,
+      entityId: id,
+      entityLabel: oldScope.name,
+      beforeData: oldScope,
+    });
 
     res.status(200).json({ success: true, message: 'Test scope deleted successfully' });
   } catch (error) {
