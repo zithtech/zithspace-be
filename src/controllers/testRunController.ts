@@ -172,7 +172,14 @@ export const getTestRun = async (req: Request, res: Response) => {
     await ensureRunScopeColumn();
     const { rows: runRows } = await pool.query(`
       SELECT tr.*, ts.suite_name, ptc.project_id, ptc.title AS scenario_title, u.name as created_by_name,
-             sc.name AS scope_name
+             sc.name AS scope_name,
+             -- The module the run ultimately belongs to, through its suite or
+             -- that suite's scenario. Bugs raised here are filed under it, which
+             -- is what keeps bugs, scopes and cases on one module list.
+             COALESCE(
+               (SELECT m.module_name FROM qa_todo_modules m WHERE m.id::text = ts.module_id::text),
+               (SELECT m.module_name FROM qa_todo_modules m WHERE m.id::text = ptc.module_id::text)
+             ) AS module_name
       FROM qa_test_runs tr
       LEFT JOIN qa_test_suites ts ON tr.suite_id = ts.id
       LEFT JOIN qa_test_scopes sc ON tr.scope_id = sc.id
