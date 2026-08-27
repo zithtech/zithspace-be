@@ -599,10 +599,21 @@ export class JiraController {
 
       const issue = await this.apiService.createIssue(accessToken, cloudId, payload);
       
+      let webUrl = issue.self;
+      try {
+        const resources = await this.apiService.getAccessibleResources(accessToken);
+        const resource = resources.find((r: any) => r.id === cloudId);
+        if (resource && resource.url) {
+          webUrl = `${resource.url}/browse/${issue.key}`;
+        }
+      } catch (err) {
+        console.error("Failed to get Jira site URL", err);
+      }
+
       if (bugIds && Array.isArray(bugIds) && bugIds.length > 0) {
         await prisma.$executeRawUnsafe(
           `UPDATE bugs SET jira_issue_id = $1, jira_issue_key = $2, jira_issue_url = $3, status = 'completed', updated_at = NOW() WHERE id = ANY($4) AND tenant_id = $5`,
-          issue.id, issue.key, issue.self, bugIds, tenantId
+          issue.id, issue.key, webUrl, bugIds, tenantId
         );
 
         // Upload attachments

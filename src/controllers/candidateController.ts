@@ -2,6 +2,15 @@ import { Response } from "express";
 import { prisma } from "@/config/database";
 import { AuthRequest, ApiResponse } from "@/types";
 import { uploadCandidateDocumentToR2 } from "@/utils/r2Client";
+import {
+  recordTransaction,
+  Section,
+  Module,
+  Page,
+  Action,
+  EntityType,
+  diffShallow,
+} from '@/utils/transactionHistory';
 
 export const createCandidate = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -176,6 +185,19 @@ export const createCandidate = async (req: AuthRequest, res: Response): Promise<
         include: { workExperiences: true, skills: true, educations: true, interviewSlots: true }
       });
     }
+
+    recordTransaction({
+      req: req as any,
+      section: Section.HR,
+      module: Module.RECRUITMENT,
+      page: Page.CANDIDATE_PIPELINE_LIST,
+      action: Action.CREATE,
+      actionLabel: `Candidate Profile created for "${finalCandidate.fullName}"`,
+      entityType: EntityType.CANDIDATE,
+      entityId: finalCandidate.id,
+      entityLabel: finalCandidate.fullName,
+      afterData: { email: finalCandidate.email, phoneNumber: finalCandidate.phoneNumber },
+    });
 
     res.status(201).json({ success: true, data: finalCandidate } as ApiResponse);
   } catch (error: any) {
@@ -390,6 +412,26 @@ export const updateCandidate = async (req: AuthRequest, res: Response): Promise<
       });
     }
 
+    if (existing) {
+      const diff = diffShallow(existing, finalCandidate);
+      if (diff.changedFields.length > 0) {
+        recordTransaction({
+          req: req as any,
+          section: Section.HR,
+          module: Module.RECRUITMENT,
+          page: Page.CANDIDATE_PIPELINE_DETAIL,
+          action: Action.UPDATE,
+          actionLabel: `Updated Candidate Profile for "${finalCandidate.fullName}"`,
+          entityType: EntityType.CANDIDATE,
+          entityId: finalCandidate.id,
+          entityLabel: finalCandidate.fullName,
+          beforeData: diff.before,
+          afterData: diff.after,
+          changedFields: diff.changedFields,
+        });
+      }
+    }
+
     res.status(200).json({ success: true, data: finalCandidate } as ApiResponse);
   } catch (error: any) {
     if (error.code === 'P2025') {
@@ -429,6 +471,19 @@ export const deleteCandidate = async (req: AuthRequest, res: Response): Promise<
       });
       return;
     }
+
+    // We don't have the existing record's name here easily without a pre-fetch, 
+    // but we can log the deletion event with the ID.
+    recordTransaction({
+      req: req as any,
+      section: Section.HR,
+      module: Module.RECRUITMENT,
+      page: Page.CANDIDATE_PIPELINE_LIST,
+      action: Action.DELETE,
+      actionLabel: `Deleted Candidate Profile`,
+      entityType: EntityType.CANDIDATE,
+      entityId: id,
+    });
 
     res.status(200).json({
       success: true,

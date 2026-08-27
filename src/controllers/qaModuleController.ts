@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import pool from '../config/dbpool';
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from '../utils/transactionHistory';
 
 /**
  * QA modules are tenant-owned: a workspace curates its own list in
@@ -132,7 +133,23 @@ export const createModule = async (req: Request, res: Response) => {
        VALUES ($1, $2, $3) RETURNING *`,
       [tenantId, module_name, description],
     );
-    res.status(201).json({ success: true, data: rows[0] });
+
+    const newModule = rows[0];
+
+    recordTransaction({
+      req: req as any,
+      section: Section.WORK,
+      module: Module.QA_WORKSPACE,
+      page: Page.QA_MODULE_LIST,
+      action: Action.CREATE,
+      actionLabel: "QA Module created",
+      entityType: EntityType.QA_MODULE,
+      entityId: newModule.id,
+      entityLabel: newModule.module_name,
+      afterData: newModule,
+    });
+
+    res.status(201).json({ success: true, data: newModule });
   } catch (error) {
     console.error('Error creating module:', error);
     res.status(500).json({ success: false, error: 'Internal Server Error' });
@@ -144,7 +161,6 @@ export const updateModule = async (req: Request, res: Response) => {
     const tenantId = (req as any).user?.tenantId;
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
     const { id } = req.params;
-
     if (await isCatalogueModule(id)) {
       return res.status(403).json({
         success: false,
@@ -163,13 +179,39 @@ export const updateModule = async (req: Request, res: Response) => {
     );
     if (clash.length) return res.status(409).json({ success: false, error: 'A module with that name already exists' });
 
+    const { rows: oldRows } = await pool.query(
+      `SELECT * FROM qa_todo_modules WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId]
+    );
+    if (!oldRows.length) return res.status(404).json({ success: false, error: 'Not found' });
+    const oldModule = oldRows[0];
+
     const { rows } = await pool.query(
       `UPDATE qa_todo_modules SET module_name = $1, description = $2, updated_at = NOW()
         WHERE id = $3 AND tenant_id = $4 RETURNING *`,
       [module_name, description, id, tenantId],
     );
-    if (!rows.length) return res.status(404).json({ success: false, error: 'Not found' });
-    res.status(200).json({ success: true, data: rows[0] });
+
+    const updatedModule = rows[0];
+    const diff = diffShallow(oldModule, updatedModule);
+    if (diff.changedFields.length > 0) {
+      recordTransaction({
+        req: req as any,
+        section: Section.WORK,
+        module: Module.QA_WORKSPACE,
+        page: Page.QA_MODULE_LIST,
+        action: Action.UPDATE,
+        actionLabel: "QA Module updated",
+        entityType: EntityType.QA_MODULE,
+        entityId: updatedModule.id,
+        entityLabel: updatedModule.module_name,
+        beforeData: diff.before,
+        afterData: diff.after,
+        changedFields: diff.changedFields,
+      });
+    }
+
+    res.status(200).json({ success: true, data: updatedModule });
   } catch (error) {
     console.error('Error updating module:', error);
     res.status(500).json({ success: false, error: 'Internal Server Error' });
@@ -181,7 +223,6 @@ export const deleteModule = async (req: Request, res: Response) => {
     const tenantId = (req as any).user?.tenantId;
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
     const { id } = req.params;
-
     if (await isCatalogueModule(id)) {
       return res.status(403).json({
         success: false,
@@ -205,11 +246,28 @@ export const deleteModule = async (req: Request, res: Response) => {
       });
     }
 
-    const result = await pool.query(
-      `DELETE FROM qa_todo_modules WHERE id = $1 AND tenant_id = $2`,
-      [id, tenantId],
+    const { rows: oldRows } = await pool.query(
+      `SELECT * FROM qa_todo_modules WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId]
     );
-    if (!result.rowCount) return res.status(404).json({ success: false, error: 'Not found' });
+    
+    if (!oldRows.length) return res.status(404).json({ success: false, error: 'Not found' });
+    
+    const oldModule = oldRows[0];
+    await pool.query(`DELETE FROM qa_todo_modules WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
+    
+    recordTransaction({
+      req: req as any,
+      section: Section.WORK,
+      module: Module.QA_WORKSPACE,
+      page: Page.QA_MODULE_LIST,
+      action: Action.DELETE,
+      actionLabel: "QA Module deleted",
+      entityType: EntityType.QA_MODULE,
+      entityId: oldModule.id,
+      entityLabel: oldModule.module_name,
+      beforeData: oldModule,
+    });
     res.status(200).json({ success: true, message: 'Deleted successfully' });
   } catch (error) {
     console.error('Error deleting module:', error);
