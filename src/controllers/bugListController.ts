@@ -506,7 +506,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_FOLDER_LIST,
         action: Action.CREATE,
         actionLabel: "Folder created",
@@ -578,7 +578,7 @@ export class BugListController {
           recordTransaction({
             req,
             section: Section.WORK,
-            module: Module.BUG_LIST,
+            module: Module.QA_WORKSPACE,
             page: Page.BUG_FOLDER_LIST,
             action: Action.UPDATE,
             actionLabel: `Folder updated (${changedFields.join(", ")})`,
@@ -663,7 +663,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_FOLDER_LIST,
         action: Action.DELETE,
         actionLabel: "Folder moved to trash",
@@ -703,7 +703,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_FOLDER_LIST,
         action: Action.ARCHIVE,
         actionLabel: "Folder archived",
@@ -848,7 +848,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_TRASH,
         action: Action.RESTORE,
         actionLabel: "Folder restored",
@@ -907,7 +907,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_TRASH,
         action: Action.PERMANENT_DELETE,
         actionLabel: "Folder permanently deleted",
@@ -1128,7 +1128,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_SHEET_LIST,
         action: Action.CREATE,
         actionLabel: "Sheet created",
@@ -1214,7 +1214,7 @@ export class BugListController {
           recordTransaction({
             req,
             section: Section.WORK,
-            module: Module.BUG_LIST,
+            module: Module.QA_WORKSPACE,
             page: Page.BUG_SHEET_LIST,
             action: Action.UPDATE,
             actionLabel: `Sheet updated (${changedFields.join(", ")})`,
@@ -1348,7 +1348,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_SHEET_LIST,
         action: Action.STATUS_CHANGE,
         actionLabel: `Sheet status -> ${status}`,
@@ -1443,7 +1443,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_SHEET_LIST,
         action: Action.DELETE,
         actionLabel: "Sheet moved to trash",
@@ -1559,7 +1559,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_TRASH,
         action: Action.RESTORE,
         actionLabel: "Sheet restored",
@@ -1616,7 +1616,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_TRASH,
         action: Action.PERMANENT_DELETE,
         actionLabel: "Sheet permanently deleted",
@@ -1960,7 +1960,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_LIST,
         action: Action.CREATE,
         actionLabel: "Bug created",
@@ -2122,7 +2122,7 @@ export class BugListController {
           recordTransaction({
             req,
             section: Section.WORK,
-            module: Module.BUG_LIST,
+            module: Module.QA_WORKSPACE,
             page: Page.BUG_LIST,
             action: Action.UPDATE,
             actionLabel: `Bug updated${changedFields.length ? ` (${changedFields.join(", ")})` : ""}`,
@@ -2190,7 +2190,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_LIST,
         action: Action.DELETE,
         actionLabel: "Bug moved to trash",
@@ -2235,7 +2235,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_TRASH,
         action: Action.PERMANENT_DELETE,
         actionLabel: "Bug permanently deleted",
@@ -2282,7 +2282,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_TRASH,
         action: Action.RESTORE,
         actionLabel: "Bug restored",
@@ -2329,7 +2329,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_LIST,
         action: Action.BULK_UPDATE_STATUS,
         actionLabel: `Bug bulk status -> ${status} (${r.rowCount})`,
@@ -2380,7 +2380,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_LIST,
         action: Action.BULK_DELETE,
         actionLabel: `Bugs bulk moved to trash (${r.rowCount})`,
@@ -2424,7 +2424,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_TRASH,
         action: Action.BULK_PERMANENT_DELETE,
         actionLabel: `Bugs permanently deleted (${r.rowCount})`,
@@ -2469,7 +2469,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_TRASH,
         action: Action.BULK_RESTORE,
         actionLabel: `Bugs restored (${r.rowCount})`,
@@ -2526,7 +2526,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_TRASH,
         action: Action.BULK_RESTORE,
         actionLabel: `Folders restored (${folders.rowCount})`,
@@ -2580,7 +2580,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_TRASH,
         action: Action.BULK_PERMANENT_DELETE,
         actionLabel: `Folders permanently deleted (${r.rowCount})`,
@@ -2639,7 +2639,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_TRASH,
         action: Action.BULK_RESTORE,
         actionLabel: `Sheets restored (${sheets.rowCount})`,
@@ -2693,7 +2693,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_TRASH,
         action: Action.BULK_PERMANENT_DELETE,
         actionLabel: `Sheets permanently deleted (${r.rowCount})`,
@@ -2746,7 +2746,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_LIST,
         action: Action.BULK_MOVE,
         actionLabel: `Bugs moved to sheet ${targetSheetId} (${r.rowCount})`,
@@ -3187,7 +3187,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_LIST,
         action: Action.BULK_CONVERT,
         actionLabel: `Bugs converted to ${created.length} ticket(s) (${totalBugs} bugs)`,
@@ -3318,7 +3318,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_LIST,
         action: Action.BULK_CONVERT,
         actionLabel: `Bugs mapped to ticket ${ticket.ticket_number}`,
@@ -3360,7 +3360,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_LIST,
         action: Action.VERIFY,
         actionLabel: "Bug verified",
@@ -3393,7 +3393,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_LIST,
         action: Action.REOPEN,
         actionLabel: "Bug reopened",
@@ -3489,7 +3489,7 @@ export class BugListController {
         recordTransaction({
           req,
           section: Section.WORK,
-          module: Module.BUG_LIST,
+          module: Module.QA_WORKSPACE,
           page: Page.BUG_LIST,
           action: Action.UPDATE,
           actionLabel: "Bug marked as recurring, new Linear issue created",
@@ -3543,6 +3543,17 @@ export class BugListController {
         }
 
         const newIssue = await apiService.createIssue(accessToken, cloudId, payload);
+        
+        let webUrl = newIssue.self;
+        try {
+          const resources = await apiService.getAccessibleResources(accessToken);
+          const resource = resources.find((r: any) => r.id === cloudId);
+          if (resource && resource.url) {
+            webUrl = `${resource.url}/browse/${newIssue.key}`;
+          }
+        } catch (err) {
+          console.error("Failed to get Jira site URL", err);
+        }
 
         const historyEntry = {
           ticketId: bug.jira_issue_id,
@@ -3564,13 +3575,13 @@ export class BugListController {
                status = 'converted',
                updated_at = NOW()
            WHERE id = $5 AND tenant_id = $6`,
-          [newIssue.id, newIssue.key, newIssue.self, JSON.stringify(newHistory), bugId, tenantId]
+          [newIssue.id, newIssue.key, webUrl, JSON.stringify(newHistory), bugId, tenantId]
         );
 
         recordTransaction({
           req,
           section: Section.WORK,
-          module: Module.BUG_LIST,
+          module: Module.QA_WORKSPACE,
           page: Page.BUG_LIST,
           action: Action.UPDATE,
           actionLabel: "Bug marked as recurring, new Jira issue created",
@@ -3664,7 +3675,7 @@ export class BugListController {
         recordTransaction({
           req,
           section: Section.WORK,
-          module: Module.BUG_LIST,
+          module: Module.QA_WORKSPACE,
           page: Page.BUG_LIST,
           action: Action.UPDATE,
           actionLabel: "Bug marked as recurring, new ticket created",
@@ -3769,7 +3780,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_SETTINGS,
         action: Action.CREATE,
         actionLabel: "Severity option created",
@@ -3858,7 +3869,7 @@ export class BugListController {
           recordTransaction({
             req,
             section: Section.WORK,
-            module: Module.BUG_LIST,
+            module: Module.QA_WORKSPACE,
             page: Page.BUG_SETTINGS,
             action: Action.UPDATE,
             actionLabel: `Severity option updated (${changedFields.join(", ")})`,
@@ -3909,7 +3920,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_SETTINGS,
         action: Action.DELETE,
         actionLabel: "Severity option deleted",
@@ -4002,7 +4013,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_SETTINGS,
         action: Action.CREATE,
         actionLabel: "Bug type option created",
@@ -4087,7 +4098,7 @@ export class BugListController {
           recordTransaction({
             req,
             section: Section.WORK,
-            module: Module.BUG_LIST,
+            module: Module.QA_WORKSPACE,
             page: Page.BUG_SETTINGS,
             action: Action.UPDATE,
             actionLabel: `Bug type option updated (${changedFields.join(", ")})`,
@@ -4138,7 +4149,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_SETTINGS,
         action: Action.DELETE,
         actionLabel: "Bug type option deleted",

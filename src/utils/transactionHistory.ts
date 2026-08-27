@@ -24,6 +24,7 @@ export const Module = {
   SKILLS: "Skills",
   MESSAGES: "Messages",
   BOOKMARKS: "Bookmarks",
+  HOTSPOT: "Hotspot",
   // WORK
   TICKETS: "Tickets",
   BUG_LIST: "BugList",
@@ -41,6 +42,7 @@ export const Module = {
   DAILY_UPDATES: "DailyUpdates",
   TIME_TRACKING: "TimeTracking",
   ORG_STRUCTURE: "OrgStructure",
+  QA_WORKSPACE: "QaWorkspace",
   // HR
   LEAVES: "Leaves",
   ONBOARDING: "Onboarding",
@@ -49,6 +51,7 @@ export const Module = {
   ATTENDANCE: "Attendance",
   PERFORMANCE_REPORT: "PerformanceReport",
   RECRUITMENT: "Recruitment",
+  DOCS_AND_LETTERS: "DocsAndLetters",
   // Moved from WORK to HR — the module value stays "Escalations" so existing
   // transaction_history rows keep resolving.
   ESCALATIONS: "Escalations",
@@ -78,6 +81,8 @@ export const Page = {
   SKILLS_VIEW: "SkillsView",
   MESSAGES_VIEW: "MessagesView",
   BOOKMARKS_VIEW: "BookmarksView",
+  CIRCULATION: "Circulation",
+  BLOGS: "Blogs",
   // Tickets module
   TICKET_LIST: "TicketList",
   TICKET_DETAIL: "TicketDetail",
@@ -110,6 +115,10 @@ export const Page = {
   // Document Hub module
   DOCUMENT_HUB_LIST: "DocumentHubList",
   DOCUMENT_DETAIL: "DocumentDetail",
+  DOCUMENT_CATEGORIES: "DocumentCategories",
+  DOCUMENT_STRUCTURES: "DocumentStructures",
+  LETTER_TEMPLATES: "LetterTemplates",
+  GENERATED_LETTERS: "GeneratedLetters",
   LEADS_LIST: "LeadsList",
   LEAD_DETAIL: "LeadDetail",
   BID_IQ_DASHBOARD: "BidIQDashboard",
@@ -132,6 +141,21 @@ export const Page = {
   ORG_STRUCTURE_DEPARTMENTS: "OrgStructureDepartments",
   ORG_STRUCTURE_SUB_DEPARTMENTS: "OrgStructureSubDepartments",
   ORG_STRUCTURE_POSITIONS: "OrgStructurePositions",
+  // QA Workspace pages
+  QA_MODULE_LIST: "QaModuleList",
+  QA_SUBMISSION_LIST: "QaSubmissionList",
+  QA_SUBMISSION_DETAIL: "QaSubmissionDetail",
+  QA_APPROVALS: "QaApprovals",
+  QA_ANALYTICS: "QaAnalytics",
+  QA_SCOPE_LIST: "QaScopeList",
+  QA_SCOPE_DETAIL: "QaScopeDetail",
+  QA_CASE_LIST: "QaCaseList",
+  QA_CASE_DETAIL: "QaCaseDetail",
+  QA_SUITE_LIST: "QaSuiteList",
+  QA_SUITE_DETAIL: "QaSuiteDetail",
+  QA_RUN_LIST: "QaRunList",
+  QA_RUN_DETAIL: "QaRunDetail",
+  QA_SETTINGS: "QaSettings",
   // Leaves module pages
   LEAVE_REQUESTS: "LeaveRequests",
   LEAVE_APPROVALS: "LeaveApprovals",
@@ -203,6 +227,13 @@ export const Page = {
   OPENING_APPROVAL_WORKFLOWS: "OpeningApprovalWorkflows",
   OPENING_POSTINGS: "OpeningPostings",
   OPENING_CANDIDATES: "OpeningCandidates",
+  OPENINGS: "Openings",
+  // Candidate Pipeline pages
+  CANDIDATE_PIPELINE_LIST: "CandidatePipelineList",
+  CANDIDATE_PIPELINE_DETAIL: "CandidatePipelineDetail",
+  CANDIDATE_PIPELINE_INTERVIEWS: "CandidatePipelineInterviews",
+  CANDIDATE_PIPELINE_OFFERS: "CandidatePipelineOffers",
+  CANDIDATE_PIPELINE_SETTINGS: "CandidatePipelineSettings",
 } as const;
 export type PageT = typeof Page[keyof typeof Page];
 
@@ -272,9 +303,15 @@ export const EntityType = {
   WORKFLOW_TEMPLATE: "workflow_template",
   DROPDOWN_OPTION: "dropdown_option",
   DOCUMENT_HUB: "document_hub",
+  CIRCULATION: "circulation",
+  BLOG: "blog",
   DOCUMENT_TREE_NODE: "document_tree_node",
   DOCUMENT: "document",
   DOCUMENT_HISTORY_ENTRY: "document_history_entry",
+  DOCUMENT_CATEGORY: "document_category",
+  DOCUMENT_STRUCTURE: "document_structure",
+  LETTER_TEMPLATE: "letter_template",
+  GENERATED_LETTER: "generated_letter",
   LEAD: "lead",
   BID_IQ: "bidiq",
   LEAD_STATUS: "lead_status",
@@ -292,6 +329,16 @@ export const EntityType = {
   ORG_DEPARTMENT: "org_department",
   ORG_SUB_DEPARTMENT: "org_sub_department",
   ORG_POSITION: "org_position",
+  // QA Workspace entities
+  QA_MODULE: "qa_module",
+  QA_SUBMISSION: "qa_submission",
+  TICKET_QA_LINK: "ticket_qa_link",
+  QA_SCOPE: "qa_scope",
+  QA_CASE: "qa_case",
+  QA_PARENT_CASE: "qa_parent_case",
+  QA_SUITE: "qa_suite",
+  QA_RUN: "qa_run",
+  QA_SETTINGS: "qa_settings",
   // HR entities
   LEAVE_REQUEST: "leave_request",
   LEAVE_ADJUSTMENT: "leave_adjustment",
@@ -350,6 +397,13 @@ export const EntityType = {
   OPENING_APPROVAL_WORKFLOW: "opening_approval_workflow",
   OPENING_POSTING: "opening_posting",
   OPENING_APPLICATION: "opening_application",
+  // Candidate Pipeline entities
+  CANDIDATE: "candidate",
+  CANDIDATE_FORM: "candidate_form",
+  PIPELINE_INTERVIEW: "pipeline_interview",
+  PIPELINE_OFFER: "pipeline_offer",
+  PIPELINE_DOCUMENT: "pipeline_document",
+  PIPELINE_CONFIG: "pipeline_config",
 } as const;
 
 // ===== PII scrub =====

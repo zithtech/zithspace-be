@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import pool from '../config/dbpool';
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from '../utils/transactionHistory';
 
 
 // Ensure table exists
@@ -53,6 +54,19 @@ export const createScopeSetting = async (req: Request, res: Response) => {
       [tenantId, category, value, label, color || null, sort_order || 0]
     );
 
+    recordTransaction({
+      req: req as any,
+      section: Section.WORK,
+      module: Module.QA_WORKSPACE,
+      page: Page.QA_SETTINGS,
+      action: Action.CREATE,
+      actionLabel: "QA Scope Setting created",
+      entityType: EntityType.QA_SETTINGS,
+      entityId: rows[0].id,
+      entityLabel: label,
+      afterData: rows[0],
+    });
+
     res.status(201).json({ success: true, data: rows[0] });
   } catch (err) {
     console.error(err);
@@ -68,6 +82,10 @@ export const updateScopeSetting = async (req: Request, res: Response) => {
 
     const { value, label, color, sort_order } = req.body;
 
+    const { rows: oldRows } = await pool.query(`SELECT * FROM qa_scope_settings WHERE id=$1 AND tenant_id=$2`, [id, tenantId]);
+    if (!oldRows.length) return res.status(404).json({ success: false, error: 'Not found' });
+    const oldSetting = oldRows[0];
+
     const { rows } = await pool.query(
       `UPDATE qa_scope_settings SET value=$1, label=$2, color=$3, sort_order=$4
        WHERE id=$5 AND tenant_id=$6 RETURNING *`,
@@ -75,7 +93,27 @@ export const updateScopeSetting = async (req: Request, res: Response) => {
     );
 
     if (!rows.length) return res.status(404).json({ success: false, error: 'Not found' });
-    res.json({ success: true, data: rows[0] });
+
+    const updatedSetting = rows[0];
+    const diff = diffShallow(oldSetting, updatedSetting);
+    if (diff.changedFields.length > 0) {
+      recordTransaction({
+        req: req as any,
+        section: Section.WORK,
+        module: Module.QA_WORKSPACE,
+        page: Page.QA_SETTINGS,
+        action: Action.UPDATE,
+        actionLabel: "QA Scope Setting updated",
+        entityType: EntityType.QA_SETTINGS,
+        entityId: id,
+        entityLabel: updatedSetting.label,
+        beforeData: diff.before,
+        afterData: diff.after,
+        changedFields: diff.changedFields,
+      });
+    }
+
+    res.json({ success: true, data: updatedSetting });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, error: 'Internal Server Error' });
@@ -88,12 +126,30 @@ export const deleteScopeSetting = async (req: Request, res: Response) => {
     const { id } = req.params;
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
+    const { rows: oldRows } = await pool.query(`SELECT * FROM qa_scope_settings WHERE id=$1 AND tenant_id=$2`, [id, tenantId]);
+    if (!oldRows.length) return res.status(404).json({ success: false, error: 'Not found' });
+    const oldSetting = oldRows[0];
+
     const { rows } = await pool.query(
       `DELETE FROM qa_scope_settings WHERE id=$1 AND tenant_id=$2 RETURNING *`,
       [id, tenantId]
     );
 
     if (!rows.length) return res.status(404).json({ success: false, error: 'Not found' });
+
+    recordTransaction({
+      req: req as any,
+      section: Section.WORK,
+      module: Module.QA_WORKSPACE,
+      page: Page.QA_SETTINGS,
+      action: Action.DELETE,
+      actionLabel: "QA Scope Setting deleted",
+      entityType: EntityType.QA_SETTINGS,
+      entityId: id,
+      entityLabel: oldSetting.label,
+      beforeData: oldSetting,
+    });
+
     res.json({ success: true, message: 'Deleted' });
   } catch (err) {
     console.error(err);

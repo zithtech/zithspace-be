@@ -11,6 +11,15 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { uploadCandidateDocumentToR2, uploadResumeToR2 } from '../../../utils/r2Client';
+import {
+  recordTransaction,
+  Section,
+  Module,
+  Page,
+  Action,
+  EntityType,
+  diffShallow,
+} from '@/utils/transactionHistory';
 
 const uploadDir = path.join(process.cwd(), 'uploads', 'resumes');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
@@ -65,6 +74,18 @@ export const createCandidate = handle(async (req: AuthRequest, res: Response) =>
   const actor = actorOf(req);
   const data = candidateSchema.parse(req.body) as candidateService.CreateCandidateDto;
   const candidate = await candidateService.createCandidate(actor.tenantId, actor.userId, data);
+  recordTransaction({
+    req,
+    section: Section.HR,
+    module: Module.RECRUITMENT,
+    page: Page.CANDIDATE_PIPELINE_LIST,
+    action: Action.CREATE,
+    actionLabel: `Candidate "${candidate.name}" added to pipeline`,
+    entityType: EntityType.CANDIDATE,
+    entityId: candidate.id,
+    entityLabel: candidate.name,
+    afterData: { role: candidate.role, email: candidate.email },
+  });
   ok(res, candidate, 201);
 });
 
@@ -98,22 +119,82 @@ export const getCandidateEmails = handle(async (req: AuthRequest, res: Response)
 export const updateCandidate = handle(async (req: AuthRequest, res: Response) => {
   const actor = actorOf(req);
   const data = candidateSchema.partial().parse(req.body) as Partial<candidateService.CreateCandidateDto>;
+  
+  const before = await candidateService.getCandidate(actor.tenantId, req.params.id);
   const candidate = await candidateService.updateCandidate(actor.tenantId, actor.userId, req.params.id, data);
   if (!candidate) return ok(res, { error: 'Not found' }, 404);
+
+  if (before) {
+    const diff = diffShallow(before, candidate);
+    if (diff.changedFields.length > 0) {
+      recordTransaction({
+        req,
+        section: Section.HR,
+        module: Module.RECRUITMENT,
+        page: Page.CANDIDATE_PIPELINE_DETAIL,
+        action: Action.UPDATE,
+        actionLabel: `Updated candidate "${candidate.name}"`,
+        entityType: EntityType.CANDIDATE,
+        entityId: candidate.id,
+        entityLabel: candidate.name,
+        beforeData: diff.before,
+        afterData: diff.after,
+        changedFields: diff.changedFields,
+      });
+    }
+  }
+
   ok(res, candidate);
 });
 
 export const deleteCandidate = handle(async (req: AuthRequest, res: Response) => {
   const actor = actorOf(req);
+  const existing = await candidateService.getCandidate(actor.tenantId, req.params.id).catch(() => null);
   await candidateService.deleteCandidate(actor.tenantId, req.params.id);
+
+  if (existing) {
+    recordTransaction({
+      req,
+      section: Section.HR,
+      module: Module.RECRUITMENT,
+      page: Page.CANDIDATE_PIPELINE_LIST,
+      action: Action.DELETE,
+      actionLabel: `Deleted candidate "${existing.name}"`,
+      entityType: EntityType.CANDIDATE,
+      entityId: existing.id,
+      entityLabel: existing.name,
+      beforeData: { role: existing.role, email: existing.email, status: existing.status },
+    });
+  }
+
   ok(res, { success: true });
 });
 
 export const updateCandidateStatus = handle(async (req: AuthRequest, res: Response) => {
   const actor = actorOf(req);
   const { status, rejected_round_id } = req.body;
+  
+  const before = await candidateService.getCandidate(actor.tenantId, req.params.id);
   const candidate = await candidateService.updateCandidateStatus(actor.tenantId, actor.userId, req.params.id, status, rejected_round_id);
   if (!candidate) return ok(res, { error: 'Not found' }, 404);
+
+  if (before && before.status !== candidate.status) {
+    recordTransaction({
+      req,
+      section: Section.HR,
+      module: Module.RECRUITMENT,
+      page: Page.CANDIDATE_PIPELINE_DETAIL,
+      action: Action.STATUS_CHANGE,
+      actionLabel: `Changed status for candidate "${candidate.name}" from "${before.status}" to "${candidate.status}"`,
+      entityType: EntityType.CANDIDATE,
+      entityId: candidate.id,
+      entityLabel: candidate.name,
+      beforeData: { status: before.status },
+      afterData: { status: candidate.status },
+      changedFields: ['status'],
+    });
+  }
+
   ok(res, candidate);
 });
 
