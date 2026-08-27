@@ -41,14 +41,27 @@ function decodeCursor(cursor: string): { createdAt: Date; id: string } | null {
 
 function shapeRow(row: any) {
   let mod = row.module;
+  let pg = row.page;
+  
   if (["InvoiceCustomers", "InvoiceSettings", "InvoiceTemplates", "InvoiceTrash"].includes(mod)) {
     mod = "Invoices";
   }
+  if (mod === "BugList" || mod === "QA") {
+    mod = "QaWorkspace";
+    if (["TestCases", "TestCaseDetails", "QaCaseDetail", "QaParentCase"].includes(pg)) pg = "QaCaseList";
+    else if (["TestRuns", "TestRunExecution", "QaRunDetail"].includes(pg)) pg = "QaRunList";
+    else if (["TestSuites", "QaSuiteDetail"].includes(pg)) pg = "QaSuiteList";
+    else if (["TestScope", "CreateTestScope", "EditTestScope", "QaScopeDetail"].includes(pg)) pg = "QaScopeList";
+    else if (["QaSubmissions", "QaSubmissionForm", "QaSubmissionDetail"].includes(pg)) pg = "QaSubmissionList";
+    else if (["BugFolderList", "BugSheetList", "BugTrash"].includes(pg)) pg = "BugList";
+    else if (pg === "BugSettings") pg = "QaSettings";
+  }
+  
   return {
     id: row.id,
     section: row.section,
     module: mod,
-    page: row.page,
+    page: pg,
     action: row.action,
     actionLabel: row.action_label,
     entityType: row.entity_type,
@@ -165,29 +178,48 @@ export class TransactionHistoryController {
         } else if (moduleFilter === "Tickets") {
           // If the user selected the Tickets module, we include all the sub-modules that were mapped to its pages.
           if (!page) {
-             push("module = ANY($$::text[])", ["Tickets", "BugList", "Sprints", "Buckets", "TicketSettings", "Trash", "Archived"]);
+            push("module = ANY($$::text[])", ["Tickets", "Sprints", "Buckets", "TicketSettings", "Trash", "Archived"]);
           } else {
-             // If a specific page is selected under Tickets, we map it to the underlying DB modules/pages
-             if (page === "Plans") {
-               push("module = $$", "Sprints");
-             } else if (page === "TicketList") {
-               push("module = $$", "Tickets");
-             } else if (page === "Buckets") {
-               push("module = $$", "Buckets");
-             } else if (page === "BugList") {
-               push("module = $$", "BugList");
-             } else if (page === "Reports") {
-               push("page = $$", "SprintReport");
-             } else if (page === "Settings") {
-               push("module = $$", "TicketSettings");
-             } else if (page === "Trash") {
-               push("module = $$", "Trash");
-             } else if (page === "Archive") {
-               push("module = $$", "Archived");
-             } else {
-               push("module = $$", "Tickets");
-               push("page = $$", page);
-             }
+            // If a specific page is selected under Tickets, we map it to the underlying DB modules/pages
+            if (page === "Plans") {
+              push("module = $$", "Sprints");
+            } else if (page === "TicketList") {
+              push("module = $$", "Tickets");
+            } else if (page === "Buckets") {
+              push("module = $$", "Buckets");
+            } else if (page === "Reports") {
+              push("page = $$", "SprintReport");
+            } else if (page === "Settings") {
+              push("module = $$", "TicketSettings");
+            } else if (page === "Trash") {
+              push("module = $$", "Trash");
+            } else if (page === "Archive") {
+              push("module = $$", "Archived");
+            } else {
+              push("module = $$", "Tickets");
+              push("page = $$", page);
+            }
+          }
+        } else if (moduleFilter === "QaWorkspace") {
+          push("module = ANY($$::text[])", ["QaWorkspace", "BugList", "QA"]);
+          if (page) {
+            if (page === "QaCaseList") {
+              push("page = ANY($$::text[])", ["QaCaseList", "QaCaseDetail", "TestCases", "TestCaseDetails", "QaParentCase"]);
+            } else if (page === "QaRunList") {
+              push("page = ANY($$::text[])", ["QaRunList", "QaRunDetail", "TestRuns", "TestRunExecution"]);
+            } else if (page === "QaSuiteList") {
+              push("page = ANY($$::text[])", ["QaSuiteList", "QaSuiteDetail", "TestSuites"]);
+            } else if (page === "QaScopeList") {
+              push("page = ANY($$::text[])", ["QaScopeList", "QaScopeDetail", "TestScope", "CreateTestScope", "EditTestScope"]);
+            } else if (page === "QaSubmissionList") {
+              push("page = ANY($$::text[])", ["QaSubmissionList", "QaSubmissionDetail", "QaSubmissions", "QaSubmissionForm"]);
+            } else if (page === "BugList") {
+              push("page = ANY($$::text[])", ["BugList", "BugFolderList", "BugSheetList", "BugTrash"]);
+            } else if (page === "QaSettings") {
+              push("page = ANY($$::text[])", ["QaSettings", "BugSettings"]);
+            } else {
+              push("page = $$", page);
+            }
           }
         } else if (moduleFilter === "LeadsManagement") {
           push("module = $$", "Leads");
@@ -382,6 +414,7 @@ export class TransactionHistoryController {
         { section: "WORK", module: "Escalations" },
         { section: "WORK", module: "LeadsManagement" },
         { section: "WORK", module: "BidIQ" },
+        { section: "WORK", module: "QaWorkspace" },
         { section: "HR", module: "Leaves" },
         { section: "HR", module: "Onboarding" },
         { section: "HR", module: "Attendance" },
@@ -391,12 +424,13 @@ export class TransactionHistoryController {
         { section: "ADMIN", module: "GeneralSettings" },
         { section: "ADMIN", module: "Members" },
         { section: "ADMIN", module: "RoleAndPermissions" },
-                { section: "ADMIN", module: "OrgStructure" },
+        { section: "ADMIN", module: "OrgStructure" },
         { section: "HOME", module: "Dashboard" },
         { section: "HOME", module: "Integrations" },
         { section: "HOME", module: "Skills" },
         { section: "HOME", module: "Messages" },
         { section: "HOME", module: "Bookmarks" },
+        { section: "HOME", module: "Hotspot" },
         { section: "ADMIN", module: "Auth" },
         { section: "FINANCE", module: "Accounts" },
         { section: "FINANCE", module: "Invoices" },
@@ -407,11 +441,19 @@ export class TransactionHistoryController {
         { module: "Tickets", page: "Plans" },
         { module: "Tickets", page: "TicketList" },
         { module: "Tickets", page: "Buckets" },
-        { module: "Tickets", page: "BugList" },
         { module: "Tickets", page: "Reports" },
         { module: "Tickets", page: "Settings" },
         { module: "Tickets", page: "Trash" },
         { module: "Tickets", page: "Archive" },
+        { module: "QaWorkspace", page: "QaScopeList" },
+        { module: "QaWorkspace", page: "QaCaseList" },
+        { module: "QaWorkspace", page: "QaSuiteList" },
+        { module: "QaWorkspace", page: "QaRunList" },
+        { module: "QaWorkspace", page: "BugList" },
+        { module: "QaWorkspace", page: "QaSubmissionList" },
+        { module: "QaWorkspace", page: "QaApprovals" },
+        { module: "QaWorkspace", page: "QaAnalytics" },
+        { module: "QaWorkspace", page: "QaSettings" },
         { module: "DocumentHub", page: "DocumentHubList" },
         { module: "DocumentHub", page: "DocumentDetail" },
         { module: "LeadsManagement", page: "LeadsList" },
@@ -420,8 +462,8 @@ export class TransactionHistoryController {
         { module: "LeadsManagement", page: "LeadsTrash" },
         { module: "BidIQ", page: "BidIQDashboard" },
         { module: "BidIQ", page: "BidIQSettings" },
-        
-                                { module: "Proposals", page: "ProposalList" },
+
+        { module: "Proposals", page: "ProposalList" },
         { module: "Proposals", page: "ProposalBuilder" },
         { module: "Squad", page: "SquadView" },
         { module: "Escalations", page: "EscalationList" },
@@ -455,6 +497,9 @@ export class TransactionHistoryController {
         { module: "GeneralSettings", page: "GeneralSettingsView" },
         { module: "Members", page: "MemberList" },
         { module: "RoleAndPermissions", page: "RoleList" },
+        { module: "Hotspot", page: "Circulation" },
+        { module: "Hotspot", page: "Blogs" },
+        { module: "Hotspot", page: "Openings" },
         { module: "Auth", page: "Login" },
         { module: "Accounts", page: "AccountsDashboard" },
         { module: "Accounts", page: "AccountsSettings" },
@@ -505,9 +550,11 @@ export class TransactionHistoryController {
         "invoice", "account_transaction", "invoice_payment",
         "invoice_template", "invoice_customer", "invoice_settings_profile", "session",
         "leave_request", "leave_adjustment", "leave_type", "leave_policy",
+        "qa_submission", "qa_parent_case", "qa_case", "qa_suite", "qa_run", "qa_scope", "qa_settings", "qa_analytics", "qa_module",
         "leave_holiday", "leave_accrual_run", "leave_settings",
         "employee", "onboarding_invite", "onboarding_document_type",
-        "attendance_record", "performance_report"
+        "attendance_record", "performance_report",
+        "circulation", "blog", "opening"
       ];
 
       // Union distinct db rows with predefined constants
@@ -524,8 +571,11 @@ export class TransactionHistoryController {
           if (["InvoiceCustomers", "InvoiceSettings", "InvoiceTemplates", "InvoiceTrash"].includes(modName)) {
             modName = "Invoices";
           }
-          if (["BugList", "Sprints", "Buckets", "TicketSettings", "Trash", "Archived"].includes(modName)) {
+          if (["Sprints", "Buckets", "TicketSettings", "Trash", "Archived"].includes(modName)) {
             modName = "Tickets";
+          }
+          if (modName === "BugList" || modName === "QA") {
+            modName = "QaWorkspace";
           }
           if (modName === "Leads") {
             modName = "LeadsManagement";
@@ -537,8 +587,8 @@ export class TransactionHistoryController {
         }
       });
       const allowedWorkModules = new Set([
-        "Tickets", "Projects", "TimeTracking", "DailyUpdates", "DocumentHub", 
-        "Proposals", "Squad", "Escalations", "LeadsManagement", "BidIQ"
+        "Tickets", "Projects", "TimeTracking", "DailyUpdates", "DocumentHub",
+        "Proposals", "Squad", "Escalations", "LeadsManagement", "BidIQ", "QaWorkspace"
       ]);
 
       const finalModules = Array.from(modulesMap.entries())
@@ -560,8 +610,11 @@ export class TransactionHistoryController {
           if (["InvoiceCustomers", "InvoiceSettings", "InvoiceTemplates", "InvoiceTrash"].includes(modName)) {
             modName = "Invoices";
           }
-          if (["BugList", "Sprints", "Buckets", "TicketSettings", "Trash", "Archived"].includes(modName)) {
+          if (["Sprints", "Buckets", "TicketSettings", "Trash", "Archived"].includes(modName)) {
             modName = "Tickets";
+          }
+          if (modName === "BugList" || modName === "QA") {
+            modName = "QaWorkspace";
           }
           if (modName === "Leads") {
             modName = "LeadsManagement";
@@ -572,8 +625,14 @@ export class TransactionHistoryController {
       const finalPages = Array.from(pagesMap.entries())
         .filter(([page, module]) => {
           if (module === "Reimbursement") return false;
-          const allowedTicketPages = new Set(["Plans", "TicketList", "Buckets", "BugList", "Reports", "Settings", "Trash", "Archive"]);
+          const allowedTicketPages = new Set(["Plans", "TicketList", "Buckets", "Reports", "Settings", "Trash", "Archive"]);
           if (module === "Tickets" && !allowedTicketPages.has(page)) return false;
+          
+          const allowedQaPages = new Set([
+            "QaScopeList", "QaCaseList", "QaSuiteList", "QaRunList", 
+            "BugList", "QaSubmissionList", "QaApprovals", "QaAnalytics", "QaSettings"
+          ]);
+          if (module === "QaWorkspace" && !allowedQaPages.has(page)) return false;
           const section = modulesMap.get(module);
           if (section === "WORK" && !allowedWorkModules.has(module)) return false;
           return true;

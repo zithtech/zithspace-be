@@ -17,7 +17,7 @@ router.use(auth_1.requireAuth);
  * @desc    Get all configuration options for ticket creation (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/ticket-configurations', (0, permission_1.requireAnyPermission)(permissions_1.Permissions.SETTINGS_READ, permissions_1.Permissions.TICKET_READ, permissions_1.Permissions.TICKET_SETTING_READ), settingsController_1.SettingsController.getTicketConfigurations);
+router.get('/ticket-configurations', (0, permission_1.requireAnyPermission)(permissions_1.Permissions.TICKET_READ, permissions_1.Permissions.TICKET_SETTING_READ), settingsController_1.SettingsController.getTicketConfigurations);
 /**
  * @route   GET /api/settings/team-members
  * @desc    Get team members by project or role (tenant-aware)
@@ -38,7 +38,7 @@ router.get('/release-plans/:projectId', (0, permission_1.requireAnyPermission)(p
  * @access  Private (authenticated users within tenant)
  * @query   projectId
  */
-router.get('/workflow-templates', (0, permission_1.requireAnyPermission)(permissions_1.Permissions.SETTINGS_READ, permissions_1.Permissions.TICKET_READ, permissions_1.Permissions.TICKET_SETTING_READ), settingsController_1.SettingsController.getWorkflowTemplates);
+router.get('/workflow-templates', (0, permission_1.requireAnyPermission)(permissions_1.Permissions.TICKET_READ, permissions_1.Permissions.TICKET_SETTING_READ), settingsController_1.SettingsController.getWorkflowTemplates);
 /**
  * @route   PUT /api/settings/workflow-templates/:projectId
  * @desc    Update project workflow template (tenant-aware)
@@ -46,7 +46,7 @@ router.get('/workflow-templates', (0, permission_1.requireAnyPermission)(permiss
  * @param   projectId - Project ID
  * @body    { workflowSteps: string[] }
  */
-router.put('/workflow-templates/:projectId', (0, permission_1.requireAnyPermission)(permissions_1.Permissions.SETTINGS_UPDATE, permissions_1.Permissions.TICKET_SETTING_UPDATE), settingsController_1.SettingsController.updateWorkflowTemplate);
+router.put('/workflow-templates/:projectId', (0, permission_1.requireAnyPermission)(permissions_1.Permissions.TICKET_SETTING_UPDATE), settingsController_1.SettingsController.updateWorkflowTemplate);
 /**
  * @route   GET /api/settings/parent-tickets
  * @desc    Get parent tickets for linking (tenant-aware)
@@ -89,7 +89,7 @@ router.get('/search', (0, permission_1.requirePermission)(permissions_1.Permissi
  * @access  Private (authenticated users within tenant)
  * @query   includeInactive
  */
-router.get('/dropdown-options', (0, permission_1.requirePermission)(permissions_1.Permissions.SETTINGS_READ), settingsController_1.SettingsController.getDropdownOptions);
+router.get('/dropdown-options', (0, permission_1.requireAnyPermission)(permissions_1.Permissions.TICKET_SETTING_READ), settingsController_1.SettingsController.getDropdownOptions);
 /**
  * @route   GET /api/settings/dropdown-options/:type
  * @desc    Get dropdown options by specific type (tenant-aware)
@@ -97,21 +97,21 @@ router.get('/dropdown-options', (0, permission_1.requirePermission)(permissions_
  * @param   type - Dropdown type (platform, stack, priority, taskLevel, taskType, status)
  * @query   includeInactive
  */
-router.get('/dropdown-options/:type', (0, permission_1.requirePermission)(permissions_1.Permissions.SETTINGS_READ), settingsController_1.SettingsController.getDropdownOptionsByType);
+router.get('/dropdown-options/:type', (0, permission_1.requireAnyPermission)(permissions_1.Permissions.TICKET_SETTING_READ), settingsController_1.SettingsController.getDropdownOptionsByType);
 /**
  * @route   POST /api/settings/dropdown-options
  * @desc    Create a new dropdown option (tenant-aware)
  * @access  Private (authenticated users within tenant)
  * @body    { type, value, label, color?, description? }
  */
-router.post('/dropdown-options', (0, permission_1.requirePermission)(permissions_1.Permissions.SETTINGS_UPDATE), settingsController_1.SettingsController.createDropdownOption);
+router.post('/dropdown-options', (0, permission_1.requireAnyPermission)(permissions_1.Permissions.TICKET_SETTING_CREATE, permissions_1.Permissions.TICKET_SETTING_UPDATE), settingsController_1.SettingsController.createDropdownOption);
 /**
  * @route   PUT /api/settings/dropdown-options/reorder
  * @desc    Reorder dropdown options (tenant-aware)
  * @access  Private (authenticated users within tenant)
  * @body    { items: [{ id, order }] }
  */
-router.put('/dropdown-options/reorder', (0, permission_1.requirePermission)(permissions_1.Permissions.SETTINGS_UPDATE), settingsController_1.SettingsController.reorderDropdownOptions);
+router.put('/dropdown-options/reorder', (0, permission_1.requireAnyPermission)(permissions_1.Permissions.TICKET_SETTING_UPDATE), settingsController_1.SettingsController.reorderDropdownOptions);
 /**
  * @route   PUT /api/settings/dropdown-options/:id
  * @desc    Update an existing dropdown option (tenant-aware)
@@ -119,13 +119,13 @@ router.put('/dropdown-options/reorder', (0, permission_1.requirePermission)(perm
  * @param   id - Dropdown option ID
  * @body    { value, label, color?, description?, isActive? }
  */
-router.put('/dropdown-options/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.SETTINGS_UPDATE), settingsController_1.SettingsController.updateDropdownOption);
+router.put('/dropdown-options/:id', (0, permission_1.requireAnyPermission)(permissions_1.Permissions.TICKET_SETTING_UPDATE), settingsController_1.SettingsController.updateDropdownOption);
 /**
  * @route   DELETE /api/settings/dropdown-options/:id
  * @desc    Delete a dropdown option (tenant-aware)
  * @access  Private (authenticated users within tenant)
  * @param   id - Dropdown option ID
  */
-router.delete('/dropdown-options/:id', (0, permission_1.requirePermission)(permissions_1.Permissions.SETTINGS_UPDATE), settingsController_1.SettingsController.deleteDropdownOption);
+router.delete('/dropdown-options/:id', (0, permission_1.requireAnyPermission)(permissions_1.Permissions.TICKET_SETTING_DELETE, permissions_1.Permissions.TICKET_SETTING_UPDATE), settingsController_1.SettingsController.deleteDropdownOption);
 exports.default = router;
 //# sourceMappingURL=settings.js.map
