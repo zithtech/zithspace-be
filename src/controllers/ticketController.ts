@@ -253,6 +253,7 @@ export class TicketController {
         } as ApiResponse);
         return;
       }
+      // Force nodemon restart for archivedCount changes
 
       const currentDate = new Date();
       const startOfMonth = new Date(
@@ -286,6 +287,17 @@ export class TicketController {
         _count: true,
       });
 
+      // Project-specific archived statistics
+      const projectArchivedStats = await prisma.ticket.groupBy({
+        by: ["projectId"],
+        where: {
+          tenantId: req.tenantId,
+          isDeleted: false,
+          isArchived: true,
+        },
+        _count: true,
+      });
+
       const totalTickets = generalStats.reduce(
         (sum, stat) => sum + stat._count,
         0
@@ -303,21 +315,29 @@ export class TicketController {
         blocked: generalStats.find((s) => s.status === "blocked")?._count || 0,
       };
 
-      // Format projectStats as expected by the frontend: { id: projectId, statuses: [{ status, count }] }
+      // Format projectStats as expected by the frontend: { id: projectId, statuses: [{ status, count }], archivedCount: number }
       const projectStatsMap = new Map();
       projectWiseStats.forEach((stat) => {
         if (!projectStatsMap.has(stat.projectId)) {
-          projectStatsMap.set(stat.projectId, []);
+          projectStatsMap.set(stat.projectId, { statuses: [], archivedCount: 0 });
         }
-        projectStatsMap.get(stat.projectId).push({
+        projectStatsMap.get(stat.projectId).statuses.push({
           status: stat.status,
           count: stat._count,
         });
       });
 
-      const projectStats = Array.from(projectStatsMap.entries()).map(([id, statuses]) => ({
+      projectArchivedStats.forEach((stat) => {
+        if (!projectStatsMap.has(stat.projectId)) {
+          projectStatsMap.set(stat.projectId, { statuses: [], archivedCount: 0 });
+        }
+        projectStatsMap.get(stat.projectId).archivedCount = stat._count;
+      });
+
+      const projectStats = Array.from(projectStatsMap.entries()).map(([id, data]) => ({
         id,
-        statuses,
+        statuses: data.statuses,
+        archivedCount: data.archivedCount,
       }));
 
       const stats = {
@@ -2361,6 +2381,7 @@ export class TicketController {
           isArchived: false,
           archivedAt: null,
           archivedById: null,
+          sprintPlanId: null, // Ensure ticket returns to the backlog
           updatedAt: new Date(),
         },
       });
