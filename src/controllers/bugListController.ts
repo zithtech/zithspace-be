@@ -1644,6 +1644,8 @@ export class BugListController {
     const {
       folderId,
       sheetId,
+      folderIds,
+      sheetIds,
       search,
       module,
       severity,
@@ -1674,22 +1676,74 @@ export class BugListController {
         conditions.push(cond.split("$$").join(`$${values.length}`));
       };
 
+      /**
+       * Every pill on the bug list is multi-select, so each of these arrives as
+       * a comma-separated list. A single value still works — it just parses to
+       * a one-item array and matches with ANY(...).
+       */
+      const many = (raw?: string): string[] =>
+        Array.from(
+          new Set(
+            String(raw ?? "")
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean),
+          ),
+        );
+
+      const folderIdList = many(folderIds);
+      const sheetIdList = many(sheetIds);
+      const modules = many(module);
+      const severities = many(severity);
+      const statuses = many(status).filter((s) => ALLOWED_STATUS.has(s));
+      const bugStatuses = many(bugStatus).filter((s) => ALLOWED_BUG_STATUS.has(s));
+      const bugTypes = many(bugType);
+      const creators = many(createdById);
+      const assignees = many(assigneeId);
+      const ticketStatuses = many(ticketStatus);
+
       if (folderId) push("b.folder_id = $$", folderId);
       if (sheetId) push("b.sheet_id = $$", sheetId);
-      if (module) push("b.module = $$", module);
-      if (severity) push("b.severity = $$", severity);
-      if (status && ALLOWED_STATUS.has(status)) push("b.status = $$", status);
-      if (bugStatus && ALLOWED_BUG_STATUS.has(bugStatus)) {
-        if (bugStatus === "not started") {
-          push("(b.bug_status = $$ OR b.bug_status IS NULL)", "not started");
-        } else {
-          push("b.bug_status = $$", bugStatus);
-        }
+      if (folderIdList.length) push("b.folder_id = ANY($$::text[])", folderIdList);
+      if (sheetIdList.length) push("b.sheet_id = ANY($$::text[])", sheetIdList);
+      if (modules.length) push("b.module = ANY($$::text[])", modules);
+      if (severities.length) push("b.severity = ANY($$::text[])", severities);
+      if (statuses.length) push("b.status = ANY($$::text[])", statuses);
+      if (bugStatuses.length) {
+        // Bugs captured before the status column existed read as "not started".
+        push(
+          bugStatuses.includes("not started")
+            ? "(b.bug_status = ANY($$::text[]) OR b.bug_status IS NULL)"
+            : "b.bug_status = ANY($$::text[])",
+          bugStatuses,
+        );
       }
-      if (bugType) push("b.bug_type = $$", bugType);
-      if (createdById) push("b.created_by_id = $$", createdById);
-      if (assigneeId) push("(b.assignee_id = $$ OR (b.assignee_id IS NULL AND t.assignee_id = $$))", assigneeId);
-      if (ticketStatus) push("t.status = $$", ticketStatus);
+      if (bugTypes.length) push("b.bug_type = ANY($$::text[])", bugTypes);
+      if (creators.length) push("b.created_by_id = ANY($$::text[])", creators);
+      if (assignees.length) {
+        push(
+          "(b.assignee_id = ANY($$::text[]) OR (b.assignee_id IS NULL AND t.assignee_id = ANY($$::text[])))",
+          assignees,
+        );
+      }
+      if (ticketStatuses.length) {
+        /**
+         * The pill mixes link state ("linked"/"unlinked") with real ticket
+         * statuses, and "all" means no constraint at all. Selections are OR'd
+         * so picking "unlinked" plus a status widens rather than contradicts.
+         */
+        const ors: string[] = [];
+        if (ticketStatuses.includes("linked")) ors.push("b.ticket_id IS NOT NULL");
+        if (ticketStatuses.includes("unlinked")) ors.push("b.ticket_id IS NULL");
+        const realStatuses = ticketStatuses.filter(
+          (s) => s !== "linked" && s !== "unlinked" && s !== "all",
+        );
+        if (realStatuses.length) {
+          values.push(realStatuses);
+          ors.push(`t.status = ANY($${values.length}::text[])`);
+        }
+        if (ors.length) conditions.push(`(${ors.join(" OR ")})`);
+      }
       if (projectId && projectId !== 'all') {
         conditions.push(`b.folder_id IN (SELECT id FROM bug_folders WHERE project_id = $${values.length + 1})`);
         values.push(projectId);
