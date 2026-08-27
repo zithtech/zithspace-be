@@ -409,9 +409,9 @@ This is an automated mail, please do not reply.`;
 
   private async sendEmail(options: EmailOptions, tenantId?: string): Promise<boolean> {
     try {
-      // ─── FLOW 1: Zoho OAuth Integration (if connected) ───────────────────────
-      // Check if a Zoho mail account is connected for this tenant via OAuth.
-      // If yes, use the ZohoMailProvider (OAuth token-based) — no passwords needed.
+      // ─── FLOW 1: Native OAuth Integration (Zoho, Google, Microsoft) ───────────────────────
+      // Check if a mail account is connected for this tenant via OAuth.
+      // If yes, use the respective MailProvider (OAuth token-based) — no passwords needed.
       if (tenantId) {
         try {
           let specificEmail = null;
@@ -427,7 +427,7 @@ This is an automated mail, please do not reply.`;
 
           const whereClause: any = {
             tenant_id: tenantId,
-            provider: 'ZOHO' as any,
+            provider: { in: ['ZOHO', 'GOOGLE', 'MICROSOFT'] },
             is_active: true,
           };
 
@@ -435,21 +435,32 @@ This is an automated mail, please do not reply.`;
             whereClause.email = specificEmail;
           }
 
-          const zohoAccount = await prisma.mail_accounts.findFirst({
+          const connectedAccount = await prisma.mail_accounts.findFirst({
             where: whereClause
           }) as any;
 
-          if (zohoAccount) {
-            console.log(`✅ Zoho Mail integration found: ${zohoAccount.email}. Sending via Zoho OAuth.`);
+          if (connectedAccount) {
+            console.log(`✅ ${connectedAccount.provider} Mail integration found: ${connectedAccount.email}. Sending via OAuth.`);
             const { UnifiedAuthService } = await import('../services/UnifiedAuthService');
-            const { ZohoMailProvider } = await import('../services/mail/providers/ZohoMailProvider');
+            
+            let providerInstance: any;
+            
+            if (connectedAccount.provider === 'ZOHO') {
+              const { ZohoMailProvider } = await import('../services/mail/providers/ZohoMailProvider');
+              providerInstance = new ZohoMailProvider();
+            } else if (connectedAccount.provider === 'GOOGLE') {
+              const { GoogleMailProvider } = await import('../services/mail/providers/GoogleMailProvider');
+              providerInstance = new GoogleMailProvider();
+            } else if (connectedAccount.provider === 'MICROSOFT') {
+              const { MicrosoftMailProvider } = await import('../services/mail/providers/MicrosoftMailProvider');
+              providerInstance = new MicrosoftMailProvider();
+            }
 
-            const accessToken = await UnifiedAuthService.getValidAccessToken(zohoAccount.user_id, 'ZOHO' as any);
-            const provider = new ZohoMailProvider();
+            const accessToken = await UnifiedAuthService.getValidAccessToken(connectedAccount.user_id, connectedAccount.provider as any);
             const fromName = extractedName || process.env.SMTP_FROM_NAME || 'ZithSpace';
-            const fromAddress = zohoAccount.email;
+            const fromAddress = connectedAccount.email;
 
-            await provider.sendMessage(accessToken, {
+            await providerInstance.sendMessage(accessToken, {
               from: `"${fromName}" <${fromAddress}>`,
               to: options.to ? options.to.split(',').map((e: string) => e.trim()) : [],
               cc: options.cc ? options.cc.split(',').map((e: string) => e.trim()) : undefined,
@@ -458,14 +469,14 @@ This is an automated mail, please do not reply.`;
               htmlBody: options.html,
             });
 
-            console.log(`✅ Email sent via Zoho OAuth - From: ${fromAddress}, To: ${options.to}`);
+            console.log(`✅ Email sent via ${connectedAccount.provider} OAuth - From: ${fromAddress}, To: ${options.to}`);
             if (options.replyTo) console.log(`📧 Reply-To: ${options.replyTo}`);
             return true;
           } else {
-            console.log(`ℹ️  No connected Zoho Mail integration found for tenant ${tenantId}. Falling back to system transporter.`);
+            console.log(`ℹ️  No connected mail integration found for tenant ${tenantId}. Falling back to system transporter.`);
           }
-        } catch (zohoError) {
-          console.warn(`⚠️ Zoho OAuth send failed, falling back to system transporter:`, zohoError);
+        } catch (oauthError) {
+          console.warn(`⚠️ Native OAuth send failed, falling back to system transporter:`, oauthError);
         }
       }
 
@@ -484,13 +495,34 @@ This is an automated mail, please do not reply.`;
         return true;
       }
 
-      // If options.from is provided, use it (e.g. employee email), otherwise fallback to system email
+      // Always use the authenticated system email for the 'From' address to prevent SMTP relay errors (553)
       const fromAddress = process.env.SYSTEM_EMAIL || process.env.SMTP_FROM_EMAIL || "noreply@zithtech.com";
       const fromName = process.env.SMTP_FROM_NAME || "ZithSpace";
 
+      let finalFrom = `"${fromName}" <${fromAddress}>`;
+      let finalReplyTo = options.replyTo;
+
+      if (options.from) {
+        // If a custom 'from' is provided, we extract the name and email
+        const emailMatch = options.from.match(/<([^>]+)>/);
+        const specificEmail = emailMatch ? emailMatch[1].trim() : options.from.trim();
+        
+        const nameMatch = options.from.match(/^"([^"]+)"/);
+        const extractedName = nameMatch ? nameMatch[1].trim() : null;
+
+        // Display the custom name, but use the authenticated system email address
+        const displayFromName = extractedName ? `${extractedName}` : fromName;
+        finalFrom = `"${displayFromName}" <${fromAddress}>`;
+
+        // Set the custom email as the Reply-To address so responses go to the correct person
+        if (!finalReplyTo && specificEmail && specificEmail.includes('@')) {
+          finalReplyTo = specificEmail;
+        }
+      }
+
       const mailOptions = {
-        from: options.from || `"${fromName}" <${fromAddress}>`,
-        replyTo: options.replyTo,
+        from: finalFrom,
+        replyTo: finalReplyTo,
         to: options.to,
         cc: options.cc,
         subject: options.subject,
