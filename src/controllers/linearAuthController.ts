@@ -58,8 +58,8 @@ export class LinearAuthController {
         return;
       }
       
-      const connected = await linearAuthService.getStatus(req.tenantId, req.user.id);
-      res.json({ success: true, data: { connected } });
+      const integrationId = await linearAuthService.getStatus(req.tenantId, req.user.id);
+      res.json({ success: true, data: { connected: !!integrationId, integrationId } });
     } catch (error: any) {
       console.error('Error getting Linear status:', error);
       res.status(500).json({ success: false, error: 'Failed to get Linear status' });

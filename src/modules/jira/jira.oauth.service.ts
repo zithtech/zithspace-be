@@ -8,9 +8,9 @@ export class JiraOAuthService {
   private readonly clientSecret = process.env.JIRA_CLIENT_SECRET!;
   private readonly callbackUrl = process.env.JIRA_CALLBACK_URL!;
 
-  public getAuthorizationUrl(tenantId: string, returnUrl?: string): string {
-    const scopes = ["read:jira-work", "write:jira-work", "read:jira-user", "read:board-scope:jira-software", "read:sprint:jira-software", "read:project:jira", "offline_access"];
-    const stateObj: any = { tenantId };
+  public getAuthorizationUrl(tenantId: string, userId: string, returnUrl?: string): string {
+    const scopes = ["read:jira-work", "write:jira-work","read:jira-user", "read:board-scope:jira-software", "read:sprint:jira-software", "read:project:jira", "offline_access"];
+    const stateObj: any = { tenantId, userId };
     if (returnUrl) {
       stateObj.returnUrl = returnUrl;
     }
@@ -21,7 +21,7 @@ export class JiraOAuthService {
     )}&state=${encodeURIComponent(state)}&response_type=code&prompt=consent`;
   }
 
-  public async exchangeCodeForToken(code: string, tenantId: string) {
+  public async exchangeCodeForToken(code: string, tenantId: string, userId: string) {
     const tokenUrl = "https://auth.atlassian.com/oauth/token";
 
     const response = await axios.post(tokenUrl, {
@@ -41,16 +41,14 @@ export class JiraOAuthService {
 
     // We are using raw query as per the requirement
     await prisma.$executeRaw`
+      DELETE FROM "jira_integrations" WHERE "tenant_id" = ${tenantId}::uuid AND "user_id" = ${userId}::uuid;
+    `;
+    await prisma.$executeRaw`
       INSERT INTO "jira_integrations" (
-        "tenant_id", "access_token_encrypted", "refresh_token_encrypted", "expires_at", "status"
+        "tenant_id", "user_id", "access_token_encrypted", "refresh_token_encrypted", "expires_at", "status"
       ) VALUES (
-        ${tenantId}::uuid, ${encryptedAccessToken}, ${encryptedRefreshToken}, ${expiresAt}, 'CONNECTED'
-      )
-      ON CONFLICT ("id") DO UPDATE SET
-        "access_token_encrypted" = EXCLUDED."access_token_encrypted",
-        "refresh_token_encrypted" = EXCLUDED."refresh_token_encrypted",
-        "expires_at" = EXCLUDED."expires_at",
-        "status" = 'CONNECTED';
+        ${tenantId}::uuid, ${userId}::uuid, ${encryptedAccessToken}, ${encryptedRefreshToken}, ${expiresAt}, 'CONNECTED'
+      );
     `;
 
     return response.data;
@@ -64,9 +62,9 @@ export class JiraOAuthService {
     return this.ensureValidToken(integrationId, integrations[0]);
   }
 
-  public async getAccessTokenByTenantId(tenantId: string) {
+  public async getAccessTokenByTenantId(tenantId: string, userId: string) {
     const integrations = await prisma.$queryRaw<Array<{ id: string, access_token_encrypted: string, refresh_token_encrypted: string, cloud_id: string, expires_at: Date }>>`
-      SELECT id, access_token_encrypted, refresh_token_encrypted, cloud_id, expires_at FROM "jira_integrations" WHERE tenant_id = ${tenantId}::uuid LIMIT 1
+      SELECT id, access_token_encrypted, refresh_token_encrypted, cloud_id, expires_at FROM "jira_integrations" WHERE tenant_id = ${tenantId}::uuid AND user_id = ${userId}::uuid LIMIT 1
     `;
     if (!integrations.length) throw new Error("Integration not found");
     return this.ensureValidToken(integrations[0].id, integrations[0]);

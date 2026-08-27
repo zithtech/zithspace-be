@@ -84,6 +84,203 @@ export class LinearIntegrationService {
     return result.issueLabels.nodes;
   }
 
+  
+  public static async getProjects(token: string) {
+    const query = `
+      query {
+        projects {
+          nodes {
+            id
+            name
+            description
+            content
+            state
+            startDate
+            targetDate
+            lead { id }
+            teams {
+              nodes {
+                id
+                name
+              }
+            }
+          }
+        }
+      }
+    `;
+    const result = await this.executeQuery<{ projects: { nodes: any[] } }>(token, query);
+    return result.projects.nodes;
+  }
+
+  public static async getWorkflowStates(token: string) {
+    const query = `
+      query {
+        workflowStates {
+          nodes {
+            id
+            name
+            type
+            color
+          }
+        }
+      }
+    `;
+    const result = await this.executeQuery<{ workflowStates: { nodes: any[] } }>(token, query);
+    return result.workflowStates.nodes;
+  }
+
+  public static async getCycles(token: string) {
+    const query = `
+      query {
+        cycles {
+          nodes {
+            id
+            name
+            number
+            startsAt
+            endsAt
+            completedAt
+          }
+        }
+      }
+    `;
+    const result = await this.executeQuery<{ cycles: { nodes: any[] } }>(token, query);
+    return result.cycles.nodes;
+  }
+
+  
+  public static async previewIssues(
+    token: string, 
+    projectIds: string[], 
+    teamIds: string[], 
+    cycleIds: string[] = [],
+    stateIds: string[] = [],
+    userIds: string[] = [],
+    cursor?: string
+  ) {
+    let filterString = '';
+    const filters = [];
+    
+    if (projectIds && projectIds.length > 0) {
+      filters.push(`project: { id: { in: ${JSON.stringify(projectIds)} } }`);
+    }
+    
+    if (teamIds && teamIds.length > 0) {
+      filters.push(`team: { id: { in: ${JSON.stringify(teamIds)} } }`);
+    }
+
+    if (cycleIds && cycleIds.length > 0) {
+      filters.push(`cycle: { id: { in: ${JSON.stringify(cycleIds)} } }`);
+    }
+
+    if (stateIds && stateIds.length > 0) {
+      filters.push(`state: { id: { in: ${JSON.stringify(stateIds)} } }`);
+    }
+
+    if (userIds && userIds.length > 0) {
+      // Filtering by assignee. If we want creator as well, Linear requires complex OR logic. Assignee is standard.
+      filters.push(`assignee: { id: { in: ${JSON.stringify(userIds)} } }`);
+    }
+    
+    if (filters.length > 0) {
+      filterString = `filter: { ${filters.join(', ')} },`;
+    }
+
+    const query = `
+      query GetPreviewIssues($cursor: String) {
+        issues(first: 10, after: $cursor, ${filterString}) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+          nodes {
+            id
+            identifier
+            title
+            state { id name }
+            project { id name }
+          }
+        }
+      }
+    `;
+    
+    const finalQuery = filterString ? query : query.replace(', filter: {  }', '');
+
+    const result = await this.executeQuery<{ 
+      issues: { 
+        pageInfo: { hasNextPage: boolean, endCursor: string },
+        nodes: any[] 
+      } 
+    }>(token, finalQuery, { cursor });
+    
+    return result.issues;
+  }
+
+
+  public static async getIssues(
+    token: string, 
+    filter: { projectId?: string; teamId?: string; cycleIds?: string[]; stateIds?: string[]; userIds?: string[] }, 
+    cursor?: string
+  ) {
+    let filterString = '';
+    const filters = [];
+    if (filter.projectId) filters.push(`project: { id: { eq: "${filter.projectId}" } }`);
+    if (filter.teamId) filters.push(`team: { id: { eq: "${filter.teamId}" } }`);
+    
+    if (filter.cycleIds && filter.cycleIds.length > 0) {
+      filters.push(`cycle: { id: { in: ${JSON.stringify(filter.cycleIds)} } }`);
+    }
+    if (filter.stateIds && filter.stateIds.length > 0) {
+      filters.push(`state: { id: { in: ${JSON.stringify(filter.stateIds)} } }`);
+    }
+    if (filter.userIds && filter.userIds.length > 0) {
+      filters.push(`assignee: { id: { in: ${JSON.stringify(filter.userIds)} } }`);
+    }
+
+    if (filters.length > 0) {
+      filterString = `filter: { ${filters.join(', ')} },`;
+    }
+
+    const query = `
+      query GetIssues($cursor: String) {
+        issues(first: 50, after: $cursor, ${filterString}) {
+          pageInfo {
+            hasNextPage
+            endCursor
+          }
+          nodes {
+            id
+            identifier
+            title
+            description
+            priority
+            createdAt
+            dueDate
+            state { id name type }
+            assignee { id name email }
+            creator { id name email }
+            project { id name }
+            cycle { id name startsAt endsAt completedAt isActive isFuture }
+            labels { nodes { id name color } }
+            comments { nodes { id body createdAt user { id name } } }
+            attachments { nodes { id title url } }
+          }
+        }
+      }
+    `;
+    
+    const finalQuery = filterString ? query : query.replace(', filter: {  }', '');
+
+    const result = await this.executeQuery<{ 
+      issues: { 
+        pageInfo: { hasNextPage: boolean, endCursor: string },
+        nodes: any[] 
+      } 
+    }>(token, finalQuery, { cursor });
+    
+    return result.issues;
+  }
+
   public static async getIssue(token: string, id: string) {
     const query = `
       query GetIssue($id: String!) {
