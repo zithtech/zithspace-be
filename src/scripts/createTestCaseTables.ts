@@ -19,9 +19,16 @@ async function main() {
         tenant_id UUID NOT NULL,
         module_name VARCHAR(255) NOT NULL,
         description TEXT,
+        project_id TEXT,
+        project_name VARCHAR(255),
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
       );
+      -- A module belongs to a project; see migration 018 for existing installs.
+      ALTER TABLE qa_todo_modules ADD COLUMN IF NOT EXISTS project_id TEXT;
+      ALTER TABLE qa_todo_modules ADD COLUMN IF NOT EXISTS project_name VARCHAR(255);
+      CREATE INDEX IF NOT EXISTS idx_qa_todo_modules_project
+        ON qa_todo_modules (tenant_id, project_id);
     `);
     console.log("Created qa_todo_modules table.");
 
