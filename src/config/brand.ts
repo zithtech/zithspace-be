@@ -109,6 +109,11 @@ export function productFromRequest(
 ): Product | null {
   if (!req) return null;
 
+  const headerProduct = req.get('x-zukvo-product')?.toLowerCase();
+  if (headerProduct === 'testiez' || headerProduct === 'zukvo') {
+    return headerProduct as Product;
+  }
+
   return (
     productFromHost(req.get('origin')) ??
     productFromHost(req.get('referer')) ??

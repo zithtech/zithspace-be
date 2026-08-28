@@ -51,14 +51,17 @@ export class SubscriptionCacheService {
 
   /**
    * Delete subscription cache manually (e.g. on webhook invalidation)
+   * We must delete all product variations, otherwise a TESTIEZ cache might be left behind.
    */
   async del(tenantId: string): Promise<void> {
     try {
       const client = await redisService.getClient();
-      const key = SUBSCRIPTION_CONSTANTS.getCacheKey(tenantId);
-      
-      await client.del(key);
-      syncLogger.info(`[SubscriptionCache] Cache Deleted for tenant ${tenantId}`);
+      const pattern = `subscription:tenant:${tenantId}*`;
+      const keys = await client.keys(pattern);
+      if (keys.length > 0) {
+        await client.del(keys);
+        syncLogger.info(`[SubscriptionCache] Cache Deleted ${keys.length} keys for tenant ${tenantId}`);
+      }
     } catch (error) {
       syncLogger.error(`[SubscriptionCache] Error deleting cache for tenant ${tenantId}:`, error);
     }

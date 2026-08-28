@@ -28,11 +28,18 @@ router.get('/proxy-logo', async (req, res) => {
 });
 
 import { SUBSCRIPTION_CONSTANTS } from '../modules/subscriptions/subscription.constants';
+import { productFromRequest } from '../config/brand';
 
 router.get('/plans', async (req, res) => {
   try {
     const adminApiUrl = SUBSCRIPTION_CONSTANTS.ADMIN_API_URL;
-    const response = await axios.get(`${adminApiUrl}/api/plans`);
+    let productParam = req.query.product;
+    if (!productParam) {
+      const product = productFromRequest(req);
+      if (product) productParam = product;
+    }
+    const queryStr = productParam ? `?product=${encodeURIComponent(String(productParam))}` : '';
+    const response = await axios.get(`${adminApiUrl}/api/plans${queryStr}`);
     res.json(response.data);
   } catch (error) {
     console.error('Proxy plans error:', error);

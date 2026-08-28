@@ -62,6 +62,7 @@ function safePlanConfig(planConfig: any): PlanConfig {
   };
 }
 
+
 export class LandingSignupController {
   // ───────────────────────────────────────────────────────────────────────────
   // SHARED PROVISIONING CORE
@@ -75,7 +76,8 @@ export class LandingSignupController {
 
   /** Resolve the chosen plan against the Admin control plane. */
   private static async resolvePlan(
-    planConfig: PlanConfig
+    planConfig: PlanConfig,
+    productCode: string
   ): Promise<{ planId: number; planName: string }> {
     let planId = parseInt(String(planConfig?.tier));
     let planName = "Free Trial";
@@ -87,12 +89,21 @@ export class LandingSignupController {
         ? plansRes.data
         : plansRes.data?.data || [];
 
+      if (isNaN(planId) && planConfig?.tier) {
+        const expectedCode = `${productCode}_${String(planConfig.tier).toUpperCase()}`;
+        const matchedPlan = allPlans.find((p: any) => p.code === expectedCode || p.code === String(planConfig.tier).toUpperCase());
+        if (matchedPlan) {
+          planId = matchedPlan.id;
+        }
+      }
+
       if (isNaN(planId)) {
-        const trialPlan = allPlans.find(
-          (p: any) => p.plan_type === "TRIAL" || p.trial_days > 0
-        );
+        const productPlans = allPlans.filter((p: any) => p.product_code === productCode);
+        const plansToSearch = productPlans.length > 0 ? productPlans : allPlans;
+        const trialPlan = plansToSearch.find((p: any) => p.plan_type === 'TRIAL' || p.trial_days > 0);
         planId = trialPlan ? trialPlan.id : 1;
       }
+
       const selected = allPlans.find((p: any) => p.id === planId);
       if (selected) planName = selected.name;
     } catch (err) {
@@ -145,10 +156,6 @@ export class LandingSignupController {
       accountType === "team" ? slugify(companyName || name) : slugify(name);
     const subdomain = await uniqueSubdomain(baseSlug || "workspace");
 
-    const { planId, planName } = await LandingSignupController.resolvePlan(
-      planConfig
-    );
-
     // Which brand door did this signup arrive through? Fall back to Zukvo only
     // when the origin is unrecognised (e.g. local dev). Validated against the
     // known product set rather than trusting the value blindly.
@@ -156,6 +163,11 @@ export class LandingSignupController {
     const product: Product =
       detected && ALL_PRODUCTS.includes(detected) ? detected : "zukvo";
     const brand = brandForRequest(req);
+
+    const { planId, planName } = await LandingSignupController.resolvePlan(
+      planConfig,
+      product.toUpperCase()
+    );
 
     const client = await pool.connect();
     let tenantId = "";
@@ -343,7 +355,9 @@ export class LandingSignupController {
       );
 
       const brand = brandForRequest(req);
-      const landingUrl = process.env.LANDING_URL || "http://localhost:3000";
+      const isTestiez = productFromRequest(req) === "testiez";
+      const defaultLandingUrl = isTestiez ? "http://testiez.localhost:5174" : "http://localhost:3000";
+      const landingUrl = (isTestiez ? process.env.TESTIEZ_LANDING_URL : process.env.LANDING_URL) || defaultLandingUrl;
       const verifyLink = `${landingUrl}/verify-email?token=${verificationToken}`;
 
       const html = `
