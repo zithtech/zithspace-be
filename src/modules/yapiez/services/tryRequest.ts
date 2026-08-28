@@ -70,6 +70,7 @@ function asApiDto(draft: TryDefinition): ApiDto {
     // A draft belongs to no project — nothing here is filed anywhere, and the
     // request is built from the draft alone.
     projectId: null,
+    moduleName: null,
     name: 'Draft',
     description: null,
     method: draft.method,
@@ -117,7 +118,7 @@ function redactHeaders(headers: Record<string, string>): Record<string, string> 
 async function loginFor(
   authApi: ApiDto,
   config: Record<string, any>,
-  environment: EnvironmentDto | null,
+  baseUrl: string | null,
   context: VariableContext
 ): Promise<{ header: AuthHeader | null; error?: string }> {
   const tokenPath = config.tokenPath || 'access_token';
@@ -128,7 +129,7 @@ async function loginFor(
   const request = buildRequest({
     api: authApi,
     overrides: config.body ? { body: config.body } : {},
-    baseUrl: environment?.baseUrl ?? null,
+    baseUrl,
     context,
     authHeader: null,
   });
@@ -157,29 +158,37 @@ async function loginFor(
 export async function tryRequest(input: {
   draft: TryDefinition;
   environment: EnvironmentDto | null;
+  /** Typed on the send bar; wins over the environment's own base URL. */
+  baseUrlOverride?: string | null;
   variables?: Record<string, string>;
   authApi?: ApiDto | null;
   authConfig?: Record<string, any>;
 }): Promise<TryResult> {
   const { draft, environment, variables, authApi, authConfig } = input;
+  const baseUrlOverride = input.baseUrlOverride?.trim() || null;
 
   if (!draft.url?.trim()) {
     throw YapiezError.badRequest('Give the API a URL before sending it.');
   }
 
-  // Same seeding as a run: environment first, then per-send overrides.
+  // Same seeding as a run: environment first, then per-send overrides. A base
+  // URL typed on the send bar is the most specific thing the caller said, so
+  // it lands last and wins over the environment's.
   const context: VariableContext = {};
   if (environment) {
     context.baseUrl = environment.baseUrl;
     for (const variable of environment.variables) context[variable.key] = variable.value;
   }
   for (const [key, value] of Object.entries(variables ?? {})) context[key] = value;
+  if (baseUrlOverride) context.baseUrl = baseUrlOverride;
+
+  const effectiveBaseUrl = baseUrlOverride ?? environment?.baseUrl ?? null;
 
   let authHeader: AuthHeader | null = null;
   const auth: TryResult['auth'] = { applied: false, via: 'none' };
 
   if (authApi) {
-    const login = await loginFor(authApi, authConfig ?? {}, environment, context);
+    const login = await loginFor(authApi, authConfig ?? {}, effectiveBaseUrl, context);
     authHeader = login.header;
     auth.via = 'login';
     auth.applied = !!login.header;
@@ -192,7 +201,7 @@ export async function tryRequest(input: {
 
   const request = buildRequest({
     api: asApiDto(draft),
-    baseUrl: environment?.baseUrl ?? null,
+    baseUrl: effectiveBaseUrl,
     context,
     authHeader,
   });

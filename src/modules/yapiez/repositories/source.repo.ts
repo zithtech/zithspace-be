@@ -58,6 +58,10 @@ async function ensureDefaults(c: TenantClient): Promise<void> {
 /**
  * The tiers, with counts.
  *
+ * The API count reads the definition's own `source_id`, falling back to the
+ * collection it was filed under before modules replaced collections — a row
+ * written either way is counted exactly once.
+ *
  * `projectId` narrows the counts to one project — the catalog sidebar shows
  * them beside each tier, and a count that ignored the selected project would
  * be actively misleading. A NULL project means "shared", so those rows are
@@ -81,10 +85,12 @@ export async function listSources(
   const { rows } = await c.query(
     `SELECT s.*,
             (SELECT COUNT(*) FROM yapiez_collections col
-              WHERE col.source_id = s.id AND col.tenant_id = s.tenant_id${collectionProject}) AS collection_count,
+              WHERE col.source_id = s.id AND col.tenant_id = s.tenant_id
+                AND col.deleted_at IS NULL${collectionProject}) AS collection_count,
             (SELECT COUNT(*) FROM yapiez_apis a
-               JOIN yapiez_collections col ON col.id = a.collection_id
-              WHERE col.source_id = s.id AND a.tenant_id = s.tenant_id${apiProject}) AS api_count
+               LEFT JOIN yapiez_collections col ON col.id = a.collection_id AND col.deleted_at IS NULL
+              WHERE COALESCE(a.source_id, col.source_id) = s.id
+                AND a.tenant_id = s.tenant_id AND a.deleted_at IS NULL${apiProject}) AS api_count
        FROM yapiez_sources s
       WHERE s.tenant_id = $1
       ORDER BY s.sort ASC, s.label ASC`,
@@ -220,7 +226,8 @@ export async function updateSource(
  */
 export async function deleteSource(c: TenantClient, id: string): Promise<{ orphanedCollections: number }> {
   const { rows: counts } = await c.query(
-    `SELECT COUNT(*)::int AS n FROM yapiez_collections WHERE source_id = $1 AND tenant_id = $2`,
+    `SELECT COUNT(*)::int AS n FROM yapiez_collections
+      WHERE source_id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
     [id, c.tenantId]
   );
 

@@ -22,6 +22,7 @@ import * as catalog from '../controllers/catalog.controller';
 import * as environments from '../controllers/environment.controller';
 import * as flows from '../controllers/flow.controller';
 import * as runs from '../controllers/run.controller';
+import * as payloads from '../controllers/payload.controller';
 
 const router = express.Router();
 
@@ -42,6 +43,30 @@ const canDeleteApi = requireAnyPermission(Permissions.YAPIEZ_API_DELETE, Permiss
 const canTryApi = requireAnyPermission(
   Permissions.YAPIEZ_API_TRY,
   Permissions.YAPIEZ_FLOW_EXECUTE,
+  Permissions.YAPIEZ_MANAGE
+);
+
+// Case payloads sit across two authorities on purpose. Reading one is reading
+// the test case it belongs to, so a tester with QA_CASE_READ and no catalog
+// grant still sees the bodies they are meant to run. Writing one is authoring
+// test-case content, not editing the API definition it was drafted from — an
+// API author's grants do not extend to it, and a case author's do.
+const canReadPayload = requireAnyPermission(
+  Permissions.QA_CASE_READ,
+  Permissions.QA_MANAGE,
+  Permissions.YAPIEZ_API_READ,
+  Permissions.YAPIEZ_MANAGE
+);
+const canWritePayload = requireAnyPermission(
+  Permissions.QA_CASE_CREATE,
+  Permissions.QA_CASE_UPDATE,
+  Permissions.QA_MANAGE,
+  Permissions.YAPIEZ_MANAGE
+);
+const canDeletePayload = requireAnyPermission(
+  Permissions.QA_CASE_DELETE,
+  Permissions.QA_CASE_UPDATE,
+  Permissions.QA_MANAGE,
   Permissions.YAPIEZ_MANAGE
 );
 
@@ -87,6 +112,21 @@ router.get('/collections', canReadApi, catalog.listCollections);
 router.post('/collections', canCreateApi, catalog.createCollection);
 router.put('/collections/:id', canUpdateApi, catalog.updateCollection);
 router.delete('/collections/:id', canDeleteApi, catalog.deleteCollection);
+
+// ─── Modules ────────────────────────────────────────────────────────────────
+// The curated module list belongs to QA Settings, and so does renaming — a
+// rename there cascades into the catalog. This only unfiles a name the catalog
+// still holds, which is the one case settings knows nothing about.
+router.delete('/modules', canUpdateApi, catalog.unfileModule);
+
+// ─── Trash ──────────────────────────────────────────────────────────────────
+// Restoring is a write, not a delete: it puts a definition back into the
+// catalog, so it follows the update authority. Purging is the only thing here
+// that is actually irreversible, and it follows delete.
+router.get('/trash', canReadApi, catalog.listTrash);
+router.post('/trash/restore', canUpdateApi, catalog.restoreFromTrash);
+router.delete('/trash/item', canDeleteApi, catalog.purgeFromTrash);
+router.delete('/trash', canDeleteApi, catalog.emptyTrash);
 
 // ─── Environments ───────────────────────────────────────────────────────────
 router.get('/environments', canReadEnv, environments.list);
@@ -135,10 +175,26 @@ router.get('/flows/:id/steps/:stepId/preview', canReadFlow, flows.previewStep);
 router.put('/flows/:id/steps/:stepId', canUpdateFlow, flows.updateStep);
 router.delete('/flows/:id/steps/:stepId', canUpdateFlow, flows.removeStep);
 
+// ─── Case payloads (Positive / Negative / Valid / Invalid) ──────────────────
+//
+// Static paths before "/payloads/:id", or Express reads "generate" as an id.
+// Generating writes nothing, so it is gated on writing a case rather than on
+// AI-specific grants; requireAiAccess then honours the per-user toggle, and the
+// builder still answers from the API's structure when AI is unavailable.
+router.post('/payloads/generate', canWritePayload, requireAiAccess, payloads.generatePayload);
+router.post('/payloads/link', canWritePayload, payloads.linkPayloads);
+router.get('/payloads/for-cases', canReadPayload, payloads.payloadsForCases);
+router.get('/payloads', canReadPayload, payloads.listPayloads);
+router.post('/payloads', canWritePayload, payloads.createPayload);
+router.put('/payloads/:id', canWritePayload, payloads.updatePayload);
+router.delete('/payloads/:id', canDeletePayload, payloads.deletePayload);
+
 // ─── API definitions (dynamic :id last within its own namespace) ────────────
 // Static path first, or "/apis/:id" would claim "try" as an id.
 router.post('/apis/try', canTryApi, catalog.tryApi);
 router.get('/apis', canReadApi, catalog.listApis);
+// Also static, and also before "/apis/:id" for the same reason.
+router.get('/apis/module-summary', canReadApi, catalog.moduleSummaries);
 router.post('/apis', canCreateApi, catalog.createApi);
 router.get('/apis/:id', canReadApi, catalog.getApi);
 // Reading past responses is a read of run history, not an outbound request.

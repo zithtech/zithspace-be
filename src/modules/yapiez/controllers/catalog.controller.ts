@@ -60,6 +60,7 @@ export const listCollections = handle(async (req: AuthRequest, res: Response) =>
     repo.listCollections(c, {
       sourceId: req.query.sourceId as string,
       projectId: req.query.projectId as string,
+      moduleName: req.query.moduleName as string,
       includeUnfiled: req.query.includeUnfiled !== 'false',
     })
   );
@@ -81,9 +82,62 @@ export const updateCollection = handle(async (req: AuthRequest, res: Response) =
 });
 
 export const deleteCollection = handle(async (req: AuthRequest, res: Response) => {
-  const { tenantId } = actorOf(req);
-  await withTenant(tenantId, (c) => repo.deleteCollection(c, req.params.id));
+  const { tenantId, userId } = actorOf(req);
+  await withTenant(tenantId, (c) => repo.deleteCollection(c, userId, req.params.id));
   ok(res, { id: req.params.id });
+});
+
+/** Unfile everything under a module, keeping every collection and endpoint. */
+export const unfileModule = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId } = actorOf(req);
+  const name = String(req.query.name ?? '').trim();
+  if (!name) {
+    return ok(res, { apis: 0, collections: 0 });
+  }
+  const data = await withTenant(tenantId, (c) =>
+    repo.unfileModule(c, { projectId: (req.query.projectId as string) || undefined, name })
+  );
+  ok(res, data);
+});
+
+// ─── Trash ──────────────────────────────────────────────────────────────────
+
+/** What has been thrown away and can still be brought back. */
+export const listTrash = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId } = actorOf(req);
+  const data = await withTenant(tenantId, (c) =>
+    repo.listTrash(c, { projectId: (req.query.projectId as string) || undefined })
+  );
+  ok(res, data);
+});
+
+/** The kind is part of the request because the two live in different tables. */
+function trashKindOf(value: unknown): 'api' | 'collection' {
+  return value === 'collection' ? 'collection' : 'api';
+}
+
+export const restoreFromTrash = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId } = actorOf(req);
+  const kind = trashKindOf(req.body?.kind);
+  const id = String(req.body?.id ?? '');
+  await withTenant(tenantId, (c) => repo.restoreFromTrash(c, kind, id));
+  ok(res, { kind, id });
+});
+
+export const purgeFromTrash = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId } = actorOf(req);
+  const kind = trashKindOf(req.query.kind);
+  const id = String(req.query.id ?? '');
+  await withTenant(tenantId, (c) => repo.purgeFromTrash(c, kind, id));
+  ok(res, { kind, id });
+});
+
+export const emptyTrash = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId } = actorOf(req);
+  const data = await withTenant(tenantId, (c) =>
+    repo.emptyTrash(c, { projectId: (req.query.projectId as string) || undefined })
+  );
+  ok(res, data);
 });
 
 export const listApis = handle(async (req: AuthRequest, res: Response) => {
@@ -96,7 +150,12 @@ export const listApis = handle(async (req: AuthRequest, res: Response) => {
         search: req.query.search as string,
         collectionId: req.query.collectionId as string,
         sourceId: req.query.sourceId as string,
+        moduleName: req.query.moduleName as string,
+        unfiledOnly: req.query.unfiledOnly === 'true',
         method: req.query.method as string,
+        authType: req.query.authType as string,
+        deprecatedOnly: req.query.deprecatedOnly === 'true',
+        sort: req.query.sort as string,
         projectId: req.query.projectId as string,
         allowedProjects: String(req.query.allowedProjects ?? '')
           .split(',')
@@ -108,6 +167,29 @@ export const listApis = handle(async (req: AuthRequest, res: Response) => {
     )
   );
   okList(res, items, { total, page, pageSize });
+});
+
+/**
+ * What each module holds, for the catalog's module cards.
+ *
+ * Only the definitions' side of it — the curated module list itself belongs to
+ * QA Settings, and the client merges the two so a module with no endpoints yet
+ * still appears.
+ */
+export const moduleSummaries = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId } = actorOf(req);
+  const data = await withTenant(tenantId, (c) =>
+    repo.listModuleSummaries(c, {
+      projectId: req.query.projectId as string,
+      sourceId: req.query.sourceId as string,
+      allowedProjects: String(req.query.allowedProjects ?? '')
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean),
+      includeDeprecated: req.query.includeDeprecated === 'true',
+    })
+  );
+  ok(res, data);
 });
 
 export const getApi = handle(async (req: AuthRequest, res: Response) => {
@@ -131,8 +213,8 @@ export const updateApi = handle(async (req: AuthRequest, res: Response) => {
 });
 
 export const deleteApi = handle(async (req: AuthRequest, res: Response) => {
-  const { tenantId } = actorOf(req);
-  await withTenant(tenantId, (c) => repo.deleteApi(c, req.params.id));
+  const { tenantId, userId } = actorOf(req);
+  await withTenant(tenantId, (c) => repo.deleteApi(c, userId, req.params.id));
   ok(res, { id: req.params.id });
 });
 
@@ -169,6 +251,7 @@ export const tryApi = handle(async (req: AuthRequest, res: Response) => {
 
     return tryRequest({
       draft: input.definition as any,
+      baseUrlOverride: input.baseUrl ?? null,
       environment,
       variables: input.variables,
       authApi,

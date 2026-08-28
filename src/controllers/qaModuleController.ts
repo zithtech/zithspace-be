@@ -365,6 +365,17 @@ export const updateModule = async (req: Request, res: Response) => {
     );
 
     const updatedModule = rows[0];
+
+    // A rename here is a rename everywhere the name is stored.
+    if (oldModule.module_name !== updatedModule.module_name) {
+      await refileApiHub(
+        tenantId,
+        updatedModule.project_id ?? null,
+        oldModule.module_name,
+        updatedModule.module_name,
+      );
+    }
+
     const diff = diffShallow(oldModule, updatedModule);
     if (diff.changedFields.length > 0) {
       recordTransaction({
@@ -387,6 +398,43 @@ export const updateModule = async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error updating module:', error);
     res.status(500).json({ success: false, error: 'Internal Server Error' });
+  }
+};
+
+/**
+ * Keep API Hub's filing in step when a module is renamed or deleted here.
+ *
+ * The catalog stores a module as its NAME on each collection and definition,
+ * not as a foreign key — that is what lets a definition survive a module being
+ * deleted and re-created. The cost is that a rename here has to be carried
+ * across, or every endpoint filed under the old name silently becomes an
+ * orphan the catalog then shows as a "legacy" module.
+ *
+ * Scoped to the module's own project plus rows shared across every project,
+ * matching how the catalog itself reads them. Wrapped so a failure — an
+ * environment where the yapiez tables have not been migrated yet — cannot take
+ * the settings page down with it; the worst case is the orphaning above, which
+ * is visible and fixable, rather than a module that cannot be renamed at all.
+ */
+const refileApiHub = async (
+  tenantId: string,
+  projectId: string | null,
+  from: string,
+  to: string | null,
+) => {
+  try {
+    for (const table of ['yapiez_collections', 'yapiez_apis']) {
+      await pool.query(
+        `UPDATE ${table}
+            SET module_name = $4
+          WHERE tenant_id = $1::uuid
+            AND LOWER(TRIM(module_name)) = LOWER(TRIM($2::text))
+            AND ($3::text IS NULL OR project_id = $3::text OR project_id IS NULL)`,
+        [tenantId, from, projectId, to],
+      );
+    }
+  } catch (error) {
+    console.error('[qa-modules] could not re-file API Hub for module change:', error);
   }
 };
 
@@ -444,6 +492,10 @@ export const deleteModule = async (req: Request, res: Response) => {
     
     const oldModule = oldRows[0];
     await pool.query(`DELETE FROM qa_todo_modules WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
+
+    // The endpoints filed under it are the work; the module was only where
+    // they sat. They stay, unfiled, rather than going with it.
+    await refileApiHub(tenantId, oldModule.project_id ?? null, oldModule.module_name, null);
     
     recordTransaction({
       req: req as any,

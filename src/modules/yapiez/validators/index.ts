@@ -68,6 +68,8 @@ export const sourceUpdateSchema = sourceCreateSchema.partial();
 
 export const collectionCreateSchema = z.object({
   name: z.string().min(1, 'Name is required').max(160),
+  /** The module this collection lives inside — a NAME, as on the API itself. */
+  moduleName: z.string().max(255).optional().nullable(),
   sourceId: nullableUuid,
   description: z.string().max(2000).optional().nullable(),
   projectId: z.string().optional().nullable(),
@@ -75,6 +77,7 @@ export const collectionCreateSchema = z.object({
 });
 
 export const collectionUpdateSchema = collectionCreateSchema.partial();
+
 
 // ─── APIs ───────────────────────────────────────────────────────────────────
 
@@ -85,8 +88,17 @@ export const apiCreateSchema = z.object({
    * reject every real one. Null means shared across all projects.
    */
   projectId: z.string().max(64).optional().nullable(),
+  /** The tier the definition describes, set on the API rather than derived. */
+  sourceId: nullableUuid,
+  /**
+   * A QA module NAME, not an id — the same value bugs and test cases store,
+   * so the two lists stay comparable without a join. Blank means unfiled.
+   */
+  moduleName: z.string().max(255).optional().nullable(),
   name: z.string().min(1, 'API name is required').max(200),
-  description: z.string().max(4000).optional().nullable(),
+  // The editor writes HTML, and markup inflates a paragraph well past what a
+  // plain-text cap allowed. The column is TEXT, so the ceiling is only here.
+  description: z.string().max(40_000).optional().nullable(),
   method: z.enum(HTTP_METHODS),
   url: z.string().min(1, 'URL is required').max(2000),
   headers: z.array(keyValueEntry).default([]),
@@ -206,6 +218,14 @@ export const tryApiSchema = z.object({
     .partial()
     .extend({ url: z.string().min(1, 'A URL is required to send a request') }),
   environmentId: nullableUuid,
+  /**
+   * Resolve {{baseUrl}} against this instead of an environment's.
+   *
+   * The editor sends a base URL typed on the send bar, which is all a
+   * one-off "does this endpoint answer" needs. The environment path stays for
+   * callers that have one.
+   */
+  baseUrl: z.string().max(2000).optional().nullable(),
   variables: z.record(z.string()).default({}),
   /** Run this login API first and attach the token it returns. */
   authApiId: nullableUuid,
@@ -219,6 +239,14 @@ export const grammarSchema = z.object({
 
 export const runFlowSchema = z.object({
   environmentId: nullableUuid,
+  /**
+   * Resolve {{baseUrl}} against this instead of an environment's.
+   *
+   * The editor sends a base URL typed on the send bar, which is all a
+   * one-off "does this endpoint answer" needs. The environment path stays for
+   * callers that have one.
+   */
+  baseUrl: z.string().max(2000).optional().nullable(),
   variables: z.record(z.string()).default({}),
   runName: z.string().max(200).optional().nullable(),
   onlyStepIds: z.array(uuid).optional(),
@@ -237,6 +265,51 @@ export const raiseBugSchema = z.object({
   bugType: z.string().max(60).optional(),
   module: z.string().max(160).optional(),
   assigneeId: z.string().optional().nullable(),
+});
+
+// ─── Case payloads ──────────────────────────────────────────────────────────
+//
+// The four types are a closed set, not free text: the QA drawer offers exactly
+// these and the table has a CHECK constraint on the same list, so a typo here
+// would surface as a Postgres error rather than a 400.
+
+export const PAYLOAD_TYPES = ['Positive', 'Negative', 'Valid', 'Invalid'] as const;
+
+/** Ask the server to draft a payload from an API definition. Writes nothing. */
+export const payloadGenerateSchema = z.object({
+  apiId: uuid,
+  payloadType: z.enum(PAYLOAD_TYPES),
+  /** Optional steer, e.g. "an order with no line items". */
+  hint: z.string().max(500).optional().nullable(),
+});
+
+export const payloadCreateSchema = z.object({
+  apiId: uuid,
+  payloadType: z.enum(PAYLOAD_TYPES),
+  name: z.string().min(1, 'Name is required').max(160),
+  // Any JSON object — the shape is the API's contract, not ours to police.
+  payload: z.record(z.any()).default({}),
+  expectedStatus: z.number().int().min(100).max(599).optional().nullable(),
+  notes: z.string().max(2000).optional().nullable(),
+  generatedBy: z.enum(['ai', 'structure', 'manual']).default('manual'),
+  // Absent while the case is still being drafted in the create drawer — the
+  // payload is adopted by `linkPayloads` once that case is saved.
+  testCaseId: nullableUuid,
+  parentTestCaseId: nullableUuid,
+});
+
+export const payloadUpdateSchema = z.object({
+  payloadType: z.enum(PAYLOAD_TYPES).optional(),
+  name: z.string().min(1).max(160).optional(),
+  payload: z.record(z.any()).optional(),
+  expectedStatus: z.number().int().min(100).max(599).optional().nullable(),
+  notes: z.string().max(2000).optional().nullable(),
+});
+
+/** Adopt payloads drafted before their case existed. */
+export const payloadLinkSchema = z.object({
+  testCaseId: uuid,
+  payloadIds: z.array(uuid).min(1, 'Nothing to link'),
 });
 
 // ─── Inferred input types ───────────────────────────────────────────────────
@@ -266,3 +339,7 @@ export type RunFlowInput = z.infer<typeof runFlowSchema>;
 export type RaiseBugRequest = z.infer<typeof raiseBugSchema>;
 export type TryApiInput = z.infer<typeof tryApiSchema>;
 export type GrammarInput = z.infer<typeof grammarSchema>;
+export type PayloadGenerateInput = z.infer<typeof payloadGenerateSchema>;
+export type PayloadCreateInput = z.infer<typeof payloadCreateSchema>;
+export type PayloadUpdateInput = z.infer<typeof payloadUpdateSchema>;
+export type PayloadLinkInput = z.infer<typeof payloadLinkSchema>;

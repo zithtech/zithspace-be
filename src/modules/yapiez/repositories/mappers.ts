@@ -49,6 +49,8 @@ export function toSource(row: any): SourceDto {
 export interface CollectionDto {
   id: string;
   name: string;
+  /** The module this collection sits inside — its parent in the catalog tree. */
+  moduleName: string | null;
   sourceId: string | null;
   sourceLabel?: string | null;
   sourceColor?: string | null;
@@ -67,6 +69,7 @@ export function toCollection(row: any): CollectionDto {
   return {
     id: row.id,
     name: row.name,
+    moduleName: row.module_name ?? null,
     sourceId: row.source_id ?? null,
     sourceLabel: row.source_label ?? null,
     sourceColor: row.source_color ?? null,
@@ -87,7 +90,13 @@ export interface ApiDto {
   collectionName?: string | null;
   projectId: string | null;
   projectName?: string | null;
-  /** Derived from the collection — an API's tier is its collection's tier. */
+  /**
+   * The QA module this endpoint belongs to — the same taxonomy bugs, scopes
+   * and test cases use, stored as the module's NAME so a definition survives
+   * a module being renamed or re-created in settings.
+   */
+  moduleName: string | null;
+  /** The deployment tier the definition describes, set on the API itself. */
   sourceId?: string | null;
   sourceLabel?: string | null;
   sourceColor?: string | null;
@@ -124,7 +133,10 @@ export function toApi(row: any): ApiDto {
     collectionName: row.collection_name ?? null,
     projectId: row.project_id ?? null,
     projectName: row.project_name ?? null,
-    sourceId: row.source_id ?? null,
+    moduleName: row.module_name ?? null,
+    // `effective_source_id` is the API's own tier, falling back to the tier of
+    // the collection it was filed under before modules replaced collections.
+    sourceId: row.effective_source_id ?? row.source_id ?? null,
     sourceLabel: row.source_label ?? null,
     sourceColor: row.source_color ?? null,
     name: row.name,
@@ -377,5 +389,60 @@ export function toRun(row: any): RunDto {
     startedAt: row.started_at,
     finishedAt: row.finished_at ?? null,
     triggeredBy: row.triggered_by ?? null,
+  };
+}
+
+/**
+ * A request payload kept against a module test case.
+ *
+ * The API columns are a snapshot rather than a join result: `api_id` goes NULL
+ * when a definition is retired, and a payload whose endpoint no longer reads
+ * back is not evidence of anything.
+ */
+export interface CasePayloadDto {
+  id: string;
+  apiId: string | null;
+  apiName: string | null;
+  apiMethod: string | null;
+  apiUrl: string | null;
+  testCaseId: string | null;
+  parentTestCaseId: string | null;
+  projectId: string | null;
+  moduleName: string | null;
+  /** Positive | Negative | Valid | Invalid */
+  payloadType: string;
+  name: string;
+  payload: Record<string, unknown>;
+  expectedStatus: number | null;
+  notes: string | null;
+  /** ai | structure | manual */
+  generatedBy: string;
+  createdBy: string | null;
+  createdByName?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function toCasePayload(row: any): CasePayloadDto {
+  return {
+    id: row.id,
+    apiId: row.api_id ?? null,
+    apiName: row.api_name ?? null,
+    apiMethod: row.api_method ?? null,
+    apiUrl: row.api_url ?? null,
+    testCaseId: row.test_case_id ?? null,
+    parentTestCaseId: row.parent_test_case_id ?? null,
+    projectId: row.project_id ?? null,
+    moduleName: row.module_name ?? null,
+    payloadType: row.payload_type,
+    name: row.name,
+    payload: asJson<Record<string, unknown>>(row.payload, {}),
+    expectedStatus: row.expected_status ?? null,
+    notes: row.notes ?? null,
+    generatedBy: row.generated_by ?? 'manual',
+    createdBy: row.created_by ?? null,
+    createdByName: row.created_by_name ?? null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
