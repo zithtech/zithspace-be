@@ -16,7 +16,12 @@ router.use(resolveTenant);
 router.use(authenticateToken);
 
 // --- Todo Modules ---
-router.get('/modules', requireAnyPermission(Permissions.QA_CASE_READ, Permissions.QA_MANAGE), qaModuleController.getModules);
+// The module list is the taxonomy the whole workspace files against — bugs and
+// scopes read it too, so reading it is not gated on the test-case grants alone.
+router.get('/modules', requireAnyPermission(
+  Permissions.QA_CASE_READ, Permissions.QA_MANAGE,
+  Permissions.QA_SCOPE_READ, Permissions.BUG_READ, Permissions.BUG_CREATE,
+), qaModuleController.getModules);
 router.post('/modules', requireAnyPermission(Permissions.QA_CASE_CREATE, Permissions.QA_MANAGE), qaModuleController.createModule);
 router.put('/modules/:id', requireAnyPermission(Permissions.QA_CASE_UPDATE, Permissions.QA_MANAGE), qaModuleController.updateModule);
 router.delete('/modules/:id', requireAnyPermission(Permissions.QA_CASE_DELETE, Permissions.QA_MANAGE), qaModuleController.deleteModule);

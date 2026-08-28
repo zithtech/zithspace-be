@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import pool from '../config/dbpool';
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from '../utils/transactionHistory';
 
 let projectColumnReady = false;
 /** Test cases belong to a project so bugs raised from them land in the right list. */
@@ -233,6 +234,19 @@ export const createParentTestCase = async (req: Request, res: Response) => {
       userId
     ]);
 
+    recordTransaction({
+      req: req as any,
+      section: Section.WORK,
+      module: Module.QA_WORKSPACE,
+      page: Page.QA_CASE_LIST,
+      action: Action.CREATE,
+      actionLabel: `Parent Test Case created`,
+      entityType: EntityType.QA_PARENT_CASE,
+      entityId: rows[0].id,
+      entityLabel: rows[0].title,
+      afterData: rows[0],
+    });
+
     res.status(201).json({ success: true, data: rows[0] });
   } catch (error) {
     console.error('Error creating parent test case:', error);
@@ -251,6 +265,20 @@ export const updateParentTestCase = async (req: Request, res: Response) => {
     await ensureProjectColumn();
     const { title, module_id, feature, automation, owner, status, project_id } = req.body;
 
+    const queryStr = `
+      SELECT ptc.*, COALESCE(mv2.name, m.module_name, 'Unassigned') as module_name,
+      u_owner.name as owner_name
+      FROM qa_parent_test_cases ptc
+      LEFT JOIN qa_todo_modules m ON ptc.module_id::text = m.id::text
+      LEFT JOIN modules_v2 mv2 ON ptc.module_id::text = mv2.id::text
+      LEFT JOIN users u_owner ON ptc.owner::text = u_owner.id::text
+      WHERE ptc.id = $1 AND ptc.tenant_id = $2
+    `;
+
+    const { rows: oldRows } = await pool.query(queryStr, [id, tenantId]);
+    if (!oldRows.length) return res.status(404).json({ success: false, error: 'Parent Test Case not found' });
+    const oldCase = oldRows[0];
+
     const { rows } = await pool.query(`
       UPDATE qa_parent_test_cases
       SET title = COALESCE($1, title),
@@ -266,7 +294,35 @@ export const updateParentTestCase = async (req: Request, res: Response) => {
       RETURNING *
     `, [title, module_id || null, feature || null, automation, owner || null, status, project_id || null, userId, id, tenantId]);
 
-    if (!rows.length) return res.status(404).json({ success: false, error: 'Parent Test Case not found' });
+    const { rows: newRows } = await pool.query(queryStr, [id, tenantId]);
+    const updated = newRows[0];
+
+    const mapForDiff = (row: any) => ({
+      Title: row.title,
+      Module: row.module_name,
+      Feature: row.feature || 'None',
+      Automation: row.automation,
+      Owner: row.owner_name || 'Unassigned',
+      Status: row.status,
+    });
+
+    const diff = diffShallow(mapForDiff(oldCase), mapForDiff(updated));
+    if (diff.changedFields.length > 0) {
+      recordTransaction({
+        req: req as any,
+        section: Section.WORK,
+        module: Module.QA_WORKSPACE,
+        page: Page.QA_CASE_DETAIL,
+        action: Action.UPDATE,
+        actionLabel: `Parent Test Case updated`,
+        entityType: EntityType.QA_PARENT_CASE,
+        entityId: updated.id,
+        entityLabel: updated.title,
+        beforeData: diff.before,
+        afterData: diff.after,
+        changedFields: diff.changedFields,
+      });
+    }
 
     res.status(200).json({ success: true, data: rows[0] });
   } catch (error) {
@@ -281,8 +337,26 @@ export const deleteParentTestCase = async (req: Request, res: Response) => {
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
     const { id } = req.params;
 
+    const { rows: oldRows } = await pool.query(`SELECT * FROM qa_parent_test_cases WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
+    if (!oldRows.length) return res.status(404).json({ success: false, error: 'Parent Test Case not found' });
+
+    const oldCase = oldRows[0];
     const { rowCount } = await pool.query(`DELETE FROM qa_parent_test_cases WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
-    if (!rowCount) return res.status(404).json({ success: false, error: 'Parent Test Case not found' });
+    
+    if (rowCount) {
+      recordTransaction({
+        req: req as any,
+        section: Section.WORK,
+        module: Module.QA_WORKSPACE,
+        page: Page.QA_CASE_LIST,
+        action: Action.DELETE,
+        actionLabel: `Parent Test Case deleted`,
+        entityType: EntityType.QA_PARENT_CASE,
+        entityId: id,
+        entityLabel: oldCase.title,
+        beforeData: oldCase,
+      });
+    }
 
     res.status(200).json({ success: true, message: 'Deleted successfully' });
   } catch (error) {

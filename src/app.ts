@@ -57,6 +57,8 @@ import sprintReportRoutes from "@/routes/sprintReport";
 import sprintReportsRoutes from "@/routes/sprintReports";
 import fixedHolidayRoutes from "@/routes/fixedHolidays";
 import documentHubRoutes from "@/routes/documenthub";
+import documentHubUploadRoutes from "@/routes/documentHubUploads";
+import notionAuthRoutes from "@/routes/notionAuthRoutes";
 import lettersRoutes from "@/routes/letters.routes";
 import aiSettingsRoutes from "@/routes/aiSettings";
 import channelRoutes from "@/routes/channels";
@@ -94,6 +96,7 @@ import vendorRoutes from "@/routes/vendor";
 import timesheetRoutes from "@/routes/timesheet";
 import timeTrackingRoutes from "./routes/timeTracking";
 import proxyRoutes from "@/routes/proxyRoutes";
+import jiraRoutes from "@/modules/jira/jira.routes";
 
 import companyGovernmentHolidayRouter from "@/routes/companyGovernmentHoliday.routes";
 import leaveAdjustmentRoutes from "./routes/leaveAdjustmentRoutes";
@@ -105,6 +108,7 @@ import departmentRoutes from "@/routes/departmentRoutes";
 import subDepartmentRoutes from "@/routes/subDepartmentRoutes";
 import positionRoutes from "@/routes/positionRoutes";
 import calendarRoutes from "@/routes/calendar";
+import linearRoutes from "@/routes/linearRoutes";
 import mailRoutes from "@/routes/mail";
 import notificationRoutes from "@/routes/notifications"; // Web push notification routes
 import mailConfigurationRoutes from "@/routes/mailConfigurationRoutes";
@@ -334,6 +338,7 @@ app.use("/api/projects", projectRoutes);
 app.use("/api/tenants", tenantRoutes);
 app.use("/api/landing", landingRoutes);
 app.use("/api/calendar", calendarRoutes);
+app.use("/api/integrations/linear", linearRoutes);
 app.use("/api/squads", squadRoutes);
 app.use("/api/public/tickets", publicTicketRoutes);
 app.use("/api/public/document", publicDocumentRoutes);
@@ -400,10 +405,13 @@ app.use("/api", skillExperienceRoutes);
 
 app.use("/api/departments", departmentRoutes);
 app.use("/api/sub-departments", subDepartmentRoutes);
-app.use("/api/positions", positionRoutes);
-app.use("/api/employment-types", employmentTypeRoutes);
-app.use("/api/documenthub", documentHubRoutes);
-app.use("/api/hrms/letters", lettersRoutes);
+  app.use("/api/positions", positionRoutes);
+  app.use("/api/employment-types", employmentTypeRoutes);
+  app.use("/api/documenthub", documentHubRoutes);
+  app.use("/api/v2/document-hubs", documentHubUploadRoutes);
+  app.use("/api/v2/auth/notion", notionAuthRoutes);
+  app.use("/api/v1/auth/notion", notionAuthRoutes); // Alias for v1
+  app.use("/api/hrms/letters", lettersRoutes);
 app.use("/api/ai", aiSettingsRoutes);
 app.use("/api/channels", channelRoutes);
 app.use("/api/channels/:channelId/messages", messageRoutes);
@@ -453,6 +461,7 @@ app.use("/api/employee-timelines", employeeTimelineRoutes);
 
 app.use("/api/onboarding", employeeOnboardingRoutes);
 app.use("/api/reimbursement-configurations", reimbursementConfigurationRoutes);
+app.use("/api/integrations/jira", jiraRoutes);
 app.use("/api/reimbursement-settings", reimbursementsettingsRoutes);
 // Reimbursements (with file upload)
 app.use("/api/reimbursements", reimbursementRoutes);
@@ -667,12 +676,29 @@ const startServer = async () => {
       await rabbitMQService.connect();
       await CalendarSyncWorker.start(); 
       await MailSyncWorker.start();
-      // await CentralMailWorker.start();
       console.log("🚀 RabbitMQ connected, Calendar & Mail Sync Workers started");
     } catch (mqError: any) {
       console.error("❌ RabbitMQ initialization failed:", mqError.message);
       // In a SaaS environment, we log and continue,
       // as the app might still handle HTTP requests while MQ recovers.
+    }
+
+    // Initialize Jira Migration Worker (BullMQ / Redis)
+    try {
+      const { JiraMigrationWorkers } = require("@/modules/jira/jira.migration.workers");
+      new JiraMigrationWorkers();
+      console.log("🚀 Redis connected, Jira Migration BullMQ Workers started");
+    } catch (bullmqError: any) {
+      console.error("❌ Jira BullMQ initialization failed:", bullmqError.message);
+    }
+
+    // Initialize Linear Migration Worker (BullMQ / Redis)
+    try {
+      const { LinearMigrationWorkers } = require("@/modules/linear/linear.migration.workers");
+      new LinearMigrationWorkers();
+      console.log("🚀 Linear Migration BullMQ Workers started");
+    } catch (bullmqError: any) {
+      console.error("❌ Linear BullMQ initialization failed:", bullmqError.message);
     }
 
     // Leave 2.0 accrual scheduler + worker (no-op unless LEAVE_ACCRUAL_ENABLED=true)

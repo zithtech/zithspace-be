@@ -10,6 +10,7 @@ import {
   ApiResponse,
 } from "@/types";
 import { uploadEmployeeDocumentToR2 } from "@/utils/r2Client";
+import { emailService } from "@/utils/emailService";
 
 export class ReimbursementController {
   /* =====================================================
@@ -587,6 +588,48 @@ static async create(req: AuthRequest, res: Response): Promise<void> {
       }
     } catch (cleanupError) {
       console.warn("⚠️ Cleanup warning:", cleanupError);
+    }
+
+    // --- Send Email Notifications ---
+    try {
+      if (status !== "DRAFT") {
+        const employee = await prisma.user.findUnique({
+          where: { id: req.user!.id },
+          select: { name: true, workEmail: true }
+        });
+
+        if (employee) {
+          const approvers = await prisma.reimbursementItemApprover.findMany({
+            where: { reimbursementItem: { reimbursementId: result.id } },
+            select: { approverId: true },
+            distinct: ['approverId']
+          });
+
+          if (approvers.length > 0) {
+            const approverUsers = await prisma.user.findMany({
+              where: { id: { in: approvers.map(a => a.approverId) } },
+              select: { name: true, workEmail: true }
+            });
+
+            for (const approver of approverUsers) {
+              if (approver.workEmail) {
+                await emailService.sendClaimSubmissionEmail({
+                  to: approver.workEmail,
+                  managerName: approver.name,
+                  employeeName: employee.name,
+                  employeeEmail: employee.workEmail || "",
+                  claimNo: result.id.substring(0, 8).toUpperCase(),
+                  itemCount: itemsArray.length,
+                  totalAmount,
+                  currency: "₹"
+                }, req.tenantId!);
+              }
+            }
+          }
+        }
+      }
+    } catch (emailErr) {
+      console.error("❌ Failed to send claim submission email:", emailErr);
     }
 
     res.status(201).json({ 

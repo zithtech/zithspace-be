@@ -24,6 +24,7 @@ import {
   updatePostSchema,
 } from '../validators/blog.validator';
 import * as service from '../services/blog.service';
+import { recordTransaction, Section, Module, Page, Action, EntityType } from '@/utils/transactionHistory';
 
 export const list = handle(async (req: AuthRequest, res: Response) => {
   const query = listQuerySchema.parse(req.query ?? {});
@@ -42,16 +43,48 @@ export const getOne = handle(async (req: AuthRequest, res: Response) => {
 
 export const create = handle(async (req: AuthRequest, res: Response) => {
   const input = createPostSchema.parse(req.body ?? {});
-  ok(res, await service.create(actorOf(req), input), 201);
+  const result = await service.create(actorOf(req), input);
+  recordTransaction({
+    req,
+    section: Section.HOME,
+    module: Module.HOTSPOT,
+    page: Page.BLOGS,
+    action: Action.CREATE,
+    entityType: EntityType.BLOG,
+    entityId: result.id,
+    entityLabel: 'Blog Post',
+  });
+  ok(res, result, 201);
 });
 
 export const update = handle(async (req: AuthRequest, res: Response) => {
   const input = updatePostSchema.parse(req.body ?? {});
-  ok(res, await service.update(actorOf(req), req.params.id, input));
+  const result = await service.update(actorOf(req), req.params.id, input);
+  recordTransaction({
+    req,
+    section: Section.HOME,
+    module: Module.HOTSPOT,
+    page: Page.BLOGS,
+    action: Action.UPDATE,
+    entityType: EntityType.BLOG,
+    entityId: req.params.id,
+    entityLabel: 'Blog Post',
+  });
+  ok(res, result);
 });
 
 export const remove = handle(async (req: AuthRequest, res: Response) => {
   await service.remove(actorOf(req), req.params.id);
+  recordTransaction({
+    req,
+    section: Section.HOME,
+    module: Module.HOTSPOT,
+    page: Page.BLOGS,
+    action: Action.DELETE,
+    entityType: EntityType.BLOG,
+    entityId: req.params.id,
+    entityLabel: 'Blog Post',
+  });
   ok(res, { id: req.params.id });
 });
 

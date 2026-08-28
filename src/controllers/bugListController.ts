@@ -11,6 +11,8 @@ import { BugListAiService } from "@/services/bugListAiService";
 import { entitlementService, EntitlementError } from "@/services/EntitlementService";
 import { AIPricingEngine } from "@/ai/pricing/AIPricingEngine";
 import { AIFeature } from "@/ai/types/AIFeature";
+import { LinearAuthService } from "@/services/LinearAuthService";
+import { LinearIntegrationService } from "@/services/LinearIntegrationService";
 import {
   recordTransaction,
   diffShallow,
@@ -384,6 +386,12 @@ function shapeBug(row: any, attachments: any[], externalLinks: any[]) {
     ticketStatus: row.ticket_status,
     isRecurring: row.is_recurring,
     ticketHistory: row.ticket_history || [],
+    linearIssueId: row.linear_issue_id ?? null,
+    linearIssueUrl: row.linear_issue_url ?? null,
+    linearIssueIdentifier: row.linear_issue_identifier ?? null,
+    jiraIssueId: row.jira_issue_id ?? null,
+    jiraIssueUrl: row.jira_issue_url ?? null,
+    jiraIssueKey: row.jira_issue_key ?? null,
     // Set when the bug was raised from a QA test run
     testCaseId: row.test_case_id ?? null,
     testCaseRef: row.test_case_ref ?? null,
@@ -498,7 +506,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_FOLDER_LIST,
         action: Action.CREATE,
         actionLabel: "Folder created",
@@ -570,7 +578,7 @@ export class BugListController {
           recordTransaction({
             req,
             section: Section.WORK,
-            module: Module.BUG_LIST,
+            module: Module.QA_WORKSPACE,
             page: Page.BUG_FOLDER_LIST,
             action: Action.UPDATE,
             actionLabel: `Folder updated (${changedFields.join(", ")})`,
@@ -655,7 +663,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_FOLDER_LIST,
         action: Action.DELETE,
         actionLabel: "Folder moved to trash",
@@ -695,7 +703,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_FOLDER_LIST,
         action: Action.ARCHIVE,
         actionLabel: "Folder archived",
@@ -840,7 +848,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_TRASH,
         action: Action.RESTORE,
         actionLabel: "Folder restored",
@@ -899,7 +907,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_TRASH,
         action: Action.PERMANENT_DELETE,
         actionLabel: "Folder permanently deleted",
@@ -970,7 +978,8 @@ export class BugListController {
     }
     try {
       const r = await pool.query(
-        `SELECT s.*, f.name as folder_name 
+        `SELECT s.*, f.name as folder_name,
+                (SELECT COUNT(*)::int FROM bugs b WHERE b.sheet_id = s.id) AS bug_count
          FROM bug_sheets s
          INNER JOIN bug_folders f ON s.folder_id = f.id
          WHERE f.project_id = $1 AND f.tenant_id = $2 
@@ -990,7 +999,8 @@ export class BugListController {
           status: row.status,
           createdById: row.created_by_id,
           createdAt: row.created_at,
-          updatedAt: row.updated_at
+          updatedAt: row.updated_at,
+          _count: { bugs: row.bug_count }
         })) 
       });
     } catch (err: any) {
@@ -1118,7 +1128,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_SHEET_LIST,
         action: Action.CREATE,
         actionLabel: "Sheet created",
@@ -1204,7 +1214,7 @@ export class BugListController {
           recordTransaction({
             req,
             section: Section.WORK,
-            module: Module.BUG_LIST,
+            module: Module.QA_WORKSPACE,
             page: Page.BUG_SHEET_LIST,
             action: Action.UPDATE,
             actionLabel: `Sheet updated (${changedFields.join(", ")})`,
@@ -1338,7 +1348,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_SHEET_LIST,
         action: Action.STATUS_CHANGE,
         actionLabel: `Sheet status -> ${status}`,
@@ -1433,7 +1443,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_SHEET_LIST,
         action: Action.DELETE,
         actionLabel: "Sheet moved to trash",
@@ -1549,7 +1559,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_TRASH,
         action: Action.RESTORE,
         actionLabel: "Sheet restored",
@@ -1606,7 +1616,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_TRASH,
         action: Action.PERMANENT_DELETE,
         actionLabel: "Sheet permanently deleted",
@@ -1634,6 +1644,8 @@ export class BugListController {
     const {
       folderId,
       sheetId,
+      folderIds,
+      sheetIds,
       search,
       module,
       severity,
@@ -1664,22 +1676,74 @@ export class BugListController {
         conditions.push(cond.split("$$").join(`$${values.length}`));
       };
 
+      /**
+       * Every pill on the bug list is multi-select, so each of these arrives as
+       * a comma-separated list. A single value still works — it just parses to
+       * a one-item array and matches with ANY(...).
+       */
+      const many = (raw?: string): string[] =>
+        Array.from(
+          new Set(
+            String(raw ?? "")
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean),
+          ),
+        );
+
+      const folderIdList = many(folderIds);
+      const sheetIdList = many(sheetIds);
+      const modules = many(module);
+      const severities = many(severity);
+      const statuses = many(status).filter((s) => ALLOWED_STATUS.has(s));
+      const bugStatuses = many(bugStatus).filter((s) => ALLOWED_BUG_STATUS.has(s));
+      const bugTypes = many(bugType);
+      const creators = many(createdById);
+      const assignees = many(assigneeId);
+      const ticketStatuses = many(ticketStatus);
+
       if (folderId) push("b.folder_id = $$", folderId);
       if (sheetId) push("b.sheet_id = $$", sheetId);
-      if (module) push("b.module = $$", module);
-      if (severity) push("b.severity = $$", severity);
-      if (status && ALLOWED_STATUS.has(status)) push("b.status = $$", status);
-      if (bugStatus && ALLOWED_BUG_STATUS.has(bugStatus)) {
-        if (bugStatus === "not started") {
-          push("(b.bug_status = $$ OR b.bug_status IS NULL)", "not started");
-        } else {
-          push("b.bug_status = $$", bugStatus);
-        }
+      if (folderIdList.length) push("b.folder_id = ANY($$::text[])", folderIdList);
+      if (sheetIdList.length) push("b.sheet_id = ANY($$::text[])", sheetIdList);
+      if (modules.length) push("b.module = ANY($$::text[])", modules);
+      if (severities.length) push("b.severity = ANY($$::text[])", severities);
+      if (statuses.length) push("b.status = ANY($$::text[])", statuses);
+      if (bugStatuses.length) {
+        // Bugs captured before the status column existed read as "not started".
+        push(
+          bugStatuses.includes("not started")
+            ? "(b.bug_status = ANY($$::text[]) OR b.bug_status IS NULL)"
+            : "b.bug_status = ANY($$::text[])",
+          bugStatuses,
+        );
       }
-      if (bugType) push("b.bug_type = $$", bugType);
-      if (createdById) push("b.created_by_id = $$", createdById);
-      if (assigneeId) push("(b.assignee_id = $$ OR (b.assignee_id IS NULL AND t.assignee_id = $$))", assigneeId);
-      if (ticketStatus) push("t.status = $$", ticketStatus);
+      if (bugTypes.length) push("b.bug_type = ANY($$::text[])", bugTypes);
+      if (creators.length) push("b.created_by_id = ANY($$::text[])", creators);
+      if (assignees.length) {
+        push(
+          "(b.assignee_id = ANY($$::text[]) OR (b.assignee_id IS NULL AND t.assignee_id = ANY($$::text[])))",
+          assignees,
+        );
+      }
+      if (ticketStatuses.length) {
+        /**
+         * The pill mixes link state ("linked"/"unlinked") with real ticket
+         * statuses, and "all" means no constraint at all. Selections are OR'd
+         * so picking "unlinked" plus a status widens rather than contradicts.
+         */
+        const ors: string[] = [];
+        if (ticketStatuses.includes("linked")) ors.push("b.ticket_id IS NOT NULL");
+        if (ticketStatuses.includes("unlinked")) ors.push("b.ticket_id IS NULL");
+        const realStatuses = ticketStatuses.filter(
+          (s) => s !== "linked" && s !== "unlinked" && s !== "all",
+        );
+        if (realStatuses.length) {
+          values.push(realStatuses);
+          ors.push(`t.status = ANY($${values.length}::text[])`);
+        }
+        if (ors.length) conditions.push(`(${ors.join(" OR ")})`);
+      }
       if (projectId && projectId !== 'all') {
         conditions.push(`b.folder_id IN (SELECT id FROM bug_folders WHERE project_id = $${values.length + 1})`);
         values.push(projectId);
@@ -1950,7 +2014,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_LIST,
         action: Action.CREATE,
         actionLabel: "Bug created",
@@ -2112,7 +2176,7 @@ export class BugListController {
           recordTransaction({
             req,
             section: Section.WORK,
-            module: Module.BUG_LIST,
+            module: Module.QA_WORKSPACE,
             page: Page.BUG_LIST,
             action: Action.UPDATE,
             actionLabel: `Bug updated${changedFields.length ? ` (${changedFields.join(", ")})` : ""}`,
@@ -2180,7 +2244,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_LIST,
         action: Action.DELETE,
         actionLabel: "Bug moved to trash",
@@ -2225,7 +2289,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_TRASH,
         action: Action.PERMANENT_DELETE,
         actionLabel: "Bug permanently deleted",
@@ -2272,7 +2336,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_TRASH,
         action: Action.RESTORE,
         actionLabel: "Bug restored",
@@ -2319,7 +2383,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_LIST,
         action: Action.BULK_UPDATE_STATUS,
         actionLabel: `Bug bulk status -> ${status} (${r.rowCount})`,
@@ -2370,7 +2434,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_LIST,
         action: Action.BULK_DELETE,
         actionLabel: `Bugs bulk moved to trash (${r.rowCount})`,
@@ -2414,7 +2478,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_TRASH,
         action: Action.BULK_PERMANENT_DELETE,
         actionLabel: `Bugs permanently deleted (${r.rowCount})`,
@@ -2459,7 +2523,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_TRASH,
         action: Action.BULK_RESTORE,
         actionLabel: `Bugs restored (${r.rowCount})`,
@@ -2516,7 +2580,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_TRASH,
         action: Action.BULK_RESTORE,
         actionLabel: `Folders restored (${folders.rowCount})`,
@@ -2570,7 +2634,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_TRASH,
         action: Action.BULK_PERMANENT_DELETE,
         actionLabel: `Folders permanently deleted (${r.rowCount})`,
@@ -2629,7 +2693,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_TRASH,
         action: Action.BULK_RESTORE,
         actionLabel: `Sheets restored (${sheets.rowCount})`,
@@ -2683,7 +2747,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_TRASH,
         action: Action.BULK_PERMANENT_DELETE,
         actionLabel: `Sheets permanently deleted (${r.rowCount})`,
@@ -2736,7 +2800,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_LIST,
         action: Action.BULK_MOVE,
         actionLabel: `Bugs moved to sheet ${targetSheetId} (${r.rowCount})`,
@@ -3177,7 +3241,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_LIST,
         action: Action.BULK_CONVERT,
         actionLabel: `Bugs converted to ${created.length} ticket(s) (${totalBugs} bugs)`,
@@ -3308,7 +3372,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_LIST,
         action: Action.BULK_CONVERT,
         actionLabel: `Bugs mapped to ticket ${ticket.ticket_number}`,
@@ -3350,7 +3414,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_LIST,
         action: Action.VERIFY,
         actionLabel: "Bug verified",
@@ -3383,7 +3447,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_LIST,
         action: Action.REOPEN,
         actionLabel: "Bug reopened",
@@ -3422,104 +3486,260 @@ export class BugListController {
       
       if (bugRes.rows.length === 0) {
         throw new Error("Bug not found");
-      }
-      
-      const bug = bugRes.rows[0];
-      if (!bug.ticket_id) {
+      }      const bug = bugRes.rows[0];
+      if (!bug.ticket_id && !bug.linear_issue_identifier && !bug.jira_issue_key) {
         throw new Error("Cannot mark as recurring: Bug does not have an active ticket");
       }
 
-      // 2. Build ticket history entry
-      const historyEntry = {
-        ticketId: bug.ticket_id,
-        ticketNumber: bug.ticket_number,
-        status: bug.ticket_status,
-        timestamp: new Date().toISOString()
-      };
-      
-      const currentHistory = bug.ticket_history || [];
-      const newHistory = [...currentHistory, historyEntry];
+      if (bug.linear_issue_identifier) {
+        // Handle Linear Recurring Flow
+        const authService = new LinearAuthService();
+        const token = await authService.getToken(tenantId, req.user!.id);
+        if (!token) {
+          throw new Error("Please connect your Linear account first to mark this Linear issue as recurring.");
+        }
 
-      // 3. Create new ticket
-      const oldTicketRes = await client.query(`SELECT project_id, sprint_plan_id, release_plan_id, epic_id FROM tickets WHERE id = $1`, [bug.ticket_id]);
-      if (oldTicketRes.rows.length === 0) throw new Error("Old ticket not found");
-      const projectId = oldTicketRes.rows[0].project_id;
-      const sprintPlanId = oldTicketRes.rows[0].sprint_plan_id || null;
-      const releasePlanId = oldTicketRes.rows[0].release_plan_id || null;
-      const epicId = oldTicketRes.rows[0].epic_id || null;
-      
-      const projectRes = await client.query(`SELECT code FROM projects WHERE id = $1`, [projectId]);
-      const rawCode = projectRes.rows.length > 0 ? projectRes.rows[0].code : "TCK";
-      const projectCode = rawCode ? rawCode.replace(`${tenantId}_`, '') : "TCK";
+        const oldIssue = await LinearIntegrationService.getIssue(token, bug.linear_issue_id);
+        if (!oldIssue) {
+          throw new Error("Could not fetch the original issue from Linear.");
+        }
 
-      const seqRes = await client.query(
-        `SELECT COALESCE(
-                MAX((regexp_match(ticket_number, '-(\\d+)$'))[1]::int),
-                0
-              ) + 1 AS next_seq
-         FROM tickets
-         WHERE tenant_id = $1
-           AND project_id = $2
-           AND ticket_number ~ '-\\d+$'`,
-        [tenantId, projectId],
-      );
-      const nextSeq = seqRes.rows[0].next_seq;
-      const newTicketNumber = `${projectCode}-${String(nextSeq).padStart(4, "0")}`;
-      const newTicketId = randomUUID();
+        const title = `[Recurring] ${oldIssue.title}`;
+        const finalDescription = `**Recurring Bug**\nPreviously tracked under: ${bug.linear_issue_identifier}\n\n---\n${oldIssue.description || bug.description || ''}`;
 
-      const title = `[Recurring] ${bug.title}`;
-      const finalDescription = `<p><strong>Recurring Bug</strong></p><p>Previously tracked under: ${bug.ticket_number}</p><hr/>${bug.description || ''}`;
-
-      await client.query(
-        `INSERT INTO tickets
-           (id, tenant_id, project_id, title, description, ticket_number, type, status,
-            priority, platform, task_level, story_point, estimate_hours,
-            created_by_id, assignee_id, parent_tickets, current_workflow_step, tags, metadata,
-            sprint_plan_id, release_plan_id, epic_id, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, 'Bug', 'not_started',
-                 'Medium (P2)', 'Development', 'Medium', 1, 0,
-                 $7, $8, '{}', 'Scope Document', '{}', '{}'::jsonb,
-                 $9, $10, $11, NOW())`,
-        [
-          newTicketId,
-          tenantId,
-          projectId,
+        const newIssue = await LinearIntegrationService.createIssue(token, {
           title,
-          finalDescription,
-          newTicketNumber,
-          req.user!.id,
-          bug.assignee_id || req.user!.id,
-          sprintPlanId,
-          releasePlanId,
-          epicId,
-        ]
-      );
+          description: finalDescription,
+          teamId: oldIssue.team.id,
+          projectId: oldIssue.project?.id,
+          assigneeId: oldIssue.assignee?.id,
+          priority: oldIssue.priority,
+          labelIds: oldIssue.labels?.nodes.map(l => l.id)
+        });
 
-      // 4. Update bug with new ticket and history
-      await client.query(
-        `UPDATE bugs 
-         SET is_recurring = true, 
-             ticket_id = $1, 
-             ticket_history = $2::jsonb,
-             status = 'converted',
-             updated_at = NOW()
-         WHERE id = $3 AND tenant_id = $4`,
-        [newTicketId, JSON.stringify(newHistory), bugId, tenantId]
-      );
+        const historyEntry = {
+          ticketId: bug.linear_issue_id,
+          ticketNumber: bug.linear_issue_identifier,
+          status: "Linear Issue",
+          timestamp: new Date().toISOString(),
+          url: bug.linear_issue_url
+        };
+        const currentHistory = bug.ticket_history || [];
+        const newHistory = [...currentHistory, historyEntry];
 
-      recordTransaction({
-        req,
-        section: Section.WORK,
-        module: Module.BUG_LIST,
-        page: Page.BUG_LIST,
-        action: Action.UPDATE,
-        actionLabel: "Bug marked as recurring, new ticket created",
-        entityType: EntityType.BUG,
-        entityId: bugId,
-        afterData: { isRecurring: true, ticketId: newTicketId, ticketHistory: newHistory, status: 'converted' },
-        changedFields: ["is_recurring", "ticket_id", "ticket_history", "status"],
-        statusCode: 200,
-      });
+        await client.query(
+          `UPDATE bugs 
+           SET is_recurring = true, 
+               linear_issue_id = $1, 
+               linear_issue_identifier = $2, 
+               linear_issue_url = $3,
+               ticket_history = $4::jsonb,
+               status = 'converted',
+               updated_at = NOW()
+           WHERE id = $5 AND tenant_id = $6`,
+          [newIssue.id, newIssue.identifier, newIssue.url, JSON.stringify(newHistory), bugId, tenantId]
+        );
+
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.QA_WORKSPACE,
+          page: Page.BUG_LIST,
+          action: Action.UPDATE,
+          actionLabel: "Bug marked as recurring, new Linear issue created",
+          entityType: EntityType.BUG,
+          entityId: bugId,
+          afterData: { isRecurring: true, linearIssueId: newIssue.id, ticketHistory: newHistory, status: 'converted' },
+          changedFields: ["is_recurring", "linear_issue_id", "linear_issue_identifier", "linear_issue_url", "ticket_history", "status"],
+          statusCode: 200,
+        });
+
+      } else if (bug.jira_issue_key) {
+        // Handle Jira Recurring Flow
+        const JiraOAuthService = require('../modules/jira/jira.oauth.service').JiraOAuthService;
+        const JiraApiService = require('../modules/jira/jira.api.service').JiraApiService;
+        const oauthService = new JiraOAuthService();
+        const apiService = new JiraApiService();
+        const { accessToken, cloudId } = await oauthService.getAccessTokenByTenantId(tenantId);
+        
+        const url = `https://api.atlassian.com/ex/jira/${cloudId}/rest/api/3/issue/${bug.jira_issue_key}`;
+        const axios = require('axios');
+        const oldIssueRes = await axios.get(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+        const oldIssue = oldIssueRes.data;
+
+        const title = `[Recurring] ${oldIssue.fields.summary}`;
+        const finalDescription = `**Recurring Bug**\nPreviously tracked under: ${bug.jira_issue_key}\n\n---\n`;
+
+        const adfDescription = {
+          type: "doc",
+          version: 1,
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                { type: "text", text: finalDescription }
+              ]
+            }
+          ]
+        };
+
+        const payload: any = {
+          fields: {
+            project: { id: oldIssue.fields.project.id },
+            summary: title,
+            description: adfDescription,
+            issuetype: { id: oldIssue.fields.issuetype.id }
+          }
+        };
+
+        if (oldIssue.fields.assignee) {
+          payload.fields.assignee = { id: oldIssue.fields.assignee.accountId };
+        }
+
+        const newIssue = await apiService.createIssue(accessToken, cloudId, payload);
+        
+        let webUrl = newIssue.self;
+        try {
+          const resources = await apiService.getAccessibleResources(accessToken);
+          const resource = resources.find((r: any) => r.id === cloudId);
+          if (resource && resource.url) {
+            webUrl = `${resource.url}/browse/${newIssue.key}`;
+          }
+        } catch (err) {
+          console.error("Failed to get Jira site URL", err);
+        }
+
+        const historyEntry = {
+          ticketId: bug.jira_issue_id,
+          ticketNumber: bug.jira_issue_key,
+          status: "Jira Issue",
+          timestamp: new Date().toISOString(),
+          url: bug.jira_issue_url
+        };
+        const currentHistory = bug.ticket_history || [];
+        const newHistory = [...currentHistory, historyEntry];
+
+        await client.query(
+          `UPDATE bugs 
+           SET is_recurring = true, 
+               jira_issue_id = $1, 
+               jira_issue_key = $2, 
+               jira_issue_url = $3,
+               ticket_history = $4::jsonb,
+               status = 'converted',
+               updated_at = NOW()
+           WHERE id = $5 AND tenant_id = $6`,
+          [newIssue.id, newIssue.key, webUrl, JSON.stringify(newHistory), bugId, tenantId]
+        );
+
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.QA_WORKSPACE,
+          page: Page.BUG_LIST,
+          action: Action.UPDATE,
+          actionLabel: "Bug marked as recurring, new Jira issue created",
+          entityType: EntityType.BUG,
+          entityId: bugId,
+          afterData: { isRecurring: true, jiraIssueId: newIssue.id, ticketHistory: newHistory, status: 'converted' },
+          changedFields: ["is_recurring", "jira_issue_id", "jira_issue_key", "jira_issue_url", "ticket_history", "status"],
+          statusCode: 200,
+        });
+
+      } else {
+        // Handle Zukvo Recurring Flow (existing code)
+        // 2. Build ticket history entry
+        const historyEntry = {
+          ticketId: bug.ticket_id,
+          ticketNumber: bug.ticket_number,
+          status: bug.ticket_status,
+          timestamp: new Date().toISOString()
+        };
+        
+        const currentHistory = bug.ticket_history || [];
+        const newHistory = [...currentHistory, historyEntry];
+
+        // 3. Create new ticket
+        const oldTicketRes = await client.query(`SELECT project_id, sprint_plan_id, release_plan_id, epic_id FROM tickets WHERE id = $1`, [bug.ticket_id]);
+        if (oldTicketRes.rows.length === 0) throw new Error("Old ticket not found");
+        const projectId = oldTicketRes.rows[0].project_id;
+        const sprintPlanId = oldTicketRes.rows[0].sprint_plan_id || null;
+        const releasePlanId = oldTicketRes.rows[0].release_plan_id || null;
+        const epicId = oldTicketRes.rows[0].epic_id || null;
+        
+        const projectRes = await client.query(`SELECT code FROM projects WHERE id = $1`, [projectId]);
+        const rawCode = projectRes.rows.length > 0 ? projectRes.rows[0].code : "TCK";
+        const projectCode = rawCode ? rawCode.replace(`${tenantId}_`, '') : "TCK";
+
+        const seqRes = await client.query(
+          `SELECT COALESCE(
+                  MAX((regexp_match(ticket_number, '-\\d+$'))[1]::int),
+                  0
+                ) + 1 AS next_seq
+           FROM tickets
+           WHERE tenant_id = $1
+             AND project_id = $2
+             AND ticket_number ~ '-\\d+$'`,
+          [tenantId, projectId],
+        );
+        const nextSeq = seqRes.rows[0].next_seq;
+        const newTicketNumber = `${projectCode}-${String(nextSeq).padStart(4, "0")}`;
+        const newTicketId = randomUUID();
+
+        const title = `[Recurring] ${bug.title}`;
+        const finalDescription = `<p><strong>Recurring Bug</strong></p><p>Previously tracked under: ${bug.ticket_number}</p><hr/>${bug.description || ''}`;
+
+        await client.query(
+          `INSERT INTO tickets
+             (id, tenant_id, project_id, title, description, ticket_number, type, status,
+              priority, platform, task_level, story_point, estimate_hours,
+              created_by_id, assignee_id, parent_tickets, current_workflow_step, tags, metadata,
+              sprint_plan_id, release_plan_id, epic_id, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, 'Bug', 'not_started',
+                   'Medium (P2)', 'Development', 'Medium', 1, 0,
+                   $7, $8, '{}', 'Scope Document', '{}', '{}'::jsonb,
+                   $9, $10, $11, NOW())`,
+          [
+            newTicketId,
+            tenantId,
+            projectId,
+            title,
+            finalDescription,
+            newTicketNumber,
+            req.user!.id,
+            bug.assignee_id || req.user!.id,
+            sprintPlanId,
+            releasePlanId,
+            epicId,
+          ]
+        );
+
+        // 4. Update bug with new ticket and history
+        await client.query(
+          `UPDATE bugs 
+           SET is_recurring = true, 
+               ticket_id = $1, 
+               ticket_history = $2::jsonb,
+               status = 'converted',
+               updated_at = NOW()
+           WHERE id = $3 AND tenant_id = $4`,
+          [newTicketId, JSON.stringify(newHistory), bugId, tenantId]
+        );
+
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.QA_WORKSPACE,
+          page: Page.BUG_LIST,
+          action: Action.UPDATE,
+          actionLabel: "Bug marked as recurring, new ticket created",
+          entityType: EntityType.BUG,
+          entityId: bugId,
+          afterData: { isRecurring: true, ticketId: newTicketId, ticketHistory: newHistory, status: 'converted' },
+          changedFields: ["is_recurring", "ticket_id", "ticket_history", "status"],
+          statusCode: 200,
+        });
+      }
 
       await client.query("COMMIT");
       
@@ -3614,7 +3834,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_SETTINGS,
         action: Action.CREATE,
         actionLabel: "Severity option created",
@@ -3703,7 +3923,7 @@ export class BugListController {
           recordTransaction({
             req,
             section: Section.WORK,
-            module: Module.BUG_LIST,
+            module: Module.QA_WORKSPACE,
             page: Page.BUG_SETTINGS,
             action: Action.UPDATE,
             actionLabel: `Severity option updated (${changedFields.join(", ")})`,
@@ -3754,7 +3974,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_SETTINGS,
         action: Action.DELETE,
         actionLabel: "Severity option deleted",
@@ -3847,7 +4067,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_SETTINGS,
         action: Action.CREATE,
         actionLabel: "Bug type option created",
@@ -3932,7 +4152,7 @@ export class BugListController {
           recordTransaction({
             req,
             section: Section.WORK,
-            module: Module.BUG_LIST,
+            module: Module.QA_WORKSPACE,
             page: Page.BUG_SETTINGS,
             action: Action.UPDATE,
             actionLabel: `Bug type option updated (${changedFields.join(", ")})`,
@@ -3983,7 +4203,7 @@ export class BugListController {
       recordTransaction({
         req,
         section: Section.WORK,
-        module: Module.BUG_LIST,
+        module: Module.QA_WORKSPACE,
         page: Page.BUG_SETTINGS,
         action: Action.DELETE,
         actionLabel: "Bug type option deleted",

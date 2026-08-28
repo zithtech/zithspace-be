@@ -19,7 +19,39 @@ class ReleasePlansController {
                 });
                 return;
             }
-            const { page = 1, limit = 20, projectId, status, search, sortBy = "createdAt", sortOrder = "desc", type, } = req.query;
+            const { page = 1, limit = 20, projectId, status, search, sortBy = "createdAt", sortOrder = "desc", type, fromMonth, toMonth, minTickets, maxTickets, } = req.query;
+            // Month window (YYYY-MM) -> [start, endExclusive). A plan matches when its
+            // own date range overlaps the window, so long sprints spanning the window
+            // are not dropped.
+            const monthStart = (value) => {
+                const m = /^(\d{4})-(\d{2})$/.exec(String(value ?? ""));
+                if (!m)
+                    return undefined;
+                return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, 1));
+            };
+            const windowStart = monthStart(fromMonth);
+            const toStart = monthStart(toMonth);
+            const windowEndExclusive = toStart
+                ? new Date(Date.UTC(toStart.getUTCFullYear(), toStart.getUTCMonth() + 1, 1))
+                : undefined;
+            const parseCount = (value) => {
+                if (value === undefined || value === null || value === "")
+                    return undefined;
+                const n = Number(value);
+                return Number.isFinite(n) && n >= 0 ? Math.floor(n) : undefined;
+            };
+            const minTicketCount = parseCount(minTickets);
+            const maxTicketCount = parseCount(maxTickets);
+            // Ticket count is a relation count, not a column, so it can neither be
+            // filtered nor ordered by Prisma directly.
+            const sortByTicketCount = sortBy === "ticketCount";
+            // These depend on values computed after the query (ticket counts) or on
+            // nullable date fallbacks, so they force a fetch-then-paginate path.
+            const hasPostFilters = !!windowStart ||
+                !!windowEndExclusive ||
+                minTicketCount !== undefined ||
+                maxTicketCount !== undefined ||
+                sortByTicketCount;
             // Build filter query
             const where = {
                 tenantId: req.tenantId,
@@ -38,34 +70,74 @@ class ReleasePlansController {
             }
             // Build sort object
             const orderBy = {};
-            orderBy[sortBy] = sortOrder === "desc" ? "desc" : "asc";
+            orderBy[sortByTicketCount ? "createdAt" : sortBy] =
+                sortOrder === "desc" ? "desc" : "asc";
             // Execute query with pagination
             const skip = (Number(page) - 1) * Number(limit);
             // Determine which relation to include based on type if specified, or include all for stats?
             // For list view stats, we need to know ticket counts.
             // Since a plan has ONE type, we can fetch all relations, but usually only one is populated.
             // However, Prisma relations for tickets are named: tickets (release), sprintTickets (sprint), demoTickets (demo).
-            const [releasePlans, total] = await Promise.all([
-                database_1.prisma.releasePlan.findMany({
-                    where,
-                    include: {
-                        project: {
-                            select: { id: true, name: true, code: true, description: true },
-                        },
-                        createdBy: {
-                            select: { id: true, name: true, workEmail: true },
-                        },
-                        // We include all 3 to calculate metrics correctly regardless of type
-                        tickets: { select: { status: true } },
-                        sprintTickets: { select: { status: true } },
-                        demoTickets: { select: { status: true } },
-                    },
-                    orderBy,
-                    skip,
-                    take: Number(limit),
-                }),
-                database_1.prisma.releasePlan.count({ where }),
-            ]);
+            const include = {
+                project: {
+                    select: { id: true, name: true, code: true, description: true },
+                },
+                createdBy: {
+                    select: { id: true, name: true, workEmail: true },
+                },
+                // We include all 3 to calculate metrics correctly regardless of type
+                tickets: { select: { status: true } },
+                sprintTickets: { select: { status: true } },
+                demoTickets: { select: { status: true } },
+            };
+            let releasePlans;
+            let total;
+            if (hasPostFilters) {
+                // Fetch the whole matching set (ordered), filter, then paginate in JS so
+                // the page numbers and total stay correct.
+                const all = await database_1.prisma.releasePlan.findMany({ where, include, orderBy });
+                const ticketCountOf = (plan) => plan.type === "sprint_plan"
+                    ? plan.sprintTickets.length
+                    : plan.type === "demo_plan"
+                        ? plan.demoTickets.length
+                        : plan.tickets.length;
+                const matches = all.filter((plan) => {
+                    if (windowStart || windowEndExclusive) {
+                        const start = plan.startDate || plan.releaseDate || plan.createdAt;
+                        const end = plan.endDate || plan.releaseDate || start;
+                        if (windowEndExclusive && start >= windowEndExclusive)
+                            return false;
+                        if (windowStart && end < windowStart)
+                            return false;
+                    }
+                    if (minTicketCount !== undefined || maxTicketCount !== undefined) {
+                        const count = ticketCountOf(plan);
+                        if (minTicketCount !== undefined && count < minTicketCount)
+                            return false;
+                        if (maxTicketCount !== undefined && count > maxTicketCount)
+                            return false;
+                    }
+                    return true;
+                });
+                if (sortByTicketCount) {
+                    const direction = sortOrder === "asc" ? 1 : -1;
+                    matches.sort((a, b) => (ticketCountOf(a) - ticketCountOf(b)) * direction);
+                }
+                total = matches.length;
+                releasePlans = matches.slice(skip, skip + Number(limit));
+            }
+            else {
+                [releasePlans, total] = await Promise.all([
+                    database_1.prisma.releasePlan.findMany({
+                        where,
+                        include,
+                        orderBy,
+                        skip,
+                        take: Number(limit),
+                    }),
+                    database_1.prisma.releasePlan.count({ where }),
+                ]);
+            }
             const totalPages = Math.ceil(total / Number(limit));
             // Calculate progress metrics for each release plan
             const releasePlansWithMetrics = releasePlans.map((plan) => {

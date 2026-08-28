@@ -1,14 +1,18 @@
 import { Request, Response } from 'express';
+import { registerModuleNames } from './qaModuleController';
 import pool from '../config/dbpool';
+import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from '../utils/transactionHistory';
 import { SprintReportExportService } from '../services/sprintReportExportService';
 import { RBACService } from '../modules/rbac/rbac.service';
 import { Permissions } from '../types/permissions';
+import { prisma } from '../config/database';
 
 export const getTestScopes = async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).user?.tenantId;
     const userName = (req as any).user?.name;
     const userId = (req as any).user?.id;
+    const userRole = (req as any).user?.role;
     if (!tenantId) {
       return res.status(401).json({ success: false, error: 'Unauthorized: No tenant found' });
     }
@@ -30,10 +34,42 @@ export const getTestScopes = async (req: Request, res: Response) => {
     const limit = parseInt(pageSize as string) || 10;
     const offset = (parseInt(page as string) - 1) * limit;
 
+    // Determine inaccessible projects
+    const hasManagePermission = await RBACService.hasPermission(userId, tenantId, Permissions.PROJECT_MANAGE, userRole);
+    const userProjectsQuery: any = {
+      tenantId,
+      status: { notIn: ["ARCHIVED", "DELETED", "archived", "deleted"] },
+    };
+    if (!hasManagePermission) {
+      userProjectsQuery.OR = [
+        { projectManagerId: userId },
+        { members: { some: { userId } } },
+      ];
+    }
+    const userProjects = await prisma.project.findMany({
+      where: userProjectsQuery,
+      select: { id: true }
+    });
+    const userProjectIds = userProjects.map((p: any) => p.id);
+
+    const allProjects = await prisma.project.findMany({
+      where: { tenantId },
+      select: { id: true }
+    });
+    const allProjectIds = allProjects.map((p: any) => p.id);
+    const inaccessibleProjectIds = allProjectIds.filter((id: string) => !userProjectIds.includes(id));
+
     let query = `SELECT * FROM qa_test_scopes WHERE tenant_id = $1`;
     let countQuery = `SELECT COUNT(*) FROM qa_test_scopes WHERE tenant_id = $1`;
     const params: any[] = [tenantId];
     let paramIndex = 2;
+
+    if (inaccessibleProjectIds.length > 0) {
+      query += ` AND (details->>'product' IS NULL OR details->>'product' != ALL($${paramIndex}))`;
+      countQuery += ` AND (details->>'product' IS NULL OR details->>'product' != ALL($${paramIndex}))`;
+      params.push(inaccessibleProjectIds);
+      paramIndex++;
+    }
 
     if (isApproval === 'true') {
       query += ` AND details->'approvalWorkflow'->>'user' = $${paramIndex} AND status != 'Draft'`;
@@ -170,6 +206,24 @@ export const createTestScope = async (req: Request, res: Response) => {
       [tenantId, name, type, priority, status, qa_owner, start_date || null, end_date || null, details || {}]
     );
 
+    recordTransaction({
+      req: req as any,
+      section: Section.WORK,
+      module: Module.QA_WORKSPACE,
+      page: Page.QA_SCOPE_LIST,
+      action: Action.CREATE,
+      actionLabel: "Test Scope created",
+      entityType: EntityType.QA_SCOPE,
+      entityId: rows[0].id,
+      entityLabel: name,
+      afterData: rows[0],
+    });
+    // The modules named on a scope are the workspace's module list — keep the
+    // two in step rather than making someone add them twice. They are filed
+    // under the scope's own product, since a module belongs to a project.
+    await registerModuleNames(tenantId, details?.modules, details?.product).catch(err =>
+      console.error('Failed to register scope modules:', err));
+
     res.status(201).json({ success: true, data: rows[0] });
   } catch (error) {
     console.error('Error creating test scope:', error);
@@ -218,6 +272,12 @@ export const updateTestScope = async (req: Request, res: Response) => {
     ];
     console.log('Executing query with params:', params);
 
+    const { rows: oldRows } = await pool.query(`SELECT * FROM qa_test_scopes WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
+    if (oldRows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Test Scope not found' });
+    }
+    const oldScope = oldRows[0];
+
     const { rows } = await pool.query(query, params);
     console.log('Update result rows:', rows.length);
 
@@ -225,7 +285,34 @@ export const updateTestScope = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: 'Test Scope not found' });
     }
 
-    res.status(200).json({ success: true, data: rows[0] });
+    const updatedScope = rows[0];
+    const diff = diffShallow(oldScope, updatedScope);
+    if (diff.changedFields.length > 0) {
+      let action = Action.UPDATE as string;
+      if (status === 'Approved') action = Action.APPROVE;
+      else if (status === 'Rejected') action = Action.REJECT;
+
+      recordTransaction({
+        req: req as any,
+        section: Section.WORK,
+        module: Module.QA_WORKSPACE,
+        page: Page.QA_SCOPE_DETAIL,
+        action,
+        actionLabel: "Test Scope updated",
+        entityType: EntityType.QA_SCOPE,
+        entityId: id,
+        entityLabel: updatedScope.name,
+        beforeData: diff.before,
+        afterData: diff.after,
+        changedFields: diff.changedFields,
+      });
+    }
+
+    // Modules added while editing join the workspace's module list too.
+    await registerModuleNames(tenantId, details?.modules, details?.product).catch(err =>
+      console.error('Failed to register scope modules:', err));
+
+    res.status(200).json({ success: true, data: updatedScope });
   } catch (error) {
     console.error('Error updating test scope:', error);
     res.status(500).json({ success: false, error: 'Internal Server Error' });
@@ -239,14 +326,29 @@ export const deleteTestScope = async (req: Request, res: Response) => {
     
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
+    const { rows: oldRows } = await pool.query(`SELECT * FROM qa_test_scopes WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
+    if (oldRows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Test Scope not found' });
+    }
+    const oldScope = oldRows[0];
+
     const { rows } = await pool.query(
       `DELETE FROM qa_test_scopes WHERE id = $1 AND tenant_id = $2 RETURNING *`,
       [id, tenantId]
     );
 
-    if (rows.length === 0) {
-      return res.status(404).json({ success: false, error: 'Test Scope not found' });
-    }
+    recordTransaction({
+      req: req as any,
+      section: Section.WORK,
+      module: Module.QA_WORKSPACE,
+      page: Page.QA_SCOPE_LIST,
+      action: Action.DELETE,
+      actionLabel: "Test Scope deleted",
+      entityType: EntityType.QA_SCOPE,
+      entityId: id,
+      entityLabel: oldScope.name,
+      beforeData: oldScope,
+    });
 
     res.status(200).json({ success: true, message: 'Test scope deleted successfully' });
   } catch (error) {
@@ -553,18 +655,71 @@ export const getTestScopesStats = async (req: Request, res: Response) => {
     const tenantId = (req as any).user?.tenantId;
     const userName = (req as any).user?.name;
     const userId = (req as any).user?.id;
+    const userRole = (req as any).user?.role;
     
     if (!tenantId) {
       return res.status(401).json({ success: false, error: 'Unauthorized' });
     }
 
-    const { rows } = await pool.query(`SELECT * FROM qa_test_scopes WHERE tenant_id = $1`, [tenantId]);
+    // Determine inaccessible projects
+    const hasManagePermission = await RBACService.hasPermission(userId, tenantId, Permissions.PROJECT_MANAGE, userRole);
+    const userProjectsQuery: any = {
+      tenantId,
+      status: { notIn: ["ARCHIVED", "DELETED", "archived", "deleted"] },
+    };
+    if (!hasManagePermission) {
+      userProjectsQuery.OR = [
+        { projectManagerId: userId },
+        { members: { some: { userId } } },
+      ];
+    }
+    const userProjects = await prisma.project.findMany({
+      where: userProjectsQuery,
+      select: { id: true }
+    });
+    const userProjectIds = userProjects.map((p: any) => p.id);
+
+    const allProjects = await prisma.project.findMany({
+      where: { tenantId },
+      select: { id: true }
+    });
+    const allProjectIds = allProjects.map((p: any) => p.id);
+    const inaccessibleProjectIds = allProjectIds.filter((id: string) => !userProjectIds.includes(id));
+
+    let query = `SELECT * FROM qa_test_scopes WHERE tenant_id = $1`;
+    const params: any[] = [tenantId];
+    let paramIndex = 2;
+
+    if (inaccessibleProjectIds.length > 0) {
+      query += ` AND (details->>'product' IS NULL OR details->>'product' != ALL($${paramIndex}))`;
+      params.push(inaccessibleProjectIds);
+      paramIndex++;
+    }
+
+    // QA Space reads one project at a time, so the tiles have to count that
+    // project's scopes rather than the whole tenant's.
+    const product = String(req.query.product ?? '').trim();
+    if (product) {
+      query += ` AND LOWER(details->>'product') = LOWER($${paramIndex})`;
+      params.push(product);
+      paramIndex++;
+    }
+
+    const qa_owner = String(req.query.qa_owner ?? '').trim();
+    if (qa_owner) {
+      query += ` AND qa_owner = $${paramIndex}`;
+      params.push(qa_owner);
+      paramIndex++;
+    }
+
+    const { rows } = await pool.query(query, params);
 
     const stats: any = {
       totalScopes: rows.length,
       approved: rows.filter(r => r.status === 'Approved').length,
       inReview: rows.filter(r => r.status === 'In Review').length,
       inDraft: rows.filter(r => r.status === 'Draft').length,
+      rejected: rows.filter(r => r.status === 'Rejected').length,
       // pendingApprovals = scopes where THIS user is the approver (matches approvals tab)
       pendingApprovals: rows.filter(r => r.details?.approvalWorkflow?.user === userId && r.status !== 'Draft').length,
       routedForApproval: rows.filter(r => r.status === 'In Review').length,

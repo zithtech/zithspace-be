@@ -253,6 +253,7 @@ export class TicketController {
         } as ApiResponse);
         return;
       }
+      // Force nodemon restart for archivedCount changes
 
       const currentDate = new Date();
       const startOfMonth = new Date(
@@ -286,6 +287,17 @@ export class TicketController {
         _count: true,
       });
 
+      // Project-specific archived statistics
+      const projectArchivedStats = await prisma.ticket.groupBy({
+        by: ["projectId"],
+        where: {
+          tenantId: req.tenantId,
+          isDeleted: false,
+          isArchived: true,
+        },
+        _count: true,
+      });
+
       const totalTickets = generalStats.reduce(
         (sum, stat) => sum + stat._count,
         0
@@ -303,21 +315,29 @@ export class TicketController {
         blocked: generalStats.find((s) => s.status === "blocked")?._count || 0,
       };
 
-      // Format projectStats as expected by the frontend: { id: projectId, statuses: [{ status, count }] }
+      // Format projectStats as expected by the frontend: { id: projectId, statuses: [{ status, count }], archivedCount: number }
       const projectStatsMap = new Map();
       projectWiseStats.forEach((stat) => {
         if (!projectStatsMap.has(stat.projectId)) {
-          projectStatsMap.set(stat.projectId, []);
+          projectStatsMap.set(stat.projectId, { statuses: [], archivedCount: 0 });
         }
-        projectStatsMap.get(stat.projectId).push({
+        projectStatsMap.get(stat.projectId).statuses.push({
           status: stat.status,
           count: stat._count,
         });
       });
 
-      const projectStats = Array.from(projectStatsMap.entries()).map(([id, statuses]) => ({
+      projectArchivedStats.forEach((stat) => {
+        if (!projectStatsMap.has(stat.projectId)) {
+          projectStatsMap.set(stat.projectId, { statuses: [], archivedCount: 0 });
+        }
+        projectStatsMap.get(stat.projectId).archivedCount = stat._count;
+      });
+
+      const projectStats = Array.from(projectStatsMap.entries()).map(([id, data]) => ({
         id,
-        statuses,
+        statuses: data.statuses,
+        archivedCount: data.archivedCount,
       }));
 
       const stats = {
@@ -436,6 +456,20 @@ export class TicketController {
         });
         if (!assignee) {
           throw new ValidationError("Assignee not found in this tenant");
+        }
+
+        const isProjectMember = await prisma.projectMember.findUnique({
+          where: {
+            projectId_userId: {
+              projectId,
+              userId: assigneeId
+            }
+          }
+        });
+
+        // Also allow if the assignee is the project manager
+        if (!isProjectMember && project.projectManagerId !== assigneeId) {
+          throw new ValidationError("Assignee must be a member of the project");
         }
       }
 
@@ -1699,6 +1733,33 @@ export class TicketController {
         throw new NotFoundError("Ticket not found in this tenant");
       }
 
+      // Validate assigneeId if it's being updated to a non-null value
+      if (mappedUpdates.assigneeId) {
+        const targetProjectId = mappedUpdates.projectId || existingTicket.projectId;
+        const assignee = await prisma.user.findFirst({
+          where: { id: mappedUpdates.assigneeId, tenantId: req.tenantId, isActive: true },
+        });
+        if (!assignee) {
+          throw new ValidationError("Assignee not found in this tenant");
+        }
+
+        const project = await prisma.project.findFirst({
+          where: { id: targetProjectId, tenantId: req.tenantId }
+        });
+
+        if (project) {
+          const isProjectMember = await prisma.projectMember.findUnique({
+            where: {
+              projectId_userId: { projectId: targetProjectId, userId: mappedUpdates.assigneeId }
+            }
+          });
+
+          if (!isProjectMember && project.projectManagerId !== mappedUpdates.assigneeId) {
+            throw new ValidationError("Assignee must be a member of the project");
+          }
+        }
+      }
+
       // Validate parentId if being updated - prevent nested subtasks
       if (mappedUpdates.parentId !== undefined && mappedUpdates.parentId !== null) {
         const newParentTicket = await prisma.ticket.findFirst({
@@ -2320,6 +2381,7 @@ export class TicketController {
           isArchived: false,
           archivedAt: null,
           archivedById: null,
+          sprintPlanId: null, // Ensure ticket returns to the backlog
           updatedAt: new Date(),
         },
       });

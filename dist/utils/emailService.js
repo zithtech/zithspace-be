@@ -350,9 +350,9 @@ This is an automated mail, please do not reply.`;
     }
     async sendEmail(options, tenantId) {
         try {
-            // ─── FLOW 1: Zoho OAuth Integration (if connected) ───────────────────────
-            // Check if a Zoho mail account is connected for this tenant via OAuth.
-            // If yes, use the ZohoMailProvider (OAuth token-based) — no passwords needed.
+            // ─── FLOW 1: Native OAuth Integration (Zoho, Google, Microsoft) ───────────────────────
+            // Check if a mail account is connected for this tenant via OAuth.
+            // If yes, use the respective MailProvider (OAuth token-based) — no passwords needed.
             if (tenantId) {
                 try {
                     let specificEmail = null;
@@ -367,24 +367,35 @@ This is an automated mail, please do not reply.`;
                     }
                     const whereClause = {
                         tenant_id: tenantId,
-                        provider: 'ZOHO',
+                        provider: { in: ['ZOHO', 'GOOGLE', 'MICROSOFT'] },
                         is_active: true,
                     };
                     if (specificEmail) {
                         whereClause.email = specificEmail;
                     }
-                    const zohoAccount = await database_1.prisma.mail_accounts.findFirst({
+                    const connectedAccount = await database_1.prisma.mail_accounts.findFirst({
                         where: whereClause
                     });
-                    if (zohoAccount) {
-                        console.log(`✅ Zoho Mail integration found: ${zohoAccount.email}. Sending via Zoho OAuth.`);
+                    if (connectedAccount) {
+                        console.log(`✅ ${connectedAccount.provider} Mail integration found: ${connectedAccount.email}. Sending via OAuth.`);
                         const { UnifiedAuthService } = await Promise.resolve().then(() => __importStar(require('../services/UnifiedAuthService')));
-                        const { ZohoMailProvider } = await Promise.resolve().then(() => __importStar(require('../services/mail/providers/ZohoMailProvider')));
-                        const accessToken = await UnifiedAuthService.getValidAccessToken(zohoAccount.user_id, 'ZOHO');
-                        const provider = new ZohoMailProvider();
+                        let providerInstance;
+                        if (connectedAccount.provider === 'ZOHO') {
+                            const { ZohoMailProvider } = await Promise.resolve().then(() => __importStar(require('../services/mail/providers/ZohoMailProvider')));
+                            providerInstance = new ZohoMailProvider();
+                        }
+                        else if (connectedAccount.provider === 'GOOGLE') {
+                            const { GoogleMailProvider } = await Promise.resolve().then(() => __importStar(require('../services/mail/providers/GoogleMailProvider')));
+                            providerInstance = new GoogleMailProvider();
+                        }
+                        else if (connectedAccount.provider === 'MICROSOFT') {
+                            const { MicrosoftMailProvider } = await Promise.resolve().then(() => __importStar(require('../services/mail/providers/MicrosoftMailProvider')));
+                            providerInstance = new MicrosoftMailProvider();
+                        }
+                        const accessToken = await UnifiedAuthService.getValidAccessToken(connectedAccount.user_id, connectedAccount.provider);
                         const fromName = extractedName || process.env.SMTP_FROM_NAME || 'ZithSpace';
-                        const fromAddress = zohoAccount.email;
-                        await provider.sendMessage(accessToken, {
+                        const fromAddress = connectedAccount.email;
+                        await providerInstance.sendMessage(accessToken, {
                             from: `"${fromName}" <${fromAddress}>`,
                             to: options.to ? options.to.split(',').map((e) => e.trim()) : [],
                             cc: options.cc ? options.cc.split(',').map((e) => e.trim()) : undefined,
@@ -392,17 +403,17 @@ This is an automated mail, please do not reply.`;
                             body: options.text,
                             htmlBody: options.html,
                         });
-                        console.log(`✅ Email sent via Zoho OAuth - From: ${fromAddress}, To: ${options.to}`);
+                        console.log(`✅ Email sent via ${connectedAccount.provider} OAuth - From: ${fromAddress}, To: ${options.to}`);
                         if (options.replyTo)
                             console.log(`📧 Reply-To: ${options.replyTo}`);
                         return true;
                     }
                     else {
-                        console.log(`ℹ️  No connected Zoho Mail integration found for tenant ${tenantId}. Falling back to system transporter.`);
+                        console.log(`ℹ️  No connected mail integration found for tenant ${tenantId}. Falling back to system transporter.`);
                     }
                 }
-                catch (zohoError) {
-                    console.warn(`⚠️ Zoho OAuth send failed, falling back to system transporter:`, zohoError);
+                catch (oauthError) {
+                    console.warn(`⚠️ Native OAuth send failed, falling back to system transporter:`, oauthError);
                 }
             }
             // ─── FLOW 2: System SMTP Transporter (fallback) ───────────────────────────
@@ -417,12 +428,28 @@ This is an automated mail, please do not reply.`;
                 console.log("---\n");
                 return true;
             }
-            // If options.from is provided, use it (e.g. employee email), otherwise fallback to system email
+            // Always use the authenticated system email for the 'From' address to prevent SMTP relay errors (553)
             const fromAddress = process.env.SYSTEM_EMAIL || process.env.SMTP_FROM_EMAIL || "noreply@zithtech.com";
             const fromName = process.env.SMTP_FROM_NAME || "ZithSpace";
+            let finalFrom = `"${fromName}" <${fromAddress}>`;
+            let finalReplyTo = options.replyTo;
+            if (options.from) {
+                // If a custom 'from' is provided, we extract the name and email
+                const emailMatch = options.from.match(/<([^>]+)>/);
+                const specificEmail = emailMatch ? emailMatch[1].trim() : options.from.trim();
+                const nameMatch = options.from.match(/^"([^"]+)"/);
+                const extractedName = nameMatch ? nameMatch[1].trim() : null;
+                // Display the custom name, but use the authenticated system email address
+                const displayFromName = extractedName ? `${extractedName}` : fromName;
+                finalFrom = `"${displayFromName}" <${fromAddress}>`;
+                // Set the custom email as the Reply-To address so responses go to the correct person
+                if (!finalReplyTo && specificEmail && specificEmail.includes('@')) {
+                    finalReplyTo = specificEmail;
+                }
+            }
             const mailOptions = {
-                from: options.from || `"${fromName}" <${fromAddress}>`,
-                replyTo: options.replyTo,
+                from: finalFrom,
+                replyTo: finalReplyTo,
                 to: options.to,
                 cc: options.cc,
                 subject: options.subject,

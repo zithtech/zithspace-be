@@ -58,6 +58,8 @@ const sprintReport_1 = __importDefault(require("@/routes/sprintReport"));
 const sprintReports_1 = __importDefault(require("@/routes/sprintReports"));
 const fixedHolidays_1 = __importDefault(require("@/routes/fixedHolidays"));
 const documenthub_1 = __importDefault(require("@/routes/documenthub"));
+const documentHubUploads_1 = __importDefault(require("@/routes/documentHubUploads"));
+const notionAuthRoutes_1 = __importDefault(require("@/routes/notionAuthRoutes"));
 const letters_routes_1 = __importDefault(require("@/routes/letters.routes"));
 const aiSettings_1 = __importDefault(require("@/routes/aiSettings"));
 const channels_1 = __importDefault(require("@/routes/channels"));
@@ -93,6 +95,7 @@ const vendor_1 = __importDefault(require("@/routes/vendor"));
 const timesheet_1 = __importDefault(require("@/routes/timesheet"));
 const timeTracking_1 = __importDefault(require("./routes/timeTracking"));
 const proxyRoutes_1 = __importDefault(require("@/routes/proxyRoutes"));
+const jira_routes_1 = __importDefault(require("@/modules/jira/jira.routes"));
 const companyGovernmentHoliday_routes_1 = __importDefault(require("@/routes/companyGovernmentHoliday.routes"));
 const leaveAdjustmentRoutes_1 = __importDefault(require("./routes/leaveAdjustmentRoutes"));
 const leaveAllocationRoutes_1 = __importDefault(require("@/routes/leaveAllocationRoutes"));
@@ -103,6 +106,7 @@ const departmentRoutes_1 = __importDefault(require("@/routes/departmentRoutes"))
 const subDepartmentRoutes_1 = __importDefault(require("@/routes/subDepartmentRoutes"));
 const positionRoutes_1 = __importDefault(require("@/routes/positionRoutes"));
 const calendar_1 = __importDefault(require("@/routes/calendar"));
+const linearRoutes_1 = __importDefault(require("@/routes/linearRoutes"));
 const mail_1 = __importDefault(require("@/routes/mail"));
 const notifications_1 = __importDefault(require("@/routes/notifications")); // Web push notification routes
 const employeeExit_routes_1 = __importDefault(require("@/routes/employeeExit.routes"));
@@ -299,6 +303,7 @@ app.use("/api/projects", projects_1.default);
 app.use("/api/tenants", tenants_1.default);
 app.use("/api/landing", landing_1.default);
 app.use("/api/calendar", calendar_1.default);
+app.use("/api/integrations/linear", linearRoutes_1.default);
 app.use("/api/squads", squad_1.default);
 app.use("/api/public/tickets", publicTickets_1.default);
 app.use("/api/public/document", publicDocuments_1.default);
@@ -365,6 +370,9 @@ app.use("/api/sub-departments", subDepartmentRoutes_1.default);
 app.use("/api/positions", positionRoutes_1.default);
 app.use("/api/employment-types", employmentTypeRoutes_1.default);
 app.use("/api/documenthub", documenthub_1.default);
+app.use("/api/v2/document-hubs", documentHubUploads_1.default);
+app.use("/api/v2/auth/notion", notionAuthRoutes_1.default);
+app.use("/api/v1/auth/notion", notionAuthRoutes_1.default); // Alias for v1
 app.use("/api/hrms/letters", letters_routes_1.default);
 app.use("/api/ai", aiSettings_1.default);
 app.use("/api/channels", channels_1.default);
@@ -405,6 +413,7 @@ app.use("/api/employee-work-details", employeeWorkDetailes_1.default);
 app.use("/api/employee-timelines", employeeTimeline_1.default);
 app.use("/api/onboarding", onboardingRoutes_1.default);
 app.use("/api/reimbursement-configurations", reimbursementConfig_1.default);
+app.use("/api/integrations/jira", jira_routes_1.default);
 app.use("/api/reimbursement-settings", reimbursementsettingsRoutes_1.default);
 // Reimbursements (with file upload)
 app.use("/api/reimbursements", reimbursementcreateRoutes_1.default);
@@ -570,18 +579,35 @@ const startServer = async () => {
         // Company Details tables (raw-SQL module, forward-only migrations)
         const { runCompanyDetailsMigrations } = require("@/modules/company-details/db/migrate");
         await runCompanyDetailsMigrations();
-        // Connect RabbitMQ & Start Workers
+        // Connect RabbitMQ & Start Workers (Calendar, Mail)
         try {
             await RabbitMQService_1.rabbitMQService.connect();
             await CalendarSyncWorker_1.CalendarSyncWorker.start();
             await MailSyncWorker_1.MailSyncWorker.start();
-            // await CentralMailWorker.start();
             console.log("🚀 RabbitMQ connected, Calendar & Mail Sync Workers started");
         }
         catch (mqError) {
             console.error("❌ RabbitMQ initialization failed:", mqError.message);
             // In a SaaS environment, we log and continue,
             // as the app might still handle HTTP requests while MQ recovers.
+        }
+        // Initialize Jira Migration Worker (BullMQ / Redis)
+        try {
+            const { JiraMigrationWorkers } = require("@/modules/jira/jira.migration.workers");
+            new JiraMigrationWorkers();
+            console.log("🚀 Redis connected, Jira Migration BullMQ Workers started");
+        }
+        catch (bullmqError) {
+            console.error("❌ Jira BullMQ initialization failed:", bullmqError.message);
+        }
+        // Initialize Linear Migration Worker (BullMQ / Redis)
+        try {
+            const { LinearMigrationWorkers } = require("@/modules/linear/linear.migration.workers");
+            new LinearMigrationWorkers();
+            console.log("🚀 Linear Migration BullMQ Workers started");
+        }
+        catch (bullmqError) {
+            console.error("❌ Linear BullMQ initialization failed:", bullmqError.message);
         }
         // Leave 2.0 accrual scheduler + worker (no-op unless LEAVE_ACCRUAL_ENABLED=true)
         const { initLeaveAccrual } = require("@/modules/leave-v2/jobs");

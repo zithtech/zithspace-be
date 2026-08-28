@@ -3,6 +3,15 @@ import { AuthRequest, ApiResponse, ValidationError } from '../types';
 import { LetterTemplateService } from '../services/LetterTemplateService';
 import { AIService } from '../services/aiService';
 import { uploadImageToR2 } from '../utils/r2Client';
+import {
+  recordTransaction,
+  Section,
+  Module,
+  Page,
+  Action,
+  EntityType,
+  diffShallow,
+} from '../utils/transactionHistory';
 
 export class LetterTemplateController {
   static async getTemplates(req: AuthRequest, res: Response): Promise<void> {
@@ -79,6 +88,19 @@ export class LetterTemplateController {
         req.user.id,
         ipAddress
       );
+
+      recordTransaction({
+        req: req as any,
+        section: Section.HR,
+        module: Module.DOCS_AND_LETTERS,
+        page: Page.LETTER_TEMPLATES,
+        action: Action.CREATE,
+        actionLabel: `Created letter template "${template.templateName}"`,
+        entityType: EntityType.LETTER_TEMPLATE,
+        entityId: template.id,
+        entityLabel: template.templateName,
+        afterData: { status: template.status, isGlobal: template.isGlobal },
+      });
 
       res.status(201).json({
         success: true,
@@ -158,6 +180,19 @@ export class LetterTemplateController {
         ipAddress
       );
 
+      recordTransaction({
+        req: req as any,
+        section: Section.HR,
+        module: Module.DOCS_AND_LETTERS,
+        page: Page.LETTER_TEMPLATES,
+        action: Action.CREATE,
+        actionLabel: `Generated letter template "${template.templateName}" via AI`,
+        entityType: EntityType.LETTER_TEMPLATE,
+        entityId: template.id,
+        entityLabel: template.templateName,
+        afterData: { status: template.status, categoryId: template.categoryId },
+      });
+
       res.status(201).json({
         success: true,
         data: template,
@@ -193,6 +228,19 @@ export class LetterTemplateController {
         ipAddress
       );
 
+      recordTransaction({
+        req: req as any,
+        section: Section.HR,
+        module: Module.DOCS_AND_LETTERS,
+        page: Page.LETTER_TEMPLATES,
+        action: Action.UPDATE,
+        actionLabel: `Updated letter template "${template.templateName}"`,
+        entityType: EntityType.LETTER_TEMPLATE,
+        entityId: template.id,
+        entityLabel: template.templateName,
+        afterData: { status: template.status, isGlobal: template.isGlobal },
+      });
+
       res.status(200).json({
         success: true,
         data: template,
@@ -225,6 +273,18 @@ export class LetterTemplateController {
         ipAddress
       );
 
+      recordTransaction({
+        req: req as any,
+        section: Section.HR,
+        module: Module.DOCS_AND_LETTERS,
+        page: Page.LETTER_TEMPLATES,
+        action: Action.CREATE,
+        actionLabel: `Duplicated letter template to "${template.templateName}"`,
+        entityType: EntityType.LETTER_TEMPLATE,
+        entityId: template.id,
+        entityLabel: template.templateName,
+      });
+
       res.status(201).json({
         success: true,
         data: template,
@@ -256,6 +316,18 @@ export class LetterTemplateController {
         ipAddress
       );
 
+      recordTransaction({
+        req: req as any,
+        section: Section.HR,
+        module: Module.DOCS_AND_LETTERS,
+        page: Page.LETTER_TEMPLATES,
+        action: Action.UPDATE,
+        actionLabel: `Restored letter template "${template.templateName}" to version ${versionNumber}`,
+        entityType: EntityType.LETTER_TEMPLATE,
+        entityId: template.id,
+        entityLabel: template.templateName,
+      });
+
       res.status(200).json({
         success: true,
         data: template,
@@ -277,7 +349,24 @@ export class LetterTemplateController {
 
       const { id } = req.params;
       const ipAddress = req.ip || req.socket.remoteAddress || undefined;
+
+      const existing = await LetterTemplateService.getTemplateById(req.tenantId, id).catch(() => null);
+
       await LetterTemplateService.deleteTemplate(req.tenantId, id, req.user.id, ipAddress);
+
+      if (existing) {
+        recordTransaction({
+          req: req as any,
+          section: Section.HR,
+          module: Module.DOCS_AND_LETTERS,
+          page: Page.LETTER_TEMPLATES,
+          action: Action.DELETE,
+          actionLabel: `Deleted letter template "${existing.templateName}"`,
+          entityType: EntityType.LETTER_TEMPLATE,
+          entityId: existing.id,
+          entityLabel: existing.templateName,
+        });
+      }
 
       res.status(200).json({
         success: true,
