@@ -239,109 +239,6 @@ export const requireTenant = (
 };
 
 /**
- * Middleware to check tenant plan limits
- */
-export const checkTenantLimits = (
-  limitType: "users" | "projects" | "storage"
-) => {
-  return async (
-    req: AuthRequest,
-    res: Response,
-    next: NextFunction
-  ): Promise<void> => {
-    try {
-      if (!req.tenant) {
-        throw new TenantError("Tenant context required");
-      }
-
-      const tenant = req.tenant;
-
-      switch (limitType) {
-        case "users":
-          if (req.method === "POST" && req.path.includes("/users")) {
-            const currentUserCount = await tenantAwarePrisma.withTenant(
-              tenant.id,
-              async (client) => {
-                return await client.user.count({
-                  where: {
-                    tenantId: tenant.id,
-                    isActive: true,
-                  },
-                });
-              }
-            );
-
-            if (currentUserCount >= tenant.maxUsers) {
-              res.status(403).json({
-                success: false,
-                error: `User limit reached. Maximum ${tenant.maxUsers} users allowed for ${tenant.planType} plan.`,
-                code: "TENANT_LIMIT_EXCEEDED",
-              });
-              return;
-            }
-          }
-          break;
-
-        case "projects":
-          // Add project limits based on plan type
-          if (req.method === "POST" && req.path.includes("/projects")) {
-            const maxProjects = getMaxProjectsForPlan(tenant.planType);
-            const currentProjectCount = await tenantAwarePrisma.withTenant(
-              tenant.id,
-              async (client) => {
-                return await client.project.count({
-                  where: {
-                    tenantId: tenant.id,
-                  },
-                });
-              }
-            );
-
-            if (currentProjectCount >= maxProjects) {
-              res.status(403).json({
-                success: false,
-                error: `Project limit reached. Maximum ${maxProjects} projects allowed for ${tenant.planType} plan.`,
-                code: "TENANT_LIMIT_EXCEEDED",
-              });
-              return;
-            }
-          }
-          break;
-
-        case "storage":
-          // Implement storage limits if needed
-          break;
-      }
-
-      next();
-    } catch (error) {
-      console.error("Tenant limit check error:", error);
-      res.status(500).json({
-        success: false,
-        error: "Failed to check tenant limits",
-        code: "TENANT_LIMIT_CHECK_ERROR",
-      });
-    }
-  };
-};
-
-/**
- * Get maximum projects allowed for a plan type
- */
-function getMaxProjectsForPlan(planType: string): number {
-  switch (planType) {
-    case "basic":
-      return 3;
-    case "pro":
-      return 10;
-    case "enterprise":
-      return 100;
-    default:
-      return 3;
-  }
-}
-
-/**
  * Middleware to validate tenant access for cross-tenant operations
  */
 export const validateTenantAccess = (
@@ -366,6 +263,5 @@ export default {
   resolveTenant,
   optionalTenantContext,
   requireTenant,
-  checkTenantLimits,
   validateTenantAccess,
 };

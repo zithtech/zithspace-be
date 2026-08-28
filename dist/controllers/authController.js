@@ -46,6 +46,8 @@ const jwt_1 = require("@/utils/jwt");
 const rbac_service_1 = require("@/modules/rbac/rbac.service");
 const subscriptions_1 = require("@/modules/subscriptions");
 const companyDetailsService = __importStar(require("@/modules/company-details/services/companyDetails.service"));
+const entitlementsService = __importStar(require("@/modules/entitlements/entitlements.service"));
+const brand_1 = require("@/config/brand");
 const transactionHistory_1 = require("../utils/transactionHistory");
 class AuthController {
     /**
@@ -178,7 +180,24 @@ class AuthController {
                 },
                 select: { id: true, name: true, subdomain: true },
             });
-            if (!tenant) {
+            // Same reasoning as GET /api/tenants/resolve: unauthenticated, and it
+            // hands back a real company name. It must not confirm that a workspace
+            // exists on the brand the caller is NOT asking through, so the 404 below
+            // is identical for "no such workspace" and "exists on the other product".
+            let entitled = true;
+            const product = (0, brand_1.productFromRequest)(req);
+            if (tenant && product) {
+                try {
+                    entitled = await entitlementsService.hasProduct(tenant.id, product);
+                }
+                catch (err) {
+                    // Entitlements table may not exist yet — honour the same kill switch
+                    // the middleware uses rather than making every workspace unresolvable.
+                    console.error("[auth/resolve-tenant] entitlement check failed:", err);
+                    entitled = !entitlementsService.ENFORCING;
+                }
+            }
+            if (!tenant || !entitled) {
                 res.status(404).json({
                     success: false,
                     error: "Workspace not found or inactive",
@@ -359,7 +378,10 @@ class AuthController {
             const permSet = await rbac_service_1.RBACService.getUserPermissions(user.id, user.tenantId, user.role);
             // Fetch subscription features and build dynamic navigation
             await subscriptions_1.subscriptionService.invalidateTenantSubscription(user.tenantId);
-            const subscriptionFeatures = await subscriptions_1.featureResolverService.getTenantFeatures(user.tenantId);
+            // Scope to the brand door this request came through, so a tenant holding
+            // both subscriptions gets the shell they actually asked for.
+            const requestProduct = (0, brand_1.productFromRequest)(req);
+            const subscriptionFeatures = await subscriptions_1.featureResolverService.getTenantFeatures(user.tenantId, requestProduct ? requestProduct.toUpperCase() : undefined);
             const navigation = await subscriptions_1.navigationService.buildNavigation(permSet, subscriptionFeatures);
             // Return user data and access token
             const loginResponse = {
@@ -628,7 +650,10 @@ class AuthController {
             const permSet = await rbac_service_1.RBACService.getUserPermissions(user.id, user.tenantId, user.role);
             // Fetch subscription features and build dynamic navigation
             await subscriptions_1.subscriptionService.invalidateTenantSubscription(user.tenantId);
-            const subscriptionFeatures = await subscriptions_1.featureResolverService.getTenantFeatures(user.tenantId);
+            // Scope to the brand door this request came through, so a tenant holding
+            // both subscriptions gets the shell they actually asked for.
+            const requestProduct = (0, brand_1.productFromRequest)(req);
+            const subscriptionFeatures = await subscriptions_1.featureResolverService.getTenantFeatures(user.tenantId, requestProduct ? requestProduct.toUpperCase() : undefined);
             const navigation = await subscriptions_1.navigationService.buildNavigation(permSet, subscriptionFeatures);
             // Company details live in the raw-SQL company-details module, not Prisma.
             // A tenant that has not filled the form in yet simply gets null.
@@ -637,6 +662,16 @@ class AuthController {
                 .catch((err) => {
                 console.error("Failed to load company details for profile:", err);
                 return null;
+            });
+            // Which products this tenant holds. NOT what they can use — that is
+            // `subscriptionFeatures` above, resolved from the admin control plane and
+            // scoped to the brand door this request came through. `products` is here
+            // so the client can tell which door it is on, nothing more.
+            const products = await entitlementsService
+                .getProducts(user.tenantId)
+                .catch((err) => {
+                console.error("Failed to load entitlements for profile:", err);
+                return [];
             });
             res.status(200).json({
                 success: true,
@@ -667,6 +702,7 @@ class AuthController {
                     createdAt: user.createdAt,
                     updatedAt: user.updatedAt,
                     permissions: Array.from(permSet),
+                    products,
                     subscriptionFeatures,
                     navigation,
                 },
@@ -862,7 +898,10 @@ class AuthController {
             const permSet = await rbac_service_1.RBACService.getUserPermissions(user.id, user.tenantId, user.role);
             // Fetch subscription features and build dynamic navigation
             await subscriptions_1.subscriptionService.invalidateTenantSubscription(user.tenantId);
-            const subscriptionFeatures = await subscriptions_1.featureResolverService.getTenantFeatures(user.tenantId);
+            // Scope to the brand door this request came through, so a tenant holding
+            // both subscriptions gets the shell they actually asked for.
+            const requestProduct = (0, brand_1.productFromRequest)(req);
+            const subscriptionFeatures = await subscriptions_1.featureResolverService.getTenantFeatures(user.tenantId, requestProduct ? requestProduct.toUpperCase() : undefined);
             const navigation = await subscriptions_1.navigationService.buildNavigation(permSet, subscriptionFeatures);
             res.status(200).json({
                 success: true,
@@ -1017,7 +1056,10 @@ class AuthController {
             const permSet = await rbac_service_1.RBACService.getUserPermissions(user.id, user.tenantId, user.role);
             // Fetch subscription features and build dynamic navigation
             await subscriptions_1.subscriptionService.invalidateTenantSubscription(user.tenantId);
-            const subscriptionFeatures = await subscriptions_1.featureResolverService.getTenantFeatures(user.tenantId);
+            // Scope to the brand door this request came through, so a tenant holding
+            // both subscriptions gets the shell they actually asked for.
+            const requestProduct = (0, brand_1.productFromRequest)(req);
+            const subscriptionFeatures = await subscriptions_1.featureResolverService.getTenantFeatures(user.tenantId, requestProduct ? requestProduct.toUpperCase() : undefined);
             const navigation = await subscriptions_1.navigationService.buildNavigation(permSet, subscriptionFeatures);
             // Return user data and access token
             const loginResponse = {
@@ -1193,7 +1235,10 @@ class AuthController {
             const permSet = await rbac_service_1.RBACService.getUserPermissions(user.id, user.tenantId, user.role);
             // Fetch subscription features and build dynamic navigation
             await subscriptions_1.subscriptionService.invalidateTenantSubscription(user.tenantId);
-            const subscriptionFeatures = await subscriptions_1.featureResolverService.getTenantFeatures(user.tenantId);
+            // Scope to the brand door this request came through, so a tenant holding
+            // both subscriptions gets the shell they actually asked for.
+            const requestProduct = (0, brand_1.productFromRequest)(req);
+            const subscriptionFeatures = await subscriptions_1.featureResolverService.getTenantFeatures(user.tenantId, requestProduct ? requestProduct.toUpperCase() : undefined);
             const navigation = await subscriptions_1.navigationService.buildNavigation(permSet, subscriptionFeatures);
             // Return user data and access token
             const loginResponse = {
@@ -1303,29 +1348,15 @@ class AuthController {
                     used: false
                 }
             });
-            // Send email
-            let frontendUrl = process.env.FRONTEND_URL || "http://localhost:3001";
-            if (user.tenant?.subdomain) {
-                try {
-                    const urlObj = new URL(frontendUrl);
-                    const parts = urlObj.hostname.split('.');
-                    if (parts[0] === 'app' || parts[0] === 'www') {
-                        parts[0] = user.tenant.subdomain;
-                        urlObj.hostname = parts.join('.');
-                    }
-                    else if (parts[0] === 'localhost' || parts[0] === '127') {
-                        urlObj.hostname = `${user.tenant.subdomain}.${urlObj.hostname}`;
-                    }
-                    else {
-                        parts.unshift(user.tenant.subdomain);
-                        urlObj.hostname = parts.join('.');
-                    }
-                    frontendUrl = urlObj.toString().replace(/\/$/, '');
-                }
-                catch (e) {
-                    // Fallback if URL parsing fails
-                }
-            }
+            // Send email.
+            //
+            // The reset link has to land on the brand the user was actually looking
+            // at when they asked — someone who hit "forgot password" on
+            // acme.testiez.com and receives a zukvo.com link will assume it is
+            // phishing and not click it. brandForRequest() reads the Origin; the
+            // subdomain still comes from the tenant so the link reaches their own
+            // workspace either way.
+            const frontendUrl = (0, brand_1.tenantOrigin)(user.tenant?.subdomain, (0, brand_1.brandForRequest)(req));
             const resetLink = `${frontendUrl}/reset-password?token=${rawToken}`;
             const emailService = new emailService_1.EmailService();
             await emailService.sendPasswordResetEmail({

@@ -12,6 +12,7 @@ if (process.env.NODE_ENV !== "development") {
 import express, { Request, Response } from "express";
 import cors from "cors";
 import morgan from "morgan";
+import { moduleEntitlementGate } from "@/modules/entitlements/entitlements.middleware";
 import compression from "compression";
 import cookieParser from "cookie-parser";
 import rateLimit from "express-rate-limit";
@@ -180,7 +181,11 @@ const allowedOrigins = [
   "http://localhost:3000", // Local development
   "http://localhost:3005", // Local development for internal app
   /^http:\/\/localhost:\d+$/, // Allow any localhost port (e.g. Vite 5173)
-  /^http:\/\/[^.]+\.localhost(:\d+)?$/, // *.localhost subdomains (dev)
+  // *.localhost subdomains (dev). MULTI-label on purpose: the dev host for a
+  // tenant on the Testiez surface is {tenant}.testiez.localhost, which is two
+  // labels before `.localhost`. A single-label pattern ([^.]+) matches
+  // kabs.localhost but silently denies kabs.testiez.localhost.
+  /^http:\/\/([a-z0-9-]+\.)+localhost(:\d+)?$/i,
   "https://zithmi.vercel.app", // Vercel production URL
   "https://www.zithtech.com",
   "https://zithspace.com",
@@ -189,6 +194,10 @@ const allowedOrigins = [
   /\.zithtech\.com$/, // allow any subdomain like dinesh.zithtech.com
   "https://zukvo.com",
   /\.zukvo\.com$/, // allow any tenant subdomain like zithmi.zukvo.com
+  // Testiez is the same app and the same API on a second brand domain, with the
+  // same {tenant}.{domain} shape. See src/config/brand.ts.
+  "https://testiez.com",
+  /\.testiez\.com$/, // allow any tenant subdomain like zithmi.testiez.com
   /^chrome-extension:\/\/[a-z]{32}$/, // Allow Chrome extensions
 ];
 
@@ -313,6 +322,12 @@ app.use((req: any, res: any, next: any) => {
   };
   next();
 });
+
+// Entitlement gate for whole modules a product may not include (HRMS, Finance,
+// Recruitment, My Hub). Mounted ONCE here, ahead of every route, so no router
+// can be missed — see MODULE_PREFIX_CAPABILITIES in the entitlements module for
+// the prefix list and why it lives in one place.
+app.use(moduleEntitlementGate);
 
 // API routes
 app.use("/api/leave-adjustments", leaveAdjustmentRoutes);

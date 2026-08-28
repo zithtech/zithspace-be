@@ -82,8 +82,8 @@ export class ImplementationPartnerController {
 
             const { id } = req.params;
             const partner = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
-                return await (prisma.implementationBasicInformation.findUnique as any)({
-                    where: { id },
+                return await (prisma.implementationBasicInformation.findFirst as any)({
+                    where: { id, tenantId: req.tenantId! },
                     include: {
                         contactPersons: true,
                         businessDetails: true,
@@ -236,6 +236,18 @@ export class ImplementationPartnerController {
             const data: UpdateImplementationPartnerData = req.body;
             const { contactPersons, businessDetails, relations, documents, ...basicInfo } = data;
 
+            // Ownership guard: ensure the partner belongs to this tenant before any mutation
+            const owned = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                return await prisma.implementationBasicInformation.findFirst({
+                    where: { id, tenantId: req.tenantId! },
+                    select: { id: true }
+                });
+            });
+            if (!owned) {
+                res.status(404).json({ success: false, error: 'Implementation partner not found' } as ApiResponse);
+                return;
+            }
+
             await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
                 return await prisma.$transaction(async (tx) => {
                     // 1. Update Basic Information
@@ -353,6 +365,18 @@ export class ImplementationPartnerController {
 
             const { id } = req.params;
 
+            // Ownership guard: ensure the partner belongs to this tenant before any mutation
+            const owned = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                return await prisma.implementationBasicInformation.findFirst({
+                    where: { id, tenantId: req.tenantId! },
+                    select: { id: true }
+                });
+            });
+            if (!owned) {
+                res.status(404).json({ success: false, error: 'Implementation partner not found' } as ApiResponse);
+                return;
+            }
+
             await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
                 return await prisma.$transaction(async (tx) => {
                     // Delete related records first (cascade should ideally handle this, but explicit is safer)
@@ -398,6 +422,18 @@ export class ImplementationPartnerController {
             const { id } = req.params;
             const contactData = req.body;
 
+            // Ownership guard: ensure the parent partner belongs to this tenant
+            const owned = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                return await prisma.implementationBasicInformation.findFirst({
+                    where: { id, tenantId: req.tenantId! },
+                    select: { id: true }
+                });
+            });
+            if (!owned) {
+                res.status(404).json({ success: false, error: 'Implementation partner not found' } as ApiResponse);
+                return;
+            }
+
             const newContact = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
                 return await prisma.implementationContactPerson.create({
                     data: {
@@ -428,11 +464,30 @@ export class ImplementationPartnerController {
 
             const { contactId } = req.params;
 
-            await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+            const result = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                // Ownership guard: confirm the contact's parent partner belongs to this tenant
+                const contact = await prisma.implementationContactPerson.findFirst({
+                    where: { id: contactId },
+                    select: { implementationId: true }
+                });
+                if (!contact) return { notFound: true };
+
+                const owned = await prisma.implementationBasicInformation.findFirst({
+                    where: { id: contact.implementationId, tenantId: req.tenantId! },
+                    select: { id: true }
+                });
+                if (!owned) return { notFound: true };
+
                 await prisma.implementationContactPerson.delete({
                     where: { id: contactId }
                 });
+                return { notFound: false };
             });
+
+            if (result.notFound) {
+                res.status(404).json({ success: false, error: 'Contact not found' } as ApiResponse);
+                return;
+            }
 
             res.status(200).json({ success: true, message: 'Contact deleted successfully' } as ApiResponse);
         } catch (error) {
@@ -453,12 +508,20 @@ export class ImplementationPartnerController {
 
             const { documentId } = req.params;
 
-            await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
-                const document = await prisma.implementationDocument.findUnique({
+            const result = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                const document = await prisma.implementationDocument.findFirst({
                     where: { id: documentId }
                 });
+                if (!document) return { notFound: true };
 
-                if (document?.documentUrl) {
+                // Ownership guard: confirm the document's parent partner belongs to this tenant
+                const owned = await prisma.implementationBasicInformation.findFirst({
+                    where: { id: document.implementationId, tenantId: req.tenantId! },
+                    select: { id: true }
+                });
+                if (!owned) return { notFound: true };
+
+                if (document.documentUrl) {
                     try {
                         await deleteFileFromR2(document.documentUrl, req.tenantId!);
                     } catch (error) {
@@ -469,7 +532,13 @@ export class ImplementationPartnerController {
                 await prisma.implementationDocument.delete({
                     where: { id: documentId }
                 });
+                return { notFound: false };
             });
+
+            if (result.notFound) {
+                res.status(404).json({ success: false, error: 'Document not found' } as ApiResponse);
+                return;
+            }
 
             res.status(200).json({ success: true, message: 'Document deleted successfully' } as ApiResponse);
         } catch (error) {
@@ -493,6 +562,18 @@ export class ImplementationPartnerController {
 
             if (!base64 || !fileName) {
                 res.status(400).json({ success: false, error: 'File data and name are required' } as ApiResponse);
+                return;
+            }
+
+            // Ownership guard: ensure the parent partner belongs to this tenant before uploading
+            const owned = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                return await prisma.implementationBasicInformation.findFirst({
+                    where: { id, tenantId: req.tenantId! },
+                    select: { id: true }
+                });
+            });
+            if (!owned) {
+                res.status(404).json({ success: false, error: 'Implementation partner not found' } as ApiResponse);
                 return;
             }
 
@@ -537,8 +618,8 @@ export class ImplementationPartnerController {
             const { id } = req.params;
 
             const clients = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
-                const partner = (await prisma.implementationBasicInformation.findUnique({
-                    where: { id },
+                const partner = (await prisma.implementationBasicInformation.findFirst({
+                    where: { id, tenantId: req.tenantId! },
                     select: { clientIds: true } as any
                 })) as any;
 
@@ -583,8 +664,8 @@ export class ImplementationPartnerController {
             await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
                 return await prisma.$transaction(async (tx) => {
                     // 1. Update Implementation Partner's clientIds array
-                    const partner = (await tx.implementationBasicInformation.findUnique({
-                        where: { id },
+                    const partner = (await tx.implementationBasicInformation.findFirst({
+                        where: { id, tenantId: req.tenantId! },
                         select: { clientIds: true } as any
                     })) as any;
 
@@ -603,8 +684,8 @@ export class ImplementationPartnerController {
                     }
 
                     // 2. Update Recruitment Client's implementationPartnerId
-                    const client = (await tx.recruitmentClientBasicInformation.findUnique({
-                        where: { id: clientId },
+                    const client = (await tx.recruitmentClientBasicInformation.findFirst({
+                        where: { id: clientId, tenantId: req.tenantId! },
                         select: { implementationPartnerId: true } as any
                     })) as any;
 
@@ -650,8 +731,8 @@ export class ImplementationPartnerController {
             await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
                 return await prisma.$transaction(async (tx) => {
                     // 1. Update Implementation Partner's clientIds array
-                    const partner = (await tx.implementationBasicInformation.findUnique({
-                        where: { id },
+                    const partner = (await tx.implementationBasicInformation.findFirst({
+                        where: { id, tenantId: req.tenantId! },
                         select: { clientIds: true } as any
                     })) as any;
 
@@ -667,8 +748,8 @@ export class ImplementationPartnerController {
                     });
 
                     // 2. Update Recruitment Client's implementationPartnerId
-                    const client = (await tx.recruitmentClientBasicInformation.findUnique({
-                        where: { id: clientId },
+                    const client = (await tx.recruitmentClientBasicInformation.findFirst({
+                        where: { id: clientId, tenantId: req.tenantId! },
                         select: { implementationPartnerId: true } as any
                     })) as any;
 
@@ -706,8 +787,8 @@ export class ImplementationPartnerController {
             const { id } = req.params;
 
             const vendors = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma: any) => {
-                const partner = (await prisma.implementationBasicInformation.findUnique({
-                    where: { id },
+                const partner = (await prisma.implementationBasicInformation.findFirst({
+                    where: { id, tenantId: req.tenantId! },
                     select: { vendorIds: true } as any
                 })) as any;
 
@@ -751,8 +832,8 @@ export class ImplementationPartnerController {
 
             await tenantAwarePrisma.withTenant(req.tenantId, async (prisma: any) => {
                 return await prisma.$transaction(async (tx: any) => {
-                    const partner = (await tx.implementationBasicInformation.findUnique({
-                        where: { id },
+                    const partner = (await tx.implementationBasicInformation.findFirst({
+                        where: { id, tenantId: req.tenantId! },
                         select: { vendorIds: true } as any
                     })) as any;
 
@@ -771,8 +852,8 @@ export class ImplementationPartnerController {
                     }
 
                     // 2. Update Vendor's implementationIds array
-                    const vendor = (await tx.vendorBasicInformation.findUnique({
-                        where: { id: vendorId },
+                    const vendor = (await tx.vendorBasicInformation.findFirst({
+                        where: { id: vendorId, tenantId: req.tenantId! },
                         select: { implementationIds: true } as any
                     })) as any;
 
@@ -817,8 +898,8 @@ export class ImplementationPartnerController {
 
             await tenantAwarePrisma.withTenant(req.tenantId, async (prisma: any) => {
                 return await prisma.$transaction(async (tx: any) => {
-                    const partner = (await tx.implementationBasicInformation.findUnique({
-                        where: { id },
+                    const partner = (await tx.implementationBasicInformation.findFirst({
+                        where: { id, tenantId: req.tenantId! },
                         select: { vendorIds: true } as any
                     })) as any;
 
@@ -835,8 +916,8 @@ export class ImplementationPartnerController {
                     });
 
                     // 2. Update Vendor's implementationIds array
-                    const vendor = (await tx.vendorBasicInformation.findUnique({
-                        where: { id: vendorId },
+                    const vendor = (await tx.vendorBasicInformation.findFirst({
+                        where: { id: vendorId, tenantId: req.tenantId! },
                         select: { implementationIds: true } as any
                     })) as any;
 

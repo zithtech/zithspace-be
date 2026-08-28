@@ -5,6 +5,8 @@ import { JWTUtils } from "@/utils/jwt";
 import TenantLogger from "@/utils/tenantLogger";
 import pool from "@/config/dbpool";
 import { RBACService } from "@/modules/rbac/rbac.service";
+import { ENFORCING, hasProduct } from "@/modules/entitlements/entitlements.service";
+import { productFromRequest } from "@/config/brand";
 import {
   AuthRequest,
   ApiResponse,
@@ -309,7 +311,33 @@ export class TenantController {
       );
 
       const tenant = result.rows[0];
-      if (!tenant) {
+
+      // Scope the answer to the brand being asked through.
+      //
+      // This endpoint is unauthenticated and returns a real company name, so
+      // without this check it is an existence oracle across BOTH products:
+      // anyone could hit bigcorp.testiez.com and learn that BigCorp is a Zukvo
+      // customer, plus their registered name. Two brands sharing one tenant
+      // table makes that a competitive leak, not just an information one.
+      //
+      // The 404 below is deliberately identical to the not-found case — the
+      // caller must not be able to tell "no such tenant" from "exists on the
+      // other product".
+      let entitled = true;
+      const product = productFromRequest(req);
+      if (tenant && product) {
+        try {
+          entitled = await hasProduct(tenant.id, product);
+        } catch (err) {
+          // Entitlements table may not exist yet (deployed ahead of the
+          // migration). Honour the same kill switch the middleware uses rather
+          // than making every workspace unresolvable.
+          console.error("[tenants/resolve] entitlement check failed:", err);
+          entitled = !ENFORCING;
+        }
+      }
+
+      if (!tenant || !entitled) {
         res.status(404).json({
           success: false,
           error: "Tenant not found",

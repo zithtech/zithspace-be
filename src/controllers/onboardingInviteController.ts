@@ -4,6 +4,7 @@ import crypto from "crypto";
 import { AuthRequest } from "@/types";
 import { withTenant, onboardingPool } from "@/db/onboardingPool";
 import { emailService } from "@/utils/emailService";
+import { brandForRequest, tenantOrigin } from "@/config/brand";
 import { createPersonalDetails, getPersonalDetails, updatePersonalDetails } from "./createEmployeeDetailes";
 import { getBankPayrollDetails, updateBankPayrollDetails } from "./bankAndPayrolllController";
 import { getEmployeeHistory, createEmployeeHistory, deleteAllEmployeeHistory } from "./employeeHistoryController";
@@ -33,19 +34,15 @@ function actorReq(tenantId: string, userId: string, body: any): AuthRequest {
  * own host — not a single hardcoded FRONTEND_URL (which would send every new
  * hire to one tenant's domain). Falls back to FRONTEND_URL for local dev
  * where there is no subdomain-based routing.
+ *
+ * The BRAND half matters just as much as the subdomain: an invite sent from
+ * the Testiez surface has to land on {slug}.testiez.com. Sending a Testiez hire
+ * to zukvo.com tells them about a product nobody sold them. `req` is passed so
+ * the brand comes from the origin the inviter was actually looking at — see
+ * config/brand.ts for the resolution order.
  */
-function frontendBase(subdomain?: string | null): string {
-  const isDev = !process.env.NODE_ENV || process.env.NODE_ENV === "development";
-  
-  if (isDev) {
-    return process.env.FRONTEND_URL || "http://localhost:3000";
-  }
-
-  if (subdomain) {
-    const baseDomain = process.env.TENANT_BASE_DOMAIN || "zukvo.com";
-    return `https://${subdomain}.${baseDomain}`;
-  }
-  return process.env.FRONTEND_URL || "https://zukvo.com";
+function frontendBase(subdomain: string | null | undefined, req?: AuthRequest): string {
+  return tenantOrigin(subdomain, brandForRequest(req));
 }
 
 /** Branded HTML for the onboarding-invite email. */
@@ -174,7 +171,7 @@ export async function createInvite(req: AuthRequest, res: Response) {
       return { employee, invite: invite.rows[0] };
     });
 
-    const link = `${frontendBase(req.tenant?.subdomain)}/onboard/${token}`;
+    const link = `${frontendBase(req.tenant?.subdomain, req)}/onboard/${token}`;
 
     // Email the link to the new hire at BOTH their work and personal addresses.
     // Best-effort: a mail failure must not fail invite creation.
@@ -278,7 +275,7 @@ export async function regenerateInvite(req: AuthRequest, res: Response) {
 
     if (!result) return res.status(404).json({ success: false, error: "Invite not found" });
 
-    const link = `${frontendBase(req.tenant?.subdomain)}/onboard/${token}`;
+    const link = `${frontendBase(req.tenant?.subdomain, req)}/onboard/${token}`;
 
     const { first_name, work_email, personal_email } = result.inviteData;
     const recipients = [work_email, personal_email].filter(Boolean) as string[];
