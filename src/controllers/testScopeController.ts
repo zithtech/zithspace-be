@@ -308,12 +308,11 @@ export const updateTestScope = async (req: Request, res: Response) => {
       });
     }
 
-    res.status(200).json({ success: true, data: updatedScope });
     // Modules added while editing join the workspace's module list too.
     await registerModuleNames(tenantId, details?.modules, details?.product).catch(err =>
       console.error('Failed to register scope modules:', err));
 
-    res.status(200).json({ success: true, data: rows[0] });
+    res.status(200).json({ success: true, data: updatedScope });
   } catch (error) {
     console.error('Error updating test scope:', error);
     res.status(500).json({ success: false, error: 'Internal Server Error' });
@@ -703,6 +702,13 @@ export const getTestScopesStats = async (req: Request, res: Response) => {
     if (product) {
       query += ` AND LOWER(details->>'product') = LOWER($${paramIndex})`;
       params.push(product);
+      paramIndex++;
+    }
+
+    const qa_owner = String(req.query.qa_owner ?? '').trim();
+    if (qa_owner) {
+      query += ` AND qa_owner = $${paramIndex}`;
+      params.push(qa_owner);
       paramIndex++;
     }
 
