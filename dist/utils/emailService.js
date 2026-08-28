@@ -41,6 +41,7 @@ const nodemailer_1 = __importDefault(require("nodemailer"));
 const mailConfiguration_model_1 = require("../models/mailConfiguration.model");
 const encryption_1 = require("../utils/encryption");
 const database_1 = require("../config/database");
+const brand_1 = require("../config/brand");
 class EmailService {
     constructor() {
         this.transporter = null;
@@ -140,9 +141,14 @@ class EmailService {
         }
     }
     async resolveTenantMailBranding(tenantId) {
-        let companyName = "Zukvo";
+        // Product brand is the FALLBACK identity, used when the tenant has no name
+        // of its own. It also decides the reply-to address, which the tenant never
+        // overrides: a Testiez customer replying to a system email must reach
+        // Testiez support, not an address on the other brand's domain.
+        const brand = tenantId ? await (0, brand_1.brandForTenant)(tenantId) : brand_1.DEFAULT_BRAND;
+        let companyName = brand.name;
         let companyLogo = "";
-        let replyToEmail = process.env.SYSTEM_EMAIL || "support@zukvo.com";
+        let replyToEmail = brand.supportEmail;
         let subdomain = "";
         if (tenantId) {
             try {
@@ -162,7 +168,7 @@ class EmailService {
                 console.error("❌ Error resolving tenant branding:", error);
             }
         }
-        return { companyName, companyLogo, replyToEmail, subdomain };
+        return { companyName, companyLogo, replyToEmail, subdomain, brand };
     }
     async sendCentralizedMail(options) {
         try {
@@ -177,7 +183,7 @@ class EmailService {
                 console.log("---\n");
                 return true;
             }
-            const fromEmail = process.env.SYSTEM_EMAIL || process.env.SMTP_USER || "system@zukvo.com";
+            const fromEmail = branding.brand.systemEmail;
             const fromName = branding.companyName;
             const mailOptions = {
                 from: `"${fromName}" <${fromEmail}>`,

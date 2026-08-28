@@ -16,6 +16,7 @@ if (process.env.NODE_ENV !== "development") {
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const morgan_1 = __importDefault(require("morgan"));
+const entitlements_middleware_1 = require("@/modules/entitlements/entitlements.middleware");
 const compression_1 = __importDefault(require("compression"));
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
@@ -171,7 +172,11 @@ const allowedOrigins = [
     "http://localhost:3000", // Local development
     "http://localhost:3005", // Local development for internal app
     /^http:\/\/localhost:\d+$/, // Allow any localhost port (e.g. Vite 5173)
-    /^http:\/\/[^.]+\.localhost(:\d+)?$/, // *.localhost subdomains (dev)
+    // *.localhost subdomains (dev). MULTI-label on purpose: the dev host for a
+    // tenant on the Testiez surface is {tenant}.testiez.localhost, which is two
+    // labels before `.localhost`. A single-label pattern ([^.]+) matches
+    // kabs.localhost but silently denies kabs.testiez.localhost.
+    /^http:\/\/([a-z0-9-]+\.)+localhost(:\d+)?$/i,
     "https://zithmi.vercel.app", // Vercel production URL
     "https://www.zithtech.com",
     "https://zithspace.com",
@@ -180,6 +185,10 @@ const allowedOrigins = [
     /\.zithtech\.com$/, // allow any subdomain like dinesh.zithtech.com
     "https://zukvo.com",
     /\.zukvo\.com$/, // allow any tenant subdomain like zithmi.zukvo.com
+    // Testiez is the same app and the same API on a second brand domain, with the
+    // same {tenant}.{domain} shape. See src/config/brand.ts.
+    "https://testiez.com",
+    /\.testiez\.com$/, // allow any tenant subdomain like zithmi.testiez.com
     /^chrome-extension:\/\/[a-z]{32}$/, // Allow Chrome extensions
 ];
 app.use((0, cors_1.default)({
@@ -283,6 +292,11 @@ app.use((req, res, next) => {
     };
     next();
 });
+// Entitlement gate for whole modules a product may not include (HRMS, Finance,
+// Recruitment, My Hub). Mounted ONCE here, ahead of every route, so no router
+// can be missed — see MODULE_PREFIX_CAPABILITIES in the entitlements module for
+// the prefix list and why it lives in one place.
+app.use(entitlements_middleware_1.moduleEntitlementGate);
 // API routes
 app.use("/api/leave-adjustments", leaveAdjustmentRoutes_1.default);
 app.use("/api/company-government-holidays", companyGovernmentHoliday_routes_1.default);

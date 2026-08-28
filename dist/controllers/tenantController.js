@@ -8,6 +8,8 @@ const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const tenantLogger_1 = __importDefault(require("@/utils/tenantLogger"));
 const dbpool_1 = __importDefault(require("@/config/dbpool"));
 const rbac_service_1 = require("@/modules/rbac/rbac.service");
+const entitlements_service_1 = require("@/modules/entitlements/entitlements.service");
+const brand_1 = require("@/config/brand");
 const types_1 = require("@/types");
 const r2Client_1 = require("@/utils/r2Client");
 const transactionHistory_1 = require("@/utils/transactionHistory");
@@ -247,7 +249,32 @@ class TenantController {
          WHERE subdomain = $1 AND is_active = true
          LIMIT 1`, [subdomain.toLowerCase()]);
             const tenant = result.rows[0];
-            if (!tenant) {
+            // Scope the answer to the brand being asked through.
+            //
+            // This endpoint is unauthenticated and returns a real company name, so
+            // without this check it is an existence oracle across BOTH products:
+            // anyone could hit bigcorp.testiez.com and learn that BigCorp is a Zukvo
+            // customer, plus their registered name. Two brands sharing one tenant
+            // table makes that a competitive leak, not just an information one.
+            //
+            // The 404 below is deliberately identical to the not-found case — the
+            // caller must not be able to tell "no such tenant" from "exists on the
+            // other product".
+            let entitled = true;
+            const product = (0, brand_1.productFromRequest)(req);
+            if (tenant && product) {
+                try {
+                    entitled = await (0, entitlements_service_1.hasProduct)(tenant.id, product);
+                }
+                catch (err) {
+                    // Entitlements table may not exist yet (deployed ahead of the
+                    // migration). Honour the same kill switch the middleware uses rather
+                    // than making every workspace unresolvable.
+                    console.error("[tenants/resolve] entitlement check failed:", err);
+                    entitled = !entitlements_service_1.ENFORCING;
+                }
+            }
+            if (!tenant || !entitled) {
                 res.status(404).json({
                     success: false,
                     error: "Tenant not found",
