@@ -34,9 +34,10 @@ export async function approve(actor: Actor, id: string, note: string | null, can
     if (req.status !== 'pending') throw LeaveV2Error.badRequest('Only pending requests can be approved');
     assertCanDecide(req, actor, canManageAll);
 
-    // Recompute the split against the CURRENT balance.
+    // Recompute the split against the CURRENT balance (adding back this request's hold).
     const balance = await repo.getBalanceFor(client, req.userId, req.leaveTypeId);
-    const paid = Math.min(req.totalUnits, Math.max(balance, 0));
+    const availableForThisReq = balance + req.paidUnits;
+    const paid = Math.min(req.totalUnits, Math.max(availableForThisReq, 0));
     const lop = Number((req.totalUnits - paid).toFixed(2));
 
     const updated = await repo.approveRequest(client, id, { paid, lop, approverId: actor.userId, note });
