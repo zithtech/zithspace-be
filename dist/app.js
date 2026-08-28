@@ -137,6 +137,7 @@ const recruitmentStatus_routes_1 = __importDefault(require("@/routes/recruitment
 const recruitmentAction_routes_1 = __importDefault(require("@/routes/recruitmentAction.routes"));
 const candidateRoutes_1 = __importDefault(require("@/routes/candidateRoutes"));
 const routes_8 = __importDefault(require("@/modules/company-details/routes"));
+const routes_9 = __importDefault(require("@/modules/yapiez/routes"));
 const openingManagementRoutes_1 = __importDefault(require("@/routes/openingManagementRoutes"));
 const RabbitMQService_1 = require("@/utils/RabbitMQService");
 const CalendarSyncWorker_1 = require("@/workers/CalendarSyncWorker");
@@ -408,6 +409,10 @@ app.use("/api/v2/qa/test-scopes", testScopeRoutes_1.default);
 app.use("/api/v2/qa/submissions", qaSubmissionRoutes_1.default);
 app.use("/api/v2/qa/analytics", qaAnalyticsRoutes_1.default);
 app.use("/api/v2/qa", testCaseRoutes_1.default); // Registers /api/v2/qa/modules, /api/v2/qa/, /api/v2/qa/suites, /api/v2/qa/runs
+// Yapiez — the API definition + flow execution layer feeding QA Space.
+// Mounted as its own module rather than under /api/v2/qa: it is a sibling of
+// QA Space, not a page inside it, and testCaseRoutes claims "/:id" above.
+app.use("/api/v2/yapiez", routes_9.default);
 app.use("/api/v2/payroll", routes_3.default);
 app.use("/api/v2/reimbursement", routes_4.default);
 app.use("/api/v2/openings", routes_5.default);
@@ -593,7 +598,21 @@ const startServer = async () => {
         // Company Details tables (raw-SQL module, forward-only migrations)
         const { runCompanyDetailsMigrations } = require("@/modules/company-details/db/migrate");
         await runCompanyDetailsMigrations();
-        // Connect RabbitMQ & Start Workers (Calendar, Mail)
+        // Yapiez tables (raw-SQL module, forward-only migrations)
+        const { runYapiezMigrations } = require("@/modules/yapiez/db/migrate");
+        await runYapiezMigrations();
+        // Close out any flow run left mid-execution by a previous process, so a
+        // crashed run does not sit in 'Running' forever.
+        try {
+            const { reconcileStaleRuns } = require("@/modules/yapiez/services/flowRunner");
+            const reconciled = await reconcileStaleRuns();
+            if (reconciled > 0)
+                console.log(`[yapiez] marked ${reconciled} stale run(s) as Aborted`);
+        }
+        catch (yapiezErr) {
+            console.error("[yapiez] stale run reconciliation failed:", yapiezErr?.message);
+        }
+        // Connect RabbitMQ & Start Workers
         try {
             await RabbitMQService_1.rabbitMQService.connect();
             await CalendarSyncWorker_1.CalendarSyncWorker.start();
@@ -676,6 +695,8 @@ const gracefulShutdown = async (signal) => {
             await (0, attendancePool_1.closeAttendancePool)();
             const { closeCompanyDetailsPool } = require("@/modules/company-details/db/pool");
             await closeCompanyDetailsPool();
+            const { closeYapiezPool } = require("@/modules/yapiez/db/pool");
+            await closeYapiezPool();
             console.log("Database and RabbitMQ connections closed");
         }
         catch (error) {

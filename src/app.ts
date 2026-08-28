@@ -142,6 +142,7 @@ import recruitmentStatusRoutes from "@/routes/recruitmentStatus.routes";
 import recruitmentActionRoutes from "@/routes/recruitmentAction.routes";
 import candidateRoutes from "@/routes/candidateRoutes";
 import companyDetailsRoutes from "@/modules/company-details/routes";
+import yapiezRoutes from "@/modules/yapiez/routes";
 import openingManagementRoutes from "@/routes/openingManagementRoutes";
 import { rabbitMQService } from "@/utils/RabbitMQService";
 import { CalendarSyncWorker } from "@/workers/CalendarSyncWorker";
@@ -446,6 +447,10 @@ app.use("/api/v2/qa/test-scopes", testScopeRoutes);
 app.use("/api/v2/qa/submissions", qaSubmissionRoutes);
 app.use("/api/v2/qa/analytics", qaAnalyticsRoutes);
 app.use("/api/v2/qa", testCaseRoutes); // Registers /api/v2/qa/modules, /api/v2/qa/, /api/v2/qa/suites, /api/v2/qa/runs
+// Yapiez — the API definition + flow execution layer feeding QA Space.
+// Mounted as its own module rather than under /api/v2/qa: it is a sibling of
+// QA Space, not a page inside it, and testCaseRoutes claims "/:id" above.
+app.use("/api/v2/yapiez", yapiezRoutes);
 app.use("/api/v2/payroll", payrollV2Routes);
 app.use("/api/v2/reimbursement", reimbursementV2Routes);
 app.use("/api/v2/openings", openingManagementV2Routes);
@@ -667,7 +672,21 @@ const startServer = async () => {
     const { runCompanyDetailsMigrations } = require("@/modules/company-details/db/migrate");
     await runCompanyDetailsMigrations();
 
-    // Connect RabbitMQ & Start Workers (Calendar, Mail)
+    // Yapiez tables (raw-SQL module, forward-only migrations)
+    const { runYapiezMigrations } = require("@/modules/yapiez/db/migrate");
+    await runYapiezMigrations();
+
+    // Close out any flow run left mid-execution by a previous process, so a
+    // crashed run does not sit in 'Running' forever.
+    try {
+      const { reconcileStaleRuns } = require("@/modules/yapiez/services/flowRunner");
+      const reconciled = await reconcileStaleRuns();
+      if (reconciled > 0) console.log(`[yapiez] marked ${reconciled} stale run(s) as Aborted`);
+    } catch (yapiezErr: any) {
+      console.error("[yapiez] stale run reconciliation failed:", yapiezErr?.message);
+    }
+
+    // Connect RabbitMQ & Start Workers
     try {
       await rabbitMQService.connect();
       await CalendarSyncWorker.start(); 
@@ -761,6 +780,8 @@ const gracefulShutdown = async (signal: string) => {
       await closeAttendancePool();
       const { closeCompanyDetailsPool } = require("@/modules/company-details/db/pool");
       await closeCompanyDetailsPool();
+      const { closeYapiezPool } = require("@/modules/yapiez/db/pool");
+      await closeYapiezPool();
       console.log("Database and RabbitMQ connections closed");
     } catch (error) {
       console.error("Error closing connections:", error);
