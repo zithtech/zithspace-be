@@ -224,6 +224,11 @@ export const createTestScope = async (req: Request, res: Response) => {
       entityLabel: name,
       afterData: rows[0],
     });
+    // The modules named on a scope are the workspace's module list — keep the
+    // two in step rather than making someone add them twice. They are filed
+    // under the scope's own product, since a module belongs to a project.
+    await registerModuleNames(tenantId, details?.modules, details?.product).catch(err =>
+      console.error('Failed to register scope modules:', err));
 
     res.status(201).json({ success: true, data: rows[0] });
   } catch (error) {

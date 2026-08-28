@@ -440,28 +440,24 @@ export const deleteModule = async (req: Request, res: Response) => {
       `SELECT * FROM qa_todo_modules WHERE id = $1 AND tenant_id = $2`,
       [id, tenantId]
     );
+
     if (!oldRows.length) return res.status(404).json({ success: false, error: 'Not found' });
+
     const oldModule = oldRows[0];
+    await pool.query(`DELETE FROM qa_todo_modules WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
 
-    const { rowCount } = await pool.query(
-      `DELETE FROM qa_todo_modules WHERE id = $1 AND tenant_id = $2`,
-      [id, tenantId],
-    );
-    if (rowCount && rowCount > 0) {
-      recordTransaction({
-        req: req as any,
-        section: Section.WORK,
-        module: Module.QA_WORKSPACE,
-        page: Page.QA_MODULE_LIST,
-        action: Action.DELETE,
-        actionLabel: "QA Module deleted",
-        entityType: EntityType.QA_MODULE,
-        entityId: oldModule.id,
-        entityLabel: oldModule.module_name,
-        beforeData: oldModule,
-      });
-    }
-
+    recordTransaction({
+      req: req as any,
+      section: Section.WORK,
+      module: Module.QA_WORKSPACE,
+      page: Page.QA_MODULE_LIST,
+      action: Action.DELETE,
+      actionLabel: "QA Module deleted",
+      entityType: EntityType.QA_MODULE,
+      entityId: oldModule.id,
+      entityLabel: oldModule.module_name,
+      beforeData: oldModule,
+    });
     res.status(200).json({ success: true, message: 'Deleted successfully' });
   } catch (error) {
     console.error('Error deleting module:', error);
