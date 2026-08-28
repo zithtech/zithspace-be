@@ -1873,7 +1873,7 @@ This is an automated mail, please do not reply.`;
               </p>
               
               <div style="text-align: center; margin-top: 32px; margin-bottom: 32px;">
-                <a href="${data.resetLink}" class="reset-button">Reset Password</a>
+                <a href="${data.resetLink}" class="reset-button" style="color: #ffffff !important; text-decoration: none;">Reset Password</a>
               </div>
 
               <p class="welcome-text" style="font-size: 13px;">
