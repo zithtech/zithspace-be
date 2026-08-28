@@ -364,10 +364,23 @@ export class VendorController {
             }
 
             const data = req.body;
+
+            // Verify the parent vendor belongs to this tenant before attaching a child row.
+            const ownedVendor = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                return await prisma.vendorBasicInformation.findFirst({
+                    where: { id, tenantId: req.tenantId },
+                    select: { id: true }
+                });
+            });
+            if (!ownedVendor) {
+                res.status(404).json({ success: false, error: 'Vendor not found' } as ApiResponse);
+                return;
+            }
+
             const contact = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
                 return await prisma.vendorContactPerson.create({
-                    data: { 
-                        ...data, 
+                    data: {
+                        ...data,
                         vendorId: id
                     }
                 });
@@ -387,6 +400,17 @@ export class VendorController {
             const { contactId } = req.params;
             if (!req.tenantId) {
                 res.status(400).json({ success: false, error: 'Tenant context required' } as ApiResponse);
+                return;
+            }
+
+            const owned = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                return await prisma.vendorContactPerson.findFirst({
+                    where: { id: contactId, vendor: { tenantId: req.tenantId } },
+                    select: { id: true }
+                });
+            });
+            if (!owned) {
+                res.status(404).json({ success: false, error: 'Not found' } as ApiResponse);
                 return;
             }
 
@@ -415,6 +439,18 @@ export class VendorController {
             if (!base64 || !fileName) {
                  res.status(400).json({ success: false, error: 'Missing file data' } as ApiResponse);
                  return;
+            }
+
+            // Verify the parent vendor belongs to this tenant before uploading/attaching.
+            const ownedVendor = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                return await prisma.vendorBasicInformation.findFirst({
+                    where: { id, tenantId: req.tenantId },
+                    select: { id: true }
+                });
+            });
+            if (!ownedVendor) {
+                res.status(404).json({ success: false, error: 'Vendor not found' } as ApiResponse);
+                return;
             }
 
             const uploadResult = await uploadFileToR2(
@@ -451,9 +487,18 @@ export class VendorController {
                 return;
             }
 
+            const document = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                return await prisma.vendorDocument.findFirst({
+                    where: { id: documentId, vendor: { tenantId: req.tenantId } }
+                });
+            });
+            if (!document) {
+                res.status(404).json({ success: false, error: 'Not found' } as ApiResponse);
+                return;
+            }
+
             await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
-                const document = await prisma.vendorDocument.findUnique({ where: { id: documentId } });
-                if (document?.documentUrl) {
+                if (document.documentUrl) {
                     try {
                         await deleteFileFromR2(document.documentUrl, req.tenantId!);
                     } catch (err) {
@@ -482,8 +527,8 @@ export class VendorController {
             const { id } = req.params; // vendorId
 
             const vendor = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
-                return (await prisma.vendorBasicInformation.findUnique({
-                    where: { id },
+                return (await prisma.vendorBasicInformation.findFirst({
+                    where: { id, tenantId: req.tenantId },
                     select: { clientIds: true } as any
                 })) as any;
             });
@@ -533,8 +578,8 @@ export class VendorController {
             await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
                 return await prisma.$transaction(async (tx) => {
                     // 1. Update Vendor's clientIds array
-                    const vendor = (await tx.vendorBasicInformation.findUnique({
-                        where: { id },
+                    const vendor = (await tx.vendorBasicInformation.findFirst({
+                        where: { id, tenantId: req.tenantId },
                         select: { clientIds: true } as any
                     })) as any;
 
@@ -551,8 +596,8 @@ export class VendorController {
                     }
 
                     // 2. Update Client's primeVendorId array
-                    const client = (await tx.recruitmentClientBasicInformation.findUnique({
-                        where: { id: clientId },
+                    const client = (await tx.recruitmentClientBasicInformation.findFirst({
+                        where: { id: clientId, tenantId: req.tenantId },
                         select: { primeVendorId: true } as any
                     })) as any;
 
@@ -598,8 +643,8 @@ export class VendorController {
             await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
                 return await prisma.$transaction(async (tx) => {
                     // 1. Update Vendor's clientIds array
-                    const vendor = (await tx.vendorBasicInformation.findUnique({
-                        where: { id },
+                    const vendor = (await tx.vendorBasicInformation.findFirst({
+                        where: { id, tenantId: req.tenantId },
                         select: { clientIds: true } as any
                     })) as any;
 
@@ -614,8 +659,8 @@ export class VendorController {
                     }
 
                     // 2. Update Client's primeVendorId
-                    const client = (await tx.recruitmentClientBasicInformation.findUnique({
-                        where: { id: clientId },
+                    const client = (await tx.recruitmentClientBasicInformation.findFirst({
+                        where: { id: clientId, tenantId: req.tenantId },
                         select: { primeVendorId: true } as any
                     })) as any;
 
@@ -653,8 +698,8 @@ export class VendorController {
             const { id } = req.params; // vendorId
 
             const vendor = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
-                return (await prisma.vendorBasicInformation.findUnique({
-                    where: { id },
+                return (await prisma.vendorBasicInformation.findFirst({
+                    where: { id, tenantId: req.tenantId },
                     select: { implementationIds: true } as any
                 })) as any;
             });
@@ -704,8 +749,8 @@ export class VendorController {
             await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
                 return await prisma.$transaction(async (tx) => {
                     // 1. Update Vendor's implementationIds array
-                    const vendor = (await tx.vendorBasicInformation.findUnique({
-                        where: { id },
+                    const vendor = (await tx.vendorBasicInformation.findFirst({
+                        where: { id, tenantId: req.tenantId },
                         select: { implementationIds: true } as any
                     })) as any;
 
@@ -722,8 +767,8 @@ export class VendorController {
                     }
 
                     // 2. Update Partner's vendorIds array
-                    const partner = (await tx.implementationBasicInformation.findUnique({
-                        where: { id: partnerId },
+                    const partner = (await tx.implementationBasicInformation.findFirst({
+                        where: { id: partnerId, tenantId: req.tenantId },
                         select: { vendorIds: true } as any
                     })) as any;
 
@@ -769,8 +814,8 @@ export class VendorController {
             await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
                 return await prisma.$transaction(async (tx) => {
                     // 1. Update Vendor's implementationIds array
-                    const vendor = (await tx.vendorBasicInformation.findUnique({
-                        where: { id },
+                    const vendor = (await tx.vendorBasicInformation.findFirst({
+                        where: { id, tenantId: req.tenantId },
                         select: { implementationIds: true } as any
                     })) as any;
 
@@ -785,8 +830,8 @@ export class VendorController {
                     }
 
                     // 2. Update Partner's vendorIds
-                    const partner = (await tx.implementationBasicInformation.findUnique({
-                        where: { id: partnerId },
+                    const partner = (await tx.implementationBasicInformation.findFirst({
+                        where: { id: partnerId, tenantId: req.tenantId },
                         select: { vendorIds: true } as any
                     })) as any;
 

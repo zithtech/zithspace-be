@@ -17,8 +17,11 @@ export class SubscriptionClient {
    * Fetch the tenant subscription from the Admin API.
    * Includes automatic retry logic.
    */
-  async getTenantFeatures(tenantId: string): Promise<TenantSubscriptionPayload> {
-    const url = `/api/subscriptions/tenant/${tenantId}/features`;
+  async getTenantFeatures(tenantId: string, productCode?: string): Promise<TenantSubscriptionPayload> {
+    // Scopes the answer to one product's subscription AND to what that product
+    // sells. Omitted, the Admin API behaves exactly as before products existed.
+    const url = `/api/subscriptions/tenant/${tenantId}/features`
+      + (productCode ? `?product=${encodeURIComponent(productCode)}` : '');
     
     let attempt = 0;
     while (attempt < SUBSCRIPTION_CONSTANTS.ADMIN_API_RETRY_COUNT) {

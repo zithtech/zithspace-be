@@ -793,9 +793,12 @@ class ReimbursementController {
                 }
             }
             console.log(`📎 Total files to process: ${uploadedFiles.length}`);
-            // 1. Check if reimbursement exists
-            const existing = await database_1.prisma.reimbursement.findUnique({
-                where: { id },
+            // 1. Check if reimbursement exists (scoped to the caller's tenant)
+            const tenantId = req.tenantId;
+            if (!tenantId)
+                throw new types_1.NotFoundError("Reimbursement not found");
+            const existing = await database_1.prisma.reimbursement.findFirst({
+                where: { id, tenantId },
                 include: {
                     items: {
                         include: {
@@ -1069,8 +1072,11 @@ class ReimbursementController {
     static async delete(req, res) {
         try {
             const { id } = req.params;
-            const existing = await database_1.prisma.reimbursement.findUnique({
-                where: { id },
+            const tenantId = req.tenantId;
+            if (!tenantId)
+                throw new types_1.NotFoundError("Reimbursement not found");
+            const existing = await database_1.prisma.reimbursement.findFirst({
+                where: { id, tenantId },
             });
             if (!existing)
                 throw new types_1.NotFoundError("Reimbursement not found");
@@ -2698,9 +2704,10 @@ class ReimbursementController {
                 throw new Error("Reimbursement item ID is required");
             if (!req.user)
                 throw new Error("User not authenticated");
-            // 1️⃣ Find the reimbursement item
-            const item = await database_1.prisma.reimbursementItem.findUnique({
-                where: { id },
+            // 1️⃣ Find the reimbursement item (scoped to the caller's tenant via its parent)
+            const tenantId = req.tenantId;
+            const item = await database_1.prisma.reimbursementItem.findFirst({
+                where: { id, reimbursement: { tenantId } },
                 select: { id: true, status: true, reimbursementId: true },
             });
             if (!item)

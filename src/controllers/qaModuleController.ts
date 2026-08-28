@@ -443,6 +443,7 @@ export const deleteModule = async (req: Request, res: Response) => {
     const tenantId = (req as any).user?.tenantId;
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
     const { id } = req.params;
+
     if (await isCatalogueModule(id)) {
       return res.status(403).json({
         success: false,
@@ -487,9 +488,9 @@ export const deleteModule = async (req: Request, res: Response) => {
       `SELECT * FROM qa_todo_modules WHERE id = $1 AND tenant_id = $2`,
       [id, tenantId]
     );
-    
+
     if (!oldRows.length) return res.status(404).json({ success: false, error: 'Not found' });
-    
+
     const oldModule = oldRows[0];
     await pool.query(`DELETE FROM qa_todo_modules WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
 

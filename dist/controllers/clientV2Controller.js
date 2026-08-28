@@ -1008,7 +1008,7 @@ class ClientV2Controller {
             const fullContactRes = await dbpool_1.default.query(`SELECT cc.*, u.name as created_by_name, u.avatar_url as created_by_avatar_url
                  FROM client_contacts_v2 cc
                  LEFT JOIN users u ON u.id = cc.created_by_id
-                 WHERE cc.id = $1`, [contactId]);
+                 WHERE cc.id = $1 AND cc.tenant_id = $2`, [contactId, req.tenantId]);
             const contact = mapRowToContact(fullContactRes.rows[0]);
             (0, transactionHistory_1.recordTransaction)({
                 req,
@@ -1051,7 +1051,7 @@ class ClientV2Controller {
                 }
             }
             // Fetch existing for validation and diff
-            const existingRes = await dbpool_1.default.query(`SELECT * FROM client_contacts_v2 WHERE id = $1`, [contactId]);
+            const existingRes = await dbpool_1.default.query(`SELECT * FROM client_contacts_v2 WHERE id = $1 AND tenant_id = $2`, [contactId, req.tenantId]);
             if (existingRes.rows.length === 0) {
                 res.status(404).json({ success: false, error: 'Contact not found' });
                 return;
@@ -1074,13 +1074,14 @@ class ClientV2Controller {
             }
             setClauses.push(`updated_at = NOW()`);
             values.push(contactId);
+            values.push(req.tenantId);
             const updatedRes = await dbpool_1.default.query(`UPDATE client_contacts_v2 SET ${setClauses.join(', ')}
-                 WHERE id = $${paramIdx}
+                 WHERE id = $${paramIdx} AND tenant_id = $${paramIdx + 1}
                  RETURNING *`, values);
             const fullContactRes = await dbpool_1.default.query(`SELECT cc.*, u.name as created_by_name, u.avatar_url as created_by_avatar_url
                  FROM client_contacts_v2 cc
                  LEFT JOIN users u ON u.id = cc.created_by_id
-                 WHERE cc.id = $1`, [contactId]);
+                 WHERE cc.id = $1 AND cc.tenant_id = $2`, [contactId, req.tenantId]);
             const contact = mapRowToContact(fullContactRes.rows[0]);
             // Audit diff
             const beforeSnap = {};
@@ -1948,16 +1949,22 @@ class ClientV2Controller {
                 return;
             }
             const { projectId } = req.params;
-            // Fetch mapping + project for audit log
+            // Fetch mapping + project for audit log (both scoped to the caller's tenant)
             const [mappingRes, projectRes] = await Promise.all([
                 dbpool_1.default.query(`SELECT * FROM client_projects WHERE project_id = $1 AND tenant_id = $2 LIMIT 1`, [projectId, req.tenantId]),
-                dbpool_1.default.query(`SELECT * FROM projects WHERE id = $1`, [projectId]),
+                dbpool_1.default.query(`SELECT * FROM projects WHERE id = $1 AND tenant_id = $2`, [projectId, req.tenantId]),
             ]);
             const mapping = mappingRes.rows[0] ? mapRowToClientProject(mappingRes.rows[0]) : null;
             const project = projectRes.rows[0] ? mapRowToProject(projectRes.rows[0]) : null;
+            // The mapping proves this project belongs to the caller's tenant. Without it,
+            // refuse — otherwise a foreign projectId would fall through to the delete below.
+            if (!mapping) {
+                res.status(404).json({ success: false, error: 'Project not found' });
+                return;
+            }
             // Delete mapping first, then project (DB cascade handles deeper relations)
             await dbpool_1.default.query(`DELETE FROM client_projects WHERE project_id = $1 AND tenant_id = $2`, [projectId, req.tenantId]);
-            await dbpool_1.default.query(`DELETE FROM projects WHERE id = $1`, [projectId]);
+            await dbpool_1.default.query(`DELETE FROM projects WHERE id = $1 AND tenant_id = $2`, [projectId, req.tenantId]);
             if (project) {
                 (0, transactionHistory_1.recordTransaction)({
                     req,
