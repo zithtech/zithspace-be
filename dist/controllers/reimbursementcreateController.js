@@ -9,6 +9,7 @@ const crypto_1 = require("crypto");
 const database_1 = require("@/config/database");
 const types_1 = require("@/types");
 const r2Client_1 = require("@/utils/r2Client");
+const emailService_1 = require("@/utils/emailService");
 class ReimbursementController {
     /* =====================================================
        CREATE - Store files separately (NO ZIP)
@@ -478,6 +479,45 @@ class ReimbursementController {
             }
             catch (cleanupError) {
                 console.warn("⚠️ Cleanup warning:", cleanupError);
+            }
+            // --- Send Email Notifications ---
+            try {
+                if (status !== "DRAFT") {
+                    const employee = await database_1.prisma.user.findUnique({
+                        where: { id: req.user.id },
+                        select: { name: true, workEmail: true }
+                    });
+                    if (employee) {
+                        const approvers = await database_1.prisma.reimbursementItemApprover.findMany({
+                            where: { reimbursementItem: { reimbursementId: result.id } },
+                            select: { approverId: true },
+                            distinct: ['approverId']
+                        });
+                        if (approvers.length > 0) {
+                            const approverUsers = await database_1.prisma.user.findMany({
+                                where: { id: { in: approvers.map(a => a.approverId) } },
+                                select: { name: true, workEmail: true }
+                            });
+                            for (const approver of approverUsers) {
+                                if (approver.workEmail) {
+                                    await emailService_1.emailService.sendClaimSubmissionEmail({
+                                        to: approver.workEmail,
+                                        managerName: approver.name,
+                                        employeeName: employee.name,
+                                        employeeEmail: employee.workEmail || "",
+                                        claimNo: result.id.substring(0, 8).toUpperCase(),
+                                        itemCount: itemsArray.length,
+                                        totalAmount,
+                                        currency: "₹"
+                                    }, req.tenantId);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (emailErr) {
+                console.error("❌ Failed to send claim submission email:", emailErr);
             }
             res.status(201).json({
                 success: true,
