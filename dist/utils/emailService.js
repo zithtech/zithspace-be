@@ -247,10 +247,7 @@ class EmailService {
     }
     async sendNewMemberWelcomeEmail(data, tenantId) {
         const branding = await this.resolveTenantMailBranding(tenantId);
-        const appDomain = process.env.APP_DOMAIN || "zukvo.com";
-        const tenantHost = branding.subdomain
-            ? `https://${branding.subdomain}.${appDomain}`
-            : process.env.FRONTEND_URL || `https://${appDomain}`;
+        const tenantHost = (0, brand_1.tenantOrigin)(branding.subdomain, branding.brand);
         const loginUrl = `${tenantHost}/login?email=${encodeURIComponent(data.email)}&password=${encodeURIComponent(data.password || '')}`;
         const logoHtml = branding.companyLogo
             ? `<img class="logo" src="${branding.companyLogo}" alt="${branding.companyName}" />`
