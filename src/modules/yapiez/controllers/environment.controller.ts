@@ -7,6 +7,7 @@ import { withTenant } from '../db/pool';
 import * as repo from '../repositories/environment.repo';
 import { actorOf, handle, ok } from '../http';
 import { environmentCreateSchema, environmentUpdateSchema } from '../validators';
+import { recordTransaction, Section, Module, Page, Action, EntityType } from '@/utils/transactionHistory';
 
 export const list = handle(async (req: AuthRequest, res: Response) => {
   const { tenantId } = actorOf(req);
@@ -26,6 +27,18 @@ export const create = handle(async (req: AuthRequest, res: Response) => {
   const { tenantId, userId } = actorOf(req);
   const input = environmentCreateSchema.parse(req.body);
   const data = await withTenant(tenantId, (c) => repo.createEnvironment(c, userId, input));
+
+  recordTransaction({
+    req,
+    section: Section.WORK,
+    module: Module.API_HUB,
+    page: Page.API_HUB_ENVIRONMENT_SETTINGS,
+    action: Action.CREATE,
+    entityType: EntityType.API_ENVIRONMENT,
+    entityId: data.id,
+    entityLabel: data.name,
+  });
+
   ok(res, data, 201);
 });
 
@@ -33,11 +46,34 @@ export const update = handle(async (req: AuthRequest, res: Response) => {
   const { tenantId, userId } = actorOf(req);
   const input = environmentUpdateSchema.parse(req.body);
   const data = await withTenant(tenantId, (c) => repo.updateEnvironment(c, userId, req.params.id, input));
+
+  recordTransaction({
+    req,
+    section: Section.WORK,
+    module: Module.API_HUB,
+    page: Page.API_HUB_ENVIRONMENT_SETTINGS,
+    action: Action.UPDATE,
+    entityType: EntityType.API_ENVIRONMENT,
+    entityId: data.id,
+    entityLabel: data.name,
+  });
+
   ok(res, data);
 });
 
 export const remove = handle(async (req: AuthRequest, res: Response) => {
   const { tenantId } = actorOf(req);
   await withTenant(tenantId, (c) => repo.deleteEnvironment(c, req.params.id));
+
+  recordTransaction({
+    req,
+    section: Section.WORK,
+    module: Module.API_HUB,
+    page: Page.API_HUB_ENVIRONMENT_SETTINGS,
+    action: Action.DELETE,
+    entityType: EntityType.API_ENVIRONMENT,
+    entityId: req.params.id,
+  });
+
   ok(res, { id: req.params.id });
 });

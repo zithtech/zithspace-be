@@ -15,6 +15,7 @@ import {
   stepCreateSchema,
   stepUpdateSchema,
 } from '../validators';
+import { recordTransaction, Section, Module, Page, Action, EntityType } from '@/utils/transactionHistory';
 import { previewRequest } from '../services/requestBuilder';
 import { StepOverrides, YapiezError } from '../types';
 
@@ -47,6 +48,18 @@ export const create = handle(async (req: AuthRequest, res: Response) => {
   const { tenantId, userId } = actorOf(req);
   const input = flowCreateSchema.parse(req.body);
   const data = await withTenant(tenantId, (c) => repo.createFlow(c, userId, input));
+
+  recordTransaction({
+    req,
+    section: Section.WORK,
+    module: Module.API_HUB,
+    page: Page.API_HUB_FLOW_EDITOR,
+    action: Action.CREATE,
+    entityType: EntityType.API_FLOW,
+    entityId: data.id,
+    entityLabel: data.name,
+  });
+
   ok(res, data, 201);
 });
 
@@ -54,12 +67,35 @@ export const update = handle(async (req: AuthRequest, res: Response) => {
   const { tenantId, userId } = actorOf(req);
   const input = flowUpdateSchema.parse(req.body);
   const data = await withTenant(tenantId, (c) => repo.updateFlow(c, userId, req.params.id, input));
+
+  recordTransaction({
+    req,
+    section: Section.WORK,
+    module: Module.API_HUB,
+    page: Page.API_HUB_FLOW_EDITOR,
+    action: Action.UPDATE,
+    entityType: EntityType.API_FLOW,
+    entityId: data.id,
+    entityLabel: data.name,
+  });
+
   ok(res, data);
 });
 
 export const remove = handle(async (req: AuthRequest, res: Response) => {
   const { tenantId } = actorOf(req);
   await withTenant(tenantId, (c) => repo.deleteFlow(c, req.params.id));
+
+  recordTransaction({
+    req,
+    section: Section.WORK,
+    module: Module.API_HUB,
+    page: Page.API_HUB_FLOW_EDITOR,
+    action: Action.DELETE,
+    entityType: EntityType.API_FLOW,
+    entityId: req.params.id,
+  });
+
   ok(res, { id: req.params.id });
 });
 
@@ -68,6 +104,18 @@ export const duplicate = handle(async (req: AuthRequest, res: Response) => {
   const name = String(req.body?.name ?? '').trim();
   if (!name) throw YapiezError.badRequest('Give the copy a name.');
   const data = await withTenant(tenantId, (c) => repo.duplicateFlow(c, userId, req.params.id, name));
+
+  recordTransaction({
+    req,
+    section: Section.WORK,
+    module: Module.API_HUB,
+    page: Page.API_HUB_FLOW_EDITOR,
+    action: Action.CREATE,
+    entityType: EntityType.API_FLOW,
+    entityId: data.id,
+    entityLabel: data.name,
+  });
+
   ok(res, data, 201);
 });
 
