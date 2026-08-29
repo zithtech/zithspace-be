@@ -397,7 +397,7 @@ export class TransactionHistoryController {
           [req.tenantId]
         ),
         pool.query(
-          `SELECT DISTINCT page, action FROM transaction_history WHERE tenant_id = $1 AND page IS NOT NULL AND action IS NOT NULL ORDER BY page, action`,
+          `SELECT DISTINCT module, page, action FROM transaction_history WHERE tenant_id = $1 AND page IS NOT NULL AND action IS NOT NULL`,
           [req.tenantId]
         ),
       ]);
@@ -652,10 +652,35 @@ export class TransactionHistoryController {
         if (r.entity_type) entityTypesSet.add(r.entity_type);
       });
 
-      const pageActionsList = pageActionsResult.rows.map((r: any) => ({
-        page: r.page,
-        action: r.action,
-      }));
+      const pageActionsSet = new Set<string>();
+      pageActionsResult.rows.forEach((r: any) => {
+        let mod = r.module;
+        let pg = r.page;
+        if (["InvoiceCustomers", "InvoiceSettings", "InvoiceTemplates", "InvoiceTrash"].includes(mod)) {
+          mod = "Invoices";
+        }
+        if (mod === "BugList" || mod === "QA") {
+          mod = "QaWorkspace";
+          if (["TestCases", "TestCaseDetails", "QaCaseDetail", "QaParentCase"].includes(pg)) pg = "QaCaseList";
+          else if (["TestRuns", "TestRunExecution", "QaRunDetail"].includes(pg)) pg = "QaRunList";
+          else if (["TestSuites", "QaSuiteDetail"].includes(pg)) pg = "QaSuiteList";
+          else if (["TestScope", "CreateTestScope", "EditTestScope", "QaScopeDetail"].includes(pg)) pg = "QaScopeList";
+          else if (["QaSubmissions", "QaSubmissionForm", "QaSubmissionDetail"].includes(pg)) pg = "QaSubmissionList";
+          else if (["BugFolderList", "BugSheetList", "BugTrash"].includes(pg)) pg = "BugList";
+          else if (pg === "BugSettings") pg = "QaSettings";
+        }
+        if (mod === "Tickets") {
+          if (pg === "TicketDetail") pg = "TicketList";
+          // We can add other ticket page mappings here if necessary, but the UI expects TicketList for TicketDetail.
+        }
+        if (mod === "TimeTracking" && pg === "TicketDetail") {
+          pg = "TimeTrackingDetails";
+        }
+        pageActionsSet.add(JSON.stringify({ page: pg, action: r.action }));
+      });
+
+      const pageActionsList = Array.from(pageActionsSet).map((s) => JSON.parse(s));
+      pageActionsList.sort((a, b) => a.page.localeCompare(b.page) || a.action.localeCompare(b.action));
 
       res.json({
         success: true,

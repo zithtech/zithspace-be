@@ -267,6 +267,7 @@ export const createTestSuite = async (req: Request, res: Response) => {
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
     
     const { suite_name, module_id, parent_test_case_id, parent_id, description, test_case_ids, testing_type } = req.body;
+    console.log("createTestSuite req.body:", req.body);
     const parentId = parent_test_case_id || parent_id || null;
     
     await client.query('BEGIN');
@@ -325,6 +326,7 @@ export const updateTestSuite = async (req: Request, res: Response) => {
     
     const { id } = req.params;
     const { suite_name, module_id, parent_test_case_id, parent_id, description, test_case_ids, testing_type } = req.body;
+    console.log("updateTestSuite req.body:", req.body);
     const parentId = parent_test_case_id || parent_id || null;
     
     await client.query('BEGIN');
