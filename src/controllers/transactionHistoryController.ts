@@ -1,6 +1,20 @@
 import { Response } from "express";
 import pool from "@/config/dbpool";
 import { AuthRequest, ApiResponse } from "@/types";
+import { productFromRequest } from "@/config/brand";
+import { subscriptionService } from "@/modules/subscriptions/subscription.service";
+import { navigationService } from "@/modules/subscriptions/subscription.navigation";
+import {
+  PREDEFINED_SECTIONS,
+  PREDEFINED_MODULES,
+  PREDEFINED_PAGES,
+  PREDEFINED_ACTIONS,
+  PREDEFINED_ENTITY_TYPES,
+  HIDDEN_MODULES,
+  MODULE_REWRITES,
+  SECTION_REWRITES,
+  PAGE_REWRITES
+} from "@/config/activityLog.config";
 
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 20;
@@ -39,6 +53,79 @@ function decodeCursor(cursor: string): { createdAt: Date; id: string } | null {
   }
 }
 
+function normalizeName(name: string | null | undefined): string {
+  if (!name) return "";
+  let n = name.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (n === "hr") return "hrms"; // Map legacy "HR" section to metadata "hrms" key
+  return n;
+}
+
+// Maps database 'module' names to their corresponding metadata 'key' 
+// when they do not naturally match (e.g. historical log names vs new UI routes)
+const DB_TO_METADATA_MODULE_MAP: Record<string, string> = {
+  "roleandpermissions": "roles",
+  "generalsettings": "settings",
+  "qaworkspace": "qaspace",
+  "buglist": "qaspace",
+  "qa": "qaspace",
+  "apihub": "qaspace",
+};
+
+async function getActivityLogCapabilities(req: AuthRequest): Promise<Map<string, Set<string>>> {
+  const fs = require('fs');
+  const logFile = '/tmp/zukvo_activity_log.txt';
+  const product = productFromRequest(req) ?? undefined;
+  fs.appendFileSync(logFile, `\n\n--- Request ---\nTenantId: ${req.tenantId}\nProduct: ${product}\nHost: ${req.headers.host}\nx-zukvo-product: ${req.headers['x-zukvo-product']}\n`);
+  
+  const subscription = await subscriptionService.getTenantSubscription(req.tenantId!, product);
+  fs.appendFileSync(logFile, `Subscription features length: ${subscription?.features?.length}\nFeatures: ${JSON.stringify(subscription?.features)}\n`);
+  
+  const allowed = new Map<string, Set<string>>();
+  if (!subscription?.features?.length) {
+    fs.appendFileSync(logFile, `No features, returning empty map.\n`);
+    return allowed;
+  }
+
+  const subFeaturesSet = new Set(subscription.features);
+  const { MetadataService } = require('@/modules/metadata/metadata.service');
+  const fullTree = await MetadataService.getMetadataTree();
+
+  for (const core of fullTree) {
+    const sectionNorm = normalizeName(core.key);
+    
+    for (const mod of core.modules || []) {
+      const modPrefixes = [mod.key, `${core.key}_${mod.key}`];
+      let moduleAllowed = false;
+      
+      for (const f of subscription.features) {
+        if (modPrefixes.some(k => f === k || f.startsWith(k + "_"))) {
+          moduleAllowed = true;
+          break;
+        }
+      }
+
+      if (moduleAllowed) {
+        if (!allowed.has(sectionNorm)) {
+          allowed.set(sectionNorm, new Set());
+        }
+        allowed.get(sectionNorm)!.add(normalizeName(mod.key));
+        
+        for (const page of mod.pages || []) {
+          const pagePrefixes = [page.key, `${core.key}_${mod.key}_${page.key}`];
+          for (const f of subscription.features) {
+            if (pagePrefixes.some(k => f === k || f.startsWith(k + "_"))) {
+              allowed.get(sectionNorm)!.add(normalizeName(page.key));
+              break;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return allowed;
+}
+
 function shapeRow(row: any) {
   let mod = row.module;
   let pg = row.page;
@@ -57,9 +144,12 @@ function shapeRow(row: any) {
     else if (pg === "BugSettings") pg = "QaSettings";
   }
   
+  let sec = row.section;
+  if (sec === "HR") sec = "HRMS";
+
   return {
     id: row.id,
-    section: row.section,
+    section: sec,
     module: mod,
     page: pg,
     action: row.action,
@@ -124,6 +214,47 @@ export class TransactionHistoryController {
         return;
       }
 
+      const allowedCapabilities = await getActivityLogCapabilities(req);
+      if (allowedCapabilities.size === 0) {
+        // No subscription features = no access
+        res.json({ success: true, data: [], total: 0 });
+        return;
+      }
+
+      // Pre-fetch all available sections and modules in the tenant's DB 
+      // so we can build a safe SQL query using exact DB string values.
+      const dbModulesRes = await pool.query(
+        `SELECT DISTINCT section, module FROM transaction_history WHERE tenant_id = $1`,
+        [req.tenantId]
+      );
+      
+      const validDbCombinations = dbModulesRes.rows.filter(r => {
+        if (!r.section) return false; // Ignore rogue rows
+        const secNorm = normalizeName(r.section);
+        if (!allowedCapabilities.has(secNorm)) return false; // Section not allowed
+        
+        const modNorm = normalizeName(r.module);
+        const allowedMods = allowedCapabilities.get(secNorm)!;
+        
+        // If the licensed section has no module restrictions in metadata, allow all DB modules for it
+        if (allowedMods.size === 0) return true;
+        // If the DB row has no module but the section is allowed, allow it (e.g. section-level actions)
+        if (!r.module) return true;
+        
+        // Check if there is an explicit mapping for this DB module to a metadata key
+        let mappedModNorm = DB_TO_METADATA_MODULE_MAP[modNorm] || modNorm;
+
+        // HOME DB modules map to homegeneral page keys in the metadata.
+        return allowedMods.has(modNorm) || 
+              allowedMods.has(mappedModNorm);
+      });
+      
+      if (validDbCombinations.length === 0) {
+        // None of the DB activity matches the allowed features
+        res.json({ success: true, data: [], total: 0 });
+        return;
+      }
+
       const actorId = asString(req.query.actorId);
       const section = asString(req.query.section);
       const moduleFilter = asString(req.query.module);
@@ -147,6 +278,16 @@ export class TransactionHistoryController {
         baseParams.push(value);
         where.push(sql.replace("$$", `$${baseParams.length}`));
       };
+
+      // Apply dynamic capability filter
+      const comboSql = validDbCombinations.map(combo => {
+        if (combo.module) {
+          return `(section = '${combo.section}' AND module = '${combo.module}')`;
+        } else {
+          return `(section = '${combo.section}' AND module IS NULL)`;
+        }
+      }).join(" OR ");
+      where.push(`(${comboSql})`);
 
       if (entityType && entityId) {
         push("entity_type = $$", entityType);
@@ -375,6 +516,15 @@ export class TransactionHistoryController {
         return;
       }
 
+      const allowedCapabilities = await getActivityLogCapabilities(req);
+      if (allowedCapabilities.size === 0) {
+        res.json({
+          success: true,
+          data: { sections: [], modules: [], pages: [], actions: [], pageActions: [], entityTypes: [] },
+        });
+        return;
+      }
+
       const [sections, modules, pages, actions, entityTypes, pageActionsResult] = await Promise.all([
         pool.query(
           `SELECT DISTINCT section FROM transaction_history WHERE tenant_id = $1 ORDER BY section`,
@@ -402,239 +552,79 @@ export class TransactionHistoryController {
         ),
       ]);
 
-      const predefinedSections = ["WORK", "HR", "ADMIN", "FINANCE"];
-      const predefinedModules = [
-        { section: "WORK", module: "Tickets" },
-        { section: "WORK", module: "Projects" },
-        { section: "WORK", module: "TimeTracking" },
-        { section: "WORK", module: "DailyUpdates" },
-        { section: "WORK", module: "DocumentHub" },
-        { section: "WORK", module: "Proposals" },
-        { section: "WORK", module: "Squad" },
-        { section: "WORK", module: "Escalations" },
-        { section: "WORK", module: "LeadsManagement" },
-        { section: "WORK", module: "BidIQ" },
-        { section: "WORK", module: "QaWorkspace" },
-        { section: "HR", module: "Leaves" },
-        { section: "HR", module: "Onboarding" },
-        { section: "HR", module: "Attendance" },
-        { section: "HR", module: "MyProfile" },
-        { section: "HR", module: "PerformanceReport" },
-        { section: "ADMIN", module: "ClientsV2" },
-        { section: "ADMIN", module: "GeneralSettings" },
-        { section: "ADMIN", module: "Members" },
-        { section: "ADMIN", module: "RoleAndPermissions" },
-        { section: "ADMIN", module: "OrgStructure" },
-        { section: "HOME", module: "Dashboard" },
-        { section: "HOME", module: "Integrations" },
-        { section: "HOME", module: "Skills" },
-        { section: "HOME", module: "Messages" },
-        { section: "HOME", module: "Bookmarks" },
-        { section: "HOME", module: "Hotspot" },
-        { section: "ADMIN", module: "Auth" },
-        { section: "FINANCE", module: "Accounts" },
-        { section: "FINANCE", module: "Invoices" },
-        { section: "FINANCE", module: "ReimbursementV2" },
-        { section: "FINANCE", module: "PayrollV2" },
-      ];
-      const predefinedPages = [
-        { module: "Tickets", page: "Plans" },
-        { module: "Tickets", page: "TicketList" },
-        { module: "Tickets", page: "Buckets" },
-        { module: "Tickets", page: "Reports" },
-        { module: "Tickets", page: "Settings" },
-        { module: "Tickets", page: "Trash" },
-        { module: "Tickets", page: "Archive" },
-        { module: "QaWorkspace", page: "QaScopeList" },
-        { module: "QaWorkspace", page: "QaCaseList" },
-        { module: "QaWorkspace", page: "QaSuiteList" },
-        { module: "QaWorkspace", page: "QaRunList" },
-        { module: "QaWorkspace", page: "BugList" },
-        { module: "QaWorkspace", page: "QaSubmissionList" },
-        { module: "QaWorkspace", page: "QaApprovals" },
-        { module: "QaWorkspace", page: "QaAnalytics" },
-        { module: "QaWorkspace", page: "QaSettings" },
-        { module: "DocumentHub", page: "DocumentHubList" },
-        { module: "DocumentHub", page: "DocumentDetail" },
-        { module: "LeadsManagement", page: "LeadsList" },
-        { module: "LeadsManagement", page: "LeadDetail" },
-        { module: "LeadsManagement", page: "LeadSettings" },
-        { module: "LeadsManagement", page: "LeadsTrash" },
-        { module: "BidIQ", page: "BidIQDashboard" },
-        { module: "BidIQ", page: "BidIQSettings" },
-
-        { module: "Proposals", page: "ProposalList" },
-        { module: "Proposals", page: "ProposalBuilder" },
-        { module: "Squad", page: "SquadView" },
-        { module: "Escalations", page: "EscalationList" },
-        { module: "Escalations", page: "EscalationSettings" },
-        { module: "Escalations", page: "EscalationsTrash" },
-        { module: "DailyUpdates", page: "DailyUpdatesSubmit" },
-        { module: "TimeTracking", page: "TimeTrackingMy" },
-        { module: "TimeTracking", page: "TimeTrackingTeam" },
-        { module: "OrgStructure", page: "OrgStructureOverview" },
-        { module: "OrgStructure", page: "OrgStructureGrades" },
-        { module: "OrgStructure", page: "OrgStructureEmploymentTypes" },
-        { module: "OrgStructure", page: "OrgStructureDepartments" },
-        { module: "OrgStructure", page: "OrgStructureSubDepartments" },
-        { module: "OrgStructure", page: "OrgStructurePositions" },
-        { module: "Leaves", page: "LeaveRequests" },
-        { module: "Leaves", page: "LeaveApprovals" },
-        { module: "Leaves", page: "LeaveAdjustments" },
-        { module: "Leaves", page: "LeaveTypes" },
-        { module: "Leaves", page: "LeavePolicies" },
-        { module: "Leaves", page: "LeaveHolidays" },
-        { module: "Leaves", page: "LeaveAccrual" },
-        { module: "Onboarding", page: "OnboardingInvites" },
-        { module: "Onboarding", page: "OnboardingEmployees" },
-        { module: "Onboarding", page: "OnboardingDocumentTypes" },
-        { module: "Attendance", page: "AttendanceDashboard" },
-        { module: "Attendance", page: "AttendanceRecords" },
-        { module: "MyProfile", page: "MyProfile" },
-        { module: "PerformanceReport", page: "PerformanceReport" },
-        { module: "ClientsV2", page: "ClientList" },
-        { module: "ClientsV2", page: "ClientDetail" },
-        { module: "GeneralSettings", page: "GeneralSettingsView" },
-        { module: "Members", page: "MemberList" },
-        { module: "RoleAndPermissions", page: "RoleList" },
-        { module: "Hotspot", page: "Circulation" },
-        { module: "Hotspot", page: "Blogs" },
-        { module: "Hotspot", page: "Openings" },
-        { module: "Auth", page: "Login" },
-        { module: "Accounts", page: "AccountsDashboard" },
-        { module: "Accounts", page: "AccountsSettings" },
-        { module: "Invoices", page: "InvoiceList" },
-        { module: "Invoices", page: "InvoiceDetail" },
-        { module: "Invoices", page: "InvoiceCustomerList" },
-        { module: "Invoices", page: "InvoiceSettingsView" },
-        { module: "Invoices", page: "InvoiceTemplateList" },
-        { module: "Invoices", page: "InvoiceTrashView" },
-        { module: "ReimbursementV2", page: "ReimbursementDashboard" },
-        { module: "ReimbursementV2", page: "ReimbursementMyClaims" },
-        { module: "ReimbursementV2", page: "ReimbursementAdvances" },
-        { module: "ReimbursementV2", page: "ReimbursementApprovals" },
-        { module: "ReimbursementV2", page: "ReimbursementFinance" },
-        { module: "ReimbursementV2", page: "ReimbursementCategories" },
-        { module: "ReimbursementV2", page: "ReimbursementPolicies" },
-        { module: "ReimbursementV2", page: "ReimbursementBudgets" },
-        { module: "ReimbursementV2", page: "ReimbursementSettings" },
-        { module: "PayrollV2", page: "PayrollGeneralSettings" },
-        { module: "PayrollV2", page: "PayrollSalaryComponents" },
-        { module: "PayrollV2", page: "PayrollSalaryStructures" },
-        { module: "PayrollV2", page: "PayrollPaySchedulesAndGroups" },
-        { module: "PayrollV2", page: "PayrollStatutory" },
-        { module: "PayrollV2", page: "PayrollProfessionalTaxAndLwf" },
-        { module: "PayrollV2", page: "PayrollApprovalWorkflows" },
-        { module: "PayrollV2", page: "PayrollPayslipAndBank" },
-        { module: "PayrollV2", page: "PayrollEmployeePaySetup" },
-        { module: "PayrollV2", page: "PayrollRunPayroll" },
-        { module: "PayrollV2", page: "PayrollReports" },
-        { module: "PayrollV2", page: "PayrollMyPayslips" },
-      ];
-      const predefinedActions = [
-        "create", "update", "delete", "archive", "restore", "permanent_delete", "status_change",
-        "move", "convert", "verify", "reopen", "bulk_update_status", "bulk_archive", "bulk_unarchive",
-        "bulk_delete", "bulk_restore", "bulk_permanent_delete", "bulk_move", "bulk_convert", "start",
-        "complete", "bulk_assign", "bulk_unassign", "bulk_resolve", "generate_ai", "empty_trash",
-        "auto_purge", "reorder", "share", "unshare", "download", "email_sent", "login", "logout",
-        "apply", "approve", "reject", "cancel", "run", "revoke", "activate", "submit"
-      ];
-      const predefinedEntityTypes = [
-        "ticket", "bug", "bug_folder", "bug_sheet", "bug_severity_option", "bug_type_option",
-        "project", "project_member", "release_plan", "sprint_ai_narrative", "bucket", "bucket_member",
-        "workflow_template", "dropdown_option", "document_hub", "document_tree_node", "document",
-        "document_history_entry", "lead", "lead_status", "lead_action_option", "proposal", "squad",
-        "escalation", "escalation_category", "escalation_priority", "escalation_status", "daily_update",
-        "time_entry", "org_grade", "org_employment_type", "org_department", "org_sub_department", "org_position", "client", "client_contact", "client_document", "client_allocation",
-        "tenant_settings", "user", "role", "permission", "role_permission", "user_role",
-        "invoice", "account_transaction", "invoice_payment",
-        "invoice_template", "invoice_customer", "invoice_settings_profile", "session",
-        "leave_request", "leave_adjustment", "leave_type", "leave_policy",
-        "qa_submission", "qa_parent_case", "qa_case", "qa_suite", "qa_run", "qa_scope", "qa_settings", "qa_analytics", "qa_module",
-        "leave_holiday", "leave_accrual_run", "leave_settings",
-        "employee", "onboarding_invite", "onboarding_document_type",
-        "attendance_record", "performance_report",
-        "circulation", "blog", "opening"
-      ];
-
-      // Union distinct db rows with predefined constants
-      const sectionsSet = new Set(predefinedSections);
+      // Filter distinct db rows and predefined constants with dynamic capabilities
+      const sectionsSet = new Set<string>();
+      PREDEFINED_SECTIONS.forEach(s => {
+        if (allowedCapabilities.has(normalizeName(s))) sectionsSet.add(s);
+      });
       sections.rows.forEach((r: any) => {
-        if (r.section) sectionsSet.add(r.section);
+        if (r.section && allowedCapabilities.has(normalizeName(r.section))) {
+          sectionsSet.add(r.section === "HR" ? "HRMS" : r.section);
+        }
       });
 
       const modulesMap = new Map<string, string>();
-      predefinedModules.forEach((m) => modulesMap.set(m.module, m.section));
+      PREDEFINED_MODULES.forEach((m) => {
+        const secNorm = normalizeName(m.section);
+        const modNorm = normalizeName(m.module);
+        if (allowedCapabilities.has(secNorm)) {
+          const allowedMods = allowedCapabilities.get(secNorm)!;
+          let mappedModNorm = DB_TO_METADATA_MODULE_MAP[modNorm] || modNorm;
+          
+          if (allowedMods.size === 0 || allowedMods.has(modNorm) || allowedMods.has(mappedModNorm)) {
+            modulesMap.set(m.module, m.section);
+          }
+        }
+      });
+
       modules.rows.forEach((r: any) => {
         if (r.module && r.section) {
           let modName = r.module;
-          if (["InvoiceCustomers", "InvoiceSettings", "InvoiceTemplates", "InvoiceTrash"].includes(modName)) {
-            modName = "Invoices";
+          
+          modName = MODULE_REWRITES[modName] || modName;
+          if (normalizeName(modName) === "apihub") {
+            modName = "ApiHub";
           }
-          if (["Sprints", "Buckets", "TicketSettings", "Trash", "Archived"].includes(modName)) {
-            modName = "Tickets";
+          
+          if (SECTION_REWRITES[modName]) {
+            r.section = SECTION_REWRITES[modName];
           }
-          if (modName === "BugList" || modName === "QA") {
-            modName = "QaWorkspace";
+          
+          let displaySection = r.section;
+          if (displaySection === "HR") displaySection = "HRMS";
+          
+          const secNorm = normalizeName(r.section);
+          const origModNorm = normalizeName(r.module);
+          let mappedModNorm = DB_TO_METADATA_MODULE_MAP[origModNorm] || origModNorm;
+
+          if (allowedCapabilities.has(secNorm)) {
+            const allowedMods = allowedCapabilities.get(secNorm)!;
+            if (allowedMods.size === 0 || allowedMods.has(origModNorm) || allowedMods.has(mappedModNorm)) {
+              modulesMap.set(modName, displaySection);
+            }
           }
-          if (modName === "Leads") {
-            modName = "LeadsManagement";
-          }
-          if (modName === "OrgStructure") {
-            r.section = "ADMIN";
-          }
-          modulesMap.set(modName, r.section);
         }
       });
-      const allowedWorkModules = new Set([
-        "Tickets", "Projects", "TimeTracking", "DailyUpdates", "DocumentHub",
-        "Proposals", "Squad", "Escalations", "LeadsManagement", "BidIQ", "QaWorkspace"
-      ]);
 
       const finalModules = Array.from(modulesMap.entries())
-        .filter(([module, section]) => {
-          if (["InvoiceCustomers", "InvoiceSettings", "InvoiceTemplates", "InvoiceTrash", "Reimbursement"].includes(module)) return false;
-          if (section === "WORK" && !allowedWorkModules.has(module)) return false;
-          return true;
-        })
+        .filter(([module, section]) => !HIDDEN_MODULES.includes(module))
         .map(([module, section]) => ({
           section,
           module,
         }));
 
       const pagesMap = new Map<string, string>();
-      predefinedPages.forEach((p) => pagesMap.set(p.page, p.module));
+      PREDEFINED_PAGES.forEach((p) => pagesMap.set(p.page, p.module));
       pages.rows.forEach((r: any) => {
         if (r.page && r.module) {
           let modName = r.module;
-          if (["InvoiceCustomers", "InvoiceSettings", "InvoiceTemplates", "InvoiceTrash"].includes(modName)) {
-            modName = "Invoices";
-          }
-          if (["Sprints", "Buckets", "TicketSettings", "Trash", "Archived"].includes(modName)) {
-            modName = "Tickets";
-          }
-          if (modName === "BugList" || modName === "QA") {
-            modName = "QaWorkspace";
-          }
-          if (modName === "Leads") {
-            modName = "LeadsManagement";
-          }
+          modName = MODULE_REWRITES[modName] || modName;
           pagesMap.set(r.page, modName);
         }
       });
       const finalPages = Array.from(pagesMap.entries())
         .filter(([page, module]) => {
-          if (module === "Reimbursement") return false;
-          const allowedTicketPages = new Set(["Plans", "TicketList", "Buckets", "Reports", "Settings", "Trash", "Archive"]);
-          if (module === "Tickets" && !allowedTicketPages.has(page)) return false;
-          
-          const allowedQaPages = new Set([
-            "QaScopeList", "QaCaseList", "QaSuiteList", "QaRunList", 
-            "BugList", "QaSubmissionList", "QaApprovals", "QaAnalytics", "QaSettings"
-          ]);
-          if (module === "QaWorkspace" && !allowedQaPages.has(page)) return false;
-          const section = modulesMap.get(module);
-          if (section === "WORK" && !allowedWorkModules.has(module)) return false;
+          if (!modulesMap.has(module)) return false;
           return true;
         })
         .map(([page, module]) => ({
@@ -642,12 +632,12 @@ export class TransactionHistoryController {
           page,
         }));
 
-      const actionsSet = new Set(predefinedActions);
+      const actionsSet = new Set(PREDEFINED_ACTIONS);
       actions.rows.forEach((r: any) => {
         if (r.action) actionsSet.add(r.action);
       });
 
-      const entityTypesSet = new Set(predefinedEntityTypes);
+      const entityTypesSet = new Set(PREDEFINED_ENTITY_TYPES);
       entityTypes.rows.forEach((r: any) => {
         if (r.entity_type) entityTypesSet.add(r.entity_type);
       });
@@ -656,27 +646,16 @@ export class TransactionHistoryController {
       pageActionsResult.rows.forEach((r: any) => {
         let mod = r.module;
         let pg = r.page;
-        if (["InvoiceCustomers", "InvoiceSettings", "InvoiceTemplates", "InvoiceTrash"].includes(mod)) {
-          mod = "Invoices";
+        
+        mod = MODULE_REWRITES[mod] || mod;
+        
+        if (PAGE_REWRITES[mod] && PAGE_REWRITES[mod][pg]) {
+          pg = PAGE_REWRITES[mod][pg];
         }
-        if (mod === "BugList" || mod === "QA") {
-          mod = "QaWorkspace";
-          if (["TestCases", "TestCaseDetails", "QaCaseDetail", "QaParentCase"].includes(pg)) pg = "QaCaseList";
-          else if (["TestRuns", "TestRunExecution", "QaRunDetail"].includes(pg)) pg = "QaRunList";
-          else if (["TestSuites", "QaSuiteDetail"].includes(pg)) pg = "QaSuiteList";
-          else if (["TestScope", "CreateTestScope", "EditTestScope", "QaScopeDetail"].includes(pg)) pg = "QaScopeList";
-          else if (["QaSubmissions", "QaSubmissionForm", "QaSubmissionDetail"].includes(pg)) pg = "QaSubmissionList";
-          else if (["BugFolderList", "BugSheetList", "BugTrash"].includes(pg)) pg = "BugList";
-          else if (pg === "BugSettings") pg = "QaSettings";
+        
+        if (modulesMap.has(mod)) {
+          pageActionsSet.add(JSON.stringify({ page: pg, action: r.action }));
         }
-        if (mod === "Tickets") {
-          if (pg === "TicketDetail") pg = "TicketList";
-          // We can add other ticket page mappings here if necessary, but the UI expects TicketList for TicketDetail.
-        }
-        if (mod === "TimeTracking" && pg === "TicketDetail") {
-          pg = "TimeTrackingDetails";
-        }
-        pageActionsSet.add(JSON.stringify({ page: pg, action: r.action }));
       });
 
       const pageActionsList = Array.from(pageActionsSet).map((s) => JSON.parse(s));

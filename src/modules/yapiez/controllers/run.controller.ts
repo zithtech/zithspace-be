@@ -10,6 +10,7 @@ import { raiseBugSchema, runFlowSchema } from '../validators';
 import { runFlow } from '../services/flowRunner';
 import { bugTargets, describeFailure, raiseBugForStep } from '../services/bugBridge';
 import { YapiezError } from '../types';
+import { recordTransaction, Section, Module, Page, Action, EntityType } from '@/utils/transactionHistory';
 
 /**
  * Run a flow and return the finished run.
@@ -33,6 +34,17 @@ export const execute = handle(async (req: AuthRequest, res: Response) => {
   });
 
   const full = await withTenant(tenantId, (c) => runRepo.getRun(c, run.id));
+
+  recordTransaction({
+    req,
+    section: Section.WORK,
+    module: Module.API_HUB,
+    page: Page.API_HUB_FLOW_EDITOR,
+    action: Action.RUN,
+    entityType: EntityType.API_FLOW,
+    entityId: req.params.id,
+  });
+
   ok(res, full, 201);
 });
 

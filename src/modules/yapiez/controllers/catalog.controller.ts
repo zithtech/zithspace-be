@@ -21,6 +21,7 @@ import {
   tryApiSchema,
   grammarSchema,
 } from '../validators';
+import { recordTransaction, Section, Module, Page, Action, EntityType } from '@/utils/transactionHistory';
 
 // ─── Sources — the deployment tier above collections ────────────────────────
 
@@ -36,6 +37,18 @@ export const createSource = handle(async (req: AuthRequest, res: Response) => {
   const { tenantId, userId } = actorOf(req);
   const input = sourceCreateSchema.parse(req.body);
   const data = await withTenant(tenantId, (c) => sourceRepo.createSource(c, userId, input));
+  
+  recordTransaction({
+    req,
+    section: Section.WORK,
+    module: Module.API_HUB,
+    page: Page.API_HUB_DASHBOARD,
+    action: Action.CREATE,
+    entityType: EntityType.API_SOURCE,
+    entityId: data.id,
+    entityLabel: data.label,
+  });
+
   ok(res, data, 201);
 });
 
@@ -43,6 +56,18 @@ export const updateSource = handle(async (req: AuthRequest, res: Response) => {
   const { tenantId, userId } = actorOf(req);
   const input = sourceUpdateSchema.parse(req.body);
   const data = await withTenant(tenantId, (c) => sourceRepo.updateSource(c, userId, req.params.id, input));
+
+  recordTransaction({
+    req,
+    section: Section.WORK,
+    module: Module.API_HUB,
+    page: Page.API_HUB_DASHBOARD,
+    action: Action.UPDATE,
+    entityType: EntityType.API_SOURCE,
+    entityId: data.id,
+    entityLabel: data.label,
+  });
+
   ok(res, data);
 });
 
@@ -51,6 +76,17 @@ export const deleteSource = handle(async (req: AuthRequest, res: Response) => {
   // Collections under it survive as unfiled; the count says how many so the UI
   // can report what actually happened.
   const result = await withTenant(tenantId, (c) => sourceRepo.deleteSource(c, req.params.id));
+
+  recordTransaction({
+    req,
+    section: Section.WORK,
+    module: Module.API_HUB,
+    page: Page.API_HUB_DASHBOARD,
+    action: Action.DELETE,
+    entityType: EntityType.API_SOURCE,
+    entityId: req.params.id,
+  });
+
   ok(res, { id: req.params.id, ...result });
 });
 
@@ -71,6 +107,18 @@ export const createCollection = handle(async (req: AuthRequest, res: Response) =
   const { tenantId, userId } = actorOf(req);
   const input = collectionCreateSchema.parse(req.body);
   const data = await withTenant(tenantId, (c) => repo.createCollection(c, userId, input));
+
+  recordTransaction({
+    req,
+    section: Section.WORK,
+    module: Module.API_HUB,
+    page: Page.API_HUB_DASHBOARD,
+    action: Action.CREATE,
+    entityType: EntityType.API_COLLECTION,
+    entityId: data.id,
+    entityLabel: data.name,
+  });
+
   ok(res, data, 201);
 });
 
@@ -78,12 +126,35 @@ export const updateCollection = handle(async (req: AuthRequest, res: Response) =
   const { tenantId, userId } = actorOf(req);
   const input = collectionUpdateSchema.parse(req.body);
   const data = await withTenant(tenantId, (c) => repo.updateCollection(c, userId, req.params.id, input));
+
+  recordTransaction({
+    req,
+    section: Section.WORK,
+    module: Module.API_HUB,
+    page: Page.API_HUB_DASHBOARD,
+    action: Action.UPDATE,
+    entityType: EntityType.API_COLLECTION,
+    entityId: data.id,
+    entityLabel: data.name,
+  });
+
   ok(res, data);
 });
 
 export const deleteCollection = handle(async (req: AuthRequest, res: Response) => {
   const { tenantId, userId } = actorOf(req);
   await withTenant(tenantId, (c) => repo.deleteCollection(c, userId, req.params.id));
+
+  recordTransaction({
+    req,
+    section: Section.WORK,
+    module: Module.API_HUB,
+    page: Page.API_HUB_DASHBOARD,
+    action: Action.DELETE,
+    entityType: EntityType.API_COLLECTION,
+    entityId: req.params.id,
+  });
+
   ok(res, { id: req.params.id });
 });
 
@@ -202,6 +273,18 @@ export const createApi = handle(async (req: AuthRequest, res: Response) => {
   const { tenantId, userId } = actorOf(req);
   const input = apiCreateSchema.parse(req.body);
   const data = await withTenant(tenantId, (c) => repo.createApi(c, userId, input));
+
+  recordTransaction({
+    req,
+    section: Section.WORK,
+    module: Module.API_HUB,
+    page: Page.API_HUB_DASHBOARD,
+    action: Action.CREATE,
+    entityType: EntityType.API_ENDPOINT,
+    entityId: data.id,
+    entityLabel: data.name,
+  });
+
   ok(res, data, 201);
 });
 
@@ -209,12 +292,35 @@ export const updateApi = handle(async (req: AuthRequest, res: Response) => {
   const { tenantId, userId } = actorOf(req);
   const input = apiUpdateSchema.parse(req.body);
   const data = await withTenant(tenantId, (c) => repo.updateApi(c, userId, req.params.id, input));
+
+  recordTransaction({
+    req,
+    section: Section.WORK,
+    module: Module.API_HUB,
+    page: Page.API_HUB_DASHBOARD,
+    action: Action.UPDATE,
+    entityType: EntityType.API_ENDPOINT,
+    entityId: data.id,
+    entityLabel: data.name,
+  });
+
   ok(res, data);
 });
 
 export const deleteApi = handle(async (req: AuthRequest, res: Response) => {
   const { tenantId, userId } = actorOf(req);
   await withTenant(tenantId, (c) => repo.deleteApi(c, userId, req.params.id));
+
+  recordTransaction({
+    req,
+    section: Section.WORK,
+    module: Module.API_HUB,
+    page: Page.API_HUB_DASHBOARD,
+    action: Action.DELETE,
+    entityType: EntityType.API_ENDPOINT,
+    entityId: req.params.id,
+  });
+
   ok(res, { id: req.params.id });
 });
 
