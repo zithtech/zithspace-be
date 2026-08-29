@@ -13,14 +13,14 @@ export declare class CalendarService {
  */
     static handleCallback(provider: CalendarProvider, userId: string, tenantId: string, code: string, state: string): Promise<{
         id: string;
+        userId: string;
         tenantId: string;
+        provider: import(".prisma/client").$Enums.CalendarProvider;
         refreshToken: string | null;
         createdAt: Date | null;
         updatedAt: Date | null;
         createdById: string | null;
         updatedById: string | null;
-        userId: string;
-        provider: import(".prisma/client").$Enums.CalendarProvider;
         accessToken: string | null;
         calendarId: string | null;
         mail_account_id: string | null;
@@ -68,17 +68,17 @@ export declare class CalendarService {
     static checkForOverlap(userId: string, tenantId: string, startTime: Date | string, endTime: Date | string, excludeEventId?: string): Promise<any[]>;
     static createEvent(userId: string, tenantId: string, provider: CalendarProvider, eventData: CalendarEventData): Promise<{
         id: string;
+        userId: string;
         tenantId: string;
+        provider: import(".prisma/client").$Enums.CalendarProvider;
+        calendar: string | null;
         description: string | null;
         createdAt: Date | null;
         updatedAt: Date | null;
         createdById: string | null;
         updatedById: string | null;
-        userId: string;
-        provider: import(".prisma/client").$Enums.CalendarProvider;
         title: string;
         calendarId: string | null;
-        calendar: string | null;
         isDeleted: boolean;
         startTime: Date;
         endTime: Date;

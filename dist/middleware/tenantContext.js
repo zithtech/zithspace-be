@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.validateTenantAccess = exports.checkTenantLimits = exports.requireTenant = exports.optionalTenantContext = exports.resolveTenant = void 0;
+exports.validateTenantAccess = exports.requireTenant = exports.optionalTenantContext = exports.resolveTenant = void 0;
 const database_1 = require("@/config/database");
 const types_1 = require("@/types");
 const cacheService_1 = __importDefault(require("@/utils/cacheService"));
@@ -193,90 +193,6 @@ const requireTenant = (req, res, next) => {
 };
 exports.requireTenant = requireTenant;
 /**
- * Middleware to check tenant plan limits
- */
-const checkTenantLimits = (limitType) => {
-    return async (req, res, next) => {
-        try {
-            if (!req.tenant) {
-                throw new types_1.TenantError("Tenant context required");
-            }
-            const tenant = req.tenant;
-            switch (limitType) {
-                case "users":
-                    if (req.method === "POST" && req.path.includes("/users")) {
-                        const currentUserCount = await database_1.tenantAwarePrisma.withTenant(tenant.id, async (client) => {
-                            return await client.user.count({
-                                where: {
-                                    tenantId: tenant.id,
-                                    isActive: true,
-                                },
-                            });
-                        });
-                        if (currentUserCount >= tenant.maxUsers) {
-                            res.status(403).json({
-                                success: false,
-                                error: `User limit reached. Maximum ${tenant.maxUsers} users allowed for ${tenant.planType} plan.`,
-                                code: "TENANT_LIMIT_EXCEEDED",
-                            });
-                            return;
-                        }
-                    }
-                    break;
-                case "projects":
-                    // Add project limits based on plan type
-                    if (req.method === "POST" && req.path.includes("/projects")) {
-                        const maxProjects = getMaxProjectsForPlan(tenant.planType);
-                        const currentProjectCount = await database_1.tenantAwarePrisma.withTenant(tenant.id, async (client) => {
-                            return await client.project.count({
-                                where: {
-                                    tenantId: tenant.id,
-                                },
-                            });
-                        });
-                        if (currentProjectCount >= maxProjects) {
-                            res.status(403).json({
-                                success: false,
-                                error: `Project limit reached. Maximum ${maxProjects} projects allowed for ${tenant.planType} plan.`,
-                                code: "TENANT_LIMIT_EXCEEDED",
-                            });
-                            return;
-                        }
-                    }
-                    break;
-                case "storage":
-                    // Implement storage limits if needed
-                    break;
-            }
-            next();
-        }
-        catch (error) {
-            console.error("Tenant limit check error:", error);
-            res.status(500).json({
-                success: false,
-                error: "Failed to check tenant limits",
-                code: "TENANT_LIMIT_CHECK_ERROR",
-            });
-        }
-    };
-};
-exports.checkTenantLimits = checkTenantLimits;
-/**
- * Get maximum projects allowed for a plan type
- */
-function getMaxProjectsForPlan(planType) {
-    switch (planType) {
-        case "basic":
-            return 3;
-        case "pro":
-            return 10;
-        case "enterprise":
-            return 100;
-        default:
-            return 3;
-    }
-}
-/**
  * Middleware to validate tenant access for cross-tenant operations
  */
 const validateTenantAccess = (req, res, next) => {
@@ -296,7 +212,6 @@ exports.default = {
     resolveTenant: exports.resolveTenant,
     optionalTenantContext: exports.optionalTenantContext,
     requireTenant: exports.requireTenant,
-    checkTenantLimits: exports.checkTenantLimits,
     validateTenantAccess: exports.validateTenantAccess,
 };
 //# sourceMappingURL=tenantContext.js.map

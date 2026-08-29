@@ -143,17 +143,17 @@ export const getTestScopes = async (req: Request, res: Response) => {
     const orderCol = validSortCols.includes(sortBy as string) ? (sortBy as string) : 'created_at';
     const orderDir = sortOrder === 'asc' ? 'ASC' : 'DESC';
     const nullsOrder = orderDir === 'ASC' ? 'NULLS LAST' : 'NULLS LAST';
-    
+
     query += ` ORDER BY ${orderCol} ${orderDir} ${nullsOrder} LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
-    
+
     const queryParams = [...params, limit, offset];
 
     const { rows } = await pool.query(query, queryParams);
     const { rows: countRows } = await pool.query(countQuery, params);
     const total = parseInt(countRows[0].count);
 
-    res.status(200).json({ 
-      success: true, 
+    res.status(200).json({
+      success: true,
       data: rows,
       pagination: {
         total,
@@ -206,6 +206,12 @@ export const createTestScope = async (req: Request, res: Response) => {
       [tenantId, name, type, priority, status, qa_owner, start_date || null, end_date || null, details || {}]
     );
 
+    // The modules named on a scope are the workspace's module list — keep the
+    // two in step rather than making someone add them twice. They are filed
+    // under the scope's own product, since a module belongs to a project.
+    await registerModuleNames(tenantId, details?.modules, details?.product).catch(err =>
+      console.error('Failed to register scope modules:', err));
+
     recordTransaction({
       req: req as any,
       section: Section.WORK,
@@ -235,7 +241,7 @@ export const updateTestScope = async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).user?.tenantId;
     const { id } = req.params;
-    
+
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
     console.log('UpdateTestScope called with id:', id, 'body:', req.body);
@@ -244,9 +250,9 @@ export const updateTestScope = async (req: Request, res: Response) => {
     // Check approve/reject permissions
     if (status === 'Approved' || status === 'Rejected') {
       const allowed = await RBACService.hasAnyPermission(
-        (req as any).user.id, 
-        tenantId, 
-        [Permissions.QA_SCOPE_APPROVE, Permissions.QA_MANAGE], 
+        (req as any).user.id,
+        tenantId,
+        [Permissions.QA_SCOPE_APPROVE, Permissions.QA_MANAGE],
         (req as any).user.role
       );
       if (!allowed) {
@@ -257,17 +263,17 @@ export const updateTestScope = async (req: Request, res: Response) => {
     const query = `UPDATE qa_test_scopes 
        SET name = $1, type = $2, priority = $3, status = $4, qa_owner = $5, start_date = $6, end_date = $7, details = $8, updated_at = NOW()
        WHERE id = $9 AND tenant_id = $10 RETURNING *`;
-    
+
     const params = [
-      name || null, 
-      type || null, 
-      priority || null, 
-      status || null, 
-      qa_owner || null, 
-      start_date || null, 
-      end_date || null, 
-      details || {}, 
-      id, 
+      name || null,
+      type || null,
+      priority || null,
+      status || null,
+      qa_owner || null,
+      start_date || null,
+      end_date || null,
+      details || {},
+      id,
       tenantId
     ];
     console.log('Executing query with params:', params);
@@ -285,6 +291,10 @@ export const updateTestScope = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, error: 'Test Scope not found' });
     }
 
+    // Modules added while editing join the workspace's module list too.
+    await registerModuleNames(tenantId, details?.modules, details?.product).catch(err =>
+      console.error('Failed to register scope modules:', err));
+
     const updatedScope = rows[0];
     const diff = diffShallow(oldScope, updatedScope);
     if (diff.changedFields.length > 0) {
@@ -300,7 +310,7 @@ export const updateTestScope = async (req: Request, res: Response) => {
         action,
         actionLabel: "Test Scope updated",
         entityType: EntityType.QA_SCOPE,
-        entityId: id,
+        entityId: updatedScope.id,
         entityLabel: updatedScope.name,
         beforeData: diff.before,
         afterData: diff.after,
@@ -323,7 +333,7 @@ export const deleteTestScope = async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).user?.tenantId;
     const { id } = req.params;
-    
+
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
     const { rows: oldRows } = await pool.query(`SELECT * FROM qa_test_scopes WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
@@ -656,7 +666,7 @@ export const getTestScopesStats = async (req: Request, res: Response) => {
     const userName = (req as any).user?.name;
     const userId = (req as any).user?.id;
     const userRole = (req as any).user?.role;
-    
+
     if (!tenantId) {
       return res.status(401).json({ success: false, error: 'Unauthorized' });
     }
@@ -727,9 +737,9 @@ export const getTestScopesStats = async (req: Request, res: Response) => {
       overdueCount: rows.filter(r => {
         if (!r.end_date) return false;
         const end = new Date(r.end_date);
-        end.setHours(0,0,0,0);
+        end.setHours(0, 0, 0, 0);
         const now = new Date();
-        now.setHours(0,0,0,0);
+        now.setHours(0, 0, 0, 0);
         return end < now;
       }).length,
       yearlyScopesData: []

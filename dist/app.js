@@ -16,6 +16,7 @@ if (process.env.NODE_ENV !== "development") {
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const morgan_1 = __importDefault(require("morgan"));
+const entitlements_middleware_1 = require("@/modules/entitlements/entitlements.middleware");
 const compression_1 = __importDefault(require("compression"));
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
@@ -136,6 +137,7 @@ const recruitmentStatus_routes_1 = __importDefault(require("@/routes/recruitment
 const recruitmentAction_routes_1 = __importDefault(require("@/routes/recruitmentAction.routes"));
 const candidateRoutes_1 = __importDefault(require("@/routes/candidateRoutes"));
 const routes_8 = __importDefault(require("@/modules/company-details/routes"));
+const routes_9 = __importDefault(require("@/modules/yapiez/routes"));
 const openingManagementRoutes_1 = __importDefault(require("@/routes/openingManagementRoutes"));
 const RabbitMQService_1 = require("@/utils/RabbitMQService");
 const CalendarSyncWorker_1 = require("@/workers/CalendarSyncWorker");
@@ -171,7 +173,11 @@ const allowedOrigins = [
     "http://localhost:3000", // Local development
     "http://localhost:3005", // Local development for internal app
     /^http:\/\/localhost:\d+$/, // Allow any localhost port (e.g. Vite 5173)
-    /^http:\/\/[^.]+\.localhost(:\d+)?$/, // *.localhost subdomains (dev)
+    // *.localhost subdomains (dev). MULTI-label on purpose: the dev host for a
+    // tenant on the Testiez surface is {tenant}.testiez.localhost, which is two
+    // labels before `.localhost`. A single-label pattern ([^.]+) matches
+    // kabs.localhost but silently denies kabs.testiez.localhost.
+    /^http:\/\/([a-z0-9-]+\.)+localhost(:\d+)?$/i,
     "https://zithmi.vercel.app", // Vercel production URL
     "https://www.zithtech.com",
     "https://zithspace.com",
@@ -180,6 +186,10 @@ const allowedOrigins = [
     /\.zithtech\.com$/, // allow any subdomain like dinesh.zithtech.com
     "https://zukvo.com",
     /\.zukvo\.com$/, // allow any tenant subdomain like zithmi.zukvo.com
+    // Testiez is the same app and the same API on a second brand domain, with the
+    // same {tenant}.{domain} shape. See src/config/brand.ts.
+    "https://testiez.com",
+    /\.testiez\.com$/, // allow any tenant subdomain like zithmi.testiez.com
     /^chrome-extension:\/\/[a-z]{32}$/, // Allow Chrome extensions
 ];
 app.use((0, cors_1.default)({
@@ -283,6 +293,11 @@ app.use((req, res, next) => {
     };
     next();
 });
+// Entitlement gate for whole modules a product may not include (HRMS, Finance,
+// Recruitment, My Hub). Mounted ONCE here, ahead of every route, so no router
+// can be missed — see MODULE_PREFIX_CAPABILITIES in the entitlements module for
+// the prefix list and why it lives in one place.
+app.use(entitlements_middleware_1.moduleEntitlementGate);
 // API routes
 app.use("/api/leave-adjustments", leaveAdjustmentRoutes_1.default);
 app.use("/api/company-government-holidays", companyGovernmentHoliday_routes_1.default);
@@ -394,6 +409,10 @@ app.use("/api/v2/qa/test-scopes", testScopeRoutes_1.default);
 app.use("/api/v2/qa/submissions", qaSubmissionRoutes_1.default);
 app.use("/api/v2/qa/analytics", qaAnalyticsRoutes_1.default);
 app.use("/api/v2/qa", testCaseRoutes_1.default); // Registers /api/v2/qa/modules, /api/v2/qa/, /api/v2/qa/suites, /api/v2/qa/runs
+// Yapiez — the API definition + flow execution layer feeding QA Space.
+// Mounted as its own module rather than under /api/v2/qa: it is a sibling of
+// QA Space, not a page inside it, and testCaseRoutes claims "/:id" above.
+app.use("/api/v2/yapiez", routes_9.default);
 app.use("/api/v2/payroll", routes_3.default);
 app.use("/api/v2/reimbursement", routes_4.default);
 app.use("/api/v2/openings", routes_5.default);
@@ -579,7 +598,21 @@ const startServer = async () => {
         // Company Details tables (raw-SQL module, forward-only migrations)
         const { runCompanyDetailsMigrations } = require("@/modules/company-details/db/migrate");
         await runCompanyDetailsMigrations();
-        // Connect RabbitMQ & Start Workers (Calendar, Mail)
+        // Yapiez tables (raw-SQL module, forward-only migrations)
+        const { runYapiezMigrations } = require("@/modules/yapiez/db/migrate");
+        await runYapiezMigrations();
+        // Close out any flow run left mid-execution by a previous process, so a
+        // crashed run does not sit in 'Running' forever.
+        try {
+            const { reconcileStaleRuns } = require("@/modules/yapiez/services/flowRunner");
+            const reconciled = await reconcileStaleRuns();
+            if (reconciled > 0)
+                console.log(`[yapiez] marked ${reconciled} stale run(s) as Aborted`);
+        }
+        catch (yapiezErr) {
+            console.error("[yapiez] stale run reconciliation failed:", yapiezErr?.message);
+        }
+        // Connect RabbitMQ & Start Workers
         try {
             await RabbitMQService_1.rabbitMQService.connect();
             await CalendarSyncWorker_1.CalendarSyncWorker.start();
@@ -662,6 +695,8 @@ const gracefulShutdown = async (signal) => {
             await (0, attendancePool_1.closeAttendancePool)();
             const { closeCompanyDetailsPool } = require("@/modules/company-details/db/pool");
             await closeCompanyDetailsPool();
+            const { closeYapiezPool } = require("@/modules/yapiez/db/pool");
+            await closeYapiezPool();
             console.log("Database and RabbitMQ connections closed");
         }
         catch (error) {

@@ -15,10 +15,6 @@ export declare const optionalTenantContext: (req: AuthRequest, res: Response, ne
  */
 export declare const requireTenant: (req: AuthRequest, res: Response, next: NextFunction) => void;
 /**
- * Middleware to check tenant plan limits
- */
-export declare const checkTenantLimits: (limitType: "users" | "projects" | "storage") => (req: AuthRequest, res: Response, next: NextFunction) => Promise<void>;
-/**
  * Middleware to validate tenant access for cross-tenant operations
  */
 export declare const validateTenantAccess: (req: AuthRequest, res: Response, next: NextFunction) => void;
@@ -26,7 +22,6 @@ declare const _default: {
     resolveTenant: (req: AuthRequest, res: Response, next: NextFunction) => Promise<void>;
     optionalTenantContext: (req: AuthRequest, res: Response, next: NextFunction) => Promise<void>;
     requireTenant: (req: AuthRequest, res: Response, next: NextFunction) => void;
-    checkTenantLimits: (limitType: "users" | "projects" | "storage") => (req: AuthRequest, res: Response, next: NextFunction) => Promise<void>;
     validateTenantAccess: (req: AuthRequest, res: Response, next: NextFunction) => void;
 };
 export default _default;

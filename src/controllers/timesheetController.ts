@@ -670,9 +670,10 @@ export class TimesheetController {
   const { id } = req.params;
 
   try {
-    // 1️⃣ Find the timesheet with related data
-    const timesheet = await prisma.timesheet.findUnique({
-      where: { id },
+    // 1️⃣ Find the timesheet with related data (scoped to the caller's tenant)
+    const tenantId = req.tenantId;
+    const timesheet = await prisma.timesheet.findFirst({
+      where: { id, tenantId },
       include: {
         user: true,
         rows: true,

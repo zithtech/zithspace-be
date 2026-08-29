@@ -101,6 +101,31 @@ exports.Permissions = {
     // separately from being able to read the runs you work on.
     QA_ANALYTICS_READ: 'qa.analytics.read',
     QA_MANAGE: 'qa.manage',
+    // ─── Yapiez (API definition + flow execution; feeds QA Space) ────────────
+    // Two authorities, deliberately split: developers own the API catalog, QA
+    // owns the flows built from it. EXECUTE is separate again — running a flow
+    // sends real requests to a real environment, so reading one is not licence
+    // to fire it.
+    YAPIEZ_API_CREATE: 'yapiez.api.create',
+    YAPIEZ_API_READ: 'yapiez.api.read',
+    YAPIEZ_API_UPDATE: 'yapiez.api.update',
+    YAPIEZ_API_DELETE: 'yapiez.api.delete',
+    // Sending a one-off request from the definition editor. Separate from
+    // FLOW_EXECUTE so a developer can try their own endpoint without also being
+    // able to fire QA's flows at an environment — same outbound risk, different
+    // authority.
+    YAPIEZ_API_TRY: 'yapiez.api.try',
+    YAPIEZ_FLOW_CREATE: 'yapiez.flow.create',
+    YAPIEZ_FLOW_READ: 'yapiez.flow.read',
+    YAPIEZ_FLOW_UPDATE: 'yapiez.flow.update',
+    YAPIEZ_FLOW_DELETE: 'yapiez.flow.delete',
+    YAPIEZ_FLOW_EXECUTE: 'yapiez.flow.execute',
+    YAPIEZ_RUN_READ: 'yapiez.run.read',
+    YAPIEZ_RUN_DELETE: 'yapiez.run.delete',
+    // Environments carry credentials, so editing them is its own grant.
+    YAPIEZ_ENV_READ: 'yapiez.environment.read',
+    YAPIEZ_ENV_MANAGE: 'yapiez.environment.manage',
+    YAPIEZ_MANAGE: 'yapiez.manage',
     // ─── Attendance ──────────────────────────────────────────────────
     ATTENDANCE_CREATE: 'attendance.create',
     ATTENDANCE_READ: 'attendance.read',

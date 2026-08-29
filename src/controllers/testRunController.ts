@@ -245,15 +245,36 @@ export const getTestRun = async (req: Request, res: Response) => {
       SELECT trr.*, tc.test_case_id as tc_ref_id, tc.name, tc.priority, tc.test_type,
              tc.severity, tc.automation, tc.status as case_status,
              tc.description, tc.preconditions, tc.steps_to_reproduce, tc.expected_result,
-             ${hasBugs ? `b.bug_number, b.sheet_id AS bug_sheet_id, (b.id IS NOT NULL) AS bug_logged,`
-        : `NULL::text AS bug_number, NULL::text AS bug_sheet_id, FALSE AS bug_logged,`}
+             ${hasBugs
+        // The bug a failure was filed as, and the ticket it was converted into.
+        // Both travel with the result so a reader can go from "this case failed"
+        // to "and here is who is fixing it" without a second call.
+        ? `b.bug_number, b.sheet_id AS bug_sheet_id, (b.id IS NOT NULL) AS bug_logged,
+             b.title AS bug_title, b.severity AS bug_severity,
+             b.status AS bug_state, b.created_at AS bug_created_at,
+             ba.name AS bug_assignee_name,
+             t.id AS ticket_id, t.ticket_number, t.title AS ticket_title,
+             t.status AS ticket_status, t.priority AS ticket_priority,
+             t.created_at AS ticket_created_at, t.due_date AS ticket_due_date,
+             ta.name AS ticket_assignee_name,`
+        : `NULL::text AS bug_number, NULL::text AS bug_sheet_id, FALSE AS bug_logged,
+             NULL::text AS bug_title, NULL::text AS bug_severity,
+             NULL::text AS bug_state, NULL::timestamptz AS bug_created_at,
+             NULL::text AS bug_assignee_name,
+             NULL::text AS ticket_id, NULL::text AS ticket_number, NULL::text AS ticket_title,
+             NULL::text AS ticket_status, NULL::text AS ticket_priority,
+             NULL::timestamptz AS ticket_created_at, NULL::timestamptz AS ticket_due_date,
+             NULL::text AS ticket_assignee_name,`}
              (COUNT(*) OVER())::int AS filtered_total
       FROM qa_test_run_results trr
       JOIN qa_test_cases tc ON trr.test_case_id = tc.id
       ${hasBugs
         // A trashed or deleted bug releases the case to be filed again
         ? `LEFT JOIN bugs b
-             ON b.id = trr.bug_id AND b.tenant_id = trr.tenant_id::text AND b.status <> 'trash'`
+             ON b.id = trr.bug_id AND b.tenant_id = trr.tenant_id::text AND b.status <> 'trash'
+           LEFT JOIN tickets t ON t.id = b.ticket_id AND t.tenant_id = b.tenant_id
+           LEFT JOIN users ba ON ba.id::text = b.assignee_id::text
+           LEFT JOIN users ta ON ta.id::text = t.assignee_id::text`
         : ``}
       ${where}
       ORDER BY tc.test_case_id ASC

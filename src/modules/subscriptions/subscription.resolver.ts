@@ -37,9 +37,16 @@ export class FeatureResolverService {
   /**
    * Helper to retrieve all features for a tenant.
    */
-  async getTenantFeatures(tenantId: string): Promise<string[]> {
+  /**
+   * Every feature the tenant may use, optionally scoped to one product.
+   *
+   * Pass the product the request arrived through (see config/brand.ts). A
+   * tenant holding both a Zukvo and a Testiez subscription otherwise resolves
+   * to whichever is newest, which would show the wrong shell entirely.
+   */
+  async getTenantFeatures(tenantId: string, productCode?: string): Promise<string[]> {
     try {
-      const subscription = await subscriptionService.getTenantSubscription(tenantId);
+      const subscription = await subscriptionService.getTenantSubscription(tenantId, productCode);
       return subscription?.features || [];
     } catch (error) {
       syncLogger.error(`[FeatureResolver] Error getting all features for tenant ${tenantId}`, error);

@@ -8,19 +8,19 @@ export class SubscriptionService {
    * Orchestrates fetching the subscription.
    * Prioritizes Redis Cache, falls back to Admin API on Miss.
    */
-  async getTenantSubscription(tenantId: string): Promise<CachedTenantSubscription | TenantSubscriptionPayload> {
+  async getTenantSubscription(tenantId: string, productCode?: string): Promise<CachedTenantSubscription | TenantSubscriptionPayload> {
     try {
       // 1. Check Cache
-      const cached = await subscriptionCacheService.get(tenantId);
+      const cached = await subscriptionCacheService.get(tenantId, productCode);
       if (cached) {
         return cached;
       }
 
       // 2. Fetch from Admin API
-      const apiResponse = await subscriptionClient.getTenantFeatures(tenantId);
+      const apiResponse = await subscriptionClient.getTenantFeatures(tenantId, productCode);
 
       // 3. Update Cache in background (no await)
-      subscriptionCacheService.set(tenantId, apiResponse).catch(err => {
+      subscriptionCacheService.set(tenantId, apiResponse, productCode).catch(err => {
         syncLogger.error(`Failed to cache subscription for tenant ${tenantId}`, err);
       });
 

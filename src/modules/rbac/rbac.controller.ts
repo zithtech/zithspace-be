@@ -1,4 +1,7 @@
 import { Response } from 'express';
+import { isResourceAvailable } from '@/modules/entitlements/permission-features';
+import { featureResolverService } from '@/modules/subscriptions';
+import { productFromRequest } from '@/config/brand';
 import { prisma } from '@/config/database';
 import { AuthRequest, ApiResponse } from '@/types';
 import { RBACService } from './rbac.service';
@@ -13,6 +16,53 @@ import {
   EntityType,
 } from "@/utils/transactionHistory";
 
+/**
+ * Reject permission ids the tenant's plan does not include.
+ *
+ * Hiding them in the role editor is presentation; this is the boundary. Without
+ * it a crafted request could attach Payroll to a Testiez role — inert today,
+ * because the API gate refuses those routes regardless, but it leaves a role
+ * claiming authority it does not have, and it becomes real the moment a gate is
+ * relaxed.
+ *
+ * Returns the offending resources, or null when everything is allowed.
+ * Unmanaged tenants (no features) allow everything, as everywhere else.
+ */
+async function rejectUnentitledPermissions(
+  req: AuthRequest,
+  permissionIds: string[],
+): Promise<string[] | null> {
+  if (!permissionIds.length) return null;
+
+  let granted: string[] = [];
+  try {
+    const tenantId = req.tenantId ?? req.user?.tenantId;
+    if (!tenantId) return null;
+    const product = productFromRequest(req);
+    granted = await featureResolverService.getTenantFeatures(
+      tenantId,
+      product ? product.toUpperCase() : undefined,
+    );
+  } catch (err) {
+    // Same rule as the gate: never block on a control-plane fault.
+    console.error('[rbac] could not resolve features, allowing permission write:', err);
+    return null;
+  }
+
+  if (granted.length === 0) return null;
+
+  const rows = await prisma.permission.findMany({
+    where: { id: { in: permissionIds } },
+    select: { resource: true },
+  });
+
+  const bad = [...new Set(rows.map((r) => r.resource))].filter(
+    (resource) => !isResourceAvailable(resource, granted),
+  );
+
+  return bad.length ? bad : null;
+}
+
 export class RBACController {
   // ─── Permissions ─────────────────────────────────────────────────────────────
 
@@ -26,16 +76,42 @@ export class RBACController {
         orderBy: [{ resource: 'asc' }, { action: 'asc' }],
       });
 
+      // Hide permissions the tenant's plan does not include.
+      //
+      // The catalogue is global — every tenant sees every permission — which is
+      // fine with one product and wrong with two: offering Payroll to a Testiez
+      // tenant builds a role whose permissions the API will refuse anyway.
+      //
+      // Failure here degrades to showing everything rather than nothing. The
+      // role editor is not a security boundary; the API is, and it enforces
+      // entitlement independently.
+      let granted: string[] = [];
+      try {
+        const tenantId = req.tenantId ?? req.user?.tenantId;
+        if (tenantId) {
+          const product = productFromRequest(req);
+          granted = await featureResolverService.getTenantFeatures(
+            tenantId,
+            product ? product.toUpperCase() : undefined,
+          );
+        }
+      } catch (err) {
+        console.error('[rbac] could not resolve features, showing all permissions:', err);
+        granted = [];
+      }
+
+      const visible = permissions.filter((p) => isResourceAvailable(p.resource, granted));
+
       // Group by resource
       const grouped: Record<string, typeof permissions> = {};
-      for (const perm of permissions) {
+      for (const perm of visible) {
         if (!grouped[perm.resource]) grouped[perm.resource] = [];
         grouped[perm.resource].push(perm);
       }
 
       res.status(200).json({
         success: true,
-        data: { permissions, grouped },
+        data: { permissions: visible, grouped },
       } as ApiResponse);
     } catch (error) {
       console.error('listPermissions error:', error);
@@ -118,6 +194,18 @@ export class RBACController {
         description?: string;
         permissionIds?: string[];
       };
+
+      if (Array.isArray(permissionIds) && permissionIds.length) {
+        const unentitled = await rejectUnentitledPermissions(req, permissionIds);
+        if (unentitled) {
+          res.status(403).json({
+            success: false,
+            error: `These permissions are not included in your plan: ${unentitled.join(', ')}`,
+            code: 'ENTITLEMENT_REQUIRED',
+          } as ApiResponse);
+          return;
+        }
+      }
 
       if (!name?.trim()) {
         res.status(400).json({ success: false, error: 'Role name is required' } as ApiResponse);
@@ -309,6 +397,16 @@ export class RBACController {
 
       if (!Array.isArray(permissionIds)) {
         res.status(400).json({ success: false, error: 'permissionIds must be an array' } as ApiResponse);
+        return;
+      }
+
+      const unentitled = await rejectUnentitledPermissions(req, permissionIds);
+      if (unentitled) {
+        res.status(403).json({
+          success: false,
+          error: `These permissions are not included in your plan: ${unentitled.join(', ')}`,
+          code: 'ENTITLEMENT_REQUIRED',
+        } as ApiResponse);
         return;
       }
 

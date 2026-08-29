@@ -79,8 +79,8 @@ export class RecruitmentClientController {
 
             const { id } = req.params;
             const result = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
-                const client = await prisma.recruitmentClientBasicInformation.findUnique({
-                    where: { id },
+                const client = await prisma.recruitmentClientBasicInformation.findFirst({
+                    where: { id, tenantId: req.tenantId! },
                     include: {
                         businessDetails: true,
                         hiringPreferences: true,
@@ -238,6 +238,17 @@ export class RecruitmentClientController {
                 basicInfo.primeVendorId = { set: [] };
             }
 
+            const owned = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                return await prisma.recruitmentClientBasicInformation.findFirst({
+                    where: { id, tenantId: req.tenantId! },
+                    select: { id: true }
+                });
+            });
+            if (!owned) {
+                res.status(404).json({ success: false, error: 'Recruitment client not found' } as ApiResponse);
+                return;
+            }
+
             await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
                 return await prisma.$transaction(async (tx) => {
                     // 1. Update Basic Information
@@ -320,6 +331,17 @@ export class RecruitmentClientController {
 
             const { id } = req.params;
 
+            const owned = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                return await prisma.recruitmentClientBasicInformation.findFirst({
+                    where: { id, tenantId: req.tenantId! },
+                    select: { id: true }
+                });
+            });
+            if (!owned) {
+                res.status(404).json({ success: false, error: 'Recruitment client not found' } as ApiResponse);
+                return;
+            }
+
             await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
                 return await prisma.$transaction(async (tx) => {
                     // Delete related records
@@ -340,8 +362,24 @@ export class RecruitmentClientController {
 
     static async addContact(req: AuthRequest, res: Response): Promise<void> {
         try {
+            if (!req.tenantId) {
+                res.status(400).json({ success: false, error: 'Tenant context required' } as ApiResponse);
+                return;
+            }
+
             const { id: recruitmentClientId } = req.params;
             const data = req.body;
+
+            const parent = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                return await prisma.recruitmentClientBasicInformation.findFirst({
+                    where: { id: recruitmentClientId, tenantId: req.tenantId! },
+                    select: { id: true }
+                });
+            });
+            if (!parent) {
+                res.status(404).json({ success: false, error: 'Recruitment client not found' } as ApiResponse);
+                return;
+            }
 
             const result = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
                 return await prisma.recruitmentClientContact.create({
@@ -361,7 +399,23 @@ export class RecruitmentClientController {
 
     static async deleteContact(req: AuthRequest, res: Response): Promise<void> {
         try {
+            if (!req.tenantId) {
+                res.status(400).json({ success: false, error: 'Tenant context required' } as ApiResponse);
+                return;
+            }
+
             const { contactId } = req.params;
+
+            const owned = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
+                return await prisma.recruitmentClientContact.findFirst({
+                    where: { id: contactId, recruitmentClient: { tenantId: req.tenantId! } },
+                    select: { id: true }
+                });
+            });
+            if (!owned) {
+                res.status(404).json({ success: false, error: 'Contact not found' } as ApiResponse);
+                return;
+            }
 
             await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
                 await prisma.recruitmentClientContact.delete({
@@ -389,8 +443,8 @@ export class RecruitmentClientController {
             const { id } = req.params;
 
             const partners = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
-                const client = (await prisma.recruitmentClientBasicInformation.findUnique({
-                    where: { id },
+                const client = (await prisma.recruitmentClientBasicInformation.findFirst({
+                    where: { id, tenantId: req.tenantId! },
                     select: { implementationPartnerId: true } as any
                 })) as any;
 
@@ -427,8 +481,8 @@ export class RecruitmentClientController {
             const { id } = req.params;
 
             const vendors = await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
-                const client = (await prisma.recruitmentClientBasicInformation.findUnique({
-                    where: { id },
+                const client = (await prisma.recruitmentClientBasicInformation.findFirst({
+                    where: { id, tenantId: req.tenantId! },
                     select: { primeVendorId: true } as any
                 })) as any;
 
@@ -473,8 +527,8 @@ export class RecruitmentClientController {
             await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
                 return await prisma.$transaction(async (tx) => {
                     // 1. Update Client's implementationPartnerId array
-                    const client = (await tx.recruitmentClientBasicInformation.findUnique({
-                        where: { id },
+                    const client = (await tx.recruitmentClientBasicInformation.findFirst({
+                        where: { id, tenantId: req.tenantId! },
                         select: { implementationPartnerId: true } as any
                     })) as any;
 
@@ -491,8 +545,8 @@ export class RecruitmentClientController {
                     }
 
                     // 2. Update Partner's clientIds array
-                    const partner = (await tx.implementationBasicInformation.findUnique({
-                        where: { id: partnerId },
+                    const partner = (await tx.implementationBasicInformation.findFirst({
+                        where: { id: partnerId, tenantId: req.tenantId! },
                         select: { clientIds: true } as any
                     })) as any;
 
@@ -538,8 +592,8 @@ export class RecruitmentClientController {
             await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
                 return await prisma.$transaction(async (tx) => {
                     // 1. Update Client's implementationPartnerId array
-                    const client = (await tx.recruitmentClientBasicInformation.findUnique({
-                        where: { id },
+                    const client = (await tx.recruitmentClientBasicInformation.findFirst({
+                        where: { id, tenantId: req.tenantId! },
                         select: { implementationPartnerId: true } as any
                     })) as any;
 
@@ -554,8 +608,8 @@ export class RecruitmentClientController {
                     });
 
                     // 2. Update Partner's clientIds array
-                    const partner = (await tx.implementationBasicInformation.findUnique({
-                        where: { id: partnerId },
+                    const partner = (await tx.implementationBasicInformation.findFirst({
+                        where: { id: partnerId, tenantId: req.tenantId! },
                         select: { clientIds: true } as any
                     })) as any;
 
@@ -600,8 +654,8 @@ export class RecruitmentClientController {
             await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
                 return await prisma.$transaction(async (tx) => {
                     // 1. Update Client's primeVendorId array
-                    const client = (await tx.recruitmentClientBasicInformation.findUnique({
-                        where: { id },
+                    const client = (await tx.recruitmentClientBasicInformation.findFirst({
+                        where: { id, tenantId: req.tenantId! },
                         select: { primeVendorId: true } as any
                     })) as any;
 
@@ -618,8 +672,8 @@ export class RecruitmentClientController {
                     }
 
                     // 2. Update Vendor's clientIds array
-                    const vendor = (await tx.vendorBasicInformation.findUnique({
-                        where: { id: vendorId },
+                    const vendor = (await tx.vendorBasicInformation.findFirst({
+                        where: { id: vendorId, tenantId: req.tenantId! },
                         select: { clientIds: true } as any
                     })) as any;
 
@@ -665,8 +719,8 @@ export class RecruitmentClientController {
             await tenantAwarePrisma.withTenant(req.tenantId, async (prisma) => {
                 return await prisma.$transaction(async (tx) => {
                     // 1. Update Client's primeVendorId array
-                    const client = (await tx.recruitmentClientBasicInformation.findUnique({
-                        where: { id },
+                    const client = (await tx.recruitmentClientBasicInformation.findFirst({
+                        where: { id, tenantId: req.tenantId! },
                         select: { primeVendorId: true } as any
                     })) as any;
 
@@ -681,8 +735,8 @@ export class RecruitmentClientController {
                     });
 
                     // 2. Update Vendor's clientIds array
-                    const vendor = (await tx.vendorBasicInformation.findUnique({
-                        where: { id: vendorId },
+                    const vendor = (await tx.vendorBasicInformation.findFirst({
+                        where: { id: vendorId, tenantId: req.tenantId! },
                         select: { clientIds: true } as any
                     })) as any;
 
