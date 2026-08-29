@@ -4,7 +4,7 @@ import { AuthRequest } from "@/types";
 import crypto from "crypto";
 
 function getAbsoluteReturnUrl(inputUrl: string | undefined, frontendUrl: string, subdomain?: string): string {
-    let target = inputUrl || "/calendar";
+    let target = inputUrl || "/integrations";
     if (target.startsWith("http://") || target.startsWith("https://")) {
         return target;
     }
@@ -39,6 +39,10 @@ function getAbsoluteReturnUrl(inputUrl: string | undefined, frontendUrl: string,
     }
 }
 
+const getFrontendUrl = (req?: any) => {
+    const isTestiez = req?.headers?.origin?.includes('testiez') || req?.headers?.referer?.includes('testiez') || req?.headers?.['x-zukvo-product'] === 'testiez';
+    return (isTestiez && process.env.TESTIEZ_FRONTEND_URL) ? process.env.TESTIEZ_FRONTEND_URL : (process.env.FRONTEND_URL || "http://localhost:3000");
+};
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 
 export class NotionAuthController {
@@ -48,10 +52,12 @@ export class NotionAuthController {
      */
     static async connect(req: AuthRequest, res: Response): Promise<void> {
         try {
-            const { returnUrl = `${FRONTEND_URL}/calendar` } = req.query as Record<string, string>;
+            const { returnUrl = `${getFrontendUrl(req)}/integrations` } = req.query as Record<string, string>;
 
             // Encode and sign the multi-tenant state parameter
-            const targetReturnUrl = getAbsoluteReturnUrl(returnUrl, FRONTEND_URL, req.tenant?.subdomain);
+            const defaultUrl = getFrontendUrl(req);
+            const clientUrl = (req.headers.origin || req.headers.referer || defaultUrl) as string;
+            const targetReturnUrl = getAbsoluteReturnUrl(returnUrl, clientUrl, req.tenant?.subdomain);
             const statePayload = JSON.stringify({
                 tenantId: req.tenantId || req.user.tenantId,
                 userId: req.user.id,
@@ -122,7 +128,7 @@ export class NotionAuthController {
      * Handles the OAuth callback from Notion.
      */
     static async callback(req: Request, res: Response): Promise<void> {
-        let returnUrl = `${FRONTEND_URL}/calendar`;
+        let returnUrl = `${getFrontendUrl(req)}/integrations`;
         try {
             const { code, state, error: oauthError } = req.query as Record<string, string>;
 

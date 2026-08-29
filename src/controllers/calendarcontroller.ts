@@ -10,11 +10,15 @@ import { MailSyncProducer } from '../services/mail/MailSyncProducer';
 import { PushNotificationService } from '@/services/pushNotificationService';
 import crypto from "crypto";
 
+const getFrontendUrl = (req?: any) => {
+    const isTestiez = req?.headers?.origin?.includes('testiez') || req?.headers?.referer?.includes('testiez') || req?.headers?.['x-zukvo-product'] === 'testiez';
+    return (isTestiez && process.env.TESTIEZ_FRONTEND_URL) ? process.env.TESTIEZ_FRONTEND_URL : (process.env.FRONTEND_URL || "http://localhost:3000");
+};
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 import { recordTransaction, Section, Module, Page, Action } from "@/utils/transactionHistory";
 
 function getAbsoluteReturnUrl(inputUrl: string | undefined, frontendUrl: string, subdomain?: string): string {
-    let target = inputUrl || "/calendar";
+    let target = inputUrl || "/integrations";
     if (target.startsWith("http://") || target.startsWith("https://")) {
         return target;
     }
@@ -47,7 +51,7 @@ function getAbsoluteReturnUrl(inputUrl: string | undefined, frontendUrl: string,
         urlObj.pathname = path;
         return urlObj.toString();
     } catch {
-        return `${frontendUrl}/calendar`;
+        return `${frontendUrl}/integrations`;
     }
 }
 
@@ -120,7 +124,9 @@ export class CalendarController {
             });
 
             // Encode and sign the multi-tenant state parameter
-            const targetReturnUrl = getAbsoluteReturnUrl(returnUrl, FRONTEND_URL, req.tenant?.subdomain);
+            const defaultUrl = getFrontendUrl(req);
+            const clientUrl = (req.headers.origin || req.headers.referer || defaultUrl) as string;
+            const targetReturnUrl = getAbsoluteReturnUrl(returnUrl, clientUrl, req.tenant?.subdomain);
             const statePayload = JSON.stringify({
                 tenantId: req.tenantId || req.user.tenantId,
                 userId: req.user.id,
@@ -150,7 +156,7 @@ export class CalendarController {
      * Handles the OAuth callback from a provider.
      */
     static async callback(req: AuthRequest, res: Response): Promise<void> {
-        let returnUrl = `${FRONTEND_URL}/calendar`;
+        let returnUrl = `${getFrontendUrl(req)}/integrations`;
         try {
             const { provider } = req.params;
             const { code, state, error: oauthError } = req.query as Record<string, string>;

@@ -11,10 +11,14 @@ const CalendarSyncProducer_1 = require("../services/calendar/CalendarSyncProduce
 const MailSyncProducer_1 = require("../services/mail/MailSyncProducer");
 const pushNotificationService_1 = require("@/services/pushNotificationService");
 const crypto_1 = __importDefault(require("crypto"));
+const getFrontendUrl = (req) => {
+    const isTestiez = req?.headers?.origin?.includes('testiez') || req?.headers?.referer?.includes('testiez') || req?.headers?.['x-zukvo-product'] === 'testiez';
+    return (isTestiez && process.env.TESTIEZ_FRONTEND_URL) ? process.env.TESTIEZ_FRONTEND_URL : (process.env.FRONTEND_URL || "http://localhost:3000");
+};
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 const transactionHistory_1 = require("@/utils/transactionHistory");
 function getAbsoluteReturnUrl(inputUrl, frontendUrl, subdomain) {
-    let target = inputUrl || "/calendar";
+    let target = inputUrl || "/integrations";
     if (target.startsWith("http://") || target.startsWith("https://")) {
         return target;
     }
@@ -51,7 +55,7 @@ function getAbsoluteReturnUrl(inputUrl, frontendUrl, subdomain) {
         return urlObj.toString();
     }
     catch {
-        return `${frontendUrl}/calendar`;
+        return `${frontendUrl}/integrations`;
     }
 }
 class CalendarController {
@@ -116,7 +120,9 @@ class CalendarController {
                 where: { userId: req.user.id }
             });
             // Encode and sign the multi-tenant state parameter
-            const targetReturnUrl = getAbsoluteReturnUrl(returnUrl, FRONTEND_URL, req.tenant?.subdomain);
+            const defaultUrl = getFrontendUrl(req);
+            const clientUrl = (req.headers.origin || req.headers.referer || defaultUrl);
+            const targetReturnUrl = getAbsoluteReturnUrl(returnUrl, clientUrl, req.tenant?.subdomain);
             const statePayload = JSON.stringify({
                 tenantId: req.tenantId || req.user.tenantId,
                 userId: req.user.id,
@@ -144,7 +150,7 @@ class CalendarController {
      * Handles the OAuth callback from a provider.
      */
     static async callback(req, res) {
-        let returnUrl = `${FRONTEND_URL}/calendar`;
+        let returnUrl = `${getFrontendUrl(req)}/integrations`;
         try {
             const { provider } = req.params;
             const { code, state, error: oauthError } = req.query;

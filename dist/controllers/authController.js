@@ -1356,7 +1356,8 @@ class AuthController {
             // phishing and not click it. brandForRequest() reads the Origin; the
             // subdomain still comes from the tenant so the link reaches their own
             // workspace either way.
-            const frontendUrl = (0, brand_1.tenantOrigin)(user.tenant?.subdomain, (0, brand_1.brandForRequest)(req));
+            const brand = await (0, brand_1.resolveBrand)(req, user.tenantId);
+            const frontendUrl = (0, brand_1.tenantOrigin)(user.tenant?.subdomain, brand);
             const resetLink = `${frontendUrl}/reset-password?token=${rawToken}`;
             const emailService = new emailService_1.EmailService();
             await emailService.sendPasswordResetEmail({
