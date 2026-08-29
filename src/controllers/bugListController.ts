@@ -1954,19 +1954,21 @@ export class BugListController {
         return;
       }
 
-      // Generate bug_number scoped to tenant: BUG-#####
+      // Generate bug_number scoped to project: BUG-#####
       const seqRes = await pool.query(
-        `SELECT bug_number FROM bugs
-          WHERE tenant_id = $1 AND bug_number IS NOT NULL
-          ORDER BY created_at DESC LIMIT 1`,
-        [req.tenantId],
+        `SELECT COALESCE(
+           MAX((regexp_match(b.bug_number, '-(\\d+)$'))[1]::int), 
+           0
+         ) + 1 AS next_seq
+         FROM bugs b
+         JOIN bug_folders f ON b.folder_id = f.id
+         WHERE b.tenant_id = $1 
+           AND f.project_id = (SELECT project_id FROM bug_folders WHERE id = $2)
+           AND b.bug_number ~ '-\\d+$'`,
+        [req.tenantId, folderId],
       );
-      let nextNum = 1;
-      if (seqRes.rows.length > 0 && seqRes.rows[0].bug_number) {
-        const parts = String(seqRes.rows[0].bug_number).split("-");
-        const last = parseInt(parts[parts.length - 1], 10);
-        if (!Number.isNaN(last)) nextNum = last + 1;
-      }
+      
+      const nextNum = seqRes.rows[0]?.next_seq ?? 1;
       const bugNumber = `BUG-${String(nextNum).padStart(4, "0")}`;
 
       // Bugs raised from a test run keep a link back to the case
