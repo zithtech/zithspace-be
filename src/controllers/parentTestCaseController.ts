@@ -18,9 +18,9 @@ let schemaFixed = false;
 const ensureModuleFkDropped = async () => {
   if (schemaFixed) return;
   try {
-    await pool.query(`ALTER TABLE qa_parent_test_cases DROP CONSTRAINT IF EXISTS qa_parent_test_cases_module_id_fkey;`).catch(() => {});
-    await pool.query(`ALTER TABLE qa_test_cases DROP CONSTRAINT IF EXISTS qa_test_cases_module_id_fkey;`).catch(() => {});
-    await pool.query(`ALTER TABLE qa_test_suites DROP CONSTRAINT IF EXISTS qa_test_suites_module_id_fkey;`).catch(() => {});
+    await pool.query(`ALTER TABLE qa_parent_test_cases DROP CONSTRAINT IF EXISTS qa_parent_test_cases_module_id_fkey;`).catch(() => { });
+    await pool.query(`ALTER TABLE qa_test_cases DROP CONSTRAINT IF EXISTS qa_test_cases_module_id_fkey;`).catch(() => { });
+    await pool.query(`ALTER TABLE qa_test_suites DROP CONSTRAINT IF EXISTS qa_test_suites_module_id_fkey;`).catch(() => { });
     schemaFixed = true;
   } catch (e) {
     // Ignore error if tables don't exist yet
@@ -144,8 +144,8 @@ export const getParentTestCases = async (req: Request, res: Response) => {
     const automatedCount = parseInt(countRows[0].automated_count || '0', 10);
     const childCount = parseInt(countRows[0].child_count || '0', 10);
 
-    res.status(200).json({ 
-      success: true, 
+    res.status(200).json({
+      success: true,
       data: rows,
       stats: {
         readyCount,
@@ -342,7 +342,7 @@ export const deleteParentTestCase = async (req: Request, res: Response) => {
 
     const oldCase = oldRows[0];
     const { rowCount } = await pool.query(`DELETE FROM qa_parent_test_cases WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
-    
+
     if (rowCount) {
       recordTransaction({
         req: req as any,
