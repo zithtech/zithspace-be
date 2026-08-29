@@ -51,7 +51,7 @@ const TESTIEZ: Brand = {
   // Deliberately NOT falling back to SYSTEM_EMAIL: that is a zukvo.com address,
   // and a Testiez customer replying to support should never see the other brand.
   supportEmail: process.env.TESTIEZ_SUPPORT_EMAIL || 'support@testiez.com',
-  systemEmail: process.env.TESTIEZ_SYSTEM_EMAIL || 'system@testiez.com',
+  systemEmail: process.env.TESTIEZ_SYSTEM_EMAIL || process.env.SMTP_USER || 'system@testiez.com',
   marketingUrl: 'https://testiez.com',
 };
 
@@ -184,7 +184,18 @@ export async function resolveBrand(
 export function tenantOrigin(subdomain: string | null | undefined, brand: Brand): string {
   const isDev = !process.env.NODE_ENV || process.env.NODE_ENV === 'development';
   if (isDev) {
-    return process.env.FRONTEND_URL || 'http://localhost:3000';
+    const defaultUrl = brand.product === 'testiez' ? process.env.TESTIEZ_FRONTEND_URL : process.env.FRONTEND_URL;
+    const base = defaultUrl || 'http://localhost:3000';
+    if (subdomain) {
+      try {
+        const urlObj = new URL(base);
+        urlObj.hostname = `${subdomain}.${urlObj.hostname}`;
+        return urlObj.toString().replace(/\/$/, '');
+      } catch (e) {
+        return base;
+      }
+    }
+    return base;
   }
 
   if (subdomain) {

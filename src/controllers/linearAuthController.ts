@@ -4,6 +4,11 @@ import { AuthRequest } from '../types';
 
 const linearAuthService = new LinearAuthService();
 
+const getFrontendUrl = (req?: any) => {
+    const isTestiez = req?.headers?.origin?.includes('testiez') || req?.headers?.referer?.includes('testiez') || req?.headers?.['x-zukvo-product'] === 'testiez';
+    return (isTestiez && process.env.TESTIEZ_FRONTEND_URL) ? process.env.TESTIEZ_FRONTEND_URL : (process.env.FRONTEND_URL || "http://localhost:3005");
+};
+
 export class LinearAuthController {
   static getConnectUrl = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
@@ -11,7 +16,8 @@ export class LinearAuthController {
         res.status(401).json({ success: false, error: 'Unauthorized' });
         return;
       }
-      const clientUrl = req.headers.origin || req.headers.referer || process.env.FRONTEND_URL || 'http://localhost:3005';
+      const defaultUrl = getFrontendUrl(req);
+      const clientUrl = req.headers.origin || req.headers.referer || defaultUrl;
       // If referer is something like http://localhost:3005/integrations, we just want the base URL
       const baseUrl = new URL(clientUrl as string).origin;
       
@@ -26,7 +32,11 @@ export class LinearAuthController {
   static handleCallback = async (req: Request, res: Response): Promise<void> => {
     try {
       const { code, state, error, error_description } = req.query;
-      const fallbackUrl = process.env.FRONTEND_URL || 'http://localhost:3005';
+      let fallbackUrl = getFrontendUrl(req);
+      if (state) {
+        const urlFromState = linearAuthService.getClientUrlFromState(state as string);
+        if (urlFromState) fallbackUrl = urlFromState;
+      }
 
       // Handle OAuth errors from Linear
       if (error) {
@@ -45,7 +55,12 @@ export class LinearAuthController {
       // Redirect back to frontend on success
       res.redirect(`${clientUrl}/integrations?success=linear_connected`);
     } catch (err: any) {
-      const fallbackUrl = process.env.FRONTEND_URL || 'http://localhost:3005';
+      let fallbackUrl = getFrontendUrl(req);
+      const state = req.query.state;
+      if (state) {
+        const urlFromState = linearAuthService.getClientUrlFromState(state as string);
+        if (urlFromState) fallbackUrl = urlFromState;
+      }
       console.error('Linear OAuth Callback Error:', err);
       res.redirect(`${fallbackUrl}/integrations?error=` + encodeURIComponent(err.message || 'Failed to connect Linear'));
     }

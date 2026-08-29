@@ -8,6 +8,11 @@ const prisma = new PrismaClient();
 const oauthService = new JiraOAuthService();
 const migrationService = new JiraMigrationService();
 
+const getFrontendUrl = (req?: any) => {
+    const isTestiez = req?.headers?.origin?.includes('testiez') || req?.headers?.referer?.includes('testiez') || req?.headers?.['x-zukvo-product'] === 'testiez';
+    return (isTestiez && process.env.TESTIEZ_FRONTEND_URL) ? process.env.TESTIEZ_FRONTEND_URL : (process.env.FRONTEND_URL || "http://localhost:3000");
+};
+
 function getAbsoluteReturnUrl(inputUrl: string | undefined, frontendUrl: string, subdomain?: string): string {
     let target = inputUrl || "/integrations";
     if (target.startsWith("http://") || target.startsWith("https://")) {
@@ -55,8 +60,9 @@ export class JiraController {
       if (!userId) return res.status(401).json({ error: "Unauthorized: User ID missing" });
 
       const returnUrl = req.query.returnUrl as string;
-      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
-      const targetReturnUrl = getAbsoluteReturnUrl(returnUrl, frontendUrl, subdomain);
+      const defaultUrl = getFrontendUrl(req);
+      const clientUrl = (req.headers.origin || req.headers.referer || defaultUrl) as string;
+      const targetReturnUrl = getAbsoluteReturnUrl(returnUrl, clientUrl, subdomain);
 
       const url = oauthService.getAuthorizationUrl(tenantId, userId, targetReturnUrl);
       res.json({ success: true, data: { url } });
@@ -77,7 +83,8 @@ export class JiraController {
       await oauthService.exchangeCodeForToken(code, tenantId, userId);
       
       // Redirect back to frontend integration page
-      let redirectUrl = process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}/integrations` : "http://localhost:3000/integrations";
+      const defaultUrl = getFrontendUrl(req);
+      let redirectUrl = `${defaultUrl}/integrations`;
       
       if (returnUrl) {
         try {
