@@ -3,7 +3,7 @@ import { Transporter } from "nodemailer";
 import { getActiveMailConfiguration } from "../models/mailConfiguration.model";
 import { decrypt } from "../utils/encryption";
 import { prisma } from "../config/database";
-import { DEFAULT_BRAND, brandForTenant } from "../config/brand";
+import { DEFAULT_BRAND, brandForTenant, tenantOrigin } from "../config/brand";
 // import { rabbitMQService } from "./RabbitMQService";
 // import { CENTRAL_MAIL_EXCHANGE, CENTRAL_MAIL_ROUTING_KEY } from "../config/rabbitmq";
 
@@ -295,10 +295,7 @@ export class EmailService {
     tenantId?: string
   ): Promise<boolean> {
     const branding = await this.resolveTenantMailBranding(tenantId);
-    const appDomain = process.env.APP_DOMAIN || "zukvo.com";
-    const tenantHost = branding.subdomain
-      ? `https://${branding.subdomain}.${appDomain}`
-      : process.env.FRONTEND_URL || `https://${appDomain}`;
+    const tenantHost = tenantOrigin(branding.subdomain, branding.brand);
     const loginUrl = `${tenantHost}/login?email=${encodeURIComponent(data.email)}&password=${encodeURIComponent(data.password || '')}`;
 
     const logoHtml = branding.companyLogo

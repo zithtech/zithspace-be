@@ -18,7 +18,7 @@ import { RBACService } from "@/modules/rbac/rbac.service";
 import { featureResolverService, navigationService, subscriptionService } from "@/modules/subscriptions";
 import * as companyDetailsService from "@/modules/company-details/services/companyDetails.service";
 import * as entitlementsService from "@/modules/entitlements/entitlements.service";
-import { brandForRequest, productFromRequest, tenantOrigin } from "@/config/brand";
+import { brandForRequest, productFromRequest, tenantOrigin, resolveBrand } from "@/config/brand";
 import { recordTransaction, Section, Module, Page, Action, EntityType } from "../utils/transactionHistory";
 
 import { Request } from "express";
@@ -1510,7 +1510,8 @@ export class AuthController {
       // phishing and not click it. brandForRequest() reads the Origin; the
       // subdomain still comes from the tenant so the link reaches their own
       // workspace either way.
-      const frontendUrl = tenantOrigin(user.tenant?.subdomain, brandForRequest(req));
+      const brand = await resolveBrand(req, user.tenantId);
+      const frontendUrl = tenantOrigin(user.tenant?.subdomain, brand);
 
       const resetLink = `${frontendUrl}/reset-password?token=${rawToken}`;
       const emailService = new EmailService();

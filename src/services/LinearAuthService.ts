@@ -32,6 +32,11 @@ export class LinearAuthService {
     return url.toString();
   }
 
+  public getClientUrlFromState(state: string): string | null {
+    const context = LinearAuthService.stateMap.get(state);
+    return context ? context.clientUrl : null;
+  }
+
   public async handleCallback(code: string, state: string): Promise<{ success: boolean, clientUrl: string }> {
     const context = LinearAuthService.stateMap.get(state);
     if (!context) {
