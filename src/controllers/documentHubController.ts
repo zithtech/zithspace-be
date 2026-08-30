@@ -1848,7 +1848,7 @@ export class DocumentHubController {
             json_build_object('id', u.id, 'name', u.name, 'avatarUrl', u.avatar_url) as "deletedBy",
             json_build_object('id', dh.id, 'name', dh.name) as "documentHub"
           FROM documenttree dt
-          LEFT JOIN users u ON dt.deleted_by_id = u.id
+          LEFT JOIN users u ON dt.deleted_by_id::text = u.id
           LEFT JOIN document_hub dh ON dt."documentHubId" = dh.id
           WHERE dt."tenantId" = $1 AND dt.is_deleted = true
         `, [req.tenantId]);

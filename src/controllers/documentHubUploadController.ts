@@ -148,6 +148,31 @@ export class DocumentHubUploadController {
   }
 
   /**
+   * Generic file upload for Document Editor (inline images, audio, video)
+   */
+  static async uploadEditorMedia(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.tenantId || !req.user || !req.file) {
+        res.status(400).json({ success: false, error: "File required" } as ApiResponse);
+        return;
+      }
+      const file = req.file;
+      const r2Result = await uploadBufferToR2(
+        file.buffer,
+        file.mimetype,
+        file.originalname,
+        req.tenantId,
+        `editor-media`
+      );
+      res.json({ success: true, url: r2Result.fileUrl });
+    } catch (error: any) {
+      console.error("Error uploading editor media:", error);
+      res.status(500).json({ success: false, error: error.message || "Failed to upload media" } as ApiResponse);
+    }
+  }
+
+
+  /**
    * 2. Google Drive - List Files & Folders
    */
   static async listGoogleDriveFiles(req: AuthRequest, res: Response): Promise<void> {

@@ -14,6 +14,9 @@ router.use(authenticateToken);
 // 1. My Computer - Upload Local File
 router.post("/:hubId/upload/local", upload.single("file"), DocumentHubUploadController.uploadLocalFile);
 
+// Editor Media Upload
+router.post("/editor/media", upload.single("file"), DocumentHubUploadController.uploadEditorMedia);
+
 // 2. Google Drive
 router.get("/:hubId/external/google/files", DocumentHubUploadController.listGoogleDriveFiles);
 router.post("/:hubId/external/google/import", DocumentHubUploadController.importGoogleDriveFile);
