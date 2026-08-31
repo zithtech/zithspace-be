@@ -40,6 +40,7 @@ exports.AuthController = void 0;
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const axios_1 = __importDefault(require("axios"));
 const database_1 = require("@/config/database");
+const dbpool_1 = __importDefault(require("@/config/dbpool"));
 const crypto_1 = __importDefault(require("crypto"));
 const emailService_1 = require("@/utils/emailService");
 const jwt_1 = require("@/utils/jwt");
@@ -383,6 +384,9 @@ class AuthController {
             const requestProduct = (0, brand_1.productFromRequest)(req);
             const subscriptionFeatures = await subscriptions_1.featureResolverService.getTenantFeatures(user.tenantId, requestProduct ? requestProduct.toUpperCase() : undefined);
             const navigation = await subscriptions_1.navigationService.buildNavigation(permSet, subscriptionFeatures);
+            // Fetch onboarding status (raw query — Prisma schema not updated)
+            const onboardingRaw = await dbpool_1.default.query("SELECT onboarding_completed FROM tenants WHERE id = $1", [user.tenantId]);
+            const onboardingCompleted = onboardingRaw.rows[0]?.onboarding_completed ?? true;
             // Return user data and access token
             const loginResponse = {
                 success: true,
@@ -403,6 +407,7 @@ class AuthController {
                     permissions: Array.from(permSet),
                     subscriptionFeatures,
                     navigation,
+                    onboardingCompleted,
                 },
                 message: "Login successful",
             };
@@ -646,6 +651,9 @@ class AuthController {
                 });
                 return;
             }
+            // Get raw onboarding_completed status (bypassing Prisma)
+            const tenantRawResult = await dbpool_1.default.query("SELECT onboarding_completed FROM tenants WHERE id = $1", [user.tenantId]);
+            const onboardingCompleted = tenantRawResult.rows[0]?.onboarding_completed ?? true;
             // Load permissions
             const permSet = await rbac_service_1.RBACService.getUserPermissions(user.id, user.tenantId, user.role);
             // Fetch subscription features and build dynamic navigation
@@ -699,6 +707,7 @@ class AuthController {
                         generalSettings: user.tenant.generalSettings?.[0] || null,
                         companyDetails,
                     },
+                    onboardingCompleted,
                     createdAt: user.createdAt,
                     updatedAt: user.updatedAt,
                     permissions: Array.from(permSet),

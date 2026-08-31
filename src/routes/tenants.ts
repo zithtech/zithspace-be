@@ -80,6 +80,14 @@ router.put('/profile', tenantRateLimit, resolveTenant, authenticateToken, requir
 router.put('/complete-setup', tenantRateLimit, resolveTenant, authenticateToken, TenantController.completeSetup);
 
 /**
+ * POST /api/tenants/onboarding/complete
+ * Mark the tenant's onboarding as completed.
+ * Called after the new-tenant project setup step (create or skip).
+ * Tenant ID is derived from the auth token — not accepted from the request body.
+ */
+router.post('/onboarding/complete', tenantRateLimit, resolveTenant, authenticateToken, TenantController.completeOnboarding);
+
+/**
  * DELETE /api/tenants/logo-version
  * Delete a specific logo version
  */

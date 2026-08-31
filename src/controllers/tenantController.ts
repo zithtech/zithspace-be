@@ -258,6 +258,7 @@ export class TenantController {
             id: result.tenant.id,
             name: result.tenant.name,
             subdomain: result.tenant.subdomain,
+            isNewSetup: true,
             planType: result.tenant.plan_type,
           },
           adminUser: {
@@ -1107,6 +1108,30 @@ export class TenantController {
     } catch (error) {
       console.error("Generate extension install key error:", error);
       res.status(500).json({ success: false, error: "Failed to generate install key" } as ApiResponse);
+    }
+  }
+
+  /**
+   * POST /api/tenants/onboarding/complete
+   * Mark the current tenant's onboarding as completed.
+   * Tenant ID is always sourced from the authenticated JWT — never the request body.
+   */
+  static async completeOnboarding(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      if (!req.user?.tenantId) {
+        res.status(401).json({ success: false, error: "Authentication required" } as ApiResponse);
+        return;
+      }
+
+      await pool.query(
+        "UPDATE tenants SET onboarding_completed = true, updated_at = now() WHERE id = $1",
+        [req.user.tenantId]
+      );
+
+      res.status(200).json({ success: true, message: "Onboarding marked as complete" } as ApiResponse);
+    } catch (error) {
+      console.error("Complete onboarding error:", error);
+      res.status(500).json({ success: false, error: "Failed to complete onboarding" } as ApiResponse);
     }
   }
 }

@@ -2,6 +2,7 @@ import { Response } from "express";
 import bcrypt from "bcryptjs";
 import axios from "axios";
 import { tenantAwarePrisma, prisma } from "@/config/database";
+import pool from "@/config/dbpool";
 import crypto from "crypto";
 import { EmailService } from "@/utils/emailService";
 import { JWTUtils } from "@/utils/jwt";
@@ -400,6 +401,13 @@ export class AuthController {
       );
       const navigation = await navigationService.buildNavigation(permSet, subscriptionFeatures);
 
+      // Fetch onboarding status (raw query — Prisma schema not updated)
+      const onboardingRaw = await pool.query(
+        "SELECT onboarding_completed FROM tenants WHERE id = $1",
+        [user.tenantId]
+      );
+      const onboardingCompleted = onboardingRaw.rows[0]?.onboarding_completed ?? true;
+
       // Return user data and access token
       const loginResponse: LoginResponse = {
         success: true,
@@ -420,7 +428,8 @@ export class AuthController {
           permissions: Array.from(permSet),
           subscriptionFeatures,
           navigation,
-        },
+          onboardingCompleted,
+        } as any,
         message: "Login successful",
       };
 
@@ -696,6 +705,13 @@ export class AuthController {
         return;
       }
 
+      // Get raw onboarding_completed status (bypassing Prisma)
+      const tenantRawResult = await pool.query(
+        "SELECT onboarding_completed FROM tenants WHERE id = $1",
+        [user.tenantId]
+      );
+      const onboardingCompleted = tenantRawResult.rows[0]?.onboarding_completed ?? true;
+
       // Load permissions
       const permSet = await RBACService.getUserPermissions(
         user.id,
@@ -759,6 +775,7 @@ export class AuthController {
             generalSettings: (user.tenant as any).generalSettings?.[0] || null,
             companyDetails,
           },
+          onboardingCompleted,
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
           permissions: Array.from(permSet),
