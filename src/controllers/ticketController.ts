@@ -768,7 +768,7 @@ export class TicketController {
 
       res.status(200).json({
         success: true,
-        data: result,
+        data: { subtasks: result, source: aiResponse.provider },
         message: "Subtasks generated",
       } as ApiResponse);
     } catch (error: any) {
