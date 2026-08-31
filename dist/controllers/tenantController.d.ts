@@ -62,5 +62,11 @@ export declare class TenantController {
      * invalidates the previous key. Tenant is derived from the authenticated JWT.
      */
     static generateExtensionInstallKey(req: AuthRequest, res: Response): Promise<void>;
+    /**
+     * POST /api/tenants/onboarding/complete
+     * Mark the current tenant's onboarding as completed.
+     * Tenant ID is always sourced from the authenticated JWT — never the request body.
+     */
+    static completeOnboarding(req: AuthRequest, res: Response): Promise<void>;
 }
 export default TenantController;
