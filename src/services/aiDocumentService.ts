@@ -14,6 +14,7 @@
 import { AIProvider, AIGenerateResult, AIProviderName } from "./ai";
 import { getAIProviderForTenant } from "./ai/resolver";
 import { AIResponse } from "../ai/interfaces/AIResponse";
+import { tryRepairJson } from "@/utils/jsonRepair";
 
 export interface AiDocumentDraft {
   /** Suggested name for the document hub. */
@@ -114,23 +115,24 @@ function cleanHtml(raw: string): string {
 
 function safeParseJson(raw: string): any | null {
   if (!raw) return null;
-  // Strip ```json fences if the model added them despite instructions.
-  const stripped = raw
+  
+  // Try direct parse first
+  let stripped = raw
     .replace(/^\s*```(?:json)?/i, "")
     .replace(/```\s*$/i, "")
     .trim();
   try {
     return JSON.parse(stripped);
   } catch {
-    // Try to extract the first {...} block.
-    const match = stripped.match(/\{[\s\S]*\}/);
-    if (match) {
-      try {
-        return JSON.parse(match[0]);
-      } catch {
-        return null;
-      }
-    }
+    // fall through
+  }
+
+  // Use robust repair
+  const repaired = tryRepairJson(stripped);
+  if (!repaired) return null;
+  try {
+    return JSON.parse(repaired);
+  } catch {
     return null;
   }
 }
@@ -139,36 +141,56 @@ async function callAi(prompt: string, provider: AIProvider): Promise<{ draft: Ai
   if (!provider.isConfigured()) return null;
 
   lastAiError = null;
-  try {
-    const res = await provider.generateText(USER_TEMPLATE(prompt), {
-      systemInstruction: SYSTEM_PROMPT,
-      json: true,
-      temperature: 0.5,
-      maxOutputTokens: 4096,
-    });
-    const parsed = safeParseJson(res.text);
-    if (!parsed) {
-      lastAiError = `${provider.name} returned non-JSON output`;
+
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const userPrompt =
+        attempt === 1
+          ? USER_TEMPLATE(prompt)
+          : `${USER_TEMPLATE(prompt)}\n\nIMPORTANT: Return ONLY a single valid JSON object. No prose, no markdown, no trailing commas. Make sure every string and brace is properly closed.`;
+
+      const res = await provider.generateText(userPrompt, {
+        systemInstruction: SYSTEM_PROMPT,
+        json: true,
+        temperature: 0.5,
+        maxOutputTokens: 4096,
+      });
+
+      const text = res.text?.trim();
+      if (!text) {
+        lastAiError = `${provider.name} returned an empty response`;
+        console.error(`[aiDocumentService] ${lastAiError} (attempt ${attempt}/2)`);
+        if (attempt === 2) return null;
+        continue;
+      }
+
+      const parsed = safeParseJson(text);
+      if (!parsed) {
+        lastAiError = `${provider.name} returned non-JSON output: ${(text || "").slice(0, 150).replace(/\n/g, " ")}`;
+        console.error(`[aiDocumentService] ${lastAiError} (attempt ${attempt}/2):`, text.slice(0, 600));
+        if (attempt === 2) return null;
+        continue;
+      }
+
+      const hubName = cleanTitle(String(parsed.hubName || ""), prompt.slice(0, 60));
+      const fileTitle = cleanTitle(String(parsed.fileTitle || ""), "Overview");
+      const contentHtml = cleanHtml(String(parsed.contentHtml || ""));
+
+      return { draft: { hubName, fileTitle, contentHtml }, res };
+    } catch (err: any) {
+      lastAiError = err?.message || `${provider.name} call failed`;
+      console.error("[aiDocumentService] AI error:", err);
       return null;
     }
-
-    const hubName = cleanTitle(String(parsed.hubName || ""), prompt.slice(0, 60));
-    const fileTitle = cleanTitle(String(parsed.fileTitle || ""), "Overview");
-    const contentHtml = cleanHtml(String(parsed.contentHtml || ""));
-
-    return { draft: { hubName, fileTitle, contentHtml }, res };
-  } catch (err: any) {
-    lastAiError = err?.message || `${provider.name} call failed`;
-    console.error("[aiDocumentService] AI error:", err);
-    return null;
   }
+  return null;
 }
 
 /* ------------------------------------------------------------------------ */
 /* Heuristic fallback (no API key / Gemini failure)                         */
 /* ------------------------------------------------------------------------ */
 
-function heuristicDraft(prompt: string): AiDocumentDraft {
+function heuristicDraft(prompt: string, reason?: string): AiDocumentDraft {
   const trimmed = prompt.trim();
   const topicSentence = trimmed.replace(/[?.!]+$/, "");
   const titleish = topicSentence
@@ -178,10 +200,16 @@ function heuristicDraft(prompt: string): AiDocumentDraft {
   const fileTitle = (titleish.slice(0, 60) || "Overview").trim();
   const hubName = (titleish.slice(0, 60) || "New Document").trim();
 
+  const isConfiguredButFailed = reason && !reason.includes("is not configured");
+
+  const message = isConfiguredButFailed
+    ? `This page is a placeholder generated because the AI provider failed (${reason}).`
+    : `This page is a placeholder generated without an AI provider. Configure an AI provider (<code>GEMINI_API_KEY</code> or <code>DEEPSEEK_API_KEY</code>) on the server to enable richer, automatically-generated documentation.`;
+
   const contentHtml = [
     `<p>${topicSentence}.</p>`,
     `<h2>Overview</h2>`,
-    `<p>This page is a placeholder generated without an AI provider. Configure an AI provider (<code>GEMINI_API_KEY</code> or <code>DEEPSEEK_API_KEY</code>) on the server to enable richer, automatically-generated documentation.</p>`,
+    `<p>${message}</p>`,
     `<h2>Notes</h2>`,
     `<ul><li>Edit this page directly to add real content.</li><li>You can use <strong>headings</strong>, <em>emphasis</em>, lists, and code blocks.</li></ul>`,
   ].join("");
@@ -321,7 +349,7 @@ export async function generateDocumentDraft(prompt: string, tenantId?: string): 
   console.warn(`[aiDocumentService] falling back to heuristic mock — ${reason}`);
 
   return {
-      data: heuristicDraft(prompt),
+      data: heuristicDraft(prompt, reason),
       provider: "mock",
       model: "mock",
       usage: { promptTokens: 0, completionTokens: 0 },

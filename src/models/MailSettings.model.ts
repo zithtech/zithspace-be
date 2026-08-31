@@ -56,19 +56,11 @@ export class MailSettingsModel {
   }
 
   static async getByEmail(email: string, tenantId: string, userId?: string): Promise<MailSettings | null> {
-    let query = `
+    const query = `
       SELECT * FROM mail_settings 
       WHERE email = $1 AND tenant_id = $2 AND deleted_at IS NULL
     `;
-    let values = [email, tenantId];
-    if (userId) {
-      query = `
-        SELECT * FROM mail_settings 
-        WHERE email = $1 AND tenant_id = $2 AND created_by = $3 AND deleted_at IS NULL
-      `;
-      values.push(userId);
-    }
-    const result = await pool.query(query, values);
+    const result = await pool.query(query, [email, tenantId]);
     return result.rows[0] || null;
   }
 
