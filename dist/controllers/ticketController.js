@@ -658,7 +658,7 @@ class TicketController {
             await EntitlementService_1.entitlementService.incrementUsage(req.tenantId, 'ai_credits_month', AIFeature_1.AIFeature.TICKET_ANALYSIS, pricingResult);
             res.status(200).json({
                 success: true,
-                data: result,
+                data: { subtasks: result, source: aiResponse.provider },
                 message: "Subtasks generated",
             });
         }

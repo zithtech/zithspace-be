@@ -9,6 +9,7 @@ import { MailProviderFactory } from "./MailProviderFactory";
 import { UnifiedAuthService } from "../UnifiedAuthService";
 import { uploadFileToR2, getFileBufferFromR2 } from "../../utils/r2Client";
 import { syncLogger } from "../../utils/logger";
+import { resolveBrand, tenantOrigin } from "../../config/brand";
 
 /**
  * Helper to strip characters that Postgres doesn't support in TEXT/VARCHAR fields,
@@ -674,17 +675,21 @@ export class MailService {
         const accessToken = await UnifiedAuthService.getValidAccessToken(account.user_id, account.provider as any);
         const provider = MailProviderFactory.getProvider(account.provider);
 
-        const verificationUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/verify-mail?token=${token}`;
+        const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+        const brand = await resolveBrand(null, tenantId);
+        const origin = tenantOrigin(tenant?.subdomain, brand);
+
+        const verificationUrl = `${origin}/verify-mail?token=${token}`;
 
         const html = `
             <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e1e1e1; border-radius: 8px;">
                 <div style="background-color: #1677ff; color: white; padding: 24px; text-align: center;">
-                    <h1 style="margin: 0; font-size: 20px;">Verify Your Invoice Mail</h1>
+                    <h1 style="margin: 0; font-size: 20px;">Verify Your Email</h1>
                 </div>
                 <div style="padding: 24px; color: #333;">
                     <p>Hi,</p>
-                    <p>You have selected <strong>${email}</strong> as your default invoice sender on Zithspace.</p>
-                    <p>Please click the button below to verify this email address and start using it for sending invoices.</p>
+                    <p>You have selected <strong>${email}</strong> as your default mail sender.</p>
+                    <p>Please click the button below to verify this email address.</p>
                     <div style="margin: 30px 0; text-align: center;">
                         <a href="${verificationUrl}" style="background-color: #1677ff; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; font-weight: bold;">Verify Email Address</a>
                     </div>
@@ -695,7 +700,7 @@ export class MailService {
 
         await provider.sendMessage(accessToken, {
             to: [email],
-            subject: "Verify your Invoice Mail Setting",
+            subject: "Verify your Email Setting",
             body: html,
             from: email
         });

@@ -732,25 +732,26 @@ export class DocumentHubUploadController {
 
             const accessToken = await NotionAuthService.getValidAccessToken(req.user.id, req.tenantId);
 
-            let blocks: any[] = [];
-            let cursor = undefined;
-            do {
-                const response = await axios.get(`https://api.notion.com/v1/blocks/${fileId}/children`, {
-                    headers: { 
-                        "Authorization": `Bearer ${accessToken}`,
-                        "Notion-Version": "2022-06-28"
-                    },
-                    params: {
-                        page_size: 100,
-                        start_cursor: cursor
-                    }
-                });
-                blocks = blocks.concat(response.data.results);
-                cursor = response.data.next_cursor;
-            } while (cursor);
+            const fetchNotionBlocks = async (blockId: string): Promise<any[]> => {
+                let allBlocks: any[] = [];
+                let cursor = undefined;
+                do {
+                    const response = await axios.get(`https://api.notion.com/v1/blocks/${blockId}/children`, {
+                        headers: { 
+                            "Authorization": `Bearer ${accessToken}`,
+                            "Notion-Version": "2022-06-28"
+                        },
+                        params: {
+                            page_size: 100,
+                            start_cursor: cursor
+                        }
+                    });
+                    allBlocks = allBlocks.concat(response.data.results);
+                    cursor = response.data.next_cursor;
+                } while (cursor);
+                return allBlocks;
+            };
 
-            const extractedBlocks: any[] = [];
-            
             const mapNotionRichText = (richTextArray: any[]) => {
                 if (!richTextArray || richTextArray.length === 0) return [];
                 return richTextArray.map(rt => {
@@ -770,50 +771,93 @@ export class DocumentHubUploadController {
                 });
             };
 
-            for (const block of blocks) {
-                if (block.type === "paragraph" && block.paragraph.rich_text) {
-                    extractedBlocks.push({
-                        type: "paragraph",
-                        content: mapNotionRichText(block.paragraph.rich_text)
-                    });
-                } else if (block.type === "heading_1" && block.heading_1.rich_text) {
-                    extractedBlocks.push({
-                        type: "heading",
-                        props: { level: 1 },
-                        content: mapNotionRichText(block.heading_1.rich_text)
-                    });
-                } else if (block.type === "heading_2" && block.heading_2.rich_text) {
-                    extractedBlocks.push({
-                        type: "heading",
-                        props: { level: 2 },
-                        content: mapNotionRichText(block.heading_2.rich_text)
-                    });
-                } else if (block.type === "heading_3" && block.heading_3.rich_text) {
-                    extractedBlocks.push({
-                        type: "heading",
-                        props: { level: 3 },
-                        content: mapNotionRichText(block.heading_3.rich_text)
-                    });
-                } else if (block.type === "bulleted_list_item" && block.bulleted_list_item.rich_text) {
-                    extractedBlocks.push({
-                        type: "bulletListItem",
-                        content: mapNotionRichText(block.bulleted_list_item.rich_text)
-                    });
-                } else if (block.type === "numbered_list_item" && block.numbered_list_item.rich_text) {
-                    extractedBlocks.push({
-                        type: "numberedListItem",
-                        content: mapNotionRichText(block.numbered_list_item.rich_text)
-                    });
-                }
-            }
+            const parseBlocks = async (notionBlocks: any[]): Promise<any[]> => {
+                const extracted: any[] = [];
+                // Process in chunks of 3 to safely parallelize without hitting Notion rate limits
+                const chunkSize = 3;
+                for (let i = 0; i < notionBlocks.length; i += chunkSize) {
+                    const chunk = notionBlocks.slice(i, i + chunkSize);
+                    const chunkResults = await Promise.all(chunk.map(async (block) => {
+                        let children: any[] = [];
+                        if (block.has_children) {
+                            const childBlocks = await fetchNotionBlocks(block.id);
+                            children = await parseBlocks(childBlocks);
+                        }
 
-            let textContent = "";
-            for (const b of extractedBlocks) {
-                const text = b.content ? b.content.map((c: any) => c.text).join("") : "";
-                if (b.type === "bulletListItem") textContent += "• " + text + "\n";
-                else if (b.type === "numberedListItem") textContent += "1. " + text + "\n";
-                else textContent += text + "\n\n";
-            }
+                        if (block.type === "paragraph" && block.paragraph.rich_text) {
+                            return {
+                                type: "paragraph",
+                                content: mapNotionRichText(block.paragraph.rich_text),
+                                children: children.length > 0 ? children : undefined
+                            };
+                        } else if (block.type === "heading_1" && block.heading_1.rich_text) {
+                            return {
+                                type: "heading",
+                                props: { level: 1 },
+                                content: mapNotionRichText(block.heading_1.rich_text),
+                                children: children.length > 0 ? children : undefined
+                            };
+                        } else if (block.type === "heading_2" && block.heading_2.rich_text) {
+                            return {
+                                type: "heading",
+                                props: { level: 2 },
+                                content: mapNotionRichText(block.heading_2.rich_text),
+                                children: children.length > 0 ? children : undefined
+                            };
+                        } else if (block.type === "heading_3" && block.heading_3.rich_text) {
+                            return {
+                                type: "heading",
+                                props: { level: 3 },
+                                content: mapNotionRichText(block.heading_3.rich_text),
+                                children: children.length > 0 ? children : undefined
+                            };
+                        } else if (block.type === "bulleted_list_item" && block.bulleted_list_item.rich_text) {
+                            return {
+                                type: "bulletListItem",
+                                content: mapNotionRichText(block.bulleted_list_item.rich_text),
+                                children: children.length > 0 ? children : undefined
+                            };
+                        } else if (block.type === "numbered_list_item" && block.numbered_list_item.rich_text) {
+                            return {
+                                type: "numberedListItem",
+                                content: mapNotionRichText(block.numbered_list_item.rich_text),
+                                children: children.length > 0 ? children : undefined
+                            };
+                        } else if (block.type === "toggle" && block.toggle.rich_text) {
+                            return {
+                                type: "toggleListItem",
+                                content: mapNotionRichText(block.toggle.rich_text),
+                                children: children.length > 0 ? children : undefined
+                            };
+                        }
+                        return null;
+                    }));
+                    extracted.push(...chunkResults.filter(Boolean));
+                }
+                return extracted;
+            };
+
+            const rootBlocks = await fetchNotionBlocks(fileId);
+            const extractedBlocks = await parseBlocks(rootBlocks);
+
+            const generateTextContent = (blocks: any[], depth: number = 0): string => {
+                let text = "";
+                const indent = "  ".repeat(depth);
+                for (const b of blocks) {
+                    const lineText = b.content ? b.content.map((c: any) => c.text).join("") : "";
+                    if (b.type === "bulletListItem") text += indent + "• " + lineText + "\n";
+                    else if (b.type === "numberedListItem") text += indent + "1. " + lineText + "\n";
+                    else if (b.type === "toggleListItem") text += indent + "▸ " + lineText + "\n";
+                    else text += indent + lineText + "\n\n";
+
+                    if (b.children && b.children.length > 0) {
+                        text += generateTextContent(b.children, depth + 1);
+                    }
+                }
+                return text;
+            };
+
+            const textContent = generateTextContent(extractedBlocks);
 
             const buffer = Buffer.from(textContent, "utf-8");
             const r2Result = await uploadBufferToR2(

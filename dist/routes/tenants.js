@@ -73,6 +73,13 @@ router.get('/profile', tenantRateLimit, tenantContext_1.resolveTenant, auth_1.au
 router.put('/profile', tenantRateLimit, tenantContext_1.resolveTenant, auth_1.authenticateToken, (0, permission_1.requirePermission)(permissions_1.Permissions.SETTINGS_UPDATE), tenantController_1.TenantController.updateProfile);
 router.put('/complete-setup', tenantRateLimit, tenantContext_1.resolveTenant, auth_1.authenticateToken, tenantController_1.TenantController.completeSetup);
 /**
+ * POST /api/tenants/onboarding/complete
+ * Mark the tenant's onboarding as completed.
+ * Called after the new-tenant project setup step (create or skip).
+ * Tenant ID is derived from the auth token — not accepted from the request body.
+ */
+router.post('/onboarding/complete', tenantRateLimit, tenantContext_1.resolveTenant, auth_1.authenticateToken, tenantController_1.TenantController.completeOnboarding);
+/**
  * DELETE /api/tenants/logo-version
  * Delete a specific logo version
  */
