@@ -418,11 +418,29 @@ export class TenantController {
         [workspaceName.trim(), newSubdomain, req.tenantId]
       );
 
+      // Renaming moves the workspace to a NEW SUBDOMAIN, which is a different
+      // browser origin. The caller's access token lives in localStorage there
+      // and its `zithmi_auth` marker cookie is host-only, so neither survives
+      // the hop — without a handoff the user is bounced straight back to the
+      // login form seconds after signing in.
+      //
+      // So hand them a token to arrive with. It is minted fresh rather than
+      // reusing the one on the request: access tokens last 15 minutes, and a
+      // workspace named at the end of a longer session would otherwise arrive
+      // with an expired token and land on the login form anyway — the exact bug
+      // this closes, just less often and harder to reproduce.
+      //
+      // tenantId is unchanged by a rename, so the identity in the token is the
+      // same; only the address it is used at moves. The refresh cookie sits on
+      // the API's own domain and is unaffected.
+      const tokens = JWTUtils.generateTokenPair(req.user as any);
+
       res.status(200).json({
         success: true,
         data: {
           name: updated.rows[0].name,
           subdomain: updated.rows[0].subdomain,
+          accessToken: tokens.accessToken,
         },
       } as ApiResponse);
     } catch (error) {
