@@ -17,6 +17,7 @@ import {
   tenantOrigin,
   Brand,
 } from "@/config/brand";
+import { googleIdentity, microsoftIdentity } from "@/utils/oauthIdentity";
 
 const emailService = new EmailService();
 
@@ -718,13 +719,12 @@ export class LandingSignupController {
         return;
       }
 
-      if (!googleUser || !googleUser.email) {
-        res.status(400).json({ success: false, error: "Failed to retrieve email from Google" });
+      const resolved = googleIdentity(googleUser);
+      if (resolved.error) {
+        res.status(400).json({ success: false, error: resolved.error });
         return;
       }
-
-      const email = googleUser.email.toLowerCase().trim();
-      const name = googleUser.name || "Google User";
+      const { email, name } = resolved.identity;
 
       // Scoped to the product being signed up for: already holding a Zukvo
       // workspace is not a reason to refuse a Testiez one, and vice versa.
@@ -776,13 +776,12 @@ export class LandingSignupController {
         return;
       }
 
-      if (!msUser || !(msUser.mail || msUser.userPrincipalName)) {
-        res.status(400).json({ success: false, error: "Failed to retrieve email from Microsoft" });
+      const resolved = microsoftIdentity(msUser);
+      if (resolved.error) {
+        res.status(400).json({ success: false, error: resolved.error });
         return;
       }
-
-      const email = (msUser.mail || msUser.userPrincipalName).toLowerCase().trim();
-      const name = msUser.displayName || msUser.givenName || "Microsoft User";
+      const { email, name } = resolved.identity;
 
       // Scoped to the product being signed up for: already holding a Zukvo
       // workspace is not a reason to refuse a Testiez one, and vice versa.
