@@ -175,7 +175,7 @@ export class LandingSignupController {
     let planId = parseInt(String(planConfig?.tier));
     let planName = "Free Trial";
 
-    const adminUrl = process.env.ADMIN_API_URL || "http://localhost:5000";
+    const adminUrl = process.env.ADMIN_API_URL || "http://localhost:4001";
     try {
       const plansRes = await axios.get(`${adminUrl}/api/plans`);
       const allPlans = Array.isArray(plansRes.data)
@@ -243,10 +243,19 @@ export class LandingSignupController {
     const { email, name, passwordHash, accountType, companyName, planConfig } =
       opts;
 
-    const tenantName =
-      accountType === "team" ? companyName || name : name;
-    const baseSlug =
-      accountType === "team" ? slugify(companyName || name) : slugify(name);
+    // The name the workspace is known by. A team supplies it as their company
+    // name (required at signup); a freelancer may supply it as an optional
+    // workspace name. Both arrive here in `companyName`, so the naming rule is
+    // the same for either account type and does not branch on accountType.
+    //
+    // Having it matters beyond the label: the subdomain is derived from it, so
+    // a named workspace lands on the right host immediately. Without it the
+    // slug falls back to the person's own name and has to be renamed after
+    // login — which changes ORIGIN and forces a handoff through /login?token=,
+    // the "logs in twice" the signup flow used to end with.
+    const workspaceName = (companyName || "").trim();
+    const tenantName = workspaceName || name;
+    const baseSlug = slugify(workspaceName || name);
     const subdomain = await uniqueSubdomain(baseSlug || "workspace");
 
     // Which brand door did this signup arrive through?
@@ -266,13 +275,18 @@ export class LandingSignupController {
 
       const tenantResult = await client.query(
         `INSERT INTO tenants (id, name, subdomain, plan_type, max_users, is_active, is_setup_complete, settings, web_inquiry_secret_key, created_at, updated_at)
-         VALUES (gen_random_uuid(), $1, $2, $3, 10, true, false, '{}', $4, now(), now())
+         VALUES (gen_random_uuid(), $1, $2, $3, 10, true, $5, '{}', $4, now(), now())
          RETURNING id`,
         [
           tenantName,
           subdomain,
           planName,
           `${crypto.randomInt(10000, 100000)}/secretkey/${subdomain}`,
+          // Setup is only outstanding when nobody has told us what to call the
+          // workspace. Naming it at signup is what retires SetupWorkspaceModal
+          // (AppSetupGuard gates on exactly this flag) — anyone who skipped the
+          // optional field still gets asked, exactly as before.
+          workspaceName.length > 0,
         ]
       );
       tenantId = tenantResult.rows[0].id;
@@ -326,7 +340,7 @@ export class LandingSignupController {
     // exists and is entitled even if this call fails, and Admin reconciles later.
     let adminAction: any = { action: "UNKNOWN" };
     try {
-      const adminUrl = process.env.ADMIN_API_URL || "http://localhost:5000";
+      const adminUrl = process.env.ADMIN_API_URL || "http://localhost:4001";
       const resp = await axios.post(`${adminUrl}/api/subscriptions/onboard`, {
         tenantId,
         planId,
@@ -376,7 +390,8 @@ export class LandingSignupController {
 
   static async signup(req: Request, res: Response): Promise<void> {
     try {
-      const { email, name, password, planConfig, type, companyName } = req.body;
+      const { email, name, password, planConfig, type, companyName, workspaceName } =
+        req.body;
 
       if (!email || !name || !password) {
         res.status(400).json({ success: false, error: "Email, name, and password are required" });
@@ -401,6 +416,14 @@ export class LandingSignupController {
         res.status(400).json({ success: false, error: "Company name is required for team accounts" });
         return;
       }
+
+      // One column holds whatever the customer calls their workspace: a team's
+      // company name, or a freelancer's optional workspace name. Read the field
+      // belonging to the account type rather than whichever happens to be
+      // present, so a stale companyName left over from toggling "team" cannot
+      // end up naming a freelancer's workspace.
+      const providedWorkspaceName =
+        (accountType === "team" ? companyName : workspaceName)?.trim() || null;
 
       // Product-scoped, matching the OAuth paths. The old check keyed off a
       // VERIFIED pending_registrations row, which is global (that table is
@@ -446,7 +469,7 @@ export class LandingSignupController {
           verificationExpiresAt,
           JSON.stringify(safePlanConfig(planConfig)),
           accountType,
-          companyName?.trim() || null,
+          providedWorkspaceName,
         ]
       );
 
@@ -600,7 +623,7 @@ export class LandingSignupController {
 
       const accountType = record.type === "team" ? "team" : "freelancer";
 
-      const { subdomain, adminAction } =
+      const { tenantId, userId, subdomain, adminAction } =
         await LandingSignupController.provisionTenant(req, {
           email: decoded.email,
           name: record.name,
@@ -611,11 +634,35 @@ export class LandingSignupController {
           completePendingId: record.id,
         });
 
+      // Auto-login, exactly as completeOAuthSignup does. Clicking a link sent to
+      // the mailbox proves control of the address, and the password was chosen
+      // minutes ago on the signup form — so demanding it again here bought no
+      // security and cost every customer an extra screen. This is the same
+      // token pair, the same cookie options and the same /login?token= handoff
+      // the OAuth signups already use; there is one mechanism, not two.
+      const tokens = JWTUtils.generateTokenPair({
+        id: userId,
+        tenantId,
+        email: decoded.email,
+        role: "super_admin",
+        position: null,
+        name: record.name,
+      } as any);
+
+      res.cookie("refreshToken", tokens.refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+        path: "/",
+      });
+
       res.status(200).json({
         success: true,
         tenantSubdomain: subdomain,
         email: decoded.email,
         name: record.name,
+        accessToken: tokens.accessToken,
         decision: adminAction,
       });
     } catch (error: any) {
@@ -710,7 +757,7 @@ export class LandingSignupController {
 
   static async googleSignup(req: Request, res: Response): Promise<void> {
     try {
-      const { token, type, companyName, planConfig } = req.body;
+      const { token, type, companyName, workspaceName, planConfig } = req.body;
 
       if (!token) {
         res.status(400).json({ success: false, error: "Google access token is required" });
@@ -756,7 +803,10 @@ export class LandingSignupController {
         email,
         name,
         accountType,
-        companyName: accountType === "team" ? companyName?.trim() : null,
+        // Same rule as the email signup: read the field that belongs to the
+        // account type, so a named workspace skips SetupWorkspaceModal here too.
+        companyName:
+          (accountType === "team" ? companyName : workspaceName)?.trim() || null,
         planConfig,
       });
     } catch (error: any) {
@@ -767,7 +817,7 @@ export class LandingSignupController {
 
   static async microsoftSignup(req: Request, res: Response): Promise<void> {
     try {
-      const { token, type, companyName, planConfig } = req.body;
+      const { token, type, companyName, workspaceName, planConfig } = req.body;
 
       if (!token) {
         res.status(400).json({ success: false, error: "Microsoft access token is required" });
@@ -813,7 +863,10 @@ export class LandingSignupController {
         email,
         name,
         accountType,
-        companyName: accountType === "team" ? companyName?.trim() : null,
+        // Same rule as the email signup: read the field that belongs to the
+        // account type, so a named workspace skips SetupWorkspaceModal here too.
+        companyName:
+          (accountType === "team" ? companyName : workspaceName)?.trim() || null,
         planConfig,
       });
     } catch (error: any) {
