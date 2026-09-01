@@ -303,15 +303,36 @@ export class TenantController {
         return;
       }
 
+      const requested = subdomain.toLowerCase();
+
       const result = await pool.query(
         `SELECT id, name, subdomain, plan_type, is_active, is_setup_complete
          FROM tenants
          WHERE subdomain = $1 AND is_active = true
          LIMIT 1`,
-        [subdomain.toLowerCase()]
+        [requested]
       );
 
-      const tenant = result.rows[0];
+      let tenant = result.rows[0];
+
+      // Fall back to retired slugs. A workspace renamed during setup leaves its
+      // signup welcome email — and any link shared before the rename — pointing
+      // at the old host. Resolving it here lets the client redirect to the
+      // current one instead of showing "workspace not found".
+      //
+      // Live tenants are checked FIRST and win: if a slug is somehow both live
+      // and retired, the live workspace is the right answer.
+      if (!tenant) {
+        const alias = await pool.query(
+          `SELECT t.id, t.name, t.subdomain, t.plan_type, t.is_active, t.is_setup_complete
+             FROM tenant_subdomain_aliases a
+             JOIN tenants t ON t.id = a.tenant_id
+            WHERE a.subdomain = $1 AND t.is_active = true
+            LIMIT 1`,
+          [requested]
+        );
+        tenant = alias.rows[0];
+      }
 
       // Scope the answer to the brand being asked through.
       //
@@ -399,9 +420,15 @@ export class TenantController {
         return;
       }
 
-      // Check uniqueness — allow the current tenant to keep its own subdomain
+      // Check uniqueness — allow the current tenant to keep its own subdomain.
+      // Retired slugs count as taken: another tenant claiming one would make
+      // every old link to the original workspace land on a stranger's instead.
+      // A tenant may still reclaim a slug it used to hold itself.
       const conflict = await pool.query(
-        "SELECT id FROM tenants WHERE subdomain = $1 AND id != $2 LIMIT 1",
+        `SELECT 1 FROM tenants WHERE subdomain = $1 AND id != $2
+          UNION ALL
+         SELECT 1 FROM tenant_subdomain_aliases WHERE subdomain = $1 AND tenant_id != $2
+         LIMIT 1`,
         [newSubdomain, req.tenantId]
       );
 
@@ -410,19 +437,75 @@ export class TenantController {
         return;
       }
 
-      const updated = await pool.query(
-        `UPDATE tenants
-         SET name = $1, subdomain = $2, is_setup_complete = true, updated_at = now()
-         WHERE id = $3
-         RETURNING id, name, subdomain`,
-        [workspaceName.trim(), newSubdomain, req.tenantId]
-      );
+      // Rename and retire the old slug in ONE transaction. Splitting them would
+      // allow a rename that records no alias — the links this whole table
+      // exists to protect would break with nothing to show why.
+      const client = await pool.connect();
+      let updated: any;
+      try {
+        await client.query("BEGIN");
+
+        const previous = await client.query(
+          "SELECT subdomain FROM tenants WHERE id = $1 FOR UPDATE",
+          [req.tenantId]
+        );
+        const oldSubdomain: string | undefined = previous.rows[0]?.subdomain;
+
+        updated = await client.query(
+          `UPDATE tenants
+           SET name = $1, subdomain = $2, is_setup_complete = true, updated_at = now()
+           WHERE id = $3
+           RETURNING id, name, subdomain`,
+          [workspaceName.trim(), newSubdomain, req.tenantId]
+        );
+
+        if (oldSubdomain && oldSubdomain !== newSubdomain) {
+          await client.query(
+            `INSERT INTO tenant_subdomain_aliases (subdomain, tenant_id)
+             VALUES ($1, $2)
+             ON CONFLICT (subdomain) DO NOTHING`,
+            [oldSubdomain, req.tenantId]
+          );
+        }
+
+        // Renaming BACK to a slug this tenant previously retired: it is live
+        // again, so it must not also sit in the alias table pointing at itself.
+        await client.query(
+          "DELETE FROM tenant_subdomain_aliases WHERE subdomain = $1",
+          [newSubdomain]
+        );
+
+        await client.query("COMMIT");
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+      } finally {
+        client.release();
+      }
+
+      // Renaming moves the workspace to a NEW SUBDOMAIN, which is a different
+      // browser origin. The caller's access token lives in localStorage there
+      // and its `zithmi_auth` marker cookie is host-only, so neither survives
+      // the hop — without a handoff the user is bounced straight back to the
+      // login form seconds after signing in.
+      //
+      // So hand them a token to arrive with. It is minted fresh rather than
+      // reusing the one on the request: access tokens last 15 minutes, and a
+      // workspace named at the end of a longer session would otherwise arrive
+      // with an expired token and land on the login form anyway — the exact bug
+      // this closes, just less often and harder to reproduce.
+      //
+      // tenantId is unchanged by a rename, so the identity in the token is the
+      // same; only the address it is used at moves. The refresh cookie sits on
+      // the API's own domain and is unaffected.
+      const tokens = JWTUtils.generateTokenPair(req.user as any);
 
       res.status(200).json({
         success: true,
         data: {
           name: updated.rows[0].name,
           subdomain: updated.rows[0].subdomain,
+          accessToken: tokens.accessToken,
         },
       } as ApiResponse);
     } catch (error) {
