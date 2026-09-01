@@ -1448,15 +1448,11 @@ export class ProjectController {
         status: { notIn: ["ARCHIVED", "DELETED"] }, // Exclude archived and deleted
       };
 
-      // STRICT ROLE LOGIC:
-      // SUPER_ADMIN -> Sees ALL projects in tenant
-      // ADMIN / MEMBER -> Sees ONLY assigned projects (Member or PM)
-      if (!await RBACService.hasPermission(userId, tenantId, Permissions.PROJECT_MANAGE, userRole)) {
-        whereClause.OR = [
-          { projectManagerId: userId },
-          { members: { some: { userId } } },
-        ];
-      }
+      // STRICT LOGIC: Always restrict to projects the user is explicitly part of for selection
+      whereClause.OR = [
+        { projectManagerId: userId },
+        { members: { some: { userId } } },
+      ];
 
       // 3. Fetch Projects
       const projects = await prisma.project.findMany({
