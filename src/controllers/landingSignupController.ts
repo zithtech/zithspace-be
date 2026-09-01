@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import axios from "axios";
 import { JWTUtils } from "@/utils/jwt";
 import { EmailService } from "@/utils/emailService";
-import pool from "@/config/dbpool";
+import pool, { withTenant } from "@/config/dbpool";
 import crypto from "crypto";
 import { RBACService } from "@/modules/rbac/rbac.service";
 import {
@@ -49,6 +49,88 @@ interface PlanConfig {
   ai?: string[];
   billing?: string;
   currency?: string;
+}
+
+/**
+ * The brand door a signup arrived through, validated against the known set.
+ *
+ * Falls back to Zukvo only when the origin is unrecognised (local dev, a curl).
+ * Every signup path resolves the product exactly once, here, so the collision
+ * check and the entitlement grant can never disagree about which product is
+ * being bought.
+ */
+function productForSignup(req: Request): Product {
+  const detected = productFromRequest(req);
+  return detected && ALL_PRODUCTS.includes(detected) ? detected : "zukvo";
+}
+
+/**
+ * Does this email already own a workspace on THIS product?
+ *
+ * The check used to be global — `WHERE work_email = $1` with no scope — which
+ * meant an existing Zukvo customer could not open a Testiez workspace at all.
+ * They are separate products sold separately; holding one is not a reason to be
+ * refused the other. Scoping by product is what makes the two brands genuinely
+ * standalone rather than one account namespace wearing two logos.
+ *
+ * The database was already on side: `users` is unique on (tenant_id, work_email)
+ * and (tenant_id, personal_email), never on email alone. Nothing here needs a
+ * migration; only the application-level guard was over-strict.
+ *
+ * WHY THIS IS TWO QUERIES AND NOT ONE JOIN
+ *   `ent_tenant_entitlements` runs FORCE ROW LEVEL SECURITY, with a policy of
+ *   `tenant_id = current_setting('app.current_tenant_id')`. A cross-tenant join
+ *   against it returns every row TODAY only because the app connects as a
+ *   BYPASSRLS superuser. The moment that is fixed — a dedicated app role is on
+ *   the roadmap — the join would silently match nothing and this guard would
+ *   fail OPEN, letting duplicates through with no error to notice.
+ *
+ *   So: find candidate tenants on `users`, which carries no RLS, then ask about
+ *   each one through `withTenant()`, which sets the GUC the policy reads. That
+ *   is correct under both regimes. The loop is over the handful of tenants that
+ *   share an email address, not over the tenant table.
+ */
+async function emailOwnsProductWorkspace(
+  email: string,
+  product: Product
+): Promise<boolean> {
+  const owners = await pool.query(
+    `SELECT DISTINCT tenant_id
+       FROM users
+      WHERE (work_email = $1 OR personal_email = $1)
+        AND tenant_id IS NOT NULL`,
+    [email]
+  );
+
+  for (const { tenant_id } of owners.rows) {
+    const held = await withTenant(tenant_id, (client) =>
+      client.query(
+        `SELECT 1
+           FROM ent_tenant_entitlements
+          WHERE tenant_id = $1
+            AND product = $2
+            AND status = 'active'
+          LIMIT 1`,
+        [tenant_id, product]
+      )
+    );
+
+    if (held.rows.length > 0) return true;
+
+    // A tenant with NO grant rows at all is "unmanaged", which entitlements
+    // treats as holding everything (see hasProduct). Signup always writes a
+    // grant, so this only covers rows that predate entitlements — and for those
+    // the safe reading is that the workspace is a Zukvo one.
+    const anyGrant = await withTenant(tenant_id, (client) =>
+      client.query(
+        `SELECT 1 FROM ent_tenant_entitlements WHERE tenant_id = $1 LIMIT 1`,
+        [tenant_id]
+      )
+    );
+    if (anyGrant.rows.length === 0 && product === "zukvo") return true;
+  }
+
+  return false;
 }
 
 /** Normalise whatever the pricing page posted into a stable shape. */
@@ -156,12 +238,8 @@ export class LandingSignupController {
       accountType === "team" ? slugify(companyName || name) : slugify(name);
     const subdomain = await uniqueSubdomain(baseSlug || "workspace");
 
-    // Which brand door did this signup arrive through? Fall back to Zukvo only
-    // when the origin is unrecognised (e.g. local dev). Validated against the
-    // known product set rather than trusting the value blindly.
-    const detected = productFromRequest(req);
-    const product: Product =
-      detected && ALL_PRODUCTS.includes(detected) ? detected : "zukvo";
+    // Which brand door did this signup arrive through?
+    const product: Product = productForSignup(req);
     const brand = brandForRequest(req);
 
     const { planId, planName } = await LandingSignupController.resolvePlan(
@@ -313,13 +391,20 @@ export class LandingSignupController {
         return;
       }
 
-      const existing = await pool.query(
-        "SELECT id, is_verified FROM pending_registrations WHERE email = $1",
-        [normalizedEmail]
-      );
-
-      if (existing.rows[0]?.is_verified) {
-        res.status(409).json({ success: false, error: "An account with this email already exists" });
+      // Product-scoped, matching the OAuth paths. The old check keyed off a
+      // VERIFIED pending_registrations row, which is global (that table is
+      // UNIQUE on email alone) — so a Zukvo customer was refused a Testiez
+      // workspace by a row describing a different product entirely.
+      //
+      // Asking `users` instead is both product-aware and more accurate: a
+      // pending row records an attempt, whereas a user row records a workspace
+      // that actually exists. The upsert below resets is_verified/is_completed,
+      // so reusing the pending row for a second product is safe.
+      if (await emailOwnsProductWorkspace(normalizedEmail, productForSignup(req))) {
+        res.status(409).json({
+          success: false,
+          error: `You already have a ${brandForRequest(req).name} workspace with this email. Please sign in instead.`,
+        });
         return;
       }
 
@@ -641,12 +726,13 @@ export class LandingSignupController {
       const email = googleUser.email.toLowerCase().trim();
       const name = googleUser.name || "Google User";
 
-      const existingUser = await pool.query(
-        "SELECT id FROM users WHERE work_email = $1 OR personal_email = $1 LIMIT 1",
-        [email]
-      );
-      if (existingUser.rows.length > 0) {
-        res.status(409).json({ success: false, error: "An account with this email already exists" });
+      // Scoped to the product being signed up for: already holding a Zukvo
+      // workspace is not a reason to refuse a Testiez one, and vice versa.
+      if (await emailOwnsProductWorkspace(email, productForSignup(req))) {
+        res.status(409).json({
+          success: false,
+          error: `You already have a ${brandForRequest(req).name} workspace with this email. Please sign in instead.`,
+        });
         return;
       }
 
@@ -698,12 +784,13 @@ export class LandingSignupController {
       const email = (msUser.mail || msUser.userPrincipalName).toLowerCase().trim();
       const name = msUser.displayName || msUser.givenName || "Microsoft User";
 
-      const existingUser = await pool.query(
-        "SELECT id FROM users WHERE work_email = $1 OR personal_email = $1 LIMIT 1",
-        [email]
-      );
-      if (existingUser.rows.length > 0) {
-        res.status(409).json({ success: false, error: "An account with this email already exists" });
+      // Scoped to the product being signed up for: already holding a Zukvo
+      // workspace is not a reason to refuse a Testiez one, and vice versa.
+      if (await emailOwnsProductWorkspace(email, productForSignup(req))) {
+        res.status(409).json({
+          success: false,
+          error: `You already have a ${brandForRequest(req).name} workspace with this email. Please sign in instead.`,
+        });
         return;
       }
 
