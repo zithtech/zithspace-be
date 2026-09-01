@@ -31,12 +31,22 @@ function slugify(text: string): string {
     .replace(/^-|-$/g, "");
 }
 
+/**
+ * A free subdomain, avoiding both live workspaces and RETIRED ones.
+ *
+ * Retired slugs are still reachable — they redirect to whatever the workspace
+ * renamed itself to — so handing one to a new signup would silently point
+ * somebody's old links and welcome email at a stranger's workspace.
+ */
 async function uniqueSubdomain(base: string): Promise<string> {
   let candidate = base;
   let suffix = 2;
   while (true) {
     const result = await pool.query(
-      "SELECT id FROM tenants WHERE subdomain = $1 LIMIT 1",
+      `SELECT 1 FROM tenants WHERE subdomain = $1
+        UNION ALL
+       SELECT 1 FROM tenant_subdomain_aliases WHERE subdomain = $1
+       LIMIT 1`,
       [candidate]
     );
     if (result.rows.length === 0) return candidate;
