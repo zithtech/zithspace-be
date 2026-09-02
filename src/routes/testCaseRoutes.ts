@@ -21,6 +21,7 @@ router.use(authenticateToken);
 router.get('/modules', requireAnyPermission(
   Permissions.QA_CASE_READ, Permissions.QA_MANAGE,
   Permissions.QA_SCOPE_READ, Permissions.BUG_READ, Permissions.BUG_CREATE,
+  Permissions.QA_COVERAGE_MAP_READ,
 ), qaModuleController.getModules);
 router.post('/modules', requireAnyPermission(Permissions.QA_CASE_CREATE, Permissions.QA_MANAGE), qaModuleController.createModule);
 router.put('/modules/:id', requireAnyPermission(Permissions.QA_CASE_UPDATE, Permissions.QA_MANAGE), qaModuleController.updateModule);
