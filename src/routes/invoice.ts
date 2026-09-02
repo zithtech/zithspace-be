@@ -14,7 +14,7 @@ const router = Router();
 router.use(resolveTenant);
 router.use(authenticateToken);
 router.use(requireAuth);
-router.use(requireSubscriptionFeature('page.finance.invoice.invoices'));
+router.use(requireSubscriptionFeature('finance_invoice'));
 
 
 
