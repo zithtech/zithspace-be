@@ -12,7 +12,7 @@ const router = (0, express_1.Router)();
 router.use(tenantContext_1.resolveTenant);
 router.use(auth_1.authenticateToken);
 router.use(auth_1.requireAuth);
-router.use((0, subscriptions_1.requireSubscriptionFeature)('page.finance.invoice.invoices'));
+router.use((0, subscriptions_1.requireSubscriptionFeature)('finance_invoice'));
 // ==================== INVOICE ROUTES ====================
 // Get all invoices (non-deleted)
 router.get('/', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_READ), (req, res) => InvoiceController_1.InvoiceController.getInvoices(req, res));
