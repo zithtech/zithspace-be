@@ -47,6 +47,7 @@ const jwt_1 = require("@/utils/jwt");
 const rbac_service_1 = require("@/modules/rbac/rbac.service");
 const subscriptions_1 = require("@/modules/subscriptions");
 const companyDetailsService = __importStar(require("@/modules/company-details/services/companyDetails.service"));
+const oauthIdentity_1 = require("@/utils/oauthIdentity");
 const entitlementsService = __importStar(require("@/modules/entitlements/entitlements.service"));
 const brand_1 = require("@/config/brand");
 const transactionHistory_1 = require("../utils/transactionHistory");
@@ -985,14 +986,17 @@ class AuthController {
                 });
                 return;
             }
-            if (!googleUser || !googleUser.email) {
+            // The email IS the credential here — the lookup below matches on nothing
+            // else — so an unverified one must not be accepted.
+            const resolved = (0, oauthIdentity_1.googleIdentity)(googleUser);
+            if (resolved.error) {
                 res.status(400).json({
                     success: false,
-                    error: "Failed to retrieve email from Google",
+                    error: resolved.error,
                 });
                 return;
             }
-            const email = googleUser.email.toLowerCase().trim();
+            const email = resolved.identity.email;
             // Find user by email within the tenant
             const user = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
                 return await client.user.findFirst({
@@ -1164,14 +1168,17 @@ class AuthController {
                 });
                 return;
             }
-            if (!msUser || !(msUser.mail || msUser.userPrincipalName)) {
+            // Same rule as Google: the address is the credential, so a sign-in name
+            // that merely looks like one is not good enough.
+            const resolved = (0, oauthIdentity_1.microsoftIdentity)(msUser);
+            if (resolved.error) {
                 res.status(400).json({
                     success: false,
-                    error: "Failed to retrieve email from Microsoft",
+                    error: resolved.error,
                 });
                 return;
             }
-            const email = (msUser.mail || msUser.userPrincipalName).toLowerCase().trim();
+            const email = resolved.identity.email;
             // Find user by email within the tenant
             const user = await database_1.tenantAwarePrisma.withTenant(req.tenantId, async (client) => {
                 return await client.user.findFirst({
