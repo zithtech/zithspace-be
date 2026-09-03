@@ -34,6 +34,7 @@ export const PERMISSION_RESOURCE_FEATURES: Readonly<Record<string, string>> = {
   ticket: 'work_tickets',
   project: 'work_projects',
   qa: 'work_qa_space',
+  yapiez: 'work_qa_space',
   document: 'work_document_hub',
   time_tracking: 'work_time_tracking',
   timesheet: 'work_timesheet',

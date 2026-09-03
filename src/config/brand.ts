@@ -87,6 +87,11 @@ export function productFromHost(hostOrOrigin?: string | null): Product | null {
   if (host === 'testiez.localhost' || host.endsWith('.testiez.localhost')) return 'testiez';
 
   if (host === 'zukvo.com' || host.endsWith('.zukvo.com')) return 'zukvo';
+  // Zukvo's dev host. Without this arm a request from the Zukvo surface in dev
+  // resolves to null, callers treat that as "no idea" and SKIP the brand check
+  // — so a Testiez-only tenant answers on a Zukvo host locally in a way prod
+  // would refuse, and the isolation only gets tested after deploy.
+  if (host === 'zukvo.localhost' || host.endsWith('.zukvo.localhost')) return 'zukvo';
 
   return null;
 }

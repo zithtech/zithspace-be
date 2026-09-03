@@ -85,6 +85,7 @@ export declare const Permissions: {
     readonly QA_APPROVAL_READ: "qa.approval.read";
     readonly QA_APPROVAL_APPROVE: "qa.approval.approve";
     readonly QA_APPROVAL_SEND_BACK: "qa.approval.send_back";
+    readonly QA_COVERAGE_MAP_READ: "qa.coverage_map.read";
     readonly QA_ANALYTICS_READ: "qa.analytics.read";
     readonly QA_MANAGE: "qa.manage";
     readonly YAPIEZ_API_CREATE: "yapiez.api.create";

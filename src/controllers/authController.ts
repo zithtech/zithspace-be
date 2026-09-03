@@ -18,6 +18,7 @@ import {
 import { RBACService } from "@/modules/rbac/rbac.service";
 import { featureResolverService, navigationService, subscriptionService } from "@/modules/subscriptions";
 import * as companyDetailsService from "@/modules/company-details/services/companyDetails.service";
+import { googleIdentity, microsoftIdentity } from "@/utils/oauthIdentity";
 import * as entitlementsService from "@/modules/entitlements/entitlements.service";
 import { brandForRequest, productFromRequest, tenantOrigin, resolveBrand } from "@/config/brand";
 import { recordTransaction, Section, Module, Page, Action, EntityType } from "../utils/transactionHistory";
@@ -1084,15 +1085,18 @@ export class AuthController {
         return;
       }
 
-      if (!googleUser || !googleUser.email) {
+      // The email IS the credential here — the lookup below matches on nothing
+      // else — so an unverified one must not be accepted.
+      const resolved = googleIdentity(googleUser);
+      if (resolved.error) {
         res.status(400).json({
           success: false,
-          error: "Failed to retrieve email from Google",
+          error: resolved.error,
         } as ApiResponse);
         return;
       }
 
-      const email = googleUser.email.toLowerCase().trim();
+      const email = resolved.identity.email;
 
       // Find user by email within the tenant
       const user = await tenantAwarePrisma.withTenant(
@@ -1291,15 +1295,18 @@ export class AuthController {
         return;
       }
 
-      if (!msUser || !(msUser.mail || msUser.userPrincipalName)) {
+      // Same rule as Google: the address is the credential, so a sign-in name
+      // that merely looks like one is not good enough.
+      const resolved = microsoftIdentity(msUser);
+      if (resolved.error) {
         res.status(400).json({
           success: false,
-          error: "Failed to retrieve email from Microsoft",
+          error: resolved.error,
         } as ApiResponse);
         return;
       }
 
-      const email = (msUser.mail || msUser.userPrincipalName).toLowerCase().trim();
+      const email = resolved.identity.email;
 
       // Find user by email within the tenant
       const user = await tenantAwarePrisma.withTenant(
