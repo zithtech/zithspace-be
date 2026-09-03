@@ -355,6 +355,7 @@ const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'qa.approval.read': 'View submissions awaiting PM approval',
   'qa.approval.approve': 'Approve a QA signed-off submission',
   'qa.approval.send_back': 'Send a QA submission back with a reason',
+  'qa.coverage_map.read': 'View module-by-module QA coverage map',
   'qa.analytics.read': 'View QA reporting and analytics across all scopes',
   'qa.manage': 'Full QA Space management and configuration',
 

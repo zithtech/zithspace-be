@@ -150,7 +150,7 @@ export class TimeTrackingController {
         return;
       }
 
-      const { ticketId, projectId, userId, allUsers, startDate, endDate } = req.query;
+      const { ticketId, projectId, userId, allUsers, startDate, endDate, page, limit } = req.query;
 
       const whereClause: any = { tenantId: req.tenantId };
 
@@ -187,7 +187,10 @@ export class TimeTrackingController {
         if (endDate) whereClause.startTime.lte = new Date(endDate as string);
       }
 
-      const entries = await prisma.timeTrackingEntry.findMany({
+      const pageNum = parseInt(page as string) || 1;
+      const limitNum = parseInt(limit as string) || 0;
+
+      const queryOptions: any = {
         where: whereClause,
         include: {
           project: { select: { id: true, name: true, code: true } },
@@ -196,9 +199,28 @@ export class TimeTrackingController {
           logs: { orderBy: { createdAt: 'desc' } }
         },
         orderBy: { startTime: 'desc' }
-      });
+      };
 
-      res.status(200).json({ success: true, serverTime: new Date().toISOString(), data: entries } as ApiResponse);
+      if (limitNum > 0) {
+        queryOptions.skip = (pageNum - 1) * limitNum;
+        queryOptions.take = limitNum;
+      }
+
+      const entries = await prisma.timeTrackingEntry.findMany(queryOptions);
+
+      let responsePayload: any = { success: true, serverTime: new Date().toISOString(), data: entries };
+
+      if (limitNum > 0) {
+        const total = await prisma.timeTrackingEntry.count({ where: whereClause });
+        responsePayload.pagination = {
+          page: pageNum,
+          limit: limitNum,
+          total,
+          pages: Math.ceil(total / limitNum)
+        };
+      }
+
+      res.status(200).json(responsePayload as ApiResponse);
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message } as ApiResponse);
     }
