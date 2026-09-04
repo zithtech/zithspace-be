@@ -3886,25 +3886,27 @@ export class BugListController {
   ): Promise<void> {
     if (!ensureAuth(req, res)) return;
     const { id } = req.params;
-    const { label, description, color, sortOrder, isDefault, isActive } = req.body;
+    const { key, label, description, color, sortOrder, isDefault, isActive } = req.body;
     try {
       const beforeRes = await pool.query(
-        `SELECT label, description, color, sort_order, is_default, is_active
+        `SELECT key, label, description, color, sort_order, is_default, is_active
            FROM bug_severity_options WHERE id = $1 AND tenant_id = $2`,
         [id, req.tenantId],
       );
       const beforeRow = beforeRes.rows[0];
       const r = await pool.query(
         `UPDATE bug_severity_options SET
-           label       = COALESCE($1, label),
-           description = COALESCE($2, description),
-           color       = COALESCE($3, color),
-           sort_order  = COALESCE($4, sort_order),
-           is_default  = COALESCE($5, is_default),
-           is_active   = COALESCE($6, is_active)
-         WHERE id = $7 AND tenant_id = $8
+           key         = COALESCE($1, key),
+           label       = COALESCE($2, label),
+           description = COALESCE($3, description),
+           color       = COALESCE($4, color),
+           sort_order  = COALESCE($5, sort_order),
+           is_default  = COALESCE($6, is_default),
+           is_active   = COALESCE($7, is_active)
+         WHERE id = $8 AND tenant_id = $9
          RETURNING *`,
         [
+          key ? slugify(key) : null,
           label ?? null,
           description ?? null,
           color ?? null,
@@ -3930,6 +3932,7 @@ export class BugListController {
         const updated = r.rows[0];
         const before = beforeRow ?? {};
         const after = {
+          key: updated.key,
           label: updated.label,
           description: updated.description,
           color: updated.color,
@@ -4118,24 +4121,26 @@ export class BugListController {
   ): Promise<void> {
     if (!ensureAuth(req, res)) return;
     const { id } = req.params;
-    const { label, description, sortOrder, isDefault, isActive } = req.body;
+    const { key, label, description, sortOrder, isDefault, isActive } = req.body;
     try {
       const beforeRes = await pool.query(
-        `SELECT label, description, sort_order, is_default, is_active
+        `SELECT key, label, description, sort_order, is_default, is_active
            FROM bug_type_options WHERE id = $1 AND tenant_id = $2`,
         [id, req.tenantId],
       );
       const beforeRow = beforeRes.rows[0];
       const r = await pool.query(
         `UPDATE bug_type_options SET
-           label       = COALESCE($1, label),
-           description = COALESCE($2, description),
-           sort_order  = COALESCE($3, sort_order),
-           is_default  = COALESCE($4, is_default),
-           is_active   = COALESCE($5, is_active)
-         WHERE id = $6 AND tenant_id = $7
+           key         = COALESCE($1, key),
+           label       = COALESCE($2, label),
+           description = COALESCE($3, description),
+           sort_order  = COALESCE($4, sort_order),
+           is_default  = COALESCE($5, is_default),
+           is_active   = COALESCE($6, is_active)
+         WHERE id = $7 AND tenant_id = $8
          RETURNING *`,
         [
+          key ? slugify(key) : null,
           label ?? null,
           description ?? null,
           typeof sortOrder === "number" ? sortOrder : null,
@@ -4160,6 +4165,7 @@ export class BugListController {
         const updated = r.rows[0];
         const before = beforeRow ?? {};
         const after = {
+          key: updated.key,
           label: updated.label,
           description: updated.description,
           sort_order: updated.sort_order,
@@ -4351,7 +4357,7 @@ export class BugListController {
   ): Promise<void> {
     if (!ensureAuth(req, res)) return;
     const { id } = req.params;
-    const { label, description, sortOrder, isDefault, isActive } = req.body;
+    const { key, label, description, sortOrder, isDefault, isActive } = req.body;
     try {
       const beforeRes = await pool.query(
         `SELECT id, key, label, description, sort_order, is_default, is_active
@@ -4365,14 +4371,16 @@ export class BugListController {
       const beforeRow = beforeRes.rows[0];
       const r = await pool.query(
         `UPDATE bug_list_types SET
-           label = COALESCE($1, label),
-           description = $2,
-           sort_order = COALESCE($3, sort_order),
-           is_default = COALESCE($4, is_default),
-           is_active = COALESCE($5, is_active)
-         WHERE id = $6 AND tenant_id = $7
+           key = COALESCE($1, key),
+           label = COALESCE($2, label),
+           description = $3,
+           sort_order = COALESCE($4, sort_order),
+           is_default = COALESCE($5, is_default),
+           is_active = COALESCE($6, is_active)
+         WHERE id = $7 AND tenant_id = $8
          RETURNING *`,
         [
+          key ? slugify(key) : null,
           label ? label.trim() : null,
           description !== undefined ? description : beforeRow.description,
           typeof sortOrder === "number" ? sortOrder : null,
@@ -4559,19 +4567,21 @@ export class BugListController {
   ): Promise<void> {
     if (!ensureAuth(req, res)) return;
     const { id } = req.params;
-    const { label, description, color, sortOrder, isDefault, isActive } = req.body;
+    const { key, label, description, color, sortOrder, isDefault, isActive } = req.body;
     try {
       const r = await pool.query(
         `UPDATE bug_priority_options SET
-           label       = COALESCE($1, label),
-           description = COALESCE($2, description),
-           color       = COALESCE($3, color),
-           sort_order  = COALESCE($4, sort_order),
-           is_default  = COALESCE($5, is_default),
-           is_active   = COALESCE($6, is_active)
-         WHERE id = $7 AND tenant_id = $8
+           key         = COALESCE($1, key),
+           label       = COALESCE($2, label),
+           description = COALESCE($3, description),
+           color       = COALESCE($4, color),
+           sort_order  = COALESCE($5, sort_order),
+           is_default  = COALESCE($6, is_default),
+           is_active   = COALESCE($7, is_active)
+         WHERE id = $8 AND tenant_id = $9
          RETURNING *`,
         [
+          key ? slugify(key) : null,
           label ?? null,
           description ?? null,
           color ?? null,
