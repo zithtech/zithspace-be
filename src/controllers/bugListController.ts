@@ -166,6 +166,23 @@ async function ensureBugTypeSeeded(tenantId: string): Promise<void> {
   }
 }
 
+async function ensureBugListTypeSeeded(tenantId: string): Promise<void> {
+  const existing = await pool.query(
+    `SELECT 1 FROM bug_list_types WHERE tenant_id = $1 LIMIT 1`,
+    [tenantId],
+  );
+  if (existing.rowCount && existing.rowCount > 0) return;
+  for (const t of DEFAULT_BUG_TYPES) {
+    await pool.query(
+      `INSERT INTO bug_list_types
+         (tenant_id, key, label, sort_order, is_default, is_system)
+       VALUES ($1, $2, $3, $4, $5, true)
+       ON CONFLICT (tenant_id, key) DO NOTHING`,
+      [tenantId, t.key, t.label, t.sort, t.isDefault],
+    );
+  }
+}
+
 async function getValidSeverityKeys(tenantId: string): Promise<Set<string>> {
   await ensureSeveritySeeded(tenantId);
   const r = await pool.query(
@@ -3869,25 +3886,27 @@ export class BugListController {
   ): Promise<void> {
     if (!ensureAuth(req, res)) return;
     const { id } = req.params;
-    const { label, description, color, sortOrder, isDefault, isActive } = req.body;
+    const { key, label, description, color, sortOrder, isDefault, isActive } = req.body;
     try {
       const beforeRes = await pool.query(
-        `SELECT label, description, color, sort_order, is_default, is_active
+        `SELECT key, label, description, color, sort_order, is_default, is_active
            FROM bug_severity_options WHERE id = $1 AND tenant_id = $2`,
         [id, req.tenantId],
       );
       const beforeRow = beforeRes.rows[0];
       const r = await pool.query(
         `UPDATE bug_severity_options SET
-           label       = COALESCE($1, label),
-           description = COALESCE($2, description),
-           color       = COALESCE($3, color),
-           sort_order  = COALESCE($4, sort_order),
-           is_default  = COALESCE($5, is_default),
-           is_active   = COALESCE($6, is_active)
-         WHERE id = $7 AND tenant_id = $8
+           key         = COALESCE($1, key),
+           label       = COALESCE($2, label),
+           description = COALESCE($3, description),
+           color       = COALESCE($4, color),
+           sort_order  = COALESCE($5, sort_order),
+           is_default  = COALESCE($6, is_default),
+           is_active   = COALESCE($7, is_active)
+         WHERE id = $8 AND tenant_id = $9
          RETURNING *`,
         [
+          key ? slugify(key) : null,
           label ?? null,
           description ?? null,
           color ?? null,
@@ -3913,6 +3932,7 @@ export class BugListController {
         const updated = r.rows[0];
         const before = beforeRow ?? {};
         const after = {
+          key: updated.key,
           label: updated.label,
           description: updated.description,
           color: updated.color,
@@ -4101,24 +4121,26 @@ export class BugListController {
   ): Promise<void> {
     if (!ensureAuth(req, res)) return;
     const { id } = req.params;
-    const { label, description, sortOrder, isDefault, isActive } = req.body;
+    const { key, label, description, sortOrder, isDefault, isActive } = req.body;
     try {
       const beforeRes = await pool.query(
-        `SELECT label, description, sort_order, is_default, is_active
+        `SELECT key, label, description, sort_order, is_default, is_active
            FROM bug_type_options WHERE id = $1 AND tenant_id = $2`,
         [id, req.tenantId],
       );
       const beforeRow = beforeRes.rows[0];
       const r = await pool.query(
         `UPDATE bug_type_options SET
-           label       = COALESCE($1, label),
-           description = COALESCE($2, description),
-           sort_order  = COALESCE($3, sort_order),
-           is_default  = COALESCE($4, is_default),
-           is_active   = COALESCE($5, is_active)
-         WHERE id = $6 AND tenant_id = $7
+           key         = COALESCE($1, key),
+           label       = COALESCE($2, label),
+           description = COALESCE($3, description),
+           sort_order  = COALESCE($4, sort_order),
+           is_default  = COALESCE($5, is_default),
+           is_active   = COALESCE($6, is_active)
+         WHERE id = $7 AND tenant_id = $8
          RETURNING *`,
         [
+          key ? slugify(key) : null,
           label ?? null,
           description ?? null,
           typeof sortOrder === "number" ? sortOrder : null,
@@ -4143,6 +4165,7 @@ export class BugListController {
         const updated = r.rows[0];
         const before = beforeRow ?? {};
         const after = {
+          key: updated.key,
           label: updated.label,
           description: updated.description,
           sort_order: updated.sort_order,
@@ -4182,21 +4205,27 @@ export class BugListController {
     if (!ensureAuth(req, res)) return;
     const { id } = req.params;
     try {
-      const used = await pool.query(
-        `SELECT 1 FROM bugs b
-           JOIN bug_type_options o ON o.key = b.bug_type AND o.tenant_id = b.tenant_id
-          WHERE o.id = $1 AND b.tenant_id = $2 LIMIT 1`,
-        [id, req.tenantId],
+      const typeRes = await pool.query(
+        `SELECT key, label FROM bug_type_options WHERE id = $1 AND tenant_id = $2`,
+        [id, req.tenantId]
       );
-      if (used.rowCount && used.rowCount > 0) {
-        bad(res, 409, "Cannot delete: type is in use by existing bugs");
+      if (typeRes.rowCount === 0) {
+        bad(res, 404, "Type not found");
         return;
       }
+      const typeKey = typeRes.rows[0].key;
+      const typeLabel = typeRes.rows[0].label;
+
+      // Unlink from existing test cases so deletion can proceed
+      await pool.query(
+        `UPDATE qa_test_cases SET test_type = NULL WHERE tenant_id = $1 AND test_type = $2`,
+        [req.tenantId, typeLabel]
+      );
+
       const r = await pool.query(
         `DELETE FROM bug_type_options
-           WHERE id = $1 AND tenant_id = $2
-         RETURNING label`,
-        [id, req.tenantId],
+           WHERE id = $1 AND tenant_id = $2`,
+        [id, req.tenantId]
       );
       if (r.rowCount === 0) {
         bad(res, 404, "Type not found");
@@ -4211,13 +4240,238 @@ export class BugListController {
         actionLabel: "Bug type option deleted",
         entityType: EntityType.BUG_TYPE_OPTION,
         entityId: id,
-        entityLabel: r.rows[0]?.label ?? null,
+        entityLabel: typeLabel,
         statusCode: 200,
       });
       res.json({ success: true });
     } catch (err: any) {
       console.error("deleteTypeOption error:", err);
       bad(res, 500, err.message || "Failed to delete type option");
+    }
+  }
+
+  // ==========================================================================
+  // Config: Bug List Type options (CRUD)
+  // ==========================================================================
+
+  static async listBugListTypes(
+    req: AuthRequest,
+    res: Response,
+  ): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    try {
+      await ensureBugListTypeSeeded(req.tenantId!);
+      const r = await pool.query(
+        `SELECT id, key, label, description, sort_order, is_default, is_system, is_active,
+                created_at, updated_at
+           FROM bug_list_types
+          WHERE tenant_id = $1
+          ORDER BY sort_order ASC, label ASC`,
+        [req.tenantId],
+      );
+      res.json({ success: true, data: r.rows.map(shapeOption) });
+    } catch (err: any) {
+      console.error("listBugListTypes error:", err);
+      bad(res, 500, err.message || "Failed to load bug type options");
+    }
+  }
+
+  static async createBugListType(
+    req: AuthRequest,
+    res: Response,
+  ): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    const { label, description, sortOrder, isDefault } = req.body;
+    let { key } = req.body;
+    if (!label || typeof label !== "string") {
+      bad(res, 400, "Label is required");
+      return;
+    }
+    if (!key) key = slugify(label);
+    if (!key) {
+      bad(res, 400, "A valid key could not be derived from the label");
+      return;
+    }
+    try {
+      let resolvedSortOrder: number | null =
+        typeof sortOrder === "number" ? sortOrder : null;
+      if (resolvedSortOrder === null) {
+        const maxRes = await pool.query(
+          `SELECT COALESCE(MAX(sort_order), 0)::int AS m
+             FROM bug_list_types WHERE tenant_id = $1`,
+          [req.tenantId],
+        );
+        resolvedSortOrder = (maxRes.rows[0]?.m ?? 0) + 10;
+      }
+      const r = await pool.query(
+        `INSERT INTO bug_list_types
+           (tenant_id, key, label, description, sort_order, is_default, is_system, is_active)
+         VALUES ($1, $2, $3, $4, $5, COALESCE($6, false), false, true)
+         RETURNING *`,
+        [
+          req.tenantId,
+          key,
+          label.trim(),
+          description || null,
+          resolvedSortOrder,
+          !!isDefault,
+        ],
+      );
+      if (isDefault) {
+        await pool.query(
+          `UPDATE bug_list_types SET is_default = false
+             WHERE tenant_id = $1 AND id <> $2`,
+          [req.tenantId, r.rows[0].id],
+        );
+      }
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.QA_WORKSPACE,
+        page: Page.BUG_SETTINGS,
+        action: Action.CREATE,
+        actionLabel: "Bug type option created",
+        entityType: EntityType.BUG_TYPE_OPTION,
+        entityId: r.rows[0].id,
+        entityLabel: r.rows[0].label,
+        afterData: {
+          key: r.rows[0].key,
+          label: r.rows[0].label,
+        },
+        statusCode: 201,
+      });
+      res.status(201).json({ success: true, data: shapeOption(r.rows[0]) });
+    } catch (err: any) {
+      console.error("createBugListType error:", err);
+      if (err.code === "23505") {
+        bad(res, 409, "A bug type option with this key already exists.");
+      } else {
+        bad(res, 500, err.message || "Failed to create bug type option");
+      }
+    }
+  }
+
+  static async updateBugListType(
+    req: AuthRequest,
+    res: Response,
+  ): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    const { id } = req.params;
+    const { key, label, description, sortOrder, isDefault, isActive } = req.body;
+    try {
+      const beforeRes = await pool.query(
+        `SELECT id, key, label, description, sort_order, is_default, is_active
+           FROM bug_list_types WHERE id = $1 AND tenant_id = $2`,
+        [id, req.tenantId],
+      );
+      if (beforeRes.rowCount === 0) {
+        bad(res, 404, "Bug type option not found");
+        return;
+      }
+      const beforeRow = beforeRes.rows[0];
+      const r = await pool.query(
+        `UPDATE bug_list_types SET
+           key = COALESCE($1, key),
+           label = COALESCE($2, label),
+           description = $3,
+           sort_order = COALESCE($4, sort_order),
+           is_default = COALESCE($5, is_default),
+           is_active = COALESCE($6, is_active)
+         WHERE id = $7 AND tenant_id = $8
+         RETURNING *`,
+        [
+          key ? slugify(key) : null,
+          label ? label.trim() : null,
+          description !== undefined ? description : beforeRow.description,
+          typeof sortOrder === "number" ? sortOrder : null,
+          typeof isDefault === "boolean" ? isDefault : null,
+          typeof isActive === "boolean" ? isActive : null,
+          id,
+          req.tenantId,
+        ],
+      );
+      if (r.rowCount === 0) {
+        bad(res, 404, "Bug type option not found");
+        return;
+      }
+      const afterRow = r.rows[0];
+      if (afterRow.is_default && !beforeRow.is_default) {
+        await pool.query(
+          `UPDATE bug_list_types SET is_default = false
+             WHERE tenant_id = $1 AND id <> $2`,
+          [req.tenantId, id],
+        );
+      }
+      const { changedFields, before, after } = diffShallow(beforeRow, afterRow);
+      if (changedFields.length > 0) {
+        recordTransaction({
+          req,
+          section: Section.WORK,
+          module: Module.QA_WORKSPACE,
+          page: Page.BUG_SETTINGS,
+          action: Action.UPDATE,
+          actionLabel: `Bug type updated (${changedFields.join(", ")})`,
+          entityType: EntityType.BUG_TYPE_OPTION,
+          entityId: id,
+          entityLabel: afterRow.label,
+          beforeData: before,
+          afterData: after,
+          changedFields,
+          statusCode: 200,
+        });
+      }
+      res.json({ success: true, data: shapeOption(afterRow) });
+    } catch (err: any) {
+      console.error("updateBugListType error:", err);
+      bad(res, 500, err.message || "Failed to update bug type option");
+    }
+  }
+
+  static async deleteBugListType(
+    req: AuthRequest,
+    res: Response,
+  ): Promise<void> {
+    if (!ensureAuth(req, res)) return;
+    const { id } = req.params;
+    try {
+      const typeRes = await pool.query(
+        `SELECT key, label FROM bug_list_types WHERE id = $1 AND tenant_id = $2`,
+        [id, req.tenantId]
+      );
+      if (typeRes.rowCount === 0) {
+        bad(res, 404, "Bug type not found");
+        return;
+      }
+      const typeKey = typeRes.rows[0].key;
+      const typeLabel = typeRes.rows[0].label;
+
+      // Unlink from existing bugs so deletion can proceed
+      await pool.query(
+        `UPDATE bugs SET bug_type = NULL WHERE tenant_id = $1 AND bug_type = $2`,
+        [req.tenantId, typeKey]
+      );
+
+      const r = await pool.query(
+        `DELETE FROM bug_list_types
+           WHERE id = $1 AND tenant_id = $2`,
+        [id, req.tenantId],
+      );
+      recordTransaction({
+        req,
+        section: Section.WORK,
+        module: Module.QA_WORKSPACE,
+        page: Page.BUG_SETTINGS,
+        action: Action.DELETE,
+        actionLabel: "Bug type option deleted",
+        entityType: EntityType.BUG_TYPE_OPTION,
+        entityId: id,
+        entityLabel: typeLabel,
+        statusCode: 200,
+      });
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("deleteBugListType error:", err);
+      bad(res, 500, err.message || "Failed to delete bug type option");
     }
   }
 
@@ -4313,19 +4567,21 @@ export class BugListController {
   ): Promise<void> {
     if (!ensureAuth(req, res)) return;
     const { id } = req.params;
-    const { label, description, color, sortOrder, isDefault, isActive } = req.body;
+    const { key, label, description, color, sortOrder, isDefault, isActive } = req.body;
     try {
       const r = await pool.query(
         `UPDATE bug_priority_options SET
-           label       = COALESCE($1, label),
-           description = COALESCE($2, description),
-           color       = COALESCE($3, color),
-           sort_order  = COALESCE($4, sort_order),
-           is_default  = COALESCE($5, is_default),
-           is_active   = COALESCE($6, is_active)
-         WHERE id = $7 AND tenant_id = $8
+           key         = COALESCE($1, key),
+           label       = COALESCE($2, label),
+           description = COALESCE($3, description),
+           color       = COALESCE($4, color),
+           sort_order  = COALESCE($5, sort_order),
+           is_default  = COALESCE($6, is_default),
+           is_active   = COALESCE($7, is_active)
+         WHERE id = $8 AND tenant_id = $9
          RETURNING *`,
         [
+          key ? slugify(key) : null,
           label ?? null,
           description ?? null,
           color ?? null,

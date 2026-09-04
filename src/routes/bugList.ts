@@ -86,4 +86,10 @@ router.post("/config/types", requirePermission(Permissions.BUG_MANAGE), BugListC
 router.put("/config/types/:id", requirePermission(Permissions.BUG_MANAGE), BugListController.updateTypeOption);
 router.delete("/config/types/:id", requirePermission(Permissions.BUG_MANAGE), BugListController.deleteTypeOption);
 
+router.get("/config/bug-types", requirePermission(Permissions.BUG_READ), BugListController.listBugListTypes);
+router.post("/config/bug-types", requirePermission(Permissions.BUG_MANAGE), BugListController.createBugListType);
+router.put("/config/bug-types/:id", requirePermission(Permissions.BUG_MANAGE), BugListController.updateBugListType);
+router.delete("/config/bug-types/:id", requirePermission(Permissions.BUG_MANAGE), BugListController.deleteBugListType);
+
+
 export default router;
