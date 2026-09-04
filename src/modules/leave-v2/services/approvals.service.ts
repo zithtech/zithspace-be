@@ -11,6 +11,7 @@ import { withTenant } from '../db/pool';
 import * as repo from '../repositories/leaveRequest.repo';
 import { computeWithdrawalPlan } from './leaveRequest.service';
 import { Actor, LeaveV2Error } from '../types';
+import { EmailService } from '@/utils/emailService';
 
 export async function listApprovals(actor: Actor, canManageAll: boolean, opts?: repo.ApprovalOpts) {
   return withTenant(actor.tenantId, (client) =>
@@ -53,6 +54,39 @@ export async function approve(actor: Actor, id: string, note: string | null, can
         createdBy: actor.userId,
       });
     }
+
+    // -- Mail Sending Logic --
+    try {
+      const emailQuery = await client.query(`
+        SELECT 
+          u.name as employee_name, 
+          u.work_email as employee_email,
+          a.name as approver_name,
+          lt.name as leave_type_name
+        FROM users u
+        LEFT JOIN users a ON a.id = $2
+        LEFT JOIN leave_types lt ON lt.id = $3
+        WHERE u.id = $1
+      `, [req.userId, actor.userId, req.leaveTypeId]);
+
+      const mailData = emailQuery.rows[0];
+      if (mailData?.employee_email) {
+        const emailService = new EmailService();
+        emailService.sendLeaveApprovalEmail({
+          to: mailData.employee_email,
+          employeeName: mailData.employee_name,
+          approverName: mailData.approver_name || 'Your Manager',
+          leaveType: mailData.leave_type_name || 'Leave',
+          startDate: req.fromDate,
+          endDate: req.toDate,
+          duration: req.totalUnits,
+          durationType: req.dayPortion === 'full' ? 'days' : 'half-day'
+        });
+      }
+    } catch (err) {
+      console.error('Failed to send leave approval email:', err);
+    }
+
     return updated;
   });
 }
@@ -66,6 +100,40 @@ export async function reject(actor: Actor, id: string, note: string | null, canM
 
     const updated = await repo.rejectRequest(client, id, { approverId: actor.userId, note });
     if (!updated) throw LeaveV2Error.badRequest('Request is no longer pending');
+
+    // -- Mail Sending Logic --
+    try {
+      const emailQuery = await client.query(`
+        SELECT 
+          u.name as employee_name, 
+          u.work_email as employee_email,
+          a.name as approver_name,
+          lt.name as leave_type_name
+        FROM users u
+        LEFT JOIN users a ON a.id = $2
+        LEFT JOIN leave_types lt ON lt.id = $3
+        WHERE u.id = $1
+      `, [req.userId, actor.userId, req.leaveTypeId]);
+
+      const mailData = emailQuery.rows[0];
+      if (mailData?.employee_email) {
+        const emailService = new EmailService();
+        emailService.sendLeaveRejectionEmail({
+          to: mailData.employee_email,
+          employeeName: mailData.employee_name,
+          approverName: mailData.approver_name || 'Your Manager',
+          leaveType: mailData.leave_type_name || 'Leave',
+          startDate: req.fromDate,
+          endDate: req.toDate,
+          duration: req.totalUnits,
+          durationType: req.dayPortion === 'full' ? 'days' : 'half-day',
+          rejectionReason: note || 'No reason provided'
+        });
+      }
+    } catch (err) {
+      console.error('Failed to send leave rejection email:', err);
+    }
+
     return updated;
   });
 }

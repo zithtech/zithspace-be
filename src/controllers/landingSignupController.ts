@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import axios from "axios";
 import { JWTUtils } from "@/utils/jwt";
 import { EmailService } from "@/utils/emailService";
-import pool from "@/config/dbpool";
+import pool, { withTenant } from "@/config/dbpool";
 import crypto from "crypto";
 import { RBACService } from "@/modules/rbac/rbac.service";
 import {
@@ -17,6 +17,7 @@ import {
   tenantOrigin,
   Brand,
 } from "@/config/brand";
+import { googleIdentity, microsoftIdentity } from "@/utils/oauthIdentity";
 
 const emailService = new EmailService();
 
@@ -30,12 +31,22 @@ function slugify(text: string): string {
     .replace(/^-|-$/g, "");
 }
 
+/**
+ * A free subdomain, avoiding both live workspaces and RETIRED ones.
+ *
+ * Retired slugs are still reachable — they redirect to whatever the workspace
+ * renamed itself to — so handing one to a new signup would silently point
+ * somebody's old links and welcome email at a stranger's workspace.
+ */
 async function uniqueSubdomain(base: string): Promise<string> {
   let candidate = base;
   let suffix = 2;
   while (true) {
     const result = await pool.query(
-      "SELECT id FROM tenants WHERE subdomain = $1 LIMIT 1",
+      `SELECT 1 FROM tenants WHERE subdomain = $1
+        UNION ALL
+       SELECT 1 FROM tenant_subdomain_aliases WHERE subdomain = $1
+       LIMIT 1`,
       [candidate]
     );
     if (result.rows.length === 0) return candidate;
@@ -49,6 +60,88 @@ interface PlanConfig {
   ai?: string[];
   billing?: string;
   currency?: string;
+}
+
+/**
+ * The brand door a signup arrived through, validated against the known set.
+ *
+ * Falls back to Zukvo only when the origin is unrecognised (local dev, a curl).
+ * Every signup path resolves the product exactly once, here, so the collision
+ * check and the entitlement grant can never disagree about which product is
+ * being bought.
+ */
+function productForSignup(req: Request): Product {
+  const detected = productFromRequest(req);
+  return detected && ALL_PRODUCTS.includes(detected) ? detected : "zukvo";
+}
+
+/**
+ * Does this email already own a workspace on THIS product?
+ *
+ * The check used to be global — `WHERE work_email = $1` with no scope — which
+ * meant an existing Zukvo customer could not open a Testiez workspace at all.
+ * They are separate products sold separately; holding one is not a reason to be
+ * refused the other. Scoping by product is what makes the two brands genuinely
+ * standalone rather than one account namespace wearing two logos.
+ *
+ * The database was already on side: `users` is unique on (tenant_id, work_email)
+ * and (tenant_id, personal_email), never on email alone. Nothing here needs a
+ * migration; only the application-level guard was over-strict.
+ *
+ * WHY THIS IS TWO QUERIES AND NOT ONE JOIN
+ *   `ent_tenant_entitlements` runs FORCE ROW LEVEL SECURITY, with a policy of
+ *   `tenant_id = current_setting('app.current_tenant_id')`. A cross-tenant join
+ *   against it returns every row TODAY only because the app connects as a
+ *   BYPASSRLS superuser. The moment that is fixed — a dedicated app role is on
+ *   the roadmap — the join would silently match nothing and this guard would
+ *   fail OPEN, letting duplicates through with no error to notice.
+ *
+ *   So: find candidate tenants on `users`, which carries no RLS, then ask about
+ *   each one through `withTenant()`, which sets the GUC the policy reads. That
+ *   is correct under both regimes. The loop is over the handful of tenants that
+ *   share an email address, not over the tenant table.
+ */
+async function emailOwnsProductWorkspace(
+  email: string,
+  product: Product
+): Promise<boolean> {
+  const owners = await pool.query(
+    `SELECT DISTINCT tenant_id
+       FROM users
+      WHERE (work_email = $1 OR personal_email = $1)
+        AND tenant_id IS NOT NULL`,
+    [email]
+  );
+
+  for (const { tenant_id } of owners.rows) {
+    const held = await withTenant(tenant_id, (client) =>
+      client.query(
+        `SELECT 1
+           FROM ent_tenant_entitlements
+          WHERE tenant_id = $1
+            AND product = $2
+            AND status = 'active'
+          LIMIT 1`,
+        [tenant_id, product]
+      )
+    );
+
+    if (held.rows.length > 0) return true;
+
+    // A tenant with NO grant rows at all is "unmanaged", which entitlements
+    // treats as holding everything (see hasProduct). Signup always writes a
+    // grant, so this only covers rows that predate entitlements — and for those
+    // the safe reading is that the workspace is a Zukvo one.
+    const anyGrant = await withTenant(tenant_id, (client) =>
+      client.query(
+        `SELECT 1 FROM ent_tenant_entitlements WHERE tenant_id = $1 LIMIT 1`,
+        [tenant_id]
+      )
+    );
+    if (anyGrant.rows.length === 0 && product === "zukvo") return true;
+  }
+
+  return false;
 }
 
 /** Normalise whatever the pricing page posted into a stable shape. */
@@ -82,7 +175,7 @@ export class LandingSignupController {
     let planId = parseInt(String(planConfig?.tier));
     let planName = "Free Trial";
 
-    const adminUrl = process.env.ADMIN_API_URL || "http://localhost:5000";
+    const adminUrl = process.env.ADMIN_API_URL || "http://localhost:4001";
     try {
       const plansRes = await axios.get(`${adminUrl}/api/plans`);
       const allPlans = Array.isArray(plansRes.data)
@@ -150,18 +243,23 @@ export class LandingSignupController {
     const { email, name, passwordHash, accountType, companyName, planConfig } =
       opts;
 
-    const tenantName =
-      accountType === "team" ? companyName || name : name;
-    const baseSlug =
-      accountType === "team" ? slugify(companyName || name) : slugify(name);
+    // The name the workspace is known by. A team supplies it as their company
+    // name (required at signup); a freelancer may supply it as an optional
+    // workspace name. Both arrive here in `companyName`, so the naming rule is
+    // the same for either account type and does not branch on accountType.
+    //
+    // Having it matters beyond the label: the subdomain is derived from it, so
+    // a named workspace lands on the right host immediately. Without it the
+    // slug falls back to the person's own name and has to be renamed after
+    // login — which changes ORIGIN and forces a handoff through /login?token=,
+    // the "logs in twice" the signup flow used to end with.
+    const workspaceName = (companyName || "").trim();
+    const tenantName = workspaceName || name;
+    const baseSlug = slugify(workspaceName || name);
     const subdomain = await uniqueSubdomain(baseSlug || "workspace");
 
-    // Which brand door did this signup arrive through? Fall back to Zukvo only
-    // when the origin is unrecognised (e.g. local dev). Validated against the
-    // known product set rather than trusting the value blindly.
-    const detected = productFromRequest(req);
-    const product: Product =
-      detected && ALL_PRODUCTS.includes(detected) ? detected : "zukvo";
+    // Which brand door did this signup arrive through?
+    const product: Product = productForSignup(req);
     const brand = brandForRequest(req);
 
     const { planId, planName } = await LandingSignupController.resolvePlan(
@@ -177,13 +275,18 @@ export class LandingSignupController {
 
       const tenantResult = await client.query(
         `INSERT INTO tenants (id, name, subdomain, plan_type, max_users, is_active, is_setup_complete, settings, web_inquiry_secret_key, created_at, updated_at)
-         VALUES (gen_random_uuid(), $1, $2, $3, 10, true, false, '{}', $4, now(), now())
+         VALUES (gen_random_uuid(), $1, $2, $3, 10, true, $5, '{}', $4, now(), now())
          RETURNING id`,
         [
           tenantName,
           subdomain,
           planName,
           `${crypto.randomInt(10000, 100000)}/secretkey/${subdomain}`,
+          // Setup is only outstanding when nobody has told us what to call the
+          // workspace. Naming it at signup is what retires SetupWorkspaceModal
+          // (AppSetupGuard gates on exactly this flag) — anyone who skipped the
+          // optional field still gets asked, exactly as before.
+          workspaceName.length > 0,
         ]
       );
       tenantId = tenantResult.rows[0].id;
@@ -237,7 +340,7 @@ export class LandingSignupController {
     // exists and is entitled even if this call fails, and Admin reconciles later.
     let adminAction: any = { action: "UNKNOWN" };
     try {
-      const adminUrl = process.env.ADMIN_API_URL || "http://localhost:5000";
+      const adminUrl = process.env.ADMIN_API_URL || "http://localhost:4001";
       const resp = await axios.post(`${adminUrl}/api/subscriptions/onboard`, {
         tenantId,
         planId,
@@ -287,7 +390,8 @@ export class LandingSignupController {
 
   static async signup(req: Request, res: Response): Promise<void> {
     try {
-      const { email, name, password, planConfig, type, companyName } = req.body;
+      const { email, name, password, planConfig, type, companyName, workspaceName } =
+        req.body;
 
       if (!email || !name || !password) {
         res.status(400).json({ success: false, error: "Email, name, and password are required" });
@@ -313,13 +417,28 @@ export class LandingSignupController {
         return;
       }
 
-      const existing = await pool.query(
-        "SELECT id, is_verified FROM pending_registrations WHERE email = $1",
-        [normalizedEmail]
-      );
+      // One column holds whatever the customer calls their workspace: a team's
+      // company name, or a freelancer's optional workspace name. Read the field
+      // belonging to the account type rather than whichever happens to be
+      // present, so a stale companyName left over from toggling "team" cannot
+      // end up naming a freelancer's workspace.
+      const providedWorkspaceName =
+        (accountType === "team" ? companyName : workspaceName)?.trim() || null;
 
-      if (existing.rows[0]?.is_verified) {
-        res.status(409).json({ success: false, error: "An account with this email already exists" });
+      // Product-scoped, matching the OAuth paths. The old check keyed off a
+      // VERIFIED pending_registrations row, which is global (that table is
+      // UNIQUE on email alone) — so a Zukvo customer was refused a Testiez
+      // workspace by a row describing a different product entirely.
+      //
+      // Asking `users` instead is both product-aware and more accurate: a
+      // pending row records an attempt, whereas a user row records a workspace
+      // that actually exists. The upsert below resets is_verified/is_completed,
+      // so reusing the pending row for a second product is safe.
+      if (await emailOwnsProductWorkspace(normalizedEmail, productForSignup(req))) {
+        res.status(409).json({
+          success: false,
+          error: `You already have a ${brandForRequest(req).name} workspace with this email. Please sign in instead.`,
+        });
         return;
       }
 
@@ -350,7 +469,7 @@ export class LandingSignupController {
           verificationExpiresAt,
           JSON.stringify(safePlanConfig(planConfig)),
           accountType,
-          companyName?.trim() || null,
+          providedWorkspaceName,
         ]
       );
 
@@ -504,7 +623,7 @@ export class LandingSignupController {
 
       const accountType = record.type === "team" ? "team" : "freelancer";
 
-      const { subdomain, adminAction } =
+      const { tenantId, userId, subdomain, adminAction } =
         await LandingSignupController.provisionTenant(req, {
           email: decoded.email,
           name: record.name,
@@ -515,11 +634,35 @@ export class LandingSignupController {
           completePendingId: record.id,
         });
 
+      // Auto-login, exactly as completeOAuthSignup does. Clicking a link sent to
+      // the mailbox proves control of the address, and the password was chosen
+      // minutes ago on the signup form — so demanding it again here bought no
+      // security and cost every customer an extra screen. This is the same
+      // token pair, the same cookie options and the same /login?token= handoff
+      // the OAuth signups already use; there is one mechanism, not two.
+      const tokens = JWTUtils.generateTokenPair({
+        id: userId,
+        tenantId,
+        email: decoded.email,
+        role: "super_admin",
+        position: null,
+        name: record.name,
+      } as any);
+
+      res.cookie("refreshToken", tokens.refreshToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+        maxAge: 7 * 24 * 60 * 60 * 1000,
+        path: "/",
+      });
+
       res.status(200).json({
         success: true,
         tenantSubdomain: subdomain,
         email: decoded.email,
         name: record.name,
+        accessToken: tokens.accessToken,
         decision: adminAction,
       });
     } catch (error: any) {
@@ -614,7 +757,7 @@ export class LandingSignupController {
 
   static async googleSignup(req: Request, res: Response): Promise<void> {
     try {
-      const { token, type, companyName, planConfig } = req.body;
+      const { token, type, companyName, workspaceName, planConfig } = req.body;
 
       if (!token) {
         res.status(400).json({ success: false, error: "Google access token is required" });
@@ -633,20 +776,20 @@ export class LandingSignupController {
         return;
       }
 
-      if (!googleUser || !googleUser.email) {
-        res.status(400).json({ success: false, error: "Failed to retrieve email from Google" });
+      const resolved = googleIdentity(googleUser);
+      if (resolved.error) {
+        res.status(400).json({ success: false, error: resolved.error });
         return;
       }
+      const { email, name } = resolved.identity;
 
-      const email = googleUser.email.toLowerCase().trim();
-      const name = googleUser.name || "Google User";
-
-      const existingUser = await pool.query(
-        "SELECT id FROM users WHERE work_email = $1 OR personal_email = $1 LIMIT 1",
-        [email]
-      );
-      if (existingUser.rows.length > 0) {
-        res.status(409).json({ success: false, error: "An account with this email already exists" });
+      // Scoped to the product being signed up for: already holding a Zukvo
+      // workspace is not a reason to refuse a Testiez one, and vice versa.
+      if (await emailOwnsProductWorkspace(email, productForSignup(req))) {
+        res.status(409).json({
+          success: false,
+          error: `You already have a ${brandForRequest(req).name} workspace with this email. Please sign in instead.`,
+        });
         return;
       }
 
@@ -660,7 +803,10 @@ export class LandingSignupController {
         email,
         name,
         accountType,
-        companyName: accountType === "team" ? companyName?.trim() : null,
+        // Same rule as the email signup: read the field that belongs to the
+        // account type, so a named workspace skips SetupWorkspaceModal here too.
+        companyName:
+          (accountType === "team" ? companyName : workspaceName)?.trim() || null,
         planConfig,
       });
     } catch (error: any) {
@@ -671,7 +817,7 @@ export class LandingSignupController {
 
   static async microsoftSignup(req: Request, res: Response): Promise<void> {
     try {
-      const { token, type, companyName, planConfig } = req.body;
+      const { token, type, companyName, workspaceName, planConfig } = req.body;
 
       if (!token) {
         res.status(400).json({ success: false, error: "Microsoft access token is required" });
@@ -690,20 +836,20 @@ export class LandingSignupController {
         return;
       }
 
-      if (!msUser || !(msUser.mail || msUser.userPrincipalName)) {
-        res.status(400).json({ success: false, error: "Failed to retrieve email from Microsoft" });
+      const resolved = microsoftIdentity(msUser);
+      if (resolved.error) {
+        res.status(400).json({ success: false, error: resolved.error });
         return;
       }
+      const { email, name } = resolved.identity;
 
-      const email = (msUser.mail || msUser.userPrincipalName).toLowerCase().trim();
-      const name = msUser.displayName || msUser.givenName || "Microsoft User";
-
-      const existingUser = await pool.query(
-        "SELECT id FROM users WHERE work_email = $1 OR personal_email = $1 LIMIT 1",
-        [email]
-      );
-      if (existingUser.rows.length > 0) {
-        res.status(409).json({ success: false, error: "An account with this email already exists" });
+      // Scoped to the product being signed up for: already holding a Zukvo
+      // workspace is not a reason to refuse a Testiez one, and vice versa.
+      if (await emailOwnsProductWorkspace(email, productForSignup(req))) {
+        res.status(409).json({
+          success: false,
+          error: `You already have a ${brandForRequest(req).name} workspace with this email. Please sign in instead.`,
+        });
         return;
       }
 
@@ -717,7 +863,10 @@ export class LandingSignupController {
         email,
         name,
         accountType,
-        companyName: accountType === "team" ? companyName?.trim() : null,
+        // Same rule as the email signup: read the field that belongs to the
+        // account type, so a named workspace skips SetupWorkspaceModal here too.
+        companyName:
+          (accountType === "team" ? companyName : workspaceName)?.trim() || null,
         planConfig,
       });
     } catch (error: any) {

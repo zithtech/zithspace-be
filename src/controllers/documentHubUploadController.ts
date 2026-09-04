@@ -603,6 +603,26 @@ export class DocumentHubUploadController {
         }
     }
 
+    private static async notionApiWithRetry<T>(fn: () => Promise<T>, maxRetries = 5): Promise<T> {
+        let retries = 0;
+        while (true) {
+            try {
+                return await fn();
+            } catch (error: any) {
+                if (error.response?.status === 429 && retries < maxRetries) {
+                    retries++;
+                    const retryAfterHeader = error.response.headers['retry-after'];
+                    const retryAfterStr = Array.isArray(retryAfterHeader) ? retryAfterHeader[0] : retryAfterHeader;
+                    const waitTime = retryAfterStr ? parseInt(retryAfterStr) * 1000 : (1000 * Math.pow(2, retries));
+                    console.log(`Rate limited by Notion, retrying in ${waitTime}ms... (Attempt ${retries}/${maxRetries})`);
+                    await new Promise(resolve => setTimeout(resolve, waitTime));
+                } else {
+                    throw error;
+                }
+            }
+        }
+    }
+
     static async listNotionFiles(req: AuthRequest, res: Response): Promise<void> {
         try {
             if (!req.tenantId || !req.user) {
@@ -617,7 +637,7 @@ export class DocumentHubUploadController {
             let hasMore = true;
 
             while (hasMore) {
-                const response = await axios.post("https://api.notion.com/v1/search", {
+                const response = await DocumentHubUploadController.notionApiWithRetry(() => axios.post("https://api.notion.com/v1/search", {
                     sort: {
                         direction: "descending",
                         timestamp: "last_edited_time"
@@ -630,7 +650,7 @@ export class DocumentHubUploadController {
                         "Notion-Version": "2022-06-28",
                         "Content-Type": "application/json"
                     }
-                });
+                }));
 
                 allResults.push(...response.data.results);
                 hasMore = response.data.has_more;
@@ -736,7 +756,7 @@ export class DocumentHubUploadController {
                 let allBlocks: any[] = [];
                 let cursor = undefined;
                 do {
-                    const response = await axios.get(`https://api.notion.com/v1/blocks/${blockId}/children`, {
+                    const response = await DocumentHubUploadController.notionApiWithRetry(() => axios.get(`https://api.notion.com/v1/blocks/${blockId}/children`, {
                         headers: { 
                             "Authorization": `Bearer ${accessToken}`,
                             "Notion-Version": "2022-06-28"
@@ -745,7 +765,7 @@ export class DocumentHubUploadController {
                             page_size: 100,
                             start_cursor: cursor
                         }
-                    });
+                    }));
                     allBlocks = allBlocks.concat(response.data.results);
                     cursor = response.data.next_cursor;
                 } while (cursor);
