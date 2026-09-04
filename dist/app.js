@@ -138,6 +138,7 @@ const recruitmentAction_routes_1 = __importDefault(require("@/routes/recruitment
 const candidateRoutes_1 = __importDefault(require("@/routes/candidateRoutes"));
 const routes_8 = __importDefault(require("@/modules/company-details/routes"));
 const routes_9 = __importDefault(require("@/modules/yapiez/routes"));
+const routes_10 = __importDefault(require("@/modules/qa-playbooks/routes"));
 const openingManagementRoutes_1 = __importDefault(require("@/routes/openingManagementRoutes"));
 const RabbitMQService_1 = require("@/utils/RabbitMQService");
 const CalendarSyncWorker_1 = require("@/workers/CalendarSyncWorker");
@@ -408,6 +409,9 @@ app.use("/api/v2/qa/test-scopes", testScopeRoutes_1.default);
 // which would otherwise swallow /api/v2/qa/submissions as a test case id.
 app.use("/api/v2/qa/submissions", qaSubmissionRoutes_1.default);
 app.use("/api/v2/qa/analytics", qaAnalyticsRoutes_1.default);
+// Same reason as the two mounts above: "/playbooks" would be read as a test
+// case id by the "/:id" route inside testCaseRoutes.
+app.use("/api/v2/qa/playbooks", routes_10.default);
 app.use("/api/v2/qa", testCaseRoutes_1.default); // Registers /api/v2/qa/modules, /api/v2/qa/, /api/v2/qa/suites, /api/v2/qa/runs
 // Yapiez — the API definition + flow execution layer feeding QA Space.
 // Mounted as its own module rather than under /api/v2/qa: it is a sibling of
@@ -601,6 +605,12 @@ const startServer = async () => {
         // Yapiez tables (raw-SQL module, forward-only migrations)
         const { runYapiezMigrations } = require("@/modules/yapiez/db/migrate");
         await runYapiezMigrations();
+        // QA Playbooks tables (raw-SQL module, forward-only migrations). Playbook
+        // CONTENT is authored in the product and lives only in these tables — there
+        // is no seed step here, by design: a deploy must never overwrite what
+        // someone edited in the app.
+        const { runPlaybookMigrations } = require("@/modules/qa-playbooks/db/migrate");
+        await runPlaybookMigrations();
         // Close out any flow run left mid-execution by a previous process, so a
         // crashed run does not sit in 'Running' forever.
         try {
@@ -697,6 +707,8 @@ const gracefulShutdown = async (signal) => {
             await closeCompanyDetailsPool();
             const { closeYapiezPool } = require("@/modules/yapiez/db/pool");
             await closeYapiezPool();
+            const { closePlaybookPool } = require("@/modules/qa-playbooks/db/pool");
+            await closePlaybookPool();
             console.log("Database and RabbitMQ connections closed");
         }
         catch (error) {
