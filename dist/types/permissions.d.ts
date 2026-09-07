@@ -86,10 +86,16 @@ export declare const Permissions: {
     readonly QA_APPROVAL_APPROVE: "qa.approval.approve";
     readonly QA_APPROVAL_SEND_BACK: "qa.approval.send_back";
     readonly QA_COVERAGE_MAP_READ: "qa.coverage_map.read";
+    readonly QA_ANALYTICS_READ: "qa.analytics.read";
     readonly QA_PLAYBOOK_CREATE: "qa.playbook.create";
     readonly QA_PLAYBOOK_READ: "qa.playbook.read";
     readonly QA_PLAYBOOK_UPDATE: "qa.playbook.update";
     readonly QA_PLAYBOOK_DELETE: "qa.playbook.delete";
+    readonly QA_PLAYBOOK_TEMPLATE: "qa.playbook.template";
+    readonly QA_PLAYBOOK_UPLOAD: "qa.playbook.upload";
+    readonly QA_PLAYBOOK_REQUEST: "qa.playbook.request";
+    readonly QA_PLAYBOOK_REQUESTED: "qa.playbook.requested";
+    readonly QA_PLAYBOOK_ACCESS: "qa.playbook.access";
     readonly QA_MANAGE: "qa.manage";
     readonly YAPIEZ_API_CREATE: "yapiez.api.create";
     readonly YAPIEZ_API_READ: "yapiez.api.read";

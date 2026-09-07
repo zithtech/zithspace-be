@@ -215,7 +215,8 @@ exports.ADMIN_DEFAULT_PERMISSIONS = [
     'qa.scope.create', 'qa.scope.read', 'qa.scope.update', 'qa.scope.delete', 'qa.case.create', 'qa.case.read', 'qa.case.update', 'qa.case.delete', 'qa.suite.create', 'qa.suite.read', 'qa.suite.update', 'qa.suite.delete', 'qa.run.create', 'qa.run.read', 'qa.run.update', 'qa.run.delete',
     'qa.submission.create', 'qa.submission.read', 'qa.submission.update', 'qa.submission.delete', 'qa.submission.submit', 'qa.submission.signoff',
     'qa.approval.read', 'qa.approval.approve', 'qa.approval.send_back', 'qa.coverage_map.read', 'qa.analytics.read',
-    'qa.playbook.create', 'qa.playbook.read', 'qa.playbook.update', 'qa.playbook.delete', 'qa.manage',
+    'qa.playbook.create', 'qa.playbook.read', 'qa.playbook.update', 'qa.playbook.delete',
+    'qa.playbook.template', 'qa.playbook.upload', 'qa.playbook.request', 'qa.playbook.requested', 'qa.playbook.access', 'qa.manage',
     'yapiez.api.create', 'yapiez.api.read', 'yapiez.api.update', 'yapiez.api.delete', 'yapiez.api.try',
     'yapiez.flow.create', 'yapiez.flow.read', 'yapiez.flow.update', 'yapiez.flow.delete', 'yapiez.flow.execute',
     'yapiez.run.read', 'yapiez.run.delete', 'yapiez.environment.read', 'yapiez.environment.manage', 'yapiez.manage',
@@ -297,6 +298,7 @@ exports.USER_DEFAULT_PERMISSIONS = [
     // are granted deliberately rather than by default (§32).
     'qa.submission.create', 'qa.submission.read', 'qa.submission.update', 'qa.submission.submit', 'qa.approval.read', 'qa.coverage_map.read',
     'qa.playbook.read', 'qa.playbook.create', 'qa.playbook.update',
+    'qa.playbook.template', 'qa.playbook.upload', 'qa.playbook.request', 'qa.playbook.requested',
     // Yapiez baseline — read the catalog, build and run flows. Editing an API
     // definition is the developer's authority, and environment credentials are
     // granted deliberately rather than by default.
