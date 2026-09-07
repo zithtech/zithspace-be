@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import pool from '../config/dbpool';
 import { recordTransaction, Section, Module, Page, Action, EntityType } from '../utils/transactionHistory';
+import { correctTestCasesWithAI } from './testCaseController';
 
 let runScopeColumnReady = false;
 /**
@@ -531,6 +532,31 @@ export const addCaseToRun = async (req: Request, res: Response) => {
       testCaseRef = `TC-${1000 + parseInt(countRows[0].count, 10) + 1}`;
     }
 
+    let finalName = name;
+    let finalDescription = description;
+    let finalPreconditions = preconditions;
+    let finalSteps = steps_to_reproduce;
+    let finalExpectedResult = expected_result;
+
+    try {
+      const [corrected] = await correctTestCasesWithAI(tenantId, [{
+        name,
+        description,
+        preconditions,
+        steps_to_reproduce,
+        expected_result
+      }]);
+      if (corrected) {
+        finalName = corrected.name || finalName;
+        finalDescription = corrected.description !== undefined ? corrected.description : finalDescription;
+        finalPreconditions = corrected.preconditions !== undefined ? corrected.preconditions : finalPreconditions;
+        finalSteps = corrected.steps || finalSteps;
+        finalExpectedResult = corrected.expected_result !== undefined ? corrected.expected_result : finalExpectedResult;
+      }
+    } catch (e) {
+      // Fallback
+    }
+
     const { rows: caseRows } = await client.query(
       `INSERT INTO qa_test_cases (
          tenant_id, parent_test_case_id, test_case_id, name, module_id, description, preconditions,
@@ -538,10 +564,10 @@ export const addCaseToRun = async (req: Request, res: Response) => {
          status, owner, created_by
        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
       [
-        tenantId, parent_test_case_id || null, testCaseRef, name, module_id || null,
-        description || null, preconditions || null,
-        steps_to_reproduce ? JSON.stringify(steps_to_reproduce) : null,
-        expected_result || null, priority || 'Medium', severity || 'Major',
+        tenantId, parent_test_case_id || null, testCaseRef, finalName, module_id || null,
+        finalDescription || null, finalPreconditions || null,
+        finalSteps ? JSON.stringify(finalSteps) : null,
+        finalExpectedResult || null, priority || 'Medium', severity || 'Major',
         test_type || 'Functional', automation || 'Manual', 'Active', userId, userId,
       ]
     );

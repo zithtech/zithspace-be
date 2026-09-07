@@ -39,6 +39,7 @@ router.get('/', requireAnyPermission(Permissions.QA_CASE_READ, Permissions.QA_MA
 // Must stay above '/:id' — otherwise Express reads it as a test case id.
 router.get('/testing-types', requireAnyPermission(Permissions.QA_CASE_READ, Permissions.QA_MANAGE), testCaseController.getTestCaseTypeFacets);
 router.post('/generate-ai', requireAnyPermission(Permissions.QA_CASE_CREATE, Permissions.QA_MANAGE), testCaseController.generateTestCaseAI);
+router.post('/correct-spelling', requireAnyPermission(Permissions.QA_CASE_CREATE, Permissions.QA_CASE_UPDATE, Permissions.QA_MANAGE), testCaseController.correctTestCaseSpelling);
 router.post('/', requireAnyPermission(Permissions.QA_CASE_CREATE, Permissions.QA_MANAGE), testCaseController.createTestCase);
 router.get('/:id', requireAnyPermission(Permissions.QA_CASE_READ, Permissions.QA_MANAGE), testCaseController.getTestCase);
 router.put('/:id', requireAnyPermission(Permissions.QA_CASE_UPDATE, Permissions.QA_MANAGE), testCaseController.updateTestCase);
