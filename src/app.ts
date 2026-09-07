@@ -144,6 +144,7 @@ import candidateRoutes from "@/routes/candidateRoutes";
 import companyDetailsRoutes from "@/modules/company-details/routes";
 import yapiezRoutes from "@/modules/yapiez/routes";
 import qaPlaybookRoutes from "@/modules/qa-playbooks/routes";
+import qaScenarioRoutes from "@/modules/qa-scenarios/routes";
 import openingManagementRoutes from "@/routes/openingManagementRoutes";
 import { rabbitMQService } from "@/utils/RabbitMQService";
 import { CalendarSyncWorker } from "@/workers/CalendarSyncWorker";
@@ -450,6 +451,9 @@ app.use("/api/v2/qa/analytics", qaAnalyticsRoutes);
 // Same reason as the two mounts above: "/playbooks" would be read as a test
 // case id by the "/:id" route inside testCaseRoutes.
 app.use("/api/v2/qa/playbooks", qaPlaybookRoutes);
+// Test Scenarios — the flow grouping inside a Module Test Cases page. Mounted
+// above the catch-all for the same reason: "/scenarios" is not a test case id.
+app.use("/api/v2/qa/scenarios", qaScenarioRoutes);
 app.use("/api/v2/qa", testCaseRoutes); // Registers /api/v2/qa/modules, /api/v2/qa/, /api/v2/qa/suites, /api/v2/qa/runs
 // Yapiez — the API definition + flow execution layer feeding QA Space.
 // Mounted as its own module rather than under /api/v2/qa: it is a sibling of
@@ -687,6 +691,10 @@ const startServer = async () => {
     const { runPlaybookMigrations } = require("@/modules/qa-playbooks/db/migrate");
     await runPlaybookMigrations();
 
+    // QA Test Scenario tables (raw-SQL module, forward-only migrations)
+    const { runScenarioMigrations } = require("@/modules/qa-scenarios/db/migrate");
+    await runScenarioMigrations();
+
     // Close out any flow run left mid-execution by a previous process, so a
     // crashed run does not sit in 'Running' forever.
     try {
@@ -795,6 +803,8 @@ const gracefulShutdown = async (signal: string) => {
       await closeYapiezPool();
       const { closePlaybookPool } = require("@/modules/qa-playbooks/db/pool");
       await closePlaybookPool();
+      const { closeScenarioPool } = require("@/modules/qa-scenarios/db/pool");
+      await closeScenarioPool();
       console.log("Database and RabbitMQ connections closed");
     } catch (error) {
       console.error("Error closing connections:", error);

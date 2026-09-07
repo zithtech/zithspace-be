@@ -26,6 +26,7 @@
     "jira:migrate": "npx ts-node -r tsconfig-paths/register src/modules/jira/db/migrate.ts",
     "yapiez:migrate": "npx ts-node -r tsconfig-paths/register src/modules/yapiez/db/migrate.ts",
     "playbooks:migrate": "npx ts-node -r tsconfig-paths/register src/modules/qa-playbooks/db/migrate.ts",
+    "scenarios:migrate": "npx ts-node -r tsconfig-paths/register src/modules/qa-scenarios/db/migrate.ts",
     "qa:submissions:migrate": "npx ts-node -r tsconfig-paths/register src/scripts/createQaSubmissionTables.ts",
     "qa:submissions:verify": "node src/scripts/verify-qa-submission-math.js",
     "lint": "eslint src --ext .ts",
