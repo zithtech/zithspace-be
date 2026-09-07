@@ -81,7 +81,7 @@ export async function approve(actor: Actor, id: string, note: string | null, can
           endDate: req.toDate,
           duration: req.totalUnits,
           durationType: req.dayPortion === 'full' ? 'days' : 'half-day'
-        });
+        }, actor.tenantId);
       }
     } catch (err) {
       console.error('Failed to send leave approval email:', err);
@@ -128,7 +128,7 @@ export async function reject(actor: Actor, id: string, note: string | null, canM
           duration: req.totalUnits,
           durationType: req.dayPortion === 'full' ? 'days' : 'half-day',
           rejectionReason: note || 'No reason provided'
-        });
+        }, actor.tenantId);
       }
     } catch (err) {
       console.error('Failed to send leave rejection email:', err);

@@ -575,7 +575,10 @@ This is an automated mail, please do not reply.`;
     data: LeaveApplicationEmailData,
     tenantId?: string
   ): Promise<boolean> {
+    const branding = await this.resolveTenantMailBranding(tenantId);
+    const tenantHost = tenantOrigin(branding.subdomain, branding.brand);
     const subject = `New Leave Request from ${data.employeeName}`;
+    const reviewUrl = `${tenantHost}/leaves-v2/approvals`;
 
     const html = `
       <!DOCTYPE html>
@@ -639,12 +642,11 @@ This is an automated mail, please do not reply.`;
             </div>
             
             <p style="text-align: center; margin-top: 30px;">
-              <a href="${process.env.FRONTEND_URL || "http://localhost:3000"
-      }/leaves" class="button">Review Leave Request</a>
+              <a href="${reviewUrl}" class="button">Review Leave Request</a>
             </p>
           </div>
           <div class="footer">
-            <p>This is an automated notification from Zithmi Leave Management System.</p>
+            <p>This is an automated notification from ${branding.companyName} Leave Management System.</p>
           </div>
         </div>
       </body>
@@ -668,13 +670,16 @@ Duration: ${this.formatDuration(data.duration, data.durationType)}
 Reason:
 ${data.reason}
 
-Please log in to review and approve/reject this request.
+Please log in to review and approve/reject this request: ${reviewUrl}
     `;
 
     return this.sendEmail({ to: data.to, from: `"${data.employeeName}" <${data.employeeEmail}>`, cc: data.cc, replyTo: data.replyTo, subject, html, text }, tenantId);
   }
 
   async sendLeaveApprovalEmail(data: LeaveApprovalEmailData, tenantId?: string): Promise<boolean> {
+    const branding = await this.resolveTenantMailBranding(tenantId);
+    const tenantHost = tenantOrigin(branding.subdomain, branding.brand);
+    const leavesUrl = `${tenantHost}/leaves-v2/dashboard`;
     const subject = `✅ Your Leave Request has been Approved`;
 
     const html = `
@@ -691,6 +696,7 @@ Please log in to review and approve/reject this request.
           .value { color: #333; margin-left: 10px; }
           .success-box { background-color: #d4edda; border: 1px solid #c3e6cb; padding: 15px; margin: 20px 0; border-radius: 5px; text-align: center; }
           .footer { text-align: center; margin-top: 20px; color: #777; font-size: 12px; }
+          .button { display: inline-block; padding: 12px 30px; background-color: #52c41a; color: white; text-decoration: none; border-radius: 5px; margin: 10px 5px; }
         </style>
       </head>
       <body>
@@ -732,9 +738,13 @@ Please log in to review and approve/reject this request.
             </div>
             
             <p style="margin-top: 20px;">Enjoy your time off! 🎉</p>
+
+            <p style="text-align: center; margin-top: 30px;">
+              <a href="${leavesUrl}" class="button">View Leave Status</a>
+            </p>
           </div>
           <div class="footer">
-            <p>This is an automated notification from Zithmi Leave Management System.</p>
+            <p>This is an automated notification from ${branding.companyName} Leave Management System.</p>
           </div>
         </div>
       </body>
@@ -754,6 +764,8 @@ End Date: ${this.formatDate(data.endDate)}
 Duration: ${this.formatDuration(data.duration, data.durationType)}
 
 Enjoy your time off!
+
+View your leave details here: ${leavesUrl}
     `;
 
     return this.sendEmail({ to: data.to, subject, html, text }, tenantId);
@@ -763,6 +775,9 @@ Enjoy your time off!
     data: LeaveRejectionEmailData,
     tenantId?: string
   ): Promise<boolean> {
+    const branding = await this.resolveTenantMailBranding(tenantId);
+    const tenantHost = tenantOrigin(branding.subdomain, branding.brand);
+    const leavesUrl = `${tenantHost}/leaves-v2/dashboard`;
     const subject = `❌ Your Leave Request has been Rejected`;
 
     const html = `
@@ -779,6 +794,7 @@ Enjoy your time off!
           .value { color: #333; margin-left: 10px; }
           .rejection-box { background-color: #f8d7da; border: 1px solid #f5c6cb; padding: 15px; margin: 20px 0; border-radius: 5px; }
           .footer { text-align: center; margin-top: 20px; color: #777; font-size: 12px; }
+          .button { display: inline-block; padding: 12px 30px; background-color: #ff4d4f; color: white; text-decoration: none; border-radius: 5px; margin: 10px 5px; }
         </style>
       </head>
       <body>
@@ -820,9 +836,13 @@ Enjoy your time off!
             </div>
             
             <p>If you have any questions or concerns, please contact your manager or HR department.</p>
+
+            <p style="text-align: center; margin-top: 30px;">
+              <a href="${leavesUrl}" class="button">View Leave Status</a>
+            </p>
           </div>
           <div class="footer">
-            <p>This is an automated notification from Zithmi Leave Management System.</p>
+            <p>This is an automated notification from ${branding.companyName} Leave Management System.</p>
           </div>
         </div>
       </body>
@@ -845,6 +865,8 @@ Reason for Rejection:
 ${data.rejectionReason}
 
 If you have any questions or concerns, please contact your manager or HR department.
+
+View your leave details here: ${leavesUrl}
     `;
 
     return this.sendEmail({ to: data.to, subject, html, text }, tenantId);
