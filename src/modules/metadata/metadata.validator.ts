@@ -49,8 +49,8 @@ export class MetadataValidator {
               }
               featureNames.add(feature.name);
 
-              if (feature.featureType !== 'PRIME' && feature.featureType !== 'GRID') {
-                throw new Error(`Invalid featureType found in page ${page.route} for feature ${feature.key}: ${feature.featureType}. Allowed values are 'PRIME', 'GRID'.`);
+              if (!feature.featureType || typeof feature.featureType !== 'string') {
+                throw new Error(`Invalid featureType found in page ${page.route} for feature ${feature.key}: ${feature.featureType}.`);
               }
             }
           }

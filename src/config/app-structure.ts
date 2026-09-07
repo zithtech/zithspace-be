@@ -1,7 +1,7 @@
 export interface IFeature {
   key: string;
   name: string;
-  featureType: 'PRIME' | 'GRID';
+  featureType: 'PRIME' | 'GRID' | 'TEMPLATE' | 'UPLOAD' | 'REQUEST_PLAYBOOK' | 'REQUESTED' | 'ACCESS' | 'NEW_PLAYBOOK' | string;
 }
 
 export interface IPage {
@@ -647,7 +647,13 @@ export const APP_STRUCTURE: ICore[] = [
             menu_order: 0,
             features: [
               { key: 'prime', name: 'Prime', featureType: 'PRIME' },
-              { key: 'grid', name: 'Grid', featureType: 'GRID' }
+              { key: 'grid', name: 'Grid', featureType: 'GRID' },
+              { key: 'template', name: 'Template', featureType: 'TEMPLATE' },
+              { key: 'upload', name: 'Upload', featureType: 'UPLOAD' },
+              { key: 'request_playbook', name: 'Request Playbook', featureType: 'REQUEST_PLAYBOOK' },
+              { key: 'requested', name: 'Requested Playbooks', featureType: 'REQUESTED' },
+              { key: 'access', name: 'Access Requests', featureType: 'ACCESS' },
+              { key: 'new_playbook', name: 'New Playbook', featureType: 'NEW_PLAYBOOK' }
             ]
           },
           {

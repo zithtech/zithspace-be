@@ -20,6 +20,7 @@ import {
   playbookRequestDecisionSchema,
   playbookRequestSchema,
   publishSchema,
+  renameCategorySchema,
   unlockRequestSchema,
   zaiDraftSchema,
 } from '../validators';
@@ -239,19 +240,214 @@ export const setStatus = handle(async (req: AuthRequest, res: Response) => {
   ok(res, { id, status });
 });
 
-/** DELETE /api/v2/qa/playbooks/:id */
-export const remove = handle(async (req: AuthRequest, res: Response) => {
+/** GET /api/v2/qa/playbooks/trash */
+export const listTrash = handle(async (req: AuthRequest, res: Response) => {
   const { tenantId } = actorOf(req);
+  const isSuper = isSuperAdmin(req);
+  const items = await withTenant(tenantId, (client) =>
+    repo.listTrashPlaybooks(client, isSuper)
+  );
+  ok(res, items);
+});
+
+/** DELETE /api/v2/qa/playbooks/:id — soft delete / move to trash */
+export const remove = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId, userId } = actorOf(req);
   const id = String(req.params.id);
+  const isSuper = isSuperAdmin(req);
 
   await withTenant(tenantId, async (client) => {
     const owner = await repo.getOwnership(client, id);
     if (!owner) throw new PlaybookError('Playbook not found', 404, 'NOT_FOUND');
     assertCanEdit(req, owner);
-    await repo.deletePlaybook(client, id);
+    const success = await repo.softDeletePlaybook(client, id, userId ?? null, isSuper);
+    if (!success) {
+      throw new PlaybookError('Could not move playbook to trash', 400);
+    }
+  });
+
+  recordTransaction({
+    req: req as any,
+    section: Section.WORK,
+    module: Module.QA_WORKSPACE,
+    page: Page.QA_CASE_LIST,
+    action: Action.DELETE,
+    actionLabel: 'Playbook moved to trash',
+    entityType: EntityType.QA_CASE,
+    entityId: id,
   });
 
   ok(res, { id, deleted: true });
+});
+
+/** POST /api/v2/qa/playbooks/:id/restore */
+export const restore = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId } = actorOf(req);
+  const id = String(req.params.id);
+  const isSuper = isSuperAdmin(req);
+
+  await withTenant(tenantId, async (client) => {
+    const success = await repo.restorePlaybook(client, id, isSuper);
+    if (!success) throw new PlaybookError('Playbook not found in trash', 404, 'NOT_FOUND');
+  });
+
+  recordTransaction({
+    req: req as any,
+    section: Section.WORK,
+    module: Module.QA_WORKSPACE,
+    page: Page.QA_CASE_LIST,
+    action: Action.RESTORE,
+    actionLabel: 'Playbook restored from trash',
+    entityType: EntityType.QA_CASE,
+    entityId: id,
+  });
+
+  ok(res, { id, restored: true });
+});
+
+/** DELETE /api/v2/qa/playbooks/:id/permanent */
+export const permanentDelete = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId } = actorOf(req);
+  const id = String(req.params.id);
+  const isSuper = isSuperAdmin(req);
+
+  await withTenant(tenantId, async (client) => {
+    const success = await repo.permanentlyDeletePlaybook(client, id, isSuper);
+    if (!success) throw new PlaybookError('Playbook not found in trash', 404, 'NOT_FOUND');
+  });
+
+  recordTransaction({
+    req: req as any,
+    section: Section.WORK,
+    module: Module.QA_WORKSPACE,
+    page: Page.QA_CASE_LIST,
+    action: Action.DELETE,
+    actionLabel: 'Playbook permanently deleted',
+    entityType: EntityType.QA_CASE,
+    entityId: id,
+  });
+
+  ok(res, { id, permanentlyDeleted: true });
+});
+
+/** PUT /api/v2/qa/playbooks/categories/rename */
+export const renameCategory = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId } = actorOf(req);
+  const body = renameCategorySchema.parse(req.body ?? {});
+
+  if (body.from === body.to) {
+    ok(res, { success: true, count: 0, from: body.from, to: body.to });
+    return;
+  }
+
+  const isSuper = isSuperAdmin(req);
+
+  const count = await withTenant(tenantId, async (client) => {
+    const updatedCount = await repo.renameCategory(client, body.from, body.to, isSuper);
+    if (updatedCount === 0 && !isSuper) {
+      const existsInPlatform = await repo.categoryExistsInPlatform(client, body.from);
+      if (existsInPlatform) {
+        throw new PlaybookError(
+          'Only administrators can rename platform library categories',
+          403,
+          'FORBIDDEN'
+        );
+      }
+    }
+    return updatedCount;
+  });
+
+  recordTransaction({
+    req: req as any,
+    section: Section.WORK,
+    module: Module.QA_WORKSPACE,
+    page: Page.QA_CASE_LIST,
+    action: Action.UPDATE,
+    actionLabel: `Playbook category renamed: ${body.from} -> ${body.to}`,
+    entityType: EntityType.QA_CASE,
+    entityLabel: body.to,
+    afterData: { from: body.from, to: body.to, count },
+  });
+
+  ok(res, { success: true, count, from: body.from, to: body.to });
+});
+
+/** DELETE /api/v2/qa/playbooks/categories/:name — soft delete category */
+export const removeCategory = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId, userId } = actorOf(req);
+  const category = decodeURIComponent(String(req.params.name || '').trim());
+  if (!category) throw new PlaybookError('Category name is required', 400);
+  const isSuper = isSuperAdmin(req);
+
+  const count = await withTenant(tenantId, (client) =>
+    repo.softDeleteCategory(client, category, userId ?? null, isSuper)
+  );
+
+  recordTransaction({
+    req: req as any,
+    section: Section.WORK,
+    module: Module.QA_WORKSPACE,
+    page: Page.QA_CASE_LIST,
+    action: Action.DELETE,
+    actionLabel: `Playbook category moved to trash: ${category}`,
+    entityType: EntityType.QA_CASE,
+    entityLabel: category,
+    afterData: { category, count },
+  });
+
+  ok(res, { category, count, deleted: true });
+});
+
+/** POST /api/v2/qa/playbooks/categories/:name/restore */
+export const restoreCategory = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId } = actorOf(req);
+  const category = decodeURIComponent(String(req.params.name || '').trim());
+  if (!category) throw new PlaybookError('Category name is required', 400);
+  const isSuper = isSuperAdmin(req);
+
+  const count = await withTenant(tenantId, (client) =>
+    repo.restoreCategory(client, category, isSuper)
+  );
+
+  recordTransaction({
+    req: req as any,
+    section: Section.WORK,
+    module: Module.QA_WORKSPACE,
+    page: Page.QA_CASE_LIST,
+    action: Action.RESTORE,
+    actionLabel: `Playbook category restored: ${category}`,
+    entityType: EntityType.QA_CASE,
+    entityLabel: category,
+    afterData: { category, count },
+  });
+
+  ok(res, { category, count, restored: true });
+});
+
+/** DELETE /api/v2/qa/playbooks/categories/:name/permanent */
+export const permanentDeleteCategory = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId } = actorOf(req);
+  const category = decodeURIComponent(String(req.params.name || '').trim());
+  if (!category) throw new PlaybookError('Category name is required', 400);
+  const isSuper = isSuperAdmin(req);
+
+  const count = await withTenant(tenantId, (client) =>
+    repo.permanentlyDeleteCategory(client, category, isSuper)
+  );
+
+  recordTransaction({
+    req: req as any,
+    section: Section.WORK,
+    module: Module.QA_WORKSPACE,
+    page: Page.QA_CASE_LIST,
+    action: Action.DELETE,
+    actionLabel: `Playbook category permanently deleted: ${category}`,
+    entityType: EntityType.QA_CASE,
+    entityLabel: category,
+    afterData: { category, count },
+  });
+
+  ok(res, { category, count, permanentlyDeleted: true });
 });
 
 /**

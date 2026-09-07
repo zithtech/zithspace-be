@@ -41,6 +41,13 @@ export const playbookMetaSchema = z.object({
   price_currency: z.string().trim().length(3).default('USD'),
 });
 
+export const renameCategorySchema = z.object({
+  from: z.string().trim().min(1, 'Current category name is required').max(80),
+  to: z.string().trim().min(1, 'New category name is required').max(80),
+});
+
+export type RenameCategoryBody = z.infer<typeof renameCategorySchema>;
+
 export type PlaybookMetaBody = z.infer<typeof playbookMetaSchema>;
 
 const exampleSchema = z.union([

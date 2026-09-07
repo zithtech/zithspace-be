@@ -101,7 +101,10 @@ exports.Permissions = {
     QA_COVERAGE_MAP_READ: 'qa.coverage_map.read',
     // Cross-scope reporting exposes the whole QA estate, so it is granted
     // separately from being able to read the runs you work on.
-    QA_ANALYTICS_READ: 'qa.analytics.read',
+    QA_PLAYBOOK_CREATE: 'qa.playbook.create',
+    QA_PLAYBOOK_READ: 'qa.playbook.read',
+    QA_PLAYBOOK_UPDATE: 'qa.playbook.update',
+    QA_PLAYBOOK_DELETE: 'qa.playbook.delete',
     QA_MANAGE: 'qa.manage',
     // ─── Yapiez (API definition + flow execution; feeds QA Space) ────────────
     // Two authorities, deliberately split: developers own the API catalog, QA
@@ -857,6 +860,10 @@ exports.PERMISSIONS_BY_RESOURCE = {
         exports.Permissions.QA_APPROVAL_SEND_BACK,
         exports.Permissions.QA_COVERAGE_MAP_READ,
         exports.Permissions.QA_ANALYTICS_READ,
+        exports.Permissions.QA_PLAYBOOK_CREATE,
+        exports.Permissions.QA_PLAYBOOK_READ,
+        exports.Permissions.QA_PLAYBOOK_UPDATE,
+        exports.Permissions.QA_PLAYBOOK_DELETE,
         exports.Permissions.QA_MANAGE,
     ],
     yapiez: [
