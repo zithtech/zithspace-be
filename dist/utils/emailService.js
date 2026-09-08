@@ -590,7 +590,16 @@ ${data.reason}
 
 Please log in to review and approve/reject this request: ${reviewUrl}
     `;
-        return this.sendEmail({ to: data.to, from: `"${data.employeeName}" <${data.employeeEmail}>`, cc: data.cc, replyTo: data.replyTo, subject, html, text }, tenantId);
+        const fromAddress = branding.brand.systemEmail;
+        return this.sendEmail({
+            to: data.to,
+            from: `"${branding.companyName}" <${fromAddress}>`,
+            cc: data.cc,
+            replyTo: data.replyTo || data.employeeEmail,
+            subject,
+            html,
+            text,
+        }, tenantId);
     }
     async sendLeaveApprovalEmail(data, tenantId) {
         const branding = await this.resolveTenantMailBranding(tenantId);
@@ -677,7 +686,15 @@ Enjoy your time off!
 
 View your leave details here: ${leavesUrl}
     `;
-        return this.sendEmail({ to: data.to, subject, html, text }, tenantId);
+        const fromAddress = branding.brand.systemEmail;
+        return this.sendEmail({
+            to: data.to,
+            from: `"${branding.companyName}" <${fromAddress}>`,
+            replyTo: branding.replyToEmail,
+            subject,
+            html,
+            text,
+        }, tenantId);
     }
     async sendLeaveRejectionEmail(data, tenantId) {
         const branding = await this.resolveTenantMailBranding(tenantId);
@@ -767,7 +784,15 @@ If you have any questions or concerns, please contact your manager or HR departm
 
 View your leave details here: ${leavesUrl}
     `;
-        return this.sendEmail({ to: data.to, subject, html, text }, tenantId);
+        const fromAddress = branding.brand.systemEmail;
+        return this.sendEmail({
+            to: data.to,
+            from: `"${branding.companyName}" <${fromAddress}>`,
+            replyTo: branding.replyToEmail,
+            subject,
+            html,
+            text,
+        }, tenantId);
     }
     // ═══════════════════════════════════════════════════════════════════════════
     // REIMBURSEMENT EMAIL METHODS

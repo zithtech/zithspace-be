@@ -673,7 +673,19 @@ ${data.reason}
 Please log in to review and approve/reject this request: ${reviewUrl}
     `;
 
-    return this.sendEmail({ to: data.to, from: `"${data.employeeName}" <${data.employeeEmail}>`, cc: data.cc, replyTo: data.replyTo, subject, html, text }, tenantId);
+    const fromAddress = branding.brand.systemEmail;
+    return this.sendEmail(
+      {
+        to: data.to,
+        from: `"${branding.companyName}" <${fromAddress}>`,
+        cc: data.cc,
+        replyTo: data.replyTo || data.employeeEmail,
+        subject,
+        html,
+        text,
+      },
+      tenantId
+    );
   }
 
   async sendLeaveApprovalEmail(data: LeaveApprovalEmailData, tenantId?: string): Promise<boolean> {
@@ -768,7 +780,18 @@ Enjoy your time off!
 View your leave details here: ${leavesUrl}
     `;
 
-    return this.sendEmail({ to: data.to, subject, html, text }, tenantId);
+    const fromAddress = branding.brand.systemEmail;
+    return this.sendEmail(
+      {
+        to: data.to,
+        from: `"${branding.companyName}" <${fromAddress}>`,
+        replyTo: branding.replyToEmail,
+        subject,
+        html,
+        text,
+      },
+      tenantId
+    );
   }
 
   async sendLeaveRejectionEmail(
@@ -869,7 +892,18 @@ If you have any questions or concerns, please contact your manager or HR departm
 View your leave details here: ${leavesUrl}
     `;
 
-    return this.sendEmail({ to: data.to, subject, html, text }, tenantId);
+    const fromAddress = branding.brand.systemEmail;
+    return this.sendEmail(
+      {
+        to: data.to,
+        from: `"${branding.companyName}" <${fromAddress}>`,
+        replyTo: branding.replyToEmail,
+        subject,
+        html,
+        text,
+      },
+      tenantId
+    );
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
