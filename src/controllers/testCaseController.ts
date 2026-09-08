@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import pool from '../config/dbpool';
 import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from '../utils/transactionHistory';
+import { getAIProviderForTenant } from '../services/ai/resolver';
 
 let schemaFixed = false;
 const ensureModuleFkDropped = async () => {
@@ -264,6 +265,137 @@ export const getTestCase = async (req: Request, res: Response) => {
   }
 };
 
+export const correctTestCasesWithAI = async (tenantId: string, rawList: any[]): Promise<any[]> => {
+  if (!rawList || !rawList.length) return rawList || [];
+
+  const normalizedItems = rawList.map((item: any) => {
+    let steps: string[] = [];
+    if (Array.isArray(item.stepsList)) {
+      steps = item.stepsList;
+    } else if (Array.isArray(item.steps_to_reproduce)) {
+      steps = item.steps_to_reproduce;
+    } else if (Array.isArray(item.steps)) {
+      steps = item.steps;
+    } else if (typeof item.steps_to_reproduce === 'string' && item.steps_to_reproduce.trim()) {
+      try {
+        const p = JSON.parse(item.steps_to_reproduce);
+        steps = Array.isArray(p) ? p : [item.steps_to_reproduce];
+      } catch {
+        steps = [item.steps_to_reproduce];
+      }
+    }
+
+    return {
+      name: typeof item.name === 'string' ? item.name : '',
+      description: typeof item.description === 'string' ? item.description : '',
+      preconditions: typeof item.preconditions === 'string' ? item.preconditions : '',
+      steps: steps.map(s => typeof s === 'string' ? s : String(s)).filter(s => s.trim() !== ''),
+      expected_result: typeof item.expected_result === 'string' ? item.expected_result : ''
+    };
+  });
+
+  const hasAnyText = normalizedItems.some(item =>
+    item.name.trim() || item.description.trim() || item.preconditions.trim() ||
+    item.steps.some(s => s.trim()) || item.expected_result.trim()
+  );
+
+  if (!hasAnyText) return normalizedItems;
+
+  try {
+    const provider = await getAIProviderForTenant(tenantId);
+    if (!provider || !provider.isConfigured()) {
+      return normalizedItems;
+    }
+
+    const aiPrompt = `
+You are an expert QA technical copy editor. Fix all spelling mistakes, obvious typos, and grammatical errors in the following test case data.
+
+CRITICAL INSTRUCTIONS:
+1. Fix all spelling mistakes, typos, and minor grammar in every field: "name", "description", "preconditions", "steps", and "expected_result".
+   (Examples: "Verfy" -> "Verify", "Setings" -> "Settings", "succesfuly" -> "successfully", "actve" -> "active", "sesion" -> "session", "permision" -> "permission", "applcation" -> "application", "Navgate" -> "Navigate", "Wit" -> "Wait").
+2. Do NOT rewrite, summarise, rephrase, expand, or alter the meaning.
+3. Keep technical words, URLs, parameters, UI buttons, quotes, and specific names intact.
+4. Keep the exact same number of test cases and preserve the count and order of steps in each test case.
+5. Return ONLY a valid JSON object with the key "testCases" containing the array of corrected test cases. No markdown fences, no commentary.
+
+Input data:
+${JSON.stringify({ testCases: normalizedItems })}
+`.trim();
+
+    const raw = await provider.generateText(aiPrompt, { temperature: 0.1, maxOutputTokens: 4096 });
+    const rawText = raw?.text || (typeof raw === 'string' ? raw : '');
+    const cleaned = rawText
+      .replace(/^```[a-zA-Z]*\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
+
+    let parsed: any = null;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch {
+      const start = cleaned.indexOf('{');
+      const end = cleaned.lastIndexOf('}');
+      if (start !== -1 && end !== -1) {
+        try {
+          parsed = JSON.parse(cleaned.slice(start, end + 1));
+        } catch {
+          const arrStart = cleaned.indexOf('[');
+          const arrEnd = cleaned.lastIndexOf(']');
+          if (arrStart !== -1 && arrEnd !== -1) {
+            try {
+              parsed = JSON.parse(cleaned.slice(arrStart, arrEnd + 1));
+            } catch {
+              parsed = null;
+            }
+          }
+        }
+      }
+    }
+
+    let itemsList: any[] = [];
+    if (parsed) {
+      if (Array.isArray(parsed)) {
+        itemsList = parsed;
+      } else if (Array.isArray(parsed.testCases)) {
+        itemsList = parsed.testCases;
+      } else if (Array.isArray(parsed.test_cases)) {
+        itemsList = parsed.test_cases;
+      } else if (Array.isArray(parsed.data)) {
+        itemsList = parsed.data;
+      } else if (parsed.testCase && typeof parsed.testCase === 'object') {
+        itemsList = [parsed.testCase];
+      } else if (typeof parsed === 'object' && (parsed.name || parsed.description || parsed.steps || parsed.expected_result)) {
+        itemsList = [parsed];
+      }
+    }
+
+    return normalizedItems.map((orig, idx) => {
+      const item = itemsList[idx] || orig;
+      let outSteps: string[] = [];
+      if (Array.isArray(item.steps)) {
+        outSteps = item.steps.map((s: any) => String(s).trim()).filter(Boolean);
+      } else if (Array.isArray(item.steps_to_reproduce)) {
+        outSteps = item.steps_to_reproduce.map((s: any) => String(s).trim()).filter(Boolean);
+      } else if (typeof item.steps === 'string' && item.steps.trim()) {
+        outSteps = [item.steps.trim()];
+      } else {
+        outSteps = orig.steps;
+      }
+
+      return {
+        name: typeof item.name === 'string' && item.name.trim() ? item.name.trim() : orig.name,
+        description: typeof item.description === 'string' ? item.description : orig.description,
+        preconditions: typeof item.preconditions === 'string' ? item.preconditions : orig.preconditions,
+        steps: outSteps.length ? outSteps : orig.steps,
+        expected_result: typeof item.expected_result === 'string' ? item.expected_result : orig.expected_result
+      };
+    });
+  } catch (err: any) {
+    console.error('Failed to correct test cases with AI:', err);
+    return normalizedItems;
+  }
+};
+
 export const createTestCase = async (req: Request, res: Response) => {
   try {
     await ensureModuleFkDropped();
@@ -271,10 +403,30 @@ export const createTestCase = async (req: Request, res: Response) => {
     const userId = (req as any).user?.id;
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
-    const {
+    let {
       parent_test_case_id, parent_id, name, module_id, feature, description, preconditions, steps_to_reproduce,
       expected_result, priority, severity, test_type, automation, status, owner, qa_owner
     } = req.body;
+
+    try {
+      const [corrected] = await correctTestCasesWithAI(tenantId, [{
+        name,
+        description,
+        preconditions,
+        steps_to_reproduce,
+        expected_result
+      }]);
+      if (corrected) {
+        name = corrected.name || name;
+        description = corrected.description !== undefined ? corrected.description : description;
+        preconditions = corrected.preconditions !== undefined ? corrected.preconditions : preconditions;
+        steps_to_reproduce = JSON.stringify(corrected.steps);
+        expected_result = corrected.expected_result !== undefined ? corrected.expected_result : expected_result;
+      }
+    } catch (e) {
+      // Fallback
+    }
+
     const assignedOwner = owner || qa_owner || userId || null;
     const parentId = parent_test_case_id || parent_id || null;
 
@@ -321,10 +473,29 @@ export const updateTestCase = async (req: Request, res: Response) => {
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
     const { id } = req.params;
-    const {
+    let {
       parent_test_case_id, parent_id, name, module_id, feature, description, preconditions, steps_to_reproduce,
       expected_result, priority, severity, test_type, automation, status, owner, qa_owner
     } = req.body;
+
+    try {
+      const [corrected] = await correctTestCasesWithAI(tenantId, [{
+        name,
+        description,
+        preconditions,
+        steps_to_reproduce,
+        expected_result
+      }]);
+      if (corrected) {
+        name = corrected.name || name;
+        description = corrected.description !== undefined ? corrected.description : description;
+        preconditions = corrected.preconditions !== undefined ? corrected.preconditions : preconditions;
+        steps_to_reproduce = JSON.stringify(corrected.steps);
+        expected_result = corrected.expected_result !== undefined ? corrected.expected_result : expected_result;
+      }
+    } catch (e) {
+      // Fallback
+    }
     const assignedOwner = owner || qa_owner || null;
     const parentId = parent_test_case_id || parent_id || null;
 
@@ -430,8 +601,6 @@ export const deleteTestCase = async (req: Request, res: Response) => {
   }
 };
 
-import { getAIProviderForTenant } from '../services/ai/resolver';
-
 /**
  * Draft a module test case from a plain-language description.
  * Returns the name, reproduction steps and expected result so the drawer can
@@ -526,5 +695,23 @@ Write 3 to 8 steps. Cover the validation and error paths the tester mentioned.
   } catch (err: any) {
     console.error('Failed to generate test case', err);
     res.status(500).json({ success: false, error: 'Failed to generate test case' });
+  }
+};
+
+export const correctTestCaseSpelling = async (req: Request, res: Response) => {
+  try {
+    const tenantId = (req as any).user?.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ success: false, error: 'Unauthorized: No tenant found' });
+    }
+
+    const { testCases, testCase } = req.body || {};
+    const rawList = Array.isArray(testCases) ? testCases : (testCase ? [testCase] : []);
+
+    const result = await correctTestCasesWithAI(tenantId, rawList);
+    res.json({ success: true, data: result });
+  } catch (err: any) {
+    console.error('Failed to correct test case spelling:', err);
+    res.json({ success: true, data: req.body?.testCases || (req.body?.testCase ? [req.body.testCase] : []) });
   }
 };
