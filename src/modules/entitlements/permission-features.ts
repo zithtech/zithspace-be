@@ -34,6 +34,7 @@ export const PERMISSION_RESOURCE_FEATURES: Readonly<Record<string, string>> = {
   ticket: 'work_tickets',
   project: 'work_projects',
   qa: 'work_qa_space',
+  playbook: 'work_playbooks',
   yapiez: 'work_qa_space',
   document: 'work_document_hub',
   time_tracking: 'work_time_tracking',
@@ -89,6 +90,43 @@ export const PERMISSION_RESOURCE_FEATURES: Readonly<Record<string, string>> = {
 };
 
 /**
+ * Granular permissions mapped to specific leaf subscription features.
+ * If a permission is mapped here, the tenant must hold at least one of
+ * the required features to see and assign it.
+ */
+export const PERMISSION_SPECIFIC_FEATURES: Readonly<Record<string, readonly string[]>> = {
+  'playbook.template': ['work_playbooks_qa_playbooks_template', 'work_playbooks_template'],
+  'playbook.upload': ['work_playbooks_qa_playbooks_upload', 'work_playbooks_upload'],
+  'playbook.create': [
+    'work_playbooks_qa_playbooks_new_playbook',
+    'work_playbooks_collections_new_collections',
+    'work_playbooks_qa_playbooks_new_collections',
+    'work_playbooks_new_playbook',
+  ],
+  'playbook.update': [
+    'work_playbooks_qa_playbooks_new_playbook',
+    'work_playbooks_collections_new_collections',
+    'work_playbooks_qa_playbooks_new_collections',
+    'work_playbooks_new_playbook',
+  ],
+  'playbook.delete': [
+    'work_playbooks_qa_playbooks_new_playbook',
+    'work_playbooks_collections_new_collections',
+    'work_playbooks_qa_playbooks_new_collections',
+    'work_playbooks_new_playbook',
+  ],
+  'playbook.request': [
+    'work_playbooks_requested_playbooks_request_playbook',
+    'work_playbooks_qa_playbooks_request_playbook',
+    'work_playbooks_request_playbook',
+  ],
+  'playbook.manage': [
+    'work_playbooks_qa_playbooks_access',
+    'work_playbooks_access',
+  ],
+};
+
+/**
  * Does the granted feature set satisfy this requirement?
  *
  * UPWARD ONLY: an exact match, or a granted DESCENDANT of the requirement.
@@ -125,4 +163,21 @@ export function isResourceAvailable(resource: string, granted: readonly string[]
   if (!required) return true; // unmapped: visible, as before
 
   return satisfies(granted, required);
+}
+
+/**
+ * Is a specific permission available to a tenant holding these features?
+ */
+export function isPermissionAvailable(
+  permission: { resource: string; name: string },
+  granted: readonly string[],
+): boolean {
+  if (granted.length === 0) return true;
+  if (!isResourceAvailable(permission.resource, granted)) return false;
+
+  const specific = PERMISSION_SPECIFIC_FEATURES[permission.name];
+  if (specific && specific.length > 0) {
+    return specific.some((req) => satisfies(granted, req));
+  }
+  return true;
 }

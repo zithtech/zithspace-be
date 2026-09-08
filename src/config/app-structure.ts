@@ -1,7 +1,19 @@
+export type FeatureType =
+  | 'PRIME'
+  | 'GRID'
+  | 'TEMPLATE'
+  | 'UPLOAD'
+  | 'ACCESS'
+  | 'NEW_PLAYBOOK'
+  | 'NEW_COLLECTIONS'
+  | 'REQUEST_PLAYBOOK'
+  | 'REQUESTED'
+  | (string & {});
+
 export interface IFeature {
   key: string;
   name: string;
-  featureType: 'PRIME' | 'GRID';
+  featureType: FeatureType;
 }
 
 export interface IPage {
@@ -635,21 +647,57 @@ export const APP_STRUCTURE: ICore[] = [
         ]
       },
       {
-        key: 'qa_space',
-        name: 'QA Space',
+        key: 'playbooks',
+        name: 'Playbooks',
         sort_order: 11,
         pages: [
           {
-            key: 'playbooks',
-            name: 'Playbooks',
+            key: 'qa_playbooks',
+            name: 'QA Playbooks',
             route: '/playbooks',
-            menu_title: 'Playbooks',
-            menu_order: 0,
+            menu_title: 'QA Playbooks',
+            menu_order: 1,
             features: [
               { key: 'prime', name: 'Prime', featureType: 'PRIME' },
-              { key: 'grid', name: 'Grid', featureType: 'GRID' }
+              { key: 'grid', name: 'Grid', featureType: 'GRID' },
+              { key: 'template', name: 'Template', featureType: 'TEMPLATE' },
+              { key: 'upload', name: 'Upload', featureType: 'UPLOAD' },
+              { key: 'access', name: 'Access Requests', featureType: 'ACCESS' },
+              { key: 'new_playbook', name: 'New Playbook', featureType: 'NEW_PLAYBOOK' }
             ]
           },
+          {
+            key: 'collections',
+            name: 'Collections',
+            route: '/playbooks/collections',
+            menu_title: 'Collections',
+            menu_order: 2,
+            features: [
+              { key: 'prime', name: 'Prime', featureType: 'PRIME' },
+              { key: 'grid', name: 'Grid', featureType: 'GRID' },
+              { key: 'new_collections', name: 'New Collections', featureType: 'NEW_COLLECTIONS' }
+            ]
+          },
+          {
+            key: 'requested_playbooks',
+            name: 'Requested Playbooks',
+            route: '/playbooks/requested',
+            menu_title: 'Requested Playbooks',
+            menu_order: 3,
+            features: [
+              { key: 'prime', name: 'Prime', featureType: 'PRIME' },
+              { key: 'grid', name: 'Grid', featureType: 'GRID' },
+              { key: 'request_playbook', name: 'Request Playbook', featureType: 'REQUEST_PLAYBOOK' },
+              { key: 'requested', name: 'Requested Playbooks', featureType: 'REQUESTED' }
+            ]
+          }
+        ]
+      },
+      {
+        key: 'qa_space',
+        name: 'QA Space',
+        sort_order: 12,
+        pages: [
           {
             key: 'scope',
             name: 'Scope',
@@ -728,11 +776,22 @@ export const APP_STRUCTURE: ICore[] = [
             ]
           },
           {
+            key: 'coverage_map',
+            name: 'Coverage Map',
+            route: '/qa-workspace/coverage-map',
+            menu_title: 'Coverage Map',
+            menu_order: 8,
+            features: [
+              { key: 'prime', name: 'Prime', featureType: 'PRIME' },
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
+            ]
+          },
+          {
             key: 'analytics',
             name: 'Analytics',
             route: '/qa-workspace/analytics',
             menu_title: 'Analytics',
-            menu_order: 8,
+            menu_order: 9,
             features: [
               { key: 'prime', name: 'Prime', featureType: 'PRIME' },
               { key: 'grid', name: 'Grid', featureType: 'GRID' }
@@ -743,7 +802,7 @@ export const APP_STRUCTURE: ICore[] = [
             name: 'Settings',
             route: '/qa-workspace/settings',
             menu_title: 'Settings',
-            menu_order: 9,
+            menu_order: 10,
             features: [
               { key: 'prime', name: 'Prime', featureType: 'PRIME' },
               { key: 'grid', name: 'Grid', featureType: 'GRID' }
@@ -754,7 +813,7 @@ export const APP_STRUCTURE: ICore[] = [
       {
         key: 'timesheet',
         name: 'Timesheet',
-        sort_order: 12,
+        sort_order: 13,
         pages: [
           {
             key: 'dashboard',

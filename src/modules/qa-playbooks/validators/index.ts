@@ -100,7 +100,10 @@ export type GenerateBody = z.infer<typeof generateSchema>;
 export const playbookMetaSchema = z.object({
   name: z.string().trim().min(1, 'A name is required').max(160),
   category: z.string().trim().min(1, 'A category is required').max(80),
-  summary: z.string().trim().min(1, 'A summary is required').max(600),
+  summary: z.preprocess(
+    (v: any) => (typeof v === 'string' && v.trim() ? v.trim() : 'QA Playbook'),
+    z.string().trim().min(1, 'A summary is required').max(600)
+  ),
   overview: z.string().trim().max(20000).default(''),
   version: z.string().trim().min(1).max(20).default('1.0'),
   changelog: z.string().trim().max(2000).nullable().optional(),
@@ -141,13 +144,64 @@ function normalizeUrl(value: unknown): unknown {
   return url;
 }
 
+function normalizeItemCategory(value: unknown): string {
+  if (typeof value !== 'string') return 'functional';
+  const clean = value.trim().toLowerCase().replace(/[-\s]+/g, '_');
+  if ((CATEGORIES as readonly string[]).includes(clean)) return clean;
+  if (clean.includes('ui') || clean.includes('visual') || clean.includes('layout')) return 'ui';
+  if (clean.includes('valid') || clean.includes('input')) return 'input_validation';
+  if (clean.includes('bound') || clean.includes('limit')) return 'boundary';
+  if (clean.includes('state') || clean.includes('account')) return 'account_state';
+  if (clean.includes('api') || clean.includes('endpoint')) return 'api';
+  if (clean.includes('auth') || clean.includes('login') || clean.includes('pass')) return 'auth';
+  if (clean.includes('session') || clean.includes('cookie') || clean.includes('token')) return 'session';
+  if (clean.includes('sec') || clean.includes('vuln') || clean.includes('owasp')) return 'security';
+  if (clean.includes('perf') || clean.includes('load') || clean.includes('speed')) return 'performance';
+  if (clean.includes('device') || clean.includes('browser') || clean.includes('mobile')) return 'browser_device';
+  if (clean.includes('access') || clean.includes('a11y') || clean.includes('wcag')) return 'accessibility';
+  return 'functional';
+}
+
+function normalizeItemLevel(value: unknown): string {
+  if (typeof value !== 'string') return 'junior';
+  const clean = value.trim().toLowerCase();
+  if ((LEVELS as readonly string[]).includes(clean)) return clean;
+  if (clean.includes('beg') || clean.includes('basic') || clean.includes('jun')) return 'junior';
+  if (clean.includes('mid') || clean.includes('med') || clean.includes('inter')) return 'intermediate';
+  if (clean.includes('adv') || clean.includes('sen')) return 'senior';
+  if (clean.includes('exp') || clean.includes('lead')) return 'expert';
+  return 'junior';
+}
+
+function normalizeItemRisk(value: unknown): string {
+  if (typeof value !== 'string') return 'medium';
+  const clean = value.trim().toLowerCase();
+  if ((RISKS as readonly string[]).includes(clean)) return clean;
+  if (clean.includes('crit') || clean.includes('block') || clean.includes('sev1')) return 'critical';
+  if (clean.includes('hi') || clean.includes('maj') || clean.includes('sev2')) return 'high';
+  if (clean.includes('low') || clean.includes('min') || clean.includes('sev4')) return 'low';
+  return 'medium';
+}
+
+function normalizeReferenceType(value: unknown): string {
+  if (typeof value !== 'string') return 'standard';
+  const clean = value.trim().toLowerCase().replace(/[-\s]+/g, '_');
+  if ((REFERENCE_TYPES as readonly string[]).includes(clean)) return clean;
+  if (clean.includes('guide') || clean.includes('doc')) return 'qa_guide';
+  if (clean.includes('sec') || clean.includes('owasp')) return 'security_standard';
+  if (clean.includes('case') || clean.includes('test')) return 'real_test_cases';
+  if (clean.includes('app') || clean.includes('live')) return 'real_application';
+  if (clean.includes('tut') || clean.includes('video')) return 'tutorial';
+  return 'standard';
+}
+
 /**
  * A pointer out of the playbook. `url` is optional: "OWASP ASVS §2.1" is a
  * useful reference with nothing to click, and refusing it would push authors
  * into pasting a search link instead.
  */
 const referenceSchema = z.object({
-  type: z.enum(REFERENCE_TYPES),
+  type: z.preprocess(normalizeReferenceType, z.enum(REFERENCE_TYPES)),
   name: z.string().trim().min(1, 'A reference needs a name').max(200),
   description: z.string().trim().max(600).default(''),
   url: z.preprocess(
@@ -170,13 +224,11 @@ export const itemSchema = z.object({
   examples: z.array(exampleSchema).max(40).default([]),
   expected: z.string().trim().max(4000).default(''),
   steps: z.array(z.string().trim().min(1).max(1000)).max(40).default([]),
-  level: z.enum(LEVELS),
-  category: z.enum(CATEGORIES),
-  risk: z.enum(RISKS).default('medium'),
+  level: z.preprocess(normalizeItemLevel, z.enum(LEVELS)),
+  category: z.preprocess(normalizeItemCategory, z.enum(CATEGORIES)),
+  risk: z.preprocess(normalizeItemRisk, z.enum(RISKS).default('medium')),
   why_it_matters: z.string().trim().max(2000).default(''),
-  /** The state the system must be in before the check means anything. */
   preconditions: z.array(z.string().trim().min(1).max(600)).max(20).default([]),
-  /** Variants worth a second pass — empty, maximum, unicode, concurrent. */
   edge_cases: z.array(z.string().trim().min(1).max(600)).max(30).default([]),
   references: z.array(referenceSchema).max(12).default([]),
   applies_when: z.record(z.string(), z.array(z.string())).default({}),
@@ -229,9 +281,11 @@ export type ContentBody = z.infer<typeof contentSchema>;
  * layer to drift.
  */
 export const importSchema = z.object({
+  collection_id: z.string().trim().uuid().nullable().optional(),
   playbooks: z
     .array(
       playbookMetaSchema.extend({
+        collection_id: z.string().trim().uuid().nullable().optional(),
         sections: z.array(sectionSchema).min(1, 'Add at least one section').max(60),
       })
     )

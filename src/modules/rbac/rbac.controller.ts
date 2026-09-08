@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { isResourceAvailable } from '@/modules/entitlements/permission-features';
+import { isResourceAvailable, isPermissionAvailable } from '@/modules/entitlements/permission-features';
 import { featureResolverService } from '@/modules/subscriptions';
 import { productFromRequest } from '@/config/brand';
 import { prisma } from '@/config/database';
@@ -53,12 +53,10 @@ async function rejectUnentitledPermissions(
 
   const rows = await prisma.permission.findMany({
     where: { id: { in: permissionIds } },
-    select: { resource: true },
+    select: { id: true, resource: true, name: true },
   });
 
-  const bad = [...new Set(rows.map((r) => r.resource))].filter(
-    (resource) => !isResourceAvailable(resource, granted),
-  );
+  const bad = rows.filter((r) => !isPermissionAvailable(r, granted)).map((r) => r.name);
 
   return bad.length ? bad : null;
 }
@@ -100,7 +98,7 @@ export class RBACController {
         granted = [];
       }
 
-      const visible = permissions.filter((p) => isResourceAvailable(p.resource, granted));
+      const visible = permissions.filter((p) => isPermissionAvailable(p, granted));
 
       // Group by resource
       const grouped: Record<string, typeof permissions> = {};

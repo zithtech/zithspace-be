@@ -96,12 +96,10 @@ function resolveOwnership(req: AuthRequest, requested: string) {
 
 /** Refuse the write unless this caller owns the row. */
 function assertCanCurate(req: AuthRequest, owner: { tenantId: string | null }) {
+  if (isSuperAdmin(req)) return;
   const { tenantId } = actorOf(req);
   if (owner.tenantId === null) {
-    if (!isSuperAdmin(req)) {
-      throw new PlaybookError('Only Testiez can edit a library collection', 403, 'FORBIDDEN');
-    }
-    return;
+    throw new PlaybookError('Only Testiez can edit a library collection', 403, 'FORBIDDEN');
   }
   // Someone else's private collection is not "forbidden", it is not there.
   if (owner.tenantId !== tenantId) {
@@ -331,19 +329,47 @@ export const setStatus = handle(async (req: AuthRequest, res: Response) => {
 
 /** DELETE /api/v2/qa/playbooks/collections/:id */
 export const remove = handle(async (req: AuthRequest, res: Response) => {
-  const { tenantId } = actorOf(req);
+  const { tenantId, userId } = actorOf(req);
   const id = String(req.params.id);
+  const superAdmin = isSuperAdmin(req);
 
-  await withTenant(tenantId, async (client) => {
+  const result = await withTenant(tenantId, async (client) => {
     const owner = await repo.getCollectionOwnership(client, id);
     if (!owner) throw new PlaybookError('Collection not found', 404, 'NOT_FOUND');
+    if (owner.tenantId === null && !superAdmin) {
+      throw new PlaybookError('Global library collections cannot be deleted', 403, 'FORBIDDEN');
+    }
     assertCanCurate(req, owner);
-    // Only the pack goes. Its playbooks are library rows the collection merely
-    // pointed at.
-    await repo.deleteCollection(client, id);
+    return repo.softDeleteCollection(client, id, userId, superAdmin);
   });
 
-  ok(res, { id, deleted: true });
+  ok(res, { id, name: result.name, deleted: true });
+});
+
+/** POST /api/v2/qa/playbooks/trash/collections/:id/restore */
+export const restoreCollection = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId } = actorOf(req);
+  const id = String(req.params.id);
+  const superAdmin = isSuperAdmin(req);
+
+  const restored = await withTenant(tenantId, async (client) => {
+    return repo.restoreCollection(client, id, superAdmin);
+  });
+
+  ok(res, { id, name: restored.name, restored: true });
+});
+
+/** DELETE /api/v2/qa/playbooks/trash/collections/:id/permanent */
+export const permanentDeleteCollection = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId } = actorOf(req);
+  const id = String(req.params.id);
+  const superAdmin = isSuperAdmin(req);
+
+  await withTenant(tenantId, async (client) => {
+    await repo.permanentDeleteCollection(client, id, superAdmin);
+  });
+
+  ok(res, { id, permanentlyDeleted: true });
 });
 
 /* ── "What do you build?" ────────────────────────────────────────────────── */

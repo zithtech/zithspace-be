@@ -142,12 +142,10 @@ function resolveOwnership(req: AuthRequest, requested: string) {
 
 /** Refuse the write unless this caller owns the row. */
 function assertCanEdit(req: AuthRequest, owner: { tenantId: string | null }) {
+  if (isSuperAdmin(req)) return;
   const { tenantId } = actorOf(req);
   if (owner.tenantId === null) {
-    if (!isSuperAdmin(req)) {
-      throw new PlaybookError('Only Testiez can edit a library playbook', 403, 'FORBIDDEN');
-    }
-    return;
+    throw new PlaybookError('Only Testiez can edit a library playbook', 403, 'FORBIDDEN');
   }
   if (owner.tenantId !== tenantId) {
     throw new PlaybookError('Playbook not found', 404, 'NOT_FOUND');
@@ -264,17 +262,153 @@ export const setStatus = handle(async (req: AuthRequest, res: Response) => {
 
 /** DELETE /api/v2/qa/playbooks/:id */
 export const remove = handle(async (req: AuthRequest, res: Response) => {
-  const { tenantId } = actorOf(req);
+  const { tenantId, userId } = actorOf(req);
   const id = String(req.params.id);
+  const superAdmin = isSuperAdmin(req);
 
-  await withTenant(tenantId, async (client) => {
+  const result = await withTenant(tenantId, async (client) => {
     const owner = await repo.getOwnership(client, id);
     if (!owner) throw new PlaybookError('Playbook not found', 404, 'NOT_FOUND');
+    if (owner.tenantId === null && !superAdmin) {
+      throw new PlaybookError('Global library playbooks cannot be deleted', 403, 'FORBIDDEN');
+    }
     assertCanEdit(req, owner);
-    await repo.deletePlaybook(client, id);
+    return repo.softDeletePlaybook(client, id, userId, superAdmin);
   });
 
-  ok(res, { id, deleted: true });
+  ok(res, { id, name: result.name, deleted: true });
+});
+
+/** GET /api/v2/qa/playbooks/trash */
+export const listTrash = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId } = actorOf(req);
+  const tab = typeof req.query.tab === 'string' ? req.query.tab : 'all';
+  const superAdmin = isSuperAdmin(req);
+
+  const data = await withTenant(tenantId, async (client) => {
+    const [playbooks, collections, categories] = await Promise.all([
+      tab === 'all' || tab === 'playbooks' ? repo.listTrashPlaybooks(client, superAdmin) : [],
+      tab === 'all' || tab === 'collections' ? collectionRepo.listTrashCollections(client, superAdmin) : [],
+      tab === 'all' || tab === 'categories' ? repo.listTrashCategories(client, superAdmin) : [],
+    ]);
+    return {
+      playbooks,
+      collections,
+      categories,
+      counts: {
+        playbooks: playbooks.length,
+        collections: collections.length,
+        categories: categories.length,
+        total: playbooks.length + collections.length + categories.length,
+      },
+    };
+  });
+
+  ok(res, data);
+});
+
+/** POST /api/v2/qa/playbooks/trash/playbooks/:id/restore */
+export const restorePlaybook = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId } = actorOf(req);
+  const id = String(req.params.id);
+  const superAdmin = isSuperAdmin(req);
+
+  const restored = await withTenant(tenantId, async (client) => {
+    return repo.restorePlaybook(client, id, superAdmin);
+  });
+
+  ok(res, { id, name: restored.name, restored: true });
+});
+
+/** DELETE /api/v2/qa/playbooks/trash/playbooks/:id/permanent */
+export const permanentDeletePlaybook = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId } = actorOf(req);
+  const id = String(req.params.id);
+  const superAdmin = isSuperAdmin(req);
+
+  await withTenant(tenantId, async (client) => {
+    await repo.permanentDeletePlaybook(client, id, superAdmin);
+  });
+
+  ok(res, { id, permanentlyDeleted: true });
+});
+
+/** DELETE /api/v2/qa/playbooks/categories/:id */
+export const deleteCategory = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId, userId } = actorOf(req);
+  const id = String(req.params.id);
+  const superAdmin = isSuperAdmin(req);
+
+  const result = await withTenant(tenantId, async (client) => {
+    return repo.softDeleteCategory(client, id, userId, superAdmin);
+  });
+
+  ok(res, result);
+});
+
+/** POST /api/v2/qa/playbooks/trash/categories/:id/restore */
+export const restoreCategory = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId } = actorOf(req);
+  const id = String(req.params.id);
+  const superAdmin = isSuperAdmin(req);
+
+  const result = await withTenant(tenantId, async (client) => {
+    return repo.restoreCategory(client, id, superAdmin);
+  });
+
+  ok(res, result);
+});
+
+/** DELETE /api/v2/qa/playbooks/trash/categories/:id/permanent */
+export const permanentDeleteCategory = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId } = actorOf(req);
+  const id = String(req.params.id);
+  const superAdmin = isSuperAdmin(req);
+
+  await withTenant(tenantId, async (client) => {
+    await repo.permanentDeleteCategory(client, id, superAdmin);
+  });
+
+  ok(res, { id, permanentlyDeleted: true });
+});
+
+/** GET /api/v2/qa/playbooks/categories/detailed */
+export const listCategoriesDetailed = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId } = actorOf(req);
+  const categories = await withTenant(tenantId, async (client) => {
+    return repo.listCategoriesDetailed(client);
+  });
+  ok(res, { categories });
+});
+
+/** DELETE /api/v2/qa/playbooks/trash/empty */
+export const emptyTrash = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId } = actorOf(req);
+  const tab = typeof req.query.tab === 'string' ? req.query.tab : 'all';
+  const superAdmin = isSuperAdmin(req);
+
+  await withTenant(tenantId, async (client) => {
+    if (tab === 'all' || tab === 'playbooks') {
+      const trashed = await repo.listTrashPlaybooks(client, superAdmin);
+      for (const p of trashed) {
+        await repo.permanentDeletePlaybook(client, p.id, superAdmin);
+      }
+    }
+    if (tab === 'all' || tab === 'collections') {
+      const trashed = await collectionRepo.listTrashCollections(client, superAdmin);
+      for (const c of trashed) {
+        await collectionRepo.permanentDeleteCollection(client, c.id, superAdmin);
+      }
+    }
+    if (tab === 'all' || tab === 'categories') {
+      const trashed = await repo.listTrashCategories(client, superAdmin);
+      for (const cat of trashed) {
+        await repo.permanentDeleteCategory(client, cat.id, superAdmin);
+      }
+    }
+  });
+
+  ok(res, { emptied: true });
 });
 
 /**
@@ -334,6 +468,15 @@ export const importPlaybooks = handle(async (req: AuthRequest, res: Response) =>
           },
           userId ?? null
         );
+
+        const targetCollectionId = entry.collection_id || body.collection_id;
+        if (targetCollectionId) {
+          try {
+            await collectionRepo.addMember(client, targetCollectionId, playbook.id, userId ?? null);
+          } catch (colErr) {
+            console.warn('[importPlaybooks] Failed to associate playbook with collection:', colErr);
+          }
+        }
 
         return { ...playbook, itemCount: (content as any)?.itemCount ?? 0 };
       });

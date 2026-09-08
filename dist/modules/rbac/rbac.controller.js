@@ -39,9 +39,9 @@ async function rejectUnentitledPermissions(req, permissionIds) {
         return null;
     const rows = await database_1.prisma.permission.findMany({
         where: { id: { in: permissionIds } },
-        select: { resource: true },
+        select: { id: true, resource: true, name: true },
     });
-    const bad = [...new Set(rows.map((r) => r.resource))].filter((resource) => !(0, permission_features_1.isResourceAvailable)(resource, granted));
+    const bad = rows.filter((r) => !(0, permission_features_1.isPermissionAvailable)(r, granted)).map((r) => r.name);
     return bad.length ? bad : null;
 }
 class RBACController {
@@ -76,7 +76,7 @@ class RBACController {
                 console.error('[rbac] could not resolve features, showing all permissions:', err);
                 granted = [];
             }
-            const visible = permissions.filter((p) => (0, permission_features_1.isResourceAvailable)(p.resource, granted));
+            const visible = permissions.filter((p) => (0, permission_features_1.isPermissionAvailable)(p, granted));
             // Group by resource
             const grouped = {};
             for (const perm of visible) {

@@ -359,6 +359,18 @@ const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'qa.analytics.read': 'View QA reporting and analytics across all scopes',
   'qa.manage': 'Full QA Space management and configuration',
 
+  'playbook.create': 'Create test playbooks and collections',
+  'playbook.read': 'View test playbooks, collections, and requests',
+  'playbook.update': 'Edit playbooks and collections',
+  'playbook.delete': 'Delete playbooks and collections',
+  'playbook.trash.read': 'View trashed playbooks, collections, and categories',
+  'playbook.trash.restore': 'Restore trashed playbooks, collections, and categories',
+  'playbook.trash.delete': 'Permanently delete trashed playbooks, collections, and categories',
+  'playbook.request': 'Submit requests for new playbooks',
+  'playbook.template': 'Download and copy playbook authoring templates',
+  'playbook.upload': 'Import and batch upload playbooks from templates or documents',
+  'playbook.manage': 'Full playbook management and access approvals',
+
   'yapiez.api.create': 'Define new APIs in the Yapiez catalog',
   'yapiez.api.read': 'View Yapiez API definitions',
   'yapiez.api.update': 'Edit Yapiez API definitions',

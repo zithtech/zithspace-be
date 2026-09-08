@@ -77,16 +77,16 @@ export interface CollectionDetail extends CollectionSummary {
 const SCOPE = `(
   (c.tenant_id IS NULL AND c.status = 'published' AND c.visibility IN ('public','premium'))
   OR c.tenant_id = $1
-)`;
+) AND c.deleted_at IS NULL`;
 
 /** What a curator sees: every library row whatever its status, plus their own. */
-const CURATOR_SCOPE = `(c.tenant_id IS NULL OR c.tenant_id = $1)`;
+const CURATOR_SCOPE = `(c.tenant_id IS NULL OR c.tenant_id = $1) AND c.deleted_at IS NULL`;
 
 /** The playbook visibility rule, re-applied to membership. See the header. */
 const PLAYBOOK_SCOPE = `(
   (p.tenant_id IS NULL AND p.status = 'published' AND p.visibility IN ('public','premium'))
   OR p.tenant_id = $1
-)`;
+) AND p.deleted_at IS NULL AND p.category_deleted_at IS NULL`;
 
 /**
  * The same rule relaxed for a curator, matching listMembers.
@@ -95,7 +95,7 @@ const PLAYBOOK_SCOPE = `(
  * They were not, and a curator assembling a pack out of unpublished library
  * playbooks saw "0 playbooks" on a shelf whose detail page listed three.
  */
-const CURATOR_PLAYBOOK_SCOPE = `(p.tenant_id IS NULL OR p.tenant_id = $1)`;
+const CURATOR_PLAYBOOK_SCOPE = `(p.tenant_id IS NULL OR p.tenant_id = $1) AND p.deleted_at IS NULL AND p.category_deleted_at IS NULL`;
 
 /**
  * The playbook unlock rule, kept identical to UNLOCKED in playbook.repo.ts.
@@ -465,13 +465,88 @@ export async function setCollectionStatus(
   );
 }
 
-export async function deleteCollection(
+export async function softDeleteCollection(
   client: TenantClient,
-  collectionId: string
+  collectionId: string,
+  userId: string | null,
+  isSuperAdmin = false
+): Promise<{ id: string; name: string }> {
+  const { rows: current } = await client.query(
+    `SELECT id, name, tenant_id FROM qa_playbook_collections WHERE id = $1`,
+    [collectionId]
+  );
+  if (current.length === 0) throw new Error('Collection not found');
+  if (current[0].tenant_id === null && !isSuperAdmin) {
+    const err: any = new Error('Global library collections cannot be deleted');
+    err.status = 403;
+    throw err;
+  }
+  const { rows } = await client.query(
+    `UPDATE qa_playbook_collections
+        SET deleted_at = NOW(), deleted_by = $2, updated_at = NOW()
+      WHERE id = $1 AND (tenant_id = $3 OR $4::boolean OR (tenant_id IS NULL AND $3::uuid IS NULL))
+      RETURNING id, name`,
+    [collectionId, userId, client.tenantId, isSuperAdmin]
+  );
+  return rows[0];
+}
+
+export async function restoreCollection(
+  client: TenantClient,
+  collectionId: string,
+  isSuperAdmin = false
+): Promise<{ id: string; name: string }> {
+  const { rows } = await client.query(
+    `UPDATE qa_playbook_collections
+        SET deleted_at = NULL, deleted_by = NULL, updated_at = NOW()
+      WHERE id = $1 AND (tenant_id = $2 OR $3::boolean OR (tenant_id IS NULL AND $2::uuid IS NULL))
+      RETURNING id, name`,
+    [collectionId, client.tenantId, isSuperAdmin]
+  );
+  if (rows.length === 0) throw new Error('Collection not found in trash');
+  return rows[0];
+}
+
+export async function permanentDeleteCollection(
+  client: TenantClient,
+  collectionId: string,
+  isSuperAdmin = false
 ): Promise<void> {
-  // Membership cascades. Deleting a collection never touches a playbook — the
-  // pack is a view onto the library, not a container that owns it.
-  await client.query(`DELETE FROM qa_playbook_collections WHERE id = $1`, [collectionId]);
+  const { rows: current } = await client.query(
+    `SELECT tenant_id FROM qa_playbook_collections WHERE id = $1`,
+    [collectionId]
+  );
+  if (current.length === 0) return;
+  if (current[0].tenant_id === null && !isSuperAdmin) {
+    const err: any = new Error('Global library collections cannot be permanently deleted');
+    err.status = 403;
+    throw err;
+  }
+  await client.query(`DELETE FROM qa_playbook_collection_items WHERE collection_id = $1`, [collectionId]);
+  await client.query(`DELETE FROM qa_playbook_collections WHERE id = $1 AND (tenant_id = $2 OR $3::boolean OR (tenant_id IS NULL AND $2::uuid IS NULL))`, [
+    collectionId,
+    client.tenantId,
+    isSuperAdmin,
+  ]);
+}
+
+export async function listTrashCollections(
+  client: TenantClient,
+  isSuperAdmin = false
+): Promise<any[]> {
+  const { rows } = await client.query(
+    `SELECT c.id, c.slug, c.name, c.kind, c.summary, c.icon, c.deleted_at, c.deleted_by,
+            COUNT(ci.playbook_id)::int AS playbook_count,
+            COALESCE(u.name, u.work_email, 'User') AS deleted_by_name
+       FROM qa_playbook_collections c
+       LEFT JOIN users u ON u.id::text = c.deleted_by::text
+       LEFT JOIN qa_playbook_collection_items ci ON ci.collection_id = c.id
+      WHERE (c.tenant_id = $1 OR c.tenant_id IS NULL OR $2::boolean) AND c.deleted_at IS NOT NULL
+      GROUP BY c.id, c.slug, c.name, c.kind, c.summary, c.icon, c.deleted_at, c.deleted_by, u.name, u.work_email
+      ORDER BY c.deleted_at DESC`,
+    [client.tenantId, isSuperAdmin]
+  );
+  return rows;
 }
 
 export async function getCollectionOwnership(
