@@ -33,6 +33,22 @@ function generateUsername(seed: string): string {
   return `${base}_${suffix}`;
 }
 
+function resolvePortalUrl(req: AuthRequest, explicitUrl?: string): string {
+  if (explicitUrl && typeof explicitUrl === "string" && explicitUrl.trim()) {
+    return explicitUrl.trim();
+  }
+  let origin: string | null = (req.headers.origin as string) || null;
+  if (!origin && req.headers.referer) {
+    try {
+      origin = new URL(req.headers.referer as string).origin;
+    } catch {
+      origin = null;
+    }
+  }
+  const fallbackBase = origin || process.env.FRONTEND_URL || "http://localhost:3000";
+  return `${fallbackBase.replace(/\/$/, "")}/portal/login`;
+}
+
 export class ClientPortalCredentialController {
   /**
    * GET /api/clients-v2/:clientId/portal-users
@@ -170,7 +186,7 @@ export class ClientPortalCredentialController {
       id: row.id,
     });
 
-    const portalUrl = req.body.portalUrl || `${process.env.FRONTEND_URL || "http://localhost:3000"}/portal/login`;
+    const portalUrl = resolvePortalUrl(req, req.body.portalUrl);
     try {
       await emailService.sendPortalWelcomeEmail(
         {
@@ -243,7 +259,7 @@ export class ClientPortalCredentialController {
       [portalUserId],
     );
 
-    const portalUrl = req.body.portalUrl || `${process.env.FRONTEND_URL || "http://localhost:3000"}/portal/login`;
+    const portalUrl = resolvePortalUrl(req, req.body.portalUrl);
     let emailSent = false;
     try {
       emailSent = await emailService.sendPortalPasswordResetEmail(
