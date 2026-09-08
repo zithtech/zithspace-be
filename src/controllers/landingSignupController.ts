@@ -409,6 +409,11 @@ export class LandingSignupController {
         return;
       }
 
+      if (password.length > 64) {
+        res.status(400).json({ success: false, error: "Maximum password length is 64 characters." });
+        return;
+      }
+
       const normalizedEmail = email.toLowerCase().trim();
       const accountType = type === "team" ? "team" : "freelancer";
 
