@@ -5,5 +5,7 @@ export enum AIFeature {
     DOCUMENT_SUMMARY = 'DOCUMENT_SUMMARY',
     TICKET_ANALYSIS = 'TICKET_ANALYSIS',
     BUG_ANALYSIS = 'BUG_ANALYSIS',
-    SPRINT_SUMMARY = 'SPRINT_SUMMARY'
+    SPRINT_SUMMARY = 'SPRINT_SUMMARY',
+    /** Zai drafting a QA Playbook recommendation from a one-line brief. */
+    PLAYBOOK_DRAFT = 'PLAYBOOK_DRAFT'
 }

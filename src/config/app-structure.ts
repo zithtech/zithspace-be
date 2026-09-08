@@ -640,6 +640,17 @@ export const APP_STRUCTURE: ICore[] = [
         sort_order: 11,
         pages: [
           {
+            key: 'playbooks',
+            name: 'Playbooks',
+            route: '/qa-workspace/playbooks',
+            menu_title: 'Playbooks',
+            menu_order: 0,
+            features: [
+              { key: 'prime', name: 'Prime', featureType: 'PRIME' },
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
+            ]
+          },
+          {
             key: 'scope',
             name: 'Scope',
             route: '/qa-workspace/test-scope',
