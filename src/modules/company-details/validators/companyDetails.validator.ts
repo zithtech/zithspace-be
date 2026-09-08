@@ -22,7 +22,13 @@ const addressShape = {
   city: optionalText(120),
   district: optionalText(120),
   state: optionalText(120),
-  pincode: optionalText(20),
+  pincode: z
+    .string()
+    .trim()
+    .regex(/^\d{1,6}$/, 'Pincode must be up to 6 digits')
+    .optional()
+    .nullable()
+    .transform((v) => (v ? v : null)),
   country: optionalText(120),
 };
 
@@ -62,8 +68,18 @@ const website = z
 export const saveCompanyDetailsSchema = z.object({
   registeredName: z.string().trim().min(1, 'Registered company name is required').max(200),
   gstNumber,
-  primaryEmail: z.string().trim().toLowerCase().email('Invalid primary email').max(200),
-  primaryPhone: z.string().trim().min(5, 'Primary phone is required').max(30),
+  primaryEmail: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^\S+$/, 'Spaces are not allowed in email')
+    .regex(/^[a-zA-Z0-9@.]+$/, 'Primary email can only contain letters, numbers, @, and .')
+    .email('Invalid primary email')
+    .max(200),
+  primaryPhone: z
+    .string()
+    .trim()
+    .regex(/^\d{1,10}$/, 'Phone number cannot exceed 10 digits'),
   website,
   ...addressShape,
 });
@@ -76,11 +92,18 @@ const branchBase = z.object({
     .string()
     .trim()
     .toLowerCase()
+    .regex(/^\S+$/, 'Spaces are not allowed in email')
     .email('Invalid branch email')
     .max(200)
     .optional()
     .nullable(),
-  branchPhone: optionalText(30),
+  branchPhone: z
+    .string()
+    .trim()
+    .regex(/^\d{1,10}$/, 'Phone number cannot exceed 10 digits')
+    .optional()
+    .nullable()
+    .transform((v) => (v ? v : null)),
   ...addressShape,
 });
 
