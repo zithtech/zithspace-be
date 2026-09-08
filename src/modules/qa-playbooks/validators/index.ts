@@ -2,9 +2,78 @@
 // Request shapes for every endpoint that writes.
 
 import { z } from 'zod';
-import { CATEGORIES, LEVELS, REFERENCE_TYPES, RISKS, VISIBILITIES } from '../constants';
+import {
+  CATEGORIES,
+  COLLECTION_KINDS,
+  LEVELS,
+  REFERENCE_TYPES,
+  RISKS,
+  VISIBILITIES,
+} from '../constants';
 
 const uuid = z.string().uuid();
+
+/* ── Collections ─────────────────────────────────────────────────────────── */
+
+/**
+ * `visibility` is accepted and not trusted, exactly as on a playbook: the
+ * controller re-derives it from who owns the row before it reaches the
+ * database, and the CHECK in migration 005 refuses a bad pairing anyway.
+ */
+export const collectionMetaSchema = z.object({
+  name: z.string().trim().min(1, 'A name is required').max(120),
+  kind: z.enum(COLLECTION_KINDS).default('industry'),
+  /**
+   * Who the pack is for. Open vocabulary — see migration 010: the list of
+   * industries anyone might build for is not something this schema can know in
+   * advance, and a closed set sends people back to encoding it in the name.
+   */
+  industry: z.string().trim().max(120).nullable().optional(),
+  summary: z.string().trim().max(400).nullable().optional(),
+  description: z.string().trim().max(20000).nullable().optional(),
+  /** A lucide icon name. The FE renders it against its own allow-list. */
+  icon: z.string().trim().max(40).nullable().optional(),
+  visibility: z.enum(VISIBILITIES).default('public'),
+  price_credits: z.number().int().min(0).max(1_000_000).nullable().optional(),
+  price_amount: z.number().min(0).max(1_000_000).nullable().optional(),
+  price_currency: z.string().trim().length(3).default('USD'),
+  sort_order: z.number().int().min(0).max(10_000).default(0),
+});
+
+export type CollectionMetaBody = z.infer<typeof collectionMetaSchema>;
+
+/**
+ * The whole membership, in order. Position is the ARRAY INDEX, deliberately not
+ * a `sort_order` field the client could send inconsistently — two playbooks
+ * claiming position 3 is not a state the server should have to resolve.
+ *
+ * The cap is generous but real: a pack of 500 playbooks is a mis-click on a
+ * "select all", not curation.
+ */
+export const collectionMembersSchema = z.object({
+  playbooks: z
+    .array(
+      z.object({
+        playbook_id: uuid,
+        note: z.string().trim().max(400).nullable().optional(),
+      })
+    )
+    .max(500),
+});
+
+export type CollectionMembersBody = z.infer<typeof collectionMembersSchema>;
+
+/**
+ * "What do you build?" — the workspace's own answer, in its own order.
+ *
+ * Whole-set like membership, and capped low on purpose: pinning twenty packs is
+ * the same as pinning none, because the shelf stops being sorted by anything.
+ */
+export const collectionPinsSchema = z.object({
+  collections: z.array(uuid).max(12),
+});
+
+export type CollectionPinsBody = z.infer<typeof collectionPinsSchema>;
 
 /* ── Generating test cases from a selection ──────────────────────────────── */
 

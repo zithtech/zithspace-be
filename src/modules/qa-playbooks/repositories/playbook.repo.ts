@@ -104,13 +104,32 @@ const SCOPE = `(
  */
 const CURATOR_SCOPE = `(p.tenant_id IS NULL OR p.tenant_id = $1)`;
 
-/** Is the body readable, as opposed to merely listed? */
+/**
+ * Is the body readable, as opposed to merely listed?
+ *
+ * TWO WAYS IN, and the second is what makes a collection sellable: a tenant may
+ * hold an unlock for THIS PLAYBOOK, or an unlock for ANY COLLECTION that
+ * contains it. Migration 007 explains why that second arm is resolved live
+ * rather than snapshotted at purchase — a playbook added to a pack next month
+ * is included for everyone who already bought the pack, with no backfill.
+ *
+ * The corollary, and it is a real one: REMOVING a playbook from a sold pack
+ * removes it from those customers. Curating a pack that has been sold is an
+ * editorial decision, not a tidy-up.
+ */
 const UNLOCKED = `(
   p.visibility <> 'premium'
   OR EXISTS (
     SELECT 1 FROM qa_playbook_unlocks u
      WHERE u.playbook_id = p.id AND u.tenant_id = $1
        AND (u.expires_at IS NULL OR u.expires_at > NOW())
+  )
+  OR EXISTS (
+    SELECT 1
+      FROM qa_playbook_collection_items ci
+      JOIN qa_playbook_collection_unlocks cu ON cu.collection_id = ci.collection_id
+     WHERE ci.playbook_id = p.id AND cu.tenant_id = $1
+       AND (cu.expires_at IS NULL OR cu.expires_at > NOW())
   )
 )`;
 

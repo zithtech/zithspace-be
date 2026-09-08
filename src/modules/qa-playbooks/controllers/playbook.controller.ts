@@ -10,6 +10,7 @@ import { AuthRequest } from '@/types';
 import { withTenant } from '../db/pool';
 import { actorOf, handle, isSuperAdmin, listParam, ok, PlaybookError } from '../http';
 import * as repo from '../repositories/playbook.repo';
+import * as collectionRepo from '../repositories/collection.repo';
 import {
   contentSchema,
   decisionSchema,
@@ -40,6 +41,9 @@ import { AIFeature } from '@/ai/types/AIFeature';
 import {
   CATEGORIES,
   CATEGORY_LABELS,
+  COLLECTION_KINDS,
+  COLLECTION_KIND_HINTS,
+  COLLECTION_KIND_LABELS,
   LEVELS,
   LEVEL_LABELS,
   RISKS,
@@ -64,7 +68,21 @@ export const list = handle(async (req: AuthRequest, res: Response) => {
       repo.listPlaybooks(client, { category, search: search || undefined, mine, includeAll }),
       repo.listCategories(client),
     ]);
-    return { playbooks, categories, canPublish: isSuperAdmin(req) };
+
+    // Which packs each card belongs to. One extra query for the whole page, and
+    // only collections this viewer may open — a chip that 404s is worse than no
+    // chip at all.
+    const membership = await collectionRepo.collectionsForPlaybooks(
+      client,
+      playbooks.map((p) => p.id),
+      { includeAll }
+    );
+
+    return {
+      playbooks: playbooks.map((p) => ({ ...p, collections: membership.get(p.id) ?? [] })),
+      categories,
+      canPublish: isSuperAdmin(req),
+    };
   });
 
   ok(res, data);
@@ -77,6 +95,11 @@ export const meta = handle(async (req: AuthRequest, res: Response) => {
     categories: CATEGORIES.map((value) => ({ value, label: CATEGORY_LABELS[value] })),
     risks: RISKS,
     visibilities: VISIBILITIES.map((value) => ({ value, label: VISIBILITY_LABELS[value] })),
+    collectionKinds: COLLECTION_KINDS.map((value) => ({
+      value,
+      label: COLLECTION_KIND_LABELS[value],
+      hint: COLLECTION_KIND_HINTS[value],
+    })),
     canPublish: isSuperAdmin(req),
   });
 });

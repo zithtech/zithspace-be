@@ -28,6 +28,7 @@ import { Permissions } from '@/types/permissions';
 import { requireAiAccess } from '@/middleware/aiAccess';
 import { requireSuperAdmin } from '../http';
 import * as playbooks from '../controllers/playbook.controller';
+import * as collections from '../controllers/collection.controller';
 
 const router = express.Router();
 
@@ -69,6 +70,51 @@ router.post(
   requireAiAccess,
   playbooks.aiExpandPlaybookOutline
 );
+
+/* ── Collections ─────────────────────────────────────────────────────────
+ * Curated, ordered bundles of playbooks ("Fintech & Payments"). The whole block
+ * is declared above '/:slug' so "collections" is never read as a playbook slug —
+ * the same hazard '/requests' and '/import' are placed here to avoid.
+ *
+ * ORDER INSIDE THIS BLOCK MATTERS TWICE OVER. '/collections/pins' and
+ * '/collections/admin/...' are literal paths that would otherwise be swallowed
+ * by '/collections/:id' and '/collections/:slug' — a PUT to .../pins would be
+ * read as an edit of a collection whose id is the word "pins".
+ *
+ * AUTHORITY: reading is canRead, because the point of a pack is that a new
+ * customer finds theirs on day one. Writing is canWrite, and the CONTROLLER
+ * decides what a write means from who is asking — a super_admin curates the
+ * platform library, everyone else curates their own workspace's packs. That is
+ * the same split playbook authoring already uses, so there is no separate
+ * super_admin guard on the curation routes; assertCanCurate enforces it against
+ * the row that actually exists rather than against the request.
+ */
+router.put('/collections/pins', canRead, collections.setPins);
+router.get(
+  '/collections/admin/unlock-requests',
+  canRead,
+  requireSuperAdmin,
+  collections.listUnlockRequests
+);
+router.post(
+  '/collections/admin/unlock-requests/:id',
+  canRead,
+  requireSuperAdmin,
+  collections.decideUnlockRequest
+);
+
+router.get('/collections', canRead, collections.list);
+router.get('/collections/:slug', canRead, collections.detail);
+router.post('/collections', canWrite, collections.create);
+router.put('/collections/:id', canWrite, collections.update);
+// Mapping existing playbooks into the pack, in order. Whole membership at once.
+router.put('/collections/:id/playbooks', canWrite, collections.setPlaybooks);
+// Filing one newly authored playbook into a pack, without touching its order.
+router.post('/collections/:id/playbooks/:playbookId', canWrite, collections.addPlaybook);
+router.post('/collections/:id/status', canWrite, collections.setStatus);
+// Asking for a premium pack. canRead, for the reason the playbook equivalent is.
+router.post('/collections/:slug/unlock-request', canRead, collections.requestUnlock);
+router.delete('/collections/:id', canWrite, collections.remove);
 
 // Access administration — Testiez staff only.
 router.get('/admin/unlock-requests', canRead, requireSuperAdmin, playbooks.listRequests);

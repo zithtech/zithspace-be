@@ -642,7 +642,7 @@ export const APP_STRUCTURE: ICore[] = [
           {
             key: 'playbooks',
             name: 'Playbooks',
-            route: '/qa-workspace/playbooks',
+            route: '/playbooks',
             menu_title: 'Playbooks',
             menu_order: 0,
             features: [
