@@ -83,6 +83,10 @@ const MODULE_PREFIX_FEATURES: ReadonlyArray<readonly [string, string]> = [
   ['/api/squads', 'work_squads'],
   ['/api/timesheets', 'work_timesheet'],
   ['/api/daily-updates', 'work_daily_updates'],
+  ['/api/buckets', 'work_tickets_buckets'],
+  ['/api/trash', 'work_tickets_trash'],
+  ['/api/time-tracking', 'work_time_tracking'],
+  ['/api/v2/qa/playbooks', 'work_playbooks'],
 
   // ── Features inside Admin ──
   ['/api/clients-v2', 'admin_clients_v2'],
@@ -222,4 +226,76 @@ export const moduleEntitlementGate = async (
   }
 };
 
-export default { moduleEntitlementGate };
+/**
+ * Express middleware for fine-grained / exact subscription feature authorization.
+ *
+ * For child-level features and actions (e.g. 'work_proposals_templates', 'work_lead_bidiq'),
+ * exact matching is used by default so that having a broad or unrelated feature does not
+ * accidentally authorize deeper actions.
+ *
+ * Set `options.exact = false` to enable prefix / upward resolution for page/module level checks.
+ */
+export const requireSubscriptionFeature = (
+  featureKey: string,
+  options: { exact?: boolean } = { exact: true }
+) => {
+  return async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+    const tenantId = tenantIdFromRequest(req) || (req as any).tenantId;
+    if (!tenantId) {
+      next();
+      return;
+    }
+
+    try {
+      const product = productFromRequest(req);
+      const granted = await featureResolverService.getTenantFeatures(
+        tenantId,
+        product ? product.toUpperCase() : undefined
+      );
+
+      // NO FEATURES MEANS UNMANAGED, NOT ENTITLED TO NOTHING (consistent with moduleEntitlementGate)
+      if (granted.length === 0) {
+        next();
+        return;
+      }
+
+      const isEntitled = options.exact
+        ? granted.includes(featureKey)
+        : satisfies(granted, featureKey);
+
+      if (isEntitled) {
+        next();
+        return;
+      }
+
+      if (!ENFORCING) {
+        console.warn(
+          `[entitlements] would block tenant=${tenantId} exactFeature=${featureKey} ` +
+          `${req.method} ${req.originalUrl} (enforcement off)`
+        );
+        next();
+        return;
+      }
+
+      res.status(403).json({
+        success: false,
+        error: 'This feature is not included in your plan',
+        code: 'ENTITLEMENT_REQUIRED',
+        requiredFeature: featureKey,
+      });
+    } catch (error) {
+      console.error(`[entitlements] requireSubscriptionFeature failed for ${featureKey}:`, error);
+      if (FAIL_OPEN || !ENFORCING) {
+        next();
+        return;
+      }
+      res.status(503).json({
+        success: false,
+        error: 'Entitlement service temporarily unavailable',
+        code: 'ENTITLEMENT_UNAVAILABLE',
+      });
+    }
+  };
+};
+
+export default { moduleEntitlementGate, requireSubscriptionFeature };
