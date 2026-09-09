@@ -4,6 +4,7 @@ import { authenticateToken, requireAuth } from '@/middleware/auth';
 import { requirePermission } from '@/middleware/permission';
 import { Permissions } from '@/types/permissions';
 import { resolveTenant } from '@/middleware/tenantContext';
+import { requireSubscriptionFeature } from '@/modules/entitlements/entitlements.middleware';
 
 const router = Router();
 
@@ -11,6 +12,7 @@ const router = Router();
 router.use(resolveTenant);
 router.use(authenticateToken);
 router.use(requireAuth);
+router.use(requireSubscriptionFeature('work_lead_management_lead_settings', { exact: false }));
 
 // Status Routes
 router.post('/statuses', requirePermission(Permissions.LEAD_SETTING_CREATE), LeadSettingsController.createStatus);

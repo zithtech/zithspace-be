@@ -39,6 +39,7 @@ const ticketCodeController_1 = require("@/controllers/ticketCodeController");
 const TicketQaLinkController = __importStar(require("@/controllers/ticketQaLinkController"));
 const auth_1 = require("@/middleware/auth");
 const permission_1 = require("@/middleware/permission");
+const entitlements_middleware_1 = require("@/modules/entitlements/entitlements.middleware");
 const aiAccess_1 = require("@/middleware/aiAccess");
 const permissions_1 = require("@/types/permissions");
 const tenantContext_1 = require("@/middleware/tenantContext");
@@ -205,7 +206,7 @@ router.put("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions
  * @access  Private (admin only)
  * @param   id - Ticket ID
  */
-router.delete("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_DELETE), ticketController_1.TicketController.deleteTicket);
+router.delete("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_DELETE), (0, entitlements_middleware_1.requireSubscriptionFeature)("work_tickets_trash", { exact: true }), ticketController_1.TicketController.deleteTicket);
 /**
  * @route   PATCH /api/tickets/bulk/status
  * @desc    Bulk update ticket status (tenant-aware)
@@ -213,9 +214,9 @@ router.delete("/:id", (0, permission_1.requirePermission)(permissions_1.Permissi
  * @body    { ticketIds: string[], status: string }
  */
 router.patch("/bulk/status", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_MANAGE), ticketController_1.TicketController.bulkUpdateStatus);
-router.patch("/bulk/archive", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_MANAGE), ticketController_1.TicketController.bulkArchive);
-router.patch("/bulk/unarchive", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_ARCHIVE_RESTORE), ticketController_1.TicketController.bulkUnarchive);
-router.patch("/bulk/delete", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_DELETE), ticketController_1.TicketController.bulkDelete);
+router.patch("/bulk/archive", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_MANAGE), (0, entitlements_middleware_1.requireSubscriptionFeature)("work_tickets_archived", { exact: true }), ticketController_1.TicketController.bulkArchive);
+router.patch("/bulk/unarchive", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_ARCHIVE_RESTORE), (0, entitlements_middleware_1.requireSubscriptionFeature)("work_tickets_archived", { exact: true }), ticketController_1.TicketController.bulkUnarchive);
+router.patch("/bulk/delete", (0, permission_1.requirePermission)(permissions_1.Permissions.TICKET_DELETE), (0, entitlements_middleware_1.requireSubscriptionFeature)("work_tickets_trash", { exact: true }), ticketController_1.TicketController.bulkDelete);
 /**
  * @route   GET /api/tickets/projects/:projectId/stats
  * @desc    Get ticket statistics by project (tenant-aware)

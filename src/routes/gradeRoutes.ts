@@ -3,6 +3,7 @@ import { GradeController } from "@/controllers/gradeController";
 import { authenticateToken, requireAuth } from '@/middleware/auth';
 import { resolveTenant } from '@/middleware/tenantContext';
 import { requirePermission, requireAnyPermission } from "@/middleware/permission";
+import { requireSubscriptionFeature } from "@/modules/entitlements/entitlements.middleware";
 import { Permissions } from "@/types/permissions";
 
 const router = express.Router();
@@ -13,14 +14,14 @@ router.use(authenticateToken);
 router.use(requireAuth);
 
 // Create a new grade
-router.post("/", requirePermission(Permissions.ORG_GRADE_CREATE), GradeController.createGrade);
+router.post("/", requirePermission(Permissions.ORG_GRADE_CREATE), requireSubscriptionFeature("admin_org_structure_grades", { exact: false }), GradeController.createGrade);
 
 // Get all grades for the current tenant
 router.get("/", requireAnyPermission(Permissions.ORG_GRADE_READ, Permissions.LEAVE_POLICY_READ, Permissions.LEAVE_POLICY_CREATE, Permissions.LEAVE_MANAGE), GradeController.getAllGrades);
 
 // Get, Update, and Delete a specific grade by ID
 router.get("/:id", requireAnyPermission(Permissions.ORG_GRADE_READ, Permissions.LEAVE_POLICY_READ, Permissions.LEAVE_POLICY_CREATE, Permissions.LEAVE_MANAGE), GradeController.getGradeById);
-router.put("/:id", requirePermission(Permissions.ORG_GRADE_UPDATE), GradeController.updateGrade);
-router.delete("/:id", requirePermission(Permissions.ORG_GRADE_DELETE), GradeController.deleteGrade);
+router.put("/:id", requirePermission(Permissions.ORG_GRADE_UPDATE), requireSubscriptionFeature("admin_org_structure_grades", { exact: false }), GradeController.updateGrade);
+router.delete("/:id", requirePermission(Permissions.ORG_GRADE_DELETE), requireSubscriptionFeature("admin_org_structure_grades", { exact: false }), GradeController.deleteGrade);
 
 export default router;

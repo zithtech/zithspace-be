@@ -4,6 +4,7 @@ import { resolveTenant } from '../middleware/tenantContext';
 import { requireAnyPermission } from '../middleware/permission';
 import { requireAiAccess } from '../middleware/aiAccess';
 import { Permissions } from '../types/permissions';
+import { requireSubscriptionFeature } from '@/modules/entitlements/entitlements.middleware';
 import * as qaSubmissionController from '../controllers/qaSubmissionController';
 
 /**
@@ -18,6 +19,7 @@ const router = express.Router();
 
 router.use(resolveTenant);
 router.use(authenticateToken);
+router.use(requireSubscriptionFeature('work_qa_space_qa_submissions', { exact: false }));
 
 const canRead = requireAnyPermission(Permissions.QA_SUBMISSION_READ, Permissions.QA_MANAGE);
 const canCreate = requireAnyPermission(Permissions.QA_SUBMISSION_CREATE, Permissions.QA_MANAGE);

@@ -4,6 +4,7 @@ const express_1 = require("express");
 const trashController_1 = require("@/controllers/trashController");
 const auth_1 = require("@/middleware/auth");
 const permission_1 = require("@/middleware/permission");
+const entitlements_middleware_1 = require("@/modules/entitlements/entitlements.middleware");
 const permissions_1 = require("@/types/permissions");
 const tenantContext_1 = require("@/middleware/tenantContext");
 const router = (0, express_1.Router)();
@@ -12,6 +13,8 @@ router.use(tenantContext_1.resolveTenant);
 // Apply authentication to all routes
 router.use(auth_1.authenticateToken);
 router.use(auth_1.requireAuth);
+// Apply subscription feature gate
+router.use((0, entitlements_middleware_1.requireSubscriptionFeature)('work_tickets_trash', { exact: true }));
 /**
  * @route   GET /api/trash
  * @desc    Get all deleted tickets (trash) for a tenant/project (tenant-aware)

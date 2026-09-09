@@ -8,6 +8,7 @@
 import express from 'express';
 import { requirePermission } from '@/middleware/permission';
 import { Permissions } from '@/types/permissions';
+import { requireSubscriptionFeature } from '@/modules/entitlements/entitlements.middleware';
 import * as ctrl from '../controllers/closure.controller';
 import { validateUuidParam } from '../http';
 
@@ -15,8 +16,8 @@ const router = express.Router();
 
 router.param('id', validateUuidParam);
 
-router.post('/:id/close', requirePermission(Permissions.OPENING_UPDATE), ctrl.close);
-router.post('/:id/archive', requirePermission(Permissions.OPENING_UPDATE), ctrl.archive);
-router.post('/:id/unarchive', requirePermission(Permissions.OPENING_MANAGE), ctrl.unarchive);
+router.post('/:id/close', requirePermission(Permissions.OPENING_UPDATE), requireSubscriptionFeature('hrms_openings_closing', { exact: false }), ctrl.close);
+router.post('/:id/archive', requirePermission(Permissions.OPENING_UPDATE), requireSubscriptionFeature('hrms_openings_archive', { exact: false }), ctrl.archive);
+router.post('/:id/unarchive', requirePermission(Permissions.OPENING_MANAGE), requireSubscriptionFeature('hrms_openings_archive', { exact: false }), ctrl.unarchive);
 
 export default router;

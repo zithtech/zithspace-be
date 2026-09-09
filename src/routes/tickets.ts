@@ -7,6 +7,7 @@ import {
   requireAuth,
 } from "@/middleware/auth";
 import { requirePermission } from '@/middleware/permission';
+import { requireSubscriptionFeature } from '@/modules/entitlements/entitlements.middleware';
 import { requireAiAccess } from '@/middleware/aiAccess';
 import { Permissions } from '@/types/permissions';
 import { resolveTenant } from "@/middleware/tenantContext";
@@ -209,7 +210,7 @@ router.put("/:id", requirePermission(Permissions.TICKET_UPDATE), TicketControlle
  * @access  Private (admin only)
  * @param   id - Ticket ID
  */
-router.delete("/:id", requirePermission(Permissions.TICKET_DELETE), TicketController.deleteTicket);
+router.delete("/:id", requirePermission(Permissions.TICKET_DELETE), requireSubscriptionFeature("work_tickets_trash", { exact: true }), TicketController.deleteTicket);
 
 /**
  * @route   PATCH /api/tickets/bulk/status
@@ -218,9 +219,9 @@ router.delete("/:id", requirePermission(Permissions.TICKET_DELETE), TicketContro
  * @body    { ticketIds: string[], status: string }
  */
 router.patch("/bulk/status", requirePermission(Permissions.TICKET_MANAGE), TicketController.bulkUpdateStatus);
-router.patch("/bulk/archive", requirePermission(Permissions.TICKET_MANAGE), TicketController.bulkArchive);
-router.patch("/bulk/unarchive", requirePermission(Permissions.TICKET_ARCHIVE_RESTORE), TicketController.bulkUnarchive);
-router.patch("/bulk/delete", requirePermission(Permissions.TICKET_DELETE), TicketController.bulkDelete);
+router.patch("/bulk/archive", requirePermission(Permissions.TICKET_MANAGE), requireSubscriptionFeature("work_tickets_archived", { exact: true }), TicketController.bulkArchive);
+router.patch("/bulk/unarchive", requirePermission(Permissions.TICKET_ARCHIVE_RESTORE), requireSubscriptionFeature("work_tickets_archived", { exact: true }), TicketController.bulkUnarchive);
+router.patch("/bulk/delete", requirePermission(Permissions.TICKET_DELETE), requireSubscriptionFeature("work_tickets_trash", { exact: true }), TicketController.bulkDelete);
 
 
 /**

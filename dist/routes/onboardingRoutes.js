@@ -13,6 +13,7 @@ const auth_1 = require("@/middleware/auth");
 const tenantContext_1 = require("@/middleware/tenantContext");
 const permission_1 = require("@/middleware/permission");
 const permissions_1 = require("@/types/permissions");
+const entitlements_middleware_1 = require("@/modules/entitlements/entitlements.middleware");
 const multer_1 = __importDefault(require("multer"));
 const upload = (0, multer_1.default)({ dest: "uploads/" });
 const router = express_1.default.Router();
@@ -23,31 +24,31 @@ router.use(auth_1.authenticateToken);
 router.use(auth_1.requireAuth);
 // ─── Onboarding invites (public-link flow) ───────────────────────────────
 // Declared before "/:employeeId" so "invite"/"invites" aren't read as ids.
-router.post("/invite", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_CREATE), asyncHandler(onboardingInviteController_1.createInvite));
-router.get("/invites", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_READ), asyncHandler(onboardingInviteController_1.listInvites));
-router.post("/invite/:inviteId/revoke", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_UPDATE), asyncHandler(onboardingInviteController_1.revokeInvite));
-router.post("/invite/:inviteId/regenerate", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_UPDATE), asyncHandler(onboardingInviteController_1.regenerateInvite));
-router.put("/invite/:employeeId", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_UPDATE), asyncHandler(onboardingInviteController_1.updateInviteContact));
-router.post("/:employeeId/activate", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_UPDATE), asyncHandler(onboardingInviteController_1.activateEmployee));
+router.post("/invite", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_CREATE), (0, entitlements_middleware_1.requireSubscriptionFeature)("hrms_onboarding_invites", { exact: false }), asyncHandler(onboardingInviteController_1.createInvite));
+router.get("/invites", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_READ), (0, entitlements_middleware_1.requireSubscriptionFeature)("hrms_onboarding_invites", { exact: false }), asyncHandler(onboardingInviteController_1.listInvites));
+router.post("/invite/:inviteId/revoke", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_UPDATE), (0, entitlements_middleware_1.requireSubscriptionFeature)("hrms_onboarding_invites", { exact: false }), asyncHandler(onboardingInviteController_1.revokeInvite));
+router.post("/invite/:inviteId/regenerate", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_UPDATE), (0, entitlements_middleware_1.requireSubscriptionFeature)("hrms_onboarding_invites", { exact: false }), asyncHandler(onboardingInviteController_1.regenerateInvite));
+router.put("/invite/:employeeId", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_UPDATE), (0, entitlements_middleware_1.requireSubscriptionFeature)("hrms_onboarding_invites", { exact: false }), asyncHandler(onboardingInviteController_1.updateInviteContact));
+router.post("/:employeeId/activate", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_UPDATE), (0, entitlements_middleware_1.requireSubscriptionFeature)("hrms_onboarding_invites", { exact: false }), asyncHandler(onboardingInviteController_1.activateEmployee));
 // ─── Documents-needed catalog (Settings → Documents Needed) ──────────────
-router.get("/document-types", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_SETTING_READ), asyncHandler(onboardingDocumentTypeController_1.listDocumentTypes));
-router.post("/document-types", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_SETTING_UPDATE), asyncHandler(onboardingDocumentTypeController_1.createDocumentType));
-router.put("/document-types/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_SETTING_UPDATE), asyncHandler(onboardingDocumentTypeController_1.updateDocumentType));
-router.delete("/document-types/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_SETTING_UPDATE), asyncHandler(onboardingDocumentTypeController_1.deleteDocumentType));
+router.get("/document-types", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_SETTING_READ), (0, entitlements_middleware_1.requireSubscriptionFeature)("hrms_onboarding_settings", { exact: false }), asyncHandler(onboardingDocumentTypeController_1.listDocumentTypes));
+router.post("/document-types", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_SETTING_UPDATE), (0, entitlements_middleware_1.requireSubscriptionFeature)("hrms_onboarding_settings", { exact: false }), asyncHandler(onboardingDocumentTypeController_1.createDocumentType));
+router.put("/document-types/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_SETTING_UPDATE), (0, entitlements_middleware_1.requireSubscriptionFeature)("hrms_onboarding_settings", { exact: false }), asyncHandler(onboardingDocumentTypeController_1.updateDocumentType));
+router.delete("/document-types/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_SETTING_UPDATE), (0, entitlements_middleware_1.requireSubscriptionFeature)("hrms_onboarding_settings", { exact: false }), asyncHandler(onboardingDocumentTypeController_1.deleteDocumentType));
 // ─── Employee HR Documents ────────────────────────────────────────────────
 router.get("/my-documents", (0, permission_1.requirePermission)(permissions_1.Permissions.MY_HUB_DOCUMENTS_READ), asyncHandler(employeeDocumentController_1.listMyDocuments));
-router.get("/employee-documents", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_READ), asyncHandler(employeeDocumentController_1.listEmployeeDocuments));
-router.post("/employee-documents", upload.single("file"), (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_UPDATE), asyncHandler(employeeDocumentController_1.uploadEmployeeDocument));
-router.delete("/employee-documents/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_UPDATE), asyncHandler(employeeDocumentController_1.deleteEmployeeDocument));
+router.get("/employee-documents", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_READ), (0, entitlements_middleware_1.requireSubscriptionFeature)("hrms_onboarding_documents", { exact: false }), asyncHandler(employeeDocumentController_1.listEmployeeDocuments));
+router.post("/employee-documents", upload.single("file"), (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_UPDATE), (0, entitlements_middleware_1.requireSubscriptionFeature)("hrms_onboarding_documents", { exact: false }), asyncHandler(employeeDocumentController_1.uploadEmployeeDocument));
+router.delete("/employee-documents/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_UPDATE), (0, entitlements_middleware_1.requireSubscriptionFeature)("hrms_onboarding_documents", { exact: false }), asyncHandler(employeeDocumentController_1.deleteEmployeeDocument));
 // ROUTES
-router.post("/", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_CREATE), asyncHandler(employeeOnboardingController_1.EmployeeOnboardingController.create));
-router.get("/", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_READ), asyncHandler(employeeOnboardingController_1.EmployeeOnboardingController.getAll));
+router.post("/", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_CREATE), (0, entitlements_middleware_1.requireSubscriptionFeature)("hrms_onboarding_create", { exact: false }), asyncHandler(employeeOnboardingController_1.EmployeeOnboardingController.create));
+router.get("/", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_READ), (0, entitlements_middleware_1.requireSubscriptionFeature)("hrms_onboarding_employees", { exact: false }), asyncHandler(employeeOnboardingController_1.EmployeeOnboardingController.getAll));
 // Must be placed before /:employeeId to prevent 'birthdays' from being treated as an employeeId parameter
-router.get("/birthdays", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_READ), asyncHandler(employeeOnboardingController_1.EmployeeOnboardingController.getUpcomingBirthdays));
-router.get("/:employeeId", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_READ), asyncHandler(employeeOnboardingController_1.EmployeeOnboardingController.getById));
-router.get("/:employeeId/org-history", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_READ), asyncHandler(employeeOrgHistoryController_1.getOrgHistory));
-router.put("/:employeeId", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_UPDATE), asyncHandler(employeeOnboardingController_1.EmployeeOnboardingController.update));
-router.post("/:employeeId/promote", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_UPDATE), asyncHandler(employeeOnboardingController_1.EmployeeOnboardingController.promote));
-router.delete("/:employeeId", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_DELETE), asyncHandler(employeeOnboardingController_1.EmployeeOnboardingController.delete));
+router.get("/birthdays", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_READ), (0, entitlements_middleware_1.requireSubscriptionFeature)("hrms_onboarding_employees", { exact: false }), asyncHandler(employeeOnboardingController_1.EmployeeOnboardingController.getUpcomingBirthdays));
+router.get("/:employeeId", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_READ), (0, entitlements_middleware_1.requireSubscriptionFeature)("hrms_onboarding_employees", { exact: false }), asyncHandler(employeeOnboardingController_1.EmployeeOnboardingController.getById));
+router.get("/:employeeId/org-history", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_READ), (0, entitlements_middleware_1.requireSubscriptionFeature)("hrms_onboarding_employees", { exact: false }), asyncHandler(employeeOrgHistoryController_1.getOrgHistory));
+router.put("/:employeeId", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_UPDATE), (0, entitlements_middleware_1.requireSubscriptionFeature)("hrms_onboarding_employees", { exact: false }), asyncHandler(employeeOnboardingController_1.EmployeeOnboardingController.update));
+router.post("/:employeeId/promote", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_UPDATE), (0, entitlements_middleware_1.requireSubscriptionFeature)("hrms_onboarding_employees", { exact: false }), asyncHandler(employeeOnboardingController_1.EmployeeOnboardingController.promote));
+router.delete("/:employeeId", (0, permission_1.requirePermission)(permissions_1.Permissions.ONBOARDING_DELETE), (0, entitlements_middleware_1.requireSubscriptionFeature)("hrms_onboarding_employees", { exact: false }), asyncHandler(employeeOnboardingController_1.EmployeeOnboardingController.delete));
 exports.default = router;
 //# sourceMappingURL=onboardingRoutes.js.map
