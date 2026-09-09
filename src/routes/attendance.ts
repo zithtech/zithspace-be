@@ -4,6 +4,7 @@ import { authenticateToken, requireAuth } from "@/middleware/auth";
 import { requirePermission, requireAnyPermission } from "@/middleware/permission";
 import { Permissions } from "@/types/permissions";
 import { resolveTenant } from "@/middleware/tenantContext";
+import { requireSubscriptionFeature } from "@/modules/entitlements/entitlements.middleware";
 
 const router = Router();
 
@@ -22,6 +23,7 @@ router.use(requireAuth);
 router.get(
   "/dashboard/summary",
   requirePermission(Permissions.ATTENDANCE_DASHBOARD_READ),
+  requireSubscriptionFeature("hrms_attendance_dashboard", { exact: false }),
   AttendanceController.getDashboardSummary,
 );
 
@@ -33,6 +35,7 @@ router.get(
 router.get(
   "/dashboard/present",
   requirePermission(Permissions.ATTENDANCE_DASHBOARD_READ),
+  requireSubscriptionFeature("hrms_attendance_dashboard", { exact: false }),
   AttendanceController.getPresentMembers,
 );
 
@@ -44,6 +47,7 @@ router.get(
 router.get(
   "/today",
   requireAnyPermission(Permissions.ATTENDANCE_READ, Permissions.ATTENDANCE_CLOCK_IN_OUT),
+  requireSubscriptionFeature("hrms_attendance_clock_in_out", { exact: false }),
   AttendanceController.getTodayAttendance,
 );
 
@@ -56,6 +60,7 @@ router.get(
 router.get(
   "/my-summary",
   requireAnyPermission(Permissions.ATTENDANCE_READ, Permissions.ATTENDANCE_CLOCK_IN_OUT),
+  requireSubscriptionFeature("hrms_attendance_clock_in_out", { exact: false }),
   AttendanceController.getMyAttendanceSummary,
 );
 
@@ -74,6 +79,7 @@ router.get(
     Permissions.ATTENDANCE_DELETE,
     Permissions.ATTENDANCE_CLOCK_IN_OUT
   ),
+  requireSubscriptionFeature("hrms_attendance_manage", { exact: false }),
   AttendanceController.getAttendance,
 );
 
@@ -82,6 +88,7 @@ router.get(
 router.get(
   "/last-5-average",
   requireAnyPermission(Permissions.ATTENDANCE_READ, Permissions.ATTENDANCE_CLOCK_IN_OUT),
+  requireSubscriptionFeature("hrms_attendance_clock_in_out", { exact: false }),
   AttendanceController.getLast5DaysAverage
 );
 
@@ -99,6 +106,7 @@ router.get(
     Permissions.ATTENDANCE_UPDATE,
     Permissions.ATTENDANCE_DELETE
   ),
+  requireSubscriptionFeature("hrms_attendance_manage", { exact: false }),
   AttendanceController.getAttendanceById,
 );
 
@@ -111,6 +119,7 @@ router.get(
 router.post(
   "/clock-in",
   requirePermission(Permissions.ATTENDANCE_CLOCK_IN_OUT),
+  requireSubscriptionFeature("hrms_attendance_clock_in_out", { exact: false }),
   AttendanceController.clockIn,
 );
 
@@ -123,6 +132,7 @@ router.post(
 router.post(
   "/clock-out",
   requirePermission(Permissions.ATTENDANCE_CLOCK_IN_OUT),
+  requireSubscriptionFeature("hrms_attendance_clock_in_out", { exact: false }),
   AttendanceController.clockOut,
 );
 
@@ -135,6 +145,7 @@ router.post(
 router.post(
   "/pause",
   requirePermission(Permissions.ATTENDANCE_CLOCK_IN_OUT),
+  requireSubscriptionFeature("hrms_attendance_clock_in_out", { exact: false }),
   AttendanceController.pause,
 );
 
@@ -147,6 +158,7 @@ router.post(
 router.post(
   "/resume",
   requirePermission(Permissions.ATTENDANCE_CLOCK_IN_OUT),
+  requireSubscriptionFeature("hrms_attendance_clock_in_out", { exact: false }),
   AttendanceController.resume,
 );
 
@@ -159,6 +171,7 @@ router.post(
 router.post(
   "/complete",
   requirePermission(Permissions.ATTENDANCE_CLOCK_IN_OUT),
+  requireSubscriptionFeature("hrms_attendance_clock_in_out", { exact: false }),
   AttendanceController.complete,
 );
 
@@ -171,6 +184,7 @@ router.post(
 router.post(
   "/",
   requirePermission(Permissions.ATTENDANCE_CREATE),
+  requireSubscriptionFeature("hrms_attendance_manage", { exact: false }),
   AttendanceController.createAttendance,
 );
 
@@ -184,6 +198,7 @@ router.post(
 router.post(
   "/:id/reopen",
   requirePermission(Permissions.ATTENDANCE_UPDATE),
+  requireSubscriptionFeature("hrms_attendance_manage", { exact: false }),
   AttendanceController.reopenDay,
 );
 
@@ -197,6 +212,7 @@ router.post(
 router.put(
   "/:id",
   requirePermission(Permissions.ATTENDANCE_UPDATE),
+  requireSubscriptionFeature("hrms_attendance_manage", { exact: false }),
   AttendanceController.updateAttendance,
 );
 
@@ -209,6 +225,7 @@ router.put(
 router.delete(
   "/:id",
   requirePermission(Permissions.ATTENDANCE_DELETE),
+  requireSubscriptionFeature("hrms_attendance_manage", { exact: false }),
   AttendanceController.deleteAttendance,
 );
 

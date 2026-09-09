@@ -4,12 +4,14 @@ import { authenticateToken, requireAuth } from '@/middleware/auth';
 import { requirePermission } from '@/middleware/permission';
 import { Permissions } from '@/types/permissions';
 import { resolveTenant } from '@/middleware/tenantContext';
+import { requireSubscriptionFeature } from '@/modules/entitlements/entitlements.middleware';
 
 const router = Router();
 
 router.use(resolveTenant);
 router.use(authenticateToken);
 router.use(requireAuth);
+router.use(requireSubscriptionFeature('work_squad_management', { exact: false }));
 
 /**
  * @route   GET /api/squads

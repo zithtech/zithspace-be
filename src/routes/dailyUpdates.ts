@@ -4,6 +4,7 @@ import { authenticateToken, requireAuth } from '@/middleware/auth';
 import { resolveTenant } from '@/middleware/tenantContext';
 import { requirePermission } from '@/middleware/permission';
 import { Permissions } from '@/types/permissions';
+import { requireSubscriptionFeature } from '@/modules/entitlements/entitlements.middleware';
 
 const router = Router();
 
@@ -20,7 +21,7 @@ router.use(requireAuth);
  * @access  Private (all authenticated users)
  * @body    { mood?, totalHoursWorked?, projectUpdates: [], generalNotes? }
  */
-router.post('/', requirePermission(Permissions.DAILY_UPDATE_CREATE), DailyUpdateController.createUpdate);
+router.post('/', requirePermission(Permissions.DAILY_UPDATE_CREATE), requireSubscriptionFeature('work_daily_updates_submit', { exact: false }), DailyUpdateController.createUpdate);
 
 /**
  * @route   GET /api/daily-updates/my
@@ -28,7 +29,7 @@ router.post('/', requirePermission(Permissions.DAILY_UPDATE_CREATE), DailyUpdate
  * @access  Private (authenticated user)
  * @query   date?, limit?
  */
-router.get('/my', requirePermission(Permissions.DAILY_UPDATE_READ), DailyUpdateController.getMyUpdates);
+router.get('/my', requirePermission(Permissions.DAILY_UPDATE_READ), requireSubscriptionFeature('work_daily_updates_view', { exact: false }), DailyUpdateController.getMyUpdates);
 
 /**
  * @route   GET /api/daily-updates/team
@@ -36,21 +37,21 @@ router.get('/my', requirePermission(Permissions.DAILY_UPDATE_READ), DailyUpdateC
  * @access  Private (Project Manager or Super Admin)
  * @query   date?, projectId?, userId?
  */
-router.get('/team', requirePermission(Permissions.DAILY_UPDATE_READ), DailyUpdateController.getTeamUpdates);
+router.get('/team', requirePermission(Permissions.DAILY_UPDATE_READ), requireSubscriptionFeature('work_daily_updates_view', { exact: false }), DailyUpdateController.getTeamUpdates);
 
 /**
  * @route   GET /api/daily-updates/today
  * @desc    Get today's updates (role-based)
  * @access  Private (authenticated user)
  */
-router.get('/today', requirePermission(Permissions.DAILY_UPDATE_READ), DailyUpdateController.getTodayUpdates);
+router.get('/today', requirePermission(Permissions.DAILY_UPDATE_READ), requireSubscriptionFeature('work_daily_updates_view', { exact: false }), DailyUpdateController.getTodayUpdates);
 
 /**
  * @route   GET /api/daily-updates/check-today
  * @desc    Check if user has submitted update today
  * @access  Private (authenticated user)
  */
-router.get('/check-today', requirePermission(Permissions.DAILY_UPDATE_READ), DailyUpdateController.checkTodaySubmission);
+router.get('/check-today', requirePermission(Permissions.DAILY_UPDATE_READ), requireSubscriptionFeature('work_daily_updates_submit', { exact: false }), DailyUpdateController.checkTodaySubmission);
 
 /**
  * @route   GET /api/daily-updates/stats/submission-rate
@@ -58,14 +59,14 @@ router.get('/check-today', requirePermission(Permissions.DAILY_UPDATE_READ), Dai
  * @access  Private (Project Manager or Super Admin)
  * @query   startDate?, endDate?, projectId?
  */
-router.get('/stats/submission-rate', requirePermission(Permissions.DAILY_UPDATE_MANAGE_TIME), DailyUpdateController.getSubmissionStats);
+router.get('/stats/submission-rate', requirePermission(Permissions.DAILY_UPDATE_MANAGE_TIME), requireSubscriptionFeature('work_daily_updates_view', { exact: false }), DailyUpdateController.getSubmissionStats);
 
 /**
  * @route   GET /api/daily-updates/:id
  * @desc    Get specific daily update by ID
  * @access  Private (owner, PM, or admin)
  */
-router.get('/:id', requirePermission(Permissions.DAILY_UPDATE_READ), DailyUpdateController.getUpdateById);
+router.get('/:id', requirePermission(Permissions.DAILY_UPDATE_READ), requireSubscriptionFeature('work_daily_updates_view', { exact: false }), DailyUpdateController.getUpdateById);
 
 /**
  * @route   PUT /api/daily-updates/:id
@@ -73,13 +74,13 @@ router.get('/:id', requirePermission(Permissions.DAILY_UPDATE_READ), DailyUpdate
  * @access  Private (owner only)
  * @body    { mood?, totalHoursWorked?, projectUpdates: [], generalNotes? }
  */
-router.put('/:id', requirePermission(Permissions.DAILY_UPDATE_UPDATE), DailyUpdateController.updateUpdate);
+router.put('/:id', requirePermission(Permissions.DAILY_UPDATE_UPDATE), requireSubscriptionFeature('work_daily_updates_submit', { exact: false }), DailyUpdateController.updateUpdate);
 
 /**
  * @route   DELETE /api/daily-updates/:id
  * @desc    Delete daily status update
  * @access  Private (owner only)
  */
-router.delete('/:id', requirePermission(Permissions.DAILY_UPDATE_DELETE), DailyUpdateController.deleteUpdate);
+router.delete('/:id', requirePermission(Permissions.DAILY_UPDATE_DELETE), requireSubscriptionFeature('work_daily_updates_submit', { exact: false }), DailyUpdateController.deleteUpdate);
 
 export default router;

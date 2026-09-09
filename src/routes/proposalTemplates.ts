@@ -3,6 +3,7 @@ import { authenticateToken, requireAuth } from '@/middleware/auth';
 import { requirePermission } from '@/middleware/permission';
 import { Permissions } from '@/types/permissions';
 import { optionalTenantContext, resolveTenant } from '@/middleware/tenantContext';
+import { requireSubscriptionFeature } from '@/modules/entitlements/entitlements.middleware';
 import { ProposalTemplateController } from '@/controllers/ProposalTemplateController';
 
 const router = Router();
@@ -12,6 +13,7 @@ router.use(optionalTenantContext);
 router.use(authenticateToken);
 router.use(requireAuth);
 router.use(resolveTenant);
+router.use(requireSubscriptionFeature('work_proposals_templates', { exact: false }));
 
 // List templates (?archived=false to hide archived)
 router.get('/', requirePermission(Permissions.PROPOSAL_READ), (req, res) => ProposalTemplateController.getTemplates(req, res));

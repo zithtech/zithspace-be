@@ -5,6 +5,7 @@ import { DocumentHubController } from "@/controllers/documentHubController";
 import { requirePermission } from "@/middleware/permission";
 import { requireAiAccess } from "@/middleware/aiAccess";
 import { Permissions } from "@/types/permissions";
+import { requireSubscriptionFeature } from "@/modules/entitlements/entitlements.middleware";
 
 const router = Router();
 
@@ -14,6 +15,7 @@ router.use(resolveTenant);
 // Apply authentication to all routes
 router.use(authenticateToken);
 router.use(requireAuth);
+router.use(requireSubscriptionFeature('work_document_hub', { exact: false }));
 
 /**
  * @route   POST /api/documenthub/ai-generate

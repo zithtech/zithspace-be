@@ -5,6 +5,7 @@ const bucketController_1 = require("@/controllers/bucketController");
 const auth_1 = require("@/middleware/auth");
 const tenantContext_1 = require("@/middleware/tenantContext");
 const permission_1 = require("@/middleware/permission");
+const entitlements_middleware_1 = require("@/modules/entitlements/entitlements.middleware");
 const permissions_1 = require("@/types/permissions");
 const router = (0, express_1.Router)();
 // Apply tenant context resolution to all routes
@@ -12,6 +13,8 @@ router.use(tenantContext_1.resolveTenant);
 // Apply authentication to all routes
 router.use(auth_1.authenticateToken);
 router.use(auth_1.requireAuth);
+// Apply subscription feature gate
+router.use((0, entitlements_middleware_1.requireSubscriptionFeature)('work_tickets_buckets', { exact: true }));
 /**
  * @route   GET /api/buckets
  * @desc    Get all buckets for a tenant/project (tenant-aware)

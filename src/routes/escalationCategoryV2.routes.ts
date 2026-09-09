@@ -11,12 +11,14 @@ import { authenticateToken, requireAuth } from '@/middleware/auth';
 import { resolveTenant } from '@/middleware/tenantContext';
 import { requirePermission } from "@/middleware/permission";
 import { Permissions } from "@/types/permissions";
+import { requireSubscriptionFeature } from "@/modules/entitlements/entitlements.middleware";
 
 const router = Router();
 // Apply auth middleware to all routes
 router.use(resolveTenant);
 router.use(authenticateToken);
 router.use(requireAuth);
+router.use(requireSubscriptionFeature('work_escalations_escalation_settings', { exact: false }));
 
 // ─── CRUD Routes ─────────────────────────────────────────────
 router.post("/", requirePermission(Permissions.ESCALATION_MANAGE), createEscalationCategory);       // CREATE

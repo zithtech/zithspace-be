@@ -5,15 +5,16 @@ const employmentTypeController_1 = require("@/controllers/employmentTypeControll
 const auth_1 = require("@/middleware/auth");
 const tenantContext_1 = require("@/middleware/tenantContext");
 const permission_1 = require("@/middleware/permission");
+const entitlements_middleware_1 = require("@/modules/entitlements/entitlements.middleware");
 const permissions_1 = require("@/types/permissions");
 const router = (0, express_1.Router)();
 router.use(tenantContext_1.resolveTenant);
 router.use(auth_1.authenticateToken);
 router.use(auth_1.requireAuth);
-router.post("/", (0, permission_1.requirePermission)(permissions_1.Permissions.ORG_EMPLOYMENT_TYPE_CREATE), employmentTypeController_1.EmploymentTypeController.createEmploymentType);
+router.post("/", (0, permission_1.requirePermission)(permissions_1.Permissions.ORG_EMPLOYMENT_TYPE_CREATE), (0, entitlements_middleware_1.requireSubscriptionFeature)("admin_org_structure_employment_type", { exact: false }), employmentTypeController_1.EmploymentTypeController.createEmploymentType);
 router.get("/", (0, permission_1.requirePermission)(permissions_1.Permissions.ORG_EMPLOYMENT_TYPE_READ), employmentTypeController_1.EmploymentTypeController.getAllEmploymentTypes);
 router.get("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.ORG_EMPLOYMENT_TYPE_READ), employmentTypeController_1.EmploymentTypeController.getEmploymentTypeById);
-router.put("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.ORG_EMPLOYMENT_TYPE_UPDATE), employmentTypeController_1.EmploymentTypeController.updateEmploymentType);
-router.delete("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.ORG_EMPLOYMENT_TYPE_DELETE), employmentTypeController_1.EmploymentTypeController.deleteEmploymentType);
+router.put("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.ORG_EMPLOYMENT_TYPE_UPDATE), (0, entitlements_middleware_1.requireSubscriptionFeature)("admin_org_structure_employment_type", { exact: false }), employmentTypeController_1.EmploymentTypeController.updateEmploymentType);
+router.delete("/:id", (0, permission_1.requirePermission)(permissions_1.Permissions.ORG_EMPLOYMENT_TYPE_DELETE), (0, entitlements_middleware_1.requireSubscriptionFeature)("admin_org_structure_employment_type", { exact: false }), employmentTypeController_1.EmploymentTypeController.deleteEmploymentType);
 exports.default = router;
 //# sourceMappingURL=employmentTypeRoutes.js.map

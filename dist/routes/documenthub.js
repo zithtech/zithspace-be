@@ -7,12 +7,14 @@ const documentHubController_1 = require("@/controllers/documentHubController");
 const permission_1 = require("@/middleware/permission");
 const aiAccess_1 = require("@/middleware/aiAccess");
 const permissions_1 = require("@/types/permissions");
+const entitlements_middleware_1 = require("@/modules/entitlements/entitlements.middleware");
 const router = (0, express_1.Router)();
 // Apply tenant context resolution to all routes
 router.use(tenantContext_1.resolveTenant);
 // Apply authentication to all routes
 router.use(auth_1.authenticateToken);
 router.use(auth_1.requireAuth);
+router.use((0, entitlements_middleware_1.requireSubscriptionFeature)('work_document_hub', { exact: false }));
 /**
  * @route   POST /api/documenthub/ai-generate
  * @desc    Generate a documentation draft from a free-form prompt (Gemini-backed,
