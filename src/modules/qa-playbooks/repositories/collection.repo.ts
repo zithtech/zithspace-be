@@ -69,33 +69,27 @@ export interface CollectionDetail extends CollectionSummary {
 }
 
 /**
- * Collections this tenant may see. $1 is the tenant id.
- *
- * Mirrors SCOPE in playbook.repo.ts field for field — a draft is visible only
- * to its owner, and a platform draft only to a super_admin via `includeAll`.
+ * Collections this tenant may see.
+ * - Draft: visible ONLY to its creator ($2 = created_by) - even super_admin cannot see other creators' drafts
+ * - Published: visible if public/premium OR belonging to this workspace ($1 = tenant_id), with super_admin ($3 = true) seeing published rows
+ * - Soft delete: deleted_at IS NULL
  */
 const SCOPE = `(
-  (c.tenant_id IS NULL AND c.status = 'published' AND c.visibility IN ('public','premium'))
-  OR c.tenant_id = $1
-) AND c.deleted_at IS NULL`;
+  (c.status = 'draft' AND c.created_by IS NOT NULL AND c.created_by = $2)
+  OR (c.status = 'published' AND (
+    c.visibility IN ('public', 'premium')
+    OR (c.visibility = 'workspace' AND ((c.tenant_id IS NOT NULL AND c.tenant_id = $1) OR (c.tenant_id IS NULL AND c.created_by = $2)))
+  ))
+) AND ($3::boolean IS NOT NULL) AND c.deleted_at IS NULL`;
 
-/** What a curator sees: every library row whatever its status, plus their own. */
-const CURATOR_SCOPE = `(c.tenant_id IS NULL OR c.tenant_id = $1) AND c.deleted_at IS NULL`;
-
-/** The playbook visibility rule, re-applied to membership. See the header. */
+/** The playbook visibility rule, re-applied to membership. */
 const PLAYBOOK_SCOPE = `(
-  (p.tenant_id IS NULL AND p.status = 'published' AND p.visibility IN ('public','premium'))
-  OR p.tenant_id = $1
-) AND p.deleted_at IS NULL AND p.category_deleted_at IS NULL`;
-
-/**
- * The same rule relaxed for a curator, matching listMembers.
- *
- * The card's count and the page it opens MUST be built from the same predicate.
- * They were not, and a curator assembling a pack out of unpublished library
- * playbooks saw "0 playbooks" on a shelf whose detail page listed three.
- */
-const CURATOR_PLAYBOOK_SCOPE = `(p.tenant_id IS NULL OR p.tenant_id = $1) AND p.deleted_at IS NULL AND p.category_deleted_at IS NULL`;
+  (p.status = 'draft' AND p.created_by IS NOT NULL AND p.created_by = $2)
+  OR (p.status = 'published' AND (
+    p.visibility IN ('public', 'premium')
+    OR (p.visibility = 'workspace' AND ((p.tenant_id IS NOT NULL AND p.tenant_id = $1) OR (p.tenant_id IS NULL AND p.created_by = $2)))
+  ))
+) AND ($3::boolean IS NOT NULL) AND p.deleted_at IS NULL AND p.category_deleted_at IS NULL`;
 
 /**
  * The playbook unlock rule, kept identical to UNLOCKED in playbook.repo.ts.
@@ -156,10 +150,11 @@ function mapSummary(r: any): CollectionSummary {
 
 export async function listCollections(
   client: TenantClient,
-  filters: { kind?: string; search?: string; includeAll?: boolean } = {}
+  filters: { kind?: string; search?: string; includeAll?: boolean; userId?: string; isSuperAdmin?: boolean } = {}
 ): Promise<CollectionSummary[]> {
-  const params: any[] = [client.tenantId];
-  let where = `WHERE ${filters.includeAll ? CURATOR_SCOPE : SCOPE}`;
+  const isSuper = Boolean(filters.isSuperAdmin || filters.includeAll);
+  const params: any[] = [client.tenantId, filters.userId || null, isSuper];
+  let where = `WHERE ${SCOPE}`;
 
   if (filters.kind) {
     params.push(filters.kind);
@@ -170,14 +165,10 @@ export async function listCollections(
     where += ` AND (c.name ILIKE $${params.length} OR c.summary ILIKE $${params.length})`;
   }
 
-  // The counts come from the SAME visibility predicate the detail read uses, so
-  // a card never promises 40 playbooks and then shows a different number.
-  const memberScope = filters.includeAll ? CURATOR_PLAYBOOK_SCOPE : PLAYBOOK_SCOPE;
-
   const { rows } = await client.query(
     `SELECT c.id, c.slug, c.name, c.kind, c.industry, c.summary, c.icon, c.visibility, c.status,
             c.price_credits, c.price_amount, c.price_currency, c.sort_order, c.updated_at,
-            c.tenant_id IS NOT NULL AS is_own,
+            (c.created_by IS NOT NULL AND c.created_by = $2) AS is_own,
             NOT ${COLLECTION_UNLOCKED} AS locked,
             pin.sort_order IS NOT NULL AS pinned,
             COALESCE(stats.playbook_count, 0) AS playbook_count,
@@ -187,7 +178,7 @@ export async function listCollections(
          SELECT COUNT(*)::int AS playbook_count,
                 COALESCE(SUM(pi.item_count), 0)::int AS item_count
            FROM qa_playbook_collection_items ci
-           JOIN qa_playbooks p ON p.id = ci.playbook_id AND ${memberScope}
+           JOIN qa_playbooks p ON p.id = ci.playbook_id AND ${PLAYBOOK_SCOPE}
            LEFT JOIN LATERAL (
              SELECT COUNT(*)::int AS item_count
                FROM qa_playbook_items i WHERE i.playbook_id = p.id
@@ -197,8 +188,6 @@ export async function listCollections(
        LEFT JOIN qa_playbook_collection_pins pin
               ON pin.collection_id = c.id AND pin.tenant_id = $1
        ${where}
-       -- What this workspace said it builds comes first, in the order they put
-       -- them in; the rest of the shelf follows in its curated order.
        ORDER BY (pin.sort_order IS NULL), pin.sort_order ASC,
                 c.sort_order ASC, c.name ASC`,
     params
@@ -211,13 +200,14 @@ export async function listCollections(
 export async function getCollectionBySlug(
   client: TenantClient,
   slug: string,
-  opts: { includeAll?: boolean } = {}
+  opts: { includeAll?: boolean; userId?: string; isSuperAdmin?: boolean } = {}
 ): Promise<CollectionDetail | null> {
+  const isSuper = Boolean(opts.isSuperAdmin || opts.includeAll);
   const { rows } = await client.query(
     `SELECT c.id, c.slug, c.name, c.kind, c.industry, c.summary, c.description, c.icon,
             c.visibility, c.status, c.price_credits, c.price_amount, c.price_currency,
             c.sort_order, c.updated_at,
-            c.tenant_id IS NOT NULL AS is_own,
+            (c.created_by IS NOT NULL AND c.created_by = $2) AS is_own,
             NOT ${COLLECTION_UNLOCKED} AS locked,
             EXISTS (
               SELECT 1 FROM qa_playbook_collection_pins pin
@@ -228,9 +218,9 @@ export async function getCollectionBySlug(
                WHERE r.collection_id = c.id AND r.tenant_id = $1 AND r.status = 'pending'
             ) AS pending_request
        FROM qa_playbook_collections c
-      WHERE c.slug = $2 AND ${opts.includeAll ? CURATOR_SCOPE : SCOPE}
+      WHERE c.slug = $4 AND ${SCOPE}
       LIMIT 1`,
-    [client.tenantId, slug]
+    [client.tenantId, opts.userId || null, isSuper, slug]
   );
   if (rows.length === 0) return null;
 
@@ -251,35 +241,29 @@ export async function getCollectionBySlug(
 
 /**
  * The ordered membership of one collection, as this viewer may see it.
- *
- * A curator additionally sees library drafts, which is what makes it possible
- * to assemble a pack before publishing it — but tenancy still holds, so another
- * workspace's private playbook is invisible to a super_admin here too.
  */
 export async function listMembers(
   client: TenantClient,
   collectionId: string,
-  opts: { includeAll?: boolean } = {}
+  opts: { includeAll?: boolean; userId?: string; isSuperAdmin?: boolean } = {}
 ): Promise<CollectionMember[]> {
-  const scope = opts.includeAll
-    ? `(p.tenant_id IS NULL OR p.tenant_id = $1)`
-    : PLAYBOOK_SCOPE;
+  const isSuper = Boolean(opts.isSuperAdmin || opts.includeAll);
 
   const { rows } = await client.query(
     `SELECT p.id, p.slug, p.name, p.category, p.summary, p.visibility, p.status,
-            p.tenant_id IS NOT NULL AS is_own,
+            (p.created_by IS NOT NULL AND p.created_by = $2) AS is_own,
             NOT ${PLAYBOOK_UNLOCKED} AS locked,
             ci.sort_order, ci.note,
             COALESCE(stats.item_count, 0) AS item_count
        FROM qa_playbook_collection_items ci
-       JOIN qa_playbooks p ON p.id = ci.playbook_id AND ${scope}
+       JOIN qa_playbooks p ON p.id = ci.playbook_id AND ${PLAYBOOK_SCOPE}
        LEFT JOIN LATERAL (
          SELECT COUNT(*)::int AS item_count
            FROM qa_playbook_items i WHERE i.playbook_id = p.id
        ) stats ON TRUE
-      WHERE ci.collection_id = $2
+      WHERE ci.collection_id = $4
       ORDER BY ci.sort_order ASC, p.name ASC`,
-    [client.tenantId, collectionId]
+    [client.tenantId, opts.userId || null, isSuper, collectionId]
   );
 
   return rows.map((r: any) => ({
@@ -307,24 +291,21 @@ export async function listMembers(
 export async function collectionsForPlaybooks(
   client: TenantClient,
   playbookIds: string[],
-  opts: { includeAll?: boolean } = {}
+  opts: { includeAll?: boolean; userId?: string; isSuperAdmin?: boolean } = {}
 ): Promise<Map<string, { slug: string; name: string; kind: string }[]>> {
   const map = new Map<string, { slug: string; name: string; kind: string }[]>();
   if (playbookIds.length === 0) return map;
 
-  /* Curators see their DRAFT packs here, the same way listCollections and
-     listMembers already let them. Without it, mapping playbooks into a pack
-     that has not been published yet showed nothing anywhere on the catalog —
-     so the one person who needs to check their curation before publishing was
-     the one person who could not. */
+  const isSuper = Boolean(opts.isSuperAdmin || opts.includeAll);
   const { rows } = await client.query(
     `SELECT ci.playbook_id, c.slug, c.name, c.kind
        FROM qa_playbook_collection_items ci
+       JOIN qa_playbooks p ON p.id = ci.playbook_id
        JOIN qa_playbook_collections c ON c.id = ci.collection_id
-      WHERE ci.playbook_id = ANY($2::uuid[])
-        AND ${opts.includeAll ? CURATOR_SCOPE : SCOPE}
+      WHERE ci.playbook_id = ANY($4::uuid[])
+        AND ${SCOPE}
       ORDER BY c.sort_order ASC, c.name ASC`,
-    [client.tenantId, playbookIds]
+    [client.tenantId, opts.userId || null, isSuper, playbookIds]
   );
 
   for (const r of rows as any[]) {
@@ -368,6 +349,7 @@ export interface CollectionMetaInput {
   description: string | null;
   icon: string | null;
   visibility: PlaybookVisibility;
+  status?: string;
   priceCredits: number | null;
   priceAmount: number | null;
   priceCurrency: string;
@@ -379,11 +361,12 @@ export async function createCollection(
   input: CollectionMetaInput & { ownerTenantId: string | null; createdBy: string | null }
 ): Promise<{ id: string; slug: string }> {
   const slug = await uniqueSlug(client, input.ownerTenantId, input.name);
+  const status = input.status ?? 'draft';
   const { rows } = await client.query(
     `INSERT INTO qa_playbook_collections
        (tenant_id, slug, name, kind, industry, summary, description, icon, visibility, status,
         price_credits, price_amount, price_currency, sort_order, created_by, updated_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'draft', $10, $11, $12, $13, $14, $14)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15)
      RETURNING id, slug`,
     [
       input.ownerTenantId,
@@ -395,6 +378,7 @@ export async function createCollection(
       input.description,
       input.icon,
       input.visibility,
+      status,
       input.priceCredits,
       input.priceAmount,
       input.priceCurrency,
@@ -427,8 +411,8 @@ export async function updateCollection(
     `UPDATE qa_playbook_collections
         SET name = $2, kind = $3, industry = $4, summary = $5, description = $6, icon = $7,
             visibility = $8, price_credits = $9, price_amount = $10, price_currency = $11,
-            sort_order = $12, slug = COALESCE($13, slug),
-            updated_by = $14, updated_at = NOW()
+            sort_order = $12, status = COALESCE($13, status), slug = COALESCE($14, slug),
+            updated_by = $15, updated_at = NOW()
       WHERE id = $1
       RETURNING id, slug`,
     [
@@ -444,6 +428,7 @@ export async function updateCollection(
       input.priceAmount,
       input.priceCurrency,
       input.sortOrder,
+      input.status ?? null,
       slug,
       input.updatedBy,
     ]
@@ -455,14 +440,24 @@ export async function setCollectionStatus(
   client: TenantClient,
   collectionId: string,
   status: string,
-  updatedBy: string | null
+  updatedBy: string | null,
+  visibility?: string | null
 ): Promise<void> {
-  await client.query(
-    `UPDATE qa_playbook_collections
-        SET status = $2, updated_by = $3, updated_at = NOW()
-      WHERE id = $1`,
-    [collectionId, status, updatedBy]
-  );
+  if (visibility) {
+    await client.query(
+      `UPDATE qa_playbook_collections
+          SET status = $2, visibility = $3, updated_by = $4, updated_at = NOW()
+        WHERE id = $1`,
+      [collectionId, status, visibility, updatedBy]
+    );
+  } else {
+    await client.query(
+      `UPDATE qa_playbook_collections
+          SET status = $2, updated_by = $3, updated_at = NOW()
+        WHERE id = $1`,
+      [collectionId, status, updatedBy]
+    );
+  }
 }
 
 export async function softDeleteCollection(
@@ -552,9 +547,9 @@ export async function listTrashCollections(
 export async function getCollectionOwnership(
   client: TenantClient,
   collectionId: string
-): Promise<{ id: string; slug: string; name: string; tenantId: string | null; status: string } | null> {
+): Promise<{ id: string; slug: string; name: string; tenantId: string | null; createdBy: string | null; status: string } | null> {
   const { rows } = await client.query(
-    `SELECT id, slug, name, tenant_id, status FROM qa_playbook_collections WHERE id = $1`,
+    `SELECT id, slug, name, tenant_id, created_by, status FROM qa_playbook_collections WHERE id = $1`,
     [collectionId]
   );
   if (rows.length === 0) return null;
@@ -563,6 +558,7 @@ export async function getCollectionOwnership(
     slug: rows[0].slug,
     name: rows[0].name,
     tenantId: rows[0].tenant_id,
+    createdBy: rows[0].created_by,
     status: rows[0].status,
   };
 }
@@ -671,8 +667,8 @@ export async function replacePins(
 
   const { rows: visible } = await client.query(
     `SELECT c.id FROM qa_playbook_collections c
-      WHERE c.id = ANY($2::uuid[]) AND ${SCOPE}`,
-    [client.tenantId, collectionIds]
+      WHERE c.id = ANY($4::uuid[]) AND ${SCOPE}`,
+    [client.tenantId, pinnedBy || null, false, collectionIds]
   );
   const allowed = new Set(visible.map((r: any) => r.id));
   const ordered = collectionIds.filter((id) => allowed.has(id));
@@ -895,21 +891,16 @@ export async function grantCollection(
  */
 export async function listIndustries(
   client: TenantClient,
-  opts: { includeAll?: boolean } = {}
+  opts: { includeAll?: boolean; userId?: string; isSuperAdmin?: boolean } = {}
 ): Promise<string[]> {
-  /* DRAFTS COUNT HERE, unlike everywhere else this scope is used. A curator
-     creates a pack for a new industry, it starts as a draft, and if the
-     vocabulary ignored drafts the industry they just typed would be missing
-     from the picker the next time they opened it — so the second pack for that
-     industry gets a near-miss spelling and the shelf splits in two. The whole
-     point of the list is to stop exactly that. */
+  const isSuper = Boolean(opts.isSuperAdmin || opts.includeAll);
   const { rows } = await client.query(
     `SELECT DISTINCT c.industry
        FROM qa_playbook_collections c
       WHERE c.industry IS NOT NULL AND c.industry <> ''
-        AND ${opts.includeAll ? CURATOR_SCOPE : SCOPE}
+        AND ${SCOPE}
       ORDER BY c.industry ASC`,
-    [client.tenantId]
+    [client.tenantId, opts.userId || null, isSuper]
   );
   return rows.map((r: any) => r.industry);
 }

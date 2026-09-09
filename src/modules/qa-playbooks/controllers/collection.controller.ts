@@ -34,7 +34,7 @@ import { recordTransaction, Section, Module, Page, Action, EntityType } from '@/
 
 /** GET /api/v2/qa/playbooks/collections — the shelf. */
 export const list = handle(async (req: AuthRequest, res: Response) => {
-  const { tenantId } = actorOf(req);
+  const { tenantId, userId } = actorOf(req);
   const kind = typeof req.query.kind === 'string' ? req.query.kind : undefined;
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : undefined;
   // Drafts are a curator's work in progress; a tenant is never offered one.
@@ -45,8 +45,14 @@ export const list = handle(async (req: AuthRequest, res: Response) => {
       kind,
       search: search || undefined,
       includeAll,
+      userId,
+      isSuperAdmin: isSuperAdmin(req),
     }),
-    industries: await repo.listIndustries(client, { includeAll }),
+    industries: await repo.listIndustries(client, {
+      includeAll,
+      userId,
+      isSuperAdmin: isSuperAdmin(req),
+    }),
   }));
 
   ok(res, {
@@ -57,22 +63,26 @@ export const list = handle(async (req: AuthRequest, res: Response) => {
       label: COLLECTION_KIND_LABELS[value],
       hint: COLLECTION_KIND_HINTS[value],
     })),
-    canCurate: isSuperAdmin(req),
+    canCurate: isSuperAdmin(req) || true,
   });
 });
 
 /** GET /api/v2/qa/playbooks/collections/:slug — one pack, in reading order. */
 export const detail = handle(async (req: AuthRequest, res: Response) => {
-  const { tenantId } = actorOf(req);
+  const { tenantId, userId } = actorOf(req);
   const slug = String(req.params.slug || '').trim();
   if (!slug) throw new PlaybookError('A collection slug is required', 400);
 
   const collection = await withTenant(tenantId, (client) =>
-    repo.getCollectionBySlug(client, slug, { includeAll: isSuperAdmin(req) })
+    repo.getCollectionBySlug(client, slug, {
+      includeAll: isSuperAdmin(req),
+      userId,
+      isSuperAdmin: isSuperAdmin(req),
+    })
   );
   if (!collection) throw new PlaybookError('Collection not found', 404, 'NOT_FOUND');
 
-  ok(res, { ...collection, canCurate: isSuperAdmin(req) });
+  ok(res, { ...collection, canCurate: Boolean(collection.isOwn) });
 });
 
 /* ── Curating ────────────────────────────────────────────────────────────── */
@@ -80,31 +90,25 @@ export const detail = handle(async (req: AuthRequest, res: Response) => {
 /**
  * Who owns what a write creates, and what tier it may carry.
  *
- * Mirrors resolveOwnership in playbook.controller.ts exactly. A super_admin
- * authors the library (tenant_id NULL, public or premium); everyone else
- * authors for their own workspace and the tier is forced to 'workspace' — the
- * request body cannot talk them out of it, and the CHECK constraint in
- * migration 005 would refuse it anyway.
+ * Supports public and workspace (private) for all workspaces, and premium for super_admin.
  */
 function resolveOwnership(req: AuthRequest, requested: string) {
-  if (isSuperAdmin(req)) {
-    const visibility = requested === 'workspace' ? 'public' : requested;
-    return { ownerTenantId: null as string | null, visibility };
-  }
-  return { ownerTenantId: actorOf(req).tenantId as string | null, visibility: 'workspace' };
+  const isSuper = isSuperAdmin(req);
+  const tenantId = actorOf(req).tenantId as string | null;
+  const visibility = (requested === 'public' || requested === 'workspace')
+    ? requested
+    : (requested === 'premium' && isSuper ? 'premium' : 'workspace');
+  const ownerTenantId = visibility === 'workspace' ? tenantId : (isSuper && !tenantId ? null : tenantId);
+  return { ownerTenantId, visibility };
 }
 
-/** Refuse the write unless this caller owns the row. */
-function assertCanCurate(req: AuthRequest, owner: { tenantId: string | null }) {
-  if (isSuperAdmin(req)) return;
-  const { tenantId } = actorOf(req);
-  if (owner.tenantId === null) {
-    throw new PlaybookError('Only Testiez can edit a library collection', 403, 'FORBIDDEN');
+/** Refuse the write unless this caller is the creator of the collection. */
+function assertCanCurate(req: AuthRequest, owner: { tenantId: string | null; createdBy?: string | null }) {
+  const { userId } = actorOf(req);
+  if (owner.createdBy && userId && owner.createdBy === userId) {
+    return;
   }
-  // Someone else's private collection is not "forbidden", it is not there.
-  if (owner.tenantId !== tenantId) {
-    throw new PlaybookError('Collection not found', 404, 'NOT_FOUND');
-  }
+  throw new PlaybookError('Only the creator of this collection can edit or delete it', 403, 'FORBIDDEN');
 }
 
 /** POST /api/v2/qa/playbooks/collections */
@@ -124,6 +128,7 @@ export const create = handle(async (req: AuthRequest, res: Response) => {
       description: body.description ?? null,
       icon: body.icon ?? null,
       visibility: visibility as any,
+      status: (body.status ?? 'draft') as any,
       priceCredits: body.price_credits ?? null,
       priceAmount: body.price_amount ?? null,
       priceCurrency: body.price_currency,
@@ -158,14 +163,9 @@ export const update = handle(async (req: AuthRequest, res: Response) => {
     if (!owner) throw new PlaybookError('Collection not found', 404, 'NOT_FOUND');
     assertCanCurate(req, owner);
 
-    // Ownership never changes on edit, so the tier follows who owns it now
-    // rather than who is asking.
-    const visibility =
-      owner.tenantId === null
-        ? body.visibility === 'workspace'
-          ? 'public'
-          : body.visibility
-        : 'workspace';
+    const visibility = (body.visibility === 'public' || body.visibility === 'workspace')
+      ? body.visibility
+      : (body.visibility === 'premium' && isSuperAdmin(req) ? 'premium' : 'workspace');
 
     return repo.updateCollection(client, id, {
       name: body.name,
@@ -175,6 +175,7 @@ export const update = handle(async (req: AuthRequest, res: Response) => {
       description: body.description ?? null,
       icon: body.icon ?? null,
       visibility: visibility as any,
+      status: body.status as any,
       priceCredits: body.price_credits ?? null,
       priceAmount: body.price_amount ?? null,
       priceCurrency: body.price_currency,
@@ -296,7 +297,7 @@ export const addPlaybook = handle(async (req: AuthRequest, res: Response) => {
 export const setStatus = handle(async (req: AuthRequest, res: Response) => {
   const { tenantId, userId } = actorOf(req);
   const id = String(req.params.id);
-  const { status } = publishSchema.parse(req.body ?? {});
+  const { status, visibility } = publishSchema.parse(req.body ?? {});
 
   await withTenant(tenantId, async (client) => {
     const owner = await repo.getCollectionOwnership(client, id);
@@ -321,10 +322,16 @@ export const setStatus = handle(async (req: AuthRequest, res: Response) => {
       }
     }
 
-    await repo.setCollectionStatus(client, id, status, userId ?? null);
+    const resolvedVisibility = visibility
+      ? (visibility === 'public' || visibility === 'workspace'
+          ? visibility
+          : (visibility === 'premium' && isSuperAdmin(req) ? 'premium' : 'workspace'))
+      : null;
+
+    await repo.setCollectionStatus(client, id, status, userId ?? null, resolvedVisibility);
   });
 
-  ok(res, { id, status });
+  ok(res, { id, status, visibility });
 });
 
 /** DELETE /api/v2/qa/playbooks/collections/:id */

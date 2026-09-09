@@ -690,6 +690,17 @@ export const APP_STRUCTURE: ICore[] = [
               { key: 'request_playbook', name: 'Request Playbook', featureType: 'REQUEST_PLAYBOOK' },
               { key: 'requested', name: 'Requested Playbooks', featureType: 'REQUESTED' }
             ]
+          },
+          {
+            key: 'playbook_trash',
+            name: 'Trash',
+            route: '/playbooks/trash',
+            menu_title: 'Trash',
+            menu_order: 4,
+            features: [
+              { key: 'prime', name: 'Prime', featureType: 'PRIME' },
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
+            ]
           }
         ]
       },

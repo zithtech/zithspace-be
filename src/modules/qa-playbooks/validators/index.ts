@@ -33,7 +33,8 @@ export const collectionMetaSchema = z.object({
   description: z.string().trim().max(20000).nullable().optional(),
   /** A lucide icon name. The FE renders it against its own allow-list. */
   icon: z.string().trim().max(40).nullable().optional(),
-  visibility: z.enum(VISIBILITIES).default('public'),
+  visibility: z.enum(VISIBILITIES).default('workspace'),
+  status: z.enum(['draft', 'published', 'archived']).default('draft').optional(),
   price_credits: z.number().int().min(0).max(1_000_000).nullable().optional(),
   price_amount: z.number().min(0).max(1_000_000).nullable().optional(),
   price_currency: z.string().trim().length(3).default('USD'),
@@ -93,9 +94,7 @@ export type GenerateBody = z.infer<typeof generateSchema>;
 /* ── Authoring ───────────────────────────────────────────────────────────── */
 
 /**
- * `visibility` is accepted but never trusted: the controller downgrades any
- * non-super_admin request to 'workspace' before it reaches the database, and
- * the CHECK constraint in migration 002 refuses the pairing regardless.
+ * `visibility` is accepted and validated against public, workspace (private), premium.
  */
 export const playbookMetaSchema = z.object({
   name: z.string().trim().min(1, 'A name is required').max(160),
@@ -108,6 +107,7 @@ export const playbookMetaSchema = z.object({
   version: z.string().trim().min(1).max(20).default('1.0'),
   changelog: z.string().trim().max(2000).nullable().optional(),
   visibility: z.enum(VISIBILITIES).default('workspace'),
+  status: z.enum(['draft', 'published', 'archived']).default('draft').optional(),
   price_credits: z.number().int().min(0).max(1_000_000).nullable().optional(),
   price_amount: z.number().min(0).max(1_000_000).nullable().optional(),
   price_currency: z.string().trim().length(3).default('USD'),
@@ -299,6 +299,7 @@ export type ImportBody = z.infer<typeof importSchema>;
 
 export const publishSchema = z.object({
   status: z.enum(['draft', 'published', 'archived']),
+  visibility: z.enum(VISIBILITIES).optional(),
 });
 
 /* ── Access ──────────────────────────────────────────────────────────────── */
