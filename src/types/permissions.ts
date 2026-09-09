@@ -106,6 +106,19 @@ export const Permissions = {
   QA_ANALYTICS_READ:      'qa.analytics.read',
   QA_MANAGE:       'qa.manage',
 
+  // ─── Playbooks ────────────────────────────────────────────────────
+  PLAYBOOK_CREATE:   'playbook.create',
+  PLAYBOOK_READ:     'playbook.read',
+  PLAYBOOK_UPDATE:   'playbook.update',
+  PLAYBOOK_DELETE:   'playbook.delete',
+  PLAYBOOK_TRASH_READ:    'playbook.trash.read',
+  PLAYBOOK_TRASH_RESTORE: 'playbook.trash.restore',
+  PLAYBOOK_TRASH_DELETE:  'playbook.trash.delete',
+  PLAYBOOK_REQUEST:  'playbook.request',
+  PLAYBOOK_TEMPLATE: 'playbook.template',
+  PLAYBOOK_UPLOAD:   'playbook.upload',
+  PLAYBOOK_MANAGE:   'playbook.manage',
+
   // ─── Yapiez (API definition + flow execution; feeds QA Space) ────────────
   // Two authorities, deliberately split: developers own the API catalog, QA
   // owns the flows built from it. EXECUTE is separate again — running a flow
@@ -905,6 +918,19 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.QA_COVERAGE_MAP_READ,
     Permissions.QA_ANALYTICS_READ,
     Permissions.QA_MANAGE,
+  ],
+  playbook: [
+    Permissions.PLAYBOOK_CREATE,
+    Permissions.PLAYBOOK_READ,
+    Permissions.PLAYBOOK_UPDATE,
+    Permissions.PLAYBOOK_DELETE,
+    Permissions.PLAYBOOK_TRASH_READ,
+    Permissions.PLAYBOOK_TRASH_RESTORE,
+    Permissions.PLAYBOOK_TRASH_DELETE,
+    Permissions.PLAYBOOK_REQUEST,
+    Permissions.PLAYBOOK_TEMPLATE,
+    Permissions.PLAYBOOK_UPLOAD,
+    Permissions.PLAYBOOK_MANAGE,
   ],
   yapiez: [
     Permissions.YAPIEZ_API_CREATE,

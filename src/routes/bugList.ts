@@ -5,12 +5,14 @@ import { resolveTenant } from "@/middleware/tenantContext";
 import { requirePermission } from "@/middleware/permission";
 import { requireAiAccess } from "@/middleware/aiAccess";
 import { Permissions } from "@/types/permissions";
+import { requireSubscriptionFeature } from "@/modules/entitlements/entitlements.middleware";
 
 const router = Router();
 
 router.use(resolveTenant);
 router.use(authenticateToken);
 router.use(requireAuth);
+router.use(requireSubscriptionFeature('work_qa_space_bug_list', { exact: false }));
 
 // ─── Folders ───────────────────────────────────────────────────────────────
 router.get("/folders", requirePermission(Permissions.BUG_READ), BugListController.listFolders);

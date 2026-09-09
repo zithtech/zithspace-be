@@ -6,6 +6,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SprintCompletionController = void 0;
 const database_1 = require("@/config/database");
 const types_1 = require("@/types");
+const subscriptions_1 = require("@/modules/subscriptions");
+const brand_1 = require("@/config/brand");
 const socketService_1 = require("@/services/socketService");
 const cacheService_1 = __importDefault(require("@/utils/cacheService"));
 const transactionHistory_1 = require("@/utils/transactionHistory");
@@ -212,6 +214,21 @@ class SprintCompletionController {
             const moveToBucketActions = actions.filter((a) => a.action === "move_to_bucket");
             const moveToBacklogActions = actions.filter((a) => a.action === "move_to_backlog");
             const moveToTrashActions = actions.filter((a) => a.action === "move_to_trash");
+            // Check subscription plan features
+            if (moveToBucketActions.length > 0) {
+                const product = (0, brand_1.productFromRequest)(req);
+                const granted = await subscriptions_1.featureResolverService.getTenantFeatures(req.tenantId, product);
+                if (granted.length > 0 && !granted.includes("work_tickets_buckets")) {
+                    throw new types_1.AuthorizationError("Move to bucket is not included in your subscription plan");
+                }
+            }
+            if (moveToTrashActions.length > 0) {
+                const product = (0, brand_1.productFromRequest)(req);
+                const granted = await subscriptions_1.featureResolverService.getTenantFeatures(req.tenantId, product);
+                if (granted.length > 0 && !granted.includes("work_tickets_trash")) {
+                    throw new types_1.AuthorizationError("Move to trash is not included in your subscription plan");
+                }
+            }
             // VALIDATION PHASE - Do ALL validation BEFORE transaction to avoid timeout
             // Validate destination sprints exist (if any)
             if (moveToSprintActions.length > 0) {

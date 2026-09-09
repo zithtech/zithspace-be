@@ -88,6 +88,17 @@ export declare const Permissions: {
     readonly QA_COVERAGE_MAP_READ: "qa.coverage_map.read";
     readonly QA_ANALYTICS_READ: "qa.analytics.read";
     readonly QA_MANAGE: "qa.manage";
+    readonly PLAYBOOK_CREATE: "playbook.create";
+    readonly PLAYBOOK_READ: "playbook.read";
+    readonly PLAYBOOK_UPDATE: "playbook.update";
+    readonly PLAYBOOK_DELETE: "playbook.delete";
+    readonly PLAYBOOK_TRASH_READ: "playbook.trash.read";
+    readonly PLAYBOOK_TRASH_RESTORE: "playbook.trash.restore";
+    readonly PLAYBOOK_TRASH_DELETE: "playbook.trash.delete";
+    readonly PLAYBOOK_REQUEST: "playbook.request";
+    readonly PLAYBOOK_TEMPLATE: "playbook.template";
+    readonly PLAYBOOK_UPLOAD: "playbook.upload";
+    readonly PLAYBOOK_MANAGE: "playbook.manage";
     readonly YAPIEZ_API_CREATE: "yapiez.api.create";
     readonly YAPIEZ_API_READ: "yapiez.api.read";
     readonly YAPIEZ_API_UPDATE: "yapiez.api.update";

@@ -186,10 +186,19 @@ export class ReleasePlansController {
         else if (plan.type === 'demo_plan') relevantTickets = plan.demoTickets;
         else relevantTickets = plan.tickets;
 
+        const isDone = (s?: string) => {
+          const k = (s || '').toLowerCase().trim().replace(/ /g, '_');
+          return k === 'completed' || k === 'done' || k === 'live';
+        };
+        const isTodo = (s?: string) => {
+          const k = (s || '').toLowerCase().trim().replace(/ /g, '_');
+          return k === 'not_started' || k === 'todo' || k === 'to_do' || k === 'open' || k === 'pending' || k === 'planned' || k === '';
+        };
+
         const totalTickets = relevantTickets.length || 0;
-        const completedTickets = relevantTickets.filter((t) => t.status === "completed").length || 0;
-        const inProgressTickets = relevantTickets.filter((t) => t.status === "in_progress").length || 0;
-        const notStartedTickets = relevantTickets.filter((t) => ["not_started", "open"].includes(t.status)).length || 0;
+        const completedTickets = relevantTickets.filter((t) => isDone(t.status)).length || 0;
+        const notStartedTickets = relevantTickets.filter((t) => isTodo(t.status)).length || 0;
+        const inProgressTickets = Math.max(totalTickets - completedTickets - notStartedTickets, 0);
 
         const progress = totalTickets > 0
           ? Math.round((completedTickets / totalTickets) * 100)
@@ -297,8 +306,19 @@ export class ReleasePlansController {
       else if (releasePlan.type === 'demo_plan') relevantTickets = releasePlan.demoTickets;
       else relevantTickets = releasePlan.tickets;
 
+      const isDone = (s?: string) => {
+        const k = (s || '').toLowerCase().trim().replace(/ /g, '_');
+        return k === 'completed' || k === 'done' || k === 'live';
+      };
+      const isTodo = (s?: string) => {
+        const k = (s || '').toLowerCase().trim().replace(/ /g, '_');
+        return k === 'not_started' || k === 'todo' || k === 'to_do' || k === 'open' || k === 'pending' || k === 'planned' || k === '';
+      };
+
       const totalTickets = relevantTickets.length || 0;
-      const completedTickets = relevantTickets.filter((t) => t.status === "completed").length || 0;
+      const completedTickets = relevantTickets.filter((t) => isDone(t.status)).length || 0;
+      const notStartedTickets = relevantTickets.filter((t) => isTodo(t.status)).length || 0;
+      const inProgressTickets = Math.max(totalTickets - completedTickets - notStartedTickets, 0);
 
       const progress = totalTickets > 0 ? Math.round((completedTickets / totalTickets) * 100) : 0;
 
@@ -315,6 +335,8 @@ export class ReleasePlansController {
           priority: "Medium",
           totalTickets,
           completedTickets,
+          inProgressTickets,
+          notStartedTickets,
           progress
         },
       } as ApiResponse);

@@ -5,7 +5,10 @@ import {
   ApiResponse,
   NotFoundError,
   ValidationError,
+  AuthorizationError,
 } from "@/types";
+import { featureResolverService } from "@/modules/subscriptions";
+import { productFromRequest } from "@/config/brand";
 import { socketService } from "@/services/socketService";
 import cacheService from "@/utils/cacheService";
 import {
@@ -267,6 +270,23 @@ export class SprintCompletionController {
         (a) => a.action === "move_to_backlog"
       );
       const moveToTrashActions = actions.filter((a) => a.action === "move_to_trash");
+
+      // Check subscription plan features
+      if (moveToBucketActions.length > 0) {
+        const product = productFromRequest(req);
+        const granted = await featureResolverService.getTenantFeatures(req.tenantId, product);
+        if (granted.length > 0 && !granted.includes("work_tickets_buckets")) {
+          throw new AuthorizationError("Move to bucket is not included in your subscription plan");
+        }
+      }
+
+      if (moveToTrashActions.length > 0) {
+        const product = productFromRequest(req);
+        const granted = await featureResolverService.getTenantFeatures(req.tenantId, product);
+        if (granted.length > 0 && !granted.includes("work_tickets_trash")) {
+          throw new AuthorizationError("Move to trash is not included in your subscription plan");
+        }
+      }
 
       // VALIDATION PHASE - Do ALL validation BEFORE transaction to avoid timeout
 
