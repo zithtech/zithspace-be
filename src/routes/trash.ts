@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { TrashController } from '@/controllers/trashController';
 import { authenticateToken, requireAuth } from '@/middleware/auth';
 import { requirePermission } from '@/middleware/permission';
+import { requireSubscriptionFeature } from '@/modules/entitlements/entitlements.middleware';
 import { Permissions } from '@/types/permissions';
 import { resolveTenant } from '@/middleware/tenantContext';
 
@@ -13,6 +14,9 @@ router.use(resolveTenant);
 // Apply authentication to all routes
 router.use(authenticateToken);
 router.use(requireAuth);
+
+// Apply subscription feature gate
+router.use(requireSubscriptionFeature('work_tickets_trash', { exact: true }));
 
 /**
  * @route   GET /api/trash

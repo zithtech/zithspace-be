@@ -34,40 +34,73 @@ import { productFromRequest } from '@/config/brand';
  */
 const MODULE_PREFIX_FEATURES: ReadonlyArray<readonly [string, string]> = [
   // ── Finance ──
-  ['/api/invoices', 'finance'],
-  ['/api/invoicesetting', 'finance'],
-  ['/api/invoice-templates', 'finance'],
-  ['/api/accounts', 'finance'],
-  ['/api/payroll', 'finance'],
-  ['/api/payouts', 'finance'],
-  ['/api/reimbursement', 'finance'],
-  ['/api/reimbursements', 'finance'],
-  ['/api/reimbursement-categories', 'finance'],
-  ['/api/reimbursement-configurations', 'finance'],
-  ['/api/reimbursement-settings', 'finance'],
+  ['/api/invoices', 'finance_invoice'],
+  ['/api/invoicesetting', 'finance_invoice'],
+  ['/api/invoice-templates', 'finance_invoice'],
+  ['/api/customers', 'finance_invoice'],
+  ['/api/accounts', 'finance_accounts'],
+  ['/api/v2/payroll', 'finance_payroll_v2'],
+  ['/api/payroll', 'finance_payroll_v2'],
+  ['/api/payouts', 'finance_payroll_v2'],
+  ['/api/v2/reimbursement', 'finance_reimbursement_v2'],
+  ['/api/reimbursement', 'finance_reimbursement_v2'],
+  ['/api/reimbursements', 'finance_reimbursement_v2'],
+  ['/api/reimbursement-categories', 'finance_reimbursement_v2'],
+  ['/api/reimbursement-configurations', 'finance_reimbursement_v2'],
+  ['/api/reimbursement-settings', 'finance_reimbursement_v2'],
+  ['/api/vendor', 'finance'],
 
-  // ── HRMS (recruitment included) ──
-  ['/api/leave', 'hrms'],
-  ['/api/leaves', 'hrms'],
-  ['/api/leave-types', 'hrms'],
-  ['/api/leave-adjustments', 'hrms'],
-  ['/api/leave-origins', 'hrms'],
-  ['/api/leave-allocation', 'hrms'],
-  ['/api/leave-request', 'hrms'],
-  ['/api/leave-balances', 'hrms'],
-  ['/api/attendance', 'hrms'],
-  ['/api/onboarding', 'hrms'],
-  ['/api/performance-report', 'hrms'],
-  ['/api/escalations-v2', 'hrms'],
-  ['/api/escalation-categories', 'hrms'],
-  ['/api/escalation-statuses', 'hrms'],
-  ['/api/escalation-priorities', 'hrms'],
+  // ── HRMS: Leaves 2.0 ──
+  ['/api/v2/leave', 'hrms_leaves_v2'],
+  ['/api/leave', 'hrms_leaves_v2'],
+  ['/api/leaves', 'hrms_leaves_v2'],
+  ['/api/leave-types', 'hrms_leaves_v2'],
+  ['/api/leave-adjustments', 'hrms_leaves_v2'],
+  ['/api/leave-origins', 'hrms_leaves_v2'],
+  ['/api/leave-allocation', 'hrms_leaves_v2'],
+  ['/api/leave-request', 'hrms_leaves_v2'],
+  ['/api/leave-balances', 'hrms_leaves_v2'],
+  ['/api/company-government-holidays', 'hrms_leaves_v2'],
+  ['/api/fixed-holidays', 'hrms_leaves_v2'],
+
+  // ── HRMS: Attendance ──
+  ['/api/attendance', 'hrms_attendance'],
+  ['/api/shifts', 'hrms_attendance'],
+
+  // ── HRMS: Onboarding ──
+  ['/api/onboarding', 'hrms_onboarding'],
+  ['/api/candidate-form', 'hrms_onboarding'],
+
+  // ── HRMS: Performance Report ──
+  ['/api/performance-report', 'hrms_performance_report'],
+
+  // ── HRMS: Doc Suite ──
+  ['/api/hrms/letters', 'hrms_doc_suite'],
+  ['/api/letters-docs', 'hrms_doc_suite'],
+  ['/api/letters', 'hrms_doc_suite'],
+  ['/api/repositories', 'hrms_doc_suite'],
+
+  // ── HRMS: Candidate Pipeline / Recruitment ──
+  ['/api/pipeline', 'hrms_candidate_pipeline'],
+  ['/api/candidates', 'hrms_candidate_pipeline'],
+  ['/api/recruitment-statuses', 'hrms_candidate_pipeline'],
+  ['/api/recruitment-actions', 'hrms_candidate_pipeline'],
+  ['/api/recruitment-client', 'hrms_candidate_pipeline'],
+  ['/api/recruitment', 'hrms_candidate_pipeline'],
+
+  // ── HRMS: Openings ──
+  ['/api/v2/openings', 'hrms_openings'],
+  ['/api/opening-management', 'hrms_openings'],
+
+  // ── HRMS: Exit ──
+  ['/api/exit', 'hrms_employee_exit'],
+  ['/api/employee-exit', 'hrms_employee_exit'],
+  ['/api/employee-assets', 'hrms_employee_exit'],
+
+  // ── HRMS: Profiles ──
   ['/api/profile/new', 'hrms'],
-  ['/api/employee-exit', 'hrms'],
-  ['/api/letters-docs', 'hrms'],
-  ['/api/pipeline', 'hrms'],
-  ['/api/opening-management', 'hrms'],
-  ['/api/recruitment', 'hrms'],
+  ['/api/employee-work-details', 'hrms'],
+  ['/api/employee-timelines', 'hrms'],
 
   // ── My Hub (personal HR surface) ──
   ['/api/my-hub', 'my_hub'],
@@ -76,13 +109,31 @@ const MODULE_PREFIX_FEATURES: ReadonlyArray<readonly [string, string]> = [
   ['/api/proposals', 'work_proposals'],
   ['/api/proposal-sections', 'work_proposals'],
   ['/api/proposal-templates', 'work_proposals'],
-  // BidIq has no mount of its own — it is POST /api/leads/:id/analyze — so
-  // gating lead management covers it.
   ['/api/leads', 'work_lead_management'],
   ['/api/lead-settings', 'work_lead_management'],
-  ['/api/squads', 'work_squads'],
+  ['/api/squad', 'work_squad_management'],
+  ['/api/squads', 'work_squad_management'],
   ['/api/timesheets', 'work_timesheet'],
   ['/api/daily-updates', 'work_daily_updates'],
+  ['/api/tickets', 'work_tickets'],
+  ['/api/buckets', 'work_tickets_buckets'],
+  ['/api/trash', 'work_tickets_trash'],
+  ['/api/time-tracking', 'work_time_tracking'],
+  ['/api/projects', 'work_projects'],
+  ['/api/v2/qa/playbooks', 'work_playbooks'],
+  ['/api/v2/qa/test-scopes', 'work_qa_space'],
+  ['/api/v2/qa/submissions', 'work_qa_space'],
+  ['/api/v2/qa/analytics', 'work_qa_space'],
+  ['/api/v2/qa/scenarios', 'work_qa_space'],
+  ['/api/v2/qa', 'work_qa_space'],
+  ['/api/v2/yapiez', 'work_qa_space'],
+  ['/api/bug-list', 'work_qa_space'],
+  ['/api/documenthub', 'work_document_hub'],
+  ['/api/v2/document-hubs', 'work_document_hub'],
+  ['/api/escalations-v2', 'work_escalations'],
+  ['/api/escalation-categories', 'work_escalations'],
+  ['/api/escalation-statuses', 'work_escalations'],
+  ['/api/escalation-priorities', 'work_escalations'],
 
   // ── Features inside Admin ──
   ['/api/clients-v2', 'admin_clients_v2'],
@@ -222,4 +273,76 @@ export const moduleEntitlementGate = async (
   }
 };
 
-export default { moduleEntitlementGate };
+/**
+ * Express middleware for fine-grained / exact subscription feature authorization.
+ *
+ * For child-level features and actions (e.g. 'work_proposals_templates', 'work_lead_bidiq'),
+ * exact matching is used by default so that having a broad or unrelated feature does not
+ * accidentally authorize deeper actions.
+ *
+ * Set `options.exact = false` to enable prefix / upward resolution for page/module level checks.
+ */
+export const requireSubscriptionFeature = (
+  featureKey: string,
+  options: { exact?: boolean } = { exact: true }
+) => {
+  return async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
+    const tenantId = tenantIdFromRequest(req) || (req as any).tenantId;
+    if (!tenantId) {
+      next();
+      return;
+    }
+
+    try {
+      const product = productFromRequest(req);
+      const granted = await featureResolverService.getTenantFeatures(
+        tenantId,
+        product ? product.toUpperCase() : undefined
+      );
+
+      // NO FEATURES MEANS UNMANAGED, NOT ENTITLED TO NOTHING (consistent with moduleEntitlementGate)
+      if (granted.length === 0) {
+        next();
+        return;
+      }
+
+      const isEntitled = options.exact
+        ? granted.includes(featureKey)
+        : satisfies(granted, featureKey);
+
+      if (isEntitled) {
+        next();
+        return;
+      }
+
+      if (!ENFORCING) {
+        console.warn(
+          `[entitlements] would block tenant=${tenantId} exactFeature=${featureKey} ` +
+          `${req.method} ${req.originalUrl} (enforcement off)`
+        );
+        next();
+        return;
+      }
+
+      res.status(403).json({
+        success: false,
+        error: 'This feature is not included in your plan',
+        code: 'ENTITLEMENT_REQUIRED',
+        requiredFeature: featureKey,
+      });
+    } catch (error) {
+      console.error(`[entitlements] requireSubscriptionFeature failed for ${featureKey}:`, error);
+      if (FAIL_OPEN || !ENFORCING) {
+        next();
+        return;
+      }
+      res.status(503).json({
+        success: false,
+        error: 'Entitlement service temporarily unavailable',
+        code: 'ENTITLEMENT_UNAVAILABLE',
+      });
+    }
+  };
+};
+
+export default { moduleEntitlementGate, requireSubscriptionFeature };

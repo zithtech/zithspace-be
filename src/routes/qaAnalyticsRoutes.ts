@@ -3,6 +3,7 @@ import { authenticateToken } from '../middleware/auth';
 import { resolveTenant } from '../middleware/tenantContext';
 import { requireAnyPermission } from '../middleware/permission';
 import { Permissions } from '../types/permissions';
+import { requireSubscriptionFeature } from '@/modules/entitlements/entitlements.middleware';
 import * as qaAnalyticsController from '../controllers/qaAnalyticsController';
 
 /**
@@ -16,6 +17,7 @@ const router = express.Router();
 
 router.use(resolveTenant);
 router.use(authenticateToken);
+router.use(requireSubscriptionFeature('work_qa_space_analytics', { exact: false }));
 
 const canRead = requireAnyPermission(Permissions.QA_ANALYTICS_READ, Permissions.QA_MANAGE);
 

@@ -6,6 +6,7 @@
 import express from 'express';
 import { authenticateToken, requireAuth } from '@/middleware/auth';
 import { resolveTenant } from '@/middleware/tenantContext';
+import { requireSubscriptionFeature } from '@/modules/entitlements/entitlements.middleware';
 import leaveTypeRoutes from './leaveType.routes';
 import leavePolicyRoutes from './leavePolicy.routes';
 import accrualRoutes from './accrual.routes';
@@ -21,14 +22,14 @@ router.use(resolveTenant);
 router.use(authenticateToken);
 router.use(requireAuth);
 
-router.use('/types', leaveTypeRoutes);
-router.use('/policies', leavePolicyRoutes);
-router.use('/accrual', accrualRoutes);
-router.use('/requests', leaveRequestRoutes);
-router.use('/approvals', approvalsRoutes);
-router.use('/adjustments', adjustmentRoutes);
-router.use('/holidays', holidayRoutes);
-router.use('/settings', leaveSettingsRoutes);
+router.use('/types', requireSubscriptionFeature('hrms_leaves_v2_types', { exact: false }), leaveTypeRoutes);
+router.use('/policies', requireSubscriptionFeature('hrms_leaves_v2_policy', { exact: false }), leavePolicyRoutes);
+router.use('/accrual', requireSubscriptionFeature('hrms_leaves_v2_policy', { exact: false }), accrualRoutes);
+router.use('/requests', requireSubscriptionFeature('hrms_leaves_v2_apply', { exact: false }), leaveRequestRoutes);
+router.use('/approvals', requireSubscriptionFeature('hrms_leaves_v2_approvals', { exact: false }), approvalsRoutes);
+router.use('/adjustments', requireSubscriptionFeature('hrms_leaves_v2_adjustment', { exact: false }), adjustmentRoutes);
+router.use('/holidays', requireSubscriptionFeature('hrms_leaves_v2_holidays', { exact: false }), holidayRoutes);
+router.use('/settings', requireSubscriptionFeature('hrms_leaves_v2_configuration', { exact: false }), leaveSettingsRoutes);
 // Next slices mount here: /requests, /balances, /ledger
 
 export default router;

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { ProjectController } from '@/controllers/projectController';
 import { authenticateToken, requireAuth } from '@/middleware/auth';
 import { requirePermission, requireAnyPermission } from '@/middleware/permission';
+import { requireSubscriptionFeature } from '@/modules/entitlements/entitlements.middleware';
 import { Permissions } from '@/types/permissions';
 import { resolveTenant } from '@/middleware/tenantContext';
 
@@ -20,21 +21,21 @@ router.use(requireAuth);
  * @access  Private (authenticated users within tenant)
  * @query   page, limit, search, status, projectManagerId, sortBy, sortOrder
  */
-router.get('/', requirePermission(Permissions.PROJECT_READ), ProjectController.getProjects);
+router.get('/', requirePermission(Permissions.PROJECT_READ), requireSubscriptionFeature('work_projects_manage', { exact: true }), ProjectController.getProjects);
 
 /**
  * @route   GET /api/projects/next-code
  * @desc    Get next auto-generated project code (tenant-aware)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/next-code', requirePermission(Permissions.PROJECT_READ), ProjectController.getNextCode);
+router.get('/next-code', requirePermission(Permissions.PROJECT_READ), requireSubscriptionFeature('work_projects_manage', { exact: true }), ProjectController.getNextCode);
 
 /**
  * @route   GET /api/projects/selection
  * @desc    Get rich project data for selection screen (tenant-aware + role-based)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/selection', requirePermission(Permissions.PROJECT_READ), ProjectController.getSelectionProjects);
+router.get('/selection', requirePermission(Permissions.PROJECT_READ), requireSubscriptionFeature('work_projects_manage', { exact: true }), ProjectController.getSelectionProjects);
 
 /**
  * @route   GET /api/projects/select
@@ -55,7 +56,7 @@ router.get('/select', requireAnyPermission(Permissions.PROJECT_READ, Permissions
  * @desc    Get projects where user is a member (alias for compatibility)
  * @access  Private (authenticated users within tenant)
  */
-router.get('/user-projects', requirePermission(Permissions.PROJECT_READ), ProjectController.getUserProjects);
+router.get('/user-projects', requirePermission(Permissions.PROJECT_READ), requireSubscriptionFeature('work_projects_manage', { exact: true }), ProjectController.getUserProjects);
 
 /**
  * @route   GET /api/projects/user-projects-for-tickets
@@ -65,12 +66,12 @@ router.get('/user-projects', requirePermission(Permissions.PROJECT_READ), Projec
 router.get('/user-projects-for-tickets', requirePermission(Permissions.PROJECT_READ), ProjectController.getUserProjectsForTickets);
 
 // Trash routes
-router.get('/trash', requirePermission(Permissions.PROJECT_TRASH_READ), ProjectController.getTrashProjects);
-router.delete('/trash/empty', requirePermission(Permissions.PROJECT_TRASH_DELETE), ProjectController.emptyTrash);
-router.post('/trash/bulk-restore', requirePermission(Permissions.PROJECT_TRASH_RESTORE), ProjectController.bulkRestoreProjects);
-router.post('/trash/bulk-permanent-delete', requirePermission(Permissions.PROJECT_TRASH_DELETE), ProjectController.bulkPermanentDeleteProjects);
-router.post('/:id/restore', requirePermission(Permissions.PROJECT_TRASH_RESTORE), ProjectController.restoreProject);
-router.delete('/:id/permanent', requirePermission(Permissions.PROJECT_TRASH_DELETE), ProjectController.permanentDeleteProject);
+router.get('/trash', requirePermission(Permissions.PROJECT_TRASH_READ), requireSubscriptionFeature('work_projects_project_trash', { exact: true }), ProjectController.getTrashProjects);
+router.delete('/trash/empty', requirePermission(Permissions.PROJECT_TRASH_DELETE), requireSubscriptionFeature('work_projects_project_trash', { exact: true }), ProjectController.emptyTrash);
+router.post('/trash/bulk-restore', requirePermission(Permissions.PROJECT_TRASH_RESTORE), requireSubscriptionFeature('work_projects_project_trash', { exact: true }), ProjectController.bulkRestoreProjects);
+router.post('/trash/bulk-permanent-delete', requirePermission(Permissions.PROJECT_TRASH_DELETE), requireSubscriptionFeature('work_projects_project_trash', { exact: true }), ProjectController.bulkPermanentDeleteProjects);
+router.post('/:id/restore', requirePermission(Permissions.PROJECT_TRASH_RESTORE), requireSubscriptionFeature('work_projects_project_trash', { exact: true }), ProjectController.restoreProject);
+router.delete('/:id/permanent', requirePermission(Permissions.PROJECT_TRASH_DELETE), requireSubscriptionFeature('work_projects_project_trash', { exact: true }), ProjectController.permanentDeleteProject);
 
 /**
  * @route   GET /api/projects/:id/tickets/my
@@ -78,7 +79,7 @@ router.delete('/:id/permanent', requirePermission(Permissions.PROJECT_TRASH_DELE
  * @access  Private (authenticated users within tenant)
  * @param   id - Project ID
  */
-router.get('/:id/tickets/my', requirePermission(Permissions.PROJECT_READ), ProjectController.getMyTicketsByProject);
+router.get('/:id/tickets/my', requirePermission(Permissions.PROJECT_READ), requireSubscriptionFeature('work_projects_manage', { exact: true }), ProjectController.getMyTicketsByProject);
 
 /**
  * @route   GET /api/projects/:id/tickets
@@ -86,7 +87,7 @@ router.get('/:id/tickets/my', requirePermission(Permissions.PROJECT_READ), Proje
  * @access  Private (authenticated users within tenant)
  * @param   id - Project ID
  */
-router.get('/:id/tickets', requirePermission(Permissions.PROJECT_READ), ProjectController.getProjectTickets);
+router.get('/:id/tickets', requirePermission(Permissions.PROJECT_READ), requireSubscriptionFeature('work_projects_manage', { exact: true }), ProjectController.getProjectTickets);
 
 /**
  * @route   GET /api/projects/:id/members
@@ -94,7 +95,7 @@ router.get('/:id/tickets', requirePermission(Permissions.PROJECT_READ), ProjectC
  * @access  Private (authenticated users within tenant)
  * @param   id - Project ID
  */
-router.get('/:id/members', requirePermission(Permissions.PROJECT_READ), ProjectController.getProjectMembers);
+router.get('/:id/members', requirePermission(Permissions.PROJECT_READ), requireSubscriptionFeature('work_projects_manage', { exact: true }), ProjectController.getProjectMembers);
 
 /**
  * @route   GET /api/projects/:id/stats
@@ -102,7 +103,7 @@ router.get('/:id/members', requirePermission(Permissions.PROJECT_READ), ProjectC
  * @access  Private (authenticated users within tenant)
  * @param   id - Project ID
  */
-router.get('/:id/stats', requirePermission(Permissions.PROJECT_READ), ProjectController.getProjectStats);
+router.get('/:id/stats', requirePermission(Permissions.PROJECT_READ), requireSubscriptionFeature('work_projects_manage', { exact: true }), ProjectController.getProjectStats);
 
 /**
  * @route   GET /api/projects/:id
@@ -110,7 +111,7 @@ router.get('/:id/stats', requirePermission(Permissions.PROJECT_READ), ProjectCon
  * @access  Private (authenticated users within tenant)
  * @param   id - Project ID
  */
-router.get('/:id', requirePermission(Permissions.PROJECT_READ), ProjectController.getProjectById);
+router.get('/:id', requirePermission(Permissions.PROJECT_READ), requireSubscriptionFeature('work_projects_manage', { exact: true }), ProjectController.getProjectById);
 
 /**
  * @route   POST /api/projects
@@ -118,7 +119,7 @@ router.get('/:id', requirePermission(Permissions.PROJECT_READ), ProjectControlle
  * @access  Private (admin or project manager role)
  * @body    CreateProjectData
  */
-router.post('/', requirePermission(Permissions.PROJECT_CREATE), ProjectController.createProject);
+router.post('/', requirePermission(Permissions.PROJECT_CREATE), requireSubscriptionFeature('work_projects_manage', { exact: true }), ProjectController.createProject);
 
 /**
  * @route   PUT /api/projects/:id
@@ -127,7 +128,7 @@ router.post('/', requirePermission(Permissions.PROJECT_CREATE), ProjectControlle
  * @param   id - Project ID
  * @body    UpdateProjectData
  */
-router.put('/:id', requirePermission(Permissions.PROJECT_UPDATE), ProjectController.updateProject);
+router.put('/:id', requirePermission(Permissions.PROJECT_UPDATE), requireSubscriptionFeature('work_projects_manage', { exact: true }), ProjectController.updateProject);
 
 /**
  * @route   DELETE /api/projects/:id
@@ -135,7 +136,7 @@ router.put('/:id', requirePermission(Permissions.PROJECT_UPDATE), ProjectControl
  * @access  Private (admin only)
  * @param   id - Project ID
  */
-router.delete('/:id', requirePermission(Permissions.PROJECT_DELETE), ProjectController.deleteProject);
+router.delete('/:id', requirePermission(Permissions.PROJECT_DELETE), requireSubscriptionFeature('work_projects_project_trash', { exact: true }), ProjectController.deleteProject);
 
 /**
  * @route   POST /api/projects/:id/team-members
@@ -144,7 +145,7 @@ router.delete('/:id', requirePermission(Permissions.PROJECT_DELETE), ProjectCont
  * @param   id - Project ID
  * @body    { userId: string }
  */
-router.post('/:id/team-members', requirePermission(Permissions.PROJECT_MANAGE), ProjectController.addTeamMember);
+router.post('/:id/team-members', requirePermission(Permissions.PROJECT_MANAGE), requireSubscriptionFeature('work_projects_manage', { exact: true }), ProjectController.addTeamMember);
 
 /**
  * @route   DELETE /api/projects/:id/team-members/:userId
@@ -153,10 +154,6 @@ router.post('/:id/team-members', requirePermission(Permissions.PROJECT_MANAGE), 
  * @param   id - Project ID
  * @param   userId - User ID to remove
  */
-router.delete('/:id/team-members/:userId', requirePermission(Permissions.PROJECT_MANAGE), ProjectController.removeTeamMember);
-
-
-
-
+router.delete('/:id/team-members/:userId', requirePermission(Permissions.PROJECT_MANAGE), requireSubscriptionFeature('work_projects_manage', { exact: true }), ProjectController.removeTeamMember);
 
 export default router;
