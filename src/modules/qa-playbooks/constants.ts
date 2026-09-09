@@ -68,6 +68,47 @@ export const REFERENCE_TYPE_HINTS: Record<PlaybookReferenceType, string> = {
   standard: 'The spec itself — RFC, WCAG, an API standard',
 };
 
+/**
+ * How a COLLECTION bundles playbooks. See migration 005.
+ *
+ * Deliberately NOT the list of industries. "Fintech" is a collection's NAME;
+ * its kind is 'industry'. Making the industries the kind would have left no
+ * room for the packs that are easiest to sell — a compliance pack, a
+ * release-stage pack, an editorial "start here" — without inventing a fake
+ * industry for each of them.
+ *
+ * There is deliberately no kind for a playbook CATEGORY. A category is a
+ * property of the playbook and lives in qa_playbooks.category; a collection is
+ * an editorial bundle somebody curated. One was briefly modelled as the other
+ * and the catalog's two views ended up showing the same shelves — see
+ * migration 009.
+ */
+export const COLLECTION_KINDS = [
+  'industry',
+  'compliance',
+  'platform',
+  'stage',
+  'curated',
+] as const;
+export type CollectionKind = (typeof COLLECTION_KINDS)[number];
+
+export const COLLECTION_KIND_LABELS: Record<CollectionKind, string> = {
+  industry: 'Industry',
+  compliance: 'Compliance',
+  platform: 'Platform',
+  stage: 'Release stage',
+  curated: 'Curated',
+};
+
+/** What each kind is for, shown to whoever is creating one. */
+export const COLLECTION_KIND_HINTS: Record<CollectionKind, string> = {
+  industry: 'What the customer builds — Fintech, E-commerce, School management',
+  compliance: 'A standard to evidence — PCI-DSS, HIPAA, WCAG',
+  platform: 'What it runs on — mobile app, REST API, multi-tenant SaaS',
+  stage: 'Where the product is — smoke pack, launch readiness, regression',
+  curated: 'An editorial pick — "start here", "most-missed bugs"',
+};
+
 /** Who can see a playbook, and on what terms. See migration 002 for the rules. */
 export const VISIBILITIES = ['public', 'premium', 'workspace'] as const;
 export type PlaybookVisibility = (typeof VISIBILITIES)[number];

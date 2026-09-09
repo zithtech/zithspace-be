@@ -85,26 +85,22 @@ export interface PlaybookDetail extends Omit<PlaybookSummary, 'categories'> {
 }
 
 /**
- * Rows this tenant may see at all. $1 is the tenant id.
- *
- * A draft is visible only to its owner — and platform drafts (tenant_id NULL)
- * are visible only to a super_admin, which callers add on top via `includeAll`.
+ * Rows this tenant/user may see at all.
+ * - Draft: visible ONLY to its creator ($2 = created_by) - even super_admin cannot see other creators' drafts
+ * - Published: visible if public/premium OR belonging to this workspace ($1 = tenant_id), with super_admin ($3 = true) seeing published rows
+ * - Soft delete: deleted_at IS NULL AND category_deleted_at IS NULL
  */
 const SCOPE = `(
-  (p.tenant_id IS NULL AND p.status = 'published' AND p.visibility IN ('public','premium'))
-  OR p.tenant_id = $1
-)`;
+  (p.status = 'draft' AND p.created_by IS NOT NULL AND p.created_by = $2)
+  OR (p.status = 'published' AND (
+    p.visibility IN ('public', 'premium')
+    OR (p.visibility = 'workspace' AND ((p.tenant_id IS NOT NULL AND p.tenant_id = $1) OR (p.tenant_id IS NULL AND p.created_by = $2)))
+  ))
+) AND ($3::boolean IS NOT NULL) AND p.deleted_at IS NULL AND p.category_deleted_at IS NULL`;
 
 /**
- * What a super_admin curating the library sees: every library row whatever its
- * status or visibility, plus this workspace's own rows. Tenancy still holds —
- * another workspace's private playbooks are nobody's business, super_admin
- * included — so this is `SCOPE` minus the published/visibility gate, NOT an
- * unfiltered read.
+ * Is the body readable, as opposed to merely listed?
  */
-const CURATOR_SCOPE = `(p.tenant_id IS NULL OR p.tenant_id = $1)`;
-
-/** Is the body readable, as opposed to merely listed? */
 const UNLOCKED = `(
   p.visibility <> 'premium'
   OR EXISTS (
@@ -112,16 +108,22 @@ const UNLOCKED = `(
      WHERE u.playbook_id = p.id AND u.tenant_id = $1
        AND (u.expires_at IS NULL OR u.expires_at > NOW())
   )
+  OR EXISTS (
+    SELECT 1
+      FROM qa_playbook_collection_items ci
+      JOIN qa_playbook_collection_unlocks cu ON cu.collection_id = ci.collection_id
+     WHERE ci.playbook_id = p.id AND cu.tenant_id = $1
+       AND (cu.expires_at IS NULL OR cu.expires_at > NOW())
+  )
 )`;
 
 export async function listPlaybooks(
   client: TenantClient,
-  filters: { category?: string; search?: string; mine?: boolean; includeAll?: boolean }
+  filters: { category?: string; search?: string; mine?: boolean; includeAll?: boolean; userId?: string; isSuperAdmin?: boolean } = {}
 ): Promise<PlaybookSummary[]> {
-  const params: any[] = [client.tenantId];
-  // A super_admin curating the library needs to see drafts and archived rows
-  // that no tenant should be offered.
-  let where = `WHERE ${filters.includeAll ? CURATOR_SCOPE : SCOPE}`;
+  const isSuper = Boolean(filters.isSuperAdmin || filters.includeAll);
+  const params: any[] = [client.tenantId, filters.userId || null, isSuper];
+  let where = `WHERE ${SCOPE}`;
 
   if (filters.mine) where += ` AND p.tenant_id = $1`;
   if (filters.category) {
@@ -136,7 +138,7 @@ export async function listPlaybooks(
   const { rows } = await client.query(
     `SELECT p.id, p.slug, p.name, p.category, p.summary, p.version, p.visibility, p.status,
             p.price_credits, p.price_amount, p.price_currency, p.last_updated_at,
-            p.tenant_id IS NOT NULL AS is_own,
+            (p.created_by IS NOT NULL AND p.created_by = $2) AS is_own,
             NOT ${UNLOCKED} AS locked,
             COALESCE(stats.item_count, 0)            AS item_count,
             COALESCE(stats.categories, '{}'::text[]) AS categories
@@ -194,42 +196,127 @@ export async function listPlaybooks(
 }
 
 /** Distinct playbook categories in scope — drives the catalog's filter pills. */
-export async function listCategories(client: TenantClient): Promise<string[]> {
+export async function listCategories(
+  client: TenantClient,
+  filters: { userId?: string; isSuperAdmin?: boolean } = {}
+): Promise<string[]> {
+  const isSuper = Boolean(filters.isSuperAdmin);
   const { rows } = await client.query(
     `SELECT DISTINCT p.category FROM qa_playbooks p WHERE ${SCOPE} ORDER BY p.category ASC`,
-    [client.tenantId]
+    [client.tenantId, filters.userId || null, isSuper]
   );
   return rows.map((r: any) => r.category);
 }
 
+export interface PlaybookCategorySummary {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  visibility: string;
+  status: string;
+  playbookCount: number;
+  isOwn: boolean;
+}
+
+export async function listCategoriesDetailed(
+  client: TenantClient,
+  filters: { userId?: string; isSuperAdmin?: boolean } = {}
+): Promise<PlaybookCategorySummary[]> {
+  const isSuper = Boolean(filters.isSuperAdmin);
+  const { rows } = await client.query(
+    `SELECT c.id, c.name, c.slug, c.description, c.visibility, c.status,
+            (c.created_by IS NOT NULL AND c.created_by = $2) AS is_own,
+            COUNT(p.id)::int AS playbook_count
+       FROM qa_playbook_categories c
+       LEFT JOIN qa_playbooks p
+         ON p.category_id = c.id
+        AND p.deleted_at IS NULL AND p.category_deleted_at IS NULL
+        AND (
+          (p.status = 'draft' AND p.created_by IS NOT NULL AND p.created_by = $2)
+          OR
+          (p.status = 'published' AND (
+            p.visibility IN ('public', 'premium')
+            OR (p.visibility = 'workspace' AND ((p.tenant_id IS NOT NULL AND p.tenant_id = $1) OR (p.tenant_id IS NULL AND p.created_by = $2)))
+          ))
+        )
+      WHERE (
+        (c.status = 'draft' AND c.created_by IS NOT NULL AND c.created_by = $2)
+        OR
+        (c.status = 'published' AND (
+          c.visibility IN ('public', 'premium')
+          OR (c.visibility = 'workspace' AND ((c.tenant_id IS NOT NULL AND c.tenant_id = $1) OR (c.tenant_id IS NULL AND c.created_by = $2)))
+        ))
+      )
+        AND c.deleted_at IS NULL
+      GROUP BY c.id, c.name, c.slug, c.description, c.visibility, c.status, c.tenant_id
+      ORDER BY (c.tenant_id IS NOT NULL) DESC, c.name ASC`,
+    [client.tenantId, filters.userId || null, isSuper]
+  );
+  return rows.map((r: any) => ({
+    id: r.id,
+    name: r.name,
+    slug: r.slug,
+    description: r.description,
+    visibility: r.visibility,
+    status: r.status,
+    playbookCount: r.playbook_count,
+    isOwn: r.is_own,
+  }));
+}
+
+export async function ensureCategory(
+  client: TenantClient,
+  tenantId: string | null,
+  name: string,
+  opts: { visibility?: string; status?: string; createdBy?: string | null } = {}
+): Promise<string | null> {
+  if (!name || !name.trim()) return null;
+  const trimmed = name.trim();
+  const slug = slugify(trimmed);
+  const visibility = opts.visibility || 'workspace';
+  const status = opts.status || 'published';
+  const createdBy = opts.createdBy || null;
+
+  const { rows } = await client.query(
+    `INSERT INTO qa_playbook_categories (tenant_id, slug, name, visibility, status, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT DO NOTHING
+     RETURNING id`,
+    [tenantId, slug, trimmed, visibility, status, createdBy]
+  );
+  if (rows.length > 0) return rows[0].id;
+  const { rows: existing } = await client.query(
+    `SELECT id FROM qa_playbook_categories
+      WHERE (tenant_id = $1 OR (tenant_id IS NULL AND $1 IS NULL))
+        AND lower(name) = lower($2) AND deleted_at IS NULL
+      LIMIT 1`,
+    [tenantId, trimmed]
+  );
+  return existing[0]?.id || null;
+}
+
 /**
  * One playbook with its section tree.
- *
- * On a LOCKED premium playbook the structure still comes back — titles,
- * descriptions and per-section counts — but `items` is empty everywhere. The
- * reader renders that as a preview with the bodies behind a lock, which is the
- * whole point of listing premium content in the first place.
- *
- * `levels` / `categories` filter the items only; a section left empty by the
- * filter is dropped so the tree never shows a hollow heading.
  */
 export async function getPlaybookBySlug(
   client: TenantClient,
   slug: string,
-  filters: { levels?: string[]; categories?: string[]; includeAll?: boolean } = {}
+  filters: { levels?: string[]; categories?: string[]; includeAll?: boolean; userId?: string; isSuperAdmin?: boolean } = {}
 ): Promise<PlaybookDetail | null> {
+  const isSuper = Boolean(filters.isSuperAdmin || filters.includeAll);
   const { rows: playbooks } = await client.query(
     `SELECT p.id, p.slug, p.name, p.category, p.summary, p.overview, p.version,
             p.visibility, p.status, p.price_credits, p.price_amount, p.price_currency,
             p.last_updated_at, p.tenant_id,
-            p.tenant_id IS NOT NULL AS is_own,
+            (p.created_by IS NOT NULL AND p.created_by = $2) AS is_own,
             NOT ${UNLOCKED} AS locked
        FROM qa_playbooks p
-      WHERE ${filters.includeAll ? 'TRUE' : SCOPE} AND p.slug = $2
+      WHERE ${SCOPE} AND p.slug = $4
       -- A tenant's own playbook wins over a platform one of the same slug.
       ORDER BY p.tenant_id NULLS LAST
       LIMIT 1`,
-    [client.tenantId, slug]
+    [client.tenantId, filters.userId || null, isSuper, slug]
   );
   if (playbooks.length === 0) return null;
   const playbook: any = playbooks[0];
@@ -403,8 +490,10 @@ function mapItem(row: any): PlaybookItemRow {
 export async function getItemsByIds(
   client: TenantClient,
   playbookId: string,
-  itemIds: string[]
+  itemIds: string[],
+  opts: { userId?: string; isSuperAdmin?: boolean } = {}
 ): Promise<PlaybookItemRow[]> {
+  const isSuper = Boolean(opts.isSuperAdmin);
   const { rows } = await client.query(
     `SELECT i.id, i.key, i.section_id, i.title, i.what_to_test, i.examples, i.expected, i.steps,
             i.preconditions, i.edge_cases, i."references",
@@ -413,10 +502,10 @@ export async function getItemsByIds(
        FROM qa_playbook_items i
        JOIN qa_playbook_sections s ON s.id = i.section_id
        JOIN qa_playbooks p ON p.id = i.playbook_id
-      WHERE i.playbook_id = $2 AND i.id = ANY($3::uuid[])
+      WHERE i.playbook_id = $4 AND i.id = ANY($5::uuid[])
         AND ${SCOPE} AND ${UNLOCKED}
       ORDER BY s.sort_order ASC, i.sort_order ASC`,
-    [client.tenantId, playbookId, itemIds]
+    [client.tenantId, opts.userId || null, isSuper, playbookId, itemIds]
   );
 
   return (rows as any[]).map((row) => ({ ...mapItem(row), sectionTitle: row.section_title }));
@@ -483,6 +572,7 @@ export interface MetaInput {
   overview: string;
   version: string;
   visibility: PlaybookVisibility;
+  status?: string;
   priceCredits: number | null;
   priceAmount: number | null;
   priceCurrency: string;
@@ -493,21 +583,29 @@ export async function createPlaybook(
   input: MetaInput & { ownerTenantId: string | null; createdBy: string | null }
 ): Promise<{ id: string; slug: string }> {
   const slug = await uniqueSlug(client, input.ownerTenantId, input.name);
+  const status = input.status ?? 'draft';
+  const categoryId = await ensureCategory(client, input.ownerTenantId, input.category, {
+    visibility: input.visibility,
+    status,
+    createdBy: input.createdBy,
+  });
   const { rows } = await client.query(
     `INSERT INTO qa_playbooks
-       (tenant_id, slug, name, category, summary, overview, version, visibility, status,
+       (tenant_id, slug, name, category, category_id, summary, overview, version, visibility, status,
         price_credits, price_amount, price_currency, created_by, updated_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'draft', $9, $10, $11, $12, $12)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14)
      RETURNING id, slug`,
     [
       input.ownerTenantId,
       slug,
       input.name,
       input.category,
+      categoryId,
       input.summary,
       input.overview,
       input.version,
       input.visibility,
+      status,
       input.priceCredits,
       input.priceAmount,
       input.priceCurrency,
@@ -534,19 +632,26 @@ export async function updatePlaybookMeta(
     current[0].name === input.name
       ? undefined
       : await uniqueSlug(client, current[0].tenant_id, input.name, playbookId);
+  const categoryId = await ensureCategory(client, current[0].tenant_id, input.category, {
+    visibility: input.visibility,
+    status: input.status || 'published',
+    createdBy: input.updatedBy,
+  });
 
   const { rows } = await client.query(
     `UPDATE qa_playbooks
-        SET name = $2, category = $3, summary = $4, overview = $5, version = $6,
-            visibility = $7, price_credits = $8, price_amount = $9, price_currency = $10,
-            slug = COALESCE($11, slug),
-            updated_by = $12, updated_at = NOW(), last_updated_at = NOW()
+        SET name = $2, category = $3, category_id = $4, summary = $5, overview = $6, version = $7,
+            visibility = $8, price_credits = $9, price_amount = $10, price_currency = $11,
+            status = COALESCE($12, status),
+            slug = COALESCE($13, slug),
+            updated_by = $14, updated_at = NOW(), last_updated_at = NOW()
       WHERE id = $1
       RETURNING id, slug`,
     [
       playbookId,
       input.name,
       input.category,
+      categoryId,
       input.summary,
       input.overview,
       input.version,
@@ -554,6 +659,7 @@ export async function updatePlaybookMeta(
       input.priceCredits,
       input.priceAmount,
       input.priceCurrency,
+      input.status ?? null,
       slug ?? null,
       input.updatedBy,
     ]
@@ -702,16 +808,218 @@ export async function setStatus(
   client: TenantClient,
   playbookId: string,
   status: string,
-  updatedBy: string | null
+  updatedBy: string | null,
+  visibility?: string | null
 ): Promise<void> {
+  if (visibility) {
+    await client.query(
+      `UPDATE qa_playbooks SET status = $2, visibility = $3, updated_by = $4, updated_at = NOW() WHERE id = $1`,
+      [playbookId, status, visibility, updatedBy]
+    );
+  } else {
+    await client.query(
+      `UPDATE qa_playbooks SET status = $2, updated_by = $3, updated_at = NOW() WHERE id = $1`,
+      [playbookId, status, updatedBy]
+    );
+  }
+}
+
+export async function softDeletePlaybook(
+  client: TenantClient,
+  playbookId: string,
+  userId: string | null,
+  isSuperAdmin = false
+): Promise<{ id: string; name: string }> {
+  const { rows: current } = await client.query(
+    `SELECT id, name, tenant_id FROM qa_playbooks WHERE id = $1`,
+    [playbookId]
+  );
+  if (current.length === 0) throw new Error('Playbook not found');
+  if (current[0].tenant_id === null && !isSuperAdmin) {
+    const err: any = new Error('Global library playbooks cannot be deleted');
+    err.status = 403;
+    throw err;
+  }
+  const { rows } = await client.query(
+    `UPDATE qa_playbooks
+        SET deleted_at = NOW(), deleted_by = $2, updated_at = NOW()
+      WHERE id = $1 AND (tenant_id = $3 OR $4::boolean OR (tenant_id IS NULL AND $3::uuid IS NULL))
+      RETURNING id, name`,
+    [playbookId, userId, client.tenantId, isSuperAdmin]
+  );
+  return rows[0];
+}
+
+export async function restorePlaybook(
+  client: TenantClient,
+  playbookId: string,
+  isSuperAdmin = false
+): Promise<{ id: string; name: string }> {
+  const { rows } = await client.query(
+    `UPDATE qa_playbooks
+        SET deleted_at = NULL, deleted_by = NULL, updated_at = NOW()
+      WHERE id = $1 AND (tenant_id = $2 OR $3::boolean OR (tenant_id IS NULL AND $2::uuid IS NULL))
+      RETURNING id, name`,
+    [playbookId, client.tenantId, isSuperAdmin]
+  );
+  if (rows.length === 0) throw new Error('Playbook not found in trash');
+  return rows[0];
+}
+
+export async function permanentDeletePlaybook(
+  client: TenantClient,
+  playbookId: string,
+  isSuperAdmin = false
+): Promise<void> {
+  const { rows: current } = await client.query(
+    `SELECT tenant_id FROM qa_playbooks WHERE id = $1`,
+    [playbookId]
+  );
+  if (current.length === 0) return;
+  if (current[0].tenant_id === null && !isSuperAdmin) {
+    const err: any = new Error('Global library playbooks cannot be permanently deleted');
+    err.status = 403;
+    throw err;
+  }
+  await client.query(`DELETE FROM qa_playbooks WHERE id = $1 AND (tenant_id = $2 OR $3::boolean OR (tenant_id IS NULL AND $2::uuid IS NULL))`, [
+    playbookId,
+    client.tenantId,
+    isSuperAdmin,
+  ]);
+}
+
+export async function listTrashPlaybooks(
+  client: TenantClient,
+  isSuperAdmin = false
+): Promise<any[]> {
+  const { rows } = await client.query(
+    `SELECT p.id, p.slug, p.name, p.category, p.category_id, p.version, p.summary,
+            p.deleted_at, p.deleted_by,
+            COALESCE(stats.item_count, 0) AS item_count,
+            COALESCE(u.name, u.work_email, 'User') AS deleted_by_name
+       FROM qa_playbooks p
+       LEFT JOIN users u ON u.id::text = p.deleted_by::text
+       LEFT JOIN LATERAL (
+          SELECT COUNT(*)::int AS item_count
+            FROM qa_playbook_items i
+           WHERE i.playbook_id = p.id
+        ) stats ON TRUE
+      WHERE (p.tenant_id = $1 OR p.tenant_id IS NULL OR $2::boolean) AND p.deleted_at IS NOT NULL
+      ORDER BY p.deleted_at DESC`,
+    [client.tenantId, isSuperAdmin]
+  );
+  return rows;
+}
+
+export async function softDeleteCategory(
+  client: TenantClient,
+  categoryId: string,
+  userId: string | null,
+  isSuperAdmin = false
+): Promise<{ id: string; name: string; affectedPlaybooks: number }> {
+  const { rows: current } = await client.query(
+    `SELECT id, name, tenant_id FROM qa_playbook_categories WHERE id = $1`,
+    [categoryId]
+  );
+  if (current.length === 0) throw new Error('Category not found');
+  if (current[0].tenant_id === null && !isSuperAdmin) {
+    const err: any = new Error('Global library categories cannot be deleted');
+    err.status = 403;
+    throw err;
+  }
   await client.query(
-    `UPDATE qa_playbooks SET status = $2, updated_by = $3, updated_at = NOW() WHERE id = $1`,
-    [playbookId, status, updatedBy]
+    `UPDATE qa_playbook_categories
+        SET deleted_at = NOW(), deleted_by = $2, updated_at = NOW()
+      WHERE id = $1 AND (tenant_id = $3 OR $4::boolean OR (tenant_id IS NULL AND $3::uuid IS NULL))`,
+    [categoryId, userId, client.tenantId, isSuperAdmin]
+  );
+  const { rowCount } = await client.query(
+    `UPDATE qa_playbooks
+        SET category_deleted_at = NOW(), updated_at = NOW()
+      WHERE category_id = $1 AND (tenant_id = $2 OR $3::boolean OR (tenant_id IS NULL AND $2::uuid IS NULL)) AND category_deleted_at IS NULL`,
+    [categoryId, client.tenantId, isSuperAdmin]
+  );
+  return { id: categoryId, name: current[0].name, affectedPlaybooks: rowCount || 0 };
+}
+
+export async function restoreCategory(
+  client: TenantClient,
+  categoryId: string,
+  isSuperAdmin = false
+): Promise<{ id: string; name: string; restoredPlaybooks: number }> {
+  const { rows: current } = await client.query(
+    `SELECT id, name, tenant_id FROM qa_playbook_categories WHERE id = $1 AND (tenant_id = $2 OR $3::boolean OR (tenant_id IS NULL AND $2::uuid IS NULL))`,
+    [categoryId, client.tenantId, isSuperAdmin]
+  );
+  if (current.length === 0) throw new Error('Category not found in trash');
+  await client.query(
+    `UPDATE qa_playbook_categories
+        SET deleted_at = NULL, deleted_by = NULL, updated_at = NOW()
+      WHERE id = $1 AND (tenant_id = $2 OR $3::boolean OR (tenant_id IS NULL AND $2::uuid IS NULL))`,
+    [categoryId, client.tenantId, isSuperAdmin]
+  );
+  const { rowCount } = await client.query(
+    `UPDATE qa_playbooks
+        SET category_deleted_at = NULL, updated_at = NOW()
+      WHERE category_id = $1 AND (tenant_id = $2 OR $3::boolean OR (tenant_id IS NULL AND $2::uuid IS NULL)) AND category_deleted_at IS NOT NULL`,
+    [categoryId, client.tenantId, isSuperAdmin]
+  );
+  return { id: categoryId, name: current[0].name, restoredPlaybooks: rowCount || 0 };
+}
+
+export async function permanentDeleteCategory(
+  client: TenantClient,
+  categoryId: string,
+  isSuperAdmin = false
+): Promise<void> {
+  const { rows: current } = await client.query(
+    `SELECT tenant_id FROM qa_playbook_categories WHERE id = $1`,
+    [categoryId]
+  );
+  if (current.length === 0) return;
+  if (current[0].tenant_id === null && !isSuperAdmin) {
+    const err: any = new Error('Global library categories cannot be permanently deleted');
+    err.status = 403;
+    throw err;
+  }
+  // 1. Hard delete all playbooks that were category-deleted (and not individually trashed)
+  await client.query(
+    `DELETE FROM qa_playbooks
+      WHERE category_id = $1 AND (tenant_id = $2 OR $3::boolean OR (tenant_id IS NULL AND $2::uuid IS NULL)) AND category_deleted_at IS NOT NULL AND deleted_at IS NULL`,
+    [categoryId, client.tenantId, isSuperAdmin]
+  );
+  // 2. Detach any remaining individually trashed playbooks
+  await client.query(
+    `UPDATE qa_playbooks SET category_id = NULL WHERE category_id = $1 AND (tenant_id = $2 OR $3::boolean OR (tenant_id IS NULL AND $2::uuid IS NULL))`,
+    [categoryId, client.tenantId, isSuperAdmin]
+  );
+  // 3. Delete category record
+  await client.query(
+    `DELETE FROM qa_playbook_categories WHERE id = $1 AND (tenant_id = $2 OR $3::boolean OR (tenant_id IS NULL AND $2::uuid IS NULL))`,
+    [categoryId, client.tenantId, isSuperAdmin]
   );
 }
 
-export async function deletePlaybook(client: TenantClient, playbookId: string): Promise<void> {
-  await client.query(`DELETE FROM qa_playbooks WHERE id = $1`, [playbookId]);
+export async function listTrashCategories(
+  client: TenantClient,
+  isSuperAdmin = false
+): Promise<any[]> {
+  const { rows } = await client.query(
+    `SELECT c.id, c.slug, c.name, c.description, c.deleted_at, c.deleted_by,
+            COUNT(p.id)::int AS playbook_count,
+            COALESCE(u.name, u.work_email, 'User') AS deleted_by_name
+       FROM qa_playbook_categories c
+       LEFT JOIN users u ON u.id::text = c.deleted_by::text
+       LEFT JOIN qa_playbooks p
+         ON p.category_id = c.id
+        AND (p.tenant_id = c.tenant_id OR (c.tenant_id IS NULL AND p.tenant_id IS NULL))
+        AND p.category_deleted_at IS NOT NULL
+      WHERE (c.tenant_id = $1 OR c.tenant_id IS NULL OR $2::boolean) AND c.deleted_at IS NOT NULL
+      GROUP BY c.id, c.slug, c.name, c.description, c.deleted_at, c.deleted_by, u.name, u.work_email
+      ORDER BY c.deleted_at DESC`,
+    [client.tenantId, isSuperAdmin]
+  );
+  return rows;
 }
 
 /**
@@ -721,9 +1029,9 @@ export async function deletePlaybook(client: TenantClient, playbookId: string): 
 export async function getOwnership(
   client: TenantClient,
   playbookId: string
-): Promise<{ id: string; slug: string; name: string; tenantId: string | null; visibility: string; status: string } | null> {
+): Promise<{ id: string; slug: string; name: string; tenantId: string | null; createdBy: string | null; visibility: string; status: string } | null> {
   const { rows } = await client.query(
-    `SELECT id, slug, name, tenant_id, visibility, status FROM qa_playbooks WHERE id = $1`,
+    `SELECT id, slug, name, tenant_id, created_by, visibility, status FROM qa_playbooks WHERE id = $1`,
     [playbookId]
   );
   if (rows.length === 0) return null;
@@ -732,6 +1040,7 @@ export async function getOwnership(
     slug: rows[0].slug,
     name: rows[0].name,
     tenantId: rows[0].tenant_id,
+    createdBy: rows[0].created_by,
     visibility: rows[0].visibility,
     status: rows[0].status,
   };

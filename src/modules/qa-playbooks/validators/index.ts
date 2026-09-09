@@ -2,9 +2,79 @@
 // Request shapes for every endpoint that writes.
 
 import { z } from 'zod';
-import { CATEGORIES, LEVELS, REFERENCE_TYPES, RISKS, VISIBILITIES } from '../constants';
+import {
+  CATEGORIES,
+  COLLECTION_KINDS,
+  LEVELS,
+  REFERENCE_TYPES,
+  RISKS,
+  VISIBILITIES,
+} from '../constants';
 
 const uuid = z.string().uuid();
+
+/* ── Collections ─────────────────────────────────────────────────────────── */
+
+/**
+ * `visibility` is accepted and not trusted, exactly as on a playbook: the
+ * controller re-derives it from who owns the row before it reaches the
+ * database, and the CHECK in migration 005 refuses a bad pairing anyway.
+ */
+export const collectionMetaSchema = z.object({
+  name: z.string().trim().min(1, 'A name is required').max(120),
+  kind: z.enum(COLLECTION_KINDS).default('industry'),
+  /**
+   * Who the pack is for. Open vocabulary — see migration 010: the list of
+   * industries anyone might build for is not something this schema can know in
+   * advance, and a closed set sends people back to encoding it in the name.
+   */
+  industry: z.string().trim().max(120).nullable().optional(),
+  summary: z.string().trim().max(400).nullable().optional(),
+  description: z.string().trim().max(20000).nullable().optional(),
+  /** A lucide icon name. The FE renders it against its own allow-list. */
+  icon: z.string().trim().max(40).nullable().optional(),
+  visibility: z.enum(VISIBILITIES).default('workspace'),
+  status: z.enum(['draft', 'published', 'archived']).default('draft').optional(),
+  price_credits: z.number().int().min(0).max(1_000_000).nullable().optional(),
+  price_amount: z.number().min(0).max(1_000_000).nullable().optional(),
+  price_currency: z.string().trim().length(3).default('USD'),
+  sort_order: z.number().int().min(0).max(10_000).default(0),
+});
+
+export type CollectionMetaBody = z.infer<typeof collectionMetaSchema>;
+
+/**
+ * The whole membership, in order. Position is the ARRAY INDEX, deliberately not
+ * a `sort_order` field the client could send inconsistently — two playbooks
+ * claiming position 3 is not a state the server should have to resolve.
+ *
+ * The cap is generous but real: a pack of 500 playbooks is a mis-click on a
+ * "select all", not curation.
+ */
+export const collectionMembersSchema = z.object({
+  playbooks: z
+    .array(
+      z.object({
+        playbook_id: uuid,
+        note: z.string().trim().max(400).nullable().optional(),
+      })
+    )
+    .max(500),
+});
+
+export type CollectionMembersBody = z.infer<typeof collectionMembersSchema>;
+
+/**
+ * "What do you build?" — the workspace's own answer, in its own order.
+ *
+ * Whole-set like membership, and capped low on purpose: pinning twenty packs is
+ * the same as pinning none, because the shelf stops being sorted by anything.
+ */
+export const collectionPinsSchema = z.object({
+  collections: z.array(uuid).max(12),
+});
+
+export type CollectionPinsBody = z.infer<typeof collectionPinsSchema>;
 
 /* ── Generating test cases from a selection ──────────────────────────────── */
 
@@ -24,18 +94,20 @@ export type GenerateBody = z.infer<typeof generateSchema>;
 /* ── Authoring ───────────────────────────────────────────────────────────── */
 
 /**
- * `visibility` is accepted but never trusted: the controller downgrades any
- * non-super_admin request to 'workspace' before it reaches the database, and
- * the CHECK constraint in migration 002 refuses the pairing regardless.
+ * `visibility` is accepted and validated against public, workspace (private), premium.
  */
 export const playbookMetaSchema = z.object({
   name: z.string().trim().min(1, 'A name is required').max(160),
   category: z.string().trim().min(1, 'A category is required').max(80),
-  summary: z.string().trim().min(1, 'A summary is required').max(600),
+  summary: z.preprocess(
+    (v: any) => (typeof v === 'string' && v.trim() ? v.trim() : 'QA Playbook'),
+    z.string().trim().min(1, 'A summary is required').max(600)
+  ),
   overview: z.string().trim().max(20000).default(''),
   version: z.string().trim().min(1).max(20).default('1.0'),
   changelog: z.string().trim().max(2000).nullable().optional(),
   visibility: z.enum(VISIBILITIES).default('workspace'),
+  status: z.enum(['draft', 'published', 'archived']).default('draft').optional(),
   price_credits: z.number().int().min(0).max(1_000_000).nullable().optional(),
   price_amount: z.number().min(0).max(1_000_000).nullable().optional(),
   price_currency: z.string().trim().length(3).default('USD'),
@@ -72,13 +144,64 @@ function normalizeUrl(value: unknown): unknown {
   return url;
 }
 
+function normalizeItemCategory(value: unknown): string {
+  if (typeof value !== 'string') return 'functional';
+  const clean = value.trim().toLowerCase().replace(/[-\s]+/g, '_');
+  if ((CATEGORIES as readonly string[]).includes(clean)) return clean;
+  if (clean.includes('ui') || clean.includes('visual') || clean.includes('layout')) return 'ui';
+  if (clean.includes('valid') || clean.includes('input')) return 'input_validation';
+  if (clean.includes('bound') || clean.includes('limit')) return 'boundary';
+  if (clean.includes('state') || clean.includes('account')) return 'account_state';
+  if (clean.includes('api') || clean.includes('endpoint')) return 'api';
+  if (clean.includes('auth') || clean.includes('login') || clean.includes('pass')) return 'auth';
+  if (clean.includes('session') || clean.includes('cookie') || clean.includes('token')) return 'session';
+  if (clean.includes('sec') || clean.includes('vuln') || clean.includes('owasp')) return 'security';
+  if (clean.includes('perf') || clean.includes('load') || clean.includes('speed')) return 'performance';
+  if (clean.includes('device') || clean.includes('browser') || clean.includes('mobile')) return 'browser_device';
+  if (clean.includes('access') || clean.includes('a11y') || clean.includes('wcag')) return 'accessibility';
+  return 'functional';
+}
+
+function normalizeItemLevel(value: unknown): string {
+  if (typeof value !== 'string') return 'junior';
+  const clean = value.trim().toLowerCase();
+  if ((LEVELS as readonly string[]).includes(clean)) return clean;
+  if (clean.includes('beg') || clean.includes('basic') || clean.includes('jun')) return 'junior';
+  if (clean.includes('mid') || clean.includes('med') || clean.includes('inter')) return 'intermediate';
+  if (clean.includes('adv') || clean.includes('sen')) return 'senior';
+  if (clean.includes('exp') || clean.includes('lead')) return 'expert';
+  return 'junior';
+}
+
+function normalizeItemRisk(value: unknown): string {
+  if (typeof value !== 'string') return 'medium';
+  const clean = value.trim().toLowerCase();
+  if ((RISKS as readonly string[]).includes(clean)) return clean;
+  if (clean.includes('crit') || clean.includes('block') || clean.includes('sev1')) return 'critical';
+  if (clean.includes('hi') || clean.includes('maj') || clean.includes('sev2')) return 'high';
+  if (clean.includes('low') || clean.includes('min') || clean.includes('sev4')) return 'low';
+  return 'medium';
+}
+
+function normalizeReferenceType(value: unknown): string {
+  if (typeof value !== 'string') return 'standard';
+  const clean = value.trim().toLowerCase().replace(/[-\s]+/g, '_');
+  if ((REFERENCE_TYPES as readonly string[]).includes(clean)) return clean;
+  if (clean.includes('guide') || clean.includes('doc')) return 'qa_guide';
+  if (clean.includes('sec') || clean.includes('owasp')) return 'security_standard';
+  if (clean.includes('case') || clean.includes('test')) return 'real_test_cases';
+  if (clean.includes('app') || clean.includes('live')) return 'real_application';
+  if (clean.includes('tut') || clean.includes('video')) return 'tutorial';
+  return 'standard';
+}
+
 /**
  * A pointer out of the playbook. `url` is optional: "OWASP ASVS §2.1" is a
  * useful reference with nothing to click, and refusing it would push authors
  * into pasting a search link instead.
  */
 const referenceSchema = z.object({
-  type: z.enum(REFERENCE_TYPES),
+  type: z.preprocess(normalizeReferenceType, z.enum(REFERENCE_TYPES)),
   name: z.string().trim().min(1, 'A reference needs a name').max(200),
   description: z.string().trim().max(600).default(''),
   url: z.preprocess(
@@ -101,13 +224,11 @@ export const itemSchema = z.object({
   examples: z.array(exampleSchema).max(40).default([]),
   expected: z.string().trim().max(4000).default(''),
   steps: z.array(z.string().trim().min(1).max(1000)).max(40).default([]),
-  level: z.enum(LEVELS),
-  category: z.enum(CATEGORIES),
-  risk: z.enum(RISKS).default('medium'),
+  level: z.preprocess(normalizeItemLevel, z.enum(LEVELS)),
+  category: z.preprocess(normalizeItemCategory, z.enum(CATEGORIES)),
+  risk: z.preprocess(normalizeItemRisk, z.enum(RISKS).default('medium')),
   why_it_matters: z.string().trim().max(2000).default(''),
-  /** The state the system must be in before the check means anything. */
   preconditions: z.array(z.string().trim().min(1).max(600)).max(20).default([]),
-  /** Variants worth a second pass — empty, maximum, unicode, concurrent. */
   edge_cases: z.array(z.string().trim().min(1).max(600)).max(30).default([]),
   references: z.array(referenceSchema).max(12).default([]),
   applies_when: z.record(z.string(), z.array(z.string())).default({}),
@@ -160,9 +281,11 @@ export type ContentBody = z.infer<typeof contentSchema>;
  * layer to drift.
  */
 export const importSchema = z.object({
+  collection_id: z.string().trim().uuid().nullable().optional(),
   playbooks: z
     .array(
       playbookMetaSchema.extend({
+        collection_id: z.string().trim().uuid().nullable().optional(),
         sections: z.array(sectionSchema).min(1, 'Add at least one section').max(60),
       })
     )
@@ -176,6 +299,7 @@ export type ImportBody = z.infer<typeof importSchema>;
 
 export const publishSchema = z.object({
   status: z.enum(['draft', 'published', 'archived']),
+  visibility: z.enum(VISIBILITIES).optional(),
 });
 
 /* ── Access ──────────────────────────────────────────────────────────────── */

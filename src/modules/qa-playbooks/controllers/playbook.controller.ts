@@ -10,6 +10,7 @@ import { AuthRequest } from '@/types';
 import { withTenant } from '../db/pool';
 import { actorOf, handle, isSuperAdmin, listParam, ok, PlaybookError } from '../http';
 import * as repo from '../repositories/playbook.repo';
+import * as collectionRepo from '../repositories/collection.repo';
 import {
   contentSchema,
   decisionSchema,
@@ -40,6 +41,9 @@ import { AIFeature } from '@/ai/types/AIFeature';
 import {
   CATEGORIES,
   CATEGORY_LABELS,
+  COLLECTION_KINDS,
+  COLLECTION_KIND_HINTS,
+  COLLECTION_KIND_LABELS,
   LEVELS,
   LEVEL_LABELS,
   RISKS,
@@ -52,7 +56,7 @@ import { recordTransaction, Section, Module, Page, Action, EntityType } from '@/
 
 /** GET /api/v2/qa/playbooks — the catalog. */
 export const list = handle(async (req: AuthRequest, res: Response) => {
-  const { tenantId } = actorOf(req);
+  const { tenantId, userId } = actorOf(req);
   const category = typeof req.query.category === 'string' ? req.query.category : undefined;
   const search = typeof req.query.search === 'string' ? req.query.search.trim() : undefined;
   const mine = req.query.mine === 'true';
@@ -61,10 +65,24 @@ export const list = handle(async (req: AuthRequest, res: Response) => {
 
   const data = await withTenant(tenantId, async (client) => {
     const [playbooks, categories] = await Promise.all([
-      repo.listPlaybooks(client, { category, search: search || undefined, mine, includeAll }),
-      repo.listCategories(client),
+      repo.listPlaybooks(client, { category, search: search || undefined, mine, includeAll, userId, isSuperAdmin: isSuperAdmin(req) }),
+      repo.listCategories(client, { userId, isSuperAdmin: isSuperAdmin(req) }),
     ]);
-    return { playbooks, categories, canPublish: isSuperAdmin(req) };
+
+    // Which packs each card belongs to. One extra query for the whole page, and
+    // only collections this viewer may open — a chip that 404s is worse than no
+    // chip at all.
+    const membership = await collectionRepo.collectionsForPlaybooks(
+      client,
+      playbooks.map((p) => p.id),
+      { includeAll, userId, isSuperAdmin: isSuperAdmin(req) }
+    );
+
+    return {
+      playbooks: playbooks.map((p) => ({ ...p, collections: membership.get(p.id) ?? [] })),
+      categories,
+      canPublish: isSuperAdmin(req),
+    };
   });
 
   ok(res, data);
@@ -77,13 +95,18 @@ export const meta = handle(async (req: AuthRequest, res: Response) => {
     categories: CATEGORIES.map((value) => ({ value, label: CATEGORY_LABELS[value] })),
     risks: RISKS,
     visibilities: VISIBILITIES.map((value) => ({ value, label: VISIBILITY_LABELS[value] })),
+    collectionKinds: COLLECTION_KINDS.map((value) => ({
+      value,
+      label: COLLECTION_KIND_LABELS[value],
+      hint: COLLECTION_KIND_HINTS[value],
+    })),
     canPublish: isSuperAdmin(req),
   });
 });
 
 /** GET /api/v2/qa/playbooks/:slug — one playbook, or its locked preview. */
 export const detail = handle(async (req: AuthRequest, res: Response) => {
-  const { tenantId } = actorOf(req);
+  const { tenantId, userId } = actorOf(req);
   const slug = String(req.params.slug || '').trim();
   if (!slug) throw new PlaybookError('A playbook slug is required', 400);
 
@@ -92,6 +115,8 @@ export const detail = handle(async (req: AuthRequest, res: Response) => {
       levels: listParam(req.query.levels),
       categories: listParam(req.query.categories),
       includeAll: isSuperAdmin(req),
+      userId,
+      isSuperAdmin: isSuperAdmin(req),
     })
   );
   if (!playbook) throw new PlaybookError('Playbook not found', 404, 'NOT_FOUND');
@@ -102,33 +127,26 @@ export const detail = handle(async (req: AuthRequest, res: Response) => {
 /* ── Authoring ───────────────────────────────────────────────────────────── */
 
 /**
- * Who owns what a write creates, and what tier it may carry.
- *
- * A super_admin authors the platform library (tenant_id NULL) and may publish
- * it public or premium. Everyone else authors for their own tenant, and the
- * tier is forced to 'workspace' — the request body cannot talk them out of it,
- * and the CHECK constraint in migration 002 would refuse it anyway.
+ * Resolves ownership and visibility.
+ * Supports public and workspace (private) for all workspaces, and premium for super_admin.
  */
 function resolveOwnership(req: AuthRequest, requested: string) {
-  if (isSuperAdmin(req)) {
-    const visibility = requested === 'workspace' ? 'public' : requested;
-    return { ownerTenantId: null as string | null, visibility };
-  }
-  return { ownerTenantId: actorOf(req).tenantId as string | null, visibility: 'workspace' };
+  const isSuper = isSuperAdmin(req);
+  const tenantId = actorOf(req).tenantId as string | null;
+  const visibility = (requested === 'public' || requested === 'workspace')
+    ? requested
+    : (requested === 'premium' && isSuper ? 'premium' : 'workspace');
+  const ownerTenantId = visibility === 'workspace' ? tenantId : (isSuper && !tenantId ? null : tenantId);
+  return { ownerTenantId, visibility };
 }
 
-/** Refuse the write unless this caller owns the row. */
-function assertCanEdit(req: AuthRequest, owner: { tenantId: string | null }) {
-  const { tenantId } = actorOf(req);
-  if (owner.tenantId === null) {
-    if (!isSuperAdmin(req)) {
-      throw new PlaybookError('Only Testiez can edit a library playbook', 403, 'FORBIDDEN');
-    }
+/** Refuse the write unless this caller is the creator of the playbook. */
+function assertCanEdit(req: AuthRequest, owner: { tenantId: string | null; createdBy?: string | null }) {
+  const { userId } = actorOf(req);
+  if (owner.createdBy && userId && owner.createdBy === userId) {
     return;
   }
-  if (owner.tenantId !== tenantId) {
-    throw new PlaybookError('Playbook not found', 404, 'NOT_FOUND');
-  }
+  throw new PlaybookError('Only the creator of this playbook can edit or delete it', 403, 'FORBIDDEN');
 }
 
 /** POST /api/v2/qa/playbooks */
@@ -136,6 +154,7 @@ export const create = handle(async (req: AuthRequest, res: Response) => {
   const { tenantId, userId } = actorOf(req);
   const body = playbookMetaSchema.parse(req.body ?? {});
   const { ownerTenantId, visibility } = resolveOwnership(req, body.visibility);
+  const status = body.status || 'draft';
 
   const created = await withTenant(tenantId, (client) =>
     repo.createPlaybook(client, {
@@ -147,6 +166,7 @@ export const create = handle(async (req: AuthRequest, res: Response) => {
       overview: body.overview,
       version: body.version,
       visibility: visibility as any,
+      status,
       priceCredits: body.price_credits ?? null,
       priceAmount: body.price_amount ?? null,
       priceCurrency: body.price_currency,
@@ -159,14 +179,14 @@ export const create = handle(async (req: AuthRequest, res: Response) => {
     module: Module.QA_WORKSPACE,
     page: Page.QA_CASE_LIST,
     action: Action.CREATE,
-    actionLabel: `Playbook created (${visibility})`,
+    actionLabel: `Playbook created (${visibility} - ${status})`,
     entityType: EntityType.QA_CASE,
     entityId: created.id,
     entityLabel: body.name,
-    afterData: { slug: created.slug, visibility },
+    afterData: { slug: created.slug, visibility, status },
   });
 
-  ok(res, { id: created.id, slug: created.slug, visibility }, 201);
+  ok(res, { id: created.id, slug: created.slug, visibility, status }, 201);
 });
 
 /** PUT /api/v2/qa/playbooks/:id */
@@ -180,10 +200,11 @@ export const update = handle(async (req: AuthRequest, res: Response) => {
     if (!owner) throw new PlaybookError('Playbook not found', 404, 'NOT_FOUND');
     assertCanEdit(req, owner);
 
-    // Ownership never changes on edit, so the tier is constrained by who owns
-    // it now — not by who is making the request.
-    const visibility =
-      owner.tenantId === null ? (body.visibility === 'workspace' ? 'public' : body.visibility) : 'workspace';
+    const isSuper = isSuperAdmin(req);
+    const visibility = (body.visibility === 'public' || body.visibility === 'workspace')
+      ? body.visibility
+      : (body.visibility === 'premium' && (isSuper || owner.tenantId === null) ? 'premium' : 'workspace');
+    const status = body.status;
 
     return repo.updatePlaybookMeta(client, id, {
       name: body.name,
@@ -192,6 +213,7 @@ export const update = handle(async (req: AuthRequest, res: Response) => {
       overview: body.overview,
       version: body.version,
       visibility: visibility as any,
+      status,
       priceCredits: body.price_credits ?? null,
       priceAmount: body.price_amount ?? null,
       priceCurrency: body.price_currency,
@@ -222,7 +244,7 @@ export const saveContent = handle(async (req: AuthRequest, res: Response) => {
 export const setStatus = handle(async (req: AuthRequest, res: Response) => {
   const { tenantId, userId } = actorOf(req);
   const id = String(req.params.id);
-  const { status } = publishSchema.parse(req.body ?? {});
+  const { status, visibility } = publishSchema.parse(req.body ?? {});
 
   await withTenant(tenantId, async (client) => {
     const owner = await repo.getOwnership(client, id);
@@ -233,25 +255,168 @@ export const setStatus = handle(async (req: AuthRequest, res: Response) => {
     if (owner.tenantId === null && !isSuperAdmin(req)) {
       throw new PlaybookError('Only Testiez can publish a library playbook', 403, 'FORBIDDEN');
     }
-    await repo.setStatus(client, id, status, userId ?? null);
+
+    const resolvedVisibility = visibility
+      ? (visibility === 'public' || visibility === 'workspace'
+          ? visibility
+          : (visibility === 'premium' && isSuperAdmin(req) ? 'premium' : 'workspace'))
+      : null;
+
+    await repo.setStatus(client, id, status, userId ?? null, resolvedVisibility);
   });
 
-  ok(res, { id, status });
+  ok(res, { id, status, visibility });
 });
 
 /** DELETE /api/v2/qa/playbooks/:id */
 export const remove = handle(async (req: AuthRequest, res: Response) => {
-  const { tenantId } = actorOf(req);
+  const { tenantId, userId } = actorOf(req);
   const id = String(req.params.id);
+  const superAdmin = isSuperAdmin(req);
 
-  await withTenant(tenantId, async (client) => {
+  const result = await withTenant(tenantId, async (client) => {
     const owner = await repo.getOwnership(client, id);
     if (!owner) throw new PlaybookError('Playbook not found', 404, 'NOT_FOUND');
+    if (owner.tenantId === null && !superAdmin) {
+      throw new PlaybookError('Global library playbooks cannot be deleted', 403, 'FORBIDDEN');
+    }
     assertCanEdit(req, owner);
-    await repo.deletePlaybook(client, id);
+    return repo.softDeletePlaybook(client, id, userId, superAdmin);
   });
 
-  ok(res, { id, deleted: true });
+  ok(res, { id, name: result.name, deleted: true });
+});
+
+/** GET /api/v2/qa/playbooks/trash */
+export const listTrash = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId } = actorOf(req);
+  const tab = typeof req.query.tab === 'string' ? req.query.tab : 'all';
+  const superAdmin = isSuperAdmin(req);
+
+  const data = await withTenant(tenantId, async (client) => {
+    const [playbooks, collections, categories] = await Promise.all([
+      tab === 'all' || tab === 'playbooks' ? repo.listTrashPlaybooks(client, superAdmin) : [],
+      tab === 'all' || tab === 'collections' ? collectionRepo.listTrashCollections(client, superAdmin) : [],
+      tab === 'all' || tab === 'categories' ? repo.listTrashCategories(client, superAdmin) : [],
+    ]);
+    return {
+      playbooks,
+      collections,
+      categories,
+      counts: {
+        playbooks: playbooks.length,
+        collections: collections.length,
+        categories: categories.length,
+        total: playbooks.length + collections.length + categories.length,
+      },
+    };
+  });
+
+  ok(res, data);
+});
+
+/** POST /api/v2/qa/playbooks/trash/playbooks/:id/restore */
+export const restorePlaybook = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId } = actorOf(req);
+  const id = String(req.params.id);
+  const superAdmin = isSuperAdmin(req);
+
+  const restored = await withTenant(tenantId, async (client) => {
+    return repo.restorePlaybook(client, id, superAdmin);
+  });
+
+  ok(res, { id, name: restored.name, restored: true });
+});
+
+/** DELETE /api/v2/qa/playbooks/trash/playbooks/:id/permanent */
+export const permanentDeletePlaybook = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId } = actorOf(req);
+  const id = String(req.params.id);
+  const superAdmin = isSuperAdmin(req);
+
+  await withTenant(tenantId, async (client) => {
+    await repo.permanentDeletePlaybook(client, id, superAdmin);
+  });
+
+  ok(res, { id, permanentlyDeleted: true });
+});
+
+/** DELETE /api/v2/qa/playbooks/categories/:id */
+export const deleteCategory = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId, userId } = actorOf(req);
+  const id = String(req.params.id);
+  const superAdmin = isSuperAdmin(req);
+
+  const result = await withTenant(tenantId, async (client) => {
+    return repo.softDeleteCategory(client, id, userId, superAdmin);
+  });
+
+  ok(res, result);
+});
+
+/** POST /api/v2/qa/playbooks/trash/categories/:id/restore */
+export const restoreCategory = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId } = actorOf(req);
+  const id = String(req.params.id);
+  const superAdmin = isSuperAdmin(req);
+
+  const result = await withTenant(tenantId, async (client) => {
+    return repo.restoreCategory(client, id, superAdmin);
+  });
+
+  ok(res, result);
+});
+
+/** DELETE /api/v2/qa/playbooks/trash/categories/:id/permanent */
+export const permanentDeleteCategory = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId } = actorOf(req);
+  const id = String(req.params.id);
+  const superAdmin = isSuperAdmin(req);
+
+  await withTenant(tenantId, async (client) => {
+    await repo.permanentDeleteCategory(client, id, superAdmin);
+  });
+
+  ok(res, { id, permanentlyDeleted: true });
+});
+
+/** GET /api/v2/qa/playbooks/categories/detailed */
+export const listCategoriesDetailed = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId, userId } = actorOf(req);
+  const categories = await withTenant(tenantId, async (client) => {
+    return repo.listCategoriesDetailed(client, { userId, isSuperAdmin: isSuperAdmin(req) });
+  });
+  ok(res, { categories });
+});
+
+/** DELETE /api/v2/qa/playbooks/trash/empty */
+export const emptyTrash = handle(async (req: AuthRequest, res: Response) => {
+  const { tenantId } = actorOf(req);
+  const tab = typeof req.query.tab === 'string' ? req.query.tab : 'all';
+  const superAdmin = isSuperAdmin(req);
+
+  await withTenant(tenantId, async (client) => {
+    if (tab === 'all' || tab === 'playbooks') {
+      const trashed = await repo.listTrashPlaybooks(client, superAdmin);
+      for (const p of trashed) {
+        await repo.permanentDeletePlaybook(client, p.id, superAdmin);
+      }
+    }
+    if (tab === 'all' || tab === 'collections') {
+      const trashed = await collectionRepo.listTrashCollections(client, superAdmin);
+      for (const c of trashed) {
+        await collectionRepo.permanentDeleteCollection(client, c.id, superAdmin);
+      }
+    }
+    if (tab === 'all' || tab === 'categories') {
+      const trashed = await repo.listTrashCategories(client, superAdmin);
+      for (const cat of trashed) {
+        await repo.permanentDeleteCategory(client, cat.id, superAdmin);
+      }
+    }
+  });
+
+  ok(res, { emptied: true });
 });
 
 /**
@@ -296,6 +461,7 @@ export const importPlaybooks = handle(async (req: AuthRequest, res: Response) =>
           overview: entry.overview,
           version: entry.version,
           visibility: visibility as any,
+          status: (entry.status || 'draft') as any,
           priceCredits: entry.price_credits ?? null,
           priceAmount: entry.price_amount ?? null,
           priceCurrency: entry.price_currency,
@@ -311,6 +477,15 @@ export const importPlaybooks = handle(async (req: AuthRequest, res: Response) =>
           },
           userId ?? null
         );
+
+        const targetCollectionId = entry.collection_id || body.collection_id;
+        if (targetCollectionId) {
+          try {
+            await collectionRepo.addMember(client, targetCollectionId, playbook.id, userId ?? null);
+          } catch (colErr) {
+            console.warn('[importPlaybooks] Failed to associate playbook with collection:', colErr);
+          }
+        }
 
         return { ...playbook, itemCount: (content as any)?.itemCount ?? 0 };
       });
@@ -559,7 +734,10 @@ export const generate = handle(async (req: AuthRequest, res: Response) => {
 
     // getItemsByIds re-applies the visibility and unlock scope, so this cannot
     // become a back door into a locked body even if the check above changed.
-    const items = await repo.getItemsByIds(client, playbook.id, body.item_ids);
+    const items = await repo.getItemsByIds(client, playbook.id, body.item_ids, {
+      userId,
+      isSuperAdmin: isSuperAdmin(req),
+    });
     if (items.length === 0) {
       throw new PlaybookError('None of the selected recommendations belong to this playbook', 400);
     }

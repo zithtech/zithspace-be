@@ -28,6 +28,7 @@ import { Permissions } from '@/types/permissions';
 import { requireAiAccess } from '@/middleware/aiAccess';
 import { requireSuperAdmin } from '../http';
 import * as playbooks from '../controllers/playbook.controller';
+import * as collections from '../controllers/collection.controller';
 
 const router = express.Router();
 
@@ -35,11 +36,64 @@ router.use(resolveTenant);
 router.use(authenticateToken);
 router.use(requireAuth);
 
-const canRead = requireAnyPermission(Permissions.QA_CASE_READ, Permissions.QA_MANAGE);
-const canWrite = requireAnyPermission(Permissions.QA_CASE_CREATE, Permissions.QA_MANAGE);
+const canRead = requireAnyPermission(
+  Permissions.PLAYBOOK_READ,
+  Permissions.PLAYBOOK_MANAGE
+);
+const canWrite = requireAnyPermission(
+  Permissions.PLAYBOOK_CREATE,
+  Permissions.PLAYBOOK_MANAGE
+);
+const canDelete = requireAnyPermission(
+  Permissions.PLAYBOOK_DELETE,
+  Permissions.PLAYBOOK_MANAGE
+);
+const canRequest = requireAnyPermission(
+  Permissions.PLAYBOOK_REQUEST,
+  Permissions.PLAYBOOK_READ,
+  Permissions.PLAYBOOK_MANAGE
+);
+const canUpload = requireAnyPermission(
+  Permissions.PLAYBOOK_UPLOAD,
+  Permissions.PLAYBOOK_CREATE,
+  Permissions.PLAYBOOK_MANAGE
+);
+const canTrashRead = requireAnyPermission(
+  Permissions.PLAYBOOK_TRASH_READ,
+  Permissions.PLAYBOOK_DELETE,
+  Permissions.PLAYBOOK_MANAGE,
+  Permissions.PLAYBOOK_READ,
+  Permissions.QA_MANAGE
+);
+const canTrashRestore = requireAnyPermission(
+  Permissions.PLAYBOOK_TRASH_RESTORE,
+  Permissions.PLAYBOOK_DELETE,
+  Permissions.PLAYBOOK_MANAGE
+);
+const canTrashDelete = requireAnyPermission(
+  Permissions.PLAYBOOK_TRASH_DELETE,
+  Permissions.PLAYBOOK_MANAGE
+);
 
 /* ── Literal routes first ────────────────────────────────────────────────── */
 router.get('/meta', canRead, playbooks.meta);
+
+/* ── Categories ──────────────────────────────────────────────────────────── */
+router.get('/categories/detailed', canRead, playbooks.listCategoriesDetailed);
+router.delete('/categories/:id', canDelete, playbooks.deleteCategory);
+
+/* ── Trash / Recycle Bin ─────────────────────────────────────────────────── */
+router.get('/trash', canTrashRead, playbooks.listTrash);
+router.delete('/trash/empty', canTrashDelete, playbooks.emptyTrash);
+
+router.post('/trash/playbooks/:id/restore', canTrashRestore, playbooks.restorePlaybook);
+router.delete('/trash/playbooks/:id/permanent', canTrashDelete, playbooks.permanentDeletePlaybook);
+
+router.post('/trash/collections/:id/restore', canTrashRestore, collections.restoreCollection);
+router.delete('/trash/collections/:id/permanent', canTrashDelete, collections.permanentDeleteCollection);
+
+router.post('/trash/categories/:id/restore', canTrashRestore, playbooks.restoreCategory);
+router.delete('/trash/categories/:id/permanent', canTrashDelete, playbooks.permanentDeleteCategory);
 
 // Zai drafting a recommendation. Writing guidance is the same authority as
 // authoring it by hand, plus the per-user AI toggle every AI route honours.
@@ -55,7 +109,7 @@ const documentUpload = multer({
 });
 router.post(
   '/ai/from-document',
-  canWrite,
+  canUpload,
   requireAiAccess,
   documentUpload.single('file'),
   playbooks.aiPlaybooksFromDocument
@@ -65,20 +119,65 @@ router.post(
 // note in services/zaiPlaybooksFromDocument.ts.
 router.post(
   '/ai/from-document/expand',
-  canWrite,
+  canUpload,
   requireAiAccess,
   playbooks.aiExpandPlaybookOutline
 );
+
+/* ── Collections ─────────────────────────────────────────────────────────
+ * Curated, ordered bundles of playbooks ("Fintech & Payments"). The whole block
+ * is declared above '/:slug' so "collections" is never read as a playbook slug —
+ * the same hazard '/requests' and '/import' are placed here to avoid.
+ *
+ * ORDER INSIDE THIS BLOCK MATTERS TWICE OVER. '/collections/pins' and
+ * '/collections/admin/...' are literal paths that would otherwise be swallowed
+ * by '/collections/:id' and '/collections/:slug' — a PUT to .../pins would be
+ * read as an edit of a collection whose id is the word "pins".
+ *
+ * AUTHORITY: reading is canRead, because the point of a pack is that a new
+ * customer finds theirs on day one. Writing is canWrite, and the CONTROLLER
+ * decides what a write means from who is asking — a super_admin curates the
+ * platform library, everyone else curates their own workspace's packs. That is
+ * the same split playbook authoring already uses, so there is no separate
+ * super_admin guard on the curation routes; assertCanCurate enforces it against
+ * the row that actually exists rather than against the request.
+ */
+router.put('/collections/pins', canRead, collections.setPins);
+router.get(
+  '/collections/admin/unlock-requests',
+  canRead,
+  requireSuperAdmin,
+  collections.listUnlockRequests
+);
+router.post(
+  '/collections/admin/unlock-requests/:id',
+  canRead,
+  requireSuperAdmin,
+  collections.decideUnlockRequest
+);
+
+router.get('/collections', canRead, collections.list);
+router.get('/collections/:slug', canRead, collections.detail);
+router.post('/collections', canWrite, collections.create);
+router.put('/collections/:id', canWrite, collections.update);
+// Mapping existing playbooks into the pack, in order. Whole membership at once.
+router.put('/collections/:id/playbooks', canWrite, collections.setPlaybooks);
+// Filing one newly authored playbook into a pack, without touching its order.
+router.post('/collections/:id/playbooks/:playbookId', canWrite, collections.addPlaybook);
+router.post('/collections/:id/status', canWrite, collections.setStatus);
+// Asking for a premium pack. canRequest, for the reason the playbook equivalent is.
+router.post('/collections/:slug/unlock-request', canRequest, collections.requestUnlock);
+router.delete('/collections/:id', canDelete, collections.remove);
 
 // Access administration — Testiez staff only.
 router.get('/admin/unlock-requests', canRead, requireSuperAdmin, playbooks.listRequests);
 router.post('/admin/unlock-requests/:id', canRead, requireSuperAdmin, playbooks.decideRequest);
 
-// "Write us a playbook for this". Asking needs read access only — the QA who
+// "Write us a playbook for this". Asking needs read / request access — the QA who
 // finds nothing for their feature is the one worth hearing from — while the
 // queue of every workspace's asks is Testiez's to work through.
 // Declared above '/:slug' so "requests" is never read as a playbook slug.
-router.post('/requests', canRead, playbooks.requestPlaybook);
+router.post('/requests', canRequest, playbooks.requestPlaybook);
 router.get('/requests', canRead, playbooks.listMyPlaybookRequests);
 router.get(
   '/admin/playbook-requests',
@@ -99,7 +198,7 @@ router.post('/', canWrite, playbooks.create);
 
 // A batch pasted back from the downloadable template. Declared above '/:slug'
 // so "import" is never read as a playbook slug.
-router.post('/import', canWrite, playbooks.importPlaybooks);
+router.post('/import', canUpload, playbooks.importPlaybooks);
 
 // "id/..." routes are declared before "/:slug" so a uuid path is never read as
 // a slug. The trailing segment disambiguates them.
@@ -111,11 +210,11 @@ router.delete('/:id/grant/:tenantId', canRead, requireSuperAdmin, playbooks.revo
 
 /* ── Slug-addressed reads and actions ────────────────────────────────────── */
 router.post('/:slug/generate', canWrite, playbooks.generate);
-router.post('/:slug/unlock-request', canRead, playbooks.requestUnlock);
+router.post('/:slug/unlock-request', canRequest, playbooks.requestUnlock);
 router.get('/:slug', canRead, playbooks.detail);
 
 /* ── Bare id routes last ─────────────────────────────────────────────────── */
 router.put('/:id', canWrite, playbooks.update);
-router.delete('/:id', canWrite, playbooks.remove);
+router.delete('/:id', canDelete, playbooks.remove);
 
 export default router;
