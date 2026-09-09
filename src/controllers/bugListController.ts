@@ -86,6 +86,13 @@ async function ensureSeveritySeeded(tenantId: string): Promise<void> {
     [tenantId],
   );
   if (existing.rowCount && existing.rowCount > 0) return;
+
+  const history = await pool.query(
+    `SELECT 1 FROM transaction_history WHERE tenant_id = $1 AND entity_type = 'bug_severity_option' LIMIT 1`,
+    [tenantId]
+  );
+  if (history.rowCount && history.rowCount > 0) return;
+
   for (const s of DEFAULT_SEVERITIES) {
     await pool.query(
       `INSERT INTO bug_severity_options
@@ -138,6 +145,13 @@ async function ensurePrioritySeeded(tenantId: string): Promise<void> {
     [tenantId],
   );
   if (existing.rowCount && existing.rowCount > 0) return;
+
+  const history = await pool.query(
+    `SELECT 1 FROM transaction_history WHERE tenant_id = $1 AND entity_type = 'bug_priority_option' LIMIT 1`,
+    [tenantId]
+  );
+  if (history.rowCount && history.rowCount > 0) return;
+
   for (const p of DEFAULT_PRIORITIES) {
     await pool.query(
       `INSERT INTO bug_priority_options
@@ -155,6 +169,13 @@ async function ensureBugTypeSeeded(tenantId: string): Promise<void> {
     [tenantId],
   );
   if (existing.rowCount && existing.rowCount > 0) return;
+
+  const history = await pool.query(
+    `SELECT 1 FROM transaction_history WHERE tenant_id = $1 AND entity_type = 'bug_type_option' LIMIT 1`,
+    [tenantId]
+  );
+  if (history.rowCount && history.rowCount > 0) return;
+
   for (const t of DEFAULT_BUG_TYPES) {
     await pool.query(
       `INSERT INTO bug_type_options
@@ -172,6 +193,13 @@ async function ensureBugListTypeSeeded(tenantId: string): Promise<void> {
     [tenantId],
   );
   if (existing.rowCount && existing.rowCount > 0) return;
+
+  const history = await pool.query(
+    `SELECT 1 FROM transaction_history WHERE tenant_id = $1 AND entity_type = 'bug_type_option' LIMIT 1`,
+    [tenantId]
+  );
+  if (history.rowCount && history.rowCount > 0) return;
+
   for (const t of DEFAULT_BUG_TYPES) {
     await pool.query(
       `INSERT INTO bug_list_types
@@ -196,6 +224,15 @@ async function getValidBugTypeKeys(tenantId: string): Promise<Set<string>> {
   await ensureBugTypeSeeded(tenantId);
   const r = await pool.query(
     `SELECT key FROM bug_type_options WHERE tenant_id = $1 AND is_active = true`,
+    [tenantId],
+  );
+  return new Set(r.rows.map((x: any) => x.key));
+}
+
+async function getValidBugListTypeKeys(tenantId: string): Promise<Set<string>> {
+  await ensureBugListTypeSeeded(tenantId);
+  const r = await pool.query(
+    `SELECT key FROM bug_list_types WHERE tenant_id = $1 AND is_active = true`,
     [tenantId],
   );
   return new Set(r.rows.map((x: any) => x.key));
@@ -1920,8 +1957,6 @@ export class BugListController {
       title,
       description,
       module,
-      bugType,
-      severity,
       tags,
       assigneeId,
       bugStatus,
@@ -1931,6 +1966,7 @@ export class BugListController {
       testCaseId,
       testCaseRef,
     } = req.body;
+    let { bugType, severity } = req.body;
 
     if (!description || typeof description !== "string") {
       bad(res, 400, "Description is required");
@@ -1943,15 +1979,13 @@ export class BugListController {
     if (severity) {
       const valid = await getValidSeverityKeys(req.tenantId!);
       if (!valid.has(severity)) {
-        bad(res, 400, `Invalid severity "${severity}". Configured options: ${[...valid].join(", ") || "none"}`);
-        return;
+        severity = null;
       }
     }
     if (bugType) {
-      const valid = await getValidBugTypeKeys(req.tenantId!);
+      const valid = await getValidBugListTypeKeys(req.tenantId!);
       if (!valid.has(bugType)) {
-        bad(res, 400, `Invalid bug type "${bugType}". Configured options: ${[...valid].join(", ") || "none"}`);
-        return;
+        bugType = null;
       }
     }
     if (bugStatus && !ALLOWED_BUG_STATUS.has(bugStatus)) {
@@ -2074,8 +2108,6 @@ export class BugListController {
       title,
       description,
       module,
-      bugType,
-      severity,
       status,
       bugStatus,
       tags,
@@ -2084,19 +2116,18 @@ export class BugListController {
       externalLinks,
       comments,
     } = req.body;
+    let { bugType, severity } = req.body;
 
     if (severity !== undefined && severity !== null) {
       const valid = await getValidSeverityKeys(req.tenantId!);
       if (!valid.has(severity)) {
-        bad(res, 400, `Invalid severity "${severity}". Configured options: ${[...valid].join(", ") || "none"}`);
-        return;
+        severity = null;
       }
     }
     if (bugType !== undefined && bugType !== null) {
-      const valid = await getValidBugTypeKeys(req.tenantId!);
+      const valid = await getValidBugListTypeKeys(req.tenantId!);
       if (!valid.has(bugType)) {
-        bad(res, 400, `Invalid bug type "${bugType}". Configured options: ${[...valid].join(", ") || "none"}`);
-        return;
+        bugType = null;
       }
     }
     if (status !== undefined && !ALLOWED_STATUS.has(status)) {
