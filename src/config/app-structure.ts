@@ -1,13 +1,6 @@
 export type FeatureType =
   | 'PRIME'
   | 'GRID'
-  | 'TEMPLATE'
-  | 'UPLOAD'
-  | 'ACCESS'
-  | 'NEW_PLAYBOOK'
-  | 'NEW_COLLECTIONS'
-  | 'REQUEST_PLAYBOOK'
-  | 'REQUESTED'
   | (string & {});
 
 export interface IFeature {
@@ -659,11 +652,7 @@ export const APP_STRUCTURE: ICore[] = [
             menu_order: 1,
             features: [
               { key: 'prime', name: 'Prime', featureType: 'PRIME' },
-              { key: 'grid', name: 'Grid', featureType: 'GRID' },
-              { key: 'template', name: 'Template', featureType: 'TEMPLATE' },
-              { key: 'upload', name: 'Upload', featureType: 'UPLOAD' },
-              { key: 'access', name: 'Access Requests', featureType: 'ACCESS' },
-              { key: 'new_playbook', name: 'New Playbook', featureType: 'NEW_PLAYBOOK' }
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
             ]
           },
           {
@@ -674,8 +663,7 @@ export const APP_STRUCTURE: ICore[] = [
             menu_order: 2,
             features: [
               { key: 'prime', name: 'Prime', featureType: 'PRIME' },
-              { key: 'grid', name: 'Grid', featureType: 'GRID' },
-              { key: 'new_collections', name: 'New Collections', featureType: 'NEW_COLLECTIONS' }
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
             ]
           },
           {
@@ -686,9 +674,7 @@ export const APP_STRUCTURE: ICore[] = [
             menu_order: 3,
             features: [
               { key: 'prime', name: 'Prime', featureType: 'PRIME' },
-              { key: 'grid', name: 'Grid', featureType: 'GRID' },
-              { key: 'request_playbook', name: 'Request Playbook', featureType: 'REQUEST_PLAYBOOK' },
-              { key: 'requested', name: 'Requested Playbooks', featureType: 'REQUESTED' }
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
             ]
           },
           {
