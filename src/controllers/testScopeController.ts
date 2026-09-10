@@ -200,10 +200,18 @@ export const createTestScope = async (req: Request, res: Response) => {
 
     const { name, type, priority, status, qa_owner, start_date, end_date, details } = req.body;
 
+    const trimmedName = typeof name === 'string' ? name.trim() : '';
+    if (!trimmedName) {
+      return res.status(400).json({ success: false, error: 'Test Scope name is required' });
+    }
+    if (trimmedName.length > 255) {
+      return res.status(400).json({ success: false, error: 'Test Scope name cannot exceed 255 characters' });
+    }
+
     const { rows } = await pool.query(
       `INSERT INTO qa_test_scopes (tenant_id, name, type, priority, status, qa_owner, start_date, end_date, details) 
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-      [tenantId, name, type, priority, status, qa_owner, start_date || null, end_date || null, details || {}]
+      [tenantId, trimmedName, type, priority, status, qa_owner, start_date || null, end_date || null, details || {}]
     );
 
     // The modules named on a scope are the workspace's module list — keep the
@@ -221,7 +229,7 @@ export const createTestScope = async (req: Request, res: Response) => {
       actionLabel: "Test Scope created",
       entityType: EntityType.QA_SCOPE,
       entityId: rows[0].id,
-      entityLabel: name,
+      entityLabel: trimmedName,
       afterData: rows[0],
     });
     // The modules named on a scope are the workspace's module list — keep the
@@ -247,6 +255,17 @@ export const updateTestScope = async (req: Request, res: Response) => {
     console.log('UpdateTestScope called with id:', id, 'body:', req.body);
     const { name, type, priority, status, qa_owner, start_date, end_date, details } = req.body || {};
 
+    let trimmedName: string | undefined = undefined;
+    if (name !== undefined) {
+      trimmedName = typeof name === 'string' ? name.trim() : '';
+      if (!trimmedName) {
+        return res.status(400).json({ success: false, error: 'Test Scope name cannot be empty' });
+      }
+      if (trimmedName.length > 255) {
+        return res.status(400).json({ success: false, error: 'Test Scope name cannot exceed 255 characters' });
+      }
+    }
+
     // Check approve/reject permissions
     if (status === 'Approved' || status === 'Rejected') {
       const allowed = await RBACService.hasAnyPermission(
@@ -265,7 +284,7 @@ export const updateTestScope = async (req: Request, res: Response) => {
        WHERE id = $9 AND tenant_id = $10 RETURNING *`;
 
     const params = [
-      name || null,
+      trimmedName !== undefined ? trimmedName : (name || null),
       type || null,
       priority || null,
       status || null,

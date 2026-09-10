@@ -183,7 +183,19 @@ router.post('/admin/unlock-requests/:id', canRead, requireSuperAdmin, playbooks.
 // finds nothing for their feature is the one worth hearing from — while the
 // queue of every workspace's asks is Testiez's to work through.
 // Declared above '/:slug' so "requests" is never read as a playbook slug.
-router.post('/requests', canRequest, requireSubscriptionFeature('work_playbooks_requested_playbooks_request_playbook', { exact: false }), playbooks.requestPlaybook);
+router.post(
+  '/requests',
+  canRequest,
+  requireSubscriptionFeature(
+    [
+      'work_playbooks_qa_playbooks_request_playbook',
+      'work_playbooks_requested_playbooks_request_playbook',
+      'work_playbooks_request_playbook',
+    ],
+    { exact: false }
+  ),
+  playbooks.requestPlaybook
+);
 router.get('/requests', canRead, requireSubscriptionFeature('work_playbooks_requested_playbooks_requested', { exact: false }), playbooks.listMyPlaybookRequests);
 router.get(
   '/admin/playbook-requests',
