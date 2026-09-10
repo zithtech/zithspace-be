@@ -151,7 +151,7 @@ export const getTestSuite = async (req: Request, res: Response) => {
     const { id } = req.params;
     
     const { rows: suiteRows } = await pool.query(`
-      SELECT ts.*, COALESCE(mv2.name, ptc_mv2.name, m.module_name, ptc_m.module_name, 'Unassigned') as module_name, ptc.title as parent_title,
+      SELECT ts.*, COALESCE(mv2.name, ptc_mv2.name, m.module_name, ptc_m.module_name, 'Unassigned') as module_name, ptc.title as parent_title, ptc.project_id as project_id,
       uc.name as created_by_name, uu.name as updated_by_name
       FROM qa_test_suites ts
       LEFT JOIN qa_todo_modules m ON ts.module_id::text = m.id::text

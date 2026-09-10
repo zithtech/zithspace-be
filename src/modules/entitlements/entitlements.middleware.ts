@@ -283,7 +283,7 @@ export const moduleEntitlementGate = async (
  * Set `options.exact = false` to enable prefix / upward resolution for page/module level checks.
  */
 export const requireSubscriptionFeature = (
-  featureKey: string,
+  featureKey: string | string[],
   options: { exact?: boolean } = { exact: true }
 ) => {
   return async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
@@ -306,9 +306,10 @@ export const requireSubscriptionFeature = (
         return;
       }
 
+      const keys = Array.isArray(featureKey) ? featureKey : [featureKey];
       const isEntitled = options.exact
-        ? granted.includes(featureKey)
-        : satisfies(granted, featureKey);
+        ? keys.some((k) => granted.includes(k))
+        : keys.some((k) => satisfies(granted, k));
 
       if (isEntitled) {
         next();
@@ -317,7 +318,7 @@ export const requireSubscriptionFeature = (
 
       if (!ENFORCING) {
         console.warn(
-          `[entitlements] would block tenant=${tenantId} exactFeature=${featureKey} ` +
+          `[entitlements] would block tenant=${tenantId} exactFeature=${Array.isArray(featureKey) ? featureKey.join(',') : featureKey} ` +
           `${req.method} ${req.originalUrl} (enforcement off)`
         );
         next();
