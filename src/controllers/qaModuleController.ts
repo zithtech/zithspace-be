@@ -1,6 +1,9 @@
 import { Request, Response } from 'express';
 import pool from '../config/dbpool';
 import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from '../utils/transactionHistory';
+import { RBACService } from '../modules/rbac/rbac.service';
+import { Permissions } from '../types/permissions';
+import { prisma } from '../config/database';
 
 /**
  * QA modules are tenant-owned and project-owned: a workspace curates its own
@@ -209,24 +212,66 @@ const USAGE_SQL = `
 export const getModules = async (req: Request, res: Response) => {
   try {
     const tenantId = (req as any).user?.tenantId;
+    const userId = (req as any).user?.id;
+    const userRole = (req as any).user?.role;
+
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized: No tenant found' });
 
     await backfillFromScopes(tenantId);
 
+    // Filter out inaccessible projects
+    const hasManagePermission = await RBACService.hasPermission(userId, tenantId, Permissions.PROJECT_MANAGE, userRole);
+    const userProjectsQuery: any = {
+      tenantId,
+      status: { notIn: ["ARCHIVED", "DELETED", "archived", "deleted"] },
+    };
+    if (!hasManagePermission) {
+      userProjectsQuery.OR = [
+        { projectManagerId: userId },
+        { members: { some: { userId } } },
+      ];
+    }
+    const userProjects = await prisma.project.findMany({
+      where: userProjectsQuery,
+      select: { id: true }
+    });
+    const userProjectIds = userProjects.map((p: any) => p.id);
+
+    const allProjects = await prisma.project.findMany({
+      where: { tenantId },
+      select: { id: true }
+    });
+    const allProjectIds = allProjects.map((p: any) => p.id);
+    const inaccessibleProjectIds = allProjectIds.filter((id: string) => !userProjectIds.includes(id));
+
     const projectId = String(req.query.project_id ?? '').trim();
 
-    // `module_name` is the alias every existing dropdown reads.
-    const { rows } = await pool.query(
-      `SELECT src.id, src.module_name, src.description,
-              src.project_id, src.project_name,
-              src.created_at, src.updated_at,
-              ${USAGE_SQL}
-         FROM qa_todo_modules src
-        WHERE src.tenant_id = $1
-          AND ($2::text = '' OR src.project_id = $2::text)
-        ORDER BY src.project_name ASC NULLS FIRST, src.module_name ASC`,
-      [tenantId, projectId],
-    );
+    let query = `
+      SELECT src.id, src.module_name, src.description,
+             src.project_id, src.project_name,
+             src.created_at, src.updated_at,
+             ${USAGE_SQL}
+        FROM qa_todo_modules src
+       WHERE src.tenant_id = $1
+    `;
+    const params: any[] = [tenantId];
+    let paramIndex = 2;
+
+    if (projectId) {
+      query += ` AND src.project_id = $${paramIndex}`;
+      params.push(projectId);
+      paramIndex++;
+    }
+
+    if (inaccessibleProjectIds.length > 0) {
+      query += ` AND (src.project_id IS NULL OR src.project_id != ALL($${paramIndex}))`;
+      params.push(inaccessibleProjectIds);
+      paramIndex++;
+    }
+
+    query += ` ORDER BY src.project_name ASC NULLS FIRST, src.module_name ASC`;
+
+    const { rows } = await pool.query(query, params);
     res.status(200).json({ success: true, data: rows });
   } catch (error) {
     console.error('Error fetching modules:', error);
