@@ -32,7 +32,7 @@ import { productFromRequest } from '@/config/brand';
  *
  * Longest prefix wins, so a more specific entry can override a broader one.
  */
-const MODULE_PREFIX_FEATURES: ReadonlyArray<readonly [string, string]> = [
+const MODULE_PREFIX_FEATURES: ReadonlyArray<readonly [string, string | readonly string[]]> = [
   // ── Finance ──
   ['/api/invoices', 'finance_invoice'],
   ['/api/invoicesetting', 'finance_invoice'],
@@ -51,6 +51,7 @@ const MODULE_PREFIX_FEATURES: ReadonlyArray<readonly [string, string]> = [
   ['/api/vendor', 'finance'],
 
   // ── HRMS: Leaves 2.0 ──
+  ['/api/v2/leave/requests', ['hrms_leaves_v2', 'my_hub']],
   ['/api/v2/leave', 'hrms_leaves_v2'],
   ['/api/leave', 'hrms_leaves_v2'],
   ['/api/leaves', 'hrms_leaves_v2'],
@@ -72,6 +73,7 @@ const MODULE_PREFIX_FEATURES: ReadonlyArray<readonly [string, string]> = [
   ['/api/candidate-form', 'hrms_onboarding'],
 
   // ── HRMS: Performance Report ──
+  ['/api/performance-report/generated', ['hrms_performance_report', 'my_hub']],
   ['/api/performance-report', 'hrms_performance_report'],
 
   // ── HRMS: Doc Suite ──
@@ -148,9 +150,9 @@ const MODULE_PREFIX_FEATURES: ReadonlyArray<readonly [string, string]> = [
   //   bookmarks — stored in localStorage under nav_shortcuts. No backend.
 ];
 
-function featureForPath(pathname: string): string | null {
+function featureForPath(pathname: string): string | readonly string[] | null {
   let bestLen = -1;
-  let best: string | null = null;
+  let best: string | readonly string[] | null = null;
   for (const [prefix, feature] of MODULE_PREFIX_FEATURES) {
     if ((pathname === prefix || pathname.startsWith(prefix + '/')) && prefix.length > bestLen) {
       bestLen = prefix.length;
@@ -236,14 +238,16 @@ export const moduleEntitlementGate = async (
     // unreachable — the resolver returns an empty list on failure, and locking
     // every tenant out of HRMS and Finance because a control-plane call timed
     // out would be a far worse failure than serving the request.
-    if (granted.length === 0 || satisfies(granted, required)) {
+    const requiredList = Array.isArray(required) ? required : [required];
+    const isEntitled = requiredList.some((r) => satisfies(granted, r));
+    if (granted.length === 0 || isEntitled) {
       next();
       return;
     }
 
     if (!ENFORCING) {
       console.warn(
-        '[entitlements] would block tenant=' + tenantId + ' feature=' + required +
+        '[entitlements] would block tenant=' + tenantId + ' feature=' + JSON.stringify(required) +
         ' ' + req.method + ' ' + req.originalUrl + ' (enforcement off)'
       );
       next();
@@ -283,7 +287,7 @@ export const moduleEntitlementGate = async (
  * Set `options.exact = false` to enable prefix / upward resolution for page/module level checks.
  */
 export const requireSubscriptionFeature = (
-  featureKey: string,
+  featureKey: string | readonly string[],
   options: { exact?: boolean } = { exact: true }
 ) => {
   return async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
@@ -306,9 +310,10 @@ export const requireSubscriptionFeature = (
         return;
       }
 
+      const requiredKeys = Array.isArray(featureKey) ? featureKey : [featureKey];
       const isEntitled = options.exact
-        ? granted.includes(featureKey)
-        : satisfies(granted, featureKey);
+        ? requiredKeys.some((k) => granted.includes(k))
+        : requiredKeys.some((k) => satisfies(granted, k));
 
       if (isEntitled) {
         next();
@@ -317,7 +322,7 @@ export const requireSubscriptionFeature = (
 
       if (!ENFORCING) {
         console.warn(
-          `[entitlements] would block tenant=${tenantId} exactFeature=${featureKey} ` +
+          `[entitlements] would block tenant=${tenantId} exactFeature=${JSON.stringify(featureKey)} ` +
           `${req.method} ${req.originalUrl} (enforcement off)`
         );
         next();
@@ -328,10 +333,10 @@ export const requireSubscriptionFeature = (
         success: false,
         error: 'This feature is not included in your plan',
         code: 'ENTITLEMENT_REQUIRED',
-        requiredFeature: featureKey,
+        requiredFeature: Array.isArray(featureKey) ? featureKey[0] : featureKey,
       });
     } catch (error) {
-      console.error(`[entitlements] requireSubscriptionFeature failed for ${featureKey}:`, error);
+      console.error(`[entitlements] requireSubscriptionFeature failed for ${JSON.stringify(featureKey)}:`, error);
       if (FAIL_OPEN || !ENFORCING) {
         next();
         return;
