@@ -18,10 +18,10 @@ router.use(resolveTenant);
 router.use(authenticateToken);
 router.use(requireAuth);
 
-router.use('/settings', requireSubscriptionFeature('hrms_performance_settings', { exact: false }), settingsRoutes);
-router.use('/reports', requireSubscriptionFeature('hrms_performance_reports', { exact: false }), reportsRoutes);
-router.use('/members', requireSubscriptionFeature('hrms_performance_my_reports', { exact: false }), membersRoutes);
-router.use('/generated', requireSubscriptionFeature('hrms_performance_generated', { exact: false }), generatedRoutes);
+router.use('/settings', requireSubscriptionFeature('hrms_performance_report_settings', { exact: false }), settingsRoutes);
+router.use('/reports', requireSubscriptionFeature('hrms_performance_report_reports', { exact: false }), reportsRoutes);
+router.use('/members', requireSubscriptionFeature('hrms_performance_report_reports', { exact: false }), membersRoutes);
+router.use('/generated', requireSubscriptionFeature(['hrms_performance_report_generated', 'hrms_performance_report_my_reports', 'my_hub_my_hub_general_performance'], { exact: false }), generatedRoutes);
 // Next slices mount here: /generated (archive)
 
 export default router;
