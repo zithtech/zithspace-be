@@ -267,23 +267,35 @@ class MetadataRepository {
     return res.rows[0];
   }
 
-  async getAllCores(): Promise<CoreRecord[]> {
-    const res = await pool.query('SELECT * FROM cores ORDER BY sort_order ASC');
+  async getAllCores(activeOnly: boolean = true): Promise<CoreRecord[]> {
+    const query = activeOnly 
+      ? 'SELECT * FROM cores WHERE is_active = true ORDER BY sort_order ASC'
+      : 'SELECT * FROM cores ORDER BY sort_order ASC';
+    const res = await pool.query(query);
     return res.rows;
   }
 
-  async getAllModules(): Promise<ModuleRecord[]> {
-    const res = await pool.query(`SELECT * FROM ${this.modulesTableName} ORDER BY sort_order ASC`);
+  async getAllModules(activeOnly: boolean = true): Promise<ModuleRecord[]> {
+    const query = activeOnly 
+      ? `SELECT * FROM ${this.modulesTableName} WHERE is_active = true ORDER BY sort_order ASC`
+      : `SELECT * FROM ${this.modulesTableName} ORDER BY sort_order ASC`;
+    const res = await pool.query(query);
     return res.rows;
   }
 
-  async getAllPages(): Promise<PageRecord[]> {
-    const res = await pool.query('SELECT * FROM pages ORDER BY menu_order ASC');
+  async getAllPages(activeOnly: boolean = true): Promise<PageRecord[]> {
+    const query = activeOnly 
+      ? 'SELECT * FROM pages WHERE is_active = true ORDER BY menu_order ASC'
+      : 'SELECT * FROM pages ORDER BY menu_order ASC';
+    const res = await pool.query(query);
     return res.rows;
   }
 
-  async getAllFeatures(): Promise<FeatureRecord[]> {
-    const res = await pool.query('SELECT * FROM metadata_features ORDER BY display_order ASC');
+  async getAllFeatures(activeOnly: boolean = true): Promise<FeatureRecord[]> {
+    const query = activeOnly 
+      ? 'SELECT * FROM metadata_features WHERE is_active = true ORDER BY display_order ASC'
+      : 'SELECT * FROM metadata_features ORDER BY display_order ASC';
+    const res = await pool.query(query);
     return res.rows;
   }
 }

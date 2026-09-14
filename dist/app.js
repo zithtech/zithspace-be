@@ -78,6 +78,7 @@ const publicOnboarding_routes_1 = __importDefault(require("@/routes/publicOnboar
 const auth_2 = __importDefault(require("@/routes/auth"));
 const publicTickets_1 = __importDefault(require("@/routes/publicTickets"));
 const publicDocuments_1 = __importDefault(require("@/routes/publicDocuments"));
+const publicPlaybooks_1 = __importDefault(require("@/routes/publicPlaybooks"));
 const clientPortal_1 = __importDefault(require("@/routes/clientPortal"));
 const portalTickets_1 = __importDefault(require("@/routes/portalTickets"));
 const moms_1 = __importDefault(require("@/routes/moms"));
@@ -324,6 +325,7 @@ app.use("/api/integrations/linear", linearRoutes_1.default);
 app.use("/api/squads", squad_1.default);
 app.use("/api/public/tickets", publicTickets_1.default);
 app.use("/api/public/document", publicDocuments_1.default);
+app.use("/api/public/playbooks", publicPlaybooks_1.default);
 app.use("/api/public/onboarding", publicOnboarding_routes_1.default);
 app.use("/api/client-portal", clientPortal_1.default);
 app.use("/api/portal-tickets", portalTickets_1.default);
