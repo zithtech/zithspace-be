@@ -21,9 +21,9 @@ router.get('/permissions', (0, permission_1.requirePermission)(permissions_1.Per
 /**
  * @route   GET /api/rbac/roles
  * @desc    List all roles for the tenant
- * @access  Requires role.read
+ * @access  Requires role.read, role.assign, user.read, user.create, user.update, or user.manage
  */
-router.get('/roles', (0, permission_1.requirePermission)(permissions_1.Permissions.ROLE_READ), rbac_controller_1.RBACController.listRoles);
+router.get('/roles', (0, permission_1.requireAnyPermission)(permissions_1.Permissions.ROLE_READ, permissions_1.Permissions.ROLE_ASSIGN, permissions_1.Permissions.USER_READ, permissions_1.Permissions.USER_CREATE, permissions_1.Permissions.USER_UPDATE, permissions_1.Permissions.USER_MANAGE), rbac_controller_1.RBACController.listRoles);
 /**
  * @route   GET /api/rbac/roles/:id
  * @desc    Get role details including permissions and users

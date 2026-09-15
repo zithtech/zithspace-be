@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticateToken, requireAuth } from '@/middleware/auth';
-import { requirePermission } from '@/middleware/permission';
+import { requirePermission, requireAnyPermission } from '@/middleware/permission';
 import { Permissions } from '@/types/permissions';
 import { resolveTenant } from '@/middleware/tenantContext';
 import { RBACController } from '@/modules/rbac/rbac.controller';
@@ -25,9 +25,20 @@ router.get('/permissions', requirePermission(Permissions.ROLE_READ), RBACControl
 /**
  * @route   GET /api/rbac/roles
  * @desc    List all roles for the tenant
- * @access  Requires role.read
+ * @access  Requires role.read, role.assign, user.read, user.create, user.update, or user.manage
  */
-router.get('/roles', requirePermission(Permissions.ROLE_READ), RBACController.listRoles);
+router.get(
+  '/roles',
+  requireAnyPermission(
+    Permissions.ROLE_READ,
+    Permissions.ROLE_ASSIGN,
+    Permissions.USER_READ,
+    Permissions.USER_CREATE,
+    Permissions.USER_UPDATE,
+    Permissions.USER_MANAGE
+  ),
+  RBACController.listRoles
+);
 
 /**
  * @route   GET /api/rbac/roles/:id

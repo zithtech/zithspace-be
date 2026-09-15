@@ -41,27 +41,66 @@ export const getParentTestCases = async (req: Request, res: Response) => {
     const offset = (parsedPage - 1) * parsedLimit;
 
     // Helper to build WHERE conditions
-    const applyFilters = (q: string, p: any[]) => {
+    const applyFilters = (q: string, p: any[], applyQuickFilter = true) => {
       let queryStr = q;
       if (module_id) {
-        p.push(module_id);
-        queryStr += ` AND ptc.module_id::text = $${p.length}::text`;
+        const modIds = (Array.isArray(module_id) ? module_id : String(module_id).split(','))
+          .map(m => String(m).trim())
+          .filter(Boolean);
+        if (modIds.length > 0) {
+          const hasUnassigned = modIds.some(m => m.toLowerCase() === 'unassigned');
+          const validIds = modIds.filter(m => m.toLowerCase() !== 'unassigned');
+          const conditions: string[] = [];
+          if (validIds.length > 0) {
+            let idx = p.length + 1;
+            const placeholders = validIds.map(() => `$${idx++}::text`);
+            p.push(...validIds);
+            conditions.push(`(ptc.module_id::text IN (${placeholders.join(',')}) OR mv2.name IN (${placeholders.join(',')}) OR m.module_name IN (${placeholders.join(',')}))`);
+          }
+          if (hasUnassigned) {
+            conditions.push(`(ptc.module_id IS NULL OR ptc.module_id::text = '' OR (mv2.name IS NULL AND m.module_name IS NULL))`);
+          }
+          if (conditions.length > 0) {
+            queryStr += ` AND (${conditions.join(' OR ')})`;
+          }
+        }
       }
       if (search) {
         p.push(`%${search}%`);
         queryStr += ` AND (ptc.title ILIKE $${p.length} OR mv2.name ILIKE $${p.length} OR m.module_name ILIKE $${p.length} OR ptc.feature ILIKE $${p.length})`;
       }
       if (status) {
-        p.push(status);
-        queryStr += ` AND ptc.status = $${p.length}`;
+        const statuses = (Array.isArray(status) ? status : String(status).split(','))
+          .map(s => String(s).trim())
+          .filter(Boolean);
+        if (statuses.length > 0) {
+          let idx = p.length + 1;
+          const placeholders = statuses.map(() => `$${idx++}`);
+          p.push(...statuses);
+          queryStr += ` AND ptc.status IN (${placeholders.join(',')})`;
+        }
       }
       if (automation) {
-        p.push(automation);
-        queryStr += ` AND ptc.automation = $${p.length}`;
+        const automations = (Array.isArray(automation) ? automation : String(automation).split(','))
+          .map(a => String(a).trim())
+          .filter(Boolean);
+        if (automations.length > 0) {
+          let idx = p.length + 1;
+          const placeholders = automations.map(() => `$${idx++}`);
+          p.push(...automations);
+          queryStr += ` AND ptc.automation IN (${placeholders.join(',')})`;
+        }
       }
       if (owner) {
-        p.push(owner);
-        queryStr += ` AND (u_owner.name = $${p.length} OR u_creator.name = $${p.length})`;
+        const owners = (Array.isArray(owner) ? owner : String(owner).split(','))
+          .map(o => String(o).trim())
+          .filter(Boolean);
+        if (owners.length > 0) {
+          let idx = p.length + 1;
+          const placeholders = owners.map(() => `$${idx++}`);
+          p.push(...owners);
+          queryStr += ` AND (u_owner.name IN (${placeholders.join(',')}) OR u_creator.name IN (${placeholders.join(',')}))`;
+        }
       }
       if (project_id) {
         p.push(project_id);
@@ -81,10 +120,12 @@ export const getParentTestCases = async (req: Request, res: Response) => {
           queryStr += ` AND (ptc.project_id IS NULL OR ptc.project_id = '' OR ptc.project_id::text IN (${placeholders.join(',')}) OR ptc.owner::text = $${p.length}::text OR ptc.created_by::text = $${p.length}::text)`;
         }
       }
-      if (quickFilter === 'ready') {
-        queryStr += ` AND (ptc.status = 'Ready' OR ptc.status = 'Active')`;
-      } else if (quickFilter === 'automated') {
-        queryStr += ` AND ptc.automation = 'Automated'`;
+      if (applyQuickFilter) {
+        if (quickFilter === 'ready') {
+          queryStr += ` AND (ptc.status = 'Ready' OR ptc.status = 'Active')`;
+        } else if (quickFilter === 'automated') {
+          queryStr += ` AND ptc.automation = 'Automated'`;
+        }
       }
       return queryStr;
     };
@@ -115,10 +156,7 @@ export const getParentTestCases = async (req: Request, res: Response) => {
 
     let countQuery = `
       SELECT 
-        COUNT(*) as count,
-        SUM(CASE WHEN ptc.status IN ('Ready', 'Active') THEN 1 ELSE 0 END) as ready_count,
-        SUM(CASE WHEN ptc.automation = 'Automated' THEN 1 ELSE 0 END) as automated_count,
-        SUM((SELECT COUNT(*) FROM qa_test_cases tc WHERE tc.parent_test_case_id::text = ptc.id::text)) as child_count
+        COUNT(*) as count
       FROM qa_parent_test_cases ptc
       LEFT JOIN qa_todo_modules m ON ptc.module_id::text = m.id::text
       LEFT JOIN modules_v2 mv2 ON ptc.module_id::text = mv2.id::text
@@ -129,20 +167,53 @@ export const getParentTestCases = async (req: Request, res: Response) => {
     const countParams: any[] = [tenantId];
     countQuery = applyFilters(countQuery, countParams);
 
+    let statsQuery = `
+      SELECT 
+        SUM(CASE WHEN ptc.status IN ('Ready', 'Active') THEN 1 ELSE 0 END) as ready_count,
+        SUM(CASE WHEN ptc.automation = 'Automated' THEN 1 ELSE 0 END) as automated_count,
+        SUM((SELECT COUNT(*) FROM qa_test_cases tc WHERE tc.parent_test_case_id::text = ptc.id::text)) as child_count
+      FROM qa_parent_test_cases ptc
+      LEFT JOIN qa_todo_modules m ON ptc.module_id::text = m.id::text
+      LEFT JOIN modules_v2 mv2 ON ptc.module_id::text = mv2.id::text
+      LEFT JOIN users u_owner ON ptc.owner::text = u_owner.id::text
+      LEFT JOIN users u_creator ON ptc.created_by::text = u_creator.id::text
+      WHERE ptc.tenant_id = $1
+    `;
+    const statsParams: any[] = [tenantId];
+    if (project_id) {
+      statsParams.push(project_id);
+      statsQuery += ` AND ptc.project_id = $${statsParams.length}`;
+    }
+    if (allowed_projects) {
+      const ids = (allowed_projects as string)
+        .split(',')
+        .map(n => n.trim())
+        .filter(Boolean);
+      if (ids.length > 0) {
+        let idx = statsParams.length + 1;
+        const placeholders = ids.map(() => `$${idx++}::text`);
+        statsParams.push(...ids);
+        const userId = (req as any).user?.id || null;
+        statsParams.push(userId);
+        statsQuery += ` AND (ptc.project_id IS NULL OR ptc.project_id = '' OR ptc.project_id::text IN (${placeholders.join(',')}) OR ptc.owner::text = $${statsParams.length}::text OR ptc.created_by::text = $${statsParams.length}::text)`;
+      }
+    }
+
     query += ` ORDER BY ptc.updated_at DESC`;
     params.push(parsedLimit);
     query += ` LIMIT $${params.length}`;
     params.push(offset);
     query += ` OFFSET $${params.length}`;
 
-    const [{ rows }, { rows: countRows }] = await Promise.all([
+    const [{ rows }, { rows: countRows }, { rows: statsRows }] = await Promise.all([
       pool.query(query, params),
-      pool.query(countQuery, countParams)
+      pool.query(countQuery, countParams),
+      pool.query(statsQuery, statsParams)
     ]);
-    const total = parseInt(countRows[0].count || '0', 10);
-    const readyCount = parseInt(countRows[0].ready_count || '0', 10);
-    const automatedCount = parseInt(countRows[0].automated_count || '0', 10);
-    const childCount = parseInt(countRows[0].child_count || '0', 10);
+    const total = parseInt(countRows[0]?.count || '0', 10);
+    const readyCount = parseInt(statsRows[0]?.ready_count || '0', 10);
+    const automatedCount = parseInt(statsRows[0]?.automated_count || '0', 10);
+    const childCount = parseInt(statsRows[0]?.child_count || '0', 10);
 
     res.status(200).json({
       success: true,
