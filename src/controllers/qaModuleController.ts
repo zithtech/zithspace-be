@@ -214,6 +214,21 @@ export const getModules = async (req: Request, res: Response) => {
     await backfillFromScopes(tenantId);
 
     const projectId = String(req.query.project_id ?? '').trim();
+    const projectName = String(req.query.project_name ?? req.query.product ?? '').trim();
+
+    let whereClause = `WHERE src.tenant_id = $1`;
+    const params: any[] = [tenantId];
+
+    if (projectId && projectName) {
+      params.push(projectId, projectName);
+      whereClause += ` AND (src.project_id = $2 OR LOWER(COALESCE(src.project_name, '')) = LOWER($3))`;
+    } else if (projectId) {
+      params.push(projectId);
+      whereClause += ` AND src.project_id = $2`;
+    } else if (projectName) {
+      params.push(projectName);
+      whereClause += ` AND LOWER(COALESCE(src.project_name, '')) = LOWER($2)`;
+    }
 
     // `module_name` is the alias every existing dropdown reads.
     const { rows } = await pool.query(
@@ -222,10 +237,9 @@ export const getModules = async (req: Request, res: Response) => {
               src.created_at, src.updated_at,
               ${USAGE_SQL}
          FROM qa_todo_modules src
-        WHERE src.tenant_id = $1
-          AND ($2::text = '' OR src.project_id = $2::text)
+        ${whereClause}
         ORDER BY src.project_name ASC NULLS FIRST, src.module_name ASC`,
-      [tenantId, projectId],
+      params,
     );
     res.status(200).json({ success: true, data: rows });
   } catch (error) {
