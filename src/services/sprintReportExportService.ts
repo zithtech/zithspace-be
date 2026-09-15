@@ -30,6 +30,21 @@ export class SprintReportExportService {
             page-break-inside: avoid;
             break-inside: avoid;
           }
+          section {
+            page-break-inside: auto !important;
+            break-inside: auto !important;
+          }
+          table {
+            page-break-inside: auto !important;
+            break-inside: auto !important;
+          }
+          tr {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+          }
+          thead {
+            display: table-header-group;
+          }
         </style>
       </head>
       <body>
