@@ -54,20 +54,21 @@ export const getTestScopes = async (req: Request, res: Response) => {
 
     const allProjects = await prisma.project.findMany({
       where: { tenantId },
-      select: { id: true }
+      select: { id: true, name: true }
     });
-    const allProjectIds = allProjects.map((p: any) => p.id);
-    const inaccessibleProjectIds = allProjectIds.filter((id: string) => !userProjectIds.includes(id));
+    const inaccessibleProjectNames = allProjects
+      .filter((p: any) => !userProjectIds.includes(p.id))
+      .map((p: any) => p.name);
 
     let query = `SELECT * FROM qa_test_scopes WHERE tenant_id = $1`;
     let countQuery = `SELECT COUNT(*) FROM qa_test_scopes WHERE tenant_id = $1`;
     const params: any[] = [tenantId];
     let paramIndex = 2;
 
-    if (inaccessibleProjectIds.length > 0) {
+    if (inaccessibleProjectNames.length > 0) {
       query += ` AND (details->>'product' IS NULL OR details->>'product' != ALL($${paramIndex}))`;
       countQuery += ` AND (details->>'product' IS NULL OR details->>'product' != ALL($${paramIndex}))`;
-      params.push(inaccessibleProjectIds);
+      params.push(inaccessibleProjectNames);
       paramIndex++;
     }
 

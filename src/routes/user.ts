@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { UserController } from '@/controllers/userController';
 import { UserPreferenceController } from '@/controllers/userPreferenceController';
 import { UserTablePreferenceController } from '@/controllers/UserTablePreference.controller';
+import { UserTourController } from '@/controllers/userTourController';
 import { authenticateToken, requireAuth } from '@/middleware/auth';
 import { requirePermission } from '@/middleware/permission';
 import { Permissions } from '@/types/permissions';
@@ -82,5 +83,19 @@ router.delete('/table-preferences/:tableKey', UserTablePreferenceController.remo
  * @body    { newPassword }
  */
 router.post('/reset-password/:userId', requirePermission(Permissions.USER_MANAGE), UserController.resetUserPassword);
+
+/**
+ * @route   GET /api/user/tours
+ * @desc    Get user tour progress
+ * @access  Private (authenticated users)
+ */
+router.get('/tours', UserTourController.getTours);
+
+/**
+ * @route   PATCH /api/user/tours/:tourKey
+ * @desc    Update user tour progress
+ * @access  Private (authenticated users)
+ */
+router.patch('/tours/:tourKey', UserTourController.updateTourProgress);
 
 export default router;
