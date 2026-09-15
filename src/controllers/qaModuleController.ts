@@ -245,33 +245,43 @@ export const getModules = async (req: Request, res: Response) => {
     const inaccessibleProjectIds = allProjectIds.filter((id: string) => !userProjectIds.includes(id));
 
     const projectId = String(req.query.project_id ?? '').trim();
+    const projectName = String(req.query.project_name ?? req.query.product ?? '').trim();
 
-    let query = `
-      SELECT src.id, src.module_name, src.description,
-             src.project_id, src.project_name,
-             src.created_at, src.updated_at,
-             ${USAGE_SQL}
-        FROM qa_todo_modules src
-       WHERE src.tenant_id = $1
-    `;
+    let whereClause = `WHERE src.tenant_id = $1`;
     const params: any[] = [tenantId];
     let paramIndex = 2;
 
-    if (projectId) {
-      query += ` AND src.project_id = $${paramIndex}`;
+    if (projectId && projectName) {
+      params.push(projectId, projectName);
+      whereClause += ` AND (src.project_id = $${paramIndex} OR LOWER(COALESCE(src.project_name, '')) = LOWER($${paramIndex + 1}))`;
+      paramIndex += 2;
+    } else if (projectId) {
       params.push(projectId);
+      whereClause += ` AND src.project_id = $${paramIndex}`;
+      paramIndex++;
+    } else if (projectName) {
+      params.push(projectName);
+      whereClause += ` AND LOWER(COALESCE(src.project_name, '')) = LOWER($${paramIndex})`;
       paramIndex++;
     }
 
     if (inaccessibleProjectIds.length > 0) {
-      query += ` AND (src.project_id IS NULL OR src.project_id != ALL($${paramIndex}))`;
       params.push(inaccessibleProjectIds);
+      whereClause += ` AND (src.project_id IS NULL OR src.project_id != ALL($${paramIndex}))`;
       paramIndex++;
     }
 
-    query += ` ORDER BY src.project_name ASC NULLS FIRST, src.module_name ASC`;
-
-    const { rows } = await pool.query(query, params);
+    // `module_name` is the alias every existing dropdown reads.
+    const { rows } = await pool.query(
+      `SELECT src.id, src.module_name, src.description,
+              src.project_id, src.project_name,
+              src.created_at, src.updated_at,
+              ${USAGE_SQL}
+         FROM qa_todo_modules src
+        ${whereClause}
+        ORDER BY src.project_name ASC NULLS FIRST, src.module_name ASC`,
+      params,
+    );
     res.status(200).json({ success: true, data: rows });
   } catch (error) {
     console.error('Error fetching modules:', error);

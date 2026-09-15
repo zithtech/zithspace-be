@@ -59,16 +59,37 @@ export const getTestCases = async (req: Request, res: Response) => {
     // Matched case-insensitively: the same type is often recorded as
     // "Functional" in one case and "functional" in the next.
     if (test_type) {
-      params.push(String(test_type));
-      where += ` AND LOWER(TRIM(COALESCE(tc.test_type, ''))) = LOWER(TRIM($${params.length}))`;
+      const types = (Array.isArray(test_type) ? test_type : String(test_type).split(','))
+        .map(t => String(t).trim().toLowerCase())
+        .filter(Boolean);
+      if (types.length > 0) {
+        let idx = params.length + 1;
+        const placeholders = types.map(() => `$${idx++}`);
+        params.push(...types);
+        where += ` AND LOWER(TRIM(COALESCE(tc.test_type, ''))) IN (${placeholders.join(',')})`;
+      }
     }
     if (priority) {
-      params.push(String(priority));
-      where += ` AND LOWER(TRIM(COALESCE(tc.priority, ''))) = LOWER(TRIM($${params.length}))`;
+      const priorities = (Array.isArray(priority) ? priority : String(priority).split(','))
+        .map(p => String(p).trim().toLowerCase())
+        .filter(Boolean);
+      if (priorities.length > 0) {
+        let idx = params.length + 1;
+        const placeholders = priorities.map(() => `$${idx++}`);
+        params.push(...priorities);
+        where += ` AND LOWER(TRIM(COALESCE(tc.priority, ''))) IN (${placeholders.join(',')})`;
+      }
     }
     if (status) {
-      params.push(String(status));
-      where += ` AND LOWER(TRIM(COALESCE(tc.status, ''))) = LOWER(TRIM($${params.length}))`;
+      const statuses = (Array.isArray(status) ? status : String(status).split(','))
+        .map(s => String(s).trim().toLowerCase())
+        .filter(Boolean);
+      if (statuses.length > 0) {
+        let idx = params.length + 1;
+        const placeholders = statuses.map(() => `$${idx++}`);
+        params.push(...statuses);
+        where += ` AND LOWER(TRIM(COALESCE(tc.status, ''))) IN (${placeholders.join(',')})`;
+      }
     }
     if (quickFilter === 'ready') {
       where += ` AND (tc.status = 'Ready' OR tc.status = 'Active')`;
@@ -408,6 +429,13 @@ export const createTestCase = async (req: Request, res: Response) => {
       expected_result, priority, severity, test_type, automation, status, owner, qa_owner
     } = req.body;
 
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ success: false, error: 'Test Case Name is required' });
+    }
+    if (String(name).trim().length > 255) {
+      return res.status(400).json({ success: false, error: 'Test Case Name cannot exceed 255 characters' });
+    }
+
     try {
       const [corrected] = await correctTestCasesWithAI(tenantId, [{
         name,
@@ -477,6 +505,15 @@ export const updateTestCase = async (req: Request, res: Response) => {
       parent_test_case_id, parent_id, name, module_id, feature, description, preconditions, steps_to_reproduce,
       expected_result, priority, severity, test_type, automation, status, owner, qa_owner
     } = req.body;
+
+    if (name !== undefined) {
+      if (!String(name).trim()) {
+        return res.status(400).json({ success: false, error: 'Test Case Name is required' });
+      }
+      if (String(name).trim().length > 255) {
+        return res.status(400).json({ success: false, error: 'Test Case Name cannot exceed 255 characters' });
+      }
+    }
 
     try {
       const [corrected] = await correctTestCasesWithAI(tenantId, [{
