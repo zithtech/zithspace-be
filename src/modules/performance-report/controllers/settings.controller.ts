@@ -38,3 +38,12 @@ export const ticketStatuses = handle(async (req: AuthRequest, res: Response) => 
   const statuses = await service.listTicketStatuses(actorOf(req));
   ok(res, statuses);
 });
+
+/** Trigger auto-generation sweep immediately on demand for the tenant */
+export const triggerAutoGenerate = handle(async (req: AuthRequest, res: Response) => {
+  const { runAutoGenerateSweep } = require('../services/autoGenerate.service');
+  const actor = actorOf(req);
+  const result = await runAutoGenerateSweep({ forceTenantId: actor.tenantId });
+  ok(res, result);
+});
+
