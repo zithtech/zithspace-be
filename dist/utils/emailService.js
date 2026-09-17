@@ -163,6 +163,18 @@ class EmailService {
                         companyLogo = settings.logoUrl;
                     }
                 }
+                // Also check active settings profile in invoice settings profiles
+                try {
+                    const { getActiveSettingsProfile } = await Promise.resolve().then(() => __importStar(require('../models/settingsProfile.model')));
+                    const profile = await getActiveSettingsProfile(tenantId);
+                    if (profile?.general?.companyName) {
+                        companyName = profile.general.companyName;
+                    }
+                    if (profile?.general?.companyLogo) {
+                        companyLogo = profile.general.companyLogo;
+                    }
+                }
+                catch (e) { }
             }
             catch (error) {
                 console.error("❌ Error resolving tenant branding:", error);
@@ -362,11 +374,26 @@ This is an automated mail, please do not reply.`;
                     let extractedName = null;
                     if (options.from) {
                         const emailMatch = options.from.match(/<([^>]+)>/);
-                        specificEmail = emailMatch ? emailMatch[1].trim() : options.from.trim();
-                        const nameMatch = options.from.match(/^"([^"]+)"/);
-                        if (nameMatch) {
-                            extractedName = nameMatch[1];
+                        if (emailMatch) {
+                            specificEmail = emailMatch[1].trim();
+                            const rawName = options.from.substring(0, options.from.indexOf('<')).trim();
+                            extractedName = rawName.replace(/^["']|["']$/g, '').trim() || null;
                         }
+                        else if (options.from.includes('@')) {
+                            specificEmail = options.from.trim();
+                        }
+                        else {
+                            extractedName = options.from.replace(/^["']|["']$/g, '').trim() || null;
+                        }
+                    }
+                    if (!extractedName && tenantId) {
+                        try {
+                            const tenantBranding = await this.resolveTenantMailBranding(tenantId);
+                            if (tenantBranding?.companyName) {
+                                extractedName = tenantBranding.companyName;
+                            }
+                        }
+                        catch (e) { }
                     }
                     const whereClause = {
                         tenant_id: tenantId,
@@ -396,7 +423,7 @@ This is an automated mail, please do not reply.`;
                             providerInstance = new MicrosoftMailProvider();
                         }
                         const accessToken = await UnifiedAuthService.getValidAccessToken(connectedAccount.user_id, connectedAccount.provider);
-                        const fromName = extractedName || process.env.SMTP_FROM_NAME || 'ZithSpace';
+                        const fromName = extractedName || process.env.SMTP_FROM_NAME || 'Company';
                         const fromAddress = connectedAccount.email;
                         await providerInstance.sendMessage(accessToken, {
                             from: `"${fromName}" <${fromAddress}>`,
@@ -406,7 +433,7 @@ This is an automated mail, please do not reply.`;
                             body: options.text,
                             htmlBody: options.html,
                         });
-                        console.log(`✅ Email sent via ${connectedAccount.provider} OAuth - From: ${fromAddress}, To: ${options.to}`);
+                        console.log(`✅ Email sent via ${connectedAccount.provider} OAuth - From: ${fromName} <${fromAddress}>, To: ${options.to}`);
                         if (options.replyTo)
                             console.log(`📧 Reply-To: ${options.replyTo}`);
                         return true;
@@ -433,22 +460,36 @@ This is an automated mail, please do not reply.`;
             }
             // Always use the authenticated system email for the 'From' address to prevent SMTP relay errors (553)
             const fromAddress = process.env.SYSTEM_EMAIL || process.env.SMTP_FROM_EMAIL || "noreply@zithtech.com";
-            const fromName = process.env.SMTP_FROM_NAME || "ZithSpace";
-            let finalFrom = `"${fromName}" <${fromAddress}>`;
-            let finalReplyTo = options.replyTo;
+            let specificEmail = null;
+            let extractedName = null;
             if (options.from) {
-                // If a custom 'from' is provided, we extract the name and email
                 const emailMatch = options.from.match(/<([^>]+)>/);
-                const specificEmail = emailMatch ? emailMatch[1].trim() : options.from.trim();
-                const nameMatch = options.from.match(/^"([^"]+)"/);
-                const extractedName = nameMatch ? nameMatch[1].trim() : null;
-                // Display the custom name, but use the authenticated system email address
-                const displayFromName = extractedName ? `${extractedName}` : fromName;
-                finalFrom = `"${displayFromName}" <${fromAddress}>`;
-                // Set the custom email as the Reply-To address so responses go to the correct person
-                if (!finalReplyTo && specificEmail && specificEmail.includes('@')) {
-                    finalReplyTo = specificEmail;
+                if (emailMatch) {
+                    specificEmail = emailMatch[1].trim();
+                    const rawName = options.from.substring(0, options.from.indexOf('<')).trim();
+                    extractedName = rawName.replace(/^["']|["']$/g, '').trim() || null;
                 }
+                else if (options.from.includes('@')) {
+                    specificEmail = options.from.trim();
+                }
+                else {
+                    extractedName = options.from.replace(/^["']|["']$/g, '').trim() || null;
+                }
+            }
+            if (!extractedName && tenantId) {
+                try {
+                    const tenantBranding = await this.resolveTenantMailBranding(tenantId);
+                    if (tenantBranding?.companyName) {
+                        extractedName = tenantBranding.companyName;
+                    }
+                }
+                catch (e) { }
+            }
+            const displayFromName = extractedName || process.env.SMTP_FROM_NAME || "Company";
+            let finalFrom = `"${displayFromName}" <${fromAddress}>`;
+            let finalReplyTo = options.replyTo;
+            if (specificEmail && specificEmail.includes('@') && !finalReplyTo) {
+                finalReplyTo = specificEmail;
             }
             const mailOptions = {
                 from: finalFrom,
@@ -1041,32 +1082,131 @@ View your leave details here: ${leavesUrl}
         return this.sendEmail({ to: data.to, subject, html, text }, tenantId);
     }
     static generateInvoiceHtml(data) {
+        const company = data.companyName || "Our Company";
+        // Process message: if it contains HTML tags (like <p>, <div>, <br>), use it; otherwise wrap and convert \n to <br/>
+        let formattedBody = "";
+        if (data.customMessage) {
+            if (/<[a-z][\s\S]*>/i.test(data.customMessage)) {
+                formattedBody = data.customMessage;
+            }
+            else {
+                formattedBody = data.customMessage
+                    .split(/\n\s*\n/)
+                    .map((para) => `<p style="margin: 0 0 12px 0; line-height: 1.65; color: #334155;">${para.replace(/\n/g, "<br/>")}</p>`)
+                    .join("");
+            }
+        }
+        else {
+            formattedBody = `<p style="margin: 0 0 12px 0; line-height: 1.65; color: #334155;">Dear <strong>${data.customerName}</strong>,</p><p style="margin: 0 0 12px 0; line-height: 1.65; color: #334155;">Please find your invoice details and attached PDF document below.</p>`;
+        }
         return `
-      <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e1e1e1; border-radius: 8px;">
-        <div style="background-color: #1677ff; color: white; padding: 24px; text-align: center;">
-          <h1 style="margin: 0; font-size: 20px;">Invoice ${data.invoiceNumber}</h1>
-        </div>
-        <div style="padding: 24px; color: #333;">
-          <p>Dear <strong>${data.customerName}</strong>,</p>
-          <p style="line-height: 1.6; color: #555;">${data.customMessage || "Please find your invoice details below."}</p>
-          <div style="margin: 20px 0; padding: 20px; background-color: #f0f5ff; border-radius: 4px; text-align: center;">
-            <div style="font-size: 12px; color: #666; text-transform: uppercase;">Amount Due</div>
-            <div style="font-size: 28px; font-weight: bold; color: #1677ff;">${data.amount}</div>
-            <div style="margin-top: 5px; color: #666;">Due by: ${data.dueDate}</div>
-          </div>
-          <p style="margin-top: 20px; font-size: 14px;">
-            📎 <a href="${data.pdfUrl}" style="color: #1677ff;">Download Invoice PDF</a>
-          </p>
-        </div>
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Invoice ${data.invoiceNumber}</title>
+</head>
+<body style="margin: 0; padding: 32px 16px; background-color: #f8fafc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased;">
+  <div style="max-width: 580px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 20px rgba(15, 23, 42, 0.05);">
+    
+    <!-- Header Banner -->
+    <div style="padding: 24px 28px; border-bottom: 1px solid #f1f5f9;">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        <tr>
+          <td align="left" style="vertical-align: middle;">
+            <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                ${data.companyLogo && (data.companyLogo.startsWith('http://') || data.companyLogo.startsWith('https://')) ? `
+                <td style="vertical-align: middle; padding-right: 12px;">
+                  <img src="${data.companyLogo}" alt="${company}" style="height: 38px; max-width: 140px; object-fit: contain; display: block;" />
+                </td>` : `
+                <td style="vertical-align: middle; padding-right: 10px;">
+                  <div style="width: 36px; height: 36px; border-radius: 8px; background-color: #2563eb; color: #ffffff; text-align: center; line-height: 36px; font-size: 17px; font-weight: 700; display: inline-block;">
+                    ${company.charAt(0).toUpperCase()}
+                  </div>
+                </td>
+                `}
+                <td style="vertical-align: middle;">
+                  <span style="font-size: 17px; font-weight: 700; color: #0f172a; letter-spacing: -0.02em; display: block; line-height: 1.2;">${company}</span>
+                </td>
+              </tr>
+            </table>
+          </td>
+          <td align="right" style="vertical-align: middle;">
+            <span style="display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; padding: 5px 12px; background-color: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 9999px;">
+              INVOICE #${data.invoiceNumber}
+            </span>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Email Body -->
+    <div style="padding: 28px; color: #1e293b; font-size: 14.5px; line-height: 1.65;">
+      <div style="margin-bottom: 24px;">
+        ${formattedBody}
       </div>
+
+      <!-- Invoice Summary Card -->
+      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px 24px; margin: 24px 0 0 0;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+          <tr>
+            <td style="padding-bottom: 12px; font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;" colspan="2">
+              Invoice Summary
+            </td>
+          </tr>
+          <tr>
+            <td align="left" style="vertical-align: top; padding-right: 12px;">
+              <div style="font-size: 12px; color: #64748b; margin-bottom: 3px;">Invoice Number</div>
+              <div style="font-size: 14px; font-weight: 700; font-family: monospace; color: #0f172a;">#${data.invoiceNumber}</div>
+              <div style="font-size: 12px; color: #64748b; margin-top: 10px; margin-bottom: 3px;">Due Date</div>
+              <div style="font-size: 13px; font-weight: 600; color: #334155;">${data.dueDate}</div>
+            </td>
+            <td align="right" style="vertical-align: top;">
+              <div style="font-size: 12px; color: #64748b; margin-bottom: 3px;">Amount Due</div>
+              <div style="font-size: 24px; font-weight: 800; color: #2563eb; font-family: monospace; letter-spacing: -0.02em;">${data.amount}</div>
+            </td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div style="padding: 18px 28px; background-color: #f8fafc; border-top: 1px solid #f1f5f9; text-align: center; font-size: 12px; color: #94a3b8;">
+      Sent by <strong>${company}</strong> via Zukvo Invoicing System<br/>
+      <span style="font-size: 11px; color: #cbd5e1; margin-top: 4px; display: inline-block;">Please contact accounts for any billing inquiries.</span>
+    </div>
+
+  </div>
+</body>
+</html>
     `;
     }
     async sendInvoiceEmail(data, tenantId) {
-        const subject = `Invoice ${data.invoiceNumber} from Zithtech`;
+        const company = data.companyName || 'Company';
+        const subject = data.subject || `Invoice #${data.invoiceNumber} from ${company}`;
         // HTML Template
-        const html = EmailService.generateInvoiceHtml(data);
+        const html = EmailService.generateInvoiceHtml({
+            ...data,
+            companyName: company
+        });
+        let fromHeader = data.from;
+        if (fromHeader && !fromHeader.includes('<') && fromHeader.includes('@')) {
+            fromHeader = `"${company}" <${fromHeader.trim()}>`;
+        }
+        else if (!fromHeader) {
+            fromHeader = `"${company}" <${process.env.SMTP_FROM_EMAIL || 'noreply@zukvo.com'}>`;
+        }
+        else if (fromHeader && fromHeader.includes('<')) {
+            const emailOnly = fromHeader.match(/<([^>]+)>/)?.[1]?.trim() || fromHeader;
+            const rawName = fromHeader.substring(0, fromHeader.indexOf('<')).trim();
+            const extracted = rawName.replace(/^["']|["']$/g, '').trim();
+            const finalName = extracted || company;
+            fromHeader = `"${finalName}" <${emailOnly}>`;
+        }
         const options = {
-            from: data.from || process.env.SMTP_FROM_EMAIL || 'noreply@zukvo.com',
+            from: fromHeader,
             to: data.to,
             subject,
             html
@@ -1084,14 +1224,14 @@ View your leave details here: ${leavesUrl}
             const result = await this.sendEmail(options, tenantId);
             return {
                 success: result,
-                html // ✅ RETURN THE HTML THAT WAS SENT
+                html
             };
         }
         catch (error) {
             console.error("❌ Send failed:", error);
             return {
                 success: false,
-                html // Still return HTML even on failure for logging
+                html
             };
         }
     }

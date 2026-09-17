@@ -643,6 +643,9 @@ export interface CreateCustomerData {
   pan?: string;
   isActive?: boolean;
   clientId?: string;
+  projectIds?: string[];
+  projectId?: string;
+  projects?: Array<{ id: string; name: string; code: string }>;
 }
 
 // Data allowed to update a customer
@@ -658,6 +661,9 @@ export interface UpdateCustomerData {
   pan?: string;
   isActive?: boolean;
   clientId?: string;
+  projectIds?: string[];
+  projectId?: string;
+  projects?: Array<{ id: string; name: string; code: string }>;
 }
 
 // ==========================================

@@ -540,6 +540,13 @@ export interface CreateCustomerData {
     pan?: string;
     isActive?: boolean;
     clientId?: string;
+    projectIds?: string[];
+    projectId?: string;
+    projects?: Array<{
+        id: string;
+        name: string;
+        code: string;
+    }>;
 }
 export interface UpdateCustomerData {
     companyName?: string;
@@ -553,6 +560,13 @@ export interface UpdateCustomerData {
     pan?: string;
     isActive?: boolean;
     clientId?: string;
+    projectIds?: string[];
+    projectId?: string;
+    projects?: Array<{
+        id: string;
+        name: string;
+        code: string;
+    }>;
 }
 export declare class ValidationError extends Error {
     readonly field?: string;
