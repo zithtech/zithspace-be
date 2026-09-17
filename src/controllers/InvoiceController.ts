@@ -34,7 +34,7 @@ import {
   ValidationError 
 } from '../types';
 import { generateAndUploadInvoicePDF } from '../services/pdfService';
-import { deleteFileFromR2 } from '../utils/r2Client';
+import { deleteFileFromR2, uploadImageToR2 } from '../utils/r2Client';
 import { EmailLoggerService } from '../services/emailLoggerService';
 import pool from '../config/dbpool';
 import { 
@@ -1927,6 +1927,15 @@ export class InvoiceController {
 
       if (!companyName) {
         companyName = "Company";
+      }
+
+      if (companyLogo && companyLogo.startsWith('data:image/')) {
+        try {
+          companyLogo = await uploadImageToR2(companyLogo, req.tenantId, 'branding');
+        } catch (logoErr) {
+          console.warn('[InvoiceController] Failed to upload base64 company logo to R2:', logoErr);
+          companyLogo = null;
+        }
       }
 
       const currencySymbols: Record<string, string> = {
