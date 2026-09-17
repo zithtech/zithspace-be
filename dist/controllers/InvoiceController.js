@@ -12,6 +12,7 @@ const invoicePayment_model_1 = require("../models/invoicePayment.model");
 const transaction_model_1 = require("../models/transaction.model");
 const types_1 = require("../types");
 const pdfService_1 = require("../services/pdfService");
+const r2Client_1 = require("../utils/r2Client");
 const dbpool_1 = __importDefault(require("../config/dbpool"));
 const settingsProfile_model_1 = require("../models/settingsProfile.model");
 const invoiceLineItem_model_1 = require("../models/invoiceLineItem.model");
@@ -461,9 +462,10 @@ class InvoiceController {
                     currency: createdInvoice.currency,
                 },
             });
+            const fullCreatedInvoice = await (0, invoice_model_1.getInvoiceById)(createdInvoice.id, req.tenantId);
             res.status(201).json({
                 success: true,
-                data: createdInvoice,
+                data: fullCreatedInvoice || createdInvoice,
                 message: 'Invoice created successfully'
             });
         }
@@ -879,9 +881,10 @@ class InvoiceController {
                     grandTotal: updatedInvoice.grandTotal,
                 },
             });
+            const fullUpdatedInvoice = await (0, invoice_model_1.getInvoiceById)(id, req.tenantId);
             res.status(200).json({
                 success: true,
-                data: updatedInvoice,
+                data: fullUpdatedInvoice || updatedInvoice,
                 message: 'Invoice updated successfully',
             });
         }
@@ -1580,6 +1583,15 @@ class InvoiceController {
             }
             if (!companyName) {
                 companyName = "Company";
+            }
+            if (companyLogo && companyLogo.startsWith('data:image/')) {
+                try {
+                    companyLogo = await (0, r2Client_1.uploadImageToR2)(companyLogo, req.tenantId, 'branding');
+                }
+                catch (logoErr) {
+                    console.warn('[InvoiceController] Failed to upload base64 company logo to R2:', logoErr);
+                    companyLogo = null;
+                }
             }
             const currencySymbols = {
                 USD: "$",

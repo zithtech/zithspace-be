@@ -1117,7 +1117,7 @@ View your leave details here: ${leavesUrl}
           <td align="left" style="vertical-align: middle;">
             <table role="presentation" cellpadding="0" cellspacing="0" border="0">
               <tr>
-                ${data.companyLogo ? `
+                ${data.companyLogo && (data.companyLogo.startsWith('http://') || data.companyLogo.startsWith('https://')) ? `
                 <td style="vertical-align: middle; padding-right: 12px;">
                   <img src="${data.companyLogo}" alt="${company}" style="height: 38px; max-width: 140px; object-fit: contain; display: block;" />
                 </td>` : `
