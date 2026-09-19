@@ -34,11 +34,12 @@ import {
   ValidationError 
 } from '../types';
 import { generateAndUploadInvoicePDF } from '../services/pdfService';
-import { deleteFileFromR2 } from '../utils/r2Client';
+import { deleteFileFromR2, uploadImageToR2 } from '../utils/r2Client';
 import { EmailLoggerService } from '../services/emailLoggerService';
 import pool from '../config/dbpool';
 import { 
-  getSettingsProfileById
+  getSettingsProfileById,
+  getActiveSettingsProfile
 } from '../models/settingsProfile.model';
 import { 
   createMultipleInvoiceLineItems,
@@ -609,9 +610,11 @@ export class InvoiceController {
         },
       });
 
+      const fullCreatedInvoice = await getInvoiceById(createdInvoice.id, req.tenantId);
+
       res.status(201).json({ 
         success: true, 
-        data: createdInvoice, 
+        data: fullCreatedInvoice || createdInvoice, 
         message: 'Invoice created successfully' 
       } as ApiResponse);
 
@@ -1102,9 +1105,11 @@ export class InvoiceController {
         },
       });
 
+      const fullUpdatedInvoice = await getInvoiceById(id, req.tenantId);
+
       res.status(200).json({
         success: true,
-        data: updatedInvoice,
+        data: fullUpdatedInvoice || updatedInvoice,
         message: 'Invoice updated successfully',
       } as ApiResponse);
 
@@ -1843,8 +1848,9 @@ export class InvoiceController {
       }
 
       const { id } = req.params;
-      const { to, subject, message, pdfUrl } = req.body;
-      console.log(`SEND EMAIL - Invoice ID: ${id}`);
+      const { to, subject, message, pdfUrl, attachPdf } = req.body;
+      const shouldAttachPdf = attachPdf !== false;
+      console.log(`SEND EMAIL - Invoice ID: ${id}, attachPdf: ${shouldAttachPdf}`);
 
       // Get invoice with complete data
       const invoice = await getInvoiceById(id, req.tenantId);
@@ -1887,11 +1893,103 @@ export class InvoiceController {
 
       // Determine recipient email
       const snapshot = invoice.customerSnapshot as any;
-      const recipientEmail = invoice.customerSnapshot?.email || to || snapshot?.email;
-      const customerName = invoice.customerSnapshot?.companyName || snapshot?.companyName || "Valued Customer";
+      const recipientEmail = to || invoice.customerSnapshot?.email || snapshot?.email;
+      const customerName = invoice.customerSnapshot?.companyName || invoice.customerSnapshot?.name || snapshot?.companyName || snapshot?.name || "Valued Customer";
 
       if (!recipientEmail) {
         throw new ValidationError("No recipient email address found for this customer.");
+      }
+
+      // Fetch company profile branding from settings
+      let companyName = "";
+      let companyLogo: string | null = null;
+      let profile: any = null;
+      try {
+        if (invoice.settingsProfileId) {
+          profile = await getSettingsProfileById(invoice.settingsProfileId, req.tenantId);
+        }
+        if (!profile || !profile?.general?.companyName) {
+          profile = await getActiveSettingsProfile(req.tenantId);
+        }
+        if (profile?.general?.companyName) companyName = profile.general.companyName;
+        if (profile?.general?.companyLogo) companyLogo = profile.general.companyLogo;
+      } catch (e) {
+        console.warn("[InvoiceController] Could not fetch settings profile branding:", e);
+      }
+
+      if (!companyName) {
+        try {
+          const tenantBranding = await emailService.resolveTenantMailBranding(req.tenantId);
+          if (tenantBranding?.companyName) companyName = tenantBranding.companyName;
+          if (tenantBranding?.companyLogo) companyLogo = tenantBranding.companyLogo;
+        } catch (e) {}
+      }
+
+      if (!companyName) {
+        companyName = "Company";
+      }
+
+      if (companyLogo && companyLogo.startsWith('data:image/')) {
+        try {
+          companyLogo = await uploadImageToR2(companyLogo, req.tenantId, 'branding');
+        } catch (logoErr) {
+          console.warn('[InvoiceController] Failed to upload base64 company logo to R2:', logoErr);
+          companyLogo = null;
+        }
+      }
+
+      const currencySymbols: Record<string, string> = {
+        USD: "$",
+        INR: "₹",
+        EUR: "€",
+        GBP: "£",
+        JPY: "¥",
+        AUD: "A$",
+        CAD: "C$",
+        CNY: "¥",
+      };
+      const curSymbol = currencySymbols[invoice.currency || "USD"] || (invoice.currency || "$");
+      const formattedTotal = `${curSymbol} ${Number(invoice.grandTotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+      const formattedDueDate = invoice.dueDate
+        ? new Date(invoice.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+        : "Due on receipt";
+
+      // Determine connected integration mail for from address
+      let fromAddress: string | undefined;
+      try {
+        let defaultMailRes = await pool.query(
+          "SELECT email FROM mail_settings WHERE tenant_id = $1 AND is_verified = TRUE AND is_default_invoice_mail = TRUE AND deleted_at IS NULL LIMIT 1",
+          [req.tenantId]
+        );
+        if (!defaultMailRes.rows.length) {
+          defaultMailRes = await pool.query(
+            "SELECT email FROM mail_settings WHERE tenant_id = $1 AND is_verified = TRUE AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 1",
+            [req.tenantId]
+          );
+        }
+        if (!defaultMailRes.rows.length) {
+          defaultMailRes = await pool.query(
+            "SELECT email FROM mail_settings WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY is_default_invoice_mail DESC, updated_at DESC LIMIT 1",
+            [req.tenantId]
+          );
+        }
+
+        if (defaultMailRes.rows.length > 0 && defaultMailRes.rows[0].email) {
+          fromAddress = `${companyName} <${defaultMailRes.rows[0].email}>`;
+        } else {
+          // Check active connected mail account from mail_accounts
+          const mailAccRes = await pool.query(
+            "SELECT email FROM mail_accounts WHERE tenant_id = $1 AND is_active = TRUE LIMIT 1",
+            [req.tenantId]
+          );
+          if (mailAccRes.rows.length > 0 && mailAccRes.rows[0].email) {
+            fromAddress = `${companyName} <${mailAccRes.rows[0].email}>`;
+          } else if (profile?.general?.companyEmail || profile?.general?.email) {
+            fromAddress = `${companyName} <${profile.general.companyEmail || profile.general.email}>`;
+          }
+        }
+      } catch (e) {
+        console.warn("[InvoiceController] Could not fetch integration connect mail for From address:", e);
       }
 
       // Check if there is a verified integrated default invoice mail
@@ -1903,18 +2001,21 @@ export class InvoiceController {
         const htmlContent = EmailService.generateInvoiceHtml({
           customerName,
           invoiceNumber: invoice.invoiceNumber,
-          amount: invoice.grandTotal ? invoice.grandTotal.toString() : '0.00',
-          dueDate: new Date(invoice.dueDate).toLocaleDateString(),
+          amount: formattedTotal,
+          dueDate: formattedDueDate,
           customMessage: message,
-          pdfUrl: finalPdfUrl
+          pdfUrl: finalPdfUrl,
+          companyName,
+          companyLogo,
         });
 
         const mailResponse = await MailService.sendInvoiceViaIntegratedMail(req.tenantId, {
           to: [recipientEmail],
-          subject: subject || `Invoice ${invoice.invoiceNumber} from Zithspace`,
-          body: message || `Dear ${customerName}, please find your invoice ${invoice.invoiceNumber} attached.`,
+          subject: subject || `Invoice #${invoice.invoiceNumber} from ${companyName} [${formattedTotal}]`,
+          body: message || `Dear ${customerName}, please find invoice #${invoice.invoiceNumber} attached.`,
           htmlBody: htmlContent,
-          attachments: finalPdfUrl ? [{
+          fromName: companyName,
+          attachments: (shouldAttachPdf && finalPdfUrl) ? [{
             filename: `Invoice_${invoice.invoiceNumber}.pdf`,
             url: finalPdfUrl,
             contentType: 'application/pdf'
@@ -1927,13 +2028,16 @@ export class InvoiceController {
         // Fallback to existing SMTP email service
         emailResult = await emailService.sendInvoiceEmail({
           to: recipientEmail,
-          subject: subject || `Invoice ${invoice.invoiceNumber} from Zithtech`,
+          from: fromAddress,
+          subject: subject || `Invoice #${invoice.invoiceNumber} from ${companyName} [${formattedTotal}]`,
           customerName,
           invoiceNumber: invoice.invoiceNumber,
-          amount: invoice.grandTotal ? invoice.grandTotal.toString() : '0.00',
-          dueDate: new Date(invoice.dueDate).toLocaleDateString(),
+          amount: formattedTotal,
+          dueDate: formattedDueDate,
           customMessage: message,
-          pdfUrl: finalPdfUrl
+          pdfUrl: shouldAttachPdf ? finalPdfUrl : null,
+          companyName,
+          companyLogo,
         }, req.tenantId);
       }
 

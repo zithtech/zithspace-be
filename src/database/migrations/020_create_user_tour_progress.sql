@@ -1,0 +1,14 @@
+CREATE TABLE IF NOT EXISTS user_tour_progress (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL,
+  user_id UUID NOT NULL,
+  tour_key VARCHAR(255) NOT NULL,
+  status VARCHAR(50) NOT NULL,
+  current_step INTEGER DEFAULT 0,
+  started_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  completed_at TIMESTAMP WITH TIME ZONE,
+  skipped_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(tenant_id, user_id, tour_key)
+);

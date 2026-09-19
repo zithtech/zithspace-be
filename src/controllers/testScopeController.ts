@@ -54,20 +54,21 @@ export const getTestScopes = async (req: Request, res: Response) => {
 
     const allProjects = await prisma.project.findMany({
       where: { tenantId },
-      select: { id: true }
+      select: { id: true, name: true }
     });
-    const allProjectIds = allProjects.map((p: any) => p.id);
-    const inaccessibleProjectIds = allProjectIds.filter((id: string) => !userProjectIds.includes(id));
+    const inaccessibleProjectNames = allProjects
+      .filter((p: any) => !userProjectIds.includes(p.id))
+      .map((p: any) => p.name);
 
     let query = `SELECT * FROM qa_test_scopes WHERE tenant_id = $1`;
     let countQuery = `SELECT COUNT(*) FROM qa_test_scopes WHERE tenant_id = $1`;
     const params: any[] = [tenantId];
     let paramIndex = 2;
 
-    if (inaccessibleProjectIds.length > 0) {
+    if (inaccessibleProjectNames.length > 0) {
       query += ` AND (details->>'product' IS NULL OR details->>'product' != ALL($${paramIndex}))`;
       countQuery += ` AND (details->>'product' IS NULL OR details->>'product' != ALL($${paramIndex}))`;
-      params.push(inaccessibleProjectIds);
+      params.push(inaccessibleProjectNames);
       paramIndex++;
     }
 
@@ -79,24 +80,82 @@ export const getTestScopes = async (req: Request, res: Response) => {
     }
 
     if (status) {
-      query += ` AND LOWER(REPLACE(status, ' ', '_')) = LOWER(REPLACE($${paramIndex}, ' ', '_'))`;
-      countQuery += ` AND LOWER(REPLACE(status, ' ', '_')) = LOWER(REPLACE($${paramIndex}, ' ', '_'))`;
-      params.push(status);
-      paramIndex++;
+      const statusArr = (Array.isArray(status) ? status : String(status).split(','))
+        .map(s => String(s).trim())
+        .filter(Boolean);
+      if (statusArr.length === 1) {
+        query += ` AND LOWER(REPLACE(status, ' ', '_')) = LOWER(REPLACE($${paramIndex}, ' ', '_'))`;
+        countQuery += ` AND LOWER(REPLACE(status, ' ', '_')) = LOWER(REPLACE($${paramIndex}, ' ', '_'))`;
+        params.push(statusArr[0]);
+        paramIndex++;
+      } else if (statusArr.length > 1) {
+        const placeholders = statusArr.map(() => `LOWER(REPLACE($${paramIndex++}, ' ', '_'))`).join(',');
+        query += ` AND LOWER(REPLACE(status, ' ', '_')) IN (${placeholders})`;
+        countQuery += ` AND LOWER(REPLACE(status, ' ', '_')) IN (${placeholders})`;
+        params.push(...statusArr);
+      }
     }
 
     if (priority) {
-      query += ` AND LOWER(REPLACE(priority, ' ', '_')) = LOWER(REPLACE($${paramIndex}, ' ', '_'))`;
-      countQuery += ` AND LOWER(REPLACE(priority, ' ', '_')) = LOWER(REPLACE($${paramIndex}, ' ', '_'))`;
-      params.push(priority);
-      paramIndex++;
+      const priorityArr = (Array.isArray(priority) ? priority : String(priority).split(','))
+        .map(p => String(p).trim())
+        .filter(Boolean);
+      if (priorityArr.length === 1) {
+        query += ` AND LOWER(REPLACE(priority, ' ', '_')) = LOWER(REPLACE($${paramIndex}, ' ', '_'))`;
+        countQuery += ` AND LOWER(REPLACE(priority, ' ', '_')) = LOWER(REPLACE($${paramIndex}, ' ', '_'))`;
+        params.push(priorityArr[0]);
+        paramIndex++;
+      } else if (priorityArr.length > 1) {
+        const placeholders = priorityArr.map(() => `LOWER(REPLACE($${paramIndex++}, ' ', '_'))`).join(',');
+        query += ` AND LOWER(REPLACE(priority, ' ', '_')) IN (${placeholders})`;
+        countQuery += ` AND LOWER(REPLACE(priority, ' ', '_')) IN (${placeholders})`;
+        params.push(...priorityArr);
+      }
     }
 
     if (qa_owner) {
-      query += ` AND qa_owner = $${paramIndex}`;
-      countQuery += ` AND qa_owner = $${paramIndex}`;
-      params.push(qa_owner);
-      paramIndex++;
+      const ownerArr = (Array.isArray(qa_owner) ? qa_owner : String(qa_owner).split(','))
+        .map(o => String(o).trim())
+        .filter(Boolean);
+      if (ownerArr.length === 1) {
+        query += ` AND qa_owner = $${paramIndex}`;
+        countQuery += ` AND qa_owner = $${paramIndex}`;
+        params.push(ownerArr[0]);
+        paramIndex++;
+      } else if (ownerArr.length > 1) {
+        const placeholders = ownerArr.map(() => `$${paramIndex++}`).join(',');
+        query += ` AND qa_owner IN (${placeholders})`;
+        countQuery += ` AND qa_owner IN (${placeholders})`;
+        params.push(...ownerArr);
+      }
+    }
+
+    const timeline = req.query.timeline;
+    if (timeline) {
+      const timelineArr = (Array.isArray(timeline) ? timeline : String(timeline).split(','))
+        .map(t => String(t).trim().toLowerCase())
+        .filter(Boolean);
+      if (timelineArr.length > 0) {
+        const conditions: string[] = [];
+        timelineArr.forEach(t => {
+          if (t === 'overdue') {
+            conditions.push(`(end_date IS NOT NULL AND end_date < CURRENT_DATE)`);
+          } else if (t === 'soon') {
+            conditions.push(`(end_date >= CURRENT_DATE AND end_date <= CURRENT_DATE + INTERVAL '7 days')`);
+          } else if (t === 'upcoming') {
+            conditions.push(`(start_date > CURRENT_DATE)`);
+          } else if (t === 'active') {
+            conditions.push(`(start_date <= CURRENT_DATE AND (end_date IS NULL OR end_date >= CURRENT_DATE))`);
+          } else if (t === 'undated') {
+            conditions.push(`(start_date IS NULL AND end_date IS NULL)`);
+          }
+        });
+        if (conditions.length > 0) {
+          const combined = ` AND (${conditions.join(' OR ')})`;
+          query += combined;
+          countQuery += combined;
+        }
+      }
     }
 
     // Restrict visibility to scopes belonging to the user's accessible projects.
@@ -200,10 +259,18 @@ export const createTestScope = async (req: Request, res: Response) => {
 
     const { name, type, priority, status, qa_owner, start_date, end_date, details } = req.body;
 
+    const trimmedName = typeof name === 'string' ? name.trim() : '';
+    if (!trimmedName) {
+      return res.status(400).json({ success: false, error: 'Test Scope name is required' });
+    }
+    if (trimmedName.length > 255) {
+      return res.status(400).json({ success: false, error: 'Test Scope name cannot exceed 255 characters' });
+    }
+
     const { rows } = await pool.query(
       `INSERT INTO qa_test_scopes (tenant_id, name, type, priority, status, qa_owner, start_date, end_date, details) 
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-      [tenantId, name, type, priority, status, qa_owner, start_date || null, end_date || null, details || {}]
+      [tenantId, trimmedName, type, priority, status, qa_owner, start_date || null, end_date || null, details || {}]
     );
 
     // The modules named on a scope are the workspace's module list — keep the
@@ -221,7 +288,7 @@ export const createTestScope = async (req: Request, res: Response) => {
       actionLabel: "Test Scope created",
       entityType: EntityType.QA_SCOPE,
       entityId: rows[0].id,
-      entityLabel: name,
+      entityLabel: trimmedName,
       afterData: rows[0],
     });
     // The modules named on a scope are the workspace's module list — keep the
@@ -247,6 +314,17 @@ export const updateTestScope = async (req: Request, res: Response) => {
     console.log('UpdateTestScope called with id:', id, 'body:', req.body);
     const { name, type, priority, status, qa_owner, start_date, end_date, details } = req.body || {};
 
+    let trimmedName: string | undefined = undefined;
+    if (name !== undefined) {
+      trimmedName = typeof name === 'string' ? name.trim() : '';
+      if (!trimmedName) {
+        return res.status(400).json({ success: false, error: 'Test Scope name cannot be empty' });
+      }
+      if (trimmedName.length > 255) {
+        return res.status(400).json({ success: false, error: 'Test Scope name cannot exceed 255 characters' });
+      }
+    }
+
     // Check approve/reject permissions
     if (status === 'Approved' || status === 'Rejected') {
       const allowed = await RBACService.hasAnyPermission(
@@ -265,7 +343,7 @@ export const updateTestScope = async (req: Request, res: Response) => {
        WHERE id = $9 AND tenant_id = $10 RETURNING *`;
 
     const params = [
-      name || null,
+      trimmedName !== undefined ? trimmedName : (name || null),
       type || null,
       priority || null,
       status || null,
@@ -715,11 +793,20 @@ export const getTestScopesStats = async (req: Request, res: Response) => {
       paramIndex++;
     }
 
-    const qa_owner = String(req.query.qa_owner ?? '').trim();
+    const qa_owner = req.query.qa_owner;
     if (qa_owner) {
-      query += ` AND qa_owner = $${paramIndex}`;
-      params.push(qa_owner);
-      paramIndex++;
+      const ownerArr = (Array.isArray(qa_owner) ? qa_owner : String(qa_owner).split(','))
+        .map(o => String(o).trim())
+        .filter(Boolean);
+      if (ownerArr.length === 1) {
+        query += ` AND qa_owner = $${paramIndex}`;
+        params.push(ownerArr[0]);
+        paramIndex++;
+      } else if (ownerArr.length > 1) {
+        const placeholders = ownerArr.map(() => `$${paramIndex++}`).join(',');
+        query += ` AND qa_owner IN (${placeholders})`;
+        params.push(...ownerArr);
+      }
     }
 
     const { rows } = await pool.query(query, params);

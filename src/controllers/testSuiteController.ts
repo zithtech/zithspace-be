@@ -49,26 +49,59 @@ export const getTestSuites = async (req: Request, res: Response) => {
     const params: any[] = [tenantId];
     
     // Helper to build WHERE conditions
-    const applyFilters = (q: string, p: any[]) => {
+    const applyFilters = (q: string, p: any[], opts?: { includeCoverage?: boolean }) => {
+      const includeCoverage = opts?.includeCoverage !== false;
       let queryStr = q;
       if (module_id) {
-        p.push(module_id);
-        queryStr += ` AND (ts.module_id::text = $${p.length}::text OR ptc.module_id::text = $${p.length}::text)`;
+        const modIds = (Array.isArray(module_id) ? module_id : String(module_id).split(','))
+          .map(m => String(m).trim())
+          .filter(Boolean);
+        if (modIds.length > 0) {
+          const hasUnassigned = modIds.some(m => m.toLowerCase() === 'unassigned');
+          const validIds = modIds.filter(m => m.toLowerCase() !== 'unassigned');
+          const conditions: string[] = [];
+          if (validIds.length > 0) {
+            let idx = p.length + 1;
+            const placeholders = validIds.map(() => `$${idx++}::text`);
+            p.push(...validIds);
+            conditions.push(`(ts.module_id::text IN (${placeholders.join(',')}) OR ptc.module_id::text IN (${placeholders.join(',')}) OR mv2.name IN (${placeholders.join(',')}) OR ptc_mv2.name IN (${placeholders.join(',')}) OR m.module_name IN (${placeholders.join(',')}) OR ptc_m.module_name IN (${placeholders.join(',')}))`);
+          }
+          if (hasUnassigned) {
+            conditions.push(`((ts.module_id IS NULL AND ptc.module_id IS NULL) OR (ts.module_id::text = '' AND ptc.module_id::text = ''))`);
+          }
+          if (conditions.length > 0) {
+            queryStr += ` AND (${conditions.join(' OR ')})`;
+          }
+        }
       }
       if (parentId) {
-        p.push(parentId);
-        queryStr += ` AND ts.parent_test_case_id::text = $${p.length}::text`;
+        const parentIds = (Array.isArray(parentId) ? parentId : String(parentId).split(','))
+          .map(id => String(id).trim())
+          .filter(Boolean);
+        if (parentIds.length > 0) {
+          let idx = p.length + 1;
+          const placeholders = parentIds.map(() => `$${idx++}::text`);
+          p.push(...parentIds);
+          queryStr += ` AND ts.parent_test_case_id::text IN (${placeholders.join(',')})`;
+        }
       }
       if (search) {
         p.push(`%${search}%`);
         queryStr += ` AND (ts.suite_name ILIKE $${p.length} OR ptc.title ILIKE $${p.length})`;
       }
-      if (coverageFilter) {
-        const caseCountSubquery = `(SELECT COUNT(*) FROM qa_test_suite_cases tsc WHERE tsc.test_suite_id::text = ts.id::text)`;
-        if (coverageFilter === 'linked') {
-          queryStr += ` AND ${caseCountSubquery} > 0`;
-        } else if (coverageFilter === 'empty') {
-          queryStr += ` AND ${caseCountSubquery} = 0`;
+      if (includeCoverage && coverageFilter) {
+        const coverages = (Array.isArray(coverageFilter) ? coverageFilter : String(coverageFilter).split(','))
+          .map(c => String(c).trim().toLowerCase())
+          .filter(Boolean);
+        if (coverages.length > 0 && !coverages.includes('any')) {
+          const hasLinked = coverages.includes('linked') || coverages.includes('with cases');
+          const hasEmpty = coverages.includes('empty');
+          const caseCountSubquery = `(SELECT COUNT(*) FROM qa_test_suite_cases tsc WHERE tsc.test_suite_id::text = ts.id::text)`;
+          if (hasLinked && !hasEmpty) {
+            queryStr += ` AND ${caseCountSubquery} > 0`;
+          } else if (hasEmpty && !hasLinked) {
+            queryStr += ` AND ${caseCountSubquery} = 0`;
+          }
         }
       }
       if (project_id) {
@@ -92,20 +125,30 @@ export const getTestSuites = async (req: Request, res: Response) => {
       return queryStr;
     };
 
-    query = applyFilters(query, params);
+    query = applyFilters(query, params, { includeCoverage: true });
     
     let countQuery = `
-      SELECT 
-        COUNT(*) as count,
-        SUM((SELECT COUNT(*) FROM qa_test_suite_cases tsc WHERE tsc.test_suite_id::text = ts.id::text)) as total_cases,
-        COUNT(DISTINCT ts.parent_test_case_id) as unique_scenarios,
-        SUM(CASE WHEN (SELECT COUNT(*) FROM qa_test_suite_cases tsc WHERE tsc.test_suite_id::text = ts.id::text) = 0 THEN 1 ELSE 0 END) as empty_suites
+      SELECT COUNT(*) as count
       FROM qa_test_suites ts
       LEFT JOIN qa_parent_test_cases ptc ON ts.parent_test_case_id::text = ptc.id::text
       WHERE ts.tenant_id = $1
     `;
     const countParams: any[] = [tenantId];
-    countQuery = applyFilters(countQuery, countParams);
+    countQuery = applyFilters(countQuery, countParams, { includeCoverage: true });
+
+    let statsQuery = `
+      SELECT 
+        COUNT(*) as total_suites,
+        SUM((SELECT COUNT(*) FROM qa_test_suite_cases tsc WHERE tsc.test_suite_id::text = ts.id::text)) as total_cases,
+        COUNT(DISTINCT ts.parent_test_case_id) as unique_scenarios,
+        SUM(CASE WHEN (SELECT COUNT(*) FROM qa_test_suite_cases tsc WHERE tsc.test_suite_id::text = ts.id::text) = 0 THEN 1 ELSE 0 END) as empty_suites,
+        SUM(CASE WHEN (SELECT COUNT(*) FROM qa_test_suite_cases tsc WHERE tsc.test_suite_id::text = ts.id::text) > 0 THEN 1 ELSE 0 END) as linked_suites
+      FROM qa_test_suites ts
+      LEFT JOIN qa_parent_test_cases ptc ON ts.parent_test_case_id::text = ptc.id::text
+      WHERE ts.tenant_id = $1
+    `;
+    const statsParams: any[] = [tenantId];
+    statsQuery = applyFilters(statsQuery, statsParams, { includeCoverage: false });
 
     query += ` ORDER BY ts.created_at DESC`;
     params.push(parsedLimit);
@@ -113,22 +156,28 @@ export const getTestSuites = async (req: Request, res: Response) => {
     params.push(offset);
     query += ` OFFSET $${params.length}`;
 
-    const [{ rows }, { rows: countRows }] = await Promise.all([
+    const [{ rows }, { rows: countRows }, { rows: statsRows }] = await Promise.all([
       pool.query(query, params),
-      pool.query(countQuery, countParams)
+      pool.query(countQuery, countParams),
+      pool.query(statsQuery, statsParams)
     ]);
-    const total = parseInt(countRows[0].count || '0', 10);
-    const totalLinkedCases = parseInt(countRows[0].total_cases || '0', 10);
-    const uniqueScenarios = parseInt(countRows[0].unique_scenarios || '0', 10);
-    const emptySuites = parseInt(countRows[0].empty_suites || '0', 10);
+    const total = parseInt(countRows[0]?.count || '0', 10);
+    const totalSuites = parseInt(statsRows[0]?.total_suites || '0', 10);
+    const totalLinkedCases = parseInt(statsRows[0]?.total_cases || '0', 10);
+    const uniqueScenarios = parseInt(statsRows[0]?.unique_scenarios || '0', 10);
+    const emptySuites = parseInt(statsRows[0]?.empty_suites || '0', 10);
+    const linkedSuites = parseInt(statsRows[0]?.linked_suites || '0', 10);
 
     res.status(200).json({ 
       success: true, 
       data: rows,
       stats: {
+        totalSuites,
+        allSuites: totalSuites,
         totalLinkedCases,
         uniqueScenarios,
-        emptySuites
+        emptySuites,
+        linkedSuites
       },
       pagination: {
         total,
@@ -151,7 +200,7 @@ export const getTestSuite = async (req: Request, res: Response) => {
     const { id } = req.params;
     
     const { rows: suiteRows } = await pool.query(`
-      SELECT ts.*, COALESCE(mv2.name, ptc_mv2.name, m.module_name, ptc_m.module_name, 'Unassigned') as module_name, ptc.title as parent_title,
+      SELECT ts.*, COALESCE(mv2.name, ptc_mv2.name, m.module_name, ptc_m.module_name, 'Unassigned') as module_name, ptc.title as parent_title, ptc.project_id as project_id,
       uc.name as created_by_name, uu.name as updated_by_name
       FROM qa_test_suites ts
       LEFT JOIN qa_todo_modules m ON ts.module_id::text = m.id::text
@@ -208,16 +257,37 @@ export const getTestSuiteCases = async (req: Request, res: Response) => {
       baseQuery += ` AND (tc.name ILIKE $${params.length} OR tc.test_case_id ILIKE $${params.length})`;
     }
     if (test_type) {
-      params.push(String(test_type));
-      baseQuery += ` AND tc.test_type = $${params.length}`;
+      const types = (Array.isArray(test_type) ? test_type : String(test_type).split(','))
+        .map(t => String(t).trim().toLowerCase())
+        .filter(Boolean);
+      if (types.length > 0) {
+        let idx = params.length + 1;
+        const placeholders = types.map(() => `$${idx++}`);
+        params.push(...types);
+        baseQuery += ` AND LOWER(TRIM(COALESCE(tc.test_type, ''))) IN (${placeholders.join(',')})`;
+      }
     }
     if (priority) {
-      params.push(String(priority));
-      baseQuery += ` AND tc.priority = $${params.length}`;
+      const priorities = (Array.isArray(priority) ? priority : String(priority).split(','))
+        .map(p => String(p).trim().toLowerCase())
+        .filter(Boolean);
+      if (priorities.length > 0) {
+        let idx = params.length + 1;
+        const placeholders = priorities.map(() => `$${idx++}`);
+        params.push(...priorities);
+        baseQuery += ` AND LOWER(TRIM(COALESCE(tc.priority, ''))) IN (${placeholders.join(',')})`;
+      }
     }
     if (status) {
-      params.push(String(status));
-      baseQuery += ` AND tc.status = $${params.length}`;
+      const statuses = (Array.isArray(status) ? status : String(status).split(','))
+        .map(s => String(s).trim().toLowerCase())
+        .filter(Boolean);
+      if (statuses.length > 0) {
+        let idx = params.length + 1;
+        const placeholders = statuses.map(() => `$${idx++}`);
+        params.push(...statuses);
+        baseQuery += ` AND LOWER(TRIM(COALESCE(tc.status, ''))) IN (${placeholders.join(',')})`;
+      }
     }
     if (quickFilter === 'active') {
       baseQuery += ` AND (tc.status = 'Active' OR tc.status = 'Ready')`;
@@ -268,6 +338,12 @@ export const createTestSuite = async (req: Request, res: Response) => {
     
     const { suite_name, module_id, parent_test_case_id, parent_id, description, test_case_ids, testing_type } = req.body;
     console.log("createTestSuite req.body:", req.body);
+    if (!suite_name || !suite_name.trim()) {
+      return res.status(400).json({ success: false, error: 'Suite Name is required' });
+    }
+    if (suite_name.trim().length > 255) {
+      return res.status(400).json({ success: false, error: 'Suite Name cannot exceed 255 characters' });
+    }
     const parentId = parent_test_case_id || parent_id || null;
     
     await client.query('BEGIN');
@@ -327,6 +403,14 @@ export const updateTestSuite = async (req: Request, res: Response) => {
     const { id } = req.params;
     const { suite_name, module_id, parent_test_case_id, parent_id, description, test_case_ids, testing_type } = req.body;
     console.log("updateTestSuite req.body:", req.body);
+    if (suite_name !== undefined) {
+      if (!suite_name || !suite_name.trim()) {
+        return res.status(400).json({ success: false, error: 'Suite Name is required' });
+      }
+      if (suite_name.trim().length > 255) {
+        return res.status(400).json({ success: false, error: 'Suite Name cannot exceed 255 characters' });
+      }
+    }
     const parentId = parent_test_case_id || parent_id || null;
     
     await client.query('BEGIN');

@@ -4,6 +4,9 @@ import { ensureQaSubmissionSchema } from '../db/qaSubmissionSchema';
 import { getAIProviderForTenant } from '../services/ai/resolver';
 import { uploadSubmissionAttachmentToR2, deleteFileFromR2 } from '../utils/r2Client';
 import { recordTransaction, Section, Module, Page, Action, EntityType, diffShallow } from '../utils/transactionHistory';
+import { RBACService } from '../modules/rbac/rbac.service';
+import { Permissions } from '../types/permissions';
+import { prisma } from '../config/database';
 
 /**
  * QA Submissions — the formal reporting layer that sits after Test Runs and the
@@ -518,21 +521,59 @@ async function syncRetestingStatus(id: string, tenantId: string, current: string
 /** Summary cards for the QA Submissions dashboard (§4). */
 export const getSubmissionStats = async (req: Request, res: Response) => {
   try {
-    const { tenantId } = auth(req);
+    const { tenantId, id: userId, role: userRole } = (req as any).user || auth(req);
     if (!tenantId) return fail(res, 401, 'Unauthorized');
     await ensureQaSubmissionSchema();
 
+    // Filter out inaccessible projects
+    const hasManagePermission = await RBACService.hasPermission(userId, tenantId, Permissions.PROJECT_MANAGE, userRole);
+    const userProjectsQuery: any = {
+      tenantId,
+      status: { notIn: ["ARCHIVED", "DELETED", "archived", "deleted"] },
+    };
+    if (!hasManagePermission) {
+      userProjectsQuery.OR = [
+        { projectManagerId: userId },
+        { members: { some: { userId } } },
+      ];
+    }
+    const userProjects = await prisma.project.findMany({
+      where: userProjectsQuery,
+      select: { id: true }
+    });
+    const userProjectIds = userProjects.map((p: any) => p.id);
+
+    const allProjects = await prisma.project.findMany({
+      where: { tenantId },
+      select: { id: true, name: true }
+    });
+    const inaccessibleProjectNames = allProjects
+      .filter((p: any) => !userProjectIds.includes(p.id))
+      .map((p: any) => p.name);
+
+    let joinClause = '';
+    let whereClause = 's.tenant_id = $1';
+    const params: any[] = [tenantId];
+    
+    if (inaccessibleProjectNames.length > 0) {
+      joinClause = 'LEFT JOIN qa_test_scopes sc ON sc.id = s.scope_id';
+      whereClause += ` AND (sc.details->>'product' IS NULL OR sc.details->>'product' != ALL($2))`;
+      params.push(inaccessibleProjectNames);
+    }
+
     const { rows } = await pool.query(
       `SELECT COUNT(*)::int AS total,
-              COUNT(*) FILTER (WHERE status = 'Draft')::int                 AS draft,
-              COUNT(*) FILTER (WHERE status IN ('Submitted','Under Review'))::int AS submitted,
-              COUNT(*) FILTER (WHERE status = 'Retesting')::int             AS retesting,
-              COUNT(*) FILTER (WHERE status = 'Ready for QA Sign-off')::int AS ready_for_signoff,
-              COUNT(*) FILTER (WHERE status = 'QA Signed-off')::int         AS qa_signed_off,
-              COUNT(*) FILTER (WHERE status = 'Approved')::int              AS approved,
-              COUNT(*) FILTER (WHERE status = 'Sent Back')::int             AS sent_back
-         FROM qa_submissions WHERE tenant_id = $1`,
-      [tenantId],
+              COUNT(*) FILTER (WHERE s.status = 'Draft')::int                 AS draft,
+              COUNT(*) FILTER (WHERE s.status IN ('Submitted','Under Review'))::int AS submitted,
+              COUNT(*) FILTER (WHERE s.status = 'Retesting')::int             AS retesting,
+              COUNT(*) FILTER (WHERE s.status = 'Ready for QA Sign-off')::int AS ready_for_signoff,
+              COUNT(*) FILTER (WHERE s.status = 'QA Signed-off')::int         AS qa_signed_off,
+              COUNT(*) FILTER (WHERE s.status = 'Approved')::int              AS approved,
+              COUNT(*) FILTER (WHERE s.status = 'Sent Back')::int             AS sent_back
+         FROM qa_submissions s
+         ${joinClause}
+        WHERE ${whereClause}`,
+      params,
     );
     res.status(200).json({ success: true, data: rows[0] });
   } catch (error) {
@@ -555,9 +596,35 @@ const LIST_SORTABLE: Record<string, string> = {
 /** Paginated, filterable submission list (§5). */
 export const getSubmissions = async (req: Request, res: Response) => {
   try {
-    const { tenantId } = auth(req);
+    const { tenantId, id: userId, role: userRole } = (req as any).user || auth(req);
     if (!tenantId) return fail(res, 401, 'Unauthorized');
     await ensureQaSubmissionSchema();
+
+    // Filter out inaccessible projects
+    const hasManagePermission = await RBACService.hasPermission(userId, tenantId, Permissions.PROJECT_MANAGE, userRole);
+    const userProjectsQuery: any = {
+      tenantId,
+      status: { notIn: ["ARCHIVED", "DELETED", "archived", "deleted"] },
+    };
+    if (!hasManagePermission) {
+      userProjectsQuery.OR = [
+        { projectManagerId: userId },
+        { members: { some: { userId } } },
+      ];
+    }
+    const userProjects = await prisma.project.findMany({
+      where: userProjectsQuery,
+      select: { id: true }
+    });
+    const userProjectIds = userProjects.map((p: any) => p.id);
+
+    const allProjects = await prisma.project.findMany({
+      where: { tenantId },
+      select: { id: true, name: true }
+    });
+    const inaccessibleProjectNames = allProjects
+      .filter((p: any) => !userProjectIds.includes(p.id))
+      .map((p: any) => p.name);
 
     const page = Math.max(1, int(req.query.page) || 1);
     const pageSize = Math.min(Math.max(int(req.query.pageSize) || 20, 1), 200);
@@ -580,6 +647,10 @@ export const getSubmissions = async (req: Request, res: Response) => {
       params.push(value);
       where += ` AND ${clause.replace(/\$\$/g, `$${params.length}`)}`;
     };
+
+    if (inaccessibleProjectNames.length > 0) {
+      push('(sc.details->>\'product\' IS NULL OR sc.details->>\'product\' != ALL($$))', inaccessibleProjectNames);
+    }
 
     if (search) push('(s.submission_name ILIKE $$ OR sc.name ILIKE $$)', `%${search}%`);
     if (scopeId) push('s.scope_id = $$::uuid', scopeId);
@@ -803,13 +874,44 @@ export const getScopeRuns = async (req: Request, res: Response) => {
 
 export const getSubmission = async (req: Request, res: Response) => {
   try {
-    const { tenantId } = auth(req);
+    const { tenantId, id: userId, role: userRole } = (req as any).user || auth(req);
     if (!tenantId) return fail(res, 401, 'Unauthorized');
     await ensureQaSubmissionSchema();
 
     const { id } = req.params;
     const submission = await loadSubmissionRow(id, tenantId);
     if (!submission) return fail(res, 404, 'QA Submission not found');
+
+    // Check project access
+    const hasManagePermission = await RBACService.hasPermission(userId, tenantId, Permissions.PROJECT_MANAGE, userRole);
+    if (!hasManagePermission) {
+      const userProjectsQuery: any = {
+        tenantId,
+        status: { notIn: ["ARCHIVED", "DELETED", "archived", "deleted"] },
+        OR: [
+          { projectManagerId: userId },
+          { members: { some: { userId } } },
+        ]
+      };
+      const userProjects = await prisma.project.findMany({
+        where: userProjectsQuery,
+        select: { id: true }
+      });
+      const userProjectIds = userProjects.map((p: any) => p.id);
+
+      const allProjects = await prisma.project.findMany({
+        where: { tenantId },
+        select: { id: true, name: true }
+      });
+      const inaccessibleProjectNames = allProjects
+        .filter((p: any) => !userProjectIds.includes(p.id))
+        .map((p: any) => p.name);
+
+      const product = submission.scope_details?.product;
+      if (product && inaccessibleProjectNames.includes(product)) {
+         return fail(res, 403, 'You do not have access to the project associated with this submission.');
+      }
+    }
 
     const [summary, knownIssues, attachments, history, versions] = await Promise.all([
       buildFullSummary(id, tenantId),

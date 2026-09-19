@@ -243,6 +243,7 @@ const generateInvoiceHtml = (invoice, profile) => {
       font-size: 10px; 
       text-transform: uppercase; 
       color: #666; 
+      white-space: nowrap;
     }
     
     .item-table td { 
@@ -252,11 +253,16 @@ const generateInvoiceHtml = (invoice, profile) => {
       color: #444; 
       vertical-align: middle; 
     }
+
+    .item-table td.nowrap {
+      white-space: nowrap;
+    }
     
     .summary-row td { 
       border: 1px solid #e9ecef; 
       padding: 4px 8px; 
       font-size: 10px; 
+      white-space: nowrap;
     }
     
     .avoid-break { 
@@ -360,71 +366,71 @@ const generateInvoiceHtml = (invoice, profile) => {
             <table class="item-table text-[10px]">
               <thead>
                 <tr>
-                  <th width="40">S.NO</th>
+                  <th width="40" class="whitespace-nowrap" style="white-space: nowrap;">S.NO</th>
                   ${finalColumns.map(col => `
-                    <th class="${col.key === 'itemName' ? 'text-left' : (col.key === 'quantity' ? 'text-center' : 'text-right')}">${col.title}</th>
+                    <th class="${col.key === 'itemName' ? 'text-left' : (col.key === 'quantity' ? 'text-center whitespace-nowrap' : 'text-right whitespace-nowrap')}" style="${col.key !== 'itemName' ? 'white-space: nowrap;' : ''}">${col.title}</th>
                   `).join('')}
-                  <th width="100" class="text-right">Total</th>
+                  <th width="100" class="text-right whitespace-nowrap" style="white-space: nowrap;">Total</th>
                 </tr>
               </thead>
               <tbody>
                 ${items.map((item, idx) => `
                   <tr>
-                    <td class="text-center text-gray-400">${idx + 1}</td>
+                    <td class="text-center text-gray-400 nowrap" style="white-space: nowrap;">${idx + 1}</td>
                     ${finalColumns.map(col => {
         if (col.key === 'itemName') {
-            return `<td>
+            return `<td style="word-break: break-word; overflow-wrap: break-word;">
                           <p class="font-bold m-0 text-[11px]">${item.itemName || item.item || ''}</p>
-                          ${item.description ? `<p class="text-[9px] text-gray-400 m-0 leading-tight">${item.description}</p>` : ''}
+                          ${item.description ? `<p class="text-[9px] text-gray-400 m-0 leading-tight" style="white-space: pre-wrap; word-break: break-word; overflow-wrap: break-word;">${item.description}</p>` : ''}
                         </td>`;
         }
         if (col.key === 'quantity')
-            return `<td class="text-center">${item.quantity || item.qty || 0}</td>`;
+            return `<td class="text-center nowrap" style="white-space: nowrap;">${item.quantity || item.qty || 0}</td>`;
         if (col.key === 'rate')
-            return `<td class="text-right">${symbol} ${Number(item.rate || item.price || 0).toFixed(2)}</td>`;
+            return `<td class="text-right nowrap" style="white-space: nowrap;">${symbol}&nbsp;${Number(item.rate || item.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>`;
         if (col.key === 'taxRate') {
             const tr = Number(item.taxRate || item.tax || 0);
-            return `<td class="text-right">${tr}%</td>`;
+            return `<td class="text-right nowrap" style="white-space: nowrap;">${tr}%</td>`;
         }
         if (col.key === 'projectId')
-            return `<td class="text-right">${item.projectName || item.extraFields?.projectName || item.projectId || '-'}</td>`;
+            return `<td class="text-right nowrap" style="white-space: nowrap;">${item.projectName || item.extraFields?.projectName || item.projectId || '-'}</td>`;
         // For extra fields
         const val = item.extraFields?.[col.key] || '-';
-        return `<td class="text-right">${val}</td>`;
+        return `<td class="text-right nowrap" style="white-space: nowrap;">${val}</td>`;
     }).join('')}
-                    <td class="text-right font-bold">${symbol} ${Number(item.total || (Number(item.quantity || item.qty) * Number(item.rate || item.price)) + Number(item.taxAmount || item.tax || 0)).toFixed(2)}</td>
+                    <td class="text-right font-bold nowrap" style="white-space: nowrap;">${symbol}&nbsp;${Number(item.total || (Number(item.quantity || item.qty) * Number(item.rate || item.price)) + Number(item.taxAmount || item.tax || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                   </tr>
                 `).join('')}
                 
                 <tr class="summary-row">
-                  <td colspan="${finalColumns.length + 1}" class="text-right border-none pt-2 font-medium text-gray-500">Subtotal</td>
-                  <td class="text-right border-t border-gray-100 font-bold pt-2">${symbol} ${Number(invoice.subtotal).toFixed(2)}</td>
+                  <td colspan="${finalColumns.length + 1}" class="text-right border-none pt-2 font-medium text-gray-500 whitespace-nowrap" style="white-space: nowrap;">Subtotal</td>
+                  <td class="text-right border-t border-gray-100 font-bold pt-2 whitespace-nowrap" style="white-space: nowrap;">${symbol}&nbsp;${Number(invoice.subtotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 </tr>
                 
                 ${hasTax ? `
                 <tr class="summary-row">
-                  <td colspan="${finalColumns.length + 1}" class="text-right border-none font-medium text-gray-500">CGST (${(firstItemTaxRate / 2).toFixed(2)}%)</td>
-                  <td class="text-right font-bold">${symbol} ${(Number(invoice.taxTotal) / 2).toFixed(2)}</td>
+                  <td colspan="${finalColumns.length + 1}" class="text-right border-none font-medium text-gray-500 whitespace-nowrap" style="white-space: nowrap;">CGST (${(firstItemTaxRate / 2).toFixed(2)}%)</td>
+                  <td class="text-right font-bold whitespace-nowrap" style="white-space: nowrap;">${symbol}&nbsp;${(Number(invoice.taxTotal) / 2).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 </tr>
                 <tr class="summary-row">
-                  <td colspan="${finalColumns.length + 1}" class="text-right border-none font-medium text-gray-500">SGST (${(firstItemTaxRate / 2).toFixed(2)}%)</td>
-                  <td class="text-right font-bold">${symbol} ${(Number(invoice.taxTotal) / 2).toFixed(2)}</td>
+                  <td colspan="${finalColumns.length + 1}" class="text-right border-none font-medium text-gray-500 whitespace-nowrap" style="white-space: nowrap;">SGST (${(firstItemTaxRate / 2).toFixed(2)}%)</td>
+                  <td class="text-right font-bold whitespace-nowrap" style="white-space: nowrap;">${symbol}&nbsp;${(Number(invoice.taxTotal) / 2).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 </tr>` : ''}
 
                 ${Number(invoice.discountTotal || invoice.discount) > 0 ? `
                 <tr class="summary-row">
-                  <td colspan="${finalColumns.length + 1}" class="text-right border-none font-medium text-gray-500">Discount</td>
-                  <td class="text-right font-bold text-red-500">-${symbol} ${Number(invoice.discountTotal || invoice.discount).toFixed(2)}</td>
+                  <td colspan="${finalColumns.length + 1}" class="text-right border-none font-medium text-gray-500 whitespace-nowrap" style="white-space: nowrap;">Discount</td>
+                  <td class="text-right font-bold text-red-500 whitespace-nowrap" style="white-space: nowrap;">-${symbol}&nbsp;${Number(invoice.discountTotal || invoice.discount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 </tr>` : ''}
 
                 <tr class="summary-row">
                   ${qtyColIndex !== -1 ? `
-                    <td colspan="${qtyColIndex + 1}" class="text-right border-none font-bold text-gray-800 uppercase">Total</td>
-                    <td class="text-center font-bold text-base">${totalQty}</td>
-                    <td colspan="${finalColumns.length - qtyColIndex}" class="text-right font-bold text-lg" style="color: ${primaryColor}">${symbol} ${Number(invoice.grandTotal || invoice.total).toFixed(2)}</td>
+                    <td colspan="${qtyColIndex + 1}" class="text-right border-none font-bold text-gray-800 uppercase whitespace-nowrap" style="white-space: nowrap;">Total</td>
+                    <td class="text-center font-bold text-base whitespace-nowrap" style="white-space: nowrap;">${totalQty}</td>
+                    <td colspan="${finalColumns.length - qtyColIndex}" class="text-right font-bold text-lg whitespace-nowrap" style="color: ${primaryColor}; white-space: nowrap;">${symbol}&nbsp;${Number(invoice.grandTotal || invoice.total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                   ` : `
-                    <td colspan="${finalColumns.length + 1}" class="text-right border-none font-bold text-gray-800 uppercase">Total</td>
-                    <td class="text-right font-bold text-lg" style="color: ${primaryColor}">${symbol} ${Number(invoice.grandTotal || invoice.total).toFixed(2)}</td>
+                    <td colspan="${finalColumns.length + 1}" class="text-right border-none font-bold text-gray-800 uppercase whitespace-nowrap" style="white-space: nowrap;">Total</td>
+                    <td class="text-right font-bold text-lg whitespace-nowrap" style="color: ${primaryColor}; white-space: nowrap;">${symbol}&nbsp;${Number(invoice.grandTotal || invoice.total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                   `}
                 </tr>
               </tbody>
@@ -500,13 +506,13 @@ const generateInvoiceHtml = (invoice, profile) => {
           ${general?.companyLogo ? `<img src="${general.companyLogo}" class="h-6 w-auto" />` : `<img src="https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/assets/zithspace-logo.png" class="h-6 w-auto" />`}
         </div>
         <div class="flex flex-col leading-none">
-          <span class="font-bold text-[12px] text-[#2563eb]">Zithspace</span>
+          <span class="font-bold text-[12px] text-[#2563eb]">Zukvo</span>
           <span class="font-bold text-[10px] text-black tracking-tight">Invoice</span>
         </div>
       </div>
     </div>
     <p class="text-[#6b7280] text-[9px] mt-0.5 mb-2">
-      Visit <span class="text-[#2563eb] font-semibold">zukvo.com/invoice</span> to create truly professional invoices
+      Visit <a href="https://www.zukvo.com/products/invoice" target="_blank" class="text-[#2563eb] font-semibold" style="text-decoration: none; color: #2563eb;">zukvo.com/products/invoice</a> to create truly professional invoices
     </p>
   </div>
 </body>
