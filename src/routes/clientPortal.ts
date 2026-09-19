@@ -15,6 +15,7 @@ import ClientPortalApprovalsController from "@/controllers/clientPortalApprovals
 import ClientPortalEnvironmentsController from "@/controllers/clientPortalEnvironmentsController";
 import ClientPortalTeamController from "@/controllers/clientPortalTeamController";
 import ClientPortalMilestoneController from "@/controllers/clientPortalMilestoneController";
+import ClientPortalAgreementController from "@/controllers/clientPortalAgreementController";
 
 const router = Router();
 
@@ -56,6 +57,26 @@ router.post(
   resolveTenant,
   authenticateClientPortal,
   ClientPortalAuthController.changePassword,
+);
+
+/* ----------------------------------------------------------------------
+ * Agreements (read-only). Drafts are filtered out in SQL, not here.
+ * -------------------------------------------------------------------- */
+
+router.get(
+  "/agreements",
+  resolveTenant,
+  authenticateClientPortal,
+  requirePortalModule("agreements"),
+  ClientPortalAgreementController.list,
+);
+
+router.get(
+  "/agreements/:id",
+  resolveTenant,
+  authenticateClientPortal,
+  requirePortalModule("agreements"),
+  ClientPortalAgreementController.detail,
 );
 
 /* ----------------------------------------------------------------------

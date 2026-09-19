@@ -141,6 +141,7 @@ const routes_8 = __importDefault(require("@/modules/company-details/routes"));
 const routes_9 = __importDefault(require("@/modules/yapiez/routes"));
 const routes_10 = __importDefault(require("@/modules/qa-playbooks/routes"));
 const routes_11 = __importDefault(require("@/modules/qa-scenarios/routes"));
+const routes_12 = __importDefault(require("@/modules/project-agreements/routes"));
 const openingManagementRoutes_1 = __importDefault(require("@/routes/openingManagementRoutes"));
 const RabbitMQService_1 = require("@/utils/RabbitMQService");
 const CalendarSyncWorker_1 = require("@/workers/CalendarSyncWorker");
@@ -428,6 +429,9 @@ app.use("/api/v2/reimbursement", routes_4.default);
 app.use("/api/v2/openings", routes_5.default);
 app.use("/api/v2/hotspot", routes_6.default);
 app.use("/api/performance-report", routes_2.default);
+// Project Agreements — agreement templates and the documents raised from them
+// against a project (HRMS → Project Agreements).
+app.use("/api/project-agreements", routes_12.default);
 //Escalation
 app.use("/api/escalation-categories", escalationCategoryV2_routes_1.default);
 app.use("/api/escalation-statuses", escalationStatus_RoutesV2_1.default);
@@ -620,6 +624,9 @@ const startServer = async () => {
         // QA Test Scenario tables (raw-SQL module, forward-only migrations)
         const { runScenarioMigrations } = require("@/modules/qa-scenarios/db/migrate");
         await runScenarioMigrations();
+        // Project Agreements tables (raw-SQL module, forward-only migrations)
+        const { runProjectAgreementMigrations } = require("@/modules/project-agreements/db/migrate");
+        await runProjectAgreementMigrations();
         // Close out any flow run left mid-execution by a previous process, so a
         // crashed run does not sit in 'Running' forever.
         try {
@@ -720,6 +727,10 @@ const gracefulShutdown = async (signal) => {
             await closePlaybookPool();
             const { closeScenarioPool } = require("@/modules/qa-scenarios/db/pool");
             await closeScenarioPool();
+            const { closeAgreementPool } = require("@/modules/project-agreements/db/pool");
+            await closeAgreementPool();
+            const { closePdfBrowser } = require("@/modules/project-agreements/services/pdf.service");
+            await closePdfBrowser();
             console.log("Database and RabbitMQ connections closed");
         }
         catch (error) {

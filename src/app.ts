@@ -146,6 +146,7 @@ import companyDetailsRoutes from "@/modules/company-details/routes";
 import yapiezRoutes from "@/modules/yapiez/routes";
 import qaPlaybookRoutes from "@/modules/qa-playbooks/routes";
 import qaScenarioRoutes from "@/modules/qa-scenarios/routes";
+import projectAgreementRoutes from "@/modules/project-agreements/routes";
 import openingManagementRoutes from "@/routes/openingManagementRoutes";
 import { rabbitMQService } from "@/utils/RabbitMQService";
 import { CalendarSyncWorker } from "@/workers/CalendarSyncWorker";
@@ -466,6 +467,9 @@ app.use("/api/v2/reimbursement", reimbursementV2Routes);
 app.use("/api/v2/openings", openingManagementV2Routes);
 app.use("/api/v2/hotspot", hotspotRoutes);
 app.use("/api/performance-report", performanceReportRoutes);
+// Project Agreements — agreement templates and the documents raised from them
+// against a project (HRMS → Project Agreements).
+app.use("/api/project-agreements", projectAgreementRoutes);
 
 //Escalation
 app.use("/api/escalation-categories", escalationCategoryRoutes);
@@ -697,6 +701,10 @@ const startServer = async () => {
     const { runScenarioMigrations } = require("@/modules/qa-scenarios/db/migrate");
     await runScenarioMigrations();
 
+    // Project Agreements tables (raw-SQL module, forward-only migrations)
+    const { runProjectAgreementMigrations } = require("@/modules/project-agreements/db/migrate");
+    await runProjectAgreementMigrations();
+
     // Close out any flow run left mid-execution by a previous process, so a
     // crashed run does not sit in 'Running' forever.
     try {
@@ -807,6 +815,10 @@ const gracefulShutdown = async (signal: string) => {
       await closePlaybookPool();
       const { closeScenarioPool } = require("@/modules/qa-scenarios/db/pool");
       await closeScenarioPool();
+      const { closeAgreementPool } = require("@/modules/project-agreements/db/pool");
+      await closeAgreementPool();
+      const { closePdfBrowser } = require("@/modules/project-agreements/services/pdf.service");
+      await closePdfBrowser();
       console.log("Database and RabbitMQ connections closed");
     } catch (error) {
       console.error("Error closing connections:", error);

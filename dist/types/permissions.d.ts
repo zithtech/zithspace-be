@@ -479,6 +479,15 @@ export declare const Permissions: {
     readonly LETTER_FORMAT_READ: "letter.format.read";
     readonly LETTER_FORMAT_UPDATE: "letter.format.update";
     readonly LETTER_FORMAT_DELETE: "letter.format.delete";
+    readonly PROJECT_AGREEMENT_TEMPLATE_CREATE: "project_agreement_template.create";
+    readonly PROJECT_AGREEMENT_TEMPLATE_READ: "project_agreement_template.read";
+    readonly PROJECT_AGREEMENT_TEMPLATE_UPDATE: "project_agreement_template.update";
+    readonly PROJECT_AGREEMENT_TEMPLATE_DELETE: "project_agreement_template.delete";
+    readonly PROJECT_AGREEMENT_CREATE: "project_agreement.create";
+    readonly PROJECT_AGREEMENT_READ: "project_agreement.read";
+    readonly PROJECT_AGREEMENT_UPDATE: "project_agreement.update";
+    readonly PROJECT_AGREEMENT_DELETE: "project_agreement.delete";
+    readonly PROJECT_AGREEMENT_MANAGE: "project_agreement.manage";
 };
 export type Permission = (typeof Permissions)[keyof typeof Permissions];
 /**

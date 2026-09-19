@@ -598,6 +598,22 @@ export const Permissions = {
   LETTER_FORMAT_READ: 'letter.format.read',
   LETTER_FORMAT_UPDATE: 'letter.format.update',
   LETTER_FORMAT_DELETE: 'letter.format.delete',
+
+  // ─── Project Agreements ──────────────────────────────────────────
+  // Two resources, because authoring the WORDING and raising a document
+  // against a project are different jobs: legal/ops write the templates, a
+  // delivery lead raises the SOW from one.
+  PROJECT_AGREEMENT_TEMPLATE_CREATE: 'project_agreement_template.create',
+  PROJECT_AGREEMENT_TEMPLATE_READ: 'project_agreement_template.read',
+  PROJECT_AGREEMENT_TEMPLATE_UPDATE: 'project_agreement_template.update',
+  PROJECT_AGREEMENT_TEMPLATE_DELETE: 'project_agreement_template.delete',
+  PROJECT_AGREEMENT_CREATE: 'project_agreement.create',
+  PROJECT_AGREEMENT_READ: 'project_agreement.read',
+  PROJECT_AGREEMENT_UPDATE: 'project_agreement.update',
+  PROJECT_AGREEMENT_DELETE: 'project_agreement.delete',
+  // Branding is the letterhead every document in the tenant wears, so it is
+  // administration rather than authoring — hence its own permission.
+  PROJECT_AGREEMENT_MANAGE: 'project_agreement.manage',
 } as const;
 
 export type Permission = (typeof Permissions)[keyof typeof Permissions];
@@ -1033,6 +1049,19 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.LETTER_FORMAT_READ,
     Permissions.LETTER_FORMAT_UPDATE,
     Permissions.LETTER_FORMAT_DELETE,
+  ],
+  project_agreement_template: [
+    Permissions.PROJECT_AGREEMENT_TEMPLATE_CREATE,
+    Permissions.PROJECT_AGREEMENT_TEMPLATE_READ,
+    Permissions.PROJECT_AGREEMENT_TEMPLATE_UPDATE,
+    Permissions.PROJECT_AGREEMENT_TEMPLATE_DELETE,
+  ],
+  project_agreement: [
+    Permissions.PROJECT_AGREEMENT_CREATE,
+    Permissions.PROJECT_AGREEMENT_READ,
+    Permissions.PROJECT_AGREEMENT_UPDATE,
+    Permissions.PROJECT_AGREEMENT_DELETE,
+    Permissions.PROJECT_AGREEMENT_MANAGE,
   ],
 };
 

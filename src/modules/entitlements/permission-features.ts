@@ -56,6 +56,8 @@ export const PERMISSION_RESOURCE_FEATURES: Readonly<Record<string, string>> = {
   performance: 'hrms_performance_report',
   letter: 'hrms_doc_suite',
   letter_template: 'hrms_doc_suite',
+  project_agreement: 'hrms_project_agreements',
+  project_agreement_template: 'hrms_project_agreements',
   pipeline: 'hrms_candidate_pipeline',
   opening: 'hrms_openings',
   recruitment: 'hrms',
