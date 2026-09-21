@@ -990,7 +990,7 @@ class InvoiceController {
             if (!req.tenantId) {
                 throw new types_1.ValidationError('Tenant context required');
             }
-            const { page = 1, limit = 20, status, customerId, search, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
+            const { page = 1, limit = 15, status, customerId, search, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
             console.log(`GET INVOICES - Page: ${page}, Limit: ${limit}`);
             // Handle status parameter properly
             let statusFilter = 'all';
@@ -1253,7 +1253,7 @@ class InvoiceController {
             if (!req.tenantId) {
                 throw new types_1.ValidationError('Tenant context required');
             }
-            const { page = 1, limit = 20, search, status, startDate, endDate, sortBy = 'deletedAt', sortOrder = 'desc' } = req.query;
+            const { page = 1, limit = 15, search, status, startDate, endDate, sortBy = 'deletedAt', sortOrder = 'desc' } = req.query;
             console.log(`GET DELETED INVOICES - Page: ${page}, Limit: ${limit}`);
             const options = {
                 page: Number(page),
@@ -1936,7 +1936,7 @@ class InvoiceController {
                 throw new types_1.ValidationError('Tenant context required');
             }
             const id = req.params.id || req.params.invoiceId;
-            const { page = 1, limit = 20 } = req.query;
+            const { page = 1, limit = 15 } = req.query;
             console.log(`GET PAYMENT HISTORY - Invoice ID: ${id}`);
             if (!id) {
                 throw new types_1.ValidationError('Invoice ID is required');

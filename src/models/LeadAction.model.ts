@@ -56,6 +56,72 @@ export class LeadActionModel {
   }
 
   /**
+   * Find lead actions with pagination, search, and filtering
+   */
+  static async findWithPagination(tenantId: string, options: {
+    page: number;
+    limit: number;
+    offset: number;
+    search?: string;
+    filter?: string;
+  }): Promise<{
+    actions: any[];
+    total: number;
+    totalActive: number;
+  }> {
+    const whereClauses = ['tenant_id = $1'];
+    const values: any[] = [tenantId];
+    let paramIndex = 2;
+
+    if (options.search) {
+      whereClauses.push(`(name ILIKE $${paramIndex} OR type ILIKE $${paramIndex})`);
+      values.push(`%${options.search}%`);
+      paramIndex++;
+    }
+
+    if (options.filter === 'active') {
+      whereClauses.push(`is_active = true`);
+    } else if (options.filter === 'hidden') {
+      whereClauses.push(`is_active = false`);
+    }
+
+    const whereSql = whereClauses.join(' AND ');
+
+    // Filtered count
+    const countResult = await pool.query(
+      `SELECT COUNT(*) as count FROM lead_actions WHERE ${whereSql}`,
+      values
+    );
+    const total = parseInt(countResult.rows[0]?.count || '0', 10);
+
+    // Global stats
+    const statsResult = await pool.query(
+      `SELECT 
+         COUNT(*) as total,
+         COUNT(*) FILTER (WHERE is_active = true) as active
+       FROM lead_actions 
+       WHERE tenant_id = $1`,
+      [tenantId]
+    );
+    const totalActive = parseInt(statsResult.rows[0]?.active || '0', 10);
+
+    // Items
+    const query = `
+      SELECT * FROM lead_actions 
+      WHERE ${whereSql}
+      ORDER BY created_at ASC
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1};
+    `;
+    const result = await pool.query(query, [...values, options.limit, options.offset]);
+
+    return {
+      actions: result.rows,
+      total,
+      totalActive,
+    };
+  }
+
+  /**
    * Find by ID and tenant
    */
   static async findById(id: string, tenantId: string): Promise<any> {

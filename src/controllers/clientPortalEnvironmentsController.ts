@@ -13,54 +13,146 @@ export class ClientPortalEnvironmentsController {
       res.status(401).json({ success: false, error: "Not authenticated" });
       return;
     }
-    const r = await pool.query(
-      `SELECT e.id, e.name, e.kind, e.url, e.status, e.current_version,
-              e.ssl_expires_at, e.last_backup_at, e.uptime_percent,
-              e.position, e.created_at, e.updated_at,
-              e.project_id, p.name AS project_name, p.code AS project_code,
-              (SELECT COUNT(*)::int FROM portal_deployments d
-                WHERE d.environment_id = e.id) AS deployment_count,
-              (SELECT MAX(finished_at) FROM portal_deployments d
-                WHERE d.environment_id = e.id) AS last_deployed_at
+
+    const search = ((req.query.search as string) || "").trim();
+    const kind = ((req.query.kind as string) || "").trim();
+    const status = ((req.query.status as string) || "").trim();
+    const projectId = ((req.query.projectId as string) || "").trim();
+    const hasPagination = req.query.page !== undefined || req.query.limit !== undefined;
+    const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
+    const limit = Math.min(
+      100,
+      Math.max(1, parseInt((req.query.limit as string) || "15", 10)),
+    );
+    const offset = (page - 1) * limit;
+
+    const params: any[] = [ctx.tenantId, ctx.clientId];
+    let where = `WHERE e.tenant_id = $1 AND e.client_id = $2 AND e.visibility = 'client'`;
+
+    if (kind && kind !== "ALL") {
+      params.push(kind);
+      where += ` AND e.kind = $${params.length}`;
+    }
+    if (status && status !== "ALL") {
+      params.push(status);
+      where += ` AND e.status = $${params.length}`;
+    }
+    if (projectId) {
+      params.push(projectId);
+      where += ` AND e.project_id = $${params.length}`;
+    }
+    if (search) {
+      params.push(`%${search}%`);
+      where += ` AND (e.name ILIKE $${params.length}
+                   OR e.url ILIKE $${params.length}
+                   OR p.name ILIKE $${params.length}
+                   OR e.current_version ILIKE $${params.length})`;
+    }
+
+    const countRes = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM portal_environments e LEFT JOIN projects p ON p.id = e.project_id ${where}`,
+      params,
+    );
+    const total = countRes.rows[0]?.n || 0;
+
+    // Distinct projects for dropdown
+    const projectsRes = await pool.query(
+      `SELECT DISTINCT p.id, p.name, p.code
          FROM portal_environments e
-         LEFT JOIN projects p ON p.id = e.project_id
-        WHERE e.tenant_id = $1 AND e.client_id = $2
-          AND e.visibility = 'client'
-        ORDER BY
-          CASE e.kind
-            WHEN 'production' THEN 0
-            WHEN 'staging' THEN 1
-            WHEN 'uat' THEN 2
-            WHEN 'qa' THEN 3
-            WHEN 'demo' THEN 4
-            WHEN 'preview' THEN 5
-            WHEN 'dev' THEN 6
-            ELSE 7
-          END,
-          e.position ASC, e.created_at ASC`,
+         JOIN projects p ON p.id = e.project_id
+        WHERE e.tenant_id = $1 AND e.client_id = $2 AND e.visibility = 'client'
+        ORDER BY p.name ASC`,
       [ctx.tenantId, ctx.clientId],
     );
+
+    // Stats across all client environments
+    const statsRes = await pool.query(
+      `SELECT
+         COUNT(*)::int AS total,
+         COUNT(CASE WHEN e.kind = 'production' THEN 1 END)::int AS production,
+         COUNT(CASE WHEN e.status = 'operational' THEN 1 END)::int AS operational,
+         COUNT(CASE WHEN e.ssl_expires_at IS NULL OR e.ssl_expires_at >= NOW() THEN 1 END)::int AS ssl_valid,
+         COALESCE(SUM((SELECT COUNT(*)::int FROM portal_deployments d WHERE d.environment_id = e.id)), 0)::int AS total_deploys
+       FROM portal_environments e
+      WHERE e.tenant_id = $1 AND e.client_id = $2 AND e.visibility = 'client'`,
+      [ctx.tenantId, ctx.clientId],
+    );
+
+    const stats = {
+      total: statsRes.rows[0]?.total || 0,
+      production: statsRes.rows[0]?.production || 0,
+      operational: statsRes.rows[0]?.operational || 0,
+      sslValid: statsRes.rows[0]?.ssl_valid || 0,
+      totalDeploys: statsRes.rows[0]?.total_deploys || 0,
+    };
+
+    let query = `SELECT e.id, e.name, e.kind, e.url, e.status, e.current_version,
+               e.ssl_expires_at, e.last_backup_at, e.uptime_percent,
+               e.position, e.created_at, e.updated_at,
+               e.project_id, p.name AS project_name, p.code AS project_code,
+               (SELECT COUNT(*)::int FROM portal_deployments d
+                 WHERE d.environment_id = e.id) AS deployment_count,
+               (SELECT MAX(finished_at) FROM portal_deployments d
+                 WHERE d.environment_id = e.id) AS last_deployed_at
+          FROM portal_environments e
+          LEFT JOIN projects p ON p.id = e.project_id
+          ${where}
+         ORDER BY
+           CASE e.kind
+             WHEN 'production' THEN 0
+             WHEN 'staging' THEN 1
+             WHEN 'uat' THEN 2
+             WHEN 'qa' THEN 3
+             WHEN 'demo' THEN 4
+             WHEN 'preview' THEN 5
+             WHEN 'dev' THEN 6
+             ELSE 7
+           END,
+           e.position ASC, e.created_at ASC`;
+
+    if (hasPagination) {
+      params.push(limit);
+      params.push(offset);
+      query += ` LIMIT $${params.length - 1} OFFSET $${params.length}`;
+    }
+
+    const r = await pool.query(query, params);
+
+    const data = r.rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      kind: row.kind,
+      url: row.url,
+      status: row.status,
+      currentVersion: row.current_version,
+      sslExpiresAt: row.ssl_expires_at,
+      lastBackupAt: row.last_backup_at,
+      uptimePercent: row.uptime_percent,
+      position: row.position,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      projectId: row.project_id,
+      projectName: row.project_name,
+      projectCode: row.project_code,
+      deploymentCount: row.deployment_count || 0,
+      lastDeployedAt: row.last_deployed_at,
+    }));
+
     res.json({
       success: true,
-      data: r.rows.map((row) => ({
-        id: row.id,
-        name: row.name,
-        kind: row.kind,
-        url: row.url,
-        status: row.status,
-        currentVersion: row.current_version,
-        sslExpiresAt: row.ssl_expires_at,
-        lastBackupAt: row.last_backup_at,
-        uptimePercent: row.uptime_percent,
-        position: row.position,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-        projectId: row.project_id,
-        projectName: row.project_name,
-        projectCode: row.project_code,
-        deploymentCount: row.deployment_count || 0,
-        lastDeployedAt: row.last_deployed_at,
-      })),
+      data,
+      meta: {
+        total,
+        page: hasPagination ? page : 1,
+        limit: hasPagination ? limit : total,
+        totalPages: hasPagination ? Math.ceil(total / limit) : 1,
+        stats,
+        projects: projectsRes.rows.map((p) => ({
+          id: p.id,
+          name: p.name,
+          code: p.code,
+        })),
+      },
     });
   }
 

@@ -97,7 +97,7 @@ class AttendanceController {
                 });
                 return;
             }
-            const { page = 1, limit = 20, userId, member, date, status, startDate, endDate, search, projectId, sortBy = "date", sortOrder = "desc", } = req.query;
+            const { page = 1, limit = 15, userId, member, date, status, startDate, endDate, search, projectId, sortBy = "date", sortOrder = "desc", } = req.query;
             let targetUserId = (userId || member);
             // RBAC: users without a management permission only see their own records.
             const userPerms = await rbac_service_1.RBACService.getUserPermissions(req.user.id, req.tenantId, req.user.role);

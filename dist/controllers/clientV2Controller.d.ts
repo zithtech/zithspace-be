@@ -55,6 +55,8 @@ export declare class ClientV2Controller {
     static addAllocation(req: AuthRequest, res: Response): Promise<void>;
     static updateAllocation(req: AuthRequest, res: Response): Promise<void>;
     static getEmployeesForSelect(req: AuthRequest, res: Response): Promise<void>;
+    static getContacts(req: AuthRequest, res: Response): Promise<void>;
+    static getDocuments(req: AuthRequest, res: Response): Promise<void>;
     static getClientInvoices(req: AuthRequest, res: Response): Promise<void>;
 }
 export default ClientV2Controller;

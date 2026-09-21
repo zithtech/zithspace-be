@@ -45,7 +45,7 @@ class InvoiceSettingsController {
                 res.status(400).json({ success: false, error: 'Tenant context required' });
                 return;
             }
-            const { page = 1, limit = 20, isActive = 'all', search, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
+            const { page = 1, limit = 15, isActive = 'all', search, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
             const options = {
                 page: Number(page),
                 limit: Number(limit),

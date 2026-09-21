@@ -84,6 +84,11 @@ router.delete('/:id', (0, permission_1.requirePermission)(permissions_1.Permissi
 // CONTACT ROUTES
 // ==============================================
 /**
+ * @route   GET /api/clients-v2/:clientId/contacts
+ * @desc    Get contacts of a client with server-side pagination and search
+ */
+router.get('/:clientId/contacts', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_READ), clientV2Controller_1.ClientV2Controller.getContacts);
+/**
  * @route   POST /api/clients-v2/:clientId/contacts
  * @desc    Add a contact to a client
  */
@@ -101,6 +106,11 @@ router.delete('/contacts/:contactId', (0, permission_1.requirePermission)(permis
 // ==============================================
 // DOCUMENTS
 // ==============================================
+/**
+ * @route   GET /api/clients-v2/:clientId/documents
+ * @desc    Get documents of a client with server-side pagination and search
+ */
+router.get('/:clientId/documents', (0, permission_1.requirePermission)(permissions_1.Permissions.CLIENT_READ), clientV2Controller_1.ClientV2Controller.getDocuments);
 /**
  * @route   POST /api/clients-v2/:clientId/documents
  * @desc    Upload and add a document to a client

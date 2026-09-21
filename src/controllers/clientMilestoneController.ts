@@ -112,17 +112,58 @@ export class ClientMilestoneController {
   static async list(req: AuthRequest, res: Response): Promise<void> {
     const tenantId = req.tenantId!;
     const { clientId } = req.params;
+    const page = Math.max(1, parseInt(String(req.query.page || "1"), 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || "15"), 10) || 15));
+    const offset = (page - 1) * limit;
+    const search = ((req.query.search as string) || "").trim();
+    const status = ((req.query.status as string) || "").trim();
+    const projectId = ((req.query.projectId as string) || "").trim();
+
+    const conditions: string[] = ["m.tenant_id = $1", "m.client_id = $2"];
+    const params: any[] = [tenantId, clientId];
+    let pIdx = 3;
+
+    if (search) {
+      conditions.push(`(m.name ILIKE $${pIdx} OR m.description ILIKE $${pIdx})`);
+      params.push(`%${search}%`);
+      pIdx++;
+    }
+    if (status && status !== "all") {
+      conditions.push(`m.status = $${pIdx}`);
+      params.push(status);
+      pIdx++;
+    }
+    if (projectId && projectId !== "all") {
+      conditions.push(`m.project_id = $${pIdx}`);
+      params.push(projectId);
+      pIdx++;
+    }
+
+    const whereClause = conditions.join(" AND ");
+
+    const countRes = await pool.query(
+      `SELECT COUNT(*)::int AS total FROM client_milestones m WHERE ${whereClause}`,
+      params,
+    );
+    const total = countRes.rows[0]?.total || 0;
+
+    const dataParams = [...params, limit, offset];
     const ms = await pool.query(
       `SELECT m.*, p.name AS project_name, u.name AS created_by_name
          FROM client_milestones m
          LEFT JOIN projects p ON p.id = m.project_id
          LEFT JOIN users u ON u.id = m.created_by_id
-        WHERE m.tenant_id = $1 AND m.client_id = $2
-        ORDER BY m.position ASC, m.created_at ASC`,
-      [tenantId, clientId],
+        WHERE ${whereClause}
+        ORDER BY m.position ASC, m.created_at ASC
+        LIMIT $${pIdx} OFFSET $${pIdx + 1}`,
+      dataParams,
     );
     if (ms.rowCount === 0) {
-      res.json({ success: true, data: [] });
+      res.json({
+        success: true,
+        data: [],
+        meta: { total, page, limit, totalPages: Math.ceil(total / limit) || 1 },
+      });
       return;
     }
     const ids = ms.rows.map((r) => r.id);
@@ -141,6 +182,12 @@ export class ClientMilestoneController {
     res.json({
       success: true,
       data: ms.rows.map((r) => shapeMilestone(r, byMs.get(r.id) || [])),
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
     });
   }
 

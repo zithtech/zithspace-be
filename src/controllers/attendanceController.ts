@@ -120,7 +120,7 @@ export class AttendanceController {
 
       const {
         page = 1,
-        limit = 20,
+        limit = 15,
         userId,
         member,
         date,
