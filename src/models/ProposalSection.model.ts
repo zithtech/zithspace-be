@@ -77,6 +77,116 @@ export class ProposalSectionModel {
     return result.rows;
   }
 
+  /** List sections with pagination, search, and filtering */
+  static async findWithPagination(
+    tenantId: string,
+    options: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      category?: string;
+      view?: string;
+      archived?: boolean | string;
+    } = {}
+  ): Promise<{
+    data: any[];
+    pagination: {
+      total: number;
+      page: number;
+      limit: number;
+      pageSize: number;
+      totalPages: number;
+      pages: number;
+    };
+    stats: {
+      total: number;
+      active: number;
+      global: number;
+      archived: number;
+    };
+  }> {
+    const page = Math.max(1, Number(options.page) || 1);
+    const limit = Math.max(1, Number(options.limit) || 15);
+    const offset = (page - 1) * limit;
+
+    const conditions: string[] = ['tenant_id = $1'];
+    const values: any[] = [tenantId];
+
+    if (options.view === 'archived' || options.archived === true || options.archived === 'true') {
+      conditions.push('archived = true');
+    } else if (options.archived === 'all') {
+      // Do not filter archived
+    } else {
+      conditions.push('archived = false');
+    }
+
+    if (options.view === 'global') {
+      conditions.push('is_global = true');
+    }
+
+    if (options.category && options.category !== 'all') {
+      values.push(options.category);
+      conditions.push(`category = $${values.length}`);
+    }
+
+    if (options.search && options.search.trim()) {
+      values.push(`%${options.search.trim()}%`);
+      const idx = values.length;
+      conditions.push(`(name ILIKE $${idx} OR description ILIKE $${idx} OR type ILIKE $${idx} OR category ILIKE $${idx})`);
+    }
+
+    const whereClause = conditions.join(' AND ');
+
+    // Total count
+    const countQuery = `SELECT COUNT(*)::int AS count FROM proposal_sections WHERE ${whereClause};`;
+    const countResult = await pool.query(countQuery, values);
+    const total = countResult.rows[0]?.count || 0;
+
+    // Overall stats for tenant
+    const statsQuery = `
+      SELECT
+        COUNT(*) FILTER (WHERE archived = false)::int AS "active",
+        COUNT(*) FILTER (WHERE is_global = true AND archived = false)::int AS "global",
+        COUNT(*) FILTER (WHERE archived = true)::int AS "archived",
+        COUNT(*)::int AS "total"
+      FROM proposal_sections
+      WHERE tenant_id = $1;
+    `;
+    const statsResult = await pool.query(statsQuery, [tenantId]);
+    const statsRow = statsResult.rows[0];
+
+    // Data rows
+    const dataValues = [...values, limit, offset];
+    const dataQuery = `
+      SELECT ${COLS}
+      FROM proposal_sections
+      WHERE ${whereClause}
+      ORDER BY created_at DESC
+      LIMIT $${values.length + 1} OFFSET $${values.length + 2};
+    `;
+    const dataResult = await pool.query(dataQuery, dataValues);
+
+    const totalPages = Math.ceil(total / limit) || 1;
+
+    return {
+      data: dataResult.rows,
+      pagination: {
+        total,
+        page,
+        limit,
+        pageSize: limit,
+        totalPages,
+        pages: totalPages,
+      },
+      stats: {
+        total: statsRow?.total || 0,
+        active: statsRow?.active || 0,
+        global: statsRow?.global || 0,
+        archived: statsRow?.archived || 0,
+      },
+    };
+  }
+
   /** Find a single section scoped to the tenant. */
   static async findById(id: string, tenantId: string): Promise<any | null> {
     const query = `

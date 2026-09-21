@@ -238,7 +238,7 @@ export class LeadModel {
       WHERE ${whereClause}
     `;
     const countResult = await pool.query(countQuery, values);
-    const total = parseInt(countResult.rows[0].count, 10);
+    const total = parseInt(countResult.rows[0]?.total || countResult.rows[0]?.count || "0", 10);
 
     let limitOffsetClause = "";
     if (limit) {

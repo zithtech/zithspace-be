@@ -93,15 +93,43 @@ export async function createCandidate(tenantId: string, userId: string, data: Cr
   });
 }
 
-export async function listCandidates(tenantId: string, page = 1, limit = 20, search = '') {
+export async function listCandidates(
+  tenantId: string,
+  page = 1,
+  limit = 20,
+  search = '',
+  status?: string,
+  role?: string,
+  exp?: string
+) {
   const offset = (page - 1) * limit;
   
   let query = `SELECT * FROM pipeline_candidates WHERE tenant_id = $1`;
   const params: any[] = [tenantId];
 
   if (search) {
-    query += ` AND (name ILIKE $2 OR email ILIKE $2 OR role ILIKE $2)`;
     params.push(`%${search}%`);
+    query += ` AND (name ILIKE $${params.length} OR email ILIKE $${params.length} OR role ILIKE $${params.length})`;
+  }
+
+  if (status && status !== 'all') {
+    params.push(status);
+    query += ` AND LOWER(status) = LOWER($${params.length})`;
+  }
+
+  if (role && role !== 'all') {
+    params.push(role);
+    query += ` AND LOWER(role) = LOWER($${params.length})`;
+  }
+
+  if (exp && exp !== 'all') {
+    if (exp === '0-2') {
+      query += ` AND (total_experience <= 2 OR total_experience IS NULL)`;
+    } else if (exp === '3-5') {
+      query += ` AND (total_experience >= 3 AND total_experience <= 5)`;
+    } else if (exp === '5+') {
+      query += ` AND total_experience >= 5`;
+    }
   }
 
   query += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
@@ -112,16 +140,50 @@ export async function listCandidates(tenantId: string, page = 1, limit = 20, sea
   let countQuery = `SELECT COUNT(*) FROM pipeline_candidates WHERE tenant_id = $1`;
   const countParams: any[] = [tenantId];
   if (search) {
-    countQuery += ` AND (name ILIKE $2 OR email ILIKE $2 OR role ILIKE $2)`;
     countParams.push(`%${search}%`);
+    countQuery += ` AND (name ILIKE $${countParams.length} OR email ILIKE $${countParams.length} OR role ILIKE $${countParams.length})`;
+  }
+  if (status && status !== 'all') {
+    countParams.push(status);
+    countQuery += ` AND LOWER(status) = LOWER($${countParams.length})`;
+  }
+  if (role && role !== 'all') {
+    countParams.push(role);
+    countQuery += ` AND LOWER(role) = LOWER($${countParams.length})`;
+  }
+  if (exp && exp !== 'all') {
+    if (exp === '0-2') {
+      countQuery += ` AND (total_experience <= 2 OR total_experience IS NULL)`;
+    } else if (exp === '3-5') {
+      countQuery += ` AND (total_experience >= 3 AND total_experience <= 5)`;
+    } else if (exp === '5+') {
+      countQuery += ` AND total_experience >= 5`;
+    }
   }
   const { rows: countRows } = await pipelinePool.query(countQuery, countParams);
 
+  const { rows: statsRows } = await pipelinePool.query(
+    `SELECT 
+       COUNT(*) as total,
+       COUNT(*) FILTER (WHERE LOWER(status) = 'interview') as interview,
+       COUNT(*) FILTER (WHERE LOWER(status) = 'hired') as hired,
+       COUNT(*) FILTER (WHERE LOWER(status) = 'rejected') as rejected
+     FROM pipeline_candidates
+     WHERE tenant_id = $1`,
+    [tenantId]
+  );
+
   return {
     candidates: rows,
-    total: parseInt(countRows[0].count, 10),
+    total: parseInt(countRows[0]?.count || '0', 10),
     page,
     limit,
+    stats: {
+      total: parseInt(statsRows[0]?.total || '0', 10),
+      interview: parseInt(statsRows[0]?.interview || '0', 10),
+      hired: parseInt(statsRows[0]?.hired || '0', 10),
+      rejected: parseInt(statsRows[0]?.rejected || '0', 10),
+    }
   };
 }
 

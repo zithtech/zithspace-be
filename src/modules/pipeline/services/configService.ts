@@ -138,30 +138,57 @@ export async function deleteConfig(tenantId: string, id: string) {
   });
 }
 
-export async function listConfigs(tenantId: string) {
-  const { rows: configs } = await pipelinePool.query(
-    `SELECT * FROM pipeline_interview_configs WHERE tenant_id = $1 ORDER BY created_at DESC`,
-    [tenantId]
-  );
+export async function listConfigs(tenantId: string, page?: number, limit?: number, search?: string) {
+  let query = `SELECT * FROM pipeline_interview_configs WHERE tenant_id = $1`;
+  const params: any[] = [tenantId];
+
+  if (search) {
+    params.push(`%${search}%`);
+    query += ` AND role ILIKE $${params.length}`;
+  }
+
+  let total: number | null = null;
+  if (page && limit) {
+    let countQuery = `SELECT COUNT(*) FROM pipeline_interview_configs WHERE tenant_id = $1`;
+    const countParams: any[] = [tenantId];
+    if (search) {
+      countParams.push(`%${search}%`);
+      countQuery += ` AND role ILIKE $${countParams.length}`;
+    }
+    const { rows: countRows } = await pipelinePool.query(countQuery, countParams);
+    total = parseInt(countRows[0]?.count || '0', 10);
+
+    const offset = (page - 1) * limit;
+    params.push(limit, offset);
+    query += ` ORDER BY created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`;
+  } else {
+    query += ` ORDER BY created_at DESC`;
+  }
+
+  const { rows: configs } = await pipelinePool.query(query, params);
 
   const configsMap = new Map(configs.map((c: any) => [c.id, { ...c, rounds: [] }]));
+  const configIds = configs.map((c: any) => c.id);
 
-  if (configs.length > 0) {
+  if (configIds.length > 0) {
     const { rows: rounds } = await pipelinePool.query(
-      `SELECT * FROM pipeline_interview_rounds WHERE tenant_id = $1 ORDER BY round_number ASC`,
-      [tenantId]
+      `SELECT * FROM pipeline_interview_rounds WHERE tenant_id = $1 AND config_id = ANY($2) ORDER BY round_number ASC`,
+      [tenantId, configIds]
     );
 
     const roundsMap = new Map(rounds.map((r: any) => [r.id, { ...r, scorecards: [] }]));
+    const roundIds = rounds.map((r: any) => r.id);
 
-    const { rows: scorecards } = await pipelinePool.query(
-      `SELECT * FROM pipeline_scorecard_criteria WHERE tenant_id = $1`,
-      [tenantId]
-    );
+    if (roundIds.length > 0) {
+      const { rows: scorecards } = await pipelinePool.query(
+        `SELECT * FROM pipeline_scorecard_criteria WHERE tenant_id = $1 AND round_id = ANY($2)`,
+        [tenantId, roundIds]
+      );
 
-    for (const s of scorecards) {
-      if (roundsMap.has(s.round_id)) {
-        roundsMap.get(s.round_id).scorecards.push(s);
+      for (const s of scorecards) {
+        if (roundsMap.has(s.round_id)) {
+          roundsMap.get(s.round_id).scorecards.push(s);
+        }
       }
     }
 
@@ -172,5 +199,15 @@ export async function listConfigs(tenantId: string) {
     }
   }
 
-  return Array.from(configsMap.values());
+  const items = Array.from(configsMap.values());
+  if (page && limit) {
+    return {
+      configs: items,
+      total: total !== null ? total : items.length,
+      page,
+      limit,
+    };
+  }
+
+  return items;
 }

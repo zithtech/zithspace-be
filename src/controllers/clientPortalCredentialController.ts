@@ -56,7 +56,39 @@ export class ClientPortalCredentialController {
   static async list(req: AuthRequest, res: Response): Promise<void> {
     const tenantId = req.tenantId!;
     const { clientId } = req.params;
+    const page = Math.max(1, parseInt(String(req.query.page || "1"), 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || "15"), 10) || 15));
+    const offset = (page - 1) * limit;
+    const search = ((req.query.search as string) || "").trim();
+    const status = ((req.query.status as string) || "").trim();
 
+    const conditions: string[] = ["u.tenant_id = $1", "u.client_id = $2"];
+    const params: any[] = [tenantId, clientId];
+    let pIdx = 3;
+
+    if (search) {
+      conditions.push(`(u.username ILIKE $${pIdx} OR u.email ILIKE $${pIdx} OR u.display_name ILIKE $${pIdx} OR ct.first_name ILIKE $${pIdx} OR ct.last_name ILIKE $${pIdx})`);
+      params.push(`%${search}%`);
+      pIdx++;
+    }
+    if (status && status !== "all") {
+      conditions.push(`u.status = $${pIdx}`);
+      params.push(status);
+      pIdx++;
+    }
+
+    const whereClause = conditions.join(" AND ");
+
+    const countRes = await pool.query(
+      `SELECT COUNT(*)::int AS total
+         FROM client_portal_users u
+         LEFT JOIN client_contacts_v2 ct ON ct.id = u.contact_id
+        WHERE ${whereClause}`,
+      params,
+    );
+    const total = countRes.rows[0]?.total || 0;
+
+    const dataParams = [...params, limit, offset];
     const r = await pool.query(
       `SELECT u.id, u.username, u.email, u.display_name, u.status,
               u.must_change_password, u.last_login_at, u.created_at,
@@ -66,9 +98,10 @@ export class ClientPortalCredentialController {
          FROM client_portal_users u
          LEFT JOIN client_contacts_v2 ct ON ct.id = u.contact_id
          LEFT JOIN users uc ON uc.id = u.created_by
-        WHERE u.tenant_id = $1 AND u.client_id = $2
-        ORDER BY u.created_at DESC`,
-      [tenantId, clientId],
+        WHERE ${whereClause}
+        ORDER BY u.created_at DESC
+        LIMIT $${pIdx} OFFSET $${pIdx + 1}`,
+      dataParams,
     );
 
     res.json({
@@ -93,6 +126,12 @@ export class ClientPortalCredentialController {
           avatarUrl: row.creator_avatar_url || null,
         } : null,
       })),
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
     });
   }
 

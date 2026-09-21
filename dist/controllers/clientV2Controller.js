@@ -974,6 +974,18 @@ class ClientV2Controller {
                 res.status(400).json({ success: false, error: mobileError });
                 return;
             }
+            if (data.firstName && typeof data.firstName === 'string' && data.firstName.trim().length > 50) {
+                res.status(400).json({ success: false, error: 'First name cannot exceed 50 characters' });
+                return;
+            }
+            if (data.lastName && typeof data.lastName === 'string' && data.lastName.trim().length > 50) {
+                res.status(400).json({ success: false, error: 'Last name cannot exceed 50 characters' });
+                return;
+            }
+            if (data.designation && typeof data.designation === 'string' && data.designation.trim().length > 100) {
+                res.status(400).json({ success: false, error: 'Job designation cannot exceed 100 characters' });
+                return;
+            }
             const r = await dbpool_1.default.query(`INSERT INTO client_contacts_v2 (
                     id, tenant_id, client_id, first_name, last_name, display_name,
                     designation, department, contact_type, is_primary, official_email,
@@ -1049,6 +1061,18 @@ class ClientV2Controller {
                     res.status(400).json({ success: false, error: mobileError });
                     return;
                 }
+            }
+            if ('firstName' in data && data.firstName && typeof data.firstName === 'string' && data.firstName.trim().length > 50) {
+                res.status(400).json({ success: false, error: 'First name cannot exceed 50 characters' });
+                return;
+            }
+            if ('lastName' in data && data.lastName && typeof data.lastName === 'string' && data.lastName.trim().length > 50) {
+                res.status(400).json({ success: false, error: 'Last name cannot exceed 50 characters' });
+                return;
+            }
+            if ('designation' in data && data.designation && typeof data.designation === 'string' && data.designation.trim().length > 100) {
+                res.status(400).json({ success: false, error: 'Job designation cannot exceed 100 characters' });
+                return;
             }
             // Fetch existing for validation and diff
             const existingRes = await dbpool_1.default.query(`SELECT * FROM client_contacts_v2 WHERE id = $1 AND tenant_id = $2`, [contactId, req.tenantId]);
@@ -1534,6 +1558,31 @@ class ClientV2Controller {
                 return;
             }
             const { clientId } = req.params;
+            const page = Math.max(1, parseInt(String(req.query.page || "1"), 10) || 1);
+            const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || "15"), 10) || 15));
+            const offset = (page - 1) * limit;
+            const search = (req.query.search || "").trim();
+            const status = (req.query.status || "").trim();
+            const conditions = ["cp.client_id = $1", "cp.tenant_id = $2"];
+            const params = [clientId, req.tenantId];
+            let pIdx = 3;
+            if (search) {
+                conditions.push(`(p.name ILIKE $${pIdx} OR p.code ILIKE $${pIdx} OR p.description ILIKE $${pIdx})`);
+                params.push(`%${search}%`);
+                pIdx++;
+            }
+            if (status && status !== "all") {
+                conditions.push(`p.status = $${pIdx}`);
+                params.push(status);
+                pIdx++;
+            }
+            const whereClause = conditions.join(" AND ");
+            const countRes = await dbpool_1.default.query(`SELECT COUNT(*)::int AS total
+                 FROM client_projects cp
+                 JOIN projects p ON p.id = cp.project_id
+                 WHERE ${whereClause}`, params);
+            const total = countRes.rows[0]?.total || 0;
+            const dataParams = [...params, limit, offset];
             const r = await dbpool_1.default.query(`SELECT cp.id AS mapping_id, cp.billing_type, cp.budget,
                         p.*,
                         u.id AS pm_id, u.name AS pm_name, u.avatar_url AS pm_avatar_url,
@@ -1544,10 +1593,20 @@ class ClientV2Controller {
                  JOIN  projects p ON p.id = cp.project_id
                  LEFT JOIN users u ON u.id = p.project_manager_id
                  LEFT JOIN users uc ON uc.id = p.created_by_id
-                 WHERE cp.client_id = $1 AND cp.tenant_id = $2
-                 ORDER BY cp.created_at DESC`, [clientId, req.tenantId]);
+                 WHERE ${whereClause}
+                 ORDER BY cp.created_at DESC
+                 LIMIT $${pIdx} OFFSET $${pIdx + 1}`, dataParams);
             const projects = r.rows.map(mapRowToProjectListing);
-            res.status(200).json({ success: true, data: projects });
+            res.status(200).json({
+                success: true,
+                data: projects,
+                meta: {
+                    total,
+                    page,
+                    limit,
+                    totalPages: Math.ceil(total / limit) || 1,
+                },
+            });
         }
         catch (error) {
             console.error('getProjects error:', error);
@@ -2142,6 +2201,132 @@ class ClientV2Controller {
         }
     }
     // ==============================================
+    // CONTACTS & DOCUMENTS (PAGINATED LISTINGS)
+    // ==============================================
+    static async getContacts(req, res) {
+        try {
+            if (!req.tenantId) {
+                res.status(400).json({ success: false, error: 'Tenant context required' });
+                return;
+            }
+            const { clientId } = req.params;
+            const page = Math.max(1, parseInt(String(req.query.page || "1"), 10) || 1);
+            const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || "15"), 10) || 15));
+            const offset = (page - 1) * limit;
+            const search = (req.query.search || "").trim();
+            const conditions = ["cc.client_id = $1", "cc.tenant_id = $2"];
+            const params = [clientId, req.tenantId];
+            let pIdx = 3;
+            if (search) {
+                conditions.push(`(cc.first_name ILIKE $${pIdx} OR cc.last_name ILIKE $${pIdx} OR cc.official_email ILIKE $${pIdx} OR cc.designation ILIKE $${pIdx} OR cc.mobile_number ILIKE $${pIdx})`);
+                params.push(`%${search}%`);
+                pIdx++;
+            }
+            const whereClause = conditions.join(" AND ");
+            const countRes = await dbpool_1.default.query(`SELECT COUNT(*)::int AS total FROM client_contacts_v2 cc WHERE ${whereClause}`, params);
+            const total = countRes.rows[0]?.total || 0;
+            const dataParams = [...params, limit, offset];
+            const contactsRes = await dbpool_1.default.query(`SELECT cc.*, u.name as created_by_name, u.avatar_url as created_by_avatar_url
+                 FROM client_contacts_v2 cc
+                 LEFT JOIN users u ON u.id = cc.created_by_id
+                 WHERE ${whereClause}
+                 ORDER BY cc.is_primary DESC, cc.created_at ASC
+                 LIMIT $${pIdx} OFFSET $${pIdx + 1}`, dataParams);
+            res.status(200).json({
+                success: true,
+                data: contactsRes.rows.map(mapRowToContact),
+                meta: {
+                    total,
+                    page,
+                    limit,
+                    totalPages: Math.ceil(total / limit) || 1,
+                },
+            });
+        }
+        catch (error) {
+            console.error('getContacts error:', error);
+            res.status(500).json({ success: false, error: 'Failed to fetch contacts' });
+        }
+    }
+    static async getDocuments(req, res) {
+        try {
+            if (!req.tenantId) {
+                res.status(400).json({ success: false, error: 'Tenant context required' });
+                return;
+            }
+            const { clientId } = req.params;
+            const page = Math.max(1, parseInt(String(req.query.page || "1"), 10) || 1);
+            const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || "15"), 10) || 15));
+            const offset = (page - 1) * limit;
+            const search = (req.query.search || "").trim();
+            const category = (req.query.category || "").trim();
+            const conditions = ["cd.client_id = $1", "cd.tenant_id = $2"];
+            const params = [clientId, req.tenantId];
+            let pIdx = 3;
+            if (search) {
+                conditions.push(`(cd.file_name ILIKE $${pIdx} OR cd.document_type ILIKE $${pIdx} OR cd.category ILIKE $${pIdx})`);
+                params.push(`%${search}%`);
+                pIdx++;
+            }
+            if (category && category !== "all") {
+                conditions.push(`cd.category = $${pIdx}`);
+                params.push(category);
+                pIdx++;
+            }
+            const whereClause = conditions.join(" AND ");
+            const countRes = await dbpool_1.default.query(`SELECT COUNT(*)::int AS total FROM client_documents_v2 cd WHERE ${whereClause}`, params);
+            const total = countRes.rows[0]?.total || 0;
+            const dataParams = [...params, limit, offset];
+            const docsRes = await dbpool_1.default.query(`SELECT cd.*
+                 FROM client_documents_v2 cd
+                 WHERE ${whereClause}
+                 ORDER BY cd.created_at DESC
+                 LIMIT $${pIdx} OFFSET $${pIdx + 1}`, dataParams);
+            let documents = docsRes.rows.map(mapRowToDocument);
+            if (documents.length > 0) {
+                documents = await Promise.all(documents.map(async (d) => {
+                    let signedUrl = d.fileUrl;
+                    if (d.fileUrl && (d.fileUrl.includes('r2.cloudflarestorage.com') || d.fileUrl.includes('r2.dev') || (process.env.CF_R2_PUBLIC_URL && d.fileUrl.includes(process.env.CF_R2_PUBLIC_URL)))) {
+                        try {
+                            signedUrl = await (0, r2Client_1.generatePresignedUrl)(d.fileUrl, 86400);
+                        }
+                        catch (err) {
+                            console.error(`Failed to generate presigned URL for document ${d.id}:`, err);
+                        }
+                    }
+                    return { ...d, fileUrl: signedUrl };
+                }));
+                const uploaderIds = Array.from(new Set(documents.map((d) => d.uploadedById).filter((uid) => !!uid)));
+                if (uploaderIds.length > 0) {
+                    const placeholders = uploaderIds.map((_, i) => `$${i + 1}`).join(',');
+                    const uploaderRes = await dbpool_1.default.query(`SELECT id, name, avatar_url FROM users WHERE id IN (${placeholders})`, uploaderIds);
+                    const uploaderMap = new Map(uploaderRes.rows.map((u) => [u.id, u]));
+                    documents.forEach((d) => {
+                        if (d.uploadedById && uploaderMap.has(d.uploadedById)) {
+                            const u = uploaderMap.get(d.uploadedById);
+                            d.uploadedByName = u.name;
+                            d.uploadedByAvatarUrl = u.avatar_url;
+                        }
+                    });
+                }
+            }
+            res.status(200).json({
+                success: true,
+                data: documents,
+                meta: {
+                    total,
+                    page,
+                    limit,
+                    totalPages: Math.ceil(total / limit) || 1,
+                },
+            });
+        }
+        catch (error) {
+            console.error('getDocuments error:', error);
+            res.status(500).json({ success: false, error: 'Failed to fetch documents' });
+        }
+    }
+    // ==============================================
     // CLIENT INVOICES (PORTAL VIEW)
     // ==============================================
     // [RAW QUERY] — pool.query SELECT on customers + invoices
@@ -2152,15 +2337,49 @@ class ClientV2Controller {
                 return;
             }
             const { clientId } = req.params;
+            const page = Math.max(1, parseInt(String(req.query.page || "1"), 10) || 1);
+            const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || "15"), 10) || 15));
+            const offset = (page - 1) * limit;
+            const search = (req.query.search || "").trim();
+            const status = (req.query.status || "").trim();
             // 1. Get all customer IDs linked to this client
             const linkRows = await dbpool_1.default.query(`SELECT id as customer_id FROM customers WHERE tenant_id = $1 AND client_id = $2`, [req.tenantId, clientId]);
             const customerIds = linkRows.rows.map((r) => r.customer_id);
             if (customerIds.length === 0) {
-                res.status(200).json({ success: true, data: [] });
+                res.status(200).json({
+                    success: true,
+                    data: [],
+                    meta: { total: 0, page, limit, totalPages: 1 },
+                });
                 return;
             }
             // 2. Fetch invoices matching portal visibility statuses
             const validStatuses = ['SENT', 'PARTIALLY_PAID', 'PAID', 'OVERDUE', 'CANCELLED', 'REFUNDED'];
+            const conditions = [
+                "i.tenant_id = $1",
+                "i.customer_id = ANY($2::text[])",
+                "i.deleted_at IS NULL",
+                "i.status::text = ANY($3::text[])",
+            ];
+            const params = [req.tenantId, customerIds, validStatuses];
+            let pIdx = 4;
+            if (search) {
+                conditions.push(`(i.invoice_number ILIKE $${pIdx} OR c.company_name ILIKE $${pIdx})`);
+                params.push(`%${search}%`);
+                pIdx++;
+            }
+            if (status && status !== "all") {
+                conditions.push(`i.status::text = $${pIdx}`);
+                params.push(status);
+                pIdx++;
+            }
+            const whereClause = conditions.join(" AND ");
+            const countRes = await dbpool_1.default.query(`SELECT COUNT(*)::int AS total
+                 FROM invoices i
+                 LEFT JOIN customers c ON i.customer_id = c.id
+                 WHERE ${whereClause}`, params);
+            const total = countRes.rows[0]?.total || 0;
+            const dataParams = [...params, limit, offset];
             const r = await dbpool_1.default.query(`SELECT
                     i.id,
                     i.invoice_number  AS "invoiceNumber",
@@ -2178,16 +2397,23 @@ class ClientV2Controller {
                     c.company_name    AS "customerName"
                  FROM invoices i
                  LEFT JOIN customers c ON i.customer_id = c.id
-                 WHERE i.tenant_id = $1
-                   AND i.customer_id = ANY($2::text[])
-                   AND i.deleted_at IS NULL
-                   AND i.status::text = ANY($3::text[])
-                 ORDER BY i.created_at DESC`, [req.tenantId, customerIds, validStatuses]);
+                 WHERE ${whereClause}
+                 ORDER BY i.created_at DESC
+                 LIMIT $${pIdx} OFFSET $${pIdx + 1}`, dataParams);
             const data = r.rows.map((row) => ({
                 ...row,
                 isOverdue: ['SENT', 'PARTIALLY_PAID', 'VIEWED'].includes(row.status) && row.dueDate && new Date(row.dueDate) < new Date(),
             }));
-            res.status(200).json({ success: true, data });
+            res.status(200).json({
+                success: true,
+                data,
+                meta: {
+                    total,
+                    page,
+                    limit,
+                    totalPages: Math.ceil(total / limit) || 1,
+                },
+            });
         }
         catch (error) {
             console.error('getClientInvoices error:', error);

@@ -346,6 +346,135 @@ export class ProjectOverviewModel {
     }));
   }
 
+  /**
+   * Get paginated project sprints with nested tickets
+   */
+  static async getProjectSprintsPaginated(
+    projectId: string,
+    tenantId: string,
+    options: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      status?: string;
+    } = {}
+  ): Promise<{
+    data: ProjectOverviewData["sprints"];
+    pagination: {
+      total: number;
+      page: number;
+      limit: number;
+      pageSize: number;
+      totalPages: number;
+      pages: number;
+    };
+  }> {
+    const page = Math.max(1, Number(options.page) || 1);
+    const limit = Math.max(1, Number(options.limit) || 15);
+    const offset = (page - 1) * limit;
+
+    const conditions: string[] = [
+      "rp.project_id = $1",
+      "rp.tenant_id = $2",
+      "rp.type = 'sprint_plan'",
+    ];
+    const values: any[] = [projectId, tenantId];
+
+    if (options.status && options.status !== "all") {
+      values.push(options.status.toLowerCase());
+      conditions.push(`LOWER(rp.status) = $${values.length}`);
+    }
+
+    if (options.search && options.search.trim()) {
+      values.push(`%${options.search.trim()}%`);
+      const idx = values.length;
+      conditions.push(`(rp.version ILIKE $${idx} OR rp.description ILIKE $${idx})`);
+    }
+
+    const whereClause = conditions.join(" AND ");
+
+    // Total count
+    const countRes = await pool.query(
+      `SELECT count(*)::int AS total FROM release_plans rp WHERE ${whereClause};`,
+      values
+    );
+    const total = countRes.rows[0]?.total || 0;
+
+    // Sprints page
+    const sprintsRes = await pool.query(
+      `SELECT 
+          rp.id, rp.version as name, rp.description, rp.start_date, rp.end_date, rp.status,
+          (SELECT count(*) FROM tickets t WHERE t.release_plan_id = rp.id AND t.is_deleted = false) as ticket_count,
+          (SELECT count(*) FROM tickets t WHERE t.release_plan_id = rp.id AND LOWER(t.status) IN ('completed', 'done', 'live', 'live (deployed)') AND t.is_deleted = false) as completed_count
+       FROM release_plans rp
+       WHERE ${whereClause}
+       ORDER BY rp.start_date ASC, rp.created_at DESC
+       LIMIT $${values.length + 1} OFFSET $${values.length + 2};`,
+      [...values, limit, offset]
+    );
+
+    const sprints = sprintsRes.rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      startDate: row.start_date,
+      endDate: row.end_date,
+      status: row.status.toLowerCase(),
+      ticketCount: parseInt(row.ticket_count),
+      completedCount: parseInt(row.completed_count),
+      progress: row.ticket_count > 0 ? Math.round((row.completed_count / row.ticket_count) * 100) : 0,
+      tickets: [] as ProjectOverviewData["sprints"][number]["tickets"],
+    }));
+
+    if (sprints.length > 0) {
+      const sprintIds = sprints.map((s) => s.id);
+      const sprintTicketsRes = await pool.query(
+        `SELECT t.id, t.ticket_number, t.title, t.status, t.priority, t.release_plan_id,
+                t.start_date, t.end_date, t.due_date,
+                u.name AS assignee_name, u.avatar_url AS assignee_avatar
+         FROM tickets t
+         LEFT JOIN users u ON t.assignee_id = u.id
+         WHERE t.release_plan_id = ANY($1::text[]) AND t.tenant_id = $2 AND t.is_deleted = false
+         ORDER BY t.ticket_number ASC;`,
+        [sprintIds, tenantId]
+      );
+      const ticketsBySprint = new Map<string, ProjectOverviewData["sprints"][number]["tickets"]>();
+      sprintTicketsRes.rows.forEach((row) => {
+        const list = ticketsBySprint.get(row.release_plan_id) || [];
+        list.push({
+          id: row.id,
+          ticketNumber: row.ticket_number,
+          title: row.title,
+          status: row.status,
+          priority: row.priority,
+          assigneeName: row.assignee_name,
+          assigneeAvatar: row.assignee_avatar,
+          startDate: row.start_date,
+          endDate: row.end_date,
+          dueDate: row.due_date,
+        });
+        ticketsBySprint.set(row.release_plan_id, list);
+      });
+      sprints.forEach((s) => {
+        s.tickets = ticketsBySprint.get(s.id) || [];
+      });
+    }
+
+    const totalPages = Math.ceil(total / limit) || 1;
+
+    return {
+      data: sprints,
+      pagination: {
+        total,
+        page,
+        limit,
+        pageSize: limit,
+        totalPages,
+        pages: totalPages,
+      },
+    };
+  }
+
   static async update(id: string, tenantId: string, data: any): Promise<any> {
     const fields: string[] = [];
     const values: any[] = [id, tenantId];

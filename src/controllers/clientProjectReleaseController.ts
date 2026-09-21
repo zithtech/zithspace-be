@@ -28,6 +28,42 @@ export class ClientProjectReleaseController {
   static async list(req: AuthRequest, res: Response): Promise<void> {
     const tenantId = req.tenantId!;
     const { clientId } = req.params;
+    const page = Math.max(1, parseInt(String(req.query.page || "1"), 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || "15"), 10) || 15));
+    const offset = (page - 1) * limit;
+    const search = ((req.query.search as string) || "").trim();
+    const projectId = ((req.query.projectId as string) || "").trim();
+    const milestoneId = ((req.query.milestoneId as string) || "").trim();
+
+    const conditions: string[] = ["r.tenant_id = $1", "r.client_id = $2"];
+    const params: any[] = [tenantId, clientId];
+    let pIdx = 3;
+
+    if (search) {
+      conditions.push(`(r.title ILIKE $${pIdx} OR r.version ILIKE $${pIdx} OR r.description ILIKE $${pIdx})`);
+      params.push(`%${search}%`);
+      pIdx++;
+    }
+    if (projectId && projectId !== "all") {
+      conditions.push(`r.project_id = $${pIdx}`);
+      params.push(projectId);
+      pIdx++;
+    }
+    if (milestoneId && milestoneId !== "all") {
+      conditions.push(`r.milestone_id = $${pIdx}`);
+      params.push(milestoneId);
+      pIdx++;
+    }
+
+    const whereClause = conditions.join(" AND ");
+
+    const countRes = await pool.query(
+      `SELECT COUNT(*)::int AS total FROM client_project_releases r WHERE ${whereClause}`,
+      params,
+    );
+    const total = countRes.rows[0]?.total || 0;
+
+    const dataParams = [...params, limit, offset];
     const rows = await pool.query(
       `SELECT r.*,
               p.name AS project_name,
@@ -38,13 +74,20 @@ export class ClientProjectReleaseController {
          LEFT JOIN projects p ON p.id = r.project_id
          LEFT JOIN client_milestones m ON m.id = r.milestone_id
          LEFT JOIN users u ON u.id = r.created_by_id
-        WHERE r.tenant_id = $1 AND r.client_id = $2
-        ORDER BY r.release_date DESC NULLS LAST, r.created_at DESC`,
-      [tenantId, clientId],
+        WHERE ${whereClause}
+        ORDER BY r.release_date DESC NULLS LAST, r.created_at DESC
+        LIMIT $${pIdx} OFFSET $${pIdx + 1}`,
+      dataParams,
     );
     res.json({
       success: true,
       data: rows.rows.map(shapeRelease),
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
     });
   }
 

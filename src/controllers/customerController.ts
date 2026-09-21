@@ -24,7 +24,7 @@ export class CustomerController {
         return;
       }
 
-      const { page = 1, limit = 20, search, isActive } = req.query;
+      const { page = 1, limit = 15, search, isActive } = req.query;
 
       const { customers, total } = await CustomerModel.getCustomers(
         req.tenantId,

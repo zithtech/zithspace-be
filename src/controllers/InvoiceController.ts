@@ -1240,7 +1240,7 @@ export class InvoiceController {
 
       const { 
         page = 1, 
-        limit = 20, 
+        limit = 15, 
         status, 
         customerId, 
         search,
@@ -1559,7 +1559,7 @@ export class InvoiceController {
 
       const { 
         page = 1, 
-        limit = 20, 
+        limit = 15, 
         search,
         status,
         startDate,
@@ -2443,7 +2443,7 @@ export class InvoiceController {
       }
 
       const id = req.params.id || req.params.invoiceId;
-      const { page = 1, limit = 20 } = req.query;
+      const { page = 1, limit = 15 } = req.query;
       console.log(`GET PAYMENT HISTORY - Invoice ID: ${id}`);
 
       if (!id) {
