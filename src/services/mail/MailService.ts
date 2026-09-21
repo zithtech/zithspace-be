@@ -717,34 +717,70 @@ export class MailService {
         body: string;
         htmlBody?: string;
         attachments?: any[];
+        fromName?: string;
+        fromEmail?: string;
     }, userId?: string) {
-        let query = `
-            SELECT * FROM mail_settings 
-            WHERE tenant_id = $1 AND is_verified = TRUE AND is_default_invoice_mail = TRUE AND deleted_at IS NULL
-        `;
-        let values = [tenantId];
+        let settings: any = null;
         if (userId) {
-            query = `
-                SELECT * FROM mail_settings 
-                WHERE tenant_id = $1 AND created_by = $2 AND is_verified = TRUE AND is_default_invoice_mail = TRUE AND deleted_at IS NULL
-            `;
-            values.push(userId);
+            const res = await pool.query(
+                `SELECT * FROM mail_settings 
+                 WHERE tenant_id = $1 AND created_by = $2 AND is_verified = TRUE AND is_default_invoice_mail = TRUE AND deleted_at IS NULL LIMIT 1`,
+                [tenantId, userId]
+            );
+            settings = res.rows[0];
         }
-        const result = await pool.query(query, values);
-        const settings = result.rows[0];
-
         if (!settings) {
-            throw new Error("No verified default invoice mail found");
+            const res = await pool.query(
+                `SELECT * FROM mail_settings 
+                 WHERE tenant_id = $1 AND is_verified = TRUE AND is_default_invoice_mail = TRUE AND deleted_at IS NULL LIMIT 1`,
+                [tenantId]
+            );
+            settings = res.rows[0];
+        }
+        if (!settings) {
+            const res = await pool.query(
+                `SELECT * FROM mail_settings 
+                 WHERE tenant_id = $1 AND is_verified = TRUE AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 1`,
+                [tenantId]
+            );
+            settings = res.rows[0];
+        }
+        if (!settings) {
+            const res = await pool.query(
+                `SELECT * FROM mail_settings 
+                 WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY is_default_invoice_mail DESC, updated_at DESC LIMIT 1`,
+                [tenantId]
+            );
+            settings = res.rows[0];
         }
 
-        // Find the mail_account for this settings
-        const account = await prisma.mail_accounts.findFirst({
-            where: { tenant_id: tenantId, email: settings.email, is_active: true }
-        });
+        // Find the mail_account for this setting or any active integration
+        let account = null;
+        if (settings && settings.email) {
+            account = await prisma.mail_accounts.findFirst({
+                where: { tenant_id: tenantId, email: settings.email, is_active: true }
+            });
+        }
 
         if (!account) {
-            throw new Error(`Integrated account for ${settings.email} not found`);
+            if (userId) {
+                account = await prisma.mail_accounts.findFirst({
+                    where: { tenant_id: tenantId, user_id: userId, is_active: true }
+                });
+            }
+            if (!account) {
+                account = await prisma.mail_accounts.findFirst({
+                    where: { tenant_id: tenantId, is_active: true }
+                });
+            }
         }
+
+        if (!account) {
+            throw new Error(`Integrated email account not found for tenant ${tenantId}`);
+        }
+
+        const senderEmail = account.email;
+        const senderFrom = data.fromName ? `"${data.fromName}" <${senderEmail}>` : senderEmail;
 
         const accessToken = await UnifiedAuthService.getValidAccessToken(account.user_id, account.provider as any);
         const provider = MailProviderFactory.getProvider(account.provider);
@@ -782,7 +818,7 @@ export class MailService {
             subject: data.subject,
             body: data.body,
             htmlBody: data.htmlBody,
-            from: settings.email,
+            from: senderFrom,
             attachments: processedAttachments
         });
     }
