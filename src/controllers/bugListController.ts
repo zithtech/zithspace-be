@@ -1789,8 +1789,11 @@ export class BugListController {
         const ors: string[] = [];
         if (ticketStatuses.includes("linked")) ors.push("b.ticket_id IS NOT NULL");
         if (ticketStatuses.includes("unlinked")) ors.push("b.ticket_id IS NULL");
+        if (ticketStatuses.includes("completed")) {
+          ors.push("LOWER(t.status) IN ('completed', 'done', 'live', 'complete', 'closed', 'resolved')");
+        }
         const realStatuses = ticketStatuses.filter(
-          (s) => s !== "linked" && s !== "unlinked" && s !== "all",
+          (s) => s !== "linked" && s !== "unlinked" && s !== "all" && s !== "completed",
         );
         if (realStatuses.length) {
           values.push(realStatuses);

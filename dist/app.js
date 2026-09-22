@@ -696,6 +696,10 @@ const startServer = async () => {
         // (disable with OPENING_AUTO_MOVE_ENABLED=false)
         const { startPostingAutoMoveJob } = require("@/modules/opening-management/jobs/postingAutoMove");
         startPostingAutoMoveJob();
+        // Start automated monthly performance report generation job
+        // (disable with PERF_REPORT_AUTO_GENERATE_ENABLED=false)
+        const { startPerformanceReportAutoGenerateJob } = require("@/modules/performance-report/jobs/performanceReportAutoGenerate");
+        startPerformanceReportAutoGenerateJob();
     }
     catch (error) {
         console.error("Server startup failed:", error);
