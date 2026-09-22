@@ -19,6 +19,13 @@ router.use(requireAuth);
 router.get('/:projectId/overview', requirePermission(Permissions.PROJECT_READ), ProjectOverviewController.getOverview);
 
 /**
+ * @route   GET /api/projects/:projectId/sprints
+ * @desc    Get paginated project sprints
+ * @access  Private (authenticated users)
+ */
+router.get('/:projectId/sprints', requirePermission(Permissions.PROJECT_READ), ProjectOverviewController.getSprints);
+
+/**
  * @route   GET /api/projects/:projectId/timeline
  * @desc    Get all project tickets for the timeline view (loaded on demand)
  * @access  Private (authenticated users)

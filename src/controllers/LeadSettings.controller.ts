@@ -51,16 +51,48 @@ export class LeadSettingsController {
 
   static async getStatuses(req: AuthRequest, res: Response) {
     try {
-      console.log('--- GET STATUSES START ---');
       const tenantId = req.tenantId;
-      console.log('Tenant ID:', tenantId);
       if (!tenantId) {
-        console.error('Get Statuses: Missing tenant context');
         return res.status(400).json({ success: false, error: 'Tenant context required' });
       }
 
+      const { page, limit, search, filter, all } = req.query;
+
+      if ((page || limit || search || filter) && all !== 'true') {
+        const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+        const limitNum = Math.max(1, parseInt(limit as string, 10) || 15);
+        const offset = (pageNum - 1) * limitNum;
+        const searchStr = typeof search === 'string' ? search.trim() : '';
+        const filterStr = typeof filter === 'string' ? filter.trim() : 'all';
+
+        const { statuses, total, totalActive, totalFinal, totalDefault } = await LeadStatusModel.findWithPagination(tenantId, {
+          page: pageNum,
+          limit: limitNum,
+          offset,
+          search: searchStr,
+          filter: filterStr,
+        });
+
+        return res.status(200).json({
+          success: true,
+          data: statuses,
+          pagination: {
+            page: pageNum,
+            limit: limitNum,
+            pageSize: limitNum,
+            total,
+            totalPages: Math.ceil(total / limitNum) || 1,
+          },
+          stats: {
+            total,
+            active: totalActive,
+            final: totalFinal,
+            default: totalDefault,
+          }
+        });
+      }
+
       const statuses = await LeadStatusModel.findAll(tenantId);
-      console.log(`Fetched ${statuses.length} statuses for tenant ${tenantId}`);
       return res.status(200).json({ success: true, data: statuses });
     } catch (error: any) {
       console.error('Get Statuses Error:', error);
@@ -206,16 +238,46 @@ export class LeadSettingsController {
 
   static async getActions(req: AuthRequest, res: Response) {
     try {
-      console.log('--- GET ACTIONS START ---');
       const tenantId = req.tenantId;
-      console.log('Tenant ID:', tenantId);
       if (!tenantId) {
-        console.error('Get Actions: Missing tenant context');
         return res.status(400).json({ success: false, error: 'Tenant context required' });
       }
 
+      const { page, limit, search, filter, all } = req.query;
+
+      if ((page || limit || search || filter) && all !== 'true') {
+        const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+        const limitNum = Math.max(1, parseInt(limit as string, 10) || 15);
+        const offset = (pageNum - 1) * limitNum;
+        const searchStr = typeof search === 'string' ? search.trim() : '';
+        const filterStr = typeof filter === 'string' ? filter.trim() : 'all';
+
+        const { actions, total, totalActive } = await LeadActionModel.findWithPagination(tenantId, {
+          page: pageNum,
+          limit: limitNum,
+          offset,
+          search: searchStr,
+          filter: filterStr,
+        });
+
+        return res.status(200).json({
+          success: true,
+          data: actions,
+          pagination: {
+            page: pageNum,
+            limit: limitNum,
+            pageSize: limitNum,
+            total,
+            totalPages: Math.ceil(total / limitNum) || 1,
+          },
+          stats: {
+            total,
+            active: totalActive,
+          }
+        });
+      }
+
       const actions = await LeadActionModel.findAll(tenantId);
-      console.log(`Fetched ${actions.length} actions for tenant ${tenantId}`);
       return res.status(200).json({ success: true, data: actions });
     } catch (error: any) {
       console.error('Get Actions Error:', error);
@@ -368,6 +430,41 @@ export class LeadSettingsController {
       if (!tenantId) {
         return res.status(400).json({ success: false, error: 'Tenant context required' });
       }
+
+      const { page, limit, search, filter, all } = req.query;
+
+      if ((page || limit || search || filter) && all !== 'true') {
+        const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+        const limitNum = Math.max(1, parseInt(limit as string, 10) || 15);
+        const offset = (pageNum - 1) * limitNum;
+        const searchStr = typeof search === 'string' ? search.trim() : '';
+        const filterStr = typeof filter === 'string' ? filter.trim() : 'all';
+
+        const { platforms, total, totalActive } = await LeadPlatformModel.findWithPagination(tenantId, {
+          page: pageNum,
+          limit: limitNum,
+          offset,
+          search: searchStr,
+          filter: filterStr,
+        });
+
+        return res.status(200).json({
+          success: true,
+          data: platforms,
+          pagination: {
+            page: pageNum,
+            limit: limitNum,
+            pageSize: limitNum,
+            total,
+            totalPages: Math.ceil(total / limitNum) || 1,
+          },
+          stats: {
+            total,
+            active: totalActive,
+          }
+        });
+      }
+
       const platforms = await LeadPlatformModel.findAll(tenantId);
       return res.status(200).json({ success: true, data: platforms });
     } catch (error: any) {

@@ -17,7 +17,7 @@ class CustomerController {
                 });
                 return;
             }
-            const { page = 1, limit = 20, search, isActive } = req.query;
+            const { page = 1, limit = 15, search, isActive } = req.query;
             const { customers, total } = await customer_model_1.CustomerModel.getCustomers(req.tenantId, Number(page), Number(limit), search, isActive !== undefined ? isActive === "true" : undefined);
             res.status(200).json({
                 success: true,

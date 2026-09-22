@@ -301,6 +301,42 @@ export class MomStaffController {
   static async listForClient(req: AuthRequest, res: Response): Promise<void> {
     const tenantId = req.tenantId!;
     const { clientId } = req.params;
+    const page = Math.max(1, parseInt(String(req.query.page || "1"), 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || "15"), 10) || 15));
+    const offset = (page - 1) * limit;
+    const search = ((req.query.search as string) || "").trim();
+    const status = ((req.query.status as string) || "").trim();
+    const projectId = ((req.query.projectId as string) || "").trim();
+
+    const conditions: string[] = ["m.tenant_id = $1", "m.client_id = $2"];
+    const params: any[] = [tenantId, clientId];
+    let pIdx = 3;
+
+    if (search) {
+      conditions.push(`(m.title ILIKE $${pIdx} OR m.mom_number ILIKE $${pIdx})`);
+      params.push(`%${search}%`);
+      pIdx++;
+    }
+    if (status && status !== "all") {
+      conditions.push(`m.status = $${pIdx}`);
+      params.push(status);
+      pIdx++;
+    }
+    if (projectId && projectId !== "all") {
+      conditions.push(`m.project_id = $${pIdx}`);
+      params.push(projectId);
+      pIdx++;
+    }
+
+    const whereClause = conditions.join(" AND ");
+
+    const countRes = await pool.query(
+      `SELECT COUNT(*)::int AS total FROM portal_moms m WHERE ${whereClause}`,
+      params,
+    );
+    const total = countRes.rows[0]?.total || 0;
+
+    const dataParams = [...params, limit, offset];
     const r = await pool.query(
       `SELECT m.id, m.mom_number, m.title, m.meeting_date, m.duration_minutes,
               m.status, m.visibility, m.project_id, p.name AS project_name,
@@ -327,9 +363,10 @@ export class MomStaffController {
               ), '[]'::json) AS attachments
          FROM portal_moms m
          LEFT JOIN projects p ON p.id = m.project_id
-        WHERE m.tenant_id = $1 AND m.client_id = $2
-        ORDER BY m.meeting_date DESC`,
-      [tenantId, clientId],
+        WHERE ${whereClause}
+        ORDER BY m.meeting_date DESC
+        LIMIT $${pIdx} OFFSET $${pIdx + 1}`,
+      dataParams,
     );
     res.json({
       success: true,
@@ -350,6 +387,12 @@ export class MomStaffController {
         attendeeCount: row.attendee_count || 0,
         attachments: row.attachments || [],
       })),
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
     });
   }
 

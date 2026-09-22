@@ -165,7 +165,7 @@ export class MicrosoftMailProvider implements IMailProvider {
             subject: mailData.subject,
             body: {
                 contentType: "html",
-                content: mailData.body
+                content: mailData.htmlBody || mailData.body
             },
             toRecipients: mailData.to?.map(email => ({
                 emailAddress: { address: email }

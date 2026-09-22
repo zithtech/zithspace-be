@@ -15,10 +15,33 @@ export class ProposalTemplateController {
       const tenantId = req.tenantId;
       if (!tenantId) throw new ValidationError('Tenant context required');
 
-      const includeArchived = req.query.archived !== 'false';
-      const templates = await ProposalTemplateModel.findAll(tenantId, includeArchived);
+      if (req.query.all === 'true') {
+        const includeArchived = req.query.archived !== 'false';
+        const templates = await ProposalTemplateModel.findAll(tenantId, includeArchived);
+        res.status(200).json({ success: true, data: templates } as ApiResponse);
+        return;
+      }
 
-      res.status(200).json({ success: true, data: templates } as ApiResponse);
+      const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 15;
+      const search = req.query.search as string;
+      const view = req.query.view as string;
+      const archived = req.query.archived as string;
+
+      const result = await ProposalTemplateModel.findWithPagination(tenantId, {
+        page,
+        limit,
+        search,
+        view,
+        archived,
+      });
+
+      res.status(200).json({
+        success: true,
+        data: result.data,
+        pagination: result.pagination,
+        stats: result.stats,
+      } as ApiResponse);
     } catch (error: any) {
       console.error('Error fetching proposal templates:', error);
       res.status(500).json({ success: false, error: error.message || 'Failed to fetch templates' } as ApiResponse);

@@ -148,6 +148,8 @@ export declare class EmailService {
         dueDate: string;
         customMessage?: string;
         pdfUrl?: string | null;
+        companyName?: string;
+        companyLogo?: string | null;
     }): string;
     sendInvoiceEmail(data: {
         to: string;
@@ -159,6 +161,8 @@ export declare class EmailService {
         dueDate: string;
         customMessage?: string;
         pdfUrl?: string | null;
+        companyName?: string;
+        companyLogo?: string | null;
     }, tenantId?: string): Promise<{
         success: boolean;
         html: string;

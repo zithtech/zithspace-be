@@ -15,21 +15,45 @@ export class DocumentStructureController {
   static async getStructures(req: AuthRequest, res: Response) {
     try {
       const tenantId = req.tenantId!;
+      const { search, limit, offset } = req.query;
+
+      const conditions = ["ds.tenant_id IN ($1, 'GLOBAL')"];
+      const values: any[] = [tenantId];
+      let paramIdx = 2;
+
+      if (search) {
+        conditions.push(`ds.name ILIKE $${paramIdx++}`);
+        values.push(`%${search}%`);
+      }
+
+      let paginationClause = '';
+      if (limit !== undefined && offset !== undefined) {
+        paginationClause = ` LIMIT $${paramIdx++} OFFSET $${paramIdx++}`;
+        values.push(parseInt(limit as string, 10), parseInt(offset as string, 10));
+      } else if (limit !== undefined) {
+        paginationClause = ` LIMIT $${paramIdx++}`;
+        values.push(parseInt(limit as string, 10));
+      }
+
       const result = await pool.query(`
         SELECT 
           ds.id, ds.tenant_id AS "tenantId", ds.name, ds.html_content AS "htmlContent", 
           ds.created_by_id AS "createdById", ds.created_at AS "createdAt", ds.updated_at AS "updatedAt",
+          COUNT(*) OVER() as total_count,
           (SELECT json_build_object('id', u.id, 'name', u.name, 'workEmail', u.work_email, 'avatarUrl', u.avatar_url) FROM users u WHERE u.id = ds.created_by_id) AS "createdBy"
         FROM document_structures ds
-        WHERE ds.tenant_id IN ($1, 'GLOBAL')
+        WHERE ${conditions.join(' AND ')}
         ORDER BY ds.created_at DESC
-      `, [tenantId]);
+        ${paginationClause}
+      `, values);
       
       const structures = result.rows;
+      const total = structures.length > 0 ? parseInt(structures[0].total_count, 10) : 0;
 
       return res.status(200).json({
         success: true,
         data: structures,
+        total,
       });
     } catch (error: any) {
       console.error('Error fetching document structures:', error);

@@ -35,6 +35,48 @@ export class ProjectOverviewController {
   }
 
   /**
+   * Get paginated project sprints
+   */
+  static async getSprints(req: AuthRequest, res: Response): Promise<void> {
+    try {
+      const { projectId } = req.params;
+      const tenantId = req.tenantId;
+
+      if (!tenantId) {
+        res.status(400).json({
+          success: false,
+          error: "Tenant context required",
+        } as ApiResponse);
+        return;
+      }
+
+      const page = req.query.page ? parseInt(req.query.page as string, 10) : 1;
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 15;
+      const search = req.query.search as string;
+      const status = req.query.status as string;
+
+      const result = await ProjectOverviewModel.getProjectSprintsPaginated(projectId, tenantId, {
+        page,
+        limit,
+        search,
+        status,
+      });
+
+      res.status(200).json({
+        success: true,
+        data: result.data,
+        pagination: result.pagination,
+      } as ApiResponse);
+    } catch (error: any) {
+      console.error("Get project sprints error:", error);
+      res.status(500).json({
+        success: false,
+        error: error.message || "Failed to fetch project sprints",
+      } as ApiResponse);
+    }
+  }
+
+  /**
    * Get all project tickets for the timeline view (loaded on demand)
    */
   static async getTimeline(req: AuthRequest, res: Response): Promise<void> {

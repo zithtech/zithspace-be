@@ -94,15 +94,52 @@ class EmploymentTypeController {
                 res.status(400).json({ success: false, error: "Tenant context missing" });
                 return;
             }
-            const employmentTypes = await database_1.prisma.employmentType.findMany({
-                where: { tenantId: req.tenantId },
-                orderBy: { createdAt: 'desc' },
-                include: {
-                    createdBy: { select: { name: true, id: true } },
-                    updatedBy: { select: { name: true, id: true } }
-                }
-            });
-            res.status(200).json({ success: true, data: employmentTypes });
+            const { page, limit, search } = req.query;
+            const pageNum = page ? parseInt(page, 10) : undefined;
+            const limitNum = limit ? parseInt(limit, 10) : undefined;
+            const where = { tenantId: req.tenantId };
+            if (typeof search === 'string' && search.trim()) {
+                where.OR = [
+                    { name: { contains: search, mode: 'insensitive' } },
+                    { code: { contains: search, mode: 'insensitive' } },
+                    { description: { contains: search, mode: 'insensitive' } },
+                ];
+            }
+            const include = {
+                createdBy: { select: { name: true, id: true } },
+                updatedBy: { select: { name: true, id: true } }
+            };
+            if (limitNum) {
+                const skip = pageNum ? (pageNum - 1) * limitNum : 0;
+                const [employmentTypes, total] = await Promise.all([
+                    database_1.prisma.employmentType.findMany({
+                        where,
+                        include,
+                        orderBy: { createdAt: 'desc' },
+                        skip,
+                        take: limitNum,
+                    }),
+                    database_1.prisma.employmentType.count({ where }),
+                ]);
+                res.status(200).json({
+                    success: true,
+                    data: employmentTypes,
+                    pagination: {
+                        total,
+                        page: pageNum || 1,
+                        limit: limitNum,
+                        pages: Math.ceil(total / limitNum),
+                    },
+                });
+            }
+            else {
+                const employmentTypes = await database_1.prisma.employmentType.findMany({
+                    where,
+                    include,
+                    orderBy: { createdAt: 'desc' },
+                });
+                res.status(200).json({ success: true, data: employmentTypes });
+            }
         }
         catch (error) {
             console.error("Error fetching employment types:", error);

@@ -12,6 +12,7 @@ const invoicePayment_model_1 = require("../models/invoicePayment.model");
 const transaction_model_1 = require("../models/transaction.model");
 const types_1 = require("../types");
 const pdfService_1 = require("../services/pdfService");
+const r2Client_1 = require("../utils/r2Client");
 const dbpool_1 = __importDefault(require("../config/dbpool"));
 const settingsProfile_model_1 = require("../models/settingsProfile.model");
 const invoiceLineItem_model_1 = require("../models/invoiceLineItem.model");
@@ -461,9 +462,10 @@ class InvoiceController {
                     currency: createdInvoice.currency,
                 },
             });
+            const fullCreatedInvoice = await (0, invoice_model_1.getInvoiceById)(createdInvoice.id, req.tenantId);
             res.status(201).json({
                 success: true,
-                data: createdInvoice,
+                data: fullCreatedInvoice || createdInvoice,
                 message: 'Invoice created successfully'
             });
         }
@@ -879,9 +881,10 @@ class InvoiceController {
                     grandTotal: updatedInvoice.grandTotal,
                 },
             });
+            const fullUpdatedInvoice = await (0, invoice_model_1.getInvoiceById)(id, req.tenantId);
             res.status(200).json({
                 success: true,
-                data: updatedInvoice,
+                data: fullUpdatedInvoice || updatedInvoice,
                 message: 'Invoice updated successfully',
             });
         }
@@ -990,7 +993,7 @@ class InvoiceController {
             if (!req.tenantId) {
                 throw new types_1.ValidationError('Tenant context required');
             }
-            const { page = 1, limit = 20, status, customerId, search, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
+            const { page = 1, limit = 15, status, customerId, search, sortBy = 'createdAt', sortOrder = 'desc' } = req.query;
             console.log(`GET INVOICES - Page: ${page}, Limit: ${limit}`);
             // Handle status parameter properly
             let statusFilter = 'all';
@@ -1253,7 +1256,7 @@ class InvoiceController {
             if (!req.tenantId) {
                 throw new types_1.ValidationError('Tenant context required');
             }
-            const { page = 1, limit = 20, search, status, startDate, endDate, sortBy = 'deletedAt', sortOrder = 'desc' } = req.query;
+            const { page = 1, limit = 15, search, status, startDate, endDate, sortBy = 'deletedAt', sortOrder = 'desc' } = req.query;
             console.log(`GET DELETED INVOICES - Page: ${page}, Limit: ${limit}`);
             const options = {
                 page: Number(page),
@@ -1503,8 +1506,9 @@ class InvoiceController {
                 throw new types_1.ValidationError('Tenant context and authentication required');
             }
             const { id } = req.params;
-            const { to, subject, message, pdfUrl } = req.body;
-            console.log(`SEND EMAIL - Invoice ID: ${id}`);
+            const { to, subject, message, pdfUrl, attachPdf } = req.body;
+            const shouldAttachPdf = attachPdf !== false;
+            console.log(`SEND EMAIL - Invoice ID: ${id}, attachPdf: ${shouldAttachPdf}`);
             // Get invoice with complete data
             const invoice = await (0, invoice_model_1.getInvoiceById)(id, req.tenantId);
             if (!invoice) {
@@ -1543,10 +1547,93 @@ class InvoiceController {
             }
             // Determine recipient email
             const snapshot = invoice.customerSnapshot;
-            const recipientEmail = invoice.customerSnapshot?.email || to || snapshot?.email;
-            const customerName = invoice.customerSnapshot?.companyName || snapshot?.companyName || "Valued Customer";
+            const recipientEmail = to || invoice.customerSnapshot?.email || snapshot?.email;
+            const customerName = invoice.customerSnapshot?.companyName || invoice.customerSnapshot?.name || snapshot?.companyName || snapshot?.name || "Valued Customer";
             if (!recipientEmail) {
                 throw new types_1.ValidationError("No recipient email address found for this customer.");
+            }
+            // Fetch company profile branding from settings
+            let companyName = "";
+            let companyLogo = null;
+            let profile = null;
+            try {
+                if (invoice.settingsProfileId) {
+                    profile = await (0, settingsProfile_model_1.getSettingsProfileById)(invoice.settingsProfileId, req.tenantId);
+                }
+                if (!profile || !profile?.general?.companyName) {
+                    profile = await (0, settingsProfile_model_1.getActiveSettingsProfile)(req.tenantId);
+                }
+                if (profile?.general?.companyName)
+                    companyName = profile.general.companyName;
+                if (profile?.general?.companyLogo)
+                    companyLogo = profile.general.companyLogo;
+            }
+            catch (e) {
+                console.warn("[InvoiceController] Could not fetch settings profile branding:", e);
+            }
+            if (!companyName) {
+                try {
+                    const tenantBranding = await emailService_1.emailService.resolveTenantMailBranding(req.tenantId);
+                    if (tenantBranding?.companyName)
+                        companyName = tenantBranding.companyName;
+                    if (tenantBranding?.companyLogo)
+                        companyLogo = tenantBranding.companyLogo;
+                }
+                catch (e) { }
+            }
+            if (!companyName) {
+                companyName = "Company";
+            }
+            if (companyLogo && companyLogo.startsWith('data:image/')) {
+                try {
+                    companyLogo = await (0, r2Client_1.uploadImageToR2)(companyLogo, req.tenantId, 'branding');
+                }
+                catch (logoErr) {
+                    console.warn('[InvoiceController] Failed to upload base64 company logo to R2:', logoErr);
+                    companyLogo = null;
+                }
+            }
+            const currencySymbols = {
+                USD: "$",
+                INR: "₹",
+                EUR: "€",
+                GBP: "£",
+                JPY: "¥",
+                AUD: "A$",
+                CAD: "C$",
+                CNY: "¥",
+            };
+            const curSymbol = currencySymbols[invoice.currency || "USD"] || (invoice.currency || "$");
+            const formattedTotal = `${curSymbol} ${Number(invoice.grandTotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            const formattedDueDate = invoice.dueDate
+                ? new Date(invoice.dueDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                : "Due on receipt";
+            // Determine connected integration mail for from address
+            let fromAddress;
+            try {
+                let defaultMailRes = await dbpool_1.default.query("SELECT email FROM mail_settings WHERE tenant_id = $1 AND is_verified = TRUE AND is_default_invoice_mail = TRUE AND deleted_at IS NULL LIMIT 1", [req.tenantId]);
+                if (!defaultMailRes.rows.length) {
+                    defaultMailRes = await dbpool_1.default.query("SELECT email FROM mail_settings WHERE tenant_id = $1 AND is_verified = TRUE AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 1", [req.tenantId]);
+                }
+                if (!defaultMailRes.rows.length) {
+                    defaultMailRes = await dbpool_1.default.query("SELECT email FROM mail_settings WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY is_default_invoice_mail DESC, updated_at DESC LIMIT 1", [req.tenantId]);
+                }
+                if (defaultMailRes.rows.length > 0 && defaultMailRes.rows[0].email) {
+                    fromAddress = `${companyName} <${defaultMailRes.rows[0].email}>`;
+                }
+                else {
+                    // Check active connected mail account from mail_accounts
+                    const mailAccRes = await dbpool_1.default.query("SELECT email FROM mail_accounts WHERE tenant_id = $1 AND is_active = TRUE LIMIT 1", [req.tenantId]);
+                    if (mailAccRes.rows.length > 0 && mailAccRes.rows[0].email) {
+                        fromAddress = `${companyName} <${mailAccRes.rows[0].email}>`;
+                    }
+                    else if (profile?.general?.companyEmail || profile?.general?.email) {
+                        fromAddress = `${companyName} <${profile.general.companyEmail || profile.general.email}>`;
+                    }
+                }
+            }
+            catch (e) {
+                console.warn("[InvoiceController] Could not fetch integration connect mail for From address:", e);
             }
             // Check if there is a verified integrated default invoice mail
             let emailResult;
@@ -1556,17 +1643,20 @@ class InvoiceController {
                 const htmlContent = emailService_1.EmailService.generateInvoiceHtml({
                     customerName,
                     invoiceNumber: invoice.invoiceNumber,
-                    amount: invoice.grandTotal ? invoice.grandTotal.toString() : '0.00',
-                    dueDate: new Date(invoice.dueDate).toLocaleDateString(),
+                    amount: formattedTotal,
+                    dueDate: formattedDueDate,
                     customMessage: message,
-                    pdfUrl: finalPdfUrl
+                    pdfUrl: finalPdfUrl,
+                    companyName,
+                    companyLogo,
                 });
                 const mailResponse = await MailService_1.MailService.sendInvoiceViaIntegratedMail(req.tenantId, {
                     to: [recipientEmail],
-                    subject: subject || `Invoice ${invoice.invoiceNumber} from Zithspace`,
-                    body: message || `Dear ${customerName}, please find your invoice ${invoice.invoiceNumber} attached.`,
+                    subject: subject || `Invoice #${invoice.invoiceNumber} from ${companyName} [${formattedTotal}]`,
+                    body: message || `Dear ${customerName}, please find invoice #${invoice.invoiceNumber} attached.`,
                     htmlBody: htmlContent,
-                    attachments: finalPdfUrl ? [{
+                    fromName: companyName,
+                    attachments: (shouldAttachPdf && finalPdfUrl) ? [{
                             filename: `Invoice_${invoice.invoiceNumber}.pdf`,
                             url: finalPdfUrl,
                             contentType: 'application/pdf'
@@ -1579,13 +1669,16 @@ class InvoiceController {
                 // Fallback to existing SMTP email service
                 emailResult = await emailService_1.emailService.sendInvoiceEmail({
                     to: recipientEmail,
-                    subject: subject || `Invoice ${invoice.invoiceNumber} from Zithtech`,
+                    from: fromAddress,
+                    subject: subject || `Invoice #${invoice.invoiceNumber} from ${companyName} [${formattedTotal}]`,
                     customerName,
                     invoiceNumber: invoice.invoiceNumber,
-                    amount: invoice.grandTotal ? invoice.grandTotal.toString() : '0.00',
-                    dueDate: new Date(invoice.dueDate).toLocaleDateString(),
+                    amount: formattedTotal,
+                    dueDate: formattedDueDate,
                     customMessage: message,
-                    pdfUrl: finalPdfUrl
+                    pdfUrl: shouldAttachPdf ? finalPdfUrl : null,
+                    companyName,
+                    companyLogo,
                 }, req.tenantId);
             }
             if (emailResult.success) {
@@ -1936,7 +2029,7 @@ class InvoiceController {
                 throw new types_1.ValidationError('Tenant context required');
             }
             const id = req.params.id || req.params.invoiceId;
-            const { page = 1, limit = 20 } = req.query;
+            const { page = 1, limit = 15 } = req.query;
             console.log(`GET PAYMENT HISTORY - Invoice ID: ${id}`);
             if (!id) {
                 throw new types_1.ValidationError('Invoice ID is required');

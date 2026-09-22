@@ -18,10 +18,12 @@ export class ClientPortalMomController {
     }
     const search = ((req.query.search as string) || "").trim();
     const projectId = (req.query.projectId as string) || "";
+    const fromDate = ((req.query.from as string) || "").trim();
+    const toDate = ((req.query.to as string) || "").trim();
     const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
     const limit = Math.min(
       100,
-      Math.max(1, parseInt((req.query.limit as string) || "20", 10)),
+      Math.max(1, parseInt((req.query.limit as string) || "15", 10)),
     );
     const offset = (page - 1) * limit;
 
@@ -33,6 +35,14 @@ export class ClientPortalMomController {
     if (projectId) {
       params.push(projectId);
       where += ` AND m.project_id = $${params.length}`;
+    }
+    if (fromDate) {
+      params.push(fromDate);
+      where += ` AND m.meeting_date::date >= $${params.length}::date`;
+    }
+    if (toDate) {
+      params.push(toDate);
+      where += ` AND m.meeting_date::date <= $${params.length}::date`;
     }
     if (search) {
       params.push(`%${search}%`);

@@ -1363,17 +1363,35 @@ export class ProjectController {
       };
 
       if (customerId) {
+        let projectIds: string[] = [];
+
         const customerRes = await pool.query(
           `SELECT client_id FROM customers WHERE tenant_id = $1 AND id = $2`,
           [req.tenantId, customerId as string]
         );
         const clientId = customerRes.rows[0]?.client_id;
         if (clientId) {
-          const projectRes = await pool.query(
+          const clientProjectRes = await pool.query(
             `SELECT project_id FROM client_projects WHERE tenant_id = $1 AND client_id = $2`,
             [req.tenantId, clientId]
           );
-          const projectIds = projectRes.rows.map((row) => row.project_id);
+          projectIds.push(...clientProjectRes.rows.map((row) => row.project_id));
+        }
+
+        // Also check direct project links in customer_projects
+        try {
+          const custProjectRes = await pool.query(
+            `SELECT project_id FROM customer_projects WHERE tenant_id = $1 AND customer_id = $2`,
+            [req.tenantId, customerId as string]
+          );
+          projectIds.push(...custProjectRes.rows.map((row) => row.project_id));
+        } catch (e) {
+          // in case customer_projects table not yet queried
+        }
+
+        projectIds = Array.from(new Set(projectIds));
+
+        if (projectIds.length > 0) {
           where.id = { in: projectIds };
         } else {
           where.id = { in: [] };

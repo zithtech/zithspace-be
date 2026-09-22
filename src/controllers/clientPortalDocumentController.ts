@@ -54,8 +54,17 @@ export class ClientPortalDocumentController {
     const search = ((req.query.search as string) || "").trim();
     const projectId = ((req.query.projectId as string) || "").trim();
     const source = ((req.query.source as string) || "").trim().toLowerCase();
+    const fromDate = ((req.query.from as string) || "").trim();
+    const toDate = ((req.query.to as string) || "").trim();
+    const hasPagination = req.query.page !== undefined || req.query.limit !== undefined;
+    const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
+    const limit = Math.min(
+      100,
+      Math.max(1, parseInt((req.query.limit as string) || "15", 10)),
+    );
+    const offset = (page - 1) * limit;
 
-    const params: any[] = [ctx.tenantId, ctx.clientId, ctx.portalUserId];
+    const params: any[] = [ctx.tenantId, ctx.clientId];
     let where = `WHERE d.tenant_id = $1 AND d.client_id = $2`;
 
     if (category) {
@@ -71,6 +80,14 @@ export class ClientPortalDocumentController {
     } else if (source === "internal") {
       where += ` AND d.uploaded_by_portal_user_id IS NULL`;
     }
+    if (fromDate) {
+      params.push(fromDate);
+      where += ` AND d.created_at::date >= $${params.length}::date`;
+    }
+    if (toDate) {
+      params.push(toDate);
+      where += ` AND d.created_at::date <= $${params.length}::date`;
+    }
     if (search) {
       params.push(`%${search}%`);
       where += ` AND (d.file_name ILIKE $${params.length}
@@ -81,8 +98,16 @@ export class ClientPortalDocumentController {
                   ))`;
     }
 
-    const r = await pool.query(
-      `SELECT d.id, d.category, d.document_type, d.file_name, d.file_url,
+    const countRes = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM client_documents_v2 d ${where}`,
+      params,
+    );
+    const total = countRes.rows[0]?.n || 0;
+
+    params.push(ctx.portalUserId);
+    const portalUserIdx = params.length;
+
+    let query = `SELECT d.id, d.category, d.document_type, d.file_name, d.file_url,
               d.version, d.tags, d.created_at, d.updated_at,
               d.project_id,
               p.name AS project_name, p.code AS project_code,
@@ -92,14 +117,20 @@ export class ClientPortalDocumentController {
               (d.uploaded_by_portal_user_id IS NOT NULL) AS uploaded_by_portal
          FROM client_documents_v2 d
          LEFT JOIN client_document_portal_views v
-                ON v.document_id = d.id AND v.portal_user_id = $3
+                ON v.document_id = d.id AND v.portal_user_id = $${portalUserIdx}
          LEFT JOIN users u ON u.id = d.uploaded_by_id
          LEFT JOIN client_portal_users pu ON pu.id = d.uploaded_by_portal_user_id
          LEFT JOIN projects p ON p.id = d.project_id
          ${where}
-         ORDER BY d.created_at DESC`,
-      params,
-    );
+         ORDER BY d.created_at DESC`;
+
+    if (hasPagination) {
+      params.push(limit);
+      params.push(offset);
+      query += ` LIMIT $${params.length - 1} OFFSET $${params.length}`;
+    }
+
+    const r = await pool.query(query, params);
 
     const docs = await Promise.all(
       r.rows.map(async (row) => {
@@ -143,8 +174,8 @@ export class ClientPortalDocumentController {
       groupsMap.get(key)!.push(d);
     }
     const groups = Array.from(groupsMap.entries())
-      .map(([category, items]) => ({
-        category,
+      .map(([cat, items]) => ({
+        category: cat,
         items,
         count: items.length,
       }))
@@ -155,9 +186,7 @@ export class ClientPortalDocumentController {
         return a.category.localeCompare(b.category);
       });
 
-    // Distinct projects across this client's docs — used to populate the FE
-    // project filter dropdown. Built off the unfiltered client/tenant scope so
-    // the dropdown stays stable when a project filter is already applied.
+    // Distinct projects across this client's docs
     const projectsRes = await pool.query(
       `SELECT DISTINCT p.id, p.name, p.code
          FROM client_documents_v2 d
@@ -167,8 +196,7 @@ export class ClientPortalDocumentController {
       [ctx.tenantId, ctx.clientId],
     );
 
-    // Source counts (always over client scope, ignoring active filters) so the
-    // segmented filter can show counts like "All 42 · Client 7 · Internal 35".
+    // Source counts
     const countsRes = await pool.query(
       `SELECT
          COUNT(*)::int AS total,
@@ -184,7 +212,10 @@ export class ClientPortalDocumentController {
       success: true,
       data: docs,
       meta: {
-        total: docs.length,
+        total,
+        page: hasPagination ? page : 1,
+        limit: hasPagination ? limit : total,
+        totalPages: hasPagination ? Math.ceil(total / limit) : 1,
         groups,
         categories: Array.from(new Set(docs.map((d) => d.category).filter(Boolean))),
         projects: projectsRes.rows,
