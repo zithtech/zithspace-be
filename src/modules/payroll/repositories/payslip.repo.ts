@@ -63,13 +63,35 @@ export async function findByRun(client: TenantClient, runId: string): Promise<Pa
   return rows.map(mapRow);
 }
 
-export async function findForEmployee(client: TenantClient, employeeId: string): Promise<PayPayslip[]> {
+export async function findForEmployee(
+  client: TenantClient,
+  employeeId: string,
+  options?: { page?: number; limit?: number }
+): Promise<{ data: PayPayslip[]; total: number }> {
+  if (options?.page && options?.limit) {
+    const limit = Math.max(1, options.limit);
+    const offset = (Math.max(1, options.page) - 1) * limit;
+
+    const countRes = await client.query(
+      `SELECT COUNT(*)::int AS total FROM pay_payslips WHERE tenant_id = $1 AND employee_id = $2`,
+      [client.tenantId, employeeId]
+    );
+    const total = Number(countRes.rows[0]?.total || 0);
+
+    const { rows } = await client.query(
+      `SELECT ${COLS} FROM pay_payslips WHERE tenant_id = $1 AND employee_id = $2 ORDER BY year DESC, month DESC LIMIT $3 OFFSET $4`,
+      [client.tenantId, employeeId, limit, offset]
+    );
+    return { data: rows.map(mapRow), total };
+  }
+
   const { rows } = await client.query(
     `SELECT ${COLS} FROM pay_payslips WHERE tenant_id = $1 AND employee_id = $2 ORDER BY year DESC, month DESC`,
     [client.tenantId, employeeId]
   );
-  return rows.map(mapRow);
+  return { data: rows.map(mapRow), total: rows.length };
 }
+
 
 // Employee display info (name / email / designation / code / joining date) for
 // payslip headers. NOTE: the Prisma-managed tables key on TEXT ids (not uuid),

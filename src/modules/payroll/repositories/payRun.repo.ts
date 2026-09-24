@@ -59,12 +59,32 @@ export async function insertRun(client: TenantClient, d: InsertRunData): Promise
   return mapRun(rows[0]);
 }
 
-export async function listRuns(client: TenantClient): Promise<PayRun[]> {
+export async function listRuns(
+  client: TenantClient,
+  options?: { page?: number; limit?: number }
+): Promise<{ data: PayRun[]; total: number }> {
+  if (options?.page && options?.limit) {
+    const limit = Math.max(1, options.limit);
+    const offset = (Math.max(1, options.page) - 1) * limit;
+
+    const countRes = await client.query(
+      `SELECT COUNT(*)::int AS total FROM pay_runs WHERE tenant_id = $1`,
+      [client.tenantId]
+    );
+    const total = Number(countRes.rows[0]?.total || 0);
+
+    const { rows } = await client.query(
+      `SELECT ${RUN_COLS} FROM pay_runs WHERE tenant_id = $1 ORDER BY year DESC, month DESC, created_at DESC LIMIT $2 OFFSET $3`,
+      [client.tenantId, limit, offset]
+    );
+    return { data: rows.map(mapRun), total };
+  }
+
   const { rows } = await client.query(
     `SELECT ${RUN_COLS} FROM pay_runs WHERE tenant_id = $1 ORDER BY year DESC, month DESC, created_at DESC`,
     [client.tenantId]
   );
-  return rows.map(mapRun);
+  return { data: rows.map(mapRun), total: rows.length };
 }
 
 export async function findRunById(client: TenantClient, id: string): Promise<PayRun | null> {

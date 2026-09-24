@@ -372,8 +372,56 @@ export class LeadModel {
   /**
    * Find all trashed leads for a specific tenant (only within last 7 days)
    */
-  static async findAllDeleted(tenantId: string): Promise<any[]> {
-    const query = `
+  static async findAllDeleted(
+    tenantId: string,
+    options?: { page?: number; limit?: number; search?: string }
+  ): Promise<any> {
+    if (!options?.page || !options?.limit) {
+      const query = `
+        SELECT l.*, p.id as proposal_id
+        FROM leads l
+        LEFT JOIN (
+          SELECT DISTINCT ON (lead_id) id, lead_id 
+          FROM proposals 
+          WHERE tenant_id = $1 
+          ORDER BY lead_id, created_at DESC
+        ) p ON l.id = p.lead_id
+        WHERE l.tenant_id = $1 
+          AND l.is_deleted = true 
+          AND l.deleted_at >= NOW() - INTERVAL '7 days'
+        ORDER BY l.deleted_at DESC;
+      `;
+      const result = await pool.query(query, [tenantId]);
+      return result.rows;
+    }
+
+    const { page, limit, search } = options;
+    const offset = (page - 1) * limit;
+    const params: any[] = [tenantId];
+    let searchClause = '';
+
+    if (search && search.trim()) {
+      params.push(`%${search.trim()}%`);
+      searchClause = ` AND (l.title ILIKE $${params.length} OR l.client_name ILIKE $${params.length})`;
+    }
+
+    const countQuery = `
+      SELECT COUNT(*)::int as total
+      FROM leads l
+      WHERE l.tenant_id = $1
+        AND l.is_deleted = true
+        AND l.deleted_at >= NOW() - INTERVAL '7 days'
+        ${searchClause};
+    `;
+
+    const countResult = await pool.query(countQuery, params);
+    const total = countResult.rows[0]?.total || 0;
+
+    const dataParams = [...params, limit, offset];
+    const limitIdx = dataParams.length - 1;
+    const offsetIdx = dataParams.length;
+
+    const dataQuery = `
       SELECT l.*, p.id as proposal_id
       FROM leads l
       LEFT JOIN (
@@ -385,10 +433,13 @@ export class LeadModel {
       WHERE l.tenant_id = $1 
         AND l.is_deleted = true 
         AND l.deleted_at >= NOW() - INTERVAL '7 days'
-      ORDER BY l.deleted_at DESC;
+        ${searchClause}
+      ORDER BY l.deleted_at DESC
+      LIMIT $${limitIdx} OFFSET $${offsetIdx};
     `;
-    const result = await pool.query(query, [tenantId]);
-    return result.rows;
+
+    const dataResult = await pool.query(dataQuery, dataParams);
+    return { data: dataResult.rows, total };
   }
 
   /**

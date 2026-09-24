@@ -16,7 +16,14 @@ import { recordTransaction, Section, Module, Page, Action, EntityType } from '@/
 const asyncPayslipsEnabled = () => globalThis.process.env.PAYROLL_ASYNC_PAYSLIPS === 'true';
 
 export const list = handle(async (req: AuthRequest, res: Response) => {
-  ok(res, await service.listRuns(actorOf(req)));
+  const page = req.query.page ? Math.max(1, Number(req.query.page)) : 1;
+  const limit = req.query.limit ? Math.max(1, Number(req.query.limit)) : 15;
+  const { data, total } = await service.listRuns(actorOf(req), { page, limit });
+  res.json({
+    success: true,
+    data,
+    pagination: { total, page, limit, pages: Math.ceil(total / limit) },
+  });
 });
 
 export const getOne = handle(async (req: AuthRequest, res: Response) => {
@@ -159,7 +166,14 @@ export const getBankFile = handle(async (req: AuthRequest, res: Response) => {
 // actor's userId, so a user can never see another employee's payslips.
 export const myPayslips = handle(async (req: AuthRequest, res: Response) => {
   const actor = actorOf(req);
-  ok(res, await payslipService.listForEmployee(actor, actor.userId));
+  const page = req.query.page ? Math.max(1, Number(req.query.page)) : 1;
+  const limit = req.query.limit ? Math.max(1, Number(req.query.limit)) : 15;
+  const { data, total } = await payslipService.listForEmployee(actor, actor.userId, { page, limit });
+  res.json({
+    success: true,
+    data,
+    pagination: { total, page, limit, pages: Math.ceil(total / limit) },
+  });
 });
 
 export const remove = handle(async (req: AuthRequest, res: Response) => {

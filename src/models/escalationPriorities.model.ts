@@ -59,6 +59,42 @@ export class EscalationPriorityModel {
         return result.rows;
     }
 
+    static async findPaginated(
+      tenantId: string,
+      options: { page: number; limit: number; search?: string }
+    ): Promise<{ data: any[]; total: number }> {
+      const { page, limit, search } = options;
+      const offset = (page - 1) * limit;
+      const params: any[] = [tenantId];
+      let searchClause = '';
+
+      if (search && search.trim()) {
+        params.push(`%${search.trim()}%`);
+        searchClause = ` AND (displayname ILIKE $${params.length})`;
+      }
+
+      const countQuery = `
+        SELECT COUNT(*)::int as total
+        FROM "escalation_priorities"
+        WHERE tenantid = $1 AND status = TRUE ${searchClause};
+      `;
+      const countRes = await pool.query(countQuery, params);
+      const total = countRes.rows[0]?.total || 0;
+
+      const dataParams = [...params, limit, offset];
+      const limitIdx = dataParams.length - 1;
+      const offsetIdx = dataParams.length;
+
+      const dataQuery = `
+        SELECT * FROM "escalation_priorities"
+        WHERE tenantid = $1 AND status = TRUE ${searchClause}
+        ORDER BY priorityweight ASC
+        LIMIT $${limitIdx} OFFSET $${offsetIdx};
+      `;
+      const dataRes = await pool.query(dataQuery, dataParams);
+      return { data: dataRes.rows, total };
+    }
+
     /**
      * Find a specific escalation priority by ID and tenant ID
      */

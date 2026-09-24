@@ -45,8 +45,8 @@ export async function listGenerated(actor: Actor, period?: string) {
   }));
 }
 
-export async function listMine(actor: Actor) {
-  return withTenant(actor.tenantId, (client) => repo.listForUser(client, actor.userId));
+export async function listMine(actor: Actor, options?: { page?: number; limit?: number }) {
+  return withTenant(actor.tenantId, (client) => repo.listForUser(client, actor.userId, options));
 }
 
 export async function deleteGenerated(actor: Actor, id: string): Promise<boolean> {

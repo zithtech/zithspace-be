@@ -46,7 +46,11 @@ export interface SalaryRegister {
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
-export async function getRegister(actor: Actor, runId: string): Promise<SalaryRegister> {
+export async function getRegister(
+  actor: Actor,
+  runId: string,
+  options?: { page?: number; limit?: number }
+): Promise<SalaryRegister & { pagination: { total: number; page: number; limit: number } }> {
   return withTenant(actor.tenantId, async (client) => {
     const run = await runRepo.findRunById(client, runId);
     if (!run) throw PayrollError.notFound('Pay run');
@@ -68,7 +72,7 @@ export async function getRegister(actor: Actor, runId: string): Promise<SalaryRe
     const earningCols = [...earnMap.values()].map((c) => ({ code: c.code, name: c.name })).sort(byName);
     const deductionCols = [...dedMap.values()].map((c) => ({ code: c.code, name: c.name })).sort(byName);
 
-    const rows: RegisterRow[] = items.map((it) => {
+    const allRows: RegisterRow[] = items.map((it) => {
       const amounts: Record<string, number> = {};
       for (const c of it.components) {
         if (c.category === 'earning' || c.category === 'deduction') amounts[c.code] = c.amount;
@@ -90,8 +94,20 @@ export async function getRegister(actor: Actor, runId: string): Promise<SalaryRe
     const statutory = deductionCols.map((col) => ({
       code: col.code,
       name: col.name,
-      total: round2(rows.reduce((s, r) => s + (r.amounts[col.code] ?? 0), 0)),
+      total: round2(allRows.reduce((s, r) => s + (r.amounts[col.code] ?? 0), 0)),
     }));
+
+    const total = allRows.length;
+    let rows = allRows;
+    let page = 1;
+    let limit = total || 15;
+
+    if (options?.page && options?.limit) {
+      page = Math.max(1, options.page);
+      limit = Math.max(1, options.limit);
+      const offset = (page - 1) * limit;
+      rows = allRows.slice(offset, offset + limit);
+    }
 
     return {
       run: {
@@ -102,6 +118,7 @@ export async function getRegister(actor: Actor, runId: string): Promise<SalaryRe
       deductionCols,
       rows,
       statutory,
+      pagination: { total, page, limit },
     };
   });
 }

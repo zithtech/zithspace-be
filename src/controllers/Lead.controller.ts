@@ -623,18 +623,36 @@ export class LeadController {
         return res.status(400).json({ success: false, error: 'Tenant context required' });
       }
 
-      const leads = await LeadModel.findAllDeleted(tenantId);
+      const page = req.query.page ? parseInt(req.query.page as string, 10) : undefined;
+      const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+      const search = (req.query.search as string) || undefined;
 
-      return res.status(200).json({
-        success: true,
-        count: leads.length,
-        data: leads
-      });
+      if (page && limit) {
+        const result = await LeadModel.findAllDeleted(tenantId, { page, limit, search });
+        return res.status(200).json({
+          success: true,
+          count: result.data.length,
+          data: result.data,
+          pagination: {
+            page,
+            limit,
+            total: result.total,
+            totalPages: Math.ceil(result.total / limit) || 1,
+          },
+        });
+      } else {
+        const leads = await LeadModel.findAllDeleted(tenantId);
+        return res.status(200).json({
+          success: true,
+          count: leads.length,
+          data: leads,
+        });
+      }
     } catch (error: any) {
       console.error('Get Trash Leads Error:', error);
       return res.status(500).json({
         success: false,
-        error: error.message || 'Internal server error'
+        error: error.message || 'Internal server error',
       });
     }
   }
