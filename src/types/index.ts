@@ -334,6 +334,12 @@ export interface ApiResponse<T = any> {
   message?: string;
   serverTime?: string;
   total?: number;
+  pagination?: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  } | any;
   meta?: {
     pagination?: PaginationMeta;
     total?: number;

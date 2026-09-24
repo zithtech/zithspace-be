@@ -777,18 +777,24 @@ export class BugListController {
 
   static async listArchivedFolders(req: AuthRequest, res: Response): Promise<void> {
     if (!ensureAuth(req, res)) return;
+    const { projectId } = req.query;
     try {
-      const result = await pool.query(
-        `SELECT f.*,
+      let query = `SELECT f.*,
                 u.id AS creator_id, u.name AS creator_name, u.work_email AS creator_email, u.avatar_url AS creator_avatar,
                 (SELECT COUNT(*)::int FROM bug_sheets s WHERE s.folder_id = f.id) AS sheet_count,
                 (SELECT COUNT(*)::int FROM bugs b WHERE b.folder_id = f.id) AS bug_count
            FROM bug_folders f
            LEFT JOIN users u ON u.id = f.created_by_id
-          WHERE f.tenant_id = $1 AND f.status = 'archived'
-          ORDER BY f.updated_at DESC`,
-        [req.tenantId],
-      );
+          WHERE f.tenant_id = $1 AND f.status = 'archived'`;
+      const values: any[] = [req.tenantId];
+
+      if (projectId && projectId !== 'all') {
+        query += ` AND f.project_id = $2`;
+        values.push(projectId);
+      }
+
+      query += ` ORDER BY f.updated_at DESC`;
+      const result = await pool.query(query, values);
       const data = result.rows.map((row: any) => ({
         id: row.id,
         tenantId: row.tenant_id,
@@ -1110,7 +1116,7 @@ export class BugListController {
 
   static async listArchivedSheets(req: AuthRequest, res: Response): Promise<void> {
     if (!ensureAuth(req, res)) return;
-    const { folderId } = req.query;
+    const { folderId, projectId } = req.query;
     try {
       let query = `SELECT s.*,
                 f.name as folder_name,
@@ -1120,13 +1126,18 @@ export class BugListController {
            LEFT JOIN bug_folders f ON s.folder_id = f.id
            LEFT JOIN users u ON u.id = s.created_by_id
            WHERE s.tenant_id = $1`;
-      const params = [req.tenantId];
+      const params: any[] = [req.tenantId];
 
       if (folderId) {
         query += ` AND s.folder_id = $2 AND EXISTS (SELECT 1 FROM bug_folders f3 WHERE f3.id = s.folder_id AND f3.status = 'archived') AND s.status != 'trash'`;
         params.push(folderId as string);
       } else {
         query += ` AND s.status = 'archived' AND NOT EXISTS (SELECT 1 FROM bug_folders f2 WHERE f2.id = s.folder_id AND f2.status IN ('archived', 'trash'))`;
+      }
+
+      if (projectId && projectId !== 'all') {
+        params.push(projectId as string);
+        query += ` AND f.project_id = $${params.length}`;
       }
 
       query += ` ORDER BY s.updated_at DESC`;
@@ -1519,7 +1530,7 @@ export class BugListController {
 
   static async listTrashedSheets(req: AuthRequest, res: Response): Promise<void> {
     if (!ensureAuth(req, res)) return;
-    const { folderId } = req.query;
+    const { folderId, projectId } = req.query;
     try {
       let result;
       try {
@@ -1531,13 +1542,18 @@ export class BugListController {
              LEFT JOIN bug_folders f ON s.folder_id = f.id
              LEFT JOIN users u ON u.id = s.created_by_id
             WHERE s.tenant_id = $1`;
-        const params = [req.tenantId];
+        const params: any[] = [req.tenantId];
 
         if (folderId) {
           query += ` AND s.folder_id = $2 AND EXISTS (SELECT 1 FROM bug_folders f3 WHERE f3.id = s.folder_id AND f3.status = 'trash')`;
           params.push(folderId as string);
         } else {
           query += ` AND s.status = 'trash' AND NOT EXISTS (SELECT 1 FROM bug_folders f2 WHERE f2.id = s.folder_id AND f2.status = 'trash')`;
+        }
+
+        if (projectId && projectId !== 'all') {
+          params.push(projectId as string);
+          query += ` AND f.project_id = $${params.length}`;
         }
 
         query += ` ORDER BY s.updated_at DESC`;
@@ -1971,7 +1987,8 @@ export class BugListController {
     } = req.body;
     let { bugType, severity } = req.body;
 
-    if (!description || typeof description !== "string") {
+    const plainTextDesc = (description || "").replace(/<\/?[^>]+(>|$)/g, "").trim();
+    if (!description || typeof description !== "string" || !plainTextDesc) {
       bad(res, 400, "Description is required");
       return;
     }
@@ -2120,6 +2137,14 @@ export class BugListController {
       comments,
     } = req.body;
     let { bugType, severity } = req.body;
+
+    if (description !== undefined && description !== null) {
+      const plainTextDesc = (description || "").replace(/<\/?[^>]+(>|$)/g, "").trim();
+      if (!plainTextDesc) {
+        bad(res, 400, "Description is required and cannot be empty");
+        return;
+      }
+    }
 
     if (severity !== undefined && severity !== null) {
       const valid = await getValidSeverityKeys(req.tenantId!);

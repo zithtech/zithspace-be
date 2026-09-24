@@ -493,8 +493,9 @@ export const getTrashEscalations = async (req: AuthRequest, res: Response): Prom
 
         const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
         const offset = req.query.offset ? parseInt(req.query.offset as string) : undefined;
+        const search = req.query.search ? (req.query.search as string) : undefined;
 
-        const { data, total } = await EscalationDb.getTrashEscalations(tenantId, userId, isAdmin, limit, offset);
+        const { data, total } = await EscalationDb.getTrashEscalations(tenantId, userId, isAdmin, limit, offset, search);
         const response: ApiResponse = {
             success: true,
             message: "Trash escalations fetched successfully",

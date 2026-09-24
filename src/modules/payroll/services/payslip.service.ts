@@ -248,6 +248,10 @@ export async function listForRun(actor: Actor, runId: string): Promise<PayPaysli
   return withTenant(actor.tenantId, (client) => repo.findByRun(client, runId));
 }
 
-export async function listForEmployee(actor: Actor, employeeId: string): Promise<PayPayslip[]> {
-  return withTenant(actor.tenantId, (client) => repo.findForEmployee(client, employeeId));
+export async function listForEmployee(
+  actor: Actor,
+  employeeId: string,
+  options?: { page?: number; limit?: number }
+): Promise<{ data: PayPayslip[]; total: number }> {
+  return withTenant(actor.tenantId, (client) => repo.findForEmployee(client, employeeId, options));
 }

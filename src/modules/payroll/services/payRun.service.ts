@@ -72,8 +72,11 @@ export async function createRun(actor: Actor, input: CreateRunInput): Promise<Pa
   });
 }
 
-export async function listRuns(actor: Actor): Promise<PayRun[]> {
-  return withTenant(actor.tenantId, (client) => repo.listRuns(client));
+export async function listRuns(
+  actor: Actor,
+  options?: { page?: number; limit?: number }
+): Promise<{ data: PayRun[]; total: number }> {
+  return withTenant(actor.tenantId, (client) => repo.listRuns(client, options));
 }
 
 export async function getRun(actor: Actor, id: string): Promise<PayRunDetail> {

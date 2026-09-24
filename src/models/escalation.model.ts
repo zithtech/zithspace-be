@@ -178,7 +178,8 @@ export async function getTrashEscalations(
     userId?: string, 
     isAdmin?: boolean,
     limit?: number,
-    offset?: number
+    offset?: number,
+    search?: string
 ): Promise<{ data: any[], total: number }> {
     let baseQuery = `
         FROM escalation e
@@ -197,6 +198,12 @@ export async function getTrashEscalations(
             WHERE etm.escalation_id = e.id AND etm.user_id = $${queryIndex}
         ))`;
         values.push(userId);
+        queryIndex++;
+    }
+
+    if (search && search.trim()) {
+        baseQuery += ` AND (e.subject ILIKE $${queryIndex} OR ec.displayname ILIKE $${queryIndex})`;
+        values.push(`%${search.trim()}%`);
         queryIndex++;
     }
 

@@ -151,7 +151,33 @@ export async function list(client: TenantClient, periodKey?: string): Promise<Ge
 }
 
 /** Reports belonging to one user (their own "My Reports" view). */
-export async function listForUser(client: TenantClient, userId: string): Promise<GeneratedReport[]> {
+export async function listForUser(
+  client: TenantClient,
+  userId: string,
+  options?: { page?: number; limit?: number }
+): Promise<{ data: GeneratedReport[]; total: number }> {
+  if (options?.page && options?.limit) {
+    const limit = Math.max(1, options.limit);
+    const offset = (Math.max(1, options.page) - 1) * limit;
+
+    const countRes = await client.query(
+      `SELECT COUNT(*)::int AS total FROM prr_generated_reports WHERE tenant_id = $1 AND user_id = $2`,
+      [client.tenantId, userId]
+    );
+    const total = Number(countRes.rows[0]?.total || 0);
+
+    const { rows } = await client.query(
+      `SELECT ${SELECT_COLS}
+         FROM prr_generated_reports r
+         ${MEMBER_JOINS}
+        WHERE r.tenant_id = $1 AND r.user_id = $2
+        ORDER BY r.period_key DESC
+        LIMIT $3 OFFSET $4`,
+      [client.tenantId, userId, limit, offset]
+    );
+    return { data: rows.map(mapRow), total };
+  }
+
   const { rows } = await client.query(
     `SELECT ${SELECT_COLS}
        FROM prr_generated_reports r
@@ -160,7 +186,7 @@ export async function listForUser(client: TenantClient, userId: string): Promise
       ORDER BY r.period_key DESC`,
     [client.tenantId, userId]
   );
-  return rows.map(mapRow);
+  return { data: rows.map(mapRow), total: rows.length };
 }
 
 export async function findById(client: TenantClient, id: string): Promise<GeneratedReport | null> {
