@@ -95,12 +95,26 @@ function mapSession(s: any) {
   };
 }
 
-/** Start/end-of-day bounds for a date. */
+/** Parse date string (YYYY-MM-DD or ISO) as UTC calendar date. */
+function parseDateInput(input: string | Date): Date {
+  if (typeof input === 'string') {
+    const match = input.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) {
+      const year = parseInt(match[1], 10);
+      const month = parseInt(match[2], 10) - 1;
+      const day = parseInt(match[3], 10);
+      return new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
+    }
+  }
+  const d = new Date(input);
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0));
+}
+
+/** Start/end-of-day bounds for a date in UTC. */
 function dayBounds(d: Date): readonly [Date, Date] {
-  const start = new Date(d);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(d);
-  end.setHours(23, 59, 59, 999);
+  const target = parseDateInput(d);
+  const start = new Date(target.getTime());
+  const end = new Date(target.getTime() + 24 * 60 * 60 * 1000 - 1);
   return [start, end] as const;
 }
 
@@ -1161,7 +1175,9 @@ export class AttendanceController {
         for (const [key, col] of Object.entries(colMap)) {
           if (body[key] !== undefined) {
             let v = body[key];
-            if (key === "clockIn" || key === "clockOut" || key === "date") {
+            if (key === "date") {
+              v = v ? parseDateInput(v) : null;
+            } else if (key === "clockIn" || key === "clockOut") {
               v = v ? new Date(v) : null;
             }
             params.push(v);
@@ -1488,7 +1504,8 @@ export class AttendanceController {
         );
         if (!u[0]) throw new ValidationError("User not found in this tenant");
 
-        const [startOfDay, endOfDay] = dayBounds(new Date(attendanceData.date));
+        const targetDate = parseDateInput(attendanceData.date);
+        const [startOfDay, endOfDay] = dayBounds(targetDate);
         const { rows: ex } = await db.query(
           `SELECT id FROM attendance WHERE user_id = $1 AND tenant_id = $2 AND date >= $3 AND date <= $4 LIMIT 1`,
           [attendanceData.userId, req.tenantId, startOfDay, endOfDay],
