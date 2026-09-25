@@ -12,6 +12,7 @@ export const PREDEFINED_MODULES = [
   { section: "WORK", module: "LeadsManagement" },
   { section: "WORK", module: "BidIQ" },
   { section: "WORK", module: "QaWorkspace" },
+  { section: "WORK", module: "Playbooks" },
   { section: "WORK", module: "ApiHub" },
   { section: "HRMS", module: "Leaves" },
   { section: "HRMS", module: "Onboarding" },
@@ -53,6 +54,10 @@ export const PREDEFINED_PAGES = [
   { module: "QaWorkspace", page: "QaApprovals" },
   { module: "QaWorkspace", page: "QaAnalytics" },
   { module: "QaWorkspace", page: "QaSettings" },
+  { module: "Playbooks", page: "QaPlaybooks" },
+  { module: "Playbooks", page: "PlaybookCollections" },
+  { module: "Playbooks", page: "RequestedPlaybooks" },
+  { module: "Playbooks", page: "PlaybookTrash" },
   { module: "DocumentHub", page: "DocumentHubList" },
   { module: "DocumentHub", page: "DocumentDetail" },
   { module: "LeadsManagement", page: "LeadsList" },
@@ -136,7 +141,7 @@ export const PREDEFINED_ACTIONS = [
   "bulk_delete", "bulk_restore", "bulk_permanent_delete", "bulk_move", "bulk_convert", "start",
   "complete", "bulk_assign", "bulk_unassign", "bulk_resolve", "generate_ai", "empty_trash",
   "auto_purge", "reorder", "share", "unshare", "download", "email_sent", "login", "logout",
-  "apply", "approve", "reject", "cancel", "run", "revoke", "activate", "submit"
+  "apply", "approve", "reject", "cancel", "run", "revoke", "activate", "submit", "grant", "pin"
 ];
 
 export const PREDEFINED_ENTITY_TYPES = [
@@ -151,6 +156,7 @@ export const PREDEFINED_ENTITY_TYPES = [
   "invoice_template", "invoice_customer", "invoice_settings_profile", "session",
   "leave_request", "leave_adjustment", "leave_type", "leave_policy",
   "qa_submission", "qa_parent_case", "qa_case", "qa_suite", "qa_run", "qa_scope", "qa_settings", "qa_analytics", "qa_module",
+  "playbook", "playbook_collection", "playbook_request", "playbook_category", "playbook_grant", "playbook_collection_pin",
   "leave_holiday", "leave_accrual_run", "leave_settings",
   "employee", "onboarding_invite", "onboarding_document_type",
   "attendance_record", "performance_report",
@@ -173,7 +179,9 @@ export const MODULE_REWRITES: Record<string, string> = {
   "Archived": "Tickets",
   "BugList": "QaWorkspace",
   "QA": "QaWorkspace",
-  "Leads": "LeadsManagement"
+  "Leads": "LeadsManagement",
+  "QAPlaybooks": "Playbooks",
+  "Playbook": "Playbooks"
 };
 
 export const SECTION_REWRITES: Record<string, string> = {
@@ -202,6 +210,18 @@ export const PAGE_REWRITES: Record<string, Record<string, string>> = {
     "BugSheetList": "BugList",
     "BugTrash": "BugList",
     "BugSettings": "QaSettings"
+  },
+  "Playbooks": {
+    "Playbooks": "QaPlaybooks",
+    "PlaybookDetail": "QaPlaybooks",
+    "CreatePlaybook": "QaPlaybooks",
+    "EditPlaybook": "QaPlaybooks",
+    "Playbook Collections": "PlaybookCollections",
+    "Playbook Collection": "PlaybookCollections",
+    "Collections": "PlaybookCollections",
+    "PlaybookRequests": "RequestedPlaybooks",
+    "PlaybooksTrash": "PlaybookTrash",
+    "Trash": "PlaybookTrash"
   },
   "Tickets": {
     "TicketDetail": "TicketList"

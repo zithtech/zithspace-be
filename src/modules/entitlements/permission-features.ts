@@ -115,10 +115,23 @@ export const PERMISSION_SPECIFIC_FEATURES: Readonly<Record<string, readonly stri
     'work_playbooks_qa_playbooks_new_collections',
     'work_playbooks_new_playbook',
   ],
+  'playbook.trash.read': [
+    'work_playbooks_qa_playbooks_upload',
+    'work_playbooks_collections_new_collections',
+    'work_playbooks_qa_playbooks_new_playbook',
+  ],
+  'playbook.trash.restore': [
+    'work_playbooks_qa_playbooks_upload',
+    'work_playbooks_collections_new_collections',
+    'work_playbooks_qa_playbooks_new_playbook',
+  ],
+  'playbook.trash.delete': [
+    'work_playbooks_qa_playbooks_upload',
+    'work_playbooks_collections_new_collections',
+    'work_playbooks_qa_playbooks_new_playbook',
+  ],
   'playbook.request': [
     'work_playbooks_requested_playbooks_request_playbook',
-    'work_playbooks_qa_playbooks_request_playbook',
-    'work_playbooks_request_playbook',
   ],
   'playbook.manage': [
     'work_playbooks_qa_playbooks_access',
