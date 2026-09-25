@@ -1082,6 +1082,17 @@ export class ClientV2Controller {
                 return;
             }
 
+            const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+            if (
+                !data.officialEmail ||
+                typeof data.officialEmail !== 'string' ||
+                /\s/.test(data.officialEmail) ||
+                !emailRegex.test(data.officialEmail.trim())
+            ) {
+                res.status(400).json({ success: false, error: 'A valid official email without spaces is required' } as ApiResponse);
+                return;
+            }
+
             const r = await pool.query(
                 `INSERT INTO client_contacts_v2 (
                     id, tenant_id, client_id, first_name, last_name, display_name,
@@ -1176,6 +1187,19 @@ export class ClientV2Controller {
             if ('designation' in data && (data as any).designation && typeof (data as any).designation === 'string' && (data as any).designation.trim().length > 100) {
                 res.status(400).json({ success: false, error: 'Job designation cannot exceed 100 characters' } as ApiResponse);
                 return;
+            }
+            if ('officialEmail' in data && (data as any).officialEmail !== undefined) {
+                const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+                const emailVal = (data as any).officialEmail;
+                if (
+                    !emailVal ||
+                    typeof emailVal !== 'string' ||
+                    /\s/.test(emailVal) ||
+                    !emailRegex.test(emailVal.trim())
+                ) {
+                    res.status(400).json({ success: false, error: 'A valid official email without spaces is required' } as ApiResponse);
+                    return;
+                }
             }
 
             // Fetch existing for validation and diff

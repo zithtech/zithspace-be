@@ -82,7 +82,7 @@ export class InvoiceController {
   /** ====================
    *  Helper: Calculate totals with tax inclusive support
    * ==================== */
-  private static calculateTotals(items: any[], discount: number = 0, taxInclusive: boolean = false) {
+  private static calculateTotals(items: any[], discount: number = 0, taxInclusive: boolean = false, customTax?: number) {
     let subtotal = 0;
     let taxTotal = 0;
     let lineDiscountTotal = 0;
@@ -122,12 +122,25 @@ export class InvoiceController {
     });
 
     const globalDiscountAmount = Number(discount || 0);
-    const totalBeforeGlobalDiscount = subtotal + taxTotal;
-    const grandTotal = Math.max(0, totalBeforeGlobalDiscount - globalDiscountAmount);
+    const finalTaxTotal = customTax !== undefined && customTax !== null && !isNaN(Number(customTax))
+      ? Number(customTax)
+      : taxTotal;
+
+    let grandTotal = 0;
+    if (taxInclusive) {
+      const taxDiff = customTax !== undefined && customTax !== null && !isNaN(Number(customTax))
+        ? (Number(customTax) - taxTotal)
+        : 0;
+      grandTotal = Math.max(0, (subtotal + taxTotal) + taxDiff - globalDiscountAmount);
+    } else {
+      grandTotal = Math.max(0, subtotal + finalTaxTotal - globalDiscountAmount);
+    }
+
+    const totalBeforeGlobalDiscount = subtotal + finalTaxTotal;
 
     const result = {
       subtotal: Number(subtotal.toFixed(2)),
-      taxTotal: Number(taxTotal.toFixed(2)),
+      taxTotal: Number(finalTaxTotal.toFixed(2)),
       discountTotal: Number((globalDiscountAmount + lineDiscountTotal).toFixed(2)),
       totalBeforeDiscount: Number(totalBeforeGlobalDiscount.toFixed(2)),
       grandTotal: Number(grandTotal.toFixed(2)),
@@ -135,7 +148,7 @@ export class InvoiceController {
     };
 
     console.log("Final calculated totals:", result);
-    console.log("Breakdown: subtotal + taxTotal =", subtotal + taxTotal, "- globaldiscount", globalDiscountAmount, "= total", grandTotal);
+    console.log("Breakdown: subtotal + taxTotal =", subtotal + finalTaxTotal, "- globaldiscount", globalDiscountAmount, "= total", grandTotal);
 
     return result;
   }
@@ -336,7 +349,8 @@ export class InvoiceController {
 
       // 4. CALCULATE TOTALS
       console.log('CALCULATING TOTALS...');
-      const totals = this.calculateTotals(items, Number(discount || 0), taxInclusive);
+      const explicitTax = req.body.taxTotal !== undefined ? req.body.taxTotal : (req.body.tax ?? req.body.metadata?.customTax);
+      const totals = this.calculateTotals(items, Number(discount || 0), taxInclusive, explicitTax !== undefined && explicitTax !== null ? Number(explicitTax) : undefined);
       console.log('Totals calculated:', totals);
 
       // 5. GENERATE INVOICE NUMBER
@@ -530,6 +544,18 @@ export class InvoiceController {
 
           await createMultipleInvoiceTaxes(taxesData);
           console.log('Taxes created successfully');
+        } else if (totals.taxTotal > 0) {
+          const taxesData: CreateInvoiceTaxData[] = [{
+            tenantId: req.tenantId!,
+            invoiceId: createdInvoice.id,
+            taxName: 'Tax',
+            taxRate: totals.subtotal > 0 ? Number(((totals.taxTotal / totals.subtotal) * 100).toFixed(2)) : 0,
+            taxAmount: totals.taxTotal,
+            createdBy: req.user!.id
+          }];
+
+          await createMultipleInvoiceTaxes(taxesData);
+          console.log('Summary tax created successfully');
         }
       }
 
@@ -679,7 +705,8 @@ export class InvoiceController {
       }
 
       // 2. Calculate totals 
-      const totals = this.calculateTotals(items, Number(discount || 0), taxInclusive);
+      const explicitTax = req.body.taxTotal !== undefined ? req.body.taxTotal : (req.body.tax ?? req.body.metadata?.customTax);
+      const totals = this.calculateTotals(items, Number(discount || 0), taxInclusive, explicitTax !== undefined && explicitTax !== null ? Number(explicitTax) : undefined);
 
       // 3. Update line items
       console.log('UPDATING LINE ITEMS...');
@@ -981,6 +1008,17 @@ export class InvoiceController {
           taxAmount: data.amount,
           createdBy: req.user!.id
         }));
+
+        await createMultipleInvoiceTaxes(taxesData);
+      } else if (totals.taxTotal > 0) {
+        const taxesData: CreateInvoiceTaxData[] = [{
+          tenantId: req.tenantId!,
+          invoiceId: id,
+          taxName: 'Tax',
+          taxRate: totals.subtotal > 0 ? Number(((totals.taxTotal / totals.subtotal) * 100).toFixed(2)) : 0,
+          taxAmount: totals.taxTotal,
+          createdBy: req.user!.id
+        }];
 
         await createMultipleInvoiceTaxes(taxesData);
       }

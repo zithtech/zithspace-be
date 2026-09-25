@@ -986,6 +986,14 @@ class ClientV2Controller {
                 res.status(400).json({ success: false, error: 'Job designation cannot exceed 100 characters' });
                 return;
             }
+            const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+            if (!data.officialEmail ||
+                typeof data.officialEmail !== 'string' ||
+                /\s/.test(data.officialEmail) ||
+                !emailRegex.test(data.officialEmail.trim())) {
+                res.status(400).json({ success: false, error: 'A valid official email without spaces is required' });
+                return;
+            }
             const r = await dbpool_1.default.query(`INSERT INTO client_contacts_v2 (
                     id, tenant_id, client_id, first_name, last_name, display_name,
                     designation, department, contact_type, is_primary, official_email,
@@ -1073,6 +1081,17 @@ class ClientV2Controller {
             if ('designation' in data && data.designation && typeof data.designation === 'string' && data.designation.trim().length > 100) {
                 res.status(400).json({ success: false, error: 'Job designation cannot exceed 100 characters' });
                 return;
+            }
+            if ('officialEmail' in data && data.officialEmail !== undefined) {
+                const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+                const emailVal = data.officialEmail;
+                if (!emailVal ||
+                    typeof emailVal !== 'string' ||
+                    /\s/.test(emailVal) ||
+                    !emailRegex.test(emailVal.trim())) {
+                    res.status(400).json({ success: false, error: 'A valid official email without spaces is required' });
+                    return;
+                }
             }
             // Fetch existing for validation and diff
             const existingRes = await dbpool_1.default.query(`SELECT * FROM client_contacts_v2 WHERE id = $1 AND tenant_id = $2`, [contactId, req.tenantId]);
