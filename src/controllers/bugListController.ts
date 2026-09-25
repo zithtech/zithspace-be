@@ -3843,15 +3843,58 @@ export class BugListController {
     if (!ensureAuth(req, res)) return;
     try {
       await ensureSeveritySeeded(req.tenantId!);
-      const r = await pool.query(
-        `SELECT id, key, label, description, color, sort_order, is_default, is_system, is_active,
+      const search = String(req.query.search ?? req.query.q ?? '').trim();
+      let whereClause = `WHERE tenant_id = $1`;
+      const params: any[] = [req.tenantId];
+      let paramIndex = 2;
+
+      if (search) {
+        params.push(`%${search.toLowerCase()}%`);
+        whereClause += ` AND (LOWER(label) LIKE $${paramIndex} OR LOWER(key) LIKE $${paramIndex} OR LOWER(COALESCE(description, '')) LIKE $${paramIndex})`;
+        paramIndex++;
+      }
+
+      const hasPagination = req.query.page !== undefined || req.query.pageSize !== undefined || req.query.limit !== undefined;
+      const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+      const pageSize = Math.max(1, parseInt((req.query.pageSize || req.query.limit) as string, 10) || 15);
+
+      let total = 0;
+      if (hasPagination) {
+        const countRes = await pool.query(
+          `SELECT COUNT(*)::int AS total FROM bug_severity_options ${whereClause}`,
+          params
+        );
+        total = countRes.rows[0]?.total ?? 0;
+      }
+
+      let query = `SELECT id, key, label, description, color, sort_order, is_default, is_system, is_active,
                 created_at, updated_at
            FROM bug_severity_options
-          WHERE tenant_id = $1
-          ORDER BY sort_order ASC, label ASC`,
-        [req.tenantId],
-      );
-      res.json({ success: true, data: r.rows.map(shapeOption) });
+          ${whereClause}
+          ORDER BY sort_order ASC, label ASC`;
+
+      const queryParams = [...params];
+      if (hasPagination) {
+        queryParams.push(pageSize, (page - 1) * pageSize);
+        query += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+      }
+
+      const r = await pool.query(query, queryParams);
+
+      if (hasPagination) {
+        res.json({
+          success: true,
+          data: r.rows.map(shapeOption),
+          pagination: {
+            page,
+            pageSize,
+            total,
+            totalPages: Math.ceil(total / pageSize)
+          }
+        });
+      } else {
+        res.json({ success: true, data: r.rows.map(shapeOption) });
+      }
     } catch (err: any) {
       console.error("listSeverityOptions error:", err);
       bad(res, 500, err.message || "Failed to load severity options");
@@ -4082,15 +4125,58 @@ export class BugListController {
     if (!ensureAuth(req, res)) return;
     try {
       await ensureBugTypeSeeded(req.tenantId!);
-      const r = await pool.query(
-        `SELECT id, key, label, description, sort_order, is_default, is_system, is_active,
+      const search = String(req.query.search ?? req.query.q ?? '').trim();
+      let whereClause = `WHERE tenant_id = $1`;
+      const params: any[] = [req.tenantId];
+      let paramIndex = 2;
+
+      if (search) {
+        params.push(`%${search.toLowerCase()}%`);
+        whereClause += ` AND (LOWER(label) LIKE $${paramIndex} OR LOWER(key) LIKE $${paramIndex} OR LOWER(COALESCE(description, '')) LIKE $${paramIndex})`;
+        paramIndex++;
+      }
+
+      const hasPagination = req.query.page !== undefined || req.query.pageSize !== undefined || req.query.limit !== undefined;
+      const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+      const pageSize = Math.max(1, parseInt((req.query.pageSize || req.query.limit) as string, 10) || 15);
+
+      let total = 0;
+      if (hasPagination) {
+        const countRes = await pool.query(
+          `SELECT COUNT(*)::int AS total FROM bug_type_options ${whereClause}`,
+          params
+        );
+        total = countRes.rows[0]?.total ?? 0;
+      }
+
+      let query = `SELECT id, key, label, description, sort_order, is_default, is_system, is_active,
                 created_at, updated_at
            FROM bug_type_options
-          WHERE tenant_id = $1
-          ORDER BY sort_order ASC, label ASC`,
-        [req.tenantId],
-      );
-      res.json({ success: true, data: r.rows.map(shapeOption) });
+          ${whereClause}
+          ORDER BY sort_order ASC, label ASC`;
+
+      const queryParams = [...params];
+      if (hasPagination) {
+        queryParams.push(pageSize, (page - 1) * pageSize);
+        query += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+      }
+
+      const r = await pool.query(query, queryParams);
+
+      if (hasPagination) {
+        res.json({
+          success: true,
+          data: r.rows.map(shapeOption),
+          pagination: {
+            page,
+            pageSize,
+            total,
+            totalPages: Math.ceil(total / pageSize)
+          }
+        });
+      } else {
+        res.json({ success: true, data: r.rows.map(shapeOption) });
+      }
     } catch (err: any) {
       console.error("listTypeOptions error:", err);
       bad(res, 500, err.message || "Failed to load type options");
@@ -4320,15 +4406,58 @@ export class BugListController {
     if (!ensureAuth(req, res)) return;
     try {
       await ensureBugListTypeSeeded(req.tenantId!);
-      const r = await pool.query(
-        `SELECT id, key, label, description, sort_order, is_default, is_system, is_active,
+      const search = String(req.query.search ?? req.query.q ?? '').trim();
+      let whereClause = `WHERE tenant_id = $1`;
+      const params: any[] = [req.tenantId];
+      let paramIndex = 2;
+
+      if (search) {
+        params.push(`%${search.toLowerCase()}%`);
+        whereClause += ` AND (LOWER(label) LIKE $${paramIndex} OR LOWER(key) LIKE $${paramIndex} OR LOWER(COALESCE(description, '')) LIKE $${paramIndex})`;
+        paramIndex++;
+      }
+
+      const hasPagination = req.query.page !== undefined || req.query.pageSize !== undefined || req.query.limit !== undefined;
+      const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+      const pageSize = Math.max(1, parseInt((req.query.pageSize || req.query.limit) as string, 10) || 15);
+
+      let total = 0;
+      if (hasPagination) {
+        const countRes = await pool.query(
+          `SELECT COUNT(*)::int AS total FROM bug_list_types ${whereClause}`,
+          params
+        );
+        total = countRes.rows[0]?.total ?? 0;
+      }
+
+      let query = `SELECT id, key, label, description, sort_order, is_default, is_system, is_active,
                 created_at, updated_at
            FROM bug_list_types
-          WHERE tenant_id = $1
-          ORDER BY sort_order ASC, label ASC`,
-        [req.tenantId],
-      );
-      res.json({ success: true, data: r.rows.map(shapeOption) });
+          ${whereClause}
+          ORDER BY sort_order ASC, label ASC`;
+
+      const queryParams = [...params];
+      if (hasPagination) {
+        queryParams.push(pageSize, (page - 1) * pageSize);
+        query += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+      }
+
+      const r = await pool.query(query, queryParams);
+
+      if (hasPagination) {
+        res.json({
+          success: true,
+          data: r.rows.map(shapeOption),
+          pagination: {
+            page,
+            pageSize,
+            total,
+            totalPages: Math.ceil(total / pageSize)
+          }
+        });
+      } else {
+        res.json({ success: true, data: r.rows.map(shapeOption) });
+      }
     } catch (err: any) {
       console.error("listBugListTypes error:", err);
       bad(res, 500, err.message || "Failed to load bug type options");
@@ -4544,15 +4673,58 @@ export class BugListController {
     if (!ensureAuth(req, res)) return;
     try {
       await ensurePrioritySeeded(req.tenantId!);
-      const r = await pool.query(
-        `SELECT id, key, label, description, color, sort_order, is_default, is_system, is_active,
+      const search = String(req.query.search ?? req.query.q ?? '').trim();
+      let whereClause = `WHERE tenant_id = $1`;
+      const params: any[] = [req.tenantId];
+      let paramIndex = 2;
+
+      if (search) {
+        params.push(`%${search.toLowerCase()}%`);
+        whereClause += ` AND (LOWER(label) LIKE $${paramIndex} OR LOWER(key) LIKE $${paramIndex} OR LOWER(COALESCE(description, '')) LIKE $${paramIndex})`;
+        paramIndex++;
+      }
+
+      const hasPagination = req.query.page !== undefined || req.query.pageSize !== undefined || req.query.limit !== undefined;
+      const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+      const pageSize = Math.max(1, parseInt((req.query.pageSize || req.query.limit) as string, 10) || 15);
+
+      let total = 0;
+      if (hasPagination) {
+        const countRes = await pool.query(
+          `SELECT COUNT(*)::int AS total FROM bug_priority_options ${whereClause}`,
+          params
+        );
+        total = countRes.rows[0]?.total ?? 0;
+      }
+
+      let query = `SELECT id, key, label, description, color, sort_order, is_default, is_system, is_active,
                 created_at, updated_at
            FROM bug_priority_options
-          WHERE tenant_id = $1
-          ORDER BY sort_order ASC, label ASC`,
-        [req.tenantId],
-      );
-      res.json({ success: true, data: r.rows.map(shapeOption) });
+          ${whereClause}
+          ORDER BY sort_order ASC, label ASC`;
+
+      const queryParams = [...params];
+      if (hasPagination) {
+        queryParams.push(pageSize, (page - 1) * pageSize);
+        query += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+      }
+
+      const r = await pool.query(query, queryParams);
+
+      if (hasPagination) {
+        res.json({
+          success: true,
+          data: r.rows.map(shapeOption),
+          pagination: {
+            page,
+            pageSize,
+            total,
+            totalPages: Math.ceil(total / pageSize)
+          }
+        });
+      } else {
+        res.json({ success: true, data: r.rows.map(shapeOption) });
+      }
     } catch (err: any) {
       console.error("listPriorityOptions error:", err);
       bad(res, 500, err.message || "Failed to load priority options");
