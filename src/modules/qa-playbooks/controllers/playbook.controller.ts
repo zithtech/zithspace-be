@@ -176,14 +176,14 @@ export const create = handle(async (req: AuthRequest, res: Response) => {
   recordTransaction({
     req: req as any,
     section: Section.WORK,
-    module: Module.QA_WORKSPACE,
-    page: Page.QA_CASE_LIST,
+    module: Module.PLAYBOOKS,
+    page: Page.QA_PLAYBOOKS,
     action: Action.CREATE,
     actionLabel: `Playbook created (${visibility} - ${status})`,
-    entityType: EntityType.QA_CASE,
+    entityType: EntityType.PLAYBOOK,
     entityId: created.id,
     entityLabel: body.name,
-    afterData: { slug: created.slug, visibility, status },
+    afterData: { slug: created.slug, visibility, status, category: body.category },
   });
 
   ok(res, { id: created.id, slug: created.slug, visibility, status }, 201);
@@ -221,6 +221,19 @@ export const update = handle(async (req: AuthRequest, res: Response) => {
     });
   });
 
+  recordTransaction({
+    req: req as any,
+    section: Section.WORK,
+    module: Module.PLAYBOOKS,
+    page: Page.QA_PLAYBOOKS,
+    action: Action.UPDATE,
+    actionLabel: `Playbook updated (${body.name})`,
+    entityType: EntityType.PLAYBOOK,
+    entityId: id,
+    entityLabel: body.name,
+    afterData: { name: body.name, category: body.category, visibility: body.visibility, status: body.status, version: body.version },
+  });
+
   ok(res, result);
 });
 
@@ -230,11 +243,26 @@ export const saveContent = handle(async (req: AuthRequest, res: Response) => {
   const id = String(req.params.id);
   const body = contentSchema.parse(req.body ?? {});
 
+  let ownerName = id;
   const result = await withTenant(tenantId, async (client) => {
     const owner = await repo.getOwnership(client, id);
     if (!owner) throw new PlaybookError('Playbook not found', 404, 'NOT_FOUND');
     assertCanEdit(req, owner);
+    ownerName = owner.name;
     return repo.replaceContent(client, id, body, userId ?? null);
+  });
+
+  recordTransaction({
+    req: req as any,
+    section: Section.WORK,
+    module: Module.PLAYBOOKS,
+    page: Page.QA_PLAYBOOKS,
+    action: Action.UPDATE,
+    actionLabel: `Playbook content updated (${(result as any)?.itemCount ?? 0} recommendations, v${body.version})`,
+    entityType: EntityType.PLAYBOOK,
+    entityId: id,
+    entityLabel: ownerName,
+    afterData: { version: body.version, changelog: body.changelog, itemCount: (result as any)?.itemCount },
   });
 
   ok(res, result);
@@ -246,10 +274,12 @@ export const setStatus = handle(async (req: AuthRequest, res: Response) => {
   const id = String(req.params.id);
   const { status, visibility } = publishSchema.parse(req.body ?? {});
 
+  let ownerName = id;
   await withTenant(tenantId, async (client) => {
     const owner = await repo.getOwnership(client, id);
     if (!owner) throw new PlaybookError('Playbook not found', 404, 'NOT_FOUND');
     assertCanEdit(req, owner);
+    ownerName = owner.name;
 
     // Publishing to every tenant is a platform act, not a tenant one.
     if (owner.tenantId === null && !isSuperAdmin(req)) {
@@ -263,6 +293,19 @@ export const setStatus = handle(async (req: AuthRequest, res: Response) => {
       : null;
 
     await repo.setStatus(client, id, status, userId ?? null, resolvedVisibility);
+  });
+
+  recordTransaction({
+    req: req as any,
+    section: Section.WORK,
+    module: Module.PLAYBOOKS,
+    page: Page.QA_PLAYBOOKS,
+    action: Action.STATUS_CHANGE,
+    actionLabel: `Playbook status changed to ${status}${visibility ? ` (${visibility})` : ''}`,
+    entityType: EntityType.PLAYBOOK,
+    entityId: id,
+    entityLabel: ownerName,
+    afterData: { status, visibility },
   });
 
   ok(res, { id, status, visibility });
@@ -282,6 +325,18 @@ export const remove = handle(async (req: AuthRequest, res: Response) => {
     }
     assertCanEdit(req, owner);
     return repo.softDeletePlaybook(client, id, userId, superAdmin);
+  });
+
+  recordTransaction({
+    req: req as any,
+    section: Section.WORK,
+    module: Module.PLAYBOOKS,
+    page: Page.QA_PLAYBOOKS,
+    action: Action.DELETE,
+    actionLabel: `Playbook moved to trash (${result.name})`,
+    entityType: EntityType.PLAYBOOK,
+    entityId: id,
+    entityLabel: result.name,
   });
 
   ok(res, { id, name: result.name, deleted: true });
@@ -325,6 +380,18 @@ export const restorePlaybook = handle(async (req: AuthRequest, res: Response) =>
     return repo.restorePlaybook(client, id, superAdmin);
   });
 
+  recordTransaction({
+    req: req as any,
+    section: Section.WORK,
+    module: Module.PLAYBOOKS,
+    page: Page.PLAYBOOK_TRASH,
+    action: Action.RESTORE,
+    actionLabel: `Playbook restored (${restored.name})`,
+    entityType: EntityType.PLAYBOOK,
+    entityId: id,
+    entityLabel: restored.name,
+  });
+
   ok(res, { id, name: restored.name, restored: true });
 });
 
@@ -336,6 +403,18 @@ export const permanentDeletePlaybook = handle(async (req: AuthRequest, res: Resp
 
   await withTenant(tenantId, async (client) => {
     await repo.permanentDeletePlaybook(client, id, superAdmin);
+  });
+
+  recordTransaction({
+    req: req as any,
+    section: Section.WORK,
+    module: Module.PLAYBOOKS,
+    page: Page.PLAYBOOK_TRASH,
+    action: Action.PERMANENT_DELETE,
+    actionLabel: `Playbook permanently deleted`,
+    entityType: EntityType.PLAYBOOK,
+    entityId: id,
+    entityLabel: id,
   });
 
   ok(res, { id, permanentlyDeleted: true });
@@ -351,6 +430,18 @@ export const deleteCategory = handle(async (req: AuthRequest, res: Response) => 
     return repo.softDeleteCategory(client, id, userId, superAdmin);
   });
 
+  recordTransaction({
+    req: req as any,
+    section: Section.WORK,
+    module: Module.PLAYBOOKS,
+    page: Page.PLAYBOOK_TRASH,
+    action: Action.DELETE,
+    actionLabel: `Playbook category moved to trash (${result.name})`,
+    entityType: EntityType.PLAYBOOK_CATEGORY,
+    entityId: id,
+    entityLabel: result.name,
+  });
+
   ok(res, result);
 });
 
@@ -364,6 +455,18 @@ export const restoreCategory = handle(async (req: AuthRequest, res: Response) =>
     return repo.restoreCategory(client, id, superAdmin);
   });
 
+  recordTransaction({
+    req: req as any,
+    section: Section.WORK,
+    module: Module.PLAYBOOKS,
+    page: Page.PLAYBOOK_TRASH,
+    action: Action.RESTORE,
+    actionLabel: `Playbook category restored (${result.name})`,
+    entityType: EntityType.PLAYBOOK_CATEGORY,
+    entityId: id,
+    entityLabel: result.name,
+  });
+
   ok(res, result);
 });
 
@@ -375,6 +478,18 @@ export const permanentDeleteCategory = handle(async (req: AuthRequest, res: Resp
 
   await withTenant(tenantId, async (client) => {
     await repo.permanentDeleteCategory(client, id, superAdmin);
+  });
+
+  recordTransaction({
+    req: req as any,
+    section: Section.WORK,
+    module: Module.PLAYBOOKS,
+    page: Page.PLAYBOOK_TRASH,
+    action: Action.PERMANENT_DELETE,
+    actionLabel: `Playbook category permanently deleted`,
+    entityType: EntityType.PLAYBOOK_CATEGORY,
+    entityId: id,
+    entityLabel: id,
   });
 
   ok(res, { id, permanentlyDeleted: true });
@@ -414,6 +529,17 @@ export const emptyTrash = handle(async (req: AuthRequest, res: Response) => {
         await repo.permanentDeleteCategory(client, cat.id, superAdmin);
       }
     }
+  });
+
+  recordTransaction({
+    req: req as any,
+    section: Section.WORK,
+    module: Module.PLAYBOOKS,
+    page: Page.PLAYBOOK_TRASH,
+    action: Action.EMPTY_TRASH,
+    actionLabel: `Playbook trash emptied (tab: ${tab})`,
+    entityType: EntityType.PLAYBOOK,
+    afterData: { tab },
   });
 
   ok(res, { emptied: true });
@@ -511,13 +637,14 @@ export const importPlaybooks = handle(async (req: AuthRequest, res: Response) =>
     recordTransaction({
       req: req as any,
       section: Section.WORK,
-      module: Module.QA_WORKSPACE,
-      page: Page.QA_CASE_LIST,
+      module: Module.PLAYBOOKS,
+      page: Page.QA_PLAYBOOKS,
       action: Action.CREATE,
       actionLabel: `Imported ${created.length} playbook${created.length === 1 ? '' : 's'}`,
-      entityType: EntityType.QA_CASE,
+      entityType: EntityType.PLAYBOOK,
       entityId: created[0].id,
       entityLabel: created.map((c) => c.name).join(', ').slice(0, 240),
+      afterData: { count: created.length, playbookIds: created.map((c) => c.id) },
     });
   }
 
@@ -771,16 +898,17 @@ export const generate = handle(async (req: AuthRequest, res: Response) => {
   recordTransaction({
     req: req as any,
     section: Section.WORK,
-    module: Module.QA_WORKSPACE,
-    page: Page.QA_CASE_LIST,
+    module: Module.PLAYBOOKS,
+    page: Page.QA_PLAYBOOKS,
     action: Action.CREATE,
     actionLabel: `Generated ${result.createdCount} test case(s) from the ${context.playbook.name} playbook`,
-    entityType: EntityType.QA_CASE,
-    entityId: result.parentId,
-    entityLabel: result.parentTitle,
+    entityType: EntityType.PLAYBOOK,
+    entityId: context.playbook.id,
+    entityLabel: context.playbook.name,
     afterData: {
       playbook: context.playbook.slug,
       parent_test_case_id: result.parentId,
+      parent_title: result.parentTitle,
       created_count: result.createdCount,
     },
   });
@@ -931,6 +1059,21 @@ export const requestUnlock = handle(async (req: AuthRequest, res: Response) => {
     return repo.requestUnlock(client, playbook.id, userId ?? null, body.message ?? null);
   });
 
+  if (!result.alreadyOpen) {
+    recordTransaction({
+      req: req as any,
+      section: Section.WORK,
+      module: Module.PLAYBOOKS,
+      page: Page.QA_PLAYBOOKS,
+      action: Action.APPLY,
+      actionLabel: `Requested unlock for playbook (${slug})`,
+      entityType: EntityType.PLAYBOOK_REQUEST,
+      entityId: result.id,
+      entityLabel: slug,
+      afterData: { slug, message: body.message },
+    });
+  }
+
   ok(res, { request_id: result.id, already_open: result.alreadyOpen }, result.alreadyOpen ? 200 : 201);
 });
 
@@ -962,6 +1105,18 @@ export const decideRequest = handle(async (req: AuthRequest, res: Response) => {
   );
   if (!result) throw new PlaybookError('Request not found or already decided', 404, 'NOT_FOUND');
 
+  recordTransaction({
+    req: req as any,
+    section: Section.WORK,
+    module: Module.PLAYBOOKS,
+    page: Page.QA_PLAYBOOKS,
+    action: body.decision === 'approved' ? Action.APPROVE : Action.REJECT,
+    actionLabel: `Playbook unlock request ${body.decision}`,
+    entityType: EntityType.PLAYBOOK_REQUEST,
+    entityId: id,
+    afterData: { decision: body.decision, note: body.note, expiresAt: body.expires_at },
+  });
+
   ok(res, { id, decision: body.decision });
 });
 
@@ -991,13 +1146,14 @@ export const requestPlaybook = handle(async (req: AuthRequest, res: Response) =>
     recordTransaction({
       req: req as any,
       section: Section.WORK,
-      module: Module.QA_WORKSPACE,
-      page: Page.QA_CASE_LIST,
+      module: Module.PLAYBOOKS,
+      page: Page.REQUESTED_PLAYBOOKS,
       action: Action.CREATE,
       actionLabel: `Playbook requested: ${body.title}`,
-      entityType: EntityType.QA_CASE,
+      entityType: EntityType.PLAYBOOK_REQUEST,
       entityId: result.id,
       entityLabel: body.title,
+      afterData: { title: body.title, category: body.category },
     });
   }
 
@@ -1040,6 +1196,18 @@ export const decidePlaybookRequest = handle(async (req: AuthRequest, res: Respon
   );
   if (!result) throw new PlaybookError('Request not found', 404, 'NOT_FOUND');
 
+  recordTransaction({
+    req: req as any,
+    section: Section.WORK,
+    module: Module.PLAYBOOKS,
+    page: Page.REQUESTED_PLAYBOOKS,
+    action: Action.STATUS_CHANGE,
+    actionLabel: `Playbook request status set to ${body.status}`,
+    entityType: EntityType.PLAYBOOK_REQUEST,
+    entityId: id,
+    afterData: { status: body.status, note: body.note, playbookId: body.playbook_id },
+  });
+
   ok(res, { id, status: body.status });
 });
 
@@ -1049,12 +1217,14 @@ export const grant = handle(async (req: AuthRequest, res: Response) => {
   const id = String(req.params.id);
   const body = grantSchema.parse(req.body ?? {});
 
+  let ownerName = id;
   await withTenant(tenantId, async (client) => {
     const owner = await repo.getOwnership(client, id);
     if (!owner) throw new PlaybookError('Playbook not found', 404, 'NOT_FOUND');
     if (owner.visibility !== 'premium') {
       throw new PlaybookError('Only a premium playbook needs granting', 400);
     }
+    ownerName = owner.name;
     await repo.grantUnlock(
       client,
       id,
@@ -1063,6 +1233,19 @@ export const grant = handle(async (req: AuthRequest, res: Response) => {
       body.note ?? null,
       body.expires_at ?? null
     );
+  });
+
+  recordTransaction({
+    req: req as any,
+    section: Section.WORK,
+    module: Module.PLAYBOOKS,
+    page: Page.QA_PLAYBOOKS,
+    action: Action.GRANT,
+    actionLabel: `Access granted for playbook (${ownerName}) to tenant ${body.tenant_id}`,
+    entityType: EntityType.PLAYBOOK_GRANT,
+    entityId: id,
+    entityLabel: ownerName,
+    afterData: { tenantId: body.tenant_id, expiresAt: body.expires_at },
   });
 
   ok(res, { playbook_id: id, tenant_id: body.tenant_id, granted: true }, 201);
@@ -1075,6 +1258,19 @@ export const revoke = handle(async (req: AuthRequest, res: Response) => {
   const target = String(req.params.tenantId);
 
   await withTenant(tenantId, (client) => repo.revokeUnlock(client, id, target));
+
+  recordTransaction({
+    req: req as any,
+    section: Section.WORK,
+    module: Module.PLAYBOOKS,
+    page: Page.QA_PLAYBOOKS,
+    action: Action.REVOKE,
+    actionLabel: `Access revoked for playbook from tenant ${target}`,
+    entityType: EntityType.PLAYBOOK_GRANT,
+    entityId: id,
+    afterData: { tenantId: target },
+  });
+
   ok(res, { playbook_id: id, tenant_id: target, revoked: true });
 });
 

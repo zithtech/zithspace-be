@@ -44,6 +44,7 @@ export const Module = {
   TIME_TRACKING: "TimeTracking",
   ORG_STRUCTURE: "OrgStructure",
   QA_WORKSPACE: "QaWorkspace",
+  PLAYBOOKS: "Playbooks",
   // HR
   LEAVES: "Leaves",
   ONBOARDING: "Onboarding",
@@ -162,6 +163,11 @@ export const Page = {
   QA_RUN_LIST: "QaRunList",
   QA_RUN_DETAIL: "QaRunDetail",
   QA_SETTINGS: "QaSettings",
+  // Playbooks module pages
+  QA_PLAYBOOKS: "QaPlaybooks",
+  PLAYBOOK_COLLECTIONS: "PlaybookCollections",
+  REQUESTED_PLAYBOOKS: "RequestedPlaybooks",
+  PLAYBOOK_TRASH: "PlaybookTrash",
   // Leaves module pages
   LEAVE_REQUESTS: "LeaveRequests",
   LEAVE_APPROVALS: "LeaveApprovals",
@@ -272,6 +278,8 @@ export const Action = {
   CANCEL: "cancel",
   RUN: "run",
   REVOKE: "revoke",
+  GRANT: "grant",
+  PIN: "pin",
   ACTIVATE: "activate",
   SUBMIT: "submit",
   BULK_ASSIGN: "bulk_assign",
@@ -350,6 +358,13 @@ export const EntityType = {
   QA_SUITE: "qa_suite",
   QA_RUN: "qa_run",
   QA_SETTINGS: "qa_settings",
+  // Playbooks entities
+  PLAYBOOK: "playbook",
+  PLAYBOOK_COLLECTION: "playbook_collection",
+  PLAYBOOK_REQUEST: "playbook_request",
+  PLAYBOOK_CATEGORY: "playbook_category",
+  PLAYBOOK_GRANT: "playbook_grant",
+  PLAYBOOK_COLLECTION_PIN: "playbook_collection_pin",
   // HR entities
   LEAVE_REQUEST: "leave_request",
   LEAVE_ADJUSTMENT: "leave_adjustment",

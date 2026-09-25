@@ -179,7 +179,7 @@ function featureForPath(pathname: string): string | readonly string[] | null {
  * seven — identical results before and after.
  */
 function satisfies(granted: readonly string[], required: string): boolean {
-  return granted.some((f) => f === required || f.startsWith(required + '_'));
+  return granted.some((f) => f === required || f.startsWith(required + '_') || required.startsWith(f + '_'));
 }
 
 /**
