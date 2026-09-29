@@ -315,7 +315,7 @@ export const generateInvoiceHtml = (invoice: any, profile: any) => {
 
               <!-- Right side - Logo with company name underneath -->
               <div class="text-right">
-                ${general?.companyLogo ? `<img src="${general.companyLogo}" class="h-16 w-auto object-contain mb-1 ml-auto" />` : ''}
+                ${(general?.companyLogo && general.companyLogo !== "null" && general.companyLogo !== "undefined") ? `<div style="height: 64px; width: 150px; background-image: url('${general.companyLogo}'); background-size: contain; background-repeat: no-repeat; background-position: right center; margin-bottom: 4px; margin-left: auto;"></div>` : ''}
                 ${general?.companyName ? `<div class="text-[12px] font-bold" style="color: ${primaryColor}">${general.companyName}</div>` : ''}
               </div>
             </div>
@@ -484,9 +484,7 @@ export const generateInvoiceHtml = (invoice: any, profile: any) => {
     <div class="flex items-center gap-2 mb-0.5">
       <span class="text-[#374151] text-[11px]">Crafted with ease using</span>
       <div class="flex items-center gap-1.5">
-        <div class="z-badge">
-          ${general?.companyLogo ? `<img src="${general.companyLogo}" class="h-6 w-auto" />` : `<img src="https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev/assets/zithspace-logo.png" class="h-6 w-auto" />`}
-        </div>
+        ${(general?.companyLogo && general.companyLogo !== "null" && general.companyLogo !== "undefined") ? `<div class="z-badge"><div style="height: 24px; width: 32px; background-image: url('${general.companyLogo}'); background-size: contain; background-repeat: no-repeat; background-position: center;"></div></div>` : ``}
         <div class="flex flex-col leading-none">
           <span class="font-bold text-[12px] text-[#2563eb]">Zukvo</span>
           <span class="font-bold text-[10px] text-black tracking-tight">Invoice</span>
