@@ -335,7 +335,7 @@ export class GeneratedLetterService {
     return await this.substitutePlaceholders(tenantId, contentToUse as string, values, template?.placeholders || []);
   }
 
-  static async getGeneratedLetters(tenantId: string, filters?: { templateId?: string; categoryId?: string; status?: string; referenceEntityId?: string; search?: string }) {
+  static async getGeneratedLetters(tenantId: string, filters?: { templateId?: string; categoryId?: string; status?: string; referenceEntityId?: string; search?: string; limit?: number; offset?: number }) {
     const conditions = ['gd.tenant_id = $1'];
     const values: any[] = [tenantId];
     let paramIdx = 2;
@@ -357,8 +357,18 @@ export class GeneratedLetterService {
       values.push(filters.referenceEntityId);
     }
     if (filters?.search) {
-      conditions.push(`gd.document_number ILIKE $${paramIdx++}`);
+      conditions.push(`(gd.document_number ILIKE $${paramIdx} OR gd.document_name ILIKE $${paramIdx})`);
+      paramIdx++;
       values.push(`%${filters.search}%`);
+    }
+
+    let paginationClause = '';
+    if (filters?.limit !== undefined && filters?.offset !== undefined) {
+      paginationClause = ` LIMIT $${paramIdx++} OFFSET $${paramIdx++}`;
+      values.push(filters.limit, filters.offset);
+    } else if (filters?.limit !== undefined) {
+      paginationClause = ` LIMIT $${paramIdx++}`;
+      values.push(filters.limit);
     }
 
     const query = `
@@ -368,6 +378,7 @@ export class GeneratedLetterService {
         gd.reference_entity_type AS "referenceEntityType", gd.document_number AS "documentNumber", gd.document_name AS "documentName", 
         gd.status, gd.generated_by AS "generatedById", gd.generated_at AS "generatedAt", 
         gd.docx_file_path AS "docxFilePath", gd.pdf_file_path AS "pdfFilePath", 
+        COUNT(*) OVER() as total_count,
         COALESCE(
           gd.snapshot_content,
           (SELECT tv.editor_content FROM template_versions tv WHERE tv.template_id = gd.template_id AND tv.created_at <= gd.generated_at ORDER BY tv.created_at DESC LIMIT 1)
@@ -382,9 +393,14 @@ export class GeneratedLetterService {
       FROM generated_documents gd
       WHERE ${conditions.join(' AND ')}
       ORDER BY gd.generated_at DESC
+      ${paginationClause}
     `;
     const result = await pool.query(query, values);
-    return result.rows;
+    const total = result.rows.length > 0 ? parseInt(result.rows[0].total_count, 10) : 0;
+    return {
+      data: result.rows,
+      total,
+    };
   }
 
   static async getGeneratedLetterById(tenantId: string, id: string) {

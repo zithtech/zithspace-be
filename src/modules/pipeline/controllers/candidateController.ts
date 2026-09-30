@@ -92,9 +92,12 @@ export const createCandidate = handle(async (req: AuthRequest, res: Response) =>
 export const listCandidates = handle(async (req: AuthRequest, res: Response) => {
   const actor = actorOf(req);
   const page = parseInt(req.query.page as string) || 1;
-  const limit = parseInt(req.query.limit as string) || 20;
+  const limit = parseInt(req.query.limit as string) || 15;
   const search = (req.query.search as string) || '';
-  const result = await candidateService.listCandidates(actor.tenantId, page, limit, search);
+  const status = (req.query.status as string) || '';
+  const role = (req.query.role as string) || '';
+  const exp = (req.query.exp as string) || '';
+  const result = await candidateService.listCandidates(actor.tenantId, page, limit, search, status, role, exp);
   ok(res, result);
 });
 

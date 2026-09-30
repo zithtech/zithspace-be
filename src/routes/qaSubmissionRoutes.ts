@@ -44,9 +44,16 @@ router.post('/', canCreate, qaSubmissionController.createSubmission);
 router.post('/:id/ai/summary', canUpdate, requireAiAccess, qaSubmissionController.generateQaSummary);
 router.post('/ai/grammar', canUpdate, requireAiAccess, qaSubmissionController.qaSummaryGrammar);
 
+const canChangeStatus = requireAnyPermission(
+  Permissions.QA_SUBMISSION_UPDATE,
+  Permissions.QA_APPROVAL_APPROVE,
+  Permissions.QA_APPROVAL_SEND_BACK,
+  Permissions.QA_MANAGE,
+);
+
 // ─── Lifecycle ───────────────────────────────────────────────────────────────
 router.post('/:id/submit', canSubmit, qaSubmissionController.submitSubmission);
-router.post('/:id/status', canUpdate, qaSubmissionController.changeSubmissionStatus);
+router.post('/:id/status', canChangeStatus, qaSubmissionController.changeSubmissionStatus);
 router.get('/:id/sign-off', canRead, qaSubmissionController.getSignoffPreview);
 router.post('/:id/sign-off', canSignOff, qaSubmissionController.signOffSubmission);
 router.post('/:id/approve', canApprove, qaSubmissionController.approveSubmission);

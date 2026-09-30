@@ -26,6 +26,45 @@ export class TeamStaffController {
   static async listForClient(req: AuthRequest, res: Response): Promise<void> {
     const tenantId = req.tenantId!;
     const { clientId } = req.params;
+    const page = Math.max(1, parseInt(String(req.query.page || "1"), 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || "15"), 10) || 15));
+    const offset = (page - 1) * limit;
+    const search = ((req.query.search as string) || "").trim();
+    const discipline = ((req.query.discipline as string) || "").trim();
+    const projectId = ((req.query.projectId as string) || "").trim();
+
+    const conditions: string[] = ["t.tenant_id = $1", "t.client_id = $2"];
+    const params: any[] = [tenantId, clientId];
+    let pIdx = 3;
+
+    if (search) {
+      conditions.push(`(t.display_name ILIKE $${pIdx} OR t.role_label ILIKE $${pIdx} OR u.name ILIKE $${pIdx})`);
+      params.push(`%${search}%`);
+      pIdx++;
+    }
+    if (discipline && discipline !== "all") {
+      conditions.push(`t.discipline = $${pIdx}`);
+      params.push(discipline);
+      pIdx++;
+    }
+    if (projectId && projectId !== "all") {
+      conditions.push(`t.project_id = $${pIdx}`);
+      params.push(projectId);
+      pIdx++;
+    }
+
+    const whereClause = conditions.join(" AND ");
+
+    const countRes = await pool.query(
+      `SELECT COUNT(*)::int AS total
+         FROM portal_team_members t
+         LEFT JOIN users u ON u.id = t.staff_user_id
+        WHERE ${whereClause}`,
+      params,
+    );
+    const total = countRes.rows[0]?.total || 0;
+
+    const dataParams = [...params, limit, offset];
     const r = await pool.query(
       `SELECT t.id, t.staff_user_id, t.display_name, t.role_label, t.discipline,
               t.contact_email, t.contact_phone, t.is_primary_contact, t.bio,
@@ -37,13 +76,20 @@ export class TeamStaffController {
          FROM portal_team_members t
          LEFT JOIN projects p ON p.id = t.project_id
          LEFT JOIN users u ON u.id = t.staff_user_id
-        WHERE t.tenant_id = $1 AND t.client_id = $2
-        ORDER BY t.position ASC, t.created_at ASC`,
-      [tenantId, clientId],
+        WHERE ${whereClause}
+        ORDER BY t.position ASC, t.created_at ASC
+        LIMIT $${pIdx} OFFSET $${pIdx + 1}`,
+      dataParams,
     );
     res.json({
       success: true,
       data: r.rows.map(shapeRow),
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
     });
   }
 

@@ -43,7 +43,7 @@ export const list = handle(async (req: AuthRequest, res: Response) => {
     : undefined;
 
   const page = req.query.page ? Number(req.query.page) : 1;
-  const limit = req.query.limit ? Number(req.query.limit) : 20;
+  const limit = req.query.limit ? Number(req.query.limit) : 15;
   const search = req.query.search ? String(req.query.search) : undefined;
 
   const { data, total } = await service.listComponents(actorOf(req), { status, category, page, limit, search });

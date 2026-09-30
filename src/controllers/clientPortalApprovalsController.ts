@@ -25,11 +25,15 @@ export class ClientPortalApprovalsController {
       return;
     }
     const status = ((req.query.status as string) || "").toLowerCase();
+    const search = ((req.query.search as string) || "").trim();
+    const projectId = ((req.query.projectId as string) || "").trim();
+    const fromDate = ((req.query.from as string) || "").trim();
+    const toDate = ((req.query.to as string) || "").trim();
     const mine = req.query.mine !== "false"; // default true
     const page = Math.max(1, parseInt((req.query.page as string) || "1", 10));
     const limit = Math.min(
       100,
-      Math.max(1, parseInt((req.query.limit as string) || "20", 10)),
+      Math.max(1, parseInt((req.query.limit as string) || "15", 10)),
     );
     const offset = (page - 1) * limit;
 
@@ -47,12 +51,41 @@ export class ClientPortalApprovalsController {
       params.push(status);
       where += ` AND a.status = $${params.length}`;
     }
+    if (projectId) {
+      params.push(projectId);
+      where += ` AND a.project_id = $${params.length}`;
+    }
+    if (fromDate) {
+      params.push(fromDate);
+      where += ` AND a.created_at::date >= $${params.length}::date`;
+    }
+    if (toDate) {
+      params.push(toDate);
+      where += ` AND a.created_at::date <= $${params.length}::date`;
+    }
+    if (search) {
+      params.push(`%${search}%`);
+      where += ` AND (a.title ILIKE $${params.length}
+                   OR a.approval_number ILIKE $${params.length}
+                   OR COALESCE(a.subject_label, '') ILIKE $${params.length}
+                   OR p.name ILIKE $${params.length})`;
+    }
 
     const countRes = await pool.query(
-      `SELECT COUNT(*)::int AS n FROM portal_approval_requests a ${where}`,
+      `SELECT COUNT(*)::int AS n FROM portal_approval_requests a LEFT JOIN projects p ON p.id = a.project_id ${where}`,
       params,
     );
     const total = countRes.rows[0]?.n || 0;
+
+    // Distinct projects
+    const projectsRes = await pool.query(
+      `SELECT DISTINCT p.id, p.name, p.code
+         FROM portal_approval_requests a
+         JOIN projects p ON p.id = a.project_id
+        WHERE a.tenant_id = $1 AND a.client_id = $2
+        ORDER BY p.name ASC`,
+      [ctx.tenantId, ctx.clientId],
+    );
 
     params.push(limit);
     params.push(offset);
@@ -128,7 +161,19 @@ export class ClientPortalApprovalsController {
         rejectedCount: row.rejected_count || 0,
         myDecision: row.my_decision || null,
       })),
-      meta: { total, page, limit, counts: countMap, mine: meParam !== null },
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        counts: countMap,
+        mine: meParam !== null,
+        projects: projectsRes.rows.map((p) => ({
+          id: p.id,
+          name: p.name,
+          code: p.code,
+        })),
+      },
     });
   }
 

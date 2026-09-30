@@ -27,6 +27,48 @@ export class CrStaffController {
   static async listForClient(req: AuthRequest, res: Response): Promise<void> {
     const tenantId = req.tenantId!;
     const { clientId } = req.params;
+    const page = Math.max(1, parseInt(String(req.query.page || "1"), 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || "15"), 10) || 15));
+    const offset = (page - 1) * limit;
+    const search = ((req.query.search as string) || "").trim();
+    const status = ((req.query.status as string) || "").trim();
+    const priority = ((req.query.priority as string) || "").trim();
+    const projectId = ((req.query.projectId as string) || "").trim();
+
+    const conditions: string[] = ["cr.tenant_id = $1", "cr.client_id = $2"];
+    const params: any[] = [tenantId, clientId];
+    let pIdx = 3;
+
+    if (search) {
+      conditions.push(`(cr.subject ILIKE $${pIdx} OR cr.cr_number ILIKE $${pIdx})`);
+      params.push(`%${search}%`);
+      pIdx++;
+    }
+    if (status && status !== "all") {
+      conditions.push(`cr.status = $${pIdx}`);
+      params.push(status);
+      pIdx++;
+    }
+    if (priority && priority !== "all") {
+      conditions.push(`cr.priority = $${pIdx}`);
+      params.push(priority);
+      pIdx++;
+    }
+    if (projectId && projectId !== "all") {
+      conditions.push(`cr.project_id = $${pIdx}`);
+      params.push(projectId);
+      pIdx++;
+    }
+
+    const whereClause = conditions.join(" AND ");
+
+    const countRes = await pool.query(
+      `SELECT COUNT(*)::int AS total FROM portal_change_requests cr WHERE ${whereClause}`,
+      params,
+    );
+    const total = countRes.rows[0]?.total || 0;
+
+    const dataParams = [...params, limit, offset];
     const r = await pool.query(
       `SELECT cr.id, cr.cr_number, cr.subject, cr.priority, cr.status,
               cr.estimated_hours_min, cr.estimated_hours_max,
@@ -49,9 +91,10 @@ export class CrStaffController {
          LEFT JOIN users u ON u.id = cr.assigned_staff_user_id
          LEFT JOIN client_portal_users cpu ON cpu.id = cr.created_by_portal_user_id
          LEFT JOIN users su ON su.id = cr.created_by_staff_user_id
-        WHERE cr.tenant_id = $1 AND cr.client_id = $2
-        ORDER BY cr.last_activity_at DESC`,
-      [tenantId, clientId],
+        WHERE ${whereClause}
+        ORDER BY cr.last_activity_at DESC
+        LIMIT $${pIdx} OFFSET $${pIdx + 1}`,
+      dataParams,
     );
     res.json({
       success: true,
@@ -83,6 +126,12 @@ export class CrStaffController {
         assignedStaffName: row.assigned_staff_name,
         messageCount: row.message_count || 0,
       })),
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
     });
   }
 

@@ -139,14 +139,14 @@ export const create = handle(async (req: AuthRequest, res: Response) => {
   recordTransaction({
     req: req as any,
     section: Section.WORK,
-    module: Module.QA_WORKSPACE,
-    page: Page.QA_CASE_LIST,
+    module: Module.PLAYBOOKS,
+    page: Page.PLAYBOOK_COLLECTIONS,
     action: Action.CREATE,
-    actionLabel: `Playbook collection created (${body.kind})`,
-    entityType: EntityType.QA_CASE,
+    actionLabel: `Playbook collection created (${body.kind} - ${body.name})`,
+    entityType: EntityType.PLAYBOOK_COLLECTION,
     entityId: created.id,
     entityLabel: body.name,
-    afterData: { slug: created.slug, kind: body.kind, visibility },
+    afterData: { slug: created.slug, kind: body.kind, visibility, status: body.status },
   });
 
   ok(res, { id: created.id, slug: created.slug, visibility }, 201);
@@ -182,6 +182,19 @@ export const update = handle(async (req: AuthRequest, res: Response) => {
       sortOrder: body.sort_order,
       updatedBy: userId ?? null,
     });
+  });
+
+  recordTransaction({
+    req: req as any,
+    section: Section.WORK,
+    module: Module.PLAYBOOKS,
+    page: Page.PLAYBOOK_COLLECTIONS,
+    action: Action.UPDATE,
+    actionLabel: `Playbook collection updated (${body.name})`,
+    entityType: EntityType.PLAYBOOK_COLLECTION,
+    entityId: id,
+    entityLabel: body.name,
+    afterData: { name: body.name, kind: body.kind, visibility: body.visibility, status: body.status, industry: body.industry },
   });
 
   ok(res, result);
@@ -234,6 +247,7 @@ export const setPlaybooks = handle(async (req: AuthRequest, res: Response) => {
     return {
       id,
       slug: owner.slug,
+      name: owner.name,
       playbookCount,
       rejected: requested
         .map((p) => p.playbook_id)
@@ -244,13 +258,13 @@ export const setPlaybooks = handle(async (req: AuthRequest, res: Response) => {
   recordTransaction({
     req: req as any,
     section: Section.WORK,
-    module: Module.QA_WORKSPACE,
-    page: Page.QA_CASE_LIST,
+    module: Module.PLAYBOOKS,
+    page: Page.PLAYBOOK_COLLECTIONS,
     action: Action.UPDATE,
     actionLabel: `Collection membership set (${result.playbookCount} playbooks)`,
-    entityType: EntityType.QA_CASE,
+    entityType: EntityType.PLAYBOOK_COLLECTION,
     entityId: id,
-    entityLabel: result.slug,
+    entityLabel: result.name || result.slug,
     afterData: { playbookCount: result.playbookCount },
   });
 
@@ -273,10 +287,12 @@ export const addPlaybook = handle(async (req: AuthRequest, res: Response) => {
   const id = String(req.params.id);
   const playbookId = String(req.params.playbookId);
 
+  let collectionName = id;
   const result = await withTenant(tenantId, async (client) => {
     const owner = await repo.getCollectionOwnership(client, id);
     if (!owner) throw new PlaybookError('Collection not found', 404, 'NOT_FOUND');
     assertCanCurate(req, owner);
+    collectionName = owner.name;
 
     const allowed = await repo.filterAssignablePlaybooks(client, owner.tenantId, [playbookId]);
     if (allowed.length === 0) {
@@ -290,6 +306,19 @@ export const addPlaybook = handle(async (req: AuthRequest, res: Response) => {
     return repo.addMember(client, id, playbookId, userId ?? null);
   });
 
+  recordTransaction({
+    req: req as any,
+    section: Section.WORK,
+    module: Module.PLAYBOOKS,
+    page: Page.PLAYBOOK_COLLECTIONS,
+    action: Action.UPDATE,
+    actionLabel: `Playbook added to collection (${collectionName})`,
+    entityType: EntityType.PLAYBOOK_COLLECTION,
+    entityId: id,
+    entityLabel: collectionName,
+    afterData: { playbookId },
+  });
+
   ok(res, { collectionId: id, playbookId, ...result });
 });
 
@@ -299,10 +328,12 @@ export const setStatus = handle(async (req: AuthRequest, res: Response) => {
   const id = String(req.params.id);
   const { status, visibility } = publishSchema.parse(req.body ?? {});
 
+  let collectionName = id;
   await withTenant(tenantId, async (client) => {
     const owner = await repo.getCollectionOwnership(client, id);
     if (!owner) throw new PlaybookError('Collection not found', 404, 'NOT_FOUND');
     assertCanCurate(req, owner);
+    collectionName = owner.name;
 
     // Publishing a pack to every tenant is a platform act, not a tenant one.
     if (owner.tenantId === null && !isSuperAdmin(req)) {
@@ -331,6 +362,19 @@ export const setStatus = handle(async (req: AuthRequest, res: Response) => {
     await repo.setCollectionStatus(client, id, status, userId ?? null, resolvedVisibility);
   });
 
+  recordTransaction({
+    req: req as any,
+    section: Section.WORK,
+    module: Module.PLAYBOOKS,
+    page: Page.PLAYBOOK_COLLECTIONS,
+    action: Action.STATUS_CHANGE,
+    actionLabel: `Collection status changed to ${status}${visibility ? ` (${visibility})` : ''}`,
+    entityType: EntityType.PLAYBOOK_COLLECTION,
+    entityId: id,
+    entityLabel: collectionName,
+    afterData: { status, visibility },
+  });
+
   ok(res, { id, status, visibility });
 });
 
@@ -350,6 +394,18 @@ export const remove = handle(async (req: AuthRequest, res: Response) => {
     return repo.softDeleteCollection(client, id, userId, superAdmin);
   });
 
+  recordTransaction({
+    req: req as any,
+    section: Section.WORK,
+    module: Module.PLAYBOOKS,
+    page: Page.PLAYBOOK_COLLECTIONS,
+    action: Action.DELETE,
+    actionLabel: `Collection moved to trash (${result.name})`,
+    entityType: EntityType.PLAYBOOK_COLLECTION,
+    entityId: id,
+    entityLabel: result.name,
+  });
+
   ok(res, { id, name: result.name, deleted: true });
 });
 
@@ -363,6 +419,18 @@ export const restoreCollection = handle(async (req: AuthRequest, res: Response) 
     return repo.restoreCollection(client, id, superAdmin);
   });
 
+  recordTransaction({
+    req: req as any,
+    section: Section.WORK,
+    module: Module.PLAYBOOKS,
+    page: Page.PLAYBOOK_TRASH,
+    action: Action.RESTORE,
+    actionLabel: `Collection restored (${restored.name})`,
+    entityType: EntityType.PLAYBOOK_COLLECTION,
+    entityId: id,
+    entityLabel: restored.name,
+  });
+
   ok(res, { id, name: restored.name, restored: true });
 });
 
@@ -374,6 +442,18 @@ export const permanentDeleteCollection = handle(async (req: AuthRequest, res: Re
 
   await withTenant(tenantId, async (client) => {
     await repo.permanentDeleteCollection(client, id, superAdmin);
+  });
+
+  recordTransaction({
+    req: req as any,
+    section: Section.WORK,
+    module: Module.PLAYBOOKS,
+    page: Page.PLAYBOOK_TRASH,
+    action: Action.PERMANENT_DELETE,
+    actionLabel: `Collection permanently deleted`,
+    entityType: EntityType.PLAYBOOK_COLLECTION,
+    entityId: id,
+    entityLabel: id,
   });
 
   ok(res, { id, permanentlyDeleted: true });
@@ -403,6 +483,17 @@ export const setPins = handle(async (req: AuthRequest, res: Response) => {
   const result = await withTenant(tenantId, (client) =>
     repo.replacePins(client, unique, userId ?? null)
   );
+
+  recordTransaction({
+    req: req as any,
+    section: Section.WORK,
+    module: Module.PLAYBOOKS,
+    page: Page.PLAYBOOK_COLLECTIONS,
+    action: Action.PIN,
+    actionLabel: `Pinned collections updated (${unique.length} pinned)`,
+    entityType: EntityType.PLAYBOOK_COLLECTION_PIN,
+    afterData: { pinnedCount: unique.length, collections: unique },
+  });
 
   ok(res, result);
 });
@@ -438,6 +529,21 @@ export const requestUnlock = handle(async (req: AuthRequest, res: Response) => {
       body.message ?? null
     );
   });
+
+  if (result.created) {
+    recordTransaction({
+      req: req as any,
+      section: Section.WORK,
+      module: Module.PLAYBOOKS,
+      page: Page.PLAYBOOK_COLLECTIONS,
+      action: Action.APPLY,
+      actionLabel: `Requested unlock for collection (${slug})`,
+      entityType: EntityType.PLAYBOOK_REQUEST,
+      entityId: result.id,
+      entityLabel: slug,
+      afterData: { slug, message: body.message },
+    });
+  }
 
   ok(res, result, result.created ? 201 : 200);
 });
@@ -479,14 +585,14 @@ export const decideUnlockRequest = handle(async (req: AuthRequest, res: Response
   recordTransaction({
     req: req as any,
     section: Section.WORK,
-    module: Module.QA_WORKSPACE,
-    page: Page.QA_CASE_LIST,
-    action: Action.UPDATE,
+    module: Module.PLAYBOOKS,
+    page: Page.PLAYBOOK_COLLECTIONS,
+    action: body.decision === 'approved' ? Action.APPROVE : Action.REJECT,
     actionLabel: `Collection access ${body.decision}`,
-    entityType: EntityType.QA_CASE,
+    entityType: EntityType.PLAYBOOK_COLLECTION,
     entityId: id,
     entityLabel: id,
-    afterData: { decision: body.decision },
+    afterData: { decision: body.decision, note: body.note },
   });
 
   ok(res, result);

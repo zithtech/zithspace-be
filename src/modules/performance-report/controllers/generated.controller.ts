@@ -35,8 +35,14 @@ export const list = handle(async (req: AuthRequest, res: Response) => {
 });
 
 export const mine = handle(async (req: AuthRequest, res: Response) => {
-  const reports = await service.listMine(actorOf(req));
-  ok(res, reports);
+  const page = req.query.page ? Math.max(1, Number(req.query.page)) : 1;
+  const limit = req.query.limit ? Math.max(1, Number(req.query.limit)) : 15;
+  const { data, total } = await service.listMine(actorOf(req), { page, limit });
+  res.json({
+    success: true,
+    data,
+    pagination: { total, page, limit, pages: Math.ceil(total / limit) },
+  });
 });
 
 export const remove = handle(async (req: AuthRequest, res: Response) => {

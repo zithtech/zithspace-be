@@ -20,8 +20,8 @@ const stepSchema = z
   });
 
 export const createWorkflowSchema = z.object({
-  name: z.string().trim().min(1, 'name is required').max(120),
-  description: z.string().trim().max(500).optional().nullable(),
+  name: z.string().trim().min(1, 'name is required').max(120).regex(/^(?=.*[a-zA-Z])[a-zA-Z0-9\s\-_.,()&/'"]*$/, 'Name must contain at least one letter'),
+  description: z.string().trim().max(500).regex(/^[a-zA-Z0-9\s\-_.,()&/'"]*$/, 'Special characters are not allowed').optional().nullable(),
   isActive: z.boolean().default(true),
   isDefault: z.boolean().default(false),
   steps: z.array(stepSchema).min(1, 'Add at least one approval step'),

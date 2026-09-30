@@ -1,0 +1,7 @@
+2026-09-16T10:33:22.713Z - Updating ticket 13a32f67-7222-4191-b40e-203b02233c3a. Payload: {"status":"completed"}
+2026-09-16T10:33:22.910Z - Final data for Update: {"updatedAt":"2026-09-16T10:33:22.909Z","status":"completed"}
+2026-09-16T10:34:15.528Z - Updating ticket 53d58db4-c91e-429d-be4e-08b6cfb9e77a. Payload: {"status":"live"}
+2026-09-16T10:34:16.018Z - Update ticket error for 53d58db4-c91e-429d-be4e-08b6cfb9e77a: Error: Ticket not found in this tenant not found
+    at updateTicket (/Users/zithtech/Desktop/ZukvoV3/zithspace-be/src/controllers/ticketController.ts:1733:15)
+2026-09-16T10:34:41.190Z - Updating ticket 25b119cb-fb38-41c4-9d81-b54887326f6c. Payload: {"status":"live"}
+2026-09-16T10:34:41.351Z - Final data for Update: {"updatedAt":"2026-09-16T10:34:41.351Z","status":"live"}

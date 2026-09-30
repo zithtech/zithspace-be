@@ -42,6 +42,48 @@ export class EnvironmentsStaffController {
   static async listForClient(req: AuthRequest, res: Response): Promise<void> {
     const tenantId = req.tenantId!;
     const { clientId } = req.params;
+    const page = Math.max(1, parseInt(String(req.query.page || "1"), 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(String(req.query.limit || "15"), 10) || 15));
+    const offset = (page - 1) * limit;
+    const search = ((req.query.search as string) || "").trim();
+    const kind = ((req.query.kind as string) || "").trim();
+    const status = ((req.query.status as string) || "").trim();
+    const projectId = ((req.query.projectId as string) || "").trim();
+
+    const conditions: string[] = ["e.tenant_id = $1", "e.client_id = $2"];
+    const params: any[] = [tenantId, clientId];
+    let pIdx = 3;
+
+    if (search) {
+      conditions.push(`(e.name ILIKE $${pIdx} OR e.url ILIKE $${pIdx} OR e.current_version ILIKE $${pIdx})`);
+      params.push(`%${search}%`);
+      pIdx++;
+    }
+    if (kind && kind !== "all") {
+      conditions.push(`e.kind = $${pIdx}`);
+      params.push(kind);
+      pIdx++;
+    }
+    if (status && status !== "all") {
+      conditions.push(`e.status = $${pIdx}`);
+      params.push(status);
+      pIdx++;
+    }
+    if (projectId && projectId !== "all") {
+      conditions.push(`e.project_id = $${pIdx}`);
+      params.push(projectId);
+      pIdx++;
+    }
+
+    const whereClause = conditions.join(" AND ");
+
+    const countRes = await pool.query(
+      `SELECT COUNT(*)::int AS total FROM portal_environments e WHERE ${whereClause}`,
+      params,
+    );
+    const total = countRes.rows[0]?.total || 0;
+
+    const dataParams = [...params, limit, offset];
     const r = await pool.query(
       `SELECT e.id, e.name, e.kind, e.url, e.status, e.current_version,
               e.ssl_expires_at, e.last_backup_at, e.last_health_check_at,
@@ -54,9 +96,10 @@ export class EnvironmentsStaffController {
                 WHERE d.environment_id = e.id) AS last_deployed_at
          FROM portal_environments e
          LEFT JOIN projects p ON p.id = e.project_id
-        WHERE e.tenant_id = $1 AND e.client_id = $2
-        ORDER BY e.position ASC, e.created_at ASC`,
-      [tenantId, clientId],
+        WHERE ${whereClause}
+        ORDER BY e.position ASC, e.created_at ASC
+        LIMIT $${pIdx} OFFSET $${pIdx + 1}`,
+      dataParams,
     );
     res.json({
       success: true,
@@ -81,6 +124,12 @@ export class EnvironmentsStaffController {
         deploymentCount: row.deployment_count || 0,
         lastDeployedAt: row.last_deployed_at,
       })),
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
     });
   }
 

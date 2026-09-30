@@ -32,7 +32,10 @@ export const createConfig = handle(async (req: AuthRequest, res: Response) => {
 
 export const listConfigs = handle(async (req: AuthRequest, res: Response) => {
   const actor = actorOf(req);
-  const configs = await configService.listConfigs(actor.tenantId);
+  const page = req.query.page ? parseInt(req.query.page as string) : undefined;
+  const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
+  const search = (req.query.search as string) || '';
+  const configs = await configService.listConfigs(actor.tenantId, page, limit, search);
   ok(res, configs);
 });
 

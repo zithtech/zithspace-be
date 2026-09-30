@@ -271,18 +271,57 @@ export const getModules = async (req: Request, res: Response) => {
       paramIndex++;
     }
 
-    // `module_name` is the alias every existing dropdown reads.
-    const { rows } = await pool.query(
-      `SELECT src.id, src.module_name, src.description,
+    const search = String(req.query.search ?? req.query.q ?? '').trim();
+    if (search) {
+      params.push(`%${search.toLowerCase()}%`);
+      whereClause += ` AND (LOWER(src.module_name) LIKE $${paramIndex} OR LOWER(COALESCE(src.description, '')) LIKE $${paramIndex})`;
+      paramIndex++;
+    }
+
+    const hasPagination = req.query.page !== undefined || req.query.pageSize !== undefined || req.query.limit !== undefined;
+    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+    const pageSize = Math.max(1, parseInt((req.query.pageSize || req.query.limit) as string, 10) || 15);
+
+    let total = 0;
+    if (hasPagination) {
+      const countRes = await pool.query(
+        `SELECT COUNT(*)::int AS total FROM qa_todo_modules src ${whereClause}`,
+        params
+      );
+      total = countRes.rows[0]?.total ?? 0;
+    }
+
+    let query = `SELECT src.id, src.module_name, src.description,
               src.project_id, src.project_name,
               src.created_at, src.updated_at,
               ${USAGE_SQL}
          FROM qa_todo_modules src
         ${whereClause}
-        ORDER BY src.project_name ASC NULLS FIRST, src.module_name ASC`,
-      params,
-    );
-    res.status(200).json({ success: true, data: rows });
+        ORDER BY src.project_name ASC NULLS FIRST, src.module_name ASC`;
+
+    const queryParams = [...params];
+    if (hasPagination) {
+      queryParams.push(pageSize, (page - 1) * pageSize);
+      query += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    }
+
+    // `module_name` is the alias every existing dropdown reads.
+    const { rows } = await pool.query(query, queryParams);
+
+    if (hasPagination) {
+      res.status(200).json({
+        success: true,
+        data: rows,
+        pagination: {
+          page,
+          pageSize,
+          total,
+          totalPages: Math.ceil(total / pageSize)
+        }
+      });
+    } else {
+      res.status(200).json({ success: true, data: rows });
+    }
   } catch (error) {
     console.error('Error fetching modules:', error);
     res.status(500).json({ success: false, error: 'Internal Server Error' });

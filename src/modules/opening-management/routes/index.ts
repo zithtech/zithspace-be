@@ -38,28 +38,28 @@ router.use(requireAuth);
 router.use('/ai', aiAssistRoutes);
 
 // Phase 6 — the hiring dashboard (read-only aggregation).
-router.use('/dashboard', requireSubscriptionFeature('hrms_openings_dashboard', { exact: false }), dashboardRoutes);
+router.use('/dashboard', requireSubscriptionFeature(['hrms_openings_dashboard', 'hrms_openings'], { exact: false }), dashboardRoutes);
 
 // Phase 7 — the closure catalog and the "ready to close" queue.
 router.get(
   '/closure-reasons',
   requirePermission(Permissions.OPENING_READ),
-  requireSubscriptionFeature('hrms_openings_closing', { exact: false }),
+  requireSubscriptionFeature(['hrms_openings_closing', 'hrms_openings'], { exact: false }),
   closureCtrl.reasons
 );
 router.get(
   '/closure-candidates',
   requirePermission(Permissions.OPENING_READ),
-  requireSubscriptionFeature('hrms_openings_closing', { exact: false }),
+  requireSubscriptionFeature(['hrms_openings_closing', 'hrms_openings'], { exact: false }),
   closureCtrl.closureCandidates
 );
 
 // Phase 2 — approval configuration and the cross-opening approval queue.
-router.use('/approval-workflows', requireSubscriptionFeature('hrms_openings_settings', { exact: false }), approvalWorkflowRoutes);
+router.use('/approval-workflows', requireSubscriptionFeature(['hrms_openings_settings', 'hrms_openings'], { exact: false }), approvalWorkflowRoutes);
 router.get(
   '/approvals/pending',
   requirePermission(Permissions.OPENING_READ),
-  requireSubscriptionFeature('hrms_openings_approvals', { exact: false }),
+  requireSubscriptionFeature(['hrms_openings_approvals', 'hrms_openings'], { exact: false }),
   approvalCtrl.listPending
 );
 
@@ -67,13 +67,13 @@ router.get(
 router.get(
   '/status-catalog',
   requirePermission(Permissions.OPENING_READ),
-  requireSubscriptionFeature('hrms_openings_list', { exact: false }),
+  requireSubscriptionFeature(['hrms_openings_list', 'hrms_openings'], { exact: false }),
   statusCtrl.catalog
 );
 router.get(
   '/status-summary',
   requirePermission(Permissions.OPENING_READ),
-  requireSubscriptionFeature('hrms_openings_list', { exact: false }),
+  requireSubscriptionFeature(['hrms_openings_list', 'hrms_openings'], { exact: false }),
   statusCtrl.summary
 );
 
@@ -81,19 +81,19 @@ router.get(
 router.get(
   '/posting-settings',
   requirePermission(Permissions.OPENING_READ),
-  requireSubscriptionFeature('hrms_openings_settings', { exact: false }),
+  requireSubscriptionFeature(['hrms_openings_settings', 'hrms_openings'], { exact: false }),
   postingCtrl.getSettings
 );
 router.put(
   '/posting-settings',
   requirePermission(Permissions.OPENING_MANAGE),
-  requireSubscriptionFeature('hrms_openings_settings', { exact: false }),
+  requireSubscriptionFeature(['hrms_openings_settings', 'hrms_openings'], { exact: false }),
   postingCtrl.updateSettings
 );
 router.post(
   '/postings/run-auto-move',
   requirePermission(Permissions.OPENING_MANAGE),
-  requireSubscriptionFeature('hrms_openings_settings', { exact: false }),
+  requireSubscriptionFeature(['hrms_openings_settings', 'hrms_openings'], { exact: false }),
   postingCtrl.runAutoMove
 );
 
@@ -107,13 +107,13 @@ router.use('/', statusRoutes);
 router.get(
   '/intake-catalog',
   requirePermission(Permissions.OPENING_READ),
-  requireSubscriptionFeature('hrms_openings_list', { exact: false }),
+  requireSubscriptionFeature(['hrms_openings_list', 'hrms_openings'], { exact: false }),
   applicationCtrl.catalog
 );
 router.get(
   '/candidates/:candidateId/pipeline',
   requirePermission(Permissions.OPENING_READ),
-  requireSubscriptionFeature('hrms_openings_list', { exact: false }),
+  requireSubscriptionFeature(['hrms_openings_list', 'hrms_openings'], { exact: false }),
   applicationCtrl.candidatePipeline
 );
 
@@ -128,7 +128,7 @@ router.use('/', referralRoutes);
 router.use('/', closureRoutes);
 
 // Phase 1 — opening CRUD. Last, because of its bare `/:id` routes.
-router.use('/', requireSubscriptionFeature('hrms_openings_list', { exact: false }), openingRoutes);
+router.use('/', requireSubscriptionFeature(['hrms_openings_list', 'hrms_openings'], { exact: false }), openingRoutes);
 // Later phases mount here: /:id/postings, /:id/candidates, /:id/metrics, /:id/close
 
 export default router;

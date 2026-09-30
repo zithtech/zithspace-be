@@ -11,7 +11,7 @@ import { recordTransaction, Section, Module, Page, Action, EntityType } from '@/
 export const list = handle(async (req: AuthRequest, res: Response) => {
   const includeInactive = req.query.includeInactive === 'true';
   const page = req.query.page ? Number(req.query.page) : 1;
-  const limit = req.query.limit ? Number(req.query.limit) : 20;
+  const limit = req.query.limit ? Number(req.query.limit) : 15;
   const search = req.query.search ? String(req.query.search) : undefined;
 
   const { data, total } = await service.listWorkflows(actorOf(req), { includeInactive, page, limit, search });

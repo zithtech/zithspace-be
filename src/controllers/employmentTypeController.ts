@@ -105,16 +105,57 @@ export class EmploymentTypeController {
         return;
       }
 
-      const employmentTypes = await prisma.employmentType.findMany({
-        where: { tenantId: req.tenantId },
-        orderBy: { createdAt: 'desc' },
-        include: {
-            createdBy: { select: { name: true, id: true } },
-            updatedBy: { select: { name: true, id: true } }
-        }
-      });
+      const { page, limit, search } = req.query;
+      const pageNum = page ? parseInt(page as string, 10) : undefined;
+      const limitNum = limit ? parseInt(limit as string, 10) : undefined;
 
-      res.status(200).json({ success: true, data: employmentTypes } as ApiResponse);
+      const where: any = { tenantId: req.tenantId };
+
+      if (typeof search === 'string' && search.trim()) {
+        where.OR = [
+          { name: { contains: search, mode: 'insensitive' } },
+          { code: { contains: search, mode: 'insensitive' } },
+          { description: { contains: search, mode: 'insensitive' } },
+        ];
+      }
+
+      const include = {
+        createdBy: { select: { name: true, id: true } },
+        updatedBy: { select: { name: true, id: true } }
+      };
+
+      if (limitNum) {
+        const skip = pageNum ? (pageNum - 1) * limitNum : 0;
+        const [employmentTypes, total] = await Promise.all([
+          prisma.employmentType.findMany({
+            where,
+            include,
+            orderBy: { createdAt: 'desc' },
+            skip,
+            take: limitNum,
+          }),
+          prisma.employmentType.count({ where }),
+        ]);
+
+        res.status(200).json({
+          success: true,
+          data: employmentTypes,
+          pagination: {
+            total,
+            page: pageNum || 1,
+            limit: limitNum,
+            pages: Math.ceil(total / limitNum),
+          },
+        } as ApiResponse);
+      } else {
+        const employmentTypes = await prisma.employmentType.findMany({
+          where,
+          include,
+          orderBy: { createdAt: 'desc' },
+        });
+
+        res.status(200).json({ success: true, data: employmentTypes } as ApiResponse);
+      }
     } catch (error: any) {
       console.error("Error fetching employment types:", error);
       res.status(500).json({ success: false, error: "Failed to fetch employment types" } as ApiResponse);

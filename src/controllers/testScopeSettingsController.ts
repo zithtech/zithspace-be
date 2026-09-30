@@ -26,12 +26,62 @@ export const getScopeSettings = async (req: Request, res: Response) => {
     const tenantId = (req as any).user?.tenantId;
     if (!tenantId) return res.status(401).json({ success: false, error: 'Unauthorized' });
 
-    const { rows } = await pool.query(
-      `SELECT * FROM qa_scope_settings WHERE tenant_id = $1 ORDER BY category, sort_order, created_at ASC`,
-      [tenantId]
-    );
+    const category = String(req.query.category ?? '').trim();
+    const search = String(req.query.search ?? req.query.q ?? '').trim();
 
-    res.json({ success: true, data: rows });
+    let whereClause = `WHERE tenant_id = $1`;
+    const params: any[] = [tenantId];
+    let paramIndex = 2;
+
+    if (category) {
+      params.push(category);
+      whereClause += ` AND category = $${paramIndex}`;
+      paramIndex++;
+    }
+
+    if (search) {
+      params.push(`%${search.toLowerCase()}%`);
+      whereClause += ` AND (LOWER(label) LIKE $${paramIndex} OR LOWER(value) LIKE $${paramIndex})`;
+      paramIndex++;
+    }
+
+    const hasPagination = req.query.page !== undefined || req.query.pageSize !== undefined || req.query.limit !== undefined;
+    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+    const pageSize = Math.max(1, parseInt((req.query.pageSize || req.query.limit) as string, 10) || 15);
+
+    let total = 0;
+    if (hasPagination) {
+      const countRes = await pool.query(
+        `SELECT COUNT(*)::int AS total FROM qa_scope_settings ${whereClause}`,
+        params
+      );
+      total = countRes.rows[0]?.total ?? 0;
+    }
+
+    let query = `SELECT * FROM qa_scope_settings ${whereClause} ORDER BY category, sort_order, created_at ASC`;
+
+    const queryParams = [...params];
+    if (hasPagination) {
+      queryParams.push(pageSize, (page - 1) * pageSize);
+      query += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    }
+
+    const { rows } = await pool.query(query, queryParams);
+
+    if (hasPagination) {
+      res.json({
+        success: true,
+        data: rows,
+        pagination: {
+          page,
+          pageSize,
+          total,
+          totalPages: Math.ceil(total / pageSize)
+        }
+      });
+    } else {
+      res.json({ success: true, data: rows });
+    }
   } catch (err: any) {
     console.error(err);
     res.status(500).json({ success: false, error: 'Internal Server Error', details: err.message });

@@ -65,6 +65,80 @@ export class LeadStatusModel {
   }
 
   /**
+   * Find lead statuses with pagination, search, and filtering
+   */
+  static async findWithPagination(tenantId: string, options: {
+    page: number;
+    limit: number;
+    offset: number;
+    search?: string;
+    filter?: string;
+  }): Promise<{
+    statuses: any[];
+    total: number;
+    totalActive: number;
+    totalFinal: number;
+    totalDefault: number;
+  }> {
+    const whereClauses = ['tenant_id = $1'];
+    const values: any[] = [tenantId];
+    let paramIndex = 2;
+
+    if (options.search) {
+      whereClauses.push(`(name ILIKE $${paramIndex} OR category ILIKE $${paramIndex})`);
+      values.push(`%${options.search}%`);
+      paramIndex++;
+    }
+
+    if (options.filter === 'active') {
+      whereClauses.push(`is_active = true`);
+    } else if (options.filter === 'hidden') {
+      whereClauses.push(`is_active = false`);
+    }
+
+    const whereSql = whereClauses.join(' AND ');
+
+    // Filtered count
+    const countResult = await pool.query(
+      `SELECT COUNT(*) as count FROM lead_statuses WHERE ${whereSql}`,
+      values
+    );
+    const total = parseInt(countResult.rows[0]?.count || '0', 10);
+
+    // Global stats for tenant
+    const statsResult = await pool.query(
+      `SELECT 
+         COUNT(*) as total,
+         COUNT(*) FILTER (WHERE is_active = true) as active,
+         COUNT(*) FILTER (WHERE is_final_stage = true) as final,
+         COUNT(*) FILTER (WHERE is_default = true) as default
+       FROM lead_statuses 
+       WHERE tenant_id = $1`,
+      [tenantId]
+    );
+    const totalActive = parseInt(statsResult.rows[0]?.active || '0', 10);
+    const totalFinal = parseInt(statsResult.rows[0]?.final || '0', 10);
+    const totalDefault = parseInt(statsResult.rows[0]?.default || '0', 10);
+
+    // Items
+    const query = `
+      SELECT * FROM lead_statuses 
+      WHERE ${whereSql}
+      ORDER BY "order" ASC, created_at ASC
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1};
+    `;
+    const result = await pool.query(query, [...values, options.limit, options.offset]);
+
+    return {
+      statuses: result.rows,
+      total,
+      totalActive,
+      totalFinal,
+      totalDefault,
+    };
+  }
+
+  /**
    * Find default status for a tenant
    */
   static async findDefault(tenantId: string): Promise<any> {

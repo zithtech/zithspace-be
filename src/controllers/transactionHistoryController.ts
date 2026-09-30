@@ -69,6 +69,9 @@ const DB_TO_METADATA_MODULE_MAP: Record<string, string> = {
   "buglist": "qaspace",
   "qa": "qaspace",
   "apihub": "qaspace",
+  "qaplaybooks": "playbooks",
+  "playbook": "playbooks",
+  "playbooks": "playbooks",
 };
 
 async function getActivityLogCapabilities(req: AuthRequest): Promise<Map<string, Set<string>>> {
@@ -142,6 +145,13 @@ function shapeRow(row: any) {
     else if (["QaSubmissions", "QaSubmissionForm", "QaSubmissionDetail"].includes(pg)) pg = "QaSubmissionList";
     else if (["BugFolderList", "BugSheetList", "BugTrash"].includes(pg)) pg = "BugList";
     else if (pg === "BugSettings") pg = "QaSettings";
+  }
+  if (mod === "QAPlaybooks" || mod === "Playbook" || mod === "Playbooks") {
+    mod = "Playbooks";
+    if (["Playbooks", "PlaybookDetail", "CreatePlaybook", "EditPlaybook"].includes(pg)) pg = "QaPlaybooks";
+    else if (["Playbook Collections", "Playbook Collection", "Collections"].includes(pg)) pg = "PlaybookCollections";
+    else if (["PlaybookRequests", "Requests"].includes(pg)) pg = "RequestedPlaybooks";
+    else if (["PlaybooksTrash", "Trash"].includes(pg)) pg = "PlaybookTrash";
   }
   
   let sec = row.section;

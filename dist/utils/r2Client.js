@@ -57,6 +57,7 @@ exports.uploadEscalationDocumentToR2 = uploadEscalationDocumentToR2;
 exports.uploadDocumentToR2 = uploadDocumentToR2;
 exports.uploadRunAttachmentToR2 = uploadRunAttachmentToR2;
 exports.uploadSubmissionAttachmentToR2 = uploadSubmissionAttachmentToR2;
+exports.uploadTransactionAttachmentToR2 = uploadTransactionAttachmentToR2;
 const client_s3_1 = require("@aws-sdk/client-s3");
 const s3_request_presigner_1 = require("@aws-sdk/s3-request-presigner");
 const nanoid_1 = require("nanoid");
@@ -941,6 +942,48 @@ async function uploadSubmissionAttachmentToR2(base64File, fileName, tenantId, su
     catch (error) {
         console.error("R2 submission attachment upload error:", error);
         throw new Error(`Failed to upload attachment: ${error.message}`);
+    }
+}
+/**
+ * Upload transaction attachment to Cloudflare R2
+ * Path: {tenantId}/accounts/transactions/{transactionId}/{uniqueId}_{fileName}
+ */
+async function uploadTransactionAttachmentToR2(base64File, fileName, tenantId, transactionId) {
+    try {
+        const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+        if (!matches) {
+            throw new Error("Invalid file format. Expected a base64 data URI.");
+        }
+        const contentType = matches[1];
+        const buffer = Buffer.from(matches[2], "base64");
+        const fileSizeInBytes = buffer.length;
+        if (fileSizeInBytes / (1024 * 1024) > 25) {
+            throw new Error("File size exceeds the 25MB limit");
+        }
+        const uniqueId = (0, nanoid_1.nanoid)(12);
+        const sanitizedFileName = (fileName || "attachment").replace(/[^a-zA-Z0-9.-]/g, "_");
+        const folderPath = transactionId
+            ? `${tenantId}/accounts/transactions/${transactionId}`
+            : `${tenantId}/accounts/transactions`;
+        const key = `${folderPath}/${uniqueId}_${sanitizedFileName}`;
+        await exports.s3Client.send(new client_s3_1.PutObjectCommand({
+            Bucket: exports.BUCKET_NAME,
+            Key: key,
+            Body: buffer,
+            ContentType: contentType,
+            CacheControl: "public, max-age=31536000",
+            ContentDisposition: `attachment; filename="${sanitizedFileName}"`,
+        }));
+        let baseUrl = (PUBLIC_URL && !PUBLIC_URL.includes("r2.cloudflarestorage.com"))
+            ? PUBLIC_URL
+            : "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+        if (baseUrl.endsWith("/"))
+            baseUrl = baseUrl.slice(0, -1);
+        return { fileUrl: `${baseUrl}/${key}`, fileSize: fileSizeInBytes, fileType: contentType, fileName: sanitizedFileName };
+    }
+    catch (error) {
+        console.error("R2 transaction attachment upload error:", error);
+        throw new Error(`Failed to upload transaction attachment: ${error.message}`);
     }
 }
 //# sourceMappingURL=r2Client.js.map

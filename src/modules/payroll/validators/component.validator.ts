@@ -6,13 +6,13 @@ import { z } from 'zod';
 
 export const createComponentSchema = z
   .object({
-    name: z.string().trim().min(1, 'name is required').max(120),
+    name: z.string().trim().min(1, 'name is required').max(120).regex(/^(?=.*[a-zA-Z])[a-zA-Z0-9\s\-_.,()&/'"]*$/, 'Name must contain at least one letter'),
     code: z
       .string()
       .trim()
       .min(1, 'code is required')
       .max(40)
-      .regex(/^[a-zA-Z0-9_-]+$/, 'code may only contain letters, numbers, hyphen and underscore'),
+      .regex(/^[a-zA-Z0-9_-]+$/, 'Special characters are not allowed'),
     category: z.enum(['earning', 'deduction', 'reimbursement', 'benefit']).default('earning'),
     calculationType: z.enum(['fixed', 'percentage', 'formula']).default('fixed'),
     percentageOf: z.enum(['gross', 'basic', 'ctc']).optional().nullable(),
@@ -24,7 +24,7 @@ export const createComponentSchema = z
     considerForEsi: z.boolean().default(false),
     showOnPayslip: z.boolean().default(true),
     displayOrder: z.number().int().min(0).max(9999).default(0),
-    description: z.string().trim().max(500).optional().nullable(),
+    description: z.string().trim().max(500).regex(/^[a-zA-Z0-9\s\-_.,()&/'"]*$/, 'Special characters are not allowed').optional().nullable(),
     isActive: z.boolean().default(true),
   })
   // A percentage component must declare what it is a percentage of.
@@ -36,13 +36,13 @@ export const createComponentSchema = z
 // All fields optional on update; at least one must be present.
 export const updateComponentSchema = z
   .object({
-    name: z.string().trim().min(1).max(120),
+    name: z.string().trim().min(1).max(120).regex(/^(?=.*[a-zA-Z])[a-zA-Z0-9\s\-_.,()&/'"]*$/, 'Name must contain at least one letter'),
     code: z
       .string()
       .trim()
       .min(1)
       .max(40)
-      .regex(/^[a-zA-Z0-9_-]+$/, 'code may only contain letters, numbers, hyphen and underscore'),
+      .regex(/^[a-zA-Z0-9_-]+$/, 'Special characters are not allowed'),
     category: z.enum(['earning', 'deduction', 'reimbursement', 'benefit']),
     calculationType: z.enum(['fixed', 'percentage', 'formula']),
     percentageOf: z.enum(['gross', 'basic', 'ctc']).optional().nullable(),
@@ -54,7 +54,7 @@ export const updateComponentSchema = z
     considerForEsi: z.boolean(),
     showOnPayslip: z.boolean(),
     displayOrder: z.number().int().min(0).max(9999),
-    description: z.string().trim().max(500).optional().nullable(),
+    description: z.string().trim().max(500).regex(/^[a-zA-Z0-9\s\-_.,()&/'"]*$/, 'Special characters are not allowed').optional().nullable(),
     isActive: z.boolean(),
   })
   .partial()

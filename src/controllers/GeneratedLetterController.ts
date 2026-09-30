@@ -19,18 +19,21 @@ export class GeneratedLetterController {
         throw new ValidationError('Tenant context required');
       }
 
-      const { templateId, categoryId, status, referenceEntityId, search } = req.query;
-      const letters = await GeneratedLetterService.getGeneratedLetters(req.tenantId, {
+      const { templateId, categoryId, status, referenceEntityId, search, limit, offset } = req.query;
+      const result = await GeneratedLetterService.getGeneratedLetters(req.tenantId, {
         templateId: templateId as string,
         categoryId: categoryId as string,
         status: status as string,
         referenceEntityId: referenceEntityId as string,
         search: search as string,
+        limit: limit ? parseInt(limit as string, 10) : undefined,
+        offset: offset ? parseInt(offset as string, 10) : undefined,
       });
 
       res.status(200).json({
         success: true,
-        data: letters,
+        data: result.data,
+        total: result.total,
       } as ApiResponse);
     } catch (error: any) {
       res.status(500).json({

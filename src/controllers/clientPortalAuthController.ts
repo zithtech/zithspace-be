@@ -67,12 +67,14 @@ export class ClientPortalAuthController {
     }
 
     const userRes = await pool.query(
-      `SELECT id, tenant_id, client_id, contact_id, username, email,
-              password_hash, display_name, status, must_change_password,
-              failed_login_count, locked_until
-         FROM client_portal_users
-        WHERE tenant_id = $1
-          AND (LOWER(username) = LOWER($2) OR LOWER(email) = LOWER($2))
+      `SELECT u.id, u.tenant_id, u.client_id, u.contact_id, u.username, u.email,
+              u.password_hash, u.display_name, u.status, u.must_change_password,
+              u.failed_login_count, u.locked_until,
+              t.name AS tenant_name
+         FROM client_portal_users u
+         LEFT JOIN tenants t ON t.id = u.tenant_id
+        WHERE u.tenant_id = $1
+          AND (LOWER(u.username) = LOWER($2) OR LOWER(u.email) = LOWER($2))
         LIMIT 1`,
       [tenantId, id],
     );
@@ -192,6 +194,7 @@ export class ClientPortalAuthController {
         portalUser: {
           id: user.id,
           tenantId: user.tenant_id,
+          tenantName: user.tenant_name || null,
           clientId: user.client_id,
           contactId: user.contact_id,
           username: user.username,
@@ -218,8 +221,10 @@ export class ClientPortalAuthController {
       `SELECT u.id, u.tenant_id, u.client_id, u.contact_id, u.username, u.email,
               u.display_name, u.must_change_password, u.last_login_at,
               c.company_name, c.client_code, c.industry, c.website,
-              ct.first_name, ct.last_name, ct.designation
+              ct.first_name, ct.last_name, ct.designation,
+              t.name AS tenant_name
          FROM client_portal_users u
+         LEFT JOIN tenants t             ON t.id = u.tenant_id
          LEFT JOIN clients_v2 c          ON c.id = u.client_id
          LEFT JOIN client_contacts_v2 ct ON ct.id = u.contact_id
         WHERE u.id = $1 AND u.tenant_id = $2`,
@@ -241,6 +246,7 @@ export class ClientPortalAuthController {
       data: {
         id: row.id,
         tenantId: row.tenant_id,
+        tenantName: row.tenant_name || null,
         clientId: row.client_id,
         contactId: row.contact_id,
         username: row.username,

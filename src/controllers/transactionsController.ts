@@ -23,6 +23,7 @@ import {
   permanentlyDeleteTransactionQuery
 } from '../models/transaction.model';
 import { recordTransaction, Section, Module, Page, Action, EntityType } from '../utils/transactionHistory';
+import { uploadTransactionAttachmentToR2 } from '../utils/r2Client';
 
 export class TransactionsController {
   /**
@@ -40,7 +41,7 @@ export class TransactionsController {
 
       const {
         page = 1,
-        limit = 20,
+        limit = 15,
         type,
         category,
         userId,
@@ -72,7 +73,9 @@ export class TransactionsController {
       const transformedTransactions = transactions.map((t: any) => ({
         ...t,
         member: t.user,
-        type: (t.type === 'income' || t.type === 'bonus' || t.type === 'credit') ? 'credit' : 'debit'
+        type: (t.type === 'income' || t.type === 'bonus' || t.type === 'credit') ? 'credit' : 'debit',
+        attachments: t.metadata?.attachments || [],
+        notes: t.metadata?.notes || t.notes || ''
       }));
 
       const totalPages = Math.ceil(total / Number(limit));
@@ -123,9 +126,17 @@ export class TransactionsController {
         return;
       }
 
+      const transformedTransaction = {
+        ...transaction,
+        member: transaction.user,
+        type: (transaction.type === 'income' || transaction.type === 'bonus' || transaction.type === 'credit') ? 'credit' : 'debit',
+        attachments: transaction.metadata?.attachments || [],
+        notes: transaction.metadata?.notes || ''
+      };
+
       res.status(200).json({
         success: true,
-        data: transaction
+        data: transformedTransaction
       } as ApiResponse);
     } catch (error) {
       console.error('Get transaction by ID error:', error);
@@ -196,6 +207,41 @@ export class TransactionsController {
         throw new ValidationError('User not found in this tenant');
       }
 
+      // Process attachments if provided
+      let processedAttachments: Array<{ name: string; url: string; size?: number; type?: string }> = [];
+      const rawAttachments = transactionData.attachments || transactionData.documents || (transactionData.attachment ? [transactionData.attachment] : []);
+
+      if (Array.isArray(rawAttachments) && rawAttachments.length > 0) {
+        for (const att of rawAttachments) {
+          if (att.base64) {
+            const uploadResult = await uploadTransactionAttachmentToR2(
+              att.base64,
+              att.name || 'attachment',
+              req.tenantId,
+            );
+            processedAttachments.push({
+              name: att.name || 'attachment',
+              url: uploadResult.fileUrl,
+              size: uploadResult.fileSize,
+              type: uploadResult.fileType,
+            });
+          } else if (att.url) {
+            processedAttachments.push({
+              name: att.name || 'attachment',
+              url: att.url,
+              size: att.size,
+              type: att.type,
+            });
+          }
+        }
+      }
+
+      const metadata = {
+        ...(transactionData.metadata || {}),
+        ...(transactionData.notes ? { notes: transactionData.notes } : {}),
+        ...(processedAttachments.length > 0 ? { attachments: processedAttachments } : {}),
+      };
+
       // Create transaction
       const newTransaction = await createTransaction({
         userId,
@@ -204,7 +250,7 @@ export class TransactionsController {
         description: transactionData.description,
         category: transactionData.category,
         date: transactionData.date,
-        metadata: transactionData.metadata
+        metadata: metadata
       }, req.tenantId);
 
       if (!newTransaction) {
@@ -215,7 +261,9 @@ export class TransactionsController {
       const transformedTransaction = {
         ...newTransaction,
         member: newTransaction.user,
-        type: (newTransaction.type === 'income' || newTransaction.type === 'bonus' || newTransaction.type === 'credit') ? 'credit' : 'debit'
+        type: (newTransaction.type === 'income' || newTransaction.type === 'bonus' || newTransaction.type === 'credit') ? 'credit' : 'debit',
+        attachments: newTransaction.metadata?.attachments || [],
+        notes: newTransaction.metadata?.notes || ''
       };
 
       // ─── Activity log ───────────────────────────────────────────────
@@ -317,6 +365,47 @@ export class TransactionsController {
         throw new NotFoundError('Transaction not found in this tenant');
       }
 
+      let processedAttachments: Array<{ name: string; url: string; size?: number; type?: string }> | undefined;
+      const rawAttachments = updates.attachments || updates.documents;
+
+      if (Array.isArray(rawAttachments)) {
+        processedAttachments = [];
+        for (const att of rawAttachments) {
+          if (att.base64) {
+            const uploadResult = await uploadTransactionAttachmentToR2(
+              att.base64,
+              att.name || 'attachment',
+              req.tenantId,
+              id
+            );
+            processedAttachments.push({
+              name: att.name || 'attachment',
+              url: uploadResult.fileUrl,
+              size: uploadResult.fileSize,
+              type: uploadResult.fileType,
+            });
+          } else if (att.url) {
+            processedAttachments.push({
+              name: att.name || 'attachment',
+              url: att.url,
+              size: att.size,
+              type: att.type,
+            });
+          }
+        }
+      }
+
+      const existingMetadata = existingTransaction.metadata || {};
+      const metadataUpdates = {
+        ...existingMetadata,
+        ...(updates.metadata || {}),
+        ...(updates.notes !== undefined ? { notes: updates.notes } : {}),
+        ...(processedAttachments !== undefined ? { attachments: processedAttachments } : {}),
+      };
+      updates.metadata = metadataUpdates;
+      delete updates.attachments;
+      delete updates.documents;
+
       const updatedTransaction = await updateTransaction(id, req.tenantId, updates);
 
       if (!updatedTransaction) {
@@ -327,7 +416,9 @@ export class TransactionsController {
       const transformedTransaction = {
         ...updatedTransaction,
         member: updatedTransaction.user,
-        type: (updatedTransaction.type === 'income' || updatedTransaction.type === 'bonus' || updatedTransaction.type === 'credit') ? 'credit' : 'debit'
+        type: (updatedTransaction.type === 'income' || updatedTransaction.type === 'bonus' || updatedTransaction.type === 'credit') ? 'credit' : 'debit',
+        attachments: updatedTransaction.metadata?.attachments || [],
+        notes: updatedTransaction.metadata?.notes || ''
       };
 
       // ─── Activity log ───────────────────────────────────────────────
@@ -607,7 +698,7 @@ export class TransactionsController {
         return;
       }
 
-      const { page = 1, limit = 20, search } = req.query;
+      const { page = 1, limit = 15, search } = req.query;
 
       const { transactions, total } = await getTrashTransactions(req.tenantId, {
         page: Number(page),
@@ -618,7 +709,9 @@ export class TransactionsController {
       const transformedTransactions = transactions.map((t: any) => ({
         ...t,
         member: t.user,
-        type: (t.type === 'income' || t.type === 'bonus' || t.type === 'credit') ? 'credit' : 'debit'
+        type: (t.type === 'income' || t.type === 'bonus' || t.type === 'credit') ? 'credit' : 'debit',
+        attachments: t.metadata?.attachments || [],
+        notes: t.metadata?.notes || t.notes || ''
       }));
 
       const totalPages = Math.ceil(total / Number(limit));

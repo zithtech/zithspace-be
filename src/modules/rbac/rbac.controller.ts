@@ -126,9 +126,71 @@ export class RBACController {
   static async listRoles(req: AuthRequest, res: Response): Promise<void> {
     try {
       const tenantId = req.user!.tenantId;
+      const { page, limit, search, type } = req.query;
+      const pageNum = page ? parseInt(page as string, 10) : undefined;
+      const limitNum = limit ? parseInt(limit as string, 10) : undefined;
+      const searchTerm = typeof search === 'string' ? search.trim() : '';
+      const roleType = typeof type === 'string' ? type.trim() : 'all';
+
+      const where: any = { tenantId };
+
+      if (searchTerm) {
+        where.OR = [
+          { name: { contains: searchTerm, mode: 'insensitive' } },
+          { slug: { contains: searchTerm, mode: 'insensitive' } },
+          { description: { contains: searchTerm, mode: 'insensitive' } },
+        ];
+      }
+
+      if (roleType === 'system') {
+        where.isSystem = true;
+      } else if (roleType === 'custom') {
+        where.isSystem = false;
+      }
+
+      const [totalCount, systemCount, customCount] = await Promise.all([
+        prisma.role.count({ where: { tenantId } }),
+        prisma.role.count({ where: { tenantId, isSystem: true } }),
+        prisma.role.count({ where: { tenantId, isSystem: false } }),
+      ]);
+
+      if (limitNum) {
+        const skip = pageNum ? (pageNum - 1) * limitNum : 0;
+        const [roles, filteredTotal] = await Promise.all([
+          prisma.role.findMany({
+            where,
+            include: {
+              _count: {
+                select: { rolePermissions: true, userRoles: true },
+              },
+            },
+            orderBy: { createdAt: 'asc' },
+            skip,
+            take: limitNum,
+          }),
+          prisma.role.count({ where }),
+        ]);
+
+        res.status(200).json({
+          success: true,
+          data: roles,
+          pagination: {
+            total: filteredTotal,
+            page: pageNum || 1,
+            pageSize: limitNum,
+            totalPages: Math.ceil(filteredTotal / limitNum),
+          },
+          stats: {
+            total: totalCount,
+            system: systemCount,
+            custom: customCount,
+          },
+        } as ApiResponse);
+        return;
+      }
 
       const roles = await prisma.role.findMany({
-        where: { tenantId },
+        where,
         include: {
           _count: {
             select: { rolePermissions: true, userRoles: true },
@@ -137,7 +199,15 @@ export class RBACController {
         orderBy: { createdAt: 'asc' },
       });
 
-      res.status(200).json({ success: true, data: roles } as ApiResponse);
+      res.status(200).json({
+        success: true,
+        data: roles,
+        stats: {
+          total: totalCount,
+          system: systemCount,
+          custom: customCount,
+        },
+      } as ApiResponse);
     } catch (error) {
       console.error('listRoles error:', error);
       res.status(500).json({ success: false, error: 'Failed to fetch roles' } as ApiResponse);

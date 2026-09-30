@@ -82,22 +82,28 @@ const canTrashDelete = requireAnyPermission(
 /* ── Literal routes first ────────────────────────────────────────────────── */
 router.get('/meta', canRead, requireSubscriptionFeature('work_playbooks_qa_playbooks', { exact: false }), playbooks.meta);
 
+const TRASH_REQUIRED_FEATURES = [
+  'work_playbooks_qa_playbooks_upload',
+  'work_playbooks_collections_new_collections',
+  'work_playbooks_qa_playbooks_new_playbook',
+] as const;
+
 /* ── Categories ──────────────────────────────────────────────────────────── */
 router.get('/categories/detailed', canRead, requireSubscriptionFeature('work_playbooks_qa_playbooks', { exact: false }), playbooks.listCategoriesDetailed);
-router.delete('/categories/:id', canDelete, requireSubscriptionFeature('work_playbooks_playbook_trash', { exact: false }), playbooks.deleteCategory);
+router.delete('/categories/:id', canDelete, requireSubscriptionFeature(TRASH_REQUIRED_FEATURES, { exact: false }), playbooks.deleteCategory);
 
 /* ── Trash / Recycle Bin ─────────────────────────────────────────────────── */
-router.get('/trash', canTrashRead, requireSubscriptionFeature('work_playbooks_playbook_trash', { exact: false }), playbooks.listTrash);
-router.delete('/trash/empty', canTrashDelete, requireSubscriptionFeature('work_playbooks_playbook_trash', { exact: false }), playbooks.emptyTrash);
+router.get('/trash', canTrashRead, requireSubscriptionFeature(TRASH_REQUIRED_FEATURES, { exact: false }), playbooks.listTrash);
+router.delete('/trash/empty', canTrashDelete, requireSubscriptionFeature(TRASH_REQUIRED_FEATURES, { exact: false }), playbooks.emptyTrash);
 
-router.post('/trash/playbooks/:id/restore', canTrashRestore, requireSubscriptionFeature('work_playbooks_playbook_trash', { exact: false }), playbooks.restorePlaybook);
-router.delete('/trash/playbooks/:id/permanent', canTrashDelete, requireSubscriptionFeature('work_playbooks_playbook_trash', { exact: false }), playbooks.permanentDeletePlaybook);
+router.post('/trash/playbooks/:id/restore', canTrashRestore, requireSubscriptionFeature(TRASH_REQUIRED_FEATURES, { exact: false }), playbooks.restorePlaybook);
+router.delete('/trash/playbooks/:id/permanent', canTrashDelete, requireSubscriptionFeature(TRASH_REQUIRED_FEATURES, { exact: false }), playbooks.permanentDeletePlaybook);
 
-router.post('/trash/collections/:id/restore', canTrashRestore, requireSubscriptionFeature('work_playbooks_playbook_trash', { exact: false }), collections.restoreCollection);
-router.delete('/trash/collections/:id/permanent', canTrashDelete, requireSubscriptionFeature('work_playbooks_playbook_trash', { exact: false }), collections.permanentDeleteCollection);
+router.post('/trash/collections/:id/restore', canTrashRestore, requireSubscriptionFeature(TRASH_REQUIRED_FEATURES, { exact: false }), collections.restoreCollection);
+router.delete('/trash/collections/:id/permanent', canTrashDelete, requireSubscriptionFeature(TRASH_REQUIRED_FEATURES, { exact: false }), collections.permanentDeleteCollection);
 
-router.post('/trash/categories/:id/restore', canTrashRestore, requireSubscriptionFeature('work_playbooks_playbook_trash', { exact: false }), playbooks.restoreCategory);
-router.delete('/trash/categories/:id/permanent', canTrashDelete, requireSubscriptionFeature('work_playbooks_playbook_trash', { exact: false }), playbooks.permanentDeleteCategory);
+router.post('/trash/categories/:id/restore', canTrashRestore, requireSubscriptionFeature(TRASH_REQUIRED_FEATURES, { exact: false }), playbooks.restoreCategory);
+router.delete('/trash/categories/:id/permanent', canTrashDelete, requireSubscriptionFeature(TRASH_REQUIRED_FEATURES, { exact: false }), playbooks.permanentDeleteCategory);
 
 // Zai drafting a recommendation. Writing guidance is the same authority as
 // authoring it by hand, plus the per-user AI toggle every AI route honours.
@@ -173,7 +179,7 @@ router.post('/collections/:id/playbooks/:playbookId', canWrite, requireSubscript
 router.post('/collections/:id/status', canWrite, requireSubscriptionFeature('work_playbooks_collections', { exact: false }), collections.setStatus);
 // Asking for a premium pack. canRequest, for the reason the playbook equivalent is.
 router.post('/collections/:slug/unlock-request', canRequest, requireSubscriptionFeature('work_playbooks_collections', { exact: false }), collections.requestUnlock);
-router.delete('/collections/:id', canDelete, requireSubscriptionFeature('work_playbooks_playbook_trash', { exact: false }), collections.remove);
+router.delete('/collections/:id', canDelete, requireSubscriptionFeature(TRASH_REQUIRED_FEATURES, { exact: false }), collections.remove);
 
 // Access administration — Testiez staff only.
 router.get('/admin/unlock-requests', canRead, requireSuperAdmin, playbooks.listRequests);
@@ -186,14 +192,7 @@ router.post('/admin/unlock-requests/:id', canRead, requireSuperAdmin, playbooks.
 router.post(
   '/requests',
   canRequest,
-  requireSubscriptionFeature(
-    [
-      'work_playbooks_qa_playbooks_request_playbook',
-      'work_playbooks_requested_playbooks_request_playbook',
-      'work_playbooks_request_playbook',
-    ],
-    { exact: false }
-  ),
+  requireSubscriptionFeature('work_playbooks_requested_playbooks_request_playbook', { exact: false }),
   playbooks.requestPlaybook
 );
 router.get('/requests', canRead, requireSubscriptionFeature('work_playbooks_requested_playbooks_requested', { exact: false }), playbooks.listMyPlaybookRequests);
@@ -233,6 +232,6 @@ router.get('/:slug', canRead, requireSubscriptionFeature('work_playbooks_qa_play
 
 /* ── Bare id routes last ─────────────────────────────────────────────────── */
 router.put('/:id', canWrite, requireSubscriptionFeature('work_playbooks_qa_playbooks', { exact: false }), playbooks.update);
-router.delete('/:id', canDelete, requireSubscriptionFeature('work_playbooks_playbook_trash', { exact: false }), playbooks.remove);
+router.delete('/:id', canDelete, requireSubscriptionFeature(TRASH_REQUIRED_FEATURES, { exact: false }), playbooks.remove);
 
 export default router;

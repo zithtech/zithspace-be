@@ -13,5 +13,6 @@ router.get('/', requirePermission(Permissions.PERFORMANCE_REPORT_SETTING_READ), 
 router.get('/catalog', requirePermission(Permissions.PERFORMANCE_REPORT_SETTING_READ), ctrl.catalog);
 router.get('/ticket-statuses', requirePermission(Permissions.PERFORMANCE_REPORT_SETTING_READ), ctrl.ticketStatuses);
 router.put('/', requirePermission(Permissions.PERFORMANCE_REPORT_SETTING_UPDATE), ctrl.update);
+router.post('/trigger-auto-generate', requirePermission(Permissions.PERFORMANCE_REPORT_SETTING_UPDATE), ctrl.triggerAutoGenerate);
 
 export default router;

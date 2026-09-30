@@ -67,6 +67,69 @@ export class LeadPlatformModel {
     return result.rows;
   }
 
+  static async findWithPagination(tenantId: string, options: {
+    page: number;
+    limit: number;
+    offset: number;
+    search?: string;
+    filter?: string;
+  }): Promise<{
+    platforms: any[];
+    total: number;
+    totalActive: number;
+  }> {
+    const whereClauses = ['tenant_id = $1'];
+    const values: any[] = [tenantId];
+    let paramIndex = 2;
+
+    if (options.search) {
+      whereClauses.push(`(name ILIKE $${paramIndex} OR code ILIKE $${paramIndex} OR url ILIKE $${paramIndex} OR type ILIKE $${paramIndex})`);
+      values.push(`%${options.search}%`);
+      paramIndex++;
+    }
+
+    if (options.filter === 'active') {
+      whereClauses.push(`is_active = true`);
+    } else if (options.filter === 'hidden') {
+      whereClauses.push(`is_active = false`);
+    }
+
+    const whereSql = whereClauses.join(' AND ');
+
+    // Filtered count
+    const countResult = await pool.query(
+      `SELECT COUNT(*) as count FROM lead_platforms WHERE ${whereSql}`,
+      values
+    );
+    const total = parseInt(countResult.rows[0]?.count || '0', 10);
+
+    // Global stats
+    const statsResult = await pool.query(
+      `SELECT 
+         COUNT(*) as total,
+         COUNT(*) FILTER (WHERE is_active = true) as active
+       FROM lead_platforms 
+       WHERE tenant_id = $1`,
+      [tenantId]
+    );
+    const totalActive = parseInt(statsResult.rows[0]?.active || '0', 10);
+
+    // Items
+    const query = `
+      SELECT * FROM lead_platforms 
+      WHERE ${whereSql}
+      ORDER BY "order" ASC, created_at ASC
+      LIMIT $${paramIndex} OFFSET $${paramIndex + 1};
+    `;
+    const result = await pool.query(query, [...values, options.limit, options.offset]);
+
+    return {
+      platforms: result.rows,
+      total,
+      totalActive,
+    };
+  }
+
   static async findById(id: string, tenantId: string): Promise<any> {
     const result = await pool.query(
       `SELECT * FROM lead_platforms WHERE id = $1 AND tenant_id = $2`,

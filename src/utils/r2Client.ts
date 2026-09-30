@@ -1162,3 +1162,58 @@ export async function uploadSubmissionAttachmentToR2(
     throw new Error(`Failed to upload attachment: ${error.message}`);
   }
 }
+
+/**
+ * Upload transaction attachment to Cloudflare R2
+ * Path: {tenantId}/accounts/transactions/{transactionId}/{uniqueId}_{fileName}
+ */
+export async function uploadTransactionAttachmentToR2(
+  base64File: string,
+  fileName: string,
+  tenantId: string,
+  transactionId?: string,
+): Promise<{ fileUrl: string; fileSize: number; fileType: string; fileName: string }> {
+  try {
+    const matches = base64File.match(/^data:([^;]+);base64,(.+)$/);
+    if (!matches) {
+      throw new Error("Invalid file format. Expected a base64 data URI.");
+    }
+
+    const contentType = matches[1];
+    const buffer = Buffer.from(matches[2], "base64");
+
+    const fileSizeInBytes = buffer.length;
+    if (fileSizeInBytes / (1024 * 1024) > 25) {
+      throw new Error("File size exceeds the 25MB limit");
+    }
+
+    const uniqueId = nanoid(12);
+    const sanitizedFileName = (fileName || "attachment").replace(/[^a-zA-Z0-9.-]/g, "_");
+    const folderPath = transactionId
+      ? `${tenantId}/accounts/transactions/${transactionId}`
+      : `${tenantId}/accounts/transactions`;
+    const key = `${folderPath}/${uniqueId}_${sanitizedFileName}`;
+
+    await s3Client.send(
+      new PutObjectCommand({
+        Bucket: BUCKET_NAME,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+        CacheControl: "public, max-age=31536000",
+        ContentDisposition: `attachment; filename="${sanitizedFileName}"`,
+      }),
+    );
+
+    let baseUrl = (PUBLIC_URL && !PUBLIC_URL.includes("r2.cloudflarestorage.com"))
+      ? PUBLIC_URL
+      : "https://pub-7f315f14b4bb4930bd64cae157207c92.r2.dev";
+    if (baseUrl.endsWith("/")) baseUrl = baseUrl.slice(0, -1);
+
+    return { fileUrl: `${baseUrl}/${key}`, fileSize: fileSizeInBytes, fileType: contentType, fileName: sanitizedFileName };
+  } catch (error: any) {
+    console.error("R2 transaction attachment upload error:", error);
+    throw new Error(`Failed to upload transaction attachment: ${error.message}`);
+  }
+}
+

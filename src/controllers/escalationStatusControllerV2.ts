@@ -115,6 +115,27 @@ export const getAllEscalationStatuses = async (req: AuthRequest, res: Response):
             return;
         }
 
+        const page = req.query.page ? parseInt(req.query.page as string, 10) : undefined;
+        const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : undefined;
+        const search = (req.query.search as string) || undefined;
+
+        if (page && limit) {
+            const { data, total } = await EscalationStatusModel.findPaginated(tenantId, { page, limit, search });
+            const response: ApiResponse = {
+                success: true,
+                message: "Escalation statuses fetched successfully",
+                data,
+                pagination: {
+                    page,
+                    limit,
+                    total,
+                    totalPages: Math.ceil(total / limit) || 1,
+                },
+            };
+            res.status(200).json(response);
+            return;
+        }
+
         const statuses = await EscalationStatusModel.findAll(tenantId);
 
         const response: ApiResponse = {

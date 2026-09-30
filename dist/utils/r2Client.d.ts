@@ -188,3 +188,13 @@ export declare function uploadSubmissionAttachmentToR2(base64File: string, fileN
     fileSize: number;
     fileType: string;
 }>;
+/**
+ * Upload transaction attachment to Cloudflare R2
+ * Path: {tenantId}/accounts/transactions/{transactionId}/{uniqueId}_{fileName}
+ */
+export declare function uploadTransactionAttachmentToR2(base64File: string, fileName: string, tenantId: string, transactionId?: string): Promise<{
+    fileUrl: string;
+    fileSize: number;
+    fileType: string;
+    fileName: string;
+}>;

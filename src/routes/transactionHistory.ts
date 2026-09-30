@@ -129,6 +129,9 @@ const pickActivityPermission = async (
         case "RoleAndPermissions":
           requiredPagePermissions.push("role.read");
           break;
+        case "Playbooks":
+          requiredPagePermissions.push("playbook.read", "playbook.manage");
+          break;
       }
     }
 
@@ -195,6 +198,14 @@ const pickActivityPermission = async (
           break;
         case "lead":
           requiredPagePermissions.push("lead.read");
+          break;
+        case "playbook":
+        case "playbook_collection":
+        case "playbook_request":
+        case "playbook_category":
+        case "playbook_grant":
+        case "playbook_collection_pin":
+          requiredPagePermissions.push("playbook.read", "playbook.manage");
           break;
       }
     }

@@ -75,7 +75,7 @@ export class InvoiceSettingsController {
 
       const { 
         page = 1, 
-        limit = 20, 
+        limit = 15, 
         isActive = 'all', 
         search, 
         sortBy = 'createdAt', 

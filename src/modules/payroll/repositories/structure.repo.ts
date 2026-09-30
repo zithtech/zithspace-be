@@ -106,7 +106,7 @@ export async function listStructures(
   const total = parseInt(countResult.rows[0].total, 10);
 
   const page = opts.page ?? 1;
-  const limit = opts.limit ?? 20;
+  const limit = opts.limit ?? 15;
   const offset = (page - 1) * limit;
 
   params.push(limit, offset);

@@ -686,6 +686,7 @@ export const getSubmissions = async (req: Request, res: Response) => {
               s.signed_off_at, s.approved_at,
               sc.name AS scope_name, sc.type AS scope_type,
               owner.name AS qa_owner_name, owner.avatar_url AS qa_owner_avatar,
+              owner.reports_to_id AS owner_reports_to_id,
               s.qa_owner_id,
               (SELECT COUNT(*)::int FROM qa_submission_runs r
                 WHERE r.submission_id = s.id) AS run_count
@@ -1405,7 +1406,7 @@ export const submitSubmission = async (req: Request, res: Response) => {
 /** Which statuses a submission may be moved to by hand, and from where. */
 const MANUAL_TRANSITIONS: Record<string, string[]> = {
   'Under Review': ['Submitted'],
-  Retesting: ['Submitted', 'Under Review', 'Sent Back'],
+  Retesting: ['Submitted', 'Under Review', 'Ready for QA Sign-off', 'Sent Back'],
   'Ready for QA Sign-off': ['Submitted', 'Under Review', 'Retesting'],
   Draft: ['Sent Back'],
 };
@@ -1434,7 +1435,9 @@ export const changeSubmissionStatus = async (req: Request, res: Response) => {
         WHERE id = $3 AND tenant_id = $4 RETURNING *`,
       [status, userId || null, id, tenantId],
     );
-    await addHistory(id, tenantId, userId, 'status', `Status changed to ${status}`, req.body?.comment || null, {
+    const historyAction = status === 'Retesting' ? 'retesting_requested' : 'status';
+    const historySummary = status === 'Retesting' ? 'Requested Retesting' : `Status changed to ${status}`;
+    await addHistory(id, tenantId, userId, historyAction, historySummary, req.body?.comment || null, {
       from: existing.status,
       to: status,
     });
