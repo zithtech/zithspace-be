@@ -56,7 +56,7 @@ export async function renderAndUploadOne(
         Key: key,
         Body: pdfBuffer,
         ContentType: 'application/pdf',
-        ContentDisposition: 'inline; filename="Payslip.pdf"',
+        ContentDisposition: 'attachment; filename="Payslip.pdf"',
       })
     );
     return { fileUrl: `${publicBase()}/${key}`, fileKey: key };
@@ -103,7 +103,7 @@ export async function renderAndUploadPayslips(
             Key: key,
             Body: pdfBuffer,
             ContentType: 'application/pdf',
-            ContentDisposition: 'inline; filename="Payslip.pdf"',
+            ContentDisposition: 'attachment; filename="Payslip.pdf"',
           })
         );
         results.push({ employeeId: input.employeeId, fileUrl: `${base}/${key}`, fileKey: key });

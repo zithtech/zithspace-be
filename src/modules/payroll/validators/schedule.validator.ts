@@ -8,10 +8,10 @@ const codeRule = z
   .trim()
   .min(1, 'code is required')
   .max(40)
-  .regex(/^[a-zA-Z0-9_-]+$/, 'code may only contain letters, numbers, hyphen and underscore');
+  .regex(/^[a-zA-Z0-9_-]+$/, 'Special characters are not allowed');
 
 export const createScheduleSchema = z.object({
-  name: z.string().trim().min(1, 'name is required').max(120),
+  name: z.string().trim().min(1, 'name is required').max(120).regex(/^(?=.*[a-zA-Z])[a-zA-Z0-9\s\-_.,()&/'"]*$/, 'Name must contain at least one letter'),
   code: codeRule,
   frequency: z.enum(['monthly', 'semi_monthly', 'weekly', 'biweekly']).default('monthly'),
   cycleStartDay: z.number().int().min(1).max(31).default(1),
@@ -19,7 +19,7 @@ export const createScheduleSchema = z.object({
   payDay: z.number().int().min(1).max(31).default(1),
   payInNextMonth: z.boolean().default(false),
   isDefault: z.boolean().default(false),
-  description: z.string().trim().max(500).optional().nullable(),
+  description: z.string().trim().max(500).regex(/^[a-zA-Z0-9\s\-_.,()&/'"]*$/, 'Special characters are not allowed').optional().nullable(),
   isActive: z.boolean().default(true),
 });
 
@@ -28,11 +28,11 @@ export const updateScheduleSchema = createScheduleSchema
   .refine((d) => Object.keys(d).length > 0, { message: 'At least one field must be provided' });
 
 export const createGroupSchema = z.object({
-  name: z.string().trim().min(1, 'name is required').max(120),
+  name: z.string().trim().min(1, 'name is required').max(120).regex(/^(?=.*[a-zA-Z])[a-zA-Z0-9\s\-_.,()&/'"]*$/, 'Name must contain at least one letter'),
   code: codeRule,
   scheduleId: z.string().uuid('a pay schedule is required'),
-  legalEntity: z.string().trim().max(160).optional().nullable(),
-  description: z.string().trim().max(500).optional().nullable(),
+  legalEntity: z.string().trim().max(160).regex(/^[a-zA-Z0-9\s\-_.,()&/'"]*$/, 'Special characters are not allowed').optional().nullable(),
+  description: z.string().trim().max(500).regex(/^[a-zA-Z0-9\s\-_.,()&/'"]*$/, 'Special characters are not allowed').optional().nullable(),
   isActive: z.boolean().default(true),
 });
 

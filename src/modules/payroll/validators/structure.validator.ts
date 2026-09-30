@@ -17,14 +17,14 @@ const lineSchema = z
   });
 
 export const createStructureSchema = z.object({
-  name: z.string().trim().min(1, 'name is required').max(160),
+  name: z.string().trim().min(1, 'name is required').max(160).regex(/^(?=.*[a-zA-Z])[a-zA-Z0-9\s\-_.,()&/'"]*$/, 'Name must contain at least one letter'),
   code: z
     .string()
     .trim()
     .min(1, 'code is required')
     .max(40)
-    .regex(/^[a-zA-Z0-9_-]+$/, 'code may only contain letters, numbers, hyphen and underscore'),
-  description: z.string().trim().max(500).optional().nullable(),
+    .regex(/^[a-zA-Z0-9_-]+$/, 'Special characters are not allowed'),
+  description: z.string().trim().max(500).regex(/^[a-zA-Z0-9\s\-_.,()&/'"]*$/, 'Special characters are not allowed').optional().nullable(),
   monthlyCtc: z.number().min(0).max(1_000_000_000).default(0),
   isActive: z.boolean().default(true),
   lines: z.array(lineSchema).min(1, 'Add at least one component'),
