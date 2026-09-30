@@ -127,6 +127,7 @@ import { metadataRoutes } from "@/modules/metadata";
 import openingManagementV2Routes from "@/modules/opening-management/routes";
 import hotspotRoutes from "@/modules/hotspot/routes";
 import { pipelineRouter } from "@/modules/pipeline/routes";
+import mailTemplateRoutes from "@/modules/mail-templates/routes";
 
 import reimbursementConfigurationRoutes from "@/routes/reimbursementConfig";
 import reimbursementsettingsRoutes from "@/routes/reimbursementsettingsRoutes";
@@ -439,6 +440,9 @@ app.use("/api/email-history", emailHistoryRoutes);
 app.use("/api/timesheets", timesheetRoutes);
 app.use("/api/zoho", calendarRoutes);
 app.get("/api/mail/attachments/download", MailController.downloadAttachment);
+// Mounted BEFORE /api/mail so the templates module owns that sub-path; the
+// generic mail router has a catch-all POST /:provider/disconnect underneath it.
+app.use("/api/mail/templates", mailTemplateRoutes);
 app.use("/api/mail", mailRoutes);
 app.use("/api/notifications", notificationRoutes);
 // app.use("/api/mail-configuration", mailConfigurationRoutes);
@@ -704,6 +708,10 @@ const startServer = async () => {
     // Project Agreements tables (raw-SQL module, forward-only migrations)
     const { runProjectAgreementMigrations } = require("@/modules/project-agreements/db/migrate");
     await runProjectAgreementMigrations();
+
+    // Mail Template tables (raw-SQL module, forward-only migrations)
+    const { runMailTemplateMigrations } = require("@/modules/mail-templates/db/migrate");
+    await runMailTemplateMigrations();
 
     // Close out any flow run left mid-execution by a previous process, so a
     // crashed run does not sit in 'Running' forever.
