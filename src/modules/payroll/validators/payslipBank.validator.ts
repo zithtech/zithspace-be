@@ -7,10 +7,10 @@ export const updatePayslipTemplateSchema = z.object({
   templateStyle: z.enum(['modern', 'classic', 'minimal']).default('modern'),
   showLogo: z.boolean().default(true),
   logoUrl: z.string().trim().max(500).optional().nullable(),
-  companyName: z.string().trim().max(160).optional().nullable(),
-  companyAddress: z.string().trim().max(400).optional().nullable(),
+  companyName: z.string().trim().max(160).regex(/^[a-zA-Z0-9\s\-_.,()&/'"]*$/, 'Special characters are not allowed').optional().nullable(),
+  companyAddress: z.string().trim().max(400).regex(/^[a-zA-Z0-9\s\-_.,()&/'"#]*$/, 'Special characters are not allowed').optional().nullable(),
   accentColor: z.string().trim().regex(/^#[0-9a-fA-F]{6}$/, 'accentColor must be a hex colour').default('#3B82F6'),
-  footerNote: z.string().trim().max(500).optional().nullable(),
+  footerNote: z.string().trim().max(500).regex(/^[a-zA-Z0-9\s\-_.,()&/'"]*$/, 'Special characters are not allowed').optional().nullable(),
   netPayInWords: z.boolean().default(true),
   // Employee-details block
   showEmployeeCode: z.boolean().default(true),
@@ -33,9 +33,9 @@ export const updatePayslipTemplateSchema = z.object({
 });
 
 export const updateBankSettingsSchema = z.object({
-  companyBankName: z.string().trim().max(160).optional().nullable(),
-  companyAccountNumber: z.string().trim().max(40).optional().nullable(),
-  companyIfsc: z.string().trim().max(20).optional().nullable(),
+  companyBankName: z.string().trim().max(160).regex(/^[a-zA-Z0-9\s\-_.,()&/'"]*$/, 'Special characters are not allowed').optional().nullable(),
+  companyAccountNumber: z.string().trim().max(40).regex(/^[a-zA-Z0-9\-]*$/, 'Special characters are not allowed').optional().nullable(),
+  companyIfsc: z.string().trim().max(20).regex(/^[a-zA-Z0-9]*$/, 'Special characters are not allowed').optional().nullable(),
   paymentMode: z.enum(['neft', 'imps', 'rtgs']).default('neft'),
   bankFileFormat: z.enum(['generic_csv', 'hdfc', 'icici', 'sbi', 'axis', 'kotak']).default('generic_csv'),
 });

@@ -17,7 +17,7 @@ export const updatePfSchema = z.object({
   edliEnabled: z.boolean().default(true),
   edliRate: pct.default(0.5),
   adminChargesRate: pct.default(0.5),
-  establishmentCode: z.string().trim().max(40).optional().nullable(),
+  establishmentCode: z.string().trim().max(40).regex(/^[a-zA-Z0-9\-_./\s]*$/, 'Special characters are not allowed').optional().nullable(),
 });
 
 export const updateEsiSchema = z.object({
@@ -25,7 +25,7 @@ export const updateEsiSchema = z.object({
   employeeRate: pct.default(0.75),
   employerRate: pct.default(3.25),
   wageThreshold: z.number().min(0).max(10_000_000).default(21000),
-  establishmentCode: z.string().trim().max(40).optional().nullable(),
+  establishmentCode: z.string().trim().max(40).regex(/^[a-zA-Z0-9\-_./\s]*$/, 'Special characters are not allowed').optional().nullable(),
 });
 
 export type UpdatePfInput = z.infer<typeof updatePfSchema>;

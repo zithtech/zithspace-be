@@ -931,17 +931,15 @@ export class AttendanceController {
 
       const { startDate, endDate } = req.query;
 
-      let startOfPeriod = new Date();
-      startOfPeriod.setHours(0, 0, 0, 0);
-      let endOfPeriod = new Date();
-      endOfPeriod.setHours(23, 59, 59, 999);
+      const [todayStart, todayEnd] = dayBounds(new Date());
+      let startOfPeriod = todayStart;
+      let endOfPeriod = todayEnd;
+
       if (startDate) {
-        startOfPeriod = new Date(startDate as string);
-        startOfPeriod.setHours(0, 0, 0, 0);
+        startOfPeriod = dayBounds(parseDateInput(startDate as string))[0];
       }
       if (endDate) {
-        endOfPeriod = new Date(endDate as string);
-        endOfPeriod.setHours(23, 59, 59, 999);
+        endOfPeriod = dayBounds(parseDateInput(endDate as string))[1];
       }
 
       const summary = await withTenant(req.tenantId, async (db) => {
@@ -968,8 +966,8 @@ export class AttendanceController {
           }
         }
 
-        const diffTime = Math.abs(endOfPeriod.getTime() - startOfPeriod.getTime());
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
+        const diffTime = Math.abs(endOfPeriod.getTime() - startOfPeriod.getTime() + 1);
+        const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24)) || 1;
 
         const presentToday = statusCounts.present + statusCounts.late + statusCounts.wfh;
         const absentToday = statusCounts.absent;
@@ -1012,22 +1010,20 @@ export class AttendanceController {
       }
 
       const { startDate, endDate } = req.query;
-      let startOfPeriod = new Date();
-      startOfPeriod.setHours(0, 0, 0, 0);
-      let endOfPeriod = new Date();
-      endOfPeriod.setHours(23, 59, 59, 999);
+      const [todayStart, todayEnd] = dayBounds(new Date());
+      let startOfPeriod = todayStart;
+      let endOfPeriod = todayEnd;
+
       if (startDate) {
-        startOfPeriod = new Date(startDate as string);
-        startOfPeriod.setHours(0, 0, 0, 0);
+        startOfPeriod = dayBounds(parseDateInput(startDate as string))[0];
       }
       if (endDate) {
-        endOfPeriod = new Date(endDate as string);
-        endOfPeriod.setHours(23, 59, 59, 999);
+        endOfPeriod = dayBounds(parseDateInput(endDate as string))[1];
       }
 
       const presentMembers = await withTenant(req.tenantId, async (db) => {
         const { rows } = await db.query(
-          `SELECT a.status, a.clock_in AS "clockIn", a.clock_out AS "clockOut",
+          `SELECT a.id AS att_id, a.status, a.clock_in AS "clockIn", a.clock_out AS "clockOut", a.date,
                   u.id AS u_id, u.name AS u_name, u.avatar_url AS u_avatar,
                   p.id AS p_id, p.title AS p_title, p.code AS p_code,
                   s.id AS s_id, s.name AS s_name, s.start_time AS s_start, s.end_time AS s_end
@@ -1036,26 +1032,28 @@ export class AttendanceController {
            LEFT JOIN positions p ON p.id = u.position_id
            LEFT JOIN shifts s ON s.id = a.shift_id
            WHERE a.tenant_id = $1 AND a.date >= $2 AND a.date <= $3
-             AND a.status IN ('present', 'late', 'wfh') AND a.clock_in IS NOT NULL
-           ORDER BY a.clock_in ASC`,
+             AND LOWER(a.status) IN ('present', 'late', 'wfh')
+           ORDER BY COALESCE(a.clock_in, a.date, a.created_at) DESC`,
           [req.tenantId, startOfPeriod, endOfPeriod],
         );
 
         const now = Date.now();
         return rows.map((r: any) => {
+          const startTime = r.clockIn ? new Date(r.clockIn).getTime() : r.date ? new Date(r.date).getTime() : now;
           const workMinutes = r.clockOut
-            ? Math.floor((new Date(r.clockOut).getTime() - new Date(r.clockIn).getTime()) / 60000)
-            : Math.floor((now - new Date(r.clockIn).getTime()) / 60000);
+            ? Math.floor((new Date(r.clockOut).getTime() - startTime) / 60000)
+            : Math.floor((now - startTime) / 60000);
           return {
-            id: r.u_id,
+            id: r.att_id || r.u_id,
+            userId: r.u_id,
             name: r.u_name,
             position: r.p_id ? { id: r.p_id, title: r.p_title, code: r.p_code } : null,
             avatarUrl: r.u_avatar,
             status: (r.status || "").toLowerCase(),
-            clockInTime: r.clockIn,
+            clockInTime: r.clockIn || r.date,
             clockOutTime: r.clockOut,
             shift: r.s_id ? { name: r.s_name, startTime: r.s_start, endTime: r.s_end } : null,
-            workHours: workMinutes,
+            workHours: Math.max(0, workMinutes),
           };
         });
       });

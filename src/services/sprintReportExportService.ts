@@ -26,13 +26,13 @@ export class SprintReportExportService {
             print-color-adjust: exact;
           }
           /* Custom overrides for print mode */
-          .break-inside-avoid {
-            page-break-inside: avoid;
-            break-inside: avoid;
-          }
-          section {
-            page-break-inside: auto !important;
-            break-inside: auto !important;
+          .break-inside-avoid,
+          .rpt-section-card,
+          .rpt-stat-card,
+          .rpt-tier-card,
+          .rpt-module-card {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
           }
           table {
             page-break-inside: auto !important;
