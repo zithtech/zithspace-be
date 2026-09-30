@@ -348,10 +348,34 @@ export class TimeTrackingController {
       const memberSet = new Set(rows.map((r) => r.userId));
       const projectSet = new Set<string>();
       let totalSeconds = 0;
+      
+      const statusCounts: Record<string, number> = {};
+      const statusMembers: Record<string, Set<string>> = {};
+      const trackedMembersMap = new Map<string, any>();
+
       for (const r of rows) {
         totalSeconds += r.totalSeconds;
         for (const p of r.projectBreakdown) if (p.projectId !== "none") projectSet.add(p.projectId);
+        
+        statusCounts[r.status] = (statusCounts[r.status] || 0) + 1;
+        if (!statusMembers[r.status]) statusMembers[r.status] = new Set();
+        statusMembers[r.status].add(r.userId);
+
+        if (!trackedMembersMap.has(r.userId)) {
+          trackedMembersMap.set(r.userId, {
+            id: r.userId,
+            name: r.user?.name || "Unknown",
+            email: r.user?.workEmail || "",
+            avatarUrl: r.user?.avatarUrl
+          });
+        }
       }
+
+      const statusMemberCounts: Record<string, number> = {};
+      for (const status of Object.keys(statusMembers)) {
+        statusMemberCounts[status] = statusMembers[status].size;
+      }
+
       const summary = {
         memberCount: memberSet.size,
         dayCount: rows.length,
@@ -360,6 +384,9 @@ export class TimeTrackingController {
         totalHours: Number((totalSeconds / 3600).toFixed(2)),
         formattedTotal: formatHoursMinutes(totalSeconds),
         avgSecondsPerMember: memberSet.size ? Math.round(totalSeconds / memberSet.size) : 0,
+        statusCounts,
+        statusMemberCounts,
+        trackedMembers: Array.from(trackedMembersMap.values()),
       };
 
       // Legend so the UI renders the Hours → Status table from a single source of truth.
@@ -375,10 +402,15 @@ export class TimeTrackingController {
         ],
       };
 
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 15;
+      const total = rows.length;
+      const paginatedRows = rows.slice((page - 1) * limit, page * limit);
+
       res.status(200).json({
         success: true,
         serverTime: new Date().toISOString(),
-        data: { timezone: tz, summary, legend, rows },
+        data: { timezone: tz, summary, legend, total, rows: paginatedRows },
       } as ApiResponse);
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message } as ApiResponse);
