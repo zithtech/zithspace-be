@@ -1554,6 +1554,46 @@ export const APP_STRUCTURE: ICore[] = [
         ]
       },
       {
+        key: 'project_agreements',
+        name: 'Project Agreements',
+        sort_order: 10,
+        pages: [
+          {
+            key: 'agreements',
+            name: 'Agreements',
+            route: '/project-agreements/agreements',
+            menu_title: 'Agreements',
+            menu_order: 1,
+            features: [
+              { key: 'prime', name: 'Prime', featureType: 'PRIME' },
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
+            ]
+          },
+          {
+            key: 'templates',
+            name: 'Templates',
+            route: '/project-agreements/templates',
+            menu_title: 'Templates',
+            menu_order: 2,
+            features: [
+              { key: 'prime', name: 'Prime', featureType: 'PRIME' },
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
+            ]
+          },
+          {
+            key: 'settings',
+            name: 'Settings',
+            route: '/project-agreements/settings',
+            menu_title: 'Settings',
+            menu_order: 3,
+            features: [
+              { key: 'prime', name: 'Prime', featureType: 'PRIME' },
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
+            ]
+          }
+        ]
+      },
+      {
         key: 'candidate_pipeline',
         name: 'Candidate Pipeline',
         sort_order: 10,

@@ -10,6 +10,7 @@
 // Values are stored alongside it so reopening the composer shows the same form,
 // filled in. They exist to EDIT the document, not to re-derive it.
 
+import bcrypt from 'bcryptjs';
 import { TenantClient } from '../db/pool';
 import { Agreement, AgreementStatus, SummaryFieldKey } from '../types';
 
@@ -52,6 +53,9 @@ export interface AgreementInput {
   showSignatures: boolean;
   summaryFields: SummaryFieldKey[] | null;
   notes: string | null;
+  isPasswordProtected?: boolean;
+  passwordMode?: 'INHERIT_TENANT' | 'CUSTOM' | 'NONE';
+  customPassword?: string;
   values: Record<string, string>;
 }
 
@@ -88,12 +92,17 @@ const COLUMNS = `
   a.client_id         AS "clientId",
   a.client_company    AS "clientCompany",
   a.client_contact_id AS "clientContactId",
+  a.client_signature_url AS "clientSignatureUrl",
+  a.client_signed_at     AS "clientSignedAt",
   a.show_signatures       AS "showSignatures",
   a.summary_fields   AS "summaryFields",
   a.notes,
   a.pdf_url          AS "pdfUrl",
   a.pdf_generated_at AS "pdfGeneratedAt",
   a.portal_viewed_at AS "portalViewedAt",
+  a.is_password_protected AS "isPasswordProtected",
+  a.password_mode    AS "passwordMode",
+  a.password_version AS "passwordVersion",
   a.created_by       AS "createdBy",
   a.created_at       AS "createdAt",
   a.updated_at       AS "updatedAt"
@@ -109,6 +118,8 @@ export interface AgreementFilters {
   search?: string;
   /** Live documents lapsing within N days — the rail's "Expiring soon" view. */
   expiringWithinDays?: number;
+  page?: number;
+  limit?: number;
 }
 
 /**
@@ -119,7 +130,7 @@ export interface AgreementFilters {
 export async function listAgreements(
   client: TenantClient,
   filters: AgreementFilters = {}
-): Promise<Agreement[]> {
+): Promise<{ items: Agreement[]; total: number }> {
   const params: any[] = [client.tenantId];
   const where = ['a.tenant_id = $1', 'a.deleted_at IS NULL'];
 
@@ -165,14 +176,28 @@ export async function listAgreements(
     );
   }
 
-  const { rows } = await client.query<Agreement>(
-    `SELECT ${COLUMNS}, '' AS "contentHtml"
+  const page = filters.page && filters.page > 0 ? filters.page : 1;
+  const limit = filters.limit && filters.limit > 0 ? filters.limit : 50;
+  const offset = (page - 1) * limit;
+
+  const { rows } = await client.query(
+    `SELECT ${COLUMNS}, '' AS "contentHtml", count(*) OVER() AS "full_count"
        FROM pa_agreements a
       WHERE ${where.join(' AND ')}
-      ORDER BY a.created_at DESC`,
-    params
+      ORDER BY a.created_at DESC
+      LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+    [...params, limit, offset]
   );
-  return rows;
+
+  const total = rows.length > 0 ? Number(rows[0].full_count) : 0;
+  
+  // Clean up full_count before returning items
+  const items = rows.map((r: any) => {
+    const { full_count, ...rest } = r;
+    return rest as Agreement;
+  });
+
+  return { items, total };
 }
 
 export async function getAgreement(
@@ -270,7 +295,51 @@ export async function createAgreement(
   );
   const id = rows[0].id;
   await replaceValues(client, id, input.values);
+  if (input.isPasswordProtected !== undefined || input.passwordMode !== undefined || input.customPassword) {
+    await saveAgreementPassword(
+      client,
+      id,
+      input.isPasswordProtected,
+      input.passwordMode,
+      input.customPassword
+    );
+  }
   return (await getAgreement(client, id))!;
+}
+
+export async function saveAgreementPassword(
+  client: TenantClient,
+  id: string,
+  isProtected?: boolean,
+  mode?: 'INHERIT_TENANT' | 'CUSTOM' | 'NONE',
+  customPassword?: string
+): Promise<void> {
+  const isProt = isProtected ?? false;
+  const pMode = mode ?? 'INHERIT_TENANT';
+
+  if (pMode === 'CUSTOM' && customPassword && customPassword.trim().length > 0) {
+    const passwordHash = await bcrypt.hash(customPassword.trim(), 12);
+    await client.query(
+      `UPDATE pa_agreements
+          SET is_password_protected = $3,
+              password_mode = $4,
+              password_hash = $5,
+              password_version = password_version + 1,
+              updated_at = now()
+        WHERE tenant_id = $1 AND id = $2`,
+      [client.tenantId, id, isProt, pMode, passwordHash]
+    );
+  } else {
+    await client.query(
+      `UPDATE pa_agreements
+          SET is_password_protected = $3,
+              password_mode = $4,
+              password_hash = CASE WHEN $4 != 'CUSTOM' THEN NULL ELSE password_hash END,
+              updated_at = now()
+        WHERE tenant_id = $1 AND id = $2`,
+      [client.tenantId, id, isProt, pMode]
+    );
+  }
 }
 
 export async function updateAgreement(
@@ -366,6 +435,15 @@ export async function updateAgreement(
   if (!rowCount) return null;
 
   await replaceValues(client, id, input.values);
+  if (input.isPasswordProtected !== undefined || input.passwordMode !== undefined || input.customPassword) {
+    await saveAgreementPassword(
+      client,
+      id,
+      input.isPasswordProtected,
+      input.passwordMode,
+      input.customPassword
+    );
+  }
   return getAgreement(client, id);
 }
 

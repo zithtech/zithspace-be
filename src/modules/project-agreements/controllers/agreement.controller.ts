@@ -30,6 +30,9 @@ import { generateAndStorePdf, pageCountOf, renderPdfBuffer } from '../services/p
 
 export const list = handle(async (req: AuthRequest, res: Response) => {
   const { tenantId } = actorOf(req);
+  const page = Number(req.query.page) || 1;
+  const limit = Number(req.query.limit) || 15;
+
   const filters = {
     projectId: str(req.query.projectId),
     clientId: str(req.query.clientId),
@@ -41,15 +44,17 @@ export const list = handle(async (req: AuthRequest, res: Response) => {
       str(req.query.expiringWithinDays) !== undefined
         ? Number(req.query.expiringWithinDays)
         : undefined,
+    page,
+    limit,
   };
 
-  const [items, stats] = await withTenant(tenantId, async (c) => [
+  const [result, stats] = await withTenant(tenantId, async (c) => [
     await repo.listAgreements(c, filters),
     // Scoped to the chosen type so the chips describe what the rail selected,
     // not the whole tenant.
     await repo.agreementStats(c, filters.documentTypeId),
   ]);
-  ok(res, { items, stats });
+  ok(res, { items: result.items, stats, meta: { total: result.total, page, limit } });
 });
 
 export const detail = handle(async (req: AuthRequest, res: Response) => {
@@ -205,6 +210,7 @@ export const preview = handle(async (req: AuthRequest, res: Response) => {
         clientSignatoryName: body.clientSignatoryName ?? null,
         clientSignatoryPosition: body.clientSignatoryPosition ?? null,
         clientSignatoryCompany: body.clientSignatoryCompany ?? null,
+        clientSignatureUrl: body.clientSignatureUrl ?? null,
         showSignatures: body.showSignatures ?? true,
       },
       'screen'
@@ -261,6 +267,7 @@ export const previewPdf = handle(async (req: AuthRequest, res: Response) => {
         clientSignatoryName: body.clientSignatoryName ?? null,
         clientSignatoryPosition: body.clientSignatoryPosition ?? null,
         clientSignatoryCompany: body.clientSignatoryCompany ?? null,
+        clientSignatureUrl: body.clientSignatureUrl ?? null,
         showSignatures: body.showSignatures ?? true,
       },
       'print'
@@ -346,6 +353,7 @@ function summaryOf(a: Agreement) {
     clientSignatoryName: a.clientSignatoryName,
     clientSignatoryPosition: a.clientSignatoryPosition,
     clientSignatoryCompany: a.clientSignatoryCompany,
+    clientSignatureUrl: a.clientSignatureUrl,
     showSignatures: a.showSignatures,
   };
 }
@@ -442,6 +450,9 @@ async function composeInput(
     clientSignatoryPosition: nullish(body.clientSignatoryPosition),
     clientSignatoryCompany: nullish(body.clientSignatoryCompany),
     showSignatures: body.showSignatures ?? true,
+    isPasswordProtected: body.isPasswordProtected,
+    passwordMode: body.passwordMode as any,
+    customPassword: body.customPassword,
     notes: nullish(body.notes),
     values: body.values,
   };

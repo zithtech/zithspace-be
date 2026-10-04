@@ -25,7 +25,12 @@ const COLUMNS = `
   to_char(p.start_date, 'YYYY-MM-DD') AS "startDate",
   to_char(p.end_date,   'YYYY-MM-DD') AS "endDate",
   u.name       AS "managerName",
-  u.work_email AS "managerEmail"
+  u.work_email AS "managerEmail",
+  (
+    SELECT COALESCE(json_agg(json_build_object('id', cp.client_id)), '[]'::json)
+    FROM client_projects cp
+    WHERE cp.project_id = p.id
+  ) AS clients
 `;
 
 /** Projects a document can be raised against, newest first. */

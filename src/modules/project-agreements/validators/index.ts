@@ -66,6 +66,9 @@ export const templateSchema = z.object({
   // a runaway paste cannot push a multi-megabyte row into the table.
   bodyHtml: z.string().max(400_000).default(''),
   status: z.enum(TEMPLATE_STATUSES as unknown as [string, ...string[]]).default('draft'),
+  isPasswordProtected: z.boolean().optional(),
+  passwordMode: z.enum(['INHERIT_TENANT', 'CUSTOM', 'NONE']).optional(),
+  customPassword: z.string().trim().max(200).optional(),
   placeholders: z.array(placeholderSchema).max(120).default([]),
 });
 
@@ -141,6 +144,9 @@ export const agreementSchema = z
     clientSignatoryPosition: z.string().trim().max(160).nullable().optional(),
     clientSignatoryCompany: z.string().trim().max(200).nullable().optional(),
     showSignatures: z.boolean().default(true),
+    isPasswordProtected: z.boolean().optional(),
+    passwordMode: z.enum(['INHERIT_TENANT', 'CUSTOM', 'NONE']).optional(),
+    customPassword: z.string().trim().max(200).optional(),
     notes: z.string().trim().max(4000).nullable().optional(),
     values: z.record(z.string(), z.string().max(10_000)).default({}),
   })
@@ -233,5 +239,6 @@ export const previewSchema = z.object({
   clientSignatoryName: z.string().trim().max(160).nullable().optional(),
   clientSignatoryPosition: z.string().trim().max(160).nullable().optional(),
   clientSignatoryCompany: z.string().trim().max(200).nullable().optional(),
+  clientSignatureUrl: z.string().nullable().optional(),
   showSignatures: z.boolean().optional(),
 });

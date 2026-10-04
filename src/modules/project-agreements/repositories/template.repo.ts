@@ -12,6 +12,7 @@
 // came from. `ON DELETE SET NULL` protects the document either way, but keeping
 // the row means a signed contract can still say which revision it froze.
 
+import bcrypt from 'bcryptjs';
 import { TenantClient } from '../db/pool';
 import { AgreementTemplate, TemplatePlaceholder, TemplateStatus } from '../types';
 
@@ -22,6 +23,9 @@ interface TemplateInput {
   description?: string | null;
   bodyHtml: string;
   status: TemplateStatus;
+  isPasswordProtected?: boolean;
+  passwordMode?: 'INHERIT_TENANT' | 'CUSTOM' | 'NONE';
+  customPassword?: string;
   placeholders: Array<Omit<TemplatePlaceholder, 'id' | 'templateId'>>;
 }
 
@@ -38,6 +42,9 @@ const TEMPLATE_COLUMNS = `
   t.body_html   AS "bodyHtml",
   t.status,
   t.version,
+  t.is_password_protected AS "isPasswordProtected",
+  t.password_mode AS "passwordMode",
+  t.password_version AS "passwordVersion",
   t.created_by  AS "createdBy",
   t.updated_by  AS "updatedBy",
   t.created_at  AS "createdAt",
@@ -147,7 +154,51 @@ export async function createTemplate(
   );
   const id = rows[0].id;
   await replacePlaceholders(client, id, input.placeholders);
+  if (input.isPasswordProtected !== undefined || input.passwordMode !== undefined || input.customPassword) {
+    await saveTemplatePassword(
+      client,
+      id,
+      input.isPasswordProtected,
+      input.passwordMode,
+      input.customPassword
+    );
+  }
   return (await getTemplate(client, id))!;
+}
+
+export async function saveTemplatePassword(
+  client: TenantClient,
+  id: string,
+  isProtected?: boolean,
+  mode?: 'INHERIT_TENANT' | 'CUSTOM' | 'NONE',
+  customPassword?: string
+): Promise<void> {
+  const isProt = isProtected ?? false;
+  const pMode = mode ?? 'INHERIT_TENANT';
+
+  if (pMode === 'CUSTOM' && customPassword && customPassword.trim().length > 0) {
+    const passwordHash = await bcrypt.hash(customPassword.trim(), 12);
+    await client.query(
+      `UPDATE pa_agreement_templates
+          SET is_password_protected = $3,
+              password_mode = $4,
+              password_hash = $5,
+              password_version = password_version + 1,
+              updated_at = now()
+        WHERE tenant_id = $1 AND id = $2`,
+      [client.tenantId, id, isProt, pMode, passwordHash]
+    );
+  } else {
+    await client.query(
+      `UPDATE pa_agreement_templates
+          SET is_password_protected = $3,
+              password_mode = $4,
+              password_hash = CASE WHEN $4 != 'CUSTOM' THEN NULL ELSE password_hash END,
+              updated_at = now()
+        WHERE tenant_id = $1 AND id = $2`,
+      [client.tenantId, id, isProt, pMode]
+    );
+  }
 }
 
 export async function updateTemplate(
@@ -187,6 +238,15 @@ export async function updateTemplate(
   if (!rowCount) return null;
 
   await replacePlaceholders(client, id, input.placeholders);
+  if (input.isPasswordProtected !== undefined || input.passwordMode !== undefined || input.customPassword) {
+    await saveTemplatePassword(
+      client,
+      id,
+      input.isPasswordProtected,
+      input.passwordMode,
+      input.customPassword
+    );
+  }
   return getTemplate(client, id);
 }
 

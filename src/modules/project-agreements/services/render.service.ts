@@ -87,6 +87,7 @@ export interface RenderInput {
   clientSignatoryPosition?: string | null;
   /** Who THEY sign as. Falls back to the Client row. */
   clientSignatoryCompany?: string | null;
+  clientSignatureUrl?: string | null;
   /** Defaults to true — most agreements are signed. */
   showSignatures?: boolean;
 }
@@ -461,11 +462,16 @@ function signoffHtml(input: RenderInput, branding: Branding): string {
     ? `<img class="pa-sign-mark" src="${escapeAttr(branding.signatureUrl)}" alt="" />`
     : '';
 
+  const theirMark = input.clientSignatureUrl
+    ? `<img class="pa-sign-mark" src="${escapeAttr(input.clientSignatureUrl)}" alt="" />`
+    : '';
+
   return `<table class="pa-signoff"><tbody><tr>
     <td>${column(ours, who(input.signatoryName ?? '', input.signatoryPosition ?? ''), ourMark)}</td>
     <td class="pa-signoff-split">${column(
       theirs,
-      who(theirName, input.clientSignatoryPosition ?? '')
+      who(theirName, input.clientSignatoryPosition ?? ''),
+      theirMark
     )}</td>
   </tr></tbody></table>`;
 }

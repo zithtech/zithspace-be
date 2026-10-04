@@ -614,6 +614,10 @@ export const Permissions = {
   // Branding is the letterhead every document in the tenant wears, so it is
   // administration rather than authoring — hence its own permission.
   PROJECT_AGREEMENT_MANAGE: 'project_agreement.manage',
+  PROJECT_AGREEMENT_SETTING_CREATE: 'project_agreement_setting.create',
+  PROJECT_AGREEMENT_SETTING_READ: 'project_agreement_setting.read',
+  PROJECT_AGREEMENT_SETTING_UPDATE: 'project_agreement_setting.update',
+  PROJECT_AGREEMENT_SETTING_DELETE: 'project_agreement_setting.delete',
 } as const;
 
 export type Permission = (typeof Permissions)[keyof typeof Permissions];
@@ -1062,6 +1066,12 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.PROJECT_AGREEMENT_UPDATE,
     Permissions.PROJECT_AGREEMENT_DELETE,
     Permissions.PROJECT_AGREEMENT_MANAGE,
+  ],
+  project_agreement_setting: [
+    Permissions.PROJECT_AGREEMENT_SETTING_CREATE,
+    Permissions.PROJECT_AGREEMENT_SETTING_READ,
+    Permissions.PROJECT_AGREEMENT_SETTING_UPDATE,
+    Permissions.PROJECT_AGREEMENT_SETTING_DELETE,
   ],
 };
 

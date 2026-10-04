@@ -16,6 +16,7 @@ import ClientPortalEnvironmentsController from "@/controllers/clientPortalEnviro
 import ClientPortalTeamController from "@/controllers/clientPortalTeamController";
 import ClientPortalMilestoneController from "@/controllers/clientPortalMilestoneController";
 import ClientPortalAgreementController from "@/controllers/clientPortalAgreementController";
+import { requireAgreementUnlockGuard } from "@/modules/project-agreements/controllers/securitySettings.controller";
 
 const router = Router();
 
@@ -76,7 +77,34 @@ router.get(
   resolveTenant,
   authenticateClientPortal,
   requirePortalModule("agreements"),
+  requireAgreementUnlockGuard,
   ClientPortalAgreementController.detail,
+);
+
+router.get(
+  "/agreements/:id/pdf",
+  resolveTenant,
+  authenticateClientPortal,
+  requirePortalModule("agreements"),
+  requireAgreementUnlockGuard,
+  ClientPortalAgreementController.downloadPdf,
+);
+
+router.post(
+  "/agreements/:id/sign",
+  resolveTenant,
+  authenticateClientPortal,
+  requirePortalModule("agreements"),
+  requireAgreementUnlockGuard,
+  ClientPortalAgreementController.sign,
+);
+
+router.post(
+  "/agreements/:id/unlock",
+  resolveTenant,
+  authenticateClientPortal,
+  requirePortalModule("agreements"),
+  ClientPortalAgreementController.unlock,
 );
 
 /* ----------------------------------------------------------------------

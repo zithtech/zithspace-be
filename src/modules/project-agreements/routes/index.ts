@@ -28,6 +28,7 @@ import * as branding from '../controllers/branding.controller';
 import * as projects from '../controllers/project.controller';
 import * as clients from '../controllers/client.controller';
 import * as documentTypes from '../controllers/documentType.controller';
+import * as securitySettings from '../controllers/securitySettings.controller';
 
 const router = express.Router();
 
@@ -86,14 +87,38 @@ const canDelete = requireAnyPermission(
 );
 const canManage = requireAnyPermission(Permissions.PROJECT_AGREEMENT_MANAGE);
 
+const canCreateSetting = requireAnyPermission(
+  Permissions.PROJECT_AGREEMENT_SETTING_CREATE,
+  Permissions.PROJECT_AGREEMENT_MANAGE
+);
+const canReadSetting = requireAnyPermission(
+  Permissions.PROJECT_AGREEMENT_SETTING_READ,
+  Permissions.PROJECT_AGREEMENT_MANAGE
+);
+const canUpdateSetting = requireAnyPermission(
+  Permissions.PROJECT_AGREEMENT_SETTING_UPDATE,
+  Permissions.PROJECT_AGREEMENT_MANAGE
+);
+const canDeleteSetting = requireAnyPermission(
+  Permissions.PROJECT_AGREEMENT_SETTING_DELETE,
+  Permissions.PROJECT_AGREEMENT_MANAGE
+);
+
+// For resources needed by both authors (to pick/preview) and settings viewers
+const canReadOrReadSetting = requireAnyPermission(
+  Permissions.PROJECT_AGREEMENT_READ,
+  Permissions.PROJECT_AGREEMENT_SETTING_READ,
+  Permissions.PROJECT_AGREEMENT_MANAGE
+);
+
 /* ── Branding (the letterhead) ───────────────────────────────────────────── */
 // Reading is open to anyone who can read a document: the preview needs it.
-router.get('/branding', canRead, branding.get);
-router.get('/branding/preview', canRead, branding.previewLetterhead);
-router.put('/branding', canManage, branding.save);
-router.post('/branding/logo', canManage, branding.uploadLogo);
-router.post('/branding/signature', canManage, branding.uploadSignature);
-router.delete('/branding/signature', canManage, branding.removeSignature);
+router.get('/branding', canReadOrReadSetting, branding.get);
+router.get('/branding/preview', canReadOrReadSetting, branding.previewLetterhead);
+router.put('/branding', canUpdateSetting, branding.save);
+router.post('/branding/logo', canUpdateSetting, branding.uploadLogo);
+router.post('/branding/signature', canUpdateSetting, branding.uploadSignature);
+router.delete('/branding/signature', canUpdateSetting, branding.removeSignature);
 
 /* ── Projects (picker + token context) ───────────────────────────────────── */
 router.get('/projects', canRead, projects.list);
@@ -108,19 +133,24 @@ router.get('/clients/:id/contacts', canRead, clients.contacts);
 /* ── Settings › Document Types ────────────────────────────────────────────── */
 // Readable by anyone who may read an agreement — the pickers need the list.
 // Writing is a settings change, so it takes the module's manage permission.
-router.get('/document-types', canRead, documentTypes.list);
-router.post('/document-types', canManage, documentTypes.create);
-router.put('/document-types/:id', canManage, documentTypes.update);
-router.delete('/document-types/:id', canManage, documentTypes.remove);
+router.get('/document-types', canReadOrReadSetting, documentTypes.list);
+router.post('/document-types', canCreateSetting, documentTypes.create);
+router.put('/document-types/:id', canUpdateSetting, documentTypes.update);
+router.delete('/document-types/:id', canDeleteSetting, documentTypes.remove);
 
 /* ── Templates ───────────────────────────────────────────────────────────── */
 router.get('/templates', canReadTemplate, templates.list);
 router.post('/templates', canCreateTemplate, templates.create);
-router.get('/templates/:id', canReadTemplate, templates.detail);
-router.put('/templates/:id', canUpdateTemplate, templates.update);
-router.post('/templates/:id/status', canUpdateTemplate, templates.setStatus);
-router.post('/templates/:id/duplicate', canCreateTemplate, templates.duplicate);
-router.delete('/templates/:id', canDeleteTemplate, templates.remove);
+router.post('/templates/:id/unlock', canReadTemplate, securitySettings.unlockTemplate);
+router.get('/templates/:id', canReadTemplate, securitySettings.requireTemplateUnlockGuard, templates.detail);
+router.put('/templates/:id', canUpdateTemplate, securitySettings.requireTemplateUnlockGuard, templates.update);
+router.post('/templates/:id/status', canUpdateTemplate, securitySettings.requireTemplateUnlockGuard, templates.setStatus);
+router.post('/templates/:id/duplicate', canCreateTemplate, securitySettings.requireTemplateUnlockGuard, templates.duplicate);
+router.delete('/templates/:id', canDeleteTemplate, securitySettings.requireTemplateUnlockGuard, templates.remove);
+
+/* ── Settings › Security & Access ────────────────────────────────────────── */
+router.get('/settings/security', canReadOrReadSetting, securitySettings.getSettings);
+router.put('/settings/security', canUpdateSetting, securitySettings.updateSettings);
 
 /* ── Agreements ──────────────────────────────────────────────────────────── */
 // Literal segments before '/:id'.
@@ -131,15 +161,16 @@ router.post('/agreements/preview', canRead, agreements.preview);
 router.post('/agreements/preview-pdf', canRead, agreements.previewPdf);
 // Seeding the editor from a template. canCreate, not canRead: it is the first
 // step of authoring a document, not a way to look at one.
-router.post('/agreements/compose-body', canCreate, agreements.composeBody);
+router.post('/agreements/compose-body', canCreate, securitySettings.requireTemplateUnlockGuard, agreements.composeBody);
 
 router.get('/agreements', canRead, agreements.list);
 router.post('/agreements', canCreate, agreements.create);
-router.get('/agreements/:id', canRead, agreements.detail);
-router.get('/agreements/:id/html', canRead, agreements.html);
-router.post('/agreements/:id/pdf', canRead, agreements.generatePdf);
-router.put('/agreements/:id', canUpdate, agreements.update);
-router.post('/agreements/:id/status', canUpdate, agreements.setStatus);
-router.delete('/agreements/:id', canDelete, agreements.remove);
+router.post('/agreements/:id/unlock', canRead, securitySettings.unlockAgreement);
+router.get('/agreements/:id', canRead, securitySettings.requireAgreementUnlockGuard, agreements.detail);
+router.get('/agreements/:id/html', canRead, securitySettings.requireAgreementUnlockGuard, agreements.html);
+router.post('/agreements/:id/pdf', canRead, securitySettings.requireAgreementUnlockGuard, agreements.generatePdf);
+router.put('/agreements/:id', canUpdate, securitySettings.requireAgreementUnlockGuard, agreements.update);
+router.post('/agreements/:id/status', canUpdate, securitySettings.requireAgreementUnlockGuard, agreements.setStatus);
+router.delete('/agreements/:id', canDelete, securitySettings.requireAgreementUnlockGuard, agreements.remove);
 
 export default router;

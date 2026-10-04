@@ -160,12 +160,27 @@ export interface AgreementTemplate {
   status: TemplateStatus;
   version: number;
   placeholders: TemplatePlaceholder[];
+  isPasswordProtected?: boolean;
+  passwordMode?: AgreementPasswordMode;
+  passwordVersion?: number;
   /** Live agreements generated from this template — blocks a careless delete. */
   agreementCount?: number;
   createdBy: string | null;
   updatedBy: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export type PasswordProtectionMode = 'DISABLED' | 'TENANT_GLOBAL' | 'PER_AGREEMENT' | 'CUSTOM_OVERRIDE';
+export type AgreementPasswordMode = 'INHERIT_TENANT' | 'CUSTOM' | 'NONE';
+export type PasswordScope = 'TENANT' | 'AGREEMENT' | 'TEMPLATE';
+
+export interface SecuritySettings {
+  passwordProtectionMode: PasswordProtectionMode;
+  hasTenantPassword: boolean;
+  tenantPasswordVersion: number;
+  requirePasswordForPdf: boolean;
+  updatedAt?: string;
 }
 
 export interface Agreement {
@@ -221,8 +236,9 @@ export interface Agreement {
   clientSignatoryName: string | null;
   /** The authority THEY sign under — the counterparty's half of "Name - Position". */
   clientSignatoryPosition: string | null;
-  /** The entity THEY sign for. Falls back to partyName. */
   clientSignatoryCompany: string | null;
+  clientSignatureUrl?: string | null;
+  clientSignedAt?: string | null;
   showSignatures: boolean;
   /** Which summary rows to print. null means every one of them. */
   summaryFields: SummaryFieldKey[] | null;
@@ -231,6 +247,9 @@ export interface Agreement {
   pdfGeneratedAt: string | null;
   /** When the client first opened it in the portal. null means never. */
   portalViewedAt: string | null;
+  isPasswordProtected?: boolean;
+  passwordMode?: AgreementPasswordMode;
+  passwordVersion?: number;
   values?: Record<string, string>;
   createdBy: string | null;
   createdAt: string;
@@ -249,3 +268,4 @@ export interface ProjectContext {
   managerName: string | null;
   managerEmail: string | null;
 }
+
