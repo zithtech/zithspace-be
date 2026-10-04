@@ -1834,9 +1834,9 @@ export class BugListController {
         }
       } else if (scope === "archived") {
         if (sheetId) {
-          push("b.sheet_id = $$ AND b.status = 'archived'", sheetId);
+          push("b.sheet_id = $$ AND b.status != 'trash'", sheetId);
         } else if (folderId) {
-          push("b.folder_id = $$ AND b.status = 'archived'", folderId);
+          push("b.folder_id = $$ AND b.status != 'trash'", folderId);
         } else {
           // Standard archived view: exclude if parent is archived/trashed
           conditions.push("(b.status = 'archived' AND NOT EXISTS (SELECT 1 FROM bug_sheets s WHERE s.id = b.sheet_id AND s.status IN ('archived', 'trash')) AND NOT EXISTS (SELECT 1 FROM bug_folders f WHERE f.id = b.folder_id AND f.status IN ('archived', 'trash')))");
