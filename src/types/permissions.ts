@@ -104,6 +104,10 @@ export const Permissions = {
   // Cross-scope reporting exposes the whole QA estate, so it is granted
   // separately from being able to read the runs you work on.
   QA_ANALYTICS_READ:      'qa.analytics.read',
+  QA_SETTING_READ:        'qa.setting.read',
+  QA_SETTING_CREATE:      'qa.setting.create',
+  QA_SETTING_UPDATE:      'qa.setting.update',
+  QA_SETTING_DELETE:      'qa.setting.delete',
   QA_MANAGE:       'qa.manage',
 
   // ─── Playbooks ────────────────────────────────────────────────────
@@ -179,6 +183,10 @@ export const Permissions = {
   LEAVE_TRASH_READ: 'leave.trash.read',
   LEAVE_TRASH_RESTORE: 'leave.trash.restore',
   LEAVE_TRASH_DELETE: 'leave.trash.delete',
+  LEAVE_SETTING_READ: 'leave.setting.read',
+  LEAVE_SETTING_CREATE: 'leave.setting.create',
+  LEAVE_SETTING_UPDATE: 'leave.setting.update',
+  LEAVE_SETTING_DELETE: 'leave.setting.delete',
   LEAVE_MANAGE: 'leave.manage',   // view all, configure types
 
   // ─── Shifts ──────────────────────────────────────────────────────
@@ -208,8 +216,7 @@ export const Permissions = {
   INVOICE_SETTING_UPDATE: 'invoice.setting.update',
   INVOICE_SETTING_DELETE: 'invoice.setting.delete',
   INVOICE_TRASH_READ: 'invoice.trash.read',
-  INVOICE_TRASH_CREATE: 'invoice.trash.create',
-  INVOICE_TRASH_UPDATE: 'invoice.trash.update',
+  INVOICE_TRASH_RESTORE: 'invoice.trash.restore',
   INVOICE_TRASH_DELETE: 'invoice.trash.delete',
   INVOICE_HISTORY_READ: 'invoice.history.read',
   INVOICE_MAIL_SEND: 'invoice.mail.send',
@@ -225,6 +232,9 @@ export const Permissions = {
   ACCOUNT_SETTING_CREATE: 'account.setting.create',
   ACCOUNT_SETTING_UPDATE: 'account.setting.update',
   ACCOUNT_SETTING_DELETE: 'account.setting.delete',
+  ACCOUNT_TRASH_READ: 'account.trash.read',
+  ACCOUNT_TRASH_RESTORE: 'account.trash.restore',
+  ACCOUNT_TRASH_DELETE: 'account.trash.delete',
 
 
   // ─── Clients ─────────────────────────────────────────────────────
@@ -728,8 +738,7 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.INVOICE_SETTING_UPDATE,
     Permissions.INVOICE_SETTING_DELETE,
     Permissions.INVOICE_TRASH_READ,
-    Permissions.INVOICE_TRASH_CREATE,
-    Permissions.INVOICE_TRASH_UPDATE,
+    Permissions.INVOICE_TRASH_RESTORE,
     Permissions.INVOICE_TRASH_DELETE,
     Permissions.INVOICE_HISTORY_READ,
     Permissions.INVOICE_MAIL_SEND,
@@ -745,6 +754,9 @@ export const PERMISSIONS_BY_RESOURCE: Record<string, Permission[]> = {
     Permissions.ACCOUNT_SETTING_CREATE,
     Permissions.ACCOUNT_SETTING_UPDATE,
     Permissions.ACCOUNT_SETTING_DELETE,
+    Permissions.ACCOUNT_TRASH_READ,
+    Permissions.ACCOUNT_TRASH_RESTORE,
+    Permissions.ACCOUNT_TRASH_DELETE,
     Permissions.ACCOUNT_MANAGE,
   ],
   reimbursement: [
