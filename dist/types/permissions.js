@@ -568,6 +568,10 @@ exports.Permissions = {
     // Branding is the letterhead every document in the tenant wears, so it is
     // administration rather than authoring — hence its own permission.
     PROJECT_AGREEMENT_MANAGE: 'project_agreement.manage',
+    PROJECT_AGREEMENT_SETTING_CREATE: 'project_agreement_setting.create',
+    PROJECT_AGREEMENT_SETTING_READ: 'project_agreement_setting.read',
+    PROJECT_AGREEMENT_SETTING_UPDATE: 'project_agreement_setting.update',
+    PROJECT_AGREEMENT_SETTING_DELETE: 'project_agreement_setting.delete',
 };
 /**
  * All permissions grouped by resource for UI rendering (permission picker).
@@ -1013,6 +1017,12 @@ exports.PERMISSIONS_BY_RESOURCE = {
         exports.Permissions.PROJECT_AGREEMENT_UPDATE,
         exports.Permissions.PROJECT_AGREEMENT_DELETE,
         exports.Permissions.PROJECT_AGREEMENT_MANAGE,
+    ],
+    project_agreement_setting: [
+        exports.Permissions.PROJECT_AGREEMENT_SETTING_CREATE,
+        exports.Permissions.PROJECT_AGREEMENT_SETTING_READ,
+        exports.Permissions.PROJECT_AGREEMENT_SETTING_UPDATE,
+        exports.Permissions.PROJECT_AGREEMENT_SETTING_DELETE,
     ],
 };
 /** Flat list of all permissions — used for seeding. */

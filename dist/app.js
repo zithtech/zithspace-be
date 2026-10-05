@@ -124,6 +124,7 @@ const metadata_1 = require("@/modules/metadata");
 const routes_5 = __importDefault(require("@/modules/opening-management/routes"));
 const routes_6 = __importDefault(require("@/modules/hotspot/routes"));
 const routes_7 = require("@/modules/pipeline/routes");
+const routes_8 = __importDefault(require("@/modules/mail-templates/routes"));
 const reimbursementConfig_1 = __importDefault(require("@/routes/reimbursementConfig"));
 const reimbursementsettingsRoutes_1 = __importDefault(require("@/routes/reimbursementsettingsRoutes"));
 const reimbursementcreateRoutes_1 = __importDefault(require("@/routes/reimbursementcreateRoutes"));
@@ -137,11 +138,11 @@ const exitApprovalWorkflow_routes_1 = __importDefault(require("@/routes/exitAppr
 const recruitmentStatus_routes_1 = __importDefault(require("@/routes/recruitmentStatus.routes"));
 const recruitmentAction_routes_1 = __importDefault(require("@/routes/recruitmentAction.routes"));
 const candidateRoutes_1 = __importDefault(require("@/routes/candidateRoutes"));
-const routes_8 = __importDefault(require("@/modules/company-details/routes"));
-const routes_9 = __importDefault(require("@/modules/yapiez/routes"));
-const routes_10 = __importDefault(require("@/modules/qa-playbooks/routes"));
-const routes_11 = __importDefault(require("@/modules/qa-scenarios/routes"));
-const routes_12 = __importDefault(require("@/modules/project-agreements/routes"));
+const routes_9 = __importDefault(require("@/modules/company-details/routes"));
+const routes_10 = __importDefault(require("@/modules/yapiez/routes"));
+const routes_11 = __importDefault(require("@/modules/qa-playbooks/routes"));
+const routes_12 = __importDefault(require("@/modules/qa-scenarios/routes"));
+const routes_13 = __importDefault(require("@/modules/project-agreements/routes"));
 const openingManagementRoutes_1 = __importDefault(require("@/routes/openingManagementRoutes"));
 const RabbitMQService_1 = require("@/utils/RabbitMQService");
 const CalendarSyncWorker_1 = require("@/workers/CalendarSyncWorker");
@@ -378,7 +379,7 @@ app.use("/api/sprint-report", sprintReport_1.default);
 app.use("/api/sprint-reports", sprintReports_1.default);
 app.use("/api/companies", companyRoutes_1.default);
 app.use("/api/grades", gradeRoutes_1.default);
-app.use("/api/company-details", routes_8.default);
+app.use("/api/company-details", routes_9.default);
 app.use("/api/opening-management", openingManagementRoutes_1.default);
 app.use("/api/leads", lead_routes_1.default);
 app.use("/api/lead-settings", leadSettings_routes_1.default);
@@ -401,6 +402,9 @@ app.use("/api/email-history", emailHistoryRoutes_1.default);
 app.use("/api/timesheets", timesheet_1.default);
 app.use("/api/zoho", calendar_1.default);
 app.get("/api/mail/attachments/download", MailController_1.MailController.downloadAttachment);
+// Mounted BEFORE /api/mail so the templates module owns that sub-path; the
+// generic mail router has a catch-all POST /:provider/disconnect underneath it.
+app.use("/api/mail/templates", routes_8.default);
 app.use("/api/mail", mail_1.default);
 app.use("/api/notifications", notifications_1.default);
 // app.use("/api/mail-configuration", mailConfigurationRoutes);
@@ -415,15 +419,15 @@ app.use("/api/v2/qa/submissions", qaSubmissionRoutes_1.default);
 app.use("/api/v2/qa/analytics", qaAnalyticsRoutes_1.default);
 // Same reason as the two mounts above: "/playbooks" would be read as a test
 // case id by the "/:id" route inside testCaseRoutes.
-app.use("/api/v2/qa/playbooks", routes_10.default);
+app.use("/api/v2/qa/playbooks", routes_11.default);
 // Test Scenarios — the flow grouping inside a Module Test Cases page. Mounted
 // above the catch-all for the same reason: "/scenarios" is not a test case id.
-app.use("/api/v2/qa/scenarios", routes_11.default);
+app.use("/api/v2/qa/scenarios", routes_12.default);
 app.use("/api/v2/qa", testCaseRoutes_1.default); // Registers /api/v2/qa/modules, /api/v2/qa/, /api/v2/qa/suites, /api/v2/qa/runs
 // Yapiez — the API definition + flow execution layer feeding QA Space.
 // Mounted as its own module rather than under /api/v2/qa: it is a sibling of
 // QA Space, not a page inside it, and testCaseRoutes claims "/:id" above.
-app.use("/api/v2/yapiez", routes_9.default);
+app.use("/api/v2/yapiez", routes_10.default);
 app.use("/api/v2/payroll", routes_3.default);
 app.use("/api/v2/reimbursement", routes_4.default);
 app.use("/api/v2/openings", routes_5.default);
@@ -431,7 +435,7 @@ app.use("/api/v2/hotspot", routes_6.default);
 app.use("/api/performance-report", routes_2.default);
 // Project Agreements — agreement templates and the documents raised from them
 // against a project (HRMS → Project Agreements).
-app.use("/api/project-agreements", routes_12.default);
+app.use("/api/project-agreements", routes_13.default);
 //Escalation
 app.use("/api/escalation-categories", escalationCategoryV2_routes_1.default);
 app.use("/api/escalation-statuses", escalationStatus_RoutesV2_1.default);
@@ -627,6 +631,9 @@ const startServer = async () => {
         // Project Agreements tables (raw-SQL module, forward-only migrations)
         const { runProjectAgreementMigrations } = require("@/modules/project-agreements/db/migrate");
         await runProjectAgreementMigrations();
+        // Mail Template tables (raw-SQL module, forward-only migrations)
+        const { runMailTemplateMigrations } = require("@/modules/mail-templates/db/migrate");
+        await runMailTemplateMigrations();
         // Close out any flow run left mid-execution by a previous process, so a
         // crashed run does not sit in 'Running' forever.
         try {
