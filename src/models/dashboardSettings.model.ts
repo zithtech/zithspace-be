@@ -8,6 +8,7 @@ export interface DashboardSettings {
     quickActions: boolean;
     attendanceStats: boolean;
     myTicketsProgress: boolean;
+    myWorkProgress: boolean;
     recentTickets: boolean;
     freelancerStats: boolean;
     recentLeads: boolean;
@@ -15,6 +16,12 @@ export interface DashboardSettings {
     calendar: boolean;
     upcomingBirthdays: boolean;
     dailyAttendanceCard: boolean;
+    dailyUpdatesCard: boolean;
+    metricDailyAttendance: boolean;
+    metricDailyUpdates: boolean;
+    metricAvgHours: boolean;
+    metricMyTickets: boolean;
+    metricTeamToday: boolean;
   };
   createdAt: Date;
   updatedAt: Date;
@@ -25,6 +32,7 @@ export const DEFAULT_VISIBLE_CARDS = {
   quickActions: true,
   attendanceStats: true,
   myTicketsProgress: true,
+  myWorkProgress: true,
   recentTickets: true,
   freelancerStats: true,
   recentLeads: true,
@@ -32,6 +40,12 @@ export const DEFAULT_VISIBLE_CARDS = {
   calendar: true,
   upcomingBirthdays: true,
   dailyAttendanceCard: true,
+  dailyUpdatesCard: true,
+  metricDailyAttendance: true,
+  metricDailyUpdates: true,
+  metricAvgHours: true,
+  metricMyTickets: true,
+  metricTeamToday: true,
 };
 
 function mapRowToDashboardSettings(row: any): DashboardSettings {
