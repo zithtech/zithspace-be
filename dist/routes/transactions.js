@@ -73,19 +73,19 @@ router.put('/:id', (0, permission_1.requirePermission)(permissions_1.Permissions
  * @desc    Get all trashed transactions (tenant-aware)
  * @access  Private (admin only)
  */
-router.get('/trash/all', (0, permission_1.requirePermission)(permissions_1.Permissions.ACCOUNT_DELETE), transactionsController_1.TransactionsController.getTrashTransactions);
+router.get('/trash/all', (0, permission_1.requirePermission)(permissions_1.Permissions.ACCOUNT_TRASH_READ), transactionsController_1.TransactionsController.getTrashTransactions);
 /**
  * @route   POST /api/transactions/:id/restore
  * @desc    Restore a trashed transaction (tenant-aware)
  * @access  Private (admin only)
  */
-router.post('/:id/restore', (0, permission_1.requirePermission)(permissions_1.Permissions.ACCOUNT_UPDATE), transactionsController_1.TransactionsController.restoreTransaction);
+router.post('/:id/restore', (0, permission_1.requirePermission)(permissions_1.Permissions.ACCOUNT_TRASH_RESTORE), transactionsController_1.TransactionsController.restoreTransaction);
 /**
  * @route   DELETE /api/transactions/:id/permanent
  * @desc    Permanently delete a trashed transaction (tenant-aware)
  * @access  Private (admin only)
  */
-router.delete('/:id/permanent', (0, permission_1.requirePermission)(permissions_1.Permissions.ACCOUNT_DELETE), transactionsController_1.TransactionsController.permanentlyDeleteTransaction);
+router.delete('/:id/permanent', (0, permission_1.requirePermission)(permissions_1.Permissions.ACCOUNT_TRASH_DELETE), transactionsController_1.TransactionsController.permanentlyDeleteTransaction);
 /**
  * @route   DELETE /api/transactions/:id
  * @desc    Move transaction to trash (tenant-aware)

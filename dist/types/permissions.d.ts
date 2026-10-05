@@ -87,6 +87,10 @@ export declare const Permissions: {
     readonly QA_APPROVAL_SEND_BACK: "qa.approval.send_back";
     readonly QA_COVERAGE_MAP_READ: "qa.coverage_map.read";
     readonly QA_ANALYTICS_READ: "qa.analytics.read";
+    readonly QA_SETTING_READ: "qa.setting.read";
+    readonly QA_SETTING_CREATE: "qa.setting.create";
+    readonly QA_SETTING_UPDATE: "qa.setting.update";
+    readonly QA_SETTING_DELETE: "qa.setting.delete";
     readonly QA_MANAGE: "qa.manage";
     readonly PLAYBOOK_CREATE: "playbook.create";
     readonly PLAYBOOK_READ: "playbook.read";
@@ -145,6 +149,10 @@ export declare const Permissions: {
     readonly LEAVE_TRASH_READ: "leave.trash.read";
     readonly LEAVE_TRASH_RESTORE: "leave.trash.restore";
     readonly LEAVE_TRASH_DELETE: "leave.trash.delete";
+    readonly LEAVE_SETTING_READ: "leave.setting.read";
+    readonly LEAVE_SETTING_CREATE: "leave.setting.create";
+    readonly LEAVE_SETTING_UPDATE: "leave.setting.update";
+    readonly LEAVE_SETTING_DELETE: "leave.setting.delete";
     readonly LEAVE_MANAGE: "leave.manage";
     readonly SHIFT_CREATE: "shift.create";
     readonly SHIFT_READ: "shift.read";
@@ -170,8 +178,7 @@ export declare const Permissions: {
     readonly INVOICE_SETTING_UPDATE: "invoice.setting.update";
     readonly INVOICE_SETTING_DELETE: "invoice.setting.delete";
     readonly INVOICE_TRASH_READ: "invoice.trash.read";
-    readonly INVOICE_TRASH_CREATE: "invoice.trash.create";
-    readonly INVOICE_TRASH_UPDATE: "invoice.trash.update";
+    readonly INVOICE_TRASH_RESTORE: "invoice.trash.restore";
     readonly INVOICE_TRASH_DELETE: "invoice.trash.delete";
     readonly INVOICE_HISTORY_READ: "invoice.history.read";
     readonly INVOICE_MAIL_SEND: "invoice.mail.send";
@@ -185,6 +192,9 @@ export declare const Permissions: {
     readonly ACCOUNT_SETTING_CREATE: "account.setting.create";
     readonly ACCOUNT_SETTING_UPDATE: "account.setting.update";
     readonly ACCOUNT_SETTING_DELETE: "account.setting.delete";
+    readonly ACCOUNT_TRASH_READ: "account.trash.read";
+    readonly ACCOUNT_TRASH_RESTORE: "account.trash.restore";
+    readonly ACCOUNT_TRASH_DELETE: "account.trash.delete";
     readonly CLIENT_CREATE: "client.create";
     readonly CLIENT_READ: "client.read";
     readonly CLIENT_UPDATE: "client.update";
