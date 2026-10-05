@@ -160,7 +160,7 @@ export const PREDEFINED_ENTITY_TYPES = [
   "leave_holiday", "leave_accrual_run", "leave_settings",
   "employee", "onboarding_invite", "onboarding_document_type",
   "attendance_record", "performance_report",
-  "circulation", "blog", "opening"
+  "circulation", "blog", "opening", "mail_template"
 ];
 
 export const HIDDEN_MODULES = [

@@ -46,6 +46,22 @@ const PERMISSION_DESCRIPTIONS: Record<string, string> = {
   'project.trash.delete': 'Permanently delete projects',
   'project.manage': 'Manage project members and see all projects',
 
+  'project_agreement.create': 'Create project agreements',
+  'project_agreement.read': 'View project agreements',
+  'project_agreement.update': 'Edit project agreements',
+  'project_agreement.delete': 'Delete project agreements',
+  'project_agreement.manage': 'Manage project agreements',
+  
+  'project_agreement_template.create': 'Create agreement templates',
+  'project_agreement_template.read': 'View agreement templates',
+  'project_agreement_template.update': 'Edit agreement templates',
+  'project_agreement_template.delete': 'Delete agreement templates',
+  
+  'project_agreement_setting.create': 'Create project agreement settings',
+  'project_agreement_setting.read': 'View project agreement settings',
+  'project_agreement_setting.update': 'Edit project agreement settings',
+  'project_agreement_setting.delete': 'Delete project agreement settings',
+
   'ticket.create': 'Create tickets',
   'ticket.read': 'View tickets',
   'ticket.update': 'Edit ticket details',

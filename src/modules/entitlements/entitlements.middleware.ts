@@ -82,6 +82,11 @@ const MODULE_PREFIX_FEATURES: ReadonlyArray<readonly [string, string | readonly 
   ['/api/letters', 'hrms_doc_suite'],
   ['/api/repositories', 'hrms_doc_suite'],
 
+  // ── HRMS: Project Agreements ──
+  // 'hrms' rides along until a hrms_project_agreements row exists in
+  // admin_feature_catalog — see the note in the module's routes/index.ts.
+  ['/api/project-agreements', ['hrms_project_agreements', 'hrms']],
+
   // ── HRMS: Candidate Pipeline / Recruitment ──
   ['/api/pipeline', 'hrms_candidate_pipeline'],
   ['/api/candidates', 'hrms_candidate_pipeline'],

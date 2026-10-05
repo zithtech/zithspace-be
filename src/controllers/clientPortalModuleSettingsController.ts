@@ -11,6 +11,7 @@ import { AuthRequest } from "@/types";
  * it is always visible.
  */
 export const PORTAL_MODULES: { key: string; label: string }[] = [
+  { key: "agreements", label: "Agreements" },
   { key: "invoices", label: "Invoices" },
   { key: "mom", label: "Meetings" },
   { key: "documents", label: "Documents" },
