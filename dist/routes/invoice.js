@@ -31,9 +31,9 @@ router.delete('/:id', (0, permission_1.requirePermission)(permissions_1.Permissi
 // Bulk soft delete invoices (Move to Trash)
 router.post('/bulk-delete', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_DELETE), (0, entitlements_middleware_1.requireSubscriptionFeature)('finance_invoice_invoice_trash', { exact: false }), (req, res) => InvoiceController_1.InvoiceController.bulkDeleteInvoices(req, res));
 // Restore soft-deleted invoice
-router.patch('/:id/restore', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_TRASH_UPDATE), (0, entitlements_middleware_1.requireSubscriptionFeature)('finance_invoice_invoice_trash', { exact: false }), (req, res) => InvoiceController_1.InvoiceController.restoreInvoice(req, res));
+router.patch('/:id/restore', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_TRASH_RESTORE), (0, entitlements_middleware_1.requireSubscriptionFeature)('finance_invoice_invoice_trash', { exact: false }), (req, res) => InvoiceController_1.InvoiceController.restoreInvoice(req, res));
 // Bulk restore soft-deleted invoices
-router.post('/bulk-restore', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_TRASH_UPDATE), (0, entitlements_middleware_1.requireSubscriptionFeature)('finance_invoice_invoice_trash', { exact: false }), (req, res) => InvoiceController_1.InvoiceController.bulkRestoreInvoices(req, res));
+router.post('/bulk-restore', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_TRASH_RESTORE), (0, entitlements_middleware_1.requireSubscriptionFeature)('finance_invoice_invoice_trash', { exact: false }), (req, res) => InvoiceController_1.InvoiceController.bulkRestoreInvoices(req, res));
 // Permanently delete invoice (hard delete) - Admin only
 router.delete('/:id/permanent', (0, permission_1.requirePermission)(permissions_1.Permissions.INVOICE_TRASH_DELETE), (0, entitlements_middleware_1.requireSubscriptionFeature)('finance_invoice_invoice_trash', { exact: false }), (req, res) => InvoiceController_1.InvoiceController.permanentDeleteInvoice(req, res));
 // Bulk permanently delete invoices

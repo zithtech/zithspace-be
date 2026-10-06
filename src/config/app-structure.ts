@@ -1907,6 +1907,17 @@ export const APP_STRUCTURE: ICore[] = [
               { key: 'prime', name: 'Prime', featureType: 'PRIME' },
               { key: 'grid', name: 'Grid', featureType: 'GRID' }
             ]
+          },
+          {
+            key: 'settings',
+            name: 'Settings',
+            route: '/reimbursement-v2/settings',
+            menu_title: 'Settings',
+            menu_order: 9,
+            features: [
+              { key: 'prime', name: 'Prime', featureType: 'PRIME' },
+              { key: 'grid', name: 'Grid', featureType: 'GRID' }
+            ]
           }
         ]
       },

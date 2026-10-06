@@ -190,18 +190,6 @@ export class EmailService {
             companyLogo = settings.logoUrl;
           }
         }
-
-        // Also check active settings profile in invoice settings profiles
-        try {
-          const { getActiveSettingsProfile } = await import('../models/settingsProfile.model');
-          const profile = await getActiveSettingsProfile(tenantId);
-          if (profile?.general?.companyName) {
-            companyName = profile.general.companyName;
-          }
-          if (profile?.general?.companyLogo) {
-            companyLogo = profile.general.companyLogo;
-          }
-        } catch (e) {}
       } catch (error) {
         console.error("❌ Error resolving tenant branding:", error);
       }

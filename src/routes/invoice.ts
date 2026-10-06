@@ -47,10 +47,10 @@ router.delete('/:id', requirePermission(Permissions.INVOICE_DELETE), requireSubs
 router.post('/bulk-delete', requirePermission(Permissions.INVOICE_DELETE), requireSubscriptionFeature('finance_invoice_invoice_trash', { exact: false }), (req, res) => InvoiceController.bulkDeleteInvoices(req, res));
 
 // Restore soft-deleted invoice
-router.patch('/:id/restore', requirePermission(Permissions.INVOICE_TRASH_UPDATE), requireSubscriptionFeature('finance_invoice_invoice_trash', { exact: false }), (req, res) => InvoiceController.restoreInvoice(req, res));
+router.patch('/:id/restore', requirePermission(Permissions.INVOICE_TRASH_RESTORE), requireSubscriptionFeature('finance_invoice_invoice_trash', { exact: false }), (req, res) => InvoiceController.restoreInvoice(req, res));
 
 // Bulk restore soft-deleted invoices
-router.post('/bulk-restore', requirePermission(Permissions.INVOICE_TRASH_UPDATE), requireSubscriptionFeature('finance_invoice_invoice_trash', { exact: false }), (req, res) => InvoiceController.bulkRestoreInvoices(req, res));
+router.post('/bulk-restore', requirePermission(Permissions.INVOICE_TRASH_RESTORE), requireSubscriptionFeature('finance_invoice_invoice_trash', { exact: false }), (req, res) => InvoiceController.bulkRestoreInvoices(req, res));
 
 // Permanently delete invoice (hard delete) - Admin only
 router.delete('/:id/permanent', requirePermission(Permissions.INVOICE_TRASH_DELETE), requireSubscriptionFeature('finance_invoice_invoice_trash', { exact: false }), (req, res) => InvoiceController.permanentDeleteInvoice(req, res));
